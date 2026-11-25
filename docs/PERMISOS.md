@@ -293,6 +293,30 @@ sin área hasta que Administración se la pone al corregirlos.
 | Adjuntar el contrato del subcontrato, al registrarlo o después, y otra versión encima | `subcontratos.gestionar`: Administración | `adjuntar_contrato_subcontrato` (migración `20261020202000`), en `subcontrato_contratos`: no a uno anulado; un contrato adjunto no se cambia ni se borra, el último es el vigente. Lo ve quien ve los subcontratos (`puede_ver_subcontratos()`); el supervisor no, porque lleva el monto. El contrato de la orden de servicio va con los documentos de la OS (PR de Adquisiciones) |
 | Los archivos | Suben Administración (el recibo y el contrato) y Tesorería (el voucher) | Bucket privado `subcontratos`, ruta `{subcontrato}/{archivo}`, hasta 10 MB, PDF o foto; solo a un subcontrato no anulado. Lo ve quien ve los subcontratos si una fila lo nombra |
 
+## SSOMA: el reporte de seguridad
+
+Plan 15, entrega 15.1. Migraciones `20261125150000_el_reporte_de_incidente_tiene_numero`
+y `20261125150100_ssoma_y_el_reporte_de_incidente`, comprobadas con los roles
+reales en la base local (check 460) y con clic real en el banco
+(`herramientas/banco/probar-ssoma.mjs`). La carpeta «18) SSOMA (SST)» del SIG
+está vacía: el reporte sigue el registro de accidentes, incidentes peligrosos
+e incidentes de la R.M. 050-2013-TR (Ley 29783), con número de la casa
+`RI-0001-2026`. Es un documento numerado: no se borra, se anula con motivo.
+
+| Qué | Quién | Cómo lo exige la base |
+| --- | --- | --- |
+| Reportar un accidente, un incidente o una condición insegura (área, lugar, qué pasó, cuándo; del accidente, solo si hubo atención médica, nunca el diagnóstico; hasta 4 fotos) | Cualquier cuenta activa, sin permiso. En el menú de todos, al final, «Reportar › Reportar incidente» (`RUTAS_PARA_TODOS`) | `ssoma_reportar` (`security definer`): exige sesión de una cuenta activa, da el número con `siguiente_correlativo('REPORTE_INCIDENTE')`, anota las fotos y avisa en la campana a quien tiene `ssoma.gestionar`. Un reenvío idéntico devuelve el mismo; uno distinto con el mismo id dice que ya quedó |
+| Reportar a nombre de un trabajador sin cuenta, eligiéndolo de la lista de RR. HH. (solo nombre, cargo y área) | `ssoma.reportar_por_otro`: SSOMA, Supervisión de área, jefe de Producción y jefe de Taller | `ssoma_personal_para_elegir` y `ssoma_reportar` exigen el mismo permiso; la acción también (`reportarIncidente`). Nunca DNI, cuenta ni costo |
+| Ver todos los reportes, con quién reportó, a nombre de quién y las fotos | `ssoma.gestionar` (SSOMA) y `ssoma.ver` (Gerencia, en consulta) | `ssoma_reportes_visibles` y la política `ver_ssoma_reportes` (`puede_ver_reportes_ssoma()`) |
+| Ver los suyos, con su recorrido y sus fotos | Quien lo reportó | La misma política, por `registrado_por = usuario_actual()` |
+| Ver lo que pasó en su área, sin quién lo reportó ni las fotos | Toda cuenta con `usuarios.area_id` igual al área del reporte (no anulado) | Solo por `ssoma_reportes_visibles` (alcance `AREA`, con el autor, el trabajador, la anulación y las fotos en vacío). La tabla no se la deja leer |
+| Anular con motivo (10 a 500 caracteres) | `ssoma.gestionar`: SSOMA | `ssoma_anular_reporte`: congela el reporte y avisa a quien lo reportó. La acción exige el mismo permiso (`anularReporteSsoma`). Nadie lo borra, tampoco el administrador (`fn_ssoma_reporte_guardia`) |
+| Las fotos | Sube quien reporta, a su carpeta | Bucket privado `fotos-ssoma`, ruta `{cuenta}/{reporte}/{foto}`, JPEG, PNG o WEBP de hasta 5 MB. La ve quien ve el reporte con su autor; la que ninguna fila nombra solo la ve y la quita quien la subió |
+
+`ssoma_reportes` no lleva `activar_auditoria`: la auditoría copiaría quién
+reportó a `audit_log`, que lee Gerencia y el área no debe ver. Una cuenta sin
+`area_id` no tiene alcance de área: ve solo lo suyo.
+
 ## El menú de cada puesto
 
 Desde el 2026-10-14 cada puesto tiene su propio menú (`MENU_POR_PUESTO` en
@@ -329,9 +353,15 @@ punto y coma con su nombre delante.
 | Recursos Humanos | Reporte diario (lo valida), Horas extras, Planilla diaria; Control del personal: Personal, DNI de las cuentas, Asistencia, Tardanzas, Permisos, Observaciones; Planillas y costeo: Planillas, Costeo por código interno | — | Reporte, Planilla, Personal, Asistencia |
 | Portería | Asistencia | — | Asistencia, Dashboard |
 | Agente de Ventas | Cotización, Clientes, Unidades, Carrocerías | — | Cotizar, Clientes, Unidades, Dashboard |
+| SSOMA | Reportes de seguridad (desde el 2026-11-25; las acciones correctivas, las charlas, las inspecciones y el EPP se suman con sus entregas) | — | Seguridad, Dashboard |
 
 Una pantalla nueva no aparece sola en estos menús: se suma al del puesto que la
 usa. Si la ruta está mal escrita, TypeScript no compila.
+
+Desde el 2026-11-25 todos los puestos llevan al final el grupo **Reportar**
+(`RUTAS_PARA_TODOS`), con «Reportar incidente» para SSOMA, sin permiso. Quien
+además tiene `ssoma.gestionar` o `ssoma.ver` ve la misma pantalla como
+«Reportes de seguridad» en su propio grupo, una sola vez.
 
 ## El dashboard de cada puesto
 
@@ -378,6 +408,7 @@ la OT en su menú.
 | Supervisor de área | Su reporte de hoy por subir (no el domingo), Reportes observados por corregir, Planos de su área por recibir, Requerimientos de su área listos para recoger | Reportes diarios del mes, Planos de su área (y etapas abiertas), Requerimientos de su área |
 | Supervisor General | Códigos con etapas vencidas | Códigos en curso, Requerimientos abiertos, Vehículos en la planta, Bajo su stock mínimo |
 | Agente de Ventas | Cotizaciones rechazadas por corregir | En revisión de Gerencia, Aprobadas este mes, Clientes |
+| SSOMA | — (el aviso de cada reporte llega a la campana; el globo de lo que espera por SSOMA llega con las acciones correctivas, entrega 15.2) | Reportes en SSOMA (vigentes, sin anular), Reportados este mes (cuántos accidentes) |
 
 ADMIN ve las cifras de Gerencia y todos los globos. Una cifra que no se pudo
 leer sale con «—» y lo dice; nunca como si fuera cero.
