@@ -60,7 +60,7 @@ export function Observaciones({
   const areaPreseleccionada = preseleccion ? (areas.find((a) => a.codigo === preseleccion.areaCodigo)?.id ?? '') : ''
 
   return (
-    <section id="observaciones" aria-labelledby="observaciones-titulo" className="scroll-mt-24 space-y-3">
+    <section id="observaciones" aria-labelledby="observaciones-titulo" className="scroll-mt-2 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 id="observaciones-titulo" className="flex items-center gap-2 text-sm font-semibold text-texto">
           Observaciones

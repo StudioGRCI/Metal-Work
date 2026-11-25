@@ -70,7 +70,7 @@ export function SeccionesDelDocumento({
       className={cn(
         '-mx-4 scroll-mt-20 lg:-mx-1 print:hidden',
         // El alto de la barra de arriba: 56 px, o su contenido más el borde del iPhone.
-        pegada && 'sticky top-[max(3.5rem,calc(2.8125rem+env(safe-area-inset-top)))] z-20 bg-fondo py-1',
+        pegada && 'sticky top-[max(3.5rem,calc(2.8125rem+env(safe-area-inset-top)))] z-20 border-b border-borde bg-fondo py-1',
         className,
       )}
     >
