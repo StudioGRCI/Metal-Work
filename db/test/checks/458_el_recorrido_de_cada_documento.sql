@@ -315,6 +315,63 @@ set local session_replication_role = replica;
 update public.requerimientos set tipo = 'OPERACION' where id = pg_temp.id('rqb');
 set local session_replication_role = origin;
 
+-- Con varias OC, manda la que va más atrás; a igual punto, la que falta
+-- programar (o la observada) va antes que la que ya tiene el conductor (o
+-- Almacén por validar), sin importar el número del insumo. Se le suma al RQ un
+-- segundo insumo con su propia OC, sin disparadores.
+select set_config('prueba.oc2', gen_random_uuid()::text, true);
+set local session_replication_role = replica;
+update public.programacion_recojo set posicion = 1 where orden_compra_id = pg_temp.id('oc');
+insert into public.ordenes_compra_materiales (id, requerimiento_id, proveedor, referencia, aprobacion, aprobado_por, aprobado_en, creado_por)
+values (pg_temp.id('oc2'), pg_temp.id('rqb'), 'Proveedor del check 458', 'OC-0459-MW', 'APROBADA', pg_temp.id('gerente'), now() - interval '1 day', pg_temp.id('comprador'));
+insert into public.requerimiento_lineas (requerimiento_id, item, descripcion, cantidad, unidad_medida_id, categoria_id, material_id,
+                                         cantidad_en_stock, stock_revisado_en, stock_revisado_por, orden_compra_id, atendida_en, atendida_por)
+select requerimiento_id, 2, descripcion, cantidad, unidad_medida_id, categoria_id, material_id,
+       0, now(), stock_revisado_por, pg_temp.id('oc2'), now(), pg_temp.id('comprador')
+  from public.requerimiento_lineas where requerimiento_id = pg_temp.id('rqb') and item = 1;
+set local session_replication_role = origin;
+select pg_temp.como('requerimientos');
+set local role authenticated;
+do $$
+declare v record;
+begin
+  select * into v from pg_temp.paso_rq('rqb', 'LISTO', 'AHORA');
+  perform test.afirmar(v.puesto = 'Logística' and v.espera = 'POR_PROGRAMAR' and v.detalle like '%OC-0459-MW%',
+    'con la OC del insumo 1 en la lista del conductor y la del 2 sin programar, lo tiene Logística por la del 2 (dice '
+    || coalesce(v.puesto, '?') || ', ' || coalesce(v.detalle, '?') || ')');
+end $$;
+reset role;
+
+-- Las dos ya dejadas en almacén: la del insumo 1 por validar y la del 2
+-- observada ayer. Lo observado va primero y cuenta desde que Almacén lo observó,
+-- no desde que se dejó (hace tres días).
+set local session_replication_role = replica;
+update public.ordenes_compra_materiales
+   set recojo = 'DEJADO', recojo_pedido_en = now() - interval '4 days', recogido_en = now() - interval '3 days', recogido_por = pg_temp.id('comprador'),
+       dejado_en = now() - interval '3 days', dejado_por = pg_temp.id('comprador'), entregado_almacen_en = now() - interval '3 days'
+ where id in (pg_temp.id('oc'), pg_temp.id('oc2'));
+insert into public.orden_compra_material_detalles (id, orden_compra_id, material_id, cantidad)
+values (gen_random_uuid(), pg_temp.id('oc'), pg_temp.id('pla'), 8), (gen_random_uuid(), pg_temp.id('oc2'), pg_temp.id('pla'), 8);
+insert into public.ingresos_pendientes_almacen (orden_compra_id, orden_compra_detalle_id, material_id, cantidad, dejado_por, dejado_en, estado, validado_por, validado_en, observacion)
+select d.orden_compra_id, d.id, d.material_id, 8, pg_temp.id('comprador'), now() - interval '3 days',
+       case when d.orden_compra_id = pg_temp.id('oc2') then 'OBSERVADO' else 'PENDIENTE' end,
+       case when d.orden_compra_id = pg_temp.id('oc2') then pg_temp.id('almacenero') end,
+       case when d.orden_compra_id = pg_temp.id('oc2') then now() - interval '1 day' end,
+       case when d.orden_compra_id = pg_temp.id('oc2') then 'Llegaron planchas dobladas' end
+  from public.orden_compra_material_detalles d where d.orden_compra_id in (pg_temp.id('oc'), pg_temp.id('oc2'));
+set local session_replication_role = origin;
+select pg_temp.como('requerimientos');
+set local role authenticated;
+do $$
+declare v record;
+begin
+  select * into v from pg_temp.paso_rq('rqb', 'LISTO', 'AHORA');
+  perform test.afirmar(v.puesto = 'Logística' and v.espera = 'OBSERVADO' and v.detalle like '%OC-0459-MW%' and v.dias = 1,
+    'lo observado va antes que lo que Almacén tiene por validar, y cuenta desde que se observó (dice '
+    || coalesce(v.puesto, '?') || ', ' || coalesce(v.espera, '?') || ', ' || coalesce(v.dias::text, '?') || ' día(s))');
+end $$;
+reset role;
+
 -- La vuelta a compra: el RQ listo que vuelve porque Almacén devolvió parte al
 -- proveedor. Lo hace `reabrir_rq_por_lo_devuelto`; aquí, su misma sentencia con
 -- la sesión de Almacén, para que la bitácora la anote.
