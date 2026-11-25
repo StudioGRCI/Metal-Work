@@ -144,7 +144,7 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
                         {c.razon_social}
                       </Link>
                       {c.nombre_comercial && (
-                        <p className="text-[11px] text-texto-suave">{c.nombre_comercial}</p>
+                        <p className="text-xs text-texto-suave">{c.nombre_comercial}</p>
                       )}
                       {enElTelefono && (
                         <p className="text-xs text-texto-suave sm:hidden">{enElTelefono}</p>
@@ -156,7 +156,7 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
                     </TD>
                     <TD className="hidden text-texto-suave sm:table-cell">
                       {c.telefono ?? '—'}
-                      {c.correo && <p className="text-[11px]">{c.correo}</p>}
+                      {c.correo && <p className="text-xs">{c.correo}</p>}
                     </TD>
                     <TD className="hidden text-texto-suave sm:table-cell">{ubicacion || '—'}</TD>
                     <TD className="tabular hidden text-right sm:table-cell">{unidades}</TD>

@@ -17,6 +17,19 @@ En `src/components/ui/`:
   `acciones`), `TarjetaCuerpo`
 - `Tabla`, `TablaCabecera`, `TH`, `TD`, `TR`, `SinDatos` (estado vacío con
   título y descripción)
+- Una lista en el teléfono (390 px), de menos a más: la columna que no cabe
+  lleva `hidden sm:table-cell` y su dato se repite en la primera celda dentro
+  de `DetalleEnTelefono` (una tabla que solo esconde pierde el dato); si la
+  fila lleva botones o un bloque largo, `<Tabla apilada>`: cada fila pasa a
+  ser una ficha, sin cabecera, y la celda con `data-rotulo="…"` muestra su
+  rótulo encima (Carrocerías). Los botones no se pintan dos veces —cada uno
+  guarda su ventana y su envío—: por eso la ficha es la misma fila.
+- `AccionesDeFila` para los botones de una fila: un renglón, lo que más se
+  usa primero y con `contorno`, lo que casi nunca (desactivar, eliminar) al
+  final y `fantasma`. Nunca apilados en un `space-y-*`.
+- `SinDatos` tiene dos tamaños: el grande es para la lista que es el trabajo
+  de la pantalla; `compacto` para la bandeja que comparte pantalla con otras
+  (lo pendiente del Kardex). No se escribe el vacío a mano con un `<p>`.
 - `Campo` (etiqueta + ayuda + requerido), `Entrada`, `Seleccion`, `AreaTexto`
 - `ElegirArchivo` para todo archivo que se elige en un formulario, nunca
   `Entrada type="file"`: el botón del navegador sale en su idioma («Choose
@@ -56,6 +69,17 @@ Estructura: `EncabezadoPagina` (migas, título, descripción, ayuda, acciones) a
 de toda pantalla; las secciones de un detalle van por pestañas con
 `?vista=` en la URL (ver `ordenes/[id]/pestanas.tsx`), y cada pestaña carga
 **solo sus datos** en el server component.
+
+## El orden de una pantalla de trabajo
+
+De arriba abajo: el encabezado; los botones, lo de todos los días primero y
+lo de una vez al final; **lo que espera a quien entra** (bandejas de
+pendientes); y recién después lo que se consulta (tableros, filtros, el
+historial). En el Kardex el tablero y los filtros iban arriba y lo pendiente
+empezaba a 1 230 px en el teléfono (revisión del 2026-11-25). Una regla que
+solo explica va detrás de la «i», aunque esté dentro de una tarjeta que es
+enlace: la tarjeta se cubre con el `::after` del enlace y la «i» queda encima
+(`almacen/kardex/page.tsx`, «Los cuatro almacenes»).
 
 ## Jerarquía de las pestañas de la OT
 
@@ -817,6 +841,15 @@ borran (pasó con la evaluación de desempeño, 2026-10-01)—; y un `fontSize` 
 línea siguiente.
 
 ## Texto
+
+**La letra más chica es de 12 px (`text-xs`)**, también en cabeceras de
+tabla, códigos y notas (decisión de DKS, 2026-11-25): había 183 textos de 9,
+10 y 11 px y en el teléfono del taller no se leían. ESLint lo corta
+(`eslint.config.mjs`). Quedan fuera, con su permiso escrito al lado, la
+burbuja del contador (campana y barra de abajo), la etiqueta de las pestañas
+de la barra de abajo (a 12 px «Subcontratos» se cortaba), el glifo «i» de `Campo` y
+los formatos que se imprimen (cotización, formato de salida, expediente),
+donde el tamaño es parte del formato.
 
 Castellano peruano de taller, sin anglicismos de oficina: «dar de alta»,
 «visto bueno», «no se pudo». Los títulos dicen qué es la cosa. Para qué sirve

@@ -2,7 +2,7 @@ import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
-import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
+import { AccionesDeFila, DetalleEnTelefono, SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { AccionesCatalogo } from '@/app/(app)/catalogos/acciones-catalogo'
 import { EditarMedidas } from '@/app/(app)/configuracion/medidas-carroceria'
@@ -11,6 +11,7 @@ import { NuevaCarroceria } from '@/components/comercial/nueva-carroceria'
 import { carroceriasConFicha } from '@/lib/datos/carrocerias'
 import { resumenMedidas } from '@/lib/dominio/medidas-carroceria'
 import { exigirPermiso, puede } from '@/lib/sesion'
+import { cn } from '@/lib/utils'
 
 export const metadata = { title: 'Carrocerías' }
 
@@ -29,6 +30,11 @@ const TIPO_UNIDAD: Record<string, string> = {
  * nombre, la descripción y las medidas técnicas (`diseno.carrocerias`,
  * migración 20261001213000). Ventas conserva el alta y el nombre para no
  * frenar una cotización.
+ *
+ * En el teléfono cada carrocería es una ficha (`<Tabla apilada>`): el nombre,
+ * sus fichas técnicas debajo con todo el ancho y los botones en un renglón. Como
+ * tabla de seis columnas en 390 px, las fichas quedaban en una columna de 100 px
+ * —una palabra por renglón— y los tres botones apilados: la página medía 9 856 px.
  */
 export default async function PaginaCarrocerias({ searchParams }: PageProps<'/carrocerias'>) {
   const perfil = await exigirPermiso(['diseno.planos', 'configuracion.ver', 'cotizaciones.crear'])
@@ -60,7 +66,7 @@ export default async function PaginaCarrocerias({ searchParams }: PageProps<'/ca
       />
 
       <Tarjeta>
-        <Tabla>
+        <Tabla apilada>
           <TablaCabecera>
             <tr>
               <TH>Carrocería</TH>
@@ -68,7 +74,7 @@ export default async function PaginaCarrocerias({ searchParams }: PageProps<'/ca
               <TH className="hidden md:table-cell">Capacidad</TH>
               {verDetalleTecnico && <TH>Fichas técnicas</TH>}
               {verDetalleTecnico && <TH className="hidden lg:table-cell text-right">Verificación</TH>}
-              <TH>Acciones</TH>
+              <TH className="text-right">Acciones</TH>
             </tr>
           </TablaCabecera>
           <tbody>
@@ -78,21 +84,32 @@ export default async function PaginaCarrocerias({ searchParams }: PageProps<'/ca
               carrocerias.map((c) => (
                 <TR key={c.id}>
                   <TD>
-                    <span className="font-medium">{c.nombre}</span>
-                    <span className="ml-2 rounded bg-superficie-2 px-1 text-[11px] font-semibold text-texto-suave">
+                    {/* El espacio deja partir entre el nombre y el código: pegados,
+                        «Repotenciación REPOTENCIACION» fijaba la columna en 238 px
+                        y le quitaba el ancho a las fichas técnicas. */}
+                    <span className="font-medium">{c.nombre}</span>{' '}
+                    <span className="ml-1 rounded bg-superficie-2 px-1 text-xs font-semibold text-texto-suave">
                       {c.codigo}
                     </span>
                     {verDetalleTecnico && (
-                      <span className="block text-[11px] text-texto-suave">
+                      <span className="block text-xs text-texto-suave">
                         {resumenMedidas(c) ?? 'Sin medidas técnicas'}
                       </span>
+                    )}
+                    {/* Tipo y capacidad tienen columna desde `sm` y `md`; por debajo van aquí. */}
+                    {(c.tipo_unidad || c.capacidad) && (
+                      <DetalleEnTelefono className={cn('text-xs text-texto-suave', c.capacidad && 'sm:block md:hidden')}>
+                        {c.tipo_unidad && <span className="sm:hidden">{TIPO_UNIDAD[c.tipo_unidad] ?? c.tipo_unidad}</span>}
+                        {c.tipo_unidad && c.capacidad && <span className="sm:hidden"> · </span>}
+                        {c.capacidad && <span>Capacidad {c.capacidad}</span>}
+                      </DetalleEnTelefono>
                     )}
                   </TD>
                   <TD className="hidden text-texto-suave sm:table-cell">
                     {c.tipo_unidad ? TIPO_UNIDAD[c.tipo_unidad] ?? c.tipo_unidad : '—'}
                   </TD>
                   <TD className="hidden text-texto-suave md:table-cell">{c.capacidad ?? '—'}</TD>
-                  {verDetalleTecnico && <TD>
+                  {verDetalleTecnico && <TD data-rotulo="Fichas técnicas">
                     {c.plantillas.length === 0 ? (
                       <span className="text-xs text-texto-tenue">Sin ficha técnica registrada</span>
                     ) : (
@@ -103,7 +120,7 @@ export default async function PaginaCarrocerias({ searchParams }: PageProps<'/ca
                               {p.nombre}
                             </Link>
                             {p.predeterminada && <Insignia tono="acento">Predeterminada</Insignia>}
-                            <span className="text-[11px] text-texto-suave">
+                            <span className="text-xs text-texto-suave">
                               {p.lineas} líneas · {p.accesorios} accesorios
                               {p.fuentes.length > 0 && ` · ${p.fuentes.join(', ')}`}
                             </span>
@@ -116,11 +133,11 @@ export default async function PaginaCarrocerias({ searchParams }: PageProps<'/ca
                     {c.pasos_verificacion} pasos
                   </TD>}
                   <TD>
-                    <div className="space-y-2">
+                    <AccionesDeFila>
                       {puedeEditar && <EditarCarroceria id={c.id} nombre={c.nombre} descripcion={c.descripcion} activo={c.activo} />}
                       {puedeMedidas && <EditarMedidas carroceria={c} conTexto />}
-                      <AccionesCatalogo tipo="carroceria" id={c.id} nombre={c.nombre} activo={c.activo} puedeEditar={puedeEditar} esAdmin={perfil.rol.codigo === 'ADMIN'} />
-                    </div>
+                      <AccionesCatalogo tipo="carroceria" id={c.id} nombre={c.nombre} activo={c.activo} puedeEditar={puedeEditar} esAdmin={perfil.rol.codigo === 'ADMIN'} className="xl:flex-nowrap" />
+                    </AccionesDeFila>
                   </TD>
                 </TR>
               ))

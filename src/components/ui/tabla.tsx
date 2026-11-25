@@ -21,10 +21,26 @@ import { cn } from '@/lib/utils'
  * se medía contra la página y la ensanchaba en el teléfono (la lista de
  * requerimientos medía 685 px en una pantalla de 390).
  */
-export function Tabla({ className, ...props }: React.TableHTMLAttributes<HTMLTableElement>) {
+export function Tabla({
+  className,
+  apilada = false,
+  ...props
+}: React.TableHTMLAttributes<HTMLTableElement> & {
+  /**
+   * En el teléfono cada fila pasa a ser una ficha: sus celdas se apilan, la
+   * cabecera se va y la celda que lleve `data-rotulo` lo muestra encima. Es
+   * para la lista cuyas filas llevan botones o bloques largos (Carrocerías):
+   * ahí ni esconder columnas ni `DetalleEnTelefono` alcanzan, porque los
+   * botones no se pueden pintar dos veces —cada uno guarda su ventana y su
+   * envío—. Una sola fila en el HTML, dos formas de verla (`globals.css`,
+   * «UNA TABLA QUE EN EL TELÉFONO ES UNA LISTA DE FICHAS»). Las columnas que
+   * en el teléfono no van siguen con `hidden sm:table-cell`.
+   */
+  apilada?: boolean
+}) {
   return (
     <div className="tabla-con-corte relative w-full overflow-x-auto">
-      <table className={cn('w-full border-collapse text-sm', className)} {...props} />
+      <table className={cn('w-full border-collapse text-sm', apilada && 'tabla-apilada', className)} {...props} />
     </div>
   )
 }
@@ -53,19 +69,43 @@ export function TD({ className, ...props }: React.TdHTMLAttributes<HTMLTableCell
   return <td className={cn('px-3 py-2 align-middle text-texto', className)} {...props} />
 }
 
+/**
+ * El estado vacío, en dos tamaños.
+ *
+ * El grande (por omisión) es para la lista que es el trabajo de la pantalla:
+ * centrado y con aire, porque no hay nada más que mirar. El `compacto` es para
+ * la bandeja que comparte pantalla con otras (lo que espera en el Kardex, un
+ * bloque del tablero de la OT): un renglón o dos, a la izquierda, sin el aire
+ * que empuja hacia abajo lo que sí tiene trabajo. Antes cada bandeja lo
+ * escribía a mano como un `<p>` y había tres aspectos distintos (revisión de
+ * diseño del 2026-11-25).
+ */
 export function SinDatos({
   titulo,
   descripcion,
   accion,
   colSpan = 99,
   enTabla = true,
+  compacto = false,
 }: {
   titulo: string
   descripcion?: string
   accion?: React.ReactNode
   colSpan?: number
   enTabla?: boolean
+  /** Para una bandeja entre varias: sin centrar y sin el aire del grande. Va fuera de tabla. */
+  compacto?: boolean
 }) {
+  if (compacto) {
+    return (
+      <div data-sin-datos="compacto">
+        <p className="text-sm font-medium text-texto">{titulo}</p>
+        {descripcion && <p className="mt-0.5 text-xs text-pretty text-texto-suave">{descripcion}</p>}
+        {accion && <div className="mt-2 flex">{accion}</div>}
+      </div>
+    )
+  }
+
   const contenido = (
     <>
       <p className="text-sm font-medium text-texto">{titulo}</p>
@@ -83,4 +123,30 @@ export function SinDatos({
       </td>
     </tr>
   )
+}
+
+/**
+ * Los botones de una fila, siempre igual: en un renglón, lo que más se usa
+ * primero y con contorno, lo que casi nunca (desactivar, eliminar) al final y
+ * sin borde. En el monitor van a la derecha de la fila; en el teléfono, a la
+ * izquierda bajo el dato, y si no caben bajan de renglón en vez de apilarse de
+ * a uno. Desde `xl` no bajan: la columna toma el ancho de sus botones y la fila
+ * mide un renglón (desde `lg` la tabla de Carrocerías se deslizaba en 1024). Había tres maneras: íconos sueltos en Materiales, tres botones
+ * apilados en Carrocerías (cada fila medía 84 px) y botón más texto en
+ * Unidades (revisión de diseño del 2026-11-25).
+ */
+export function AccionesDeFila({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn('flex flex-wrap items-center gap-x-2 gap-y-1 sm:justify-end xl:flex-nowrap', className)} {...props} />
+}
+
+/**
+ * Lo que en el monitor va en sus columnas y en el teléfono baja a la primera
+ * celda, debajo del nombre. Es la manera de la casa para que una tabla entre
+ * en 390 px (Clientes, Órdenes, el Kardex): las columnas que no caben llevan
+ * `hidden sm:table-cell` y su contenido se repite aquí. Una tabla que solo
+ * esconde columnas pierde el dato; una que no esconde ninguna se aprieta hasta
+ * partir una palabra por renglón (Carrocerías medía 9 856 px de alto).
+ */
+export function DetalleEnTelefono({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn('mt-1.5 space-y-1.5 sm:hidden', className)} {...props} />
 }

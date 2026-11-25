@@ -322,7 +322,7 @@ function RecojoCompra({ compra }: { compra: CompraMaterialPendiente }) {
       datos.set('id', compra.orden_compra_id ?? '')
       envio.ejecutar(datos)
     }}><Truck aria-hidden className="size-4" />Mandar a recojo</Boton>
-    <p className="basis-full text-[11px] text-texto-suave">El conductor la recoge donde el proveedor y la deja en el almacén; Almacén valida el ingreso sin volver a registrarlo.</p>
+    <p className="basis-full text-xs text-texto-suave">El conductor la recoge donde el proveedor y la deja en el almacén; Almacén valida el ingreso sin volver a registrarlo.</p>
     {envio.error && <p role="alert" className="basis-full text-xs text-peligro">{envio.error}</p>}
   </div>
 }
@@ -391,7 +391,7 @@ function LineaMaterial({
           </p>
         </div>
         <div className="min-w-52 flex-1 sm:max-w-72">
-          <div className="mb-1 flex justify-between gap-2 text-[11px] text-texto-suave">
+          <div className="mb-1 flex justify-between gap-2 text-xs text-texto-suave">
             <span>Entregado al área</span><span className="tabular font-medium text-texto">{fmtPorcentaje(porcentaje)}</span>
           </div>
           <Progreso valor={porcentaje} etiqueta={`Material entregado: ${linea.material ?? 'material'}`} />
@@ -575,7 +575,7 @@ function FormularioRecepcion({ compra, clave }: { compra: CompraMaterialPendient
       <input type="hidden" name="compra_detalle_id" value={compra.id ?? ''} />
       <div className="sm:col-span-2">
         <p className="text-xs font-medium text-texto">{compra.proveedor} · {compra.nombre}</p>
-        <p className="mt-0.5 text-[11px] text-texto-suave">Pendiente {cantidad(restante)} · estimado {formatearFecha(compra.fecha_estimada)}</p>
+        <p className="mt-0.5 text-xs text-texto-suave">Pendiente {cantidad(restante)} · estimado {formatearFecha(compra.fecha_estimada)}</p>
       </div>
       <Campo etiqueta="Cantidad que llegó" htmlFor={`rec-cant-${compra.id}`} requerido>
         <Entrada id={`rec-cant-${compra.id}`} name="cantidad" type="number" inputMode="decimal" min={0.001} max={restante} step="0.001" defaultValue={restante} required />
@@ -620,14 +620,14 @@ function FormularioDespacho({
       <input type="hidden" name="requerimiento_detalle_id" value={linea.detalle_id ?? ''} />
       <Campo etiqueta="Cantidad a entregar" htmlFor={`sal-cant-${linea.detalle_id}`} requerido>
         <Entrada id={`sal-cant-${linea.detalle_id}`} name="cantidad" type="number" inputMode="decimal" min={0.001} max={disponible} step="0.001" defaultValue={disponible} required />
-        <p className="mt-1 text-[11px] text-texto-suave">Disponible para este requerimiento: {cantidad(disponible)}</p>
+        <p className="mt-1 text-xs text-texto-suave">Disponible para este requerimiento: {cantidad(disponible)}</p>
       </Campo>
       <Campo etiqueta="Entregar a" htmlFor={`sal-persona-${linea.detalle_id}`} requerido>
         <Seleccion id={`sal-persona-${linea.detalle_id}`} name="responsable_id" required defaultValue="">
           <option value="" disabled>Elige a quien recibe</option>
           {candidatos.map((persona) => <option key={persona.id} value={persona.id}>{persona.nombres} {persona.apellidos}</option>)}
         </Seleccion>
-        {candidatos.length === 0 && <p className="mt-1 text-[11px] text-aviso">No hay personas activas registradas para {NOMBRE_AREA[linea.area_destino ?? ''] ?? 'esta área'}.</p>}
+        {candidatos.length === 0 && <p className="mt-1 text-xs text-aviso">No hay personas activas registradas para {NOMBRE_AREA[linea.area_destino ?? ''] ?? 'esta área'}.</p>}
       </Campo>
       <Campo etiqueta="Nombre de quien recibe físicamente" htmlFor={`sal-nombre-${linea.detalle_id}`} requerido><Entrada id={`sal-nombre-${linea.detalle_id}`} name="recibido_por_nombre" required minLength={3} maxLength={160}/></Campo>
       <Campo etiqueta="Foto de la entrega" htmlFor={`sal-foto-${linea.detalle_id}`} ayuda="Que se vea el material entregado." requerido><ElegirArchivo id={`sal-foto-${linea.detalle_id}`} name="foto" accept="image/jpeg,image/png,image/webp" hastaMb={10} capture="environment" required/></Campo>

@@ -40,6 +40,7 @@ export function Campana({ avisos, sinLeer }: { avisos: Notificacion[]; sinLeer: 
         {sinLeerAhora > 0 && (
           // El número va sobre el icono y no al lado: en el teléfono no hay
           // sitio, y lo que importa es que se vea que hay algo.
+          // eslint-disable-next-line no-restricted-syntax -- la burbuja del contador mide 16 px: uno o dos dígitos, no texto que se lee
           <span className="absolute top-1 right-1 flex min-w-4 items-center justify-center rounded-full bg-peligro px-1 text-[10px] leading-4 font-semibold text-peligro-texto">
             {sinLeerAhora > 9 ? '9+' : sinLeerAhora}
           </span>
@@ -88,9 +89,9 @@ export function Campana({ avisos, sinLeer }: { avisos: Notificacion[]; sinLeer: 
                         {a.titulo}
                       </p>
                       {a.cuerpo && (
-                        <p className="mt-0.5 text-[11px] leading-snug text-texto-suave">{a.cuerpo}</p>
+                        <p className="mt-0.5 text-xs leading-snug text-texto-suave">{a.cuerpo}</p>
                       )}
-                      <p className="mt-0.5 text-[11px] text-texto-tenue">{fechaHora(a.creado_en)}</p>
+                      <p className="mt-0.5 text-xs text-texto-tenue">{fechaHora(a.creado_en)}</p>
                     </>
                   )
 

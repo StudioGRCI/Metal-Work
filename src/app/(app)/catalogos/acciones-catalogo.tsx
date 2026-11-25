@@ -5,6 +5,7 @@ import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { useAccion } from '@/lib/envio'
+import { cn } from '@/lib/utils'
 
 import { cambiarEstadoCatalogo, eliminarCatalogo } from './acciones'
 
@@ -17,6 +18,7 @@ export function AccionesCatalogo({
   activo,
   puedeEditar,
   esAdmin,
+  className,
 }: {
   tipo: TipoCatalogo
   id: string
@@ -24,6 +26,8 @@ export function AccionesCatalogo({
   activo: boolean
   puedeEditar: boolean
   esAdmin: boolean
+  /** Para la fila que no quiere que bajen de renglón en el monitor (Carrocerías). */
+  className?: string
 }) {
   const [confirmar, setConfirmar] = useState(false)
   const estado = useAccion(cambiarEstadoCatalogo, undefined, { documento: `${tipo}:${id}` })
@@ -37,7 +41,7 @@ export function AccionesCatalogo({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className={cn('flex flex-wrap items-center gap-2', className)}>
       {!activo && <span className="rounded-full bg-superficie-2 px-2 py-1 text-xs text-texto-suave">Inactivo</span>}
       {puedeEditar && (
         // Sin borde, como «Eliminar»: en listas de 34 filas pesaba igual que «Editar».

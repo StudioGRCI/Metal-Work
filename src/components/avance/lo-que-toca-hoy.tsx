@@ -106,13 +106,13 @@ function Fila({
           {a.nombre}
           {a.referencia && <span className="font-normal text-texto-suave"> · {a.referencia}</span>}
         </Link>
-        <span className="block text-[11px] text-texto-suave">
+        <span className="block text-xs text-texto-suave">
           {[a.orden_numero, conArea ? a.area : null, `va en ${numero(a.avance_pct, 0)} %`]
             .filter(Boolean)
             .join(' · ')}
         </span>
       </span>
-      <span className="flex shrink-0 flex-wrap items-center gap-2 text-[11px]">
+      <span className="flex shrink-0 flex-wrap items-center gap-2 text-xs">
         {atrasada ? (
           <span className="font-medium text-peligro">debía terminar el {fmtFecha(a.fecha_fin_plan)}</span>
         ) : (
