@@ -173,6 +173,23 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
               </Tarjeta>
             )}
 
+            {/* La fila de secciones común a los documentos, como la de la OT,
+                arriba de las cifras y pegada bajo la barra al deslizar. Bajo las
+                cifras, en el teléfono empezaba a 1 028 px: quien entraba veía seis
+                tarjetas y nada le decía que había nueve secciones (auditoría de
+                diseño de la entrega 2). Cada enlace baja a #seccion-elegida, pasadas
+                las cifras, que valen para todas las secciones. */}
+            <SeccionesDelDocumento
+              etiqueta={`Secciones del código ${codigo}`}
+              activa={vista}
+              className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-20 bg-fondo py-2"
+              secciones={vistas.map((v) => ({
+                clave: v.valor,
+                titulo: aTodos && v.valor === 'avance' ? 'Reparto' : v.etiqueta,
+                href: `${enlaceCodigo(codigo, v.valor)}#seccion-elegida`,
+              }))}
+            />
+
             {aTodos ? (
               <CifrasDelReparto filas={reparto} />
             ) : (
@@ -193,26 +210,13 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
               </>
             )}
 
-            {/* La fila de secciones común a los documentos, como la de la OT. Va
-                después de las cifras, que valen para todas las secciones, y cada
-                enlace vuelve a ella: así, al cambiar de sección, lo que cambió
-                queda a la vista y no tres pantallas más abajo en el teléfono. */}
-            <SeccionesDelDocumento
-              id="secciones"
-              etiqueta={`Secciones del código ${codigo}`}
-              activa={vista}
-              secciones={vistas.map((v) => ({
-                clave: v.valor,
-                titulo: aTodos && v.valor === 'avance' ? 'Reparto' : v.etiqueta,
-                href: `${enlaceCodigo(codigo, v.valor)}#secciones`,
-              }))}
-            />
-
-            {aTodos && vista === 'avance' ? (
-              <RepartoPorMes filas={reparto} c={resumen} />
-            ) : (
-              <Vista vista={vista} codigo={codigo} perfil={perfil} avance={avance} />
-            )}
+            <div id="seccion-elegida" className="scroll-mt-32 space-y-5">
+              {aTodos && vista === 'avance' ? (
+                <RepartoPorMes filas={reparto} c={resumen} />
+              ) : (
+                <Vista vista={vista} codigo={codigo} perfil={perfil} avance={avance} />
+              )}
+            </div>
           </div>
         </DelDocumento>
       )}

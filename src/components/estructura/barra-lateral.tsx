@@ -14,6 +14,7 @@ export function BarraLateral({
   rolCodigo,
   pendientes,
   sinComprobar,
+  plegado,
   children,
 }: {
   permisos: string[]
@@ -22,11 +23,13 @@ export function BarraLateral({
   pendientes?: Record<string, number>
   /** Rutas con un pendiente que no se pudo contar: el globo dice «!». */
   sinComprobar?: string[]
+  /** La cookie de los grupos plegados, leída en el servidor. */
+  plegado?: string
   children: ReactNode
 }) {
   return (
     <aside className="sticky top-14 hidden h-[calc(100dvh-3.5rem)] w-64 shrink-0 flex-col self-start border-r border-borde bg-superficie lg:flex print:hidden">
-      <div className="min-h-0 flex-1"><NavegacionLista compacto permisos={permisos} esAdmin={esAdmin} rolCodigo={rolCodigo} pendientes={pendientes} sinComprobar={sinComprobar} /></div>
+      <div className="min-h-0 flex-1"><NavegacionLista compacto permisos={permisos} esAdmin={esAdmin} rolCodigo={rolCodigo} pendientes={pendientes} sinComprobar={sinComprobar} plegado={plegado} /></div>
       {children}
     </aside>
   )

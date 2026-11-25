@@ -29,6 +29,7 @@ export function BarraInferior({
   rolCodigo,
   pendientes = {},
   sinComprobar = [],
+  plegado,
   children,
 }: {
   permisos: string[]
@@ -38,6 +39,8 @@ export function BarraInferior({
   pendientes?: Record<string, number>
   /** Rutas con un pendiente que no se pudo contar: el globo dice «!», nunca cero. */
   sinComprobar?: string[]
+  /** La cookie de los grupos plegados, leída en el servidor. */
+  plegado?: string
   children: ReactNode
 }) {
   const ruta = usePathname()
@@ -136,7 +139,7 @@ export function BarraInferior({
       </nav>
 
       <Ventana abierta={abierto} alCerrar={()=>setAbierto(false)} titulo="Tus secciones" ancho="sm" cerrarAlTocarFuera>
-        <NavegacionLista permisos={permisos} esAdmin={esAdmin} rolCodigo={rolCodigo} pendientes={pendientes} sinComprobar={sinComprobar} alNavegar={()=>setAbierto(false)}/>
+        <NavegacionLista permisos={permisos} esAdmin={esAdmin} rolCodigo={rolCodigo} pendientes={pendientes} sinComprobar={sinComprobar} plegado={plegado} alNavegar={()=>setAbierto(false)}/>
         {children}
         <div className="border-t border-borde px-3 py-4"><InstalarApp/></div>
       </Ventana>

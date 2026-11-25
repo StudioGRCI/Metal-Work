@@ -68,7 +68,7 @@ export function SeccionesDelDocumento({
                 aria-current={esActiva ? 'page' : undefined}
                 aria-label={n > 0 ? `${s.titulo}, ${n} ${n === 1 ? 'pendiente' : 'pendientes'}` : undefined}
                 className={cn(
-                  'inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-acento sm:min-h-9',
+                  'inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-acento sm:min-h-9 sm:pointer-coarse:min-h-11',
                   esActiva
                     ? 'border-acento bg-acento font-semibold text-acento-texto'
                     : 'border-borde-fuerte bg-superficie text-texto-suave hover:bg-superficie-2 hover:text-texto',

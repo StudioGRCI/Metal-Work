@@ -3,16 +3,18 @@
  * menú lateral compacto con grupos que se pliegan y lo recuerdan, y una sola
  * fila de secciones para la OT y el código interno.
  *
- *   1. Con la cuenta de cada uno de los 18 puestos, a 1440 × 900, el menú
- *      entra entero sin deslizar y no repite ícono entre dos pantallas.
- *   2. Con Administración: un grupo plegado sigue plegado al recargar y
- *      vuelve a abrirse; plegado, la pantalla que se abre dentro de él lo abre
- *      solo; y al recargar en una ventana baja, la entrada activa queda a la
- *      vista dentro del menú sin mover la página.
+ *   1. Con la cuenta de cada uno de los 18 puestos, a 1440 × 760 (lo que
+ *      deja de alto un monitor de 900 con el navegador), el menú entra entero
+ *      sin deslizar, no repite ícono entre dos pantallas y nunca deja un solo
+ *      grupo que se pliegue (ese va fijo).
+ *   2. Con Administración: «Consultas» nace plegado; abierto o plegado, el
+ *      servidor ya lo pinta así al recargar (sin saltar al hidratar); plegado,
+ *      la pantalla que se abre dentro de él lo abre solo; y al recargar en una
+ *      ventana baja, la entrada activa queda a la vista sin mover la página.
  *   3. La OT, en el monitor: sus secciones van en la fila de arriba, no en la
  *      barra lateral.
- *   4. El código interno, en el teléfono: entrar no deja la página a media
- *      pantalla, y cambiar de sección deja la fila a la vista.
+ *   4. El código interno, en el teléfono: la fila se ve al entrar, y al
+ *      cambiar de sección queda pegada arriba con la sección a la vista.
  *
  * Necesita una OT y una unidad con código interno: si el banco no trae
  * unidad con código, le pone uno de prueba (`PRB_SECCIONES`) a la primera.
@@ -94,9 +96,9 @@ async function entrar(puesto, viewport) {
 const MENU = 'aside nav[aria-label="Menú principal"]'
 
 // ---------------------------------------------------------------- 1. cada puesto
-console.log('1. El menú de cada puesto, a 1440 × 900')
+console.log('1. El menú de cada puesto, a 1440 × 760')
 for (const puesto of PUESTOS) {
-  const { pagina, contexto, errores } = await entrar(puesto, { width: 1440, height: 900 })
+  const { pagina, contexto, errores } = await entrar(puesto, { width: 1440, height: 760 })
   await pagina.goto(`${BASE}/`, { waitUntil: 'networkidle' })
   const m = await pagina.evaluate((sel) => {
     const nav = document.querySelector(sel)
@@ -111,10 +113,12 @@ for (const puesto of PUESTOS) {
       alto: nav.scrollHeight,
       visible: nav.clientHeight,
       entradas: filas.length,
+      plegables: nav.querySelectorAll('button[aria-expanded]').length,
       repetidos: Object.entries(porIcono).filter(([, r]) => r.size > 1).map(([i, r]) => `${i}: ${[...r.values()].join(' / ')}`),
     }
   }, MENU)
   comprobar(m.alto <= m.visible + 1, `${puesto}: ${m.entradas} entradas en ${m.alto} de ${m.visible} px`)
+  comprobar(m.plegables !== 1, `${puesto}: ${m.plegables} grupos que se pliegan (nunca uno solo)`)
   comprobar(m.repetidos.length === 0, `${puesto}: ningún ícono repetido${m.repetidos.length ? ` (${m.repetidos.join('; ')})` : ''}`)
   comprobar(errores.length === 0, `${puesto}: sin errores en la consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
@@ -125,31 +129,43 @@ console.log('2. Los grupos de Administración se pliegan y lo recuerdan')
 {
   const { pagina, contexto, errores } = await entrar('administracion', { width: 1440, height: 900 })
   await pagina.goto(`${BASE}/`, { waitUntil: 'networkidle' })
-  const botones = pagina.locator(`${MENU} button[aria-expanded]`)
-  comprobar((await botones.count()) > 0, 'el menú tiene grupos que se pliegan')
-  // El último grupo, que no es el de la pantalla abierta (el inicio).
-  const grupo = botones.last()
-  const titulo = (await grupo.textContent()).trim()
+  const grupo = pagina.locator(`${MENU} button[aria-expanded]`, { hasText: 'Consultas' })
+  comprobar((await grupo.count()) === 1, 'Administración tiene su grupo «Consultas»')
   const lista = pagina.locator(`[id="${await grupo.getAttribute('aria-controls')}"]`)
-  const primera = await lista.locator('a[href]').first().getAttribute('href')
+  const primera = await lista.locator('a[href]').first().getAttribute('href', { timeout: 5000 })
+  /** Cómo sale «Consultas» en el HTML del servidor, antes de hidratar. */
+  const delServidor = async () => {
+    const html = await (await contexto.request.get(`${BASE}/`)).text()
+    const boton = html.match(/<button[^>]*aria-expanded="(true|false)"[^>]*>(?:(?!<\/button>).)*?Consultas/s)
+    return boton?.[1]
+  }
+  comprobar((await grupo.getAttribute('aria-expanded')) === 'false' && (await lista.isHidden()), '«Consultas» nace plegado')
+  comprobar((await delServidor()) === 'false', 'y el servidor ya lo pinta plegado')
+
   await grupo.click()
-  comprobar((await grupo.getAttribute('aria-expanded')) === 'false' && (await lista.isHidden()), `«${titulo}» se pliega`)
+  comprobar((await grupo.getAttribute('aria-expanded')) === 'true' && (await lista.isVisible()), '«Consultas» se abre')
   await pagina.reload({ waitUntil: 'networkidle' })
-  await pagina.waitForTimeout(300)
-  comprobar((await grupo.getAttribute('aria-expanded')) === 'false' && (await lista.isHidden()), `«${titulo}» sigue plegado al recargar`)
+  comprobar((await grupo.getAttribute('aria-expanded')) === 'true', 'y sigue abierto al recargar')
+  comprobar((await delServidor()) === 'true', 'el servidor lo pinta abierto: no salta al hidratar')
+  await grupo.click()
+  await pagina.reload({ waitUntil: 'networkidle' })
+  comprobar((await grupo.getAttribute('aria-expanded')) === 'false' && (await lista.isHidden()), 'plegado otra vez, sigue plegado al recargar')
+  comprobar((await delServidor()) === 'false', 'y el servidor lo pinta plegado')
   await pagina.screenshot({ path: join(CAPTURAS, 'menu-y-secciones-1-plegado.png') })
 
   // Plegado, la pantalla que se abre dentro de él lo abre solo.
   await pagina.goto(`${BASE}${primera}`, { waitUntil: 'networkidle' })
-  await pagina.waitForTimeout(300)
-  comprobar((await grupo.getAttribute('aria-expanded')) === 'true', `al entrar a ${primera}, «${titulo}» se abre solo`)
+  comprobar((await grupo.getAttribute('aria-expanded')) === 'true', `al entrar a ${primera}, «Consultas» se abre solo`)
   await pagina.goto(`${BASE}/`, { waitUntil: 'networkidle' })
-  await pagina.waitForTimeout(300)
-  comprobar((await grupo.getAttribute('aria-expanded')) === 'false', `al volver al inicio, «${titulo}» vuelve a como lo dejó`)
-  await grupo.click()
+  comprobar((await grupo.getAttribute('aria-expanded')) === 'false', 'al volver al inicio, «Consultas» vuelve a como lo dejó')
+
+  // Una cookie dañada no rompe nada: el menú sale como lo fija el puesto.
+  await contexto.addCookies([{ name: 'mw-menu-administracion', value: 'null', url: BASE }])
   await pagina.reload({ waitUntil: 'networkidle' })
-  await pagina.waitForTimeout(300)
-  comprobar((await grupo.getAttribute('aria-expanded')) === 'true', `«${titulo}» se vuelve a abrir y queda abierto al recargar`)
+  comprobar((await grupo.getAttribute('aria-expanded')) === 'false', 'con la cookie dañada, «Consultas» sale como lo fija el puesto')
+  await grupo.click()
+  comprobar((await grupo.getAttribute('aria-expanded')) === 'true', 'y se puede volver a abrir')
+  await grupo.click()
 
   // Ventana baja: el menú desliza y la entrada activa tiene que verse al cargar.
   await pagina.setViewportSize({ width: 1440, height: 560 })
@@ -202,13 +218,21 @@ console.log(`4. El código interno ${unidad.codigo_interno}, en el teléfono`)
   comprobar((await pagina.evaluate(() => window.scrollY)) < 10, 'entrar deja la página arriba, no a media pantalla')
   const fila = pagina.locator(`nav[aria-label="Secciones del código ${unidad.codigo_interno}"]`)
   comprobar((await fila.count()) === 1, 'el código lleva la misma fila de secciones que la OT')
+  const alEntrar = await fila.boundingBox()
+  comprobar(alEntrar && alEntrar.y + alEntrar.height < 700, `la fila se ve al entrar, sin deslizar (${Math.round(alEntrar?.y ?? -1)} px)`)
   const otra = fila.locator('a:not([aria-current])').last()
   const nombre = (await otra.textContent()).trim()
   await otra.click()
   await pagina.waitForURL(/vista=/)
-  await pagina.waitForTimeout(600)
+  await pagina.waitForTimeout(800)
   const caja = await fila.boundingBox()
-  comprobar(caja && caja.y >= 0 && caja.y < 844 / 2, `al tocar «${nombre}» la fila queda arriba, a la vista (${Math.round(caja?.y ?? -1)} px)`)
+  const seccion = await pagina.locator('#seccion-elegida').boundingBox()
+  const desliza = await pagina.evaluate(() => window.scrollY)
+  comprobar(caja && caja.y >= 0 && caja.y < 140, `al tocar «${nombre}» la fila queda arriba, a la vista (${Math.round(caja?.y ?? -1)} px)`)
+  comprobar(
+    seccion && seccion.y >= (caja?.y ?? 0) + (caja?.height ?? 0) - 1 && seccion.y < 700,
+    `y la sección empieza justo debajo, sin taparse (${Math.round(seccion?.y ?? -1)} px, la página bajó ${desliza} px)`,
+  )
   const elegida = await fila.locator('a[aria-current="page"]').boundingBox()
   comprobar(elegida && elegida.x >= 0 && elegida.x + elegida.width <= 390, 'y la pestaña elegida se ve entera, sin deslizar a mano')
   await pagina.screenshot({ path: join(CAPTURAS, 'menu-y-secciones-4-codigo-telefono.png') })

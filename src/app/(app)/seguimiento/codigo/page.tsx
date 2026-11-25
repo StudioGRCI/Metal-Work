@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
-import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
+import { SeccionesDelDocumento } from '@/components/estructura/secciones-del-documento'
 import { Indicador } from '@/components/ui/indicador'
 import { codigosDeDiseno } from '@/lib/datos/diseno-codigos'
 import { normalizarCodigo } from '@/lib/dominio/codigos-internos'
@@ -43,6 +43,20 @@ export default async function PaginaSeguimientoDeCodigo({ searchParams }: PagePr
       />
 
       <div className="space-y-5">
+        {/* La misma fila que el código interno y la OT (entrega 2 del plan de
+            orden y diseño): arriba de las cifras, pegada bajo la barra al
+            deslizar, y cada sección baja a donde empieza. Antes, pastillas. */}
+        <SeccionesDelDocumento
+          etiqueta={`Secciones del código ${codigo}`}
+          activa={vista}
+          className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-20 bg-fondo py-2"
+          secciones={VISTAS_SEGUIMIENTO.map((v) => ({
+            clave: v.valor,
+            titulo: v.etiqueta,
+            href: `/seguimiento/codigo?${new URLSearchParams({ codigo, ...(v.valor === 'etapas' ? {} : { vista: v.valor }) })}#seccion-elegida`,
+          }))}
+        />
+
         {resumen && (
           <div className="grid grid-cols-3 gap-3">
             <Indicador
@@ -67,22 +81,15 @@ export default async function PaginaSeguimientoDeCodigo({ searchParams }: PagePr
           </div>
         )}
 
-        <PastillaFiltro
-          ruta="/seguimiento/codigo"
-          clave="vista"
-          params={params}
-          activo={vista === 'etapas' ? null : vista}
-          etiqueta="Secciones del código"
-          opciones={VISTAS_SEGUIMIENTO.map((v) => ({ valor: v.valor === 'etapas' ? null : v.valor, etiqueta: v.etiqueta }))}
-        />
-
-        {vista === 'materiales' ? (
-          <VistaMateriales codigo={codigo} />
-        ) : vista === 'planos' ? (
-          <VistaPlanos codigo={codigo} />
-        ) : (
-          <VistaEtapas codigo={codigo} />
-        )}
+        <div id="seccion-elegida" className="scroll-mt-32 space-y-5">
+          {vista === 'materiales' ? (
+            <VistaMateriales codigo={codigo} />
+          ) : vista === 'planos' ? (
+            <VistaPlanos codigo={codigo} />
+          ) : (
+            <VistaEtapas codigo={codigo} />
+          )}
+        </div>
       </div>
     </>
   )

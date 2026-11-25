@@ -81,7 +81,8 @@ En `src/components/ui/`:
   un `<details>` a mano para eso: el 2026-11-25 había quince, cada uno con su
   triángulo y su alto (de 20 a 44 px). Lo que queda a mano son **filas que se
   abren** con un resumen de varias líneas (Planillas, Costeo por código, el
-  historial de la cotización, los insumos del RQ), no pliegues.
+  historial de la cotización, los insumos del RQ) y el «Corregido N veces»,
+  una traza de una línea dentro de una celda, no pliegues.
 
 Estructura: `EncabezadoPagina` (migas, título, descripción, ayuda, acciones) arriba
 de toda pantalla; las secciones de un documento (la OT, el código interno) van
@@ -91,9 +92,12 @@ misma en el monitor y en el teléfono (`ordenes/[id]/pestanas.tsx`,
 en el server component. Hasta la entrega 2 del plan de orden y diseño
 (2026-11-25) la OT colgaba sus secciones de la barra lateral del monitor y el
 código interno las ponía en pastillas que en el teléfono eran una lista
-desplegable: dos formas de moverse dentro de un documento. Si la fila va
-debajo de algo (las cifras del código interno), lleva `id` y cada `href` su
-`#id`, para que cambiar de sección no devuelva la página arriba. La pestaña
+desplegable: dos formas de moverse dentro de un documento. La fila va
+arriba, bajo el encabezado: bajo las cifras del código interno empezaba a
+1 028 px en el teléfono y nadie sabía que había secciones. Si entre la fila y
+la sección hay algo que vale para todas (esas cifras), la fila se pega bajo
+la barra al deslizar (`sticky`) y cada `href` baja con un `#id` a donde
+empieza la sección, para que cambiar no devuelva la página arriba. La pestaña
 elegida se trae a la vista solo de costado: `scrollIntoView` movía también
 la página y entrar era caer a media pantalla.
 
@@ -1066,14 +1070,18 @@ en un check con `set local role authenticated`.
 - **El menú del monitor tiene que entrar a 900 px de alto, y sus grupos se
   pliegan** (decisión 7 del plan de orden y diseño, 2026-11-25). Antes el de
   Administración dejaba cuatro entradas bajo el borde y, con una OT abierta,
-  seis más. Cada grupo de `MENU_POR_PUESTO` lleva su `pliegue`: `fijo` (no se
-  pliega: «Principal», lo que aprueba Gerencia), `abierto` (lo de siempre) o
-  `plegado` (consultas de otras áreas). Cómo lo deja cada persona se guarda en
-  su navegador, por puesto; el grupo de la pantalla abierta se abre solo y,
-  plegado, el grupo suma los pendientes de sus módulos, para que lo que le
+  seis más; se mide a 760 px, lo que deja de alto un monitor de 900 con el
+  navegador. Cada grupo de `MENU_POR_PUESTO` puede llevar su `pliegue`: `fijo`
+  (no se pliega: «Principal», «Por aprobar» de Gerencia), `abierto` (lo que
+  vale si falta) o `plegado`. «Consultas» nace plegado si el puesto no dice
+  otra cosa, y un puesto con un solo grupo además de «Principal» lo lleva fijo
+  (plegarlo escondería todo su trabajo). Va en una cookie por puesto
+  (`cookieDelMenu`) que el layout lee, para que el servidor pinte el menú ya
+  plegado: con `localStorage` se pintaba abierto y saltaba al hidratar. El
+  grupo de la pantalla abierta se abre solo y, plegado, el grupo suma los pendientes de sus módulos, para que lo que le
   toca no se esconda. Al recargar, la entrada activa se trae a la vista
-  dentro del menú. Las filas miden 32 px en el monitor y 44 en el cajón
-  «Más» del teléfono. Un ícono no se repite en el menú de un puesto: con
+  dentro del menú. Las filas miden 32 px en el monitor con ratón y 44 en el
+  cajón «Más» y con el dedo (`pointer-coarse:`). Un ícono no se repite en el menú de un puesto: con
   treinta entradas, dos iguales hacen dudar (Gerencia tenía cuatro pares).
 
 - **Una lista de «lo que puede escribir» no sirve para decidir «lo que ve».**

@@ -73,6 +73,9 @@ export type Pliegue = 'fijo' | 'abierto' | 'plegado'
 
 export type GrupoNavegacion = { titulo: string; items: readonly ItemNavegacion[]; pliegue?: Pliegue }
 
+/** La cookie con los grupos que cada persona plegó, por puesto: la escribe el menú y la lee el layout. */
+export const cookieDelMenu = (rol: string) => `mw-menu-${rol.toLowerCase()}`
+
 /**
  * El catálogo de módulos, agrupado por el área que los lleva y con las áreas en
  * el orden del circuito: Ventas cotiza → Gerencia aprueba → Diseño desglosa →
@@ -915,10 +918,13 @@ export function menuDe(permisos: readonly string[], esAdmin: boolean, rolCodigo:
   // muestra: a ADMIN, que lo ve todo, le salían dos «Atención de
   // requerimiento», dos «Gestión de compras» y dos «Planilla diaria».
   const vistas = new Set<string>()
-  return grupos
+  const conItems = grupos
     .map((g) => ({
       titulo: g.titulo,
-      pliegue: g.pliegue,
+      // «Consultas» —lo que se mira de otras áreas— nace plegado si el puesto
+      // no dice otra cosa: a 760 px, lo que deja de alto un monitor de 900 con
+      // el navegador, el menú de Administración no entraba abierto.
+      pliegue: g.pliegue ?? (g.titulo === 'Consultas' ? ('plegado' as const) : undefined),
       items: g.items.filter((i) => {
         if (vistas.has(i.ruta)) return false
         vistas.add(i.ruta)
@@ -926,6 +932,10 @@ export function menuDe(permisos: readonly string[], esAdmin: boolean, rolCodigo:
       }),
     }))
     .filter((g) => g.items.length > 0)
+  // Con un solo grupo además de «Principal» (supervisores, conductor,
+  // portería), plegarlo escondería todo su trabajo sin ahorrar nada: va fijo.
+  const plegables = conItems.filter((g) => g.pliegue !== 'fijo')
+  return plegables.length === 1 ? conItems.map((g) => (g === plegables[0] ? { ...g, pliegue: 'fijo' as const } : g)) : conItems
 }
 
 /** «1 pendiente», «3 pendientes»: la etiqueta de los globos del menú, para el lector de pantalla. */

@@ -5,43 +5,48 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
-import { menuDe, rutaActiva, pendientesEnPalabras, type GrupoNavegacion } from '@/lib/navegacion'
+import { cookieDelMenu, menuDe, rutaActiva, pendientesEnPalabras, type GrupoNavegacion } from '@/lib/navegacion'
 import { cn } from '@/lib/utils'
 
 /**
- * Cómo dejó cada persona los grupos del menú, en su navegador: es comodidad de
- * quien mira, no un dato del sistema. Si el navegador no deja guardar (ventana
- * privada, almacenamiento bloqueado), el menú sale como lo fija su puesto.
+ * Cómo dejó cada persona los grupos del menú: comodidad de quien mira, no un
+ * dato del sistema. Va en una cookie por puesto y no en `localStorage` porque
+ * el servidor la lee (`app/(app)/layout.tsx`) y pinta el menú ya plegado: con
+ * `localStorage` el servidor lo pintaba abierto y al hidratar se cerraba, un
+ * salto en cada carga (auditoría de diseño de la entrega 2). Si el navegador
+ * no deja guardar, el menú sale como lo fija su puesto.
  */
 const EVENTO = 'mw:menu-plegado'
-const claveDe = (rol: string) => `mw:menu-plegado:${rol}`
 
 function leer(rol: string) {
   try {
-    return window.localStorage.getItem(claveDe(rol)) ?? '{}'
+    const par = document.cookie.split('; ').find((c) => c.startsWith(`${cookieDelMenu(rol)}=`))
+    return par ? decodeURIComponent(par.slice(par.indexOf('=') + 1)) : '{}'
   } catch {
     return '{}'
   }
 }
 
 function guardar(rol: string, titulo: string, abierto: boolean) {
+  let estado: Record<string, boolean> = {}
   try {
-    const estado = JSON.parse(leer(rol)) as Record<string, boolean>
-    estado[titulo] = abierto
-    window.localStorage.setItem(claveDe(rol), JSON.stringify(estado))
+    const previo: unknown = JSON.parse(leer(rol))
+    if (previo && typeof previo === 'object' && !Array.isArray(previo)) estado = previo as Record<string, boolean>
   } catch {
-    // Sin dónde guardar, el grupo cambia igual hasta recargar.
+    // Una cookie dañada se reemplaza por una nueva.
+  }
+  estado[titulo] = abierto
+  try {
+    document.cookie = `${cookieDelMenu(rol)}=${encodeURIComponent(JSON.stringify(estado))}; path=/; max-age=31536000; samesite=lax`
+  } catch {
+    // Sin cookies tampoco hay sesión: el menú queda como lo fija el puesto.
   }
   window.dispatchEvent(new Event(EVENTO))
 }
 
 function suscribir(avisar: () => void) {
-  window.addEventListener('storage', avisar)
   window.addEventListener(EVENTO, avisar)
-  return () => {
-    window.removeEventListener('storage', avisar)
-    window.removeEventListener(EVENTO, avisar)
-  }
+  return () => window.removeEventListener(EVENTO, avisar)
 }
 
 /**
@@ -63,18 +68,21 @@ export function NavegacionLista({
   compacto = false,
   pendientes = {},
   sinComprobar = [],
+  plegado = '{}',
 }: {
   permisos: string[]
   esAdmin: boolean
   rolCodigo: string
   /** El cajón del teléfono se cierra al elegir; la barra del monitor no hace nada. */
   alNavegar?: () => void
-  /** Filas de 32 px, para la barra del monitor; el cajón del teléfono va a 44. */
+  /** Filas de 32 px, para la barra del monitor con ratón; con el dedo (tablet), el cajón y la pantalla táctil, 44. */
   compacto?: boolean
   /** Cuántos pendientes cuelgan de cada módulo, por su ruta: el número al lado del nombre. */
   pendientes?: Record<string, number>
   /** Rutas con un pendiente que no se pudo contar: el globo dice «!», nunca cero. */
   sinComprobar?: string[]
+  /** La cookie del menú tal como llegó al servidor: el menú sale plegado desde el primer cuadro. */
+  plegado?: string
 }) {
   const ruta = usePathname()
   const prefijo = useId()
@@ -88,10 +96,11 @@ export function NavegacionLista({
     grupos.flatMap((g) => g.items).map((i) => i.ruta),
   )
 
-  const crudo = useSyncExternalStore(suscribir, () => leer(rolCodigo), () => '{}')
+  const crudo = useSyncExternalStore(suscribir, () => leer(rolCodigo), () => plegado)
   const guardado = useMemo<Record<string, boolean>>(() => {
     try {
-      return JSON.parse(crudo)
+      const v: unknown = JSON.parse(crudo)
+      return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, boolean>) : {}
     } catch {
       return {}
     }
@@ -116,8 +125,7 @@ export function NavegacionLista({
   // empieza arriba, y en un menú largo la pantalla abierta quedaba bajo el
   // borde: se trae a la vista solo dentro del menú, sin mover la página.
   const navRef = useRef<HTMLElement>(null)
-  // Se mide un cuadro después: al hidratar, los grupos plegados guardados se
-  // cierran en una segunda pasada y antes la medida saldría corrida.
+  // Se mide un cuadro después, con el menú ya pintado.
   useEffect(() => {
     const cuadro = requestAnimationFrame(() => {
       const nav = navRef.current
@@ -134,7 +142,7 @@ export function NavegacionLista({
   const base = (r: string) => r.split('?')[0]
 
   return (
-    <nav ref={navRef} aria-label="Menú principal" className={cn('flex h-full flex-col overflow-y-auto px-3', compacto ? 'gap-1 py-3' : 'gap-4 py-5')}>
+    <nav ref={navRef} aria-label="Menú principal" className={cn('flex h-full flex-col overflow-y-auto px-3', compacto ? 'gap-1 py-2' : 'gap-4 py-5')}>
       {grupos.map((grupo, indice) => {
         const conActiva = grupo.items.some((i) => i.ruta === activa)
         const abierto = estaAbierto(grupo, conActiva)
@@ -144,7 +152,8 @@ export function NavegacionLista({
         const suma = grupo.items.reduce((n, i) => n + (pendientes[base(i.ruta)] ?? 0), 0)
         const fallaEnGrupo = grupo.items.some((i) => sinComprobar.includes(base(i.ruta)))
         return (
-          <div key={grupo.titulo}>
+          // `data-grupo`: el título que leen las pruebas del banco, sea texto fijo o botón.
+          <div key={grupo.titulo} data-grupo={grupo.titulo}>
             {grupo.pliegue === 'fijo' ? (
               <p className={cn('px-3 text-xs font-semibold tracking-wide text-texto-suave', compacto ? 'pb-1' : 'pb-2')}>{grupo.titulo}</p>
             ) : (
@@ -162,7 +171,7 @@ export function NavegacionLista({
                 }
                 className={cn(
                   'flex w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold tracking-wide text-texto-suave transition-colors hover:bg-superficie-2 hover:text-texto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-acento',
-                  compacto ? 'min-h-7' : 'min-h-11',
+                  compacto ? 'min-h-7 pointer-coarse:min-h-11' : 'min-h-11',
                 )}
               >
                 <span className="min-w-0 flex-1">{grupo.titulo}</span>
@@ -208,7 +217,7 @@ export function NavegacionLista({
                       aria-label={falla ? `${item.titulo}, un pendiente no se pudo comprobar` : n > 0 ? `${item.titulo}, ${pendientesEnPalabras(n)}` : undefined}
                       className={cn(
                         'flex items-center rounded-xl border text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-acento',
-                        compacto ? 'min-h-8 gap-2.5 px-3 py-1' : 'min-h-11 gap-3 px-3 py-2.5',
+                        compacto ? 'min-h-8 gap-2.5 px-3 py-1 pointer-coarse:min-h-11' : 'min-h-11 gap-3 px-3 py-2.5',
                         activo
                           ? 'border-acento bg-acento font-semibold text-acento-texto'
                           : 'border-transparent text-texto-suave hover:border-borde hover:bg-superficie-2 hover:text-texto',
