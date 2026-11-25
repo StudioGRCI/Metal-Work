@@ -13,7 +13,7 @@ import type { ResultadoAccion } from '@/lib/acciones'
 import type { Marca, Trabajador } from '@/lib/datos/rrhh'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { horaCorta, minutosLargos } from '@/lib/dominio/rrhh'
-import { motivoDelFallo, quedoEnDuda, useEnvio } from '@/lib/envio'
+import { motivoDelFallo, quedoEnDuda, useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { hora as horaDe } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -46,9 +46,10 @@ type Ultima = {
  * Un envío que salió y del que no se sabe si entró: no llegó la respuesta, o el
  * servidor cayó a medio camino. Vive en la pestaña, no en el teléfono: es solo
  * para volver a mandar el mismo envío, que la base reconoce y no guarda dos
- * veces. La hora la pone la base cuando llega.
+ * veces. La hora la pone la base cuando llega. Con `error`, no entró, y llegó
+ * cuando su tarjeta ya no estaba (se buscaba a otra persona): se dice aquí.
  */
-type Pendiente = { id: string; tipo: Tipo; persona: Persona }
+type Pendiente = { id: string; tipo: Tipo; persona: Persona; error?: string }
 
 const nombreDe = (p: Persona) => `${p.nombres} ${p.apellidos}`
 const queEs = (tipo: Tipo) => (tipo === 'INGRESO' ? 'el ingreso' : 'la salida')
@@ -57,6 +58,21 @@ const queEs = (tipo: Tipo) => (tipo === 'INGRESO' ? 'el ingreso' : 'la salida')
  * Si el teléfono dice tener conexión. Solo avisa: los botones siguen vivos,
  * porque el navegador a veces dice que hay señal y no la hay, y al revés.
  */
+/**
+ * La hora de Lima, «HH:MM», al día cada minuto: «Pasó su hora» no se queda con
+ * la de cuando se abrió la lista. Vacía en el servidor.
+ */
+function useHoraDeLima() {
+  return useSyncExternalStore(
+    (avisar) => {
+      const reloj = window.setInterval(avisar, 15_000)
+      return () => window.clearInterval(reloj)
+    },
+    () => horaDe(new Date()),
+    () => '',
+  )
+}
+
 function useEnLinea() {
   return useSyncExternalStore(
     (avisar) => {
@@ -110,8 +126,8 @@ export function Marcador({
   const [respuesta, setRespuesta] = useState<RespuestaDni | null>(null)
   const [ultima, setUltima] = useState<Ultima | null>(null)
   const [vista, setVista] = useState<Vista>(null)
-  // La hora de Lima cuando se eligió la lista: «Todavía no llegan» marca a quien ya pasó su hora.
-  const [horaDeLaLista, setHoraDeLaLista] = useState('')
+  // «Todavía no llegan» marca a quien ya pasó su hora.
+  const horaDeLima = useHoraDeLima()
   const [pendientes, setPendientes] = useState<Pendiente[]>([])
   // Envíos que ya no sirven para marcar (la base dijo que fueron otra marca, o
   // no entraron por otra razón): la tarjeta que los tenga estrena otro.
@@ -146,8 +162,11 @@ export function Marcador({
   const dentro = personal.filter((p) => vigente(p, 'INGRESO') && !vigente(p, 'SALIDA'))
   const faltan = personal.filter((p) => !vigente(p, 'INGRESO'))
   const deLaVista = vista === 'dentro' ? dentro : vista === 'faltan' ? faltan : personal
-  // Lo pendiente que la lista ya trae entró: no hay nada que reintentar.
-  const sinConfirmar = pendientes.filter((x) => !marcas.some((m) => m.id === x.id))
+  // Lo pendiente que la lista ya trae entró: no hay nada que reintentar, y se
+  // dice («Sí entró, a las…») hasta que se toca «Entendido»; irse callado
+  // dejaba sin saber si entró o se perdió.
+  const conRespuesta = pendientes.map((x) => ({ ...x, entro: marcas.find((m) => m.id === x.id) ?? null }))
+  const sinConfirmar = conRespuesta.filter((x) => !x.entro && !x.error)
 
   const contestado = dni !== null && respuesta?.dni === dni ? respuesta : null
   const palabras = palabrasDeBusqueda(busqueda)
@@ -188,25 +207,31 @@ export function Marcador({
    * lo dice en su línea.
    */
   function alMarcar(guardada: MarcaGuardada, persona: Persona, tipo: Tipo, tarjeta: HTMLElement | null): boolean {
+    // Se mide antes de pintar: la confirmación que nace arriba baja la lista.
+    const antes = tarjeta?.getBoundingClientRect()
+    const aLaVista = Boolean(antes && antes.top >= 56 && antes.bottom <= window.innerHeight)
+    const desdeArriba = Boolean(tarjeta?.closest('[data-sin-confirmar]'))
     flushSync(() => {
       setUltima({ ...guardada, persona, tipo, busqueda })
-      setPendientes((antes) => antes.filter((x) => !(x.persona.id === persona.id && x.tipo === tipo)))
+      setPendientes((previos) => previos.filter((x) => !(x.persona.id === persona.id && x.tipo === tipo)))
     })
-    const r = tarjeta?.getBoundingClientRect()
-    const aLaVista = Boolean(r && r.top >= 56 && r.bottom <= window.innerHeight)
-    if (!buscaAlgo && aLaVista && !tarjeta?.closest('[data-sin-confirmar]')) return false
-    // Quien ya escribe el DNI siguiente se queda donde está: el salto le
-    // cortaba lo escrito. La región de estado lo anuncia igual.
-    const activo = document.activeElement
-    if (!activo || activo === document.body || tarjeta?.contains(activo)) {
-      confirmacion.current?.focus()
-      return true
+    if (!buscaAlgo && aLaVista && !desdeArriba) {
+      // La tarjeta queda bajo el dedo: lo que nació arriba no la corre.
+      const despues = tarjeta?.getBoundingClientRect().top
+      if (antes && despues !== undefined && despues !== antes.top) window.scrollBy(0, despues - antes.top)
+    } else {
+      // Quien ya escribe el DNI siguiente se queda donde está: el salto le
+      // cortaba lo escrito. La región de estado lo anuncia igual.
+      const activo = document.activeElement
+      if (!activo || activo === document.body || tarjeta?.contains(activo)) confirmacion.current?.focus()
     }
-    return false
+    const c = confirmacion.current?.getBoundingClientRect()
+    return Boolean(c && c.height > 0 && c.top >= 0 && c.bottom <= window.innerHeight)
   }
 
+  // También el rechazo que vuelve con la tarjeta ya desmontada: si no, no lo decía nadie.
   function alQuedarEnDuda(pendiente: Pendiente) {
-    setPendientes((antes) => (antes.some((x) => x.id === pendiente.id) ? antes : [...antes, pendiente]))
+    setPendientes((antes) => [...antes.filter((x) => x.id !== pendiente.id), pendiente])
   }
 
   function gastar(id: string) {
@@ -233,13 +258,13 @@ export function Marcador({
           <>
             <WifiOff aria-hidden className="mt-0.5 size-4 shrink-0 text-aviso" />
             <span>
-              <strong className="font-semibold">Este teléfono está sin señal.</strong> Las marcas no se guardan en el teléfono: la hora la pone el sistema cuando la
+              <strong className="font-semibold">Este equipo está sin señal.</strong> Las marcas no se guardan en el equipo: la hora la pone el sistema cuando la
               marca llega. Espera la señal y vuelve a tocar.
             </span>
           </>
         )}
       </p>
-      {sinConfirmar.length > 0 && (
+      {conRespuesta.length > 0 && (
         <section
           id="sin-confirmar"
           aria-labelledby="sin-confirmar-titulo"
@@ -247,15 +272,24 @@ export function Marcador({
           className="mb-3 max-w-xl scroll-mt-20 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave p-3"
         >
           <h2 id="sin-confirmar-titulo" className="text-sm font-semibold text-texto">
-            Sin confirmar ({sinConfirmar.length})
+            {sinConfirmar.length > 0 ? `Sin confirmar (${sinConfirmar.length})` : 'Ya llegó la respuesta'}
           </h2>
-          <p className="mt-0.5 text-xs text-texto">
-            No llegó la respuesta: no se sabe si entraron. En el teléfono no se guardó nada. Con señal, toca «Reintentar»: si ya había entrado, no se marca dos veces y sale
-            con su hora.
-          </p>
+          {sinConfirmar.length > 0 && (
+            <p className="mt-0.5 text-xs text-texto">
+              No llegó la respuesta: no se sabe si entraron. En este equipo no se guardó nada. Con señal, toca «Reintentar»: si ya había entrado, no se marca dos veces y
+              sale con su hora.
+            </p>
+          )}
           <ul className="mt-2 space-y-2">
-            {sinConfirmar.map((x) => (
-              <PendienteDeMarca key={x.id} pendiente={x} alMarcar={alMarcar} alGastar={gastar} alQuitar={() => setPendientes((antes) => antes.filter((y) => y.id !== x.id))} />
+            {conRespuesta.map((x) => (
+              <PendienteDeMarca
+                key={x.id}
+                pendiente={x}
+                entro={x.entro}
+                alMarcar={alMarcar}
+                alGastar={gastar}
+                alQuitar={() => setPendientes((previos) => previos.filter((y) => y.id !== x.id))}
+              />
             ))}
           </ul>
         </section>
@@ -296,7 +330,6 @@ export function Marcador({
             activo={vista}
             alPulsar={(valor) => {
               setVista(valor === 'dentro' || valor === 'faltan' ? valor : null)
-              setHoraDeLaLista(horaDe(new Date()))
             }}
             opciones={[
               { valor: null, etiqueta: `Todos (${personal.length})` },
@@ -326,7 +359,14 @@ export function Marcador({
             )}
           </div>
         ) : vista ? (
-          <ListaEnLectura vista={vista} personas={visibles} ingresoDe={(p) => vigente(p, 'INGRESO')} filtrada={buscaAlgo} horaDeLaLista={horaDeLaLista} />
+          <ListaEnLectura
+            vista={vista}
+            personas={visibles}
+            ingresoDe={(p) => vigente(p, 'INGRESO')}
+            filtrada={buscaAlgo}
+            horaDeLaLista={horaDeLima}
+            marca={marca && esHoy}
+          />
         ) : (
           <ul className="space-y-2">
             {visibles.map((p) => (
@@ -338,7 +378,6 @@ export function Marcador({
                 anula={anula}
                 pendiente={sinConfirmar.find((x) => x.persona.id === p.id) ?? null}
                 gastados={gastados}
-                confirmada={ultima?.id ?? null}
                 alMarcar={alMarcar}
                 alQuedarEnDuda={alQuedarEnDuda}
                 alGastar={gastar}
@@ -391,7 +430,7 @@ function Confirmacion({
   if (compacta)
     return (
       <p className="mb-3 max-w-xl rounded-[var(--radius-base)] border border-borde bg-superficie px-3 py-2 text-sm text-texto-suave">
-        Último: {anulada ? `${que.toLowerCase()} anulado` : que.toLowerCase()} de{' '}
+        Último: {anulada ? (tipo === 'INGRESO' ? 'ingreso anulado' : 'salida anulada') : que.toLowerCase()} de{' '}
         <span className="font-medium text-texto">
           {p.apellidos}, {p.nombres}
         </span>
@@ -457,17 +496,21 @@ function InsigniaDeLlegada({ minutos, tarde }: { minutos: number; tarde: boolean
  */
 function PendienteDeMarca({
   pendiente: x,
+  entro,
   alMarcar,
   alGastar,
   alQuitar,
 }: {
   pendiente: Pendiente
+  /** La lista ya la trae: entró, y se dice con su hora. */
+  entro: Marca | null
   alMarcar: (guardada: MarcaGuardada, persona: Persona, tipo: Tipo, tarjeta: HTMLElement | null) => boolean
   alGastar: (id: string) => void
   alQuitar: () => void
 }) {
   const fila = useRef<HTMLLIElement>(null)
   const reintentar = useRef<HTMLButtonElement>(null)
+  const entendido = useRef<HTMLButtonElement>(null)
   // Un rechazo que no deja duda: el envío ya no sirve, y la tarjeta estrena otro.
   const enviar = async (previo: unknown, datos: FormData): Promise<ResultadoAccion<MarcaGuardada>> => {
     const r = await marcarAsistencia(previo, datos)
@@ -481,7 +524,7 @@ function PendienteDeMarca({
     },
     { documento: `pendiente-${x.id}` },
   )
-  const definitivo = envio.error && !quedoEnDuda(envio.error) ? envio.error : null
+  const definitivo = x.error ?? (envio.error && !quedoEnDuda(envio.error) ? envio.error : null)
 
   // El envío que no contestó deja el botón que se tocó apagado y el cursor en la
   // página: va a «Reintentar», que es lo que se hace después.
@@ -489,6 +532,14 @@ function PendienteDeMarca({
     const activo = document.activeElement
     if (!activo || activo === document.body) reintentar.current?.focus()
   }, [])
+  // Llegó con la lista: «Reintentar» se va y el cursor que tenía pasa a «Entendido».
+  const yaEntro = Boolean(entro)
+  useEffect(() => {
+    if (!yaEntro) return
+    const activo = document.activeElement
+    if (!activo || activo === document.body) entendido.current?.focus()
+  }, [yaEntro])
+  const que = x.tipo === 'INGRESO' ? 'ingreso' : 'salida'
 
   return (
     <li ref={fila} data-pendiente-de={x.persona.id} className="rounded-[var(--radius-base)] border border-aviso bg-superficie p-3">
@@ -496,9 +547,22 @@ function PendienteDeMarca({
         <span className="font-semibold">
           {x.persona.apellidos}, {x.persona.nombres}
         </span>
-        <span className="text-texto-suave"> · {x.tipo === 'INGRESO' ? 'ingreso' : 'salida'} sin confirmar</span>
+        <span className="text-texto-suave">
+          {' '}
+          · {que}
+          {entro ? '' : x.error ? ' que no entró' : ' sin confirmar'}
+        </span>
       </p>
-      {definitivo ? (
+      {/* Siempre puesta: la región que nace con su texto no se anuncia. */}
+      <p role="status" className={entro ? 'mt-1 text-sm font-medium text-exito' : 'sr-only'}>
+        {entro &&
+          `Sí entró: ${x.tipo === 'INGRESO' ? 'el ingreso de' : 'la salida de'} ${x.persona.nombres} quedó a las ${horaCorta(entro.hora)}${entro.anulado_en ? ', y después se anuló' : ''}.`}
+      </p>
+      {entro ? (
+        <Boton ref={entendido} type="button" variante="contorno" tamano="lg" className="mt-2 w-full justify-center sm:w-auto" onClick={alQuitar}>
+          Entendido
+        </Boton>
+      ) : definitivo ? (
         <>
           <p role="alert" className="mt-1 text-sm text-peligro">
             {definitivo}
@@ -517,9 +581,17 @@ function PendienteDeMarca({
               Tampoco llegó la respuesta esta vez. Revisa la señal y vuelve a tocar.
             </p>
           )}
-          <Boton ref={reintentar} type="submit" tamano="lg" className="w-full justify-center sm:w-auto" cargando={envio.enviando}>
+          {/* El nombre ya está en el renglón de arriba; en el botón no cabía (nowrap). */}
+          <Boton
+            ref={reintentar}
+            type="submit"
+            tamano="lg"
+            className="w-full justify-center sm:w-auto"
+            cargando={envio.enviando}
+            aria-label={`Reintentar ${queEs(x.tipo)} de ${nombreDe(x.persona)}`}
+          >
             <RotateCw aria-hidden className="size-4" />
-            Reintentar {queEs(x.tipo)} de {x.persona.nombres}
+            Reintentar
           </Boton>
         </form>
       )}
@@ -534,6 +606,7 @@ function ListaEnLectura({
   ingresoDe,
   filtrada,
   horaDeLaLista,
+  marca,
 }: {
   vista: Exclude<Vista, null>
   personas: Persona[]
@@ -541,6 +614,8 @@ function ListaEnLectura({
   filtrada: boolean
   /** «HH:MM» de Lima cuando se eligió la lista. */
   horaDeLaLista: string
+  /** Quien puede marcar: a él se le dice dónde. */
+  marca: boolean
 }) {
   // Dentro, por la hora en que entró; los que faltan, por la hora en que les toca entrar.
   const filas = personas
@@ -551,7 +626,8 @@ function ListaEnLectura({
     <section aria-label={titulo} className="rounded-[var(--radius-base)] border border-borde bg-superficie">
       <p className="border-b border-borde px-3 py-2 text-xs text-texto-suave">
         {vista === 'dentro' ? 'Con ingreso y sin salida, por la hora en que entraron.' : 'Sin ingreso hoy, por la hora en que les toca entrar.'}{' '}
-        {filtrada ? 'Solo quienes coinciden con lo buscado. ' : ''}Para marcar, vuelve a «Todos».
+        {filtrada ? 'Solo quienes coinciden con lo buscado. ' : ''}
+        {marca && 'Para marcar, vuelve a «Todos».'}
       </p>
       <ul className="divide-y divide-borde">
         {filas.map(({ p, ingreso }) => {
@@ -594,7 +670,6 @@ function TarjetaPersona({
   anula,
   pendiente,
   gastados,
-  confirmada,
   alMarcar,
   alQuedarEnDuda,
   alGastar,
@@ -606,8 +681,6 @@ function TarjetaPersona({
   /** Lo suyo que salió sin respuesta: se reintenta en «Sin confirmar», arriba. */
   pendiente: Pendiente | null
   gastados: ReadonlySet<string>
-  /** La marca que dice la confirmación de arriba: su «Ingreso marcado.» no se repite aquí. */
-  confirmada: string | null
   alMarcar: (guardada: MarcaGuardada, persona: Persona, tipo: Tipo, tarjeta: HTMLElement | null) => boolean
   alQuedarEnDuda: (pendiente: Pendiente) => void
   alGastar: (id: string) => void
@@ -625,12 +698,25 @@ function TarjetaPersona({
   // El «Ingreso marcado.» de la tarjeta es de una marca: si después se anula, se calla.
   const [aviso, setAviso] = useState<{ de: string; texto: string } | null>(null)
   const tarjeta = useRef<HTMLLIElement>(null)
+  // Si sigue en la pantalla cuando vuelve la respuesta: se puede buscar a otra
+  // persona con el envío en camino.
+  const montada = useRef(false)
+  useEffect(() => {
+    montada.current = true
+    return () => {
+      montada.current = false
+    }
+  }, [])
   // Lo que salió en el último toque: la respuesta no dice si fue ingreso o salida.
   const enviado = useRef<{ id: string; tipo: Tipo } | null>(null)
   const enviar = async (previo: unknown, datos: FormData): Promise<ResultadoAccion<MarcaGuardada>> => {
     const r = await marcarAsistencia(previo, datos)
     const fue = enviado.current
-    if (!r.ok && !quedoEnDuda(r.error) && fue) alGastar(fue.id)
+    if (!r.ok && !quedoEnDuda(r.error) && fue) {
+      alGastar(fue.id)
+      // Sin tarjeta, el rechazo va a la lista de arriba, que no se desmonta.
+      if (!montada.current) alQuedarEnDuda({ ...fue, persona: p, error: r.error })
+    }
     return r
   }
   const envio = useEnvio(
@@ -639,11 +725,18 @@ function TarjetaPersona({
       const fue = enviado.current
       if (!fue || !r.datos) return
       setIds((antes) => (antes[fue.tipo] === fue.id ? { ...antes, [fue.tipo]: crypto.randomUUID() } : antes))
-      const salto = alMarcar(r.datos, p, fue.tipo, tarjeta.current)
-      setAviso(r.mensaje && !salto ? { de: r.datos.id, texto: r.mensaje } : null)
+      // Con la confirmación grande a la vista, la tarjeta no la repite; si
+      // quedó fuera (se marcó con la lista bajada), la tarjeta dice que entró.
+      const seVe = alMarcar(r.datos, p, fue.tipo, tarjeta.current)
+      const texto = `${(r.mensaje ?? '').replace(/\.$/, '')}${r.datos.hora ? `, ${horaCorta(r.datos.hora)}` : ''}.`
+      setAviso(r.mensaje && !seVe ? { de: r.datos.id, texto } : null)
     },
     {
       documento: p.id,
+      // Lo que se dice si la tarjeta ya no está lo dice «Sin confirmar»; con la
+      // línea de arriba de `useAccion`, la duda se decía dos veces y esa línea
+      // seguía después de que el reintento entrara.
+      siSeVa: null,
       // Sin respuesta: pasa a «Sin confirmar», arriba, que no se pierde al buscar a otra persona.
       alQuedarEnDuda: (datos) => {
         const id = datos.get('marca_id')
@@ -737,8 +830,9 @@ function TarjetaPersona({
           {rechazo}
         </p>
       )}
-      {aviso && !envio.error && aviso.de !== confirmada && !anuladas.some((m) => m.id === aviso.de) && (
-        <p role="status" className="mt-2 text-sm text-exito">
+      {/* Sin región: la confirmación de arriba ya lo anuncia. */}
+      {aviso && !envio.error && !anuladas.some((m) => m.id === aviso.de) && (
+        <p className="mt-2 text-sm font-medium text-exito">
           {aviso.texto}
         </p>
       )}
@@ -770,6 +864,10 @@ function AnularMarca({ marca: m, de, conTexto = false }: { marca: Pick<Marca, 'i
   const envio = useEnvio(anularAsistencia, () => setAbierta(false))
   const que = `${queEs(m.tipo as Tipo)} de ${de}, de las ${horaCorta(m.hora)}`
   const campo = `anular-${conTexto ? 'confirmada-' : ''}${m.id}`
+  const aviso = useRef<HTMLParagraphElement>(null)
+  // El rechazo del motivo va en su campo, con el cursor ahí; lo demás, abajo.
+  const delMotivo = envio.error && /^(Cuenta por qué se anula|El motivo pasa)/.test(envio.error) ? envio.error : null
+  useCursorAlRechazo(envio.enviando, envio.error, () => (delMotivo ? document.getElementById(campo) : aviso.current))
   return (
     <>
       {conTexto ? (
@@ -791,11 +889,11 @@ function AnularMarca({ marca: m, de, conTexto = false }: { marca: Pick<Marca, 'i
       >
         <form onSubmit={envio.alEnviar} className="space-y-4">
           <input type="hidden" name="id" value={m.id} />
-          <Campo etiqueta="Motivo" htmlFor={campo} requerido ayuda="Al menos 10 caracteres.">
+          <Campo etiqueta="Motivo" htmlFor={campo} requerido ayuda="Al menos 10 caracteres." error={delMotivo ?? undefined}>
             <AreaTexto id={campo} name="motivo" required minLength={10} maxLength={500} rows={3} placeholder="Por ejemplo: se marcó a la persona equivocada." />
           </Campo>
-          {envio.error && (
-            <p role="alert" className="text-sm text-peligro">
+          {envio.error && !delMotivo && (
+            <p ref={aviso} tabIndex={-1} role="alert" className="text-sm text-peligro outline-none">
               {envio.error}
             </p>
           )}

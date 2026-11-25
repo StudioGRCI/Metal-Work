@@ -48,7 +48,7 @@ select test.afirmar((select count(*) from public.asistencias where trabajador_id
 select test.debe_fallar(format($q$select public.marcar_asistencia(%L, %L, 'SALIDA', null)$q$, current_setting('prueba.ingreso'), current_setting('prueba.ana')),
   'la salida con el envío del ingreso no se da por marcada', 'como el ingreso de Ana Prueba 471: esta marca no entró');
 select test.debe_fallar(format($q$select public.marcar_asistencia(%L, %L, 'INGRESO', null)$q$, current_setting('prueba.ingreso'), current_setting('prueba.beto')),
-  'el ingreso de otra persona con ese envío no se da por marcado', 'la primera vez que lo enviaste, como el ingreso de Ana');
+  'el ingreso de otra persona con ese envío no se da por marcado', 'ya se usó como el ingreso de Ana');
 select test.debe_fallar(format($q$select public.marcar_asistencia(%L, %L, 'INGRESO', 'Llegó con permiso')$q$, current_setting('prueba.ingreso'), current_setting('prueba.ana')),
   'con otra observación tampoco', 'esta marca no entró');
 select test.afirmar((select count(*) from public.asistencias where trabajador_id = current_setting('prueba.ana')::uuid and tipo = 'SALIDA') = 0,

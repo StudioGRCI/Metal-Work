@@ -15,6 +15,24 @@
 -- permiso es el del puesto (`asistencia.marcar`, de la portería).
 -- =============================================================================
 
+-- La función se reemplaza entera: antes se mira que sea la que conoce el
+-- repositorio (la de la 20261015100000 con el permiso del puesto que le puso la
+-- 20261020169000), o esta misma si la migración ya corrió. Si en producción se
+-- cambió a mano, se detiene y no la pisa (skill `esquema`, 20261022160000).
+do $$
+declare
+  huella text;
+begin
+  select md5(replace(p.prosrc, E'\r', '')) into huella
+    from pg_proc p where p.oid = to_regprocedure('public.marcar_asistencia(uuid,uuid,text,text)');
+  if huella is null then
+    raise exception 'Falta la función marcar_asistencia: esta base no tiene las migraciones anteriores.';
+  end if;
+  if huella not in ('ec56f2e5aeb1fae87ed0272e80b60350', '43c36ea5263b6f93c501200b507708a4') then
+    raise exception 'La función marcar_asistencia no es la que conoce el repositorio (se cambió a mano, huella %): no se reemplaza. Avisa antes de seguir.', huella;
+  end if;
+end $$;
+
 create or replace function public.marcar_asistencia(p_id uuid, p_trabajador_id uuid, p_tipo text, p_observacion text default null)
 returns uuid
 language plpgsql
@@ -58,11 +76,11 @@ begin
       return p_id;
     end if;
     if v_previa.anulado_en is not null then
-      raise exception 'Esa marca ya quedó la primera vez que la enviaste y después se anuló: vuelve a cargar la pantalla y márcala otra vez.'
+      raise exception 'Ese envío ya se usó en una marca que después se anuló: esta no entró. Vuelve a marcarla.'
         using errcode = 'unique_violation';
     end if;
     select t.nombres || ' ' || t.apellidos into v_de from public.trabajadores t where t.id = v_previa.trabajador_id;
-    raise exception 'Ese envío ya quedó la primera vez que lo enviaste, como % de %: esta marca no entró. Vuelve a cargar la pantalla y márcala otra vez.',
+    raise exception 'Ese envío ya se usó como % de %: esta marca no entró. Vuelve a marcarla.',
       case v_previa.tipo when 'INGRESO' then 'el ingreso' else 'la salida' end, coalesce(v_de, 'otra persona')
       using errcode = 'unique_violation';
   end if;
