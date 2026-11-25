@@ -37,6 +37,11 @@ begin
       (6::smallint, 'Sin fecha',       null::date,        null::date,        null::date)
     ) as x(orden, nombre, fin_plan, inicio_real, fin_real);
 
+  -- Una subetapa vencida debajo de la vencida: la etapa cuenta una sola vez.
+  insert into public.codigo_etapas (codigo_interno, orden, nombre, area_id, fin_plan, padre_id, de_area, creado_por)
+  select 'CHK460_A', 7, 'Subetapa vencida', e.area_id, current_date - 2, e.id, true, current_setting('prueba.diseno')::uuid
+    from public.codigo_etapas e where e.codigo_interno = 'CHK460_A' and e.nombre = 'Vencida ayer';
+
   -- Código B: solo etapas con holgura, y una OT con su fecha de entrega lejos.
   insert into public.codigo_etapas (codigo_interno, orden, nombre, area_id, fin_plan, creado_por)
   values ('CHK460_B', 1, 'Con holgura', (select id from public.areas where codigo = 'MTZ'),
@@ -85,11 +90,11 @@ select pg_temp.como('recursos_humanos');
 set local role authenticated;
 
 select test.afirmar(
-  (select count(*) = 6 from public.tiempos_de_entrega_etapas('chk460_a')),
+  (select count(*) = 7 from public.tiempos_de_entrega_etapas('chk460_a')),
   'RR. HH. lee las seis etapas del código A, escrito en minúsculas');
 select test.afirmar(
   (select string_agg(e.semaforo, ',' order by e.orden) from public.tiempos_de_entrega_etapas('CHK460_A') e)
-    = 'TERMINADA,ROJO,AMBAR,AMBAR,VERDE,SIN_FECHA',
+    = 'TERMINADA,ROJO,AMBAR,AMBAR,VERDE,SIN_FECHA,ROJO',
   'terminada, vencida ayer, vence hoy, a 3 días hábiles, a 4 días hábiles y sin fecha: cada una con su color');
 select test.afirmar(
   (select e.dias_habiles = 0 from public.tiempos_de_entrega_etapas('CHK460_A') e where e.nombre = 'Vence hoy'),
@@ -108,9 +113,9 @@ select test.afirmar(
 select test.afirmar(
   (select t.semaforo = 'ROJO' and t.etapas = 6 and t.etapas_terminadas = 1 and t.etapas_vencidas = 1
           and t.etapas_por_vencer = 2 and t.etapas_sin_fecha = 1 and t.etapa_en_curso = 'Vencida ayer'
-          and t.proxima_fecha = current_date - 1 and t.ot_numero is null and t.semaforo_entrega = 'SIN_FECHA'
+          and t.proxima_fecha = current_date - 2 and t.ot_numero is null and t.semaforo_entrega = 'SIN_FECHA'
      from public.tiempos_de_entrega_codigos() t where t.codigo = 'CHK460_A'),
-  'el código A sale en rojo: 1 de 6 terminada, 1 vencida, 2 por vencer, 1 sin fecha, va en la empezada, y entra sin OT abierta');
+  'el código A sale en rojo: 1 de 6 terminada, 1 vencida (ella y su subetapa cuentan una vez), 2 por vencer, 1 sin fecha, va en la empezada, y entra sin OT abierta');
 select test.afirmar(
   (select t.semaforo = 'VERDE' and t.semaforo_entrega = 'VERDE' and t.ot_numero is not null and t.cliente = 'CLIENTE DE PRUEBA 460 S.A.C.'
           and t.fecha_entrega = public.sumar_dias_habiles(current_date, 20) and t.dias_habiles_entrega = 20
@@ -128,6 +133,16 @@ select test.afirmar(
 select test.afirmar(
   (select count(*) = count(distinct t.codigo) from public.tiempos_de_entrega_codigos() t),
   'cada código sale una sola vez');
+
+select test.afirmar(
+  (select count(*) = 1 and bool_and(t.codigo = 'CHK460_B') from public.tiempos_de_entrega_codigos('chk460_b') t),
+  'pedido por código, el tablero da solo ese código');
+select test.debe_fallar(
+  $q$select * from public.tiempos_de_entrega_codigos_calculado()$q$,
+  'el cálculo del tablero, sin permiso adentro, está cerrado a la gente');
+select test.debe_fallar(
+  $q$select * from public.tiempos_de_entrega_etapas_calculado('CHK460_A')$q$,
+  'el cálculo de las etapas, sin permiso adentro, está cerrado a la gente');
 
 -- Una actividad nace con su primer reporte diario: el código A no tiene ninguno.
 select test.afirmar(
@@ -183,7 +198,7 @@ reset role;
 do $$
 begin
   perform set_config('session_replication_role', 'replica', true);
-  update public.ordenes_trabajo set estado = 'ENTREGADA' where descripcion = 'Check 460 · sin fecha';
+  update public.ordenes_trabajo set estado = 'ENTREGADA' where descripcion in ('Check 460 · sin fecha', 'Check 460 · con holgura');
   perform set_config('session_replication_role', 'origin', true);
 end $$;
 select pg_temp.como('recursos_humanos');
@@ -192,8 +207,11 @@ select test.afirmar(
   not exists (select 1 from public.tiempos_de_entrega_codigos() t where t.codigo = 'CHK460_D'),
   'el código cuya OT ya se entregó, y sin etapas pendientes, sale del tablero');
 select test.afirmar(
+  not exists (select 1 from public.tiempos_de_entrega_codigos() t where t.codigo = 'CHK460_B'),
+  'el que ya se entregó sale del tablero aunque le quedaran etapas sin marcar');
+select test.afirmar(
   exists (select 1 from public.tiempos_de_entrega_codigos() t where t.codigo = 'CHK460_A'),
-  'el que tiene etapas pendientes sigue');
+  'el que tiene etapas pendientes y ninguna OT sigue');
 reset role;
 
 rollback;

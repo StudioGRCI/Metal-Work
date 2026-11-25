@@ -101,13 +101,23 @@ begin
     insert into public.ordenes_trabajo (cliente_id, unidad_id, abierta_en_taller, sede_id, descripcion)
     values (v_cli, v_uni, true, v_sede, 'Tolva · prueba TDE');
   end if;
+  -- La entrega al cliente ya pasó y sus etapas van a tiempo: lo urgente es la entrega.
+  if not exists (select 1 from public.unidades where codigo_interno = 'TDE_YA_PASO') then
+    insert into public.unidades (cliente_id, codigo_interno, marca) values (v_cli, 'TDE_YA_PASO', 'Volvo') returning id into v_uni;
+    insert into public.ordenes_trabajo (cliente_id, unidad_id, abierta_en_taller, sede_id, descripcion, fecha_entrega_comprometida)
+    values (v_cli, v_uni, true, v_sede, 'Cisterna · prueba TDE', current_date - 1);
+  end if;
+  insert into public.codigo_etapas (codigo_interno, orden, nombre, area_id, fin_plan, creado_por)
+  values ('TDE_YA_PASO', 1, 'Acabados finales', v_acb, public.sumar_dias_habiles(current_date, 7), v_dis);
+
   -- Las fechas de entrega salen de hoy: se rehacen en cada corrida.
   update public.ordenes_trabajo o set fecha_entrega_comprometida = case u.codigo_interno
            when 'TDE_VENCIDO' then public.sumar_dias_habiles(current_date, 10)
            when 'TDE_A_TIEMPO' then public.sumar_dias_habiles(current_date, 25)
-           when 'TDE_ENTREGA' then current_date end
+           when 'TDE_ENTREGA' then current_date
+           when 'TDE_YA_PASO' then current_date - 1 end
     from public.unidades u
-   where u.id = o.unidad_id and u.codigo_interno in ('TDE_VENCIDO', 'TDE_A_TIEMPO', 'TDE_ENTREGA');
+   where u.id = o.unidad_id and u.codigo_interno in ('TDE_VENCIDO', 'TDE_A_TIEMPO', 'TDE_ENTREGA', 'TDE_YA_PASO');
 end $$;
 `)
 const esperado = sql(`
@@ -160,21 +170,24 @@ const detalle = (codigo) => `${BASE}${RUTA}/codigo?${new URLSearchParams({ codig
   console.log(`     lista: ${codigos.join(' | ')}`)
   const tde = codigos.filter((c) => c.startsWith('TDE_'))
   comprobar(
-    tde.join(',') === 'TDE_VENCIDO:ROJO,TDE_ENTREGA:AMBAR,TDE_A_TIEMPO:VERDE,TDE_SIN_FECHA:SIN_FECHA',
-    'los cuatro códigos salen en orden: vencido, por vencer, a tiempo y sin fechas',
+    tde.join(',') === 'TDE_VENCIDO:ROJO,TDE_YA_PASO:ROJO,TDE_ENTREGA:AMBAR,TDE_A_TIEMPO:VERDE,TDE_SIN_FECHA:SIN_FECHA',
+    'los cinco códigos salen en orden: los vencidos, por vencer, a tiempo y sin fechas',
   )
   comprobar(codigos[0].endsWith(':ROJO'), 'lo vencido va primero en la lista')
 
   const vencido = await texto(fila(pagina, 'TDE_VENCIDO'))
   console.log(`     TDE_VENCIDO: ${vencido}`)
-  comprobar(/Vencido/.test(vencido) && /2 etapas vencidas/.test(vencido) && /2 por vencer/.test(vencido), 'la fila del vencido dice «Vencido», 2 etapas vencidas y 2 por vencer')
+  comprobar(/Vencido/.test(vencido) && /1 etapa vencida/.test(vencido) && /2 por vencer/.test(vencido), 'la fila del vencido dice «Vencido», 1 etapa vencida (con su subetapa cuenta una vez) y 2 por vencer')
   comprobar(/1 de 6 etapas terminadas/.test(vencido) && /Ahora: Ensamblaje \(Producción\)/i.test(vencido), 'dice 1 de 6 etapas terminadas y que va en Ensamblaje (Producción)')
   comprobar(vencido.includes('TRANSPORTES DE PRUEBA TDE S.A.C.') && /OT \d/.test(vencido), 'lleva su OT y su cliente en mayúsculas')
   comprobar(vencido.includes(`Entrega al cliente: ${entrega}`), `la fecha de entrega es la de la OT (${entrega})`)
 
+  const yaPaso = await texto(fila(pagina, 'TDE_YA_PASO'))
+  console.log(`     TDE_YA_PASO: ${yaPaso}`)
+  comprobar(/Vencido La entrega venció hace \d+ días? hábil/.test(yaPaso), 'el que tiene las etapas a tiempo y la entrega pasada dice que lo vencido es la entrega')
   const entregaHoy = await texto(fila(pagina, 'TDE_ENTREGA'))
   console.log(`     TDE_ENTREGA: ${entregaHoy}`)
-  comprobar(/Por vencer/.test(entregaHoy) && /Vence hoy/.test(entregaHoy) && /Sin etapas cargadas/.test(entregaHoy), 'el que se entrega hoy sale por vencer, «Vence hoy», sin etapas cargadas')
+  comprobar(/Por vencer/.test(entregaHoy) && /La entrega vence hoy/.test(entregaHoy) && /Sin etapas cargadas/.test(entregaHoy), 'el que se entrega hoy sale por vencer, «La entrega vence hoy», sin etapas cargadas')
   const sinFecha = await texto(fila(pagina, 'TDE_SIN_FECHA'))
   comprobar(/Sin fechas/.test(sinFecha) && /Sin fecha de entrega al cliente/.test(sinFecha), 'el que no tiene nada dice «Sin fechas» y «Sin fecha de entrega al cliente»')
 
@@ -189,7 +202,7 @@ const detalle = (codigo) => `${BASE}${RUTA}/codigo?${new URLSearchParams({ codig
 
   // Buscar por cliente conserva lo que hay y encuentra los cuatro.
   await pagina.goto(`${BASE}${RUTA}?q=${encodeURIComponent('transportes de prueba tde')}`, { waitUntil: 'networkidle' })
-  comprobar((await pagina.locator('[data-codigo]').count()) === 4, 'buscar por el cliente encuentra sus cuatro códigos')
+  comprobar((await pagina.locator('[data-codigo]').count()) === 5, 'buscar por el cliente encuentra sus cinco códigos')
 
   // Filtro por área de la etapa en curso.
   await pagina.getByRole('link', { name: 'Maestranza', exact: true }).click()
@@ -266,7 +279,7 @@ const detalle = (codigo) => `${BASE}${RUTA}/codigo?${new URLSearchParams({ codig
   comprobar((await enMenu.count()) === 1, 'Gerencia tiene «Tiempos de entrega» en su menú')
   await enMenu.click()
   await fila(pagina, 'TDE_VENCIDO').waitFor({ timeout: 60000 })
-  comprobar((await pagina.locator('[data-codigo^="TDE_"]').count()) === 4, 'Gerencia ve los cuatro códigos')
+  comprobar((await pagina.locator('[data-codigo^="TDE_"]').count()) === 5, 'Gerencia ve los cinco códigos')
   comprobar(errores.length === 0, `sin errores de consola como Gerencia (${errores.join(' · ') || 'ninguno'})`)
   await contexto.close()
 }

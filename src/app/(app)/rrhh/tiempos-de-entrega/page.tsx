@@ -2,6 +2,7 @@ import Link from 'next/link'
 
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { Paginacion } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
@@ -14,6 +15,8 @@ import { fecha, hoyLima } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 
 export const metadata = { title: 'Tiempos de entrega' }
+
+const POR_PAGINA = 50
 
 const AYUDA =
   'Cada código interno que todavía no se entrega, con la fecha de entrega al cliente de su OT, la etapa en que va y su semáforo: rojo si una etapa o la entrega ya venció, ámbar si vence hoy o en 3 días hábiles o menos, verde si va a tiempo. Las fechas de cada etapa las pone Diseño y las marca el supervisor del área; aquí se consultan.'
@@ -49,6 +52,9 @@ export default async function PaginaTiemposDeEntrega({ searchParams }: PageProps
   const delArea = area ? buscados.filter((c) => c.area_en_curso === area) : buscados
   const codigos = filtro ? delArea.filter((c) => c.semaforo === filtro.semaforo) : delArea
   const cuantos = (semaforo: string) => delArea.filter((c) => c.semaforo === semaforo).length
+  const paginas = Math.max(1, Math.ceil(codigos.length / POR_PAGINA))
+  const pagina = Math.min(Math.max(1, Math.trunc(Number(params.pagina)) || 1), paginas)
+  const enPagina = codigos.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA)
   const sinEtapas = todos.filter((c) => c.etapas === 0).length
   // Los indicadores filtran sin soltar la búsqueda ni el área puestas.
   const ver = (valor: string) => {
@@ -70,7 +76,8 @@ export default async function PaginaTiemposDeEntrega({ searchParams }: PageProps
       />
 
       {todos.length > 0 && (
-        <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        // En el teléfono no van: repiten el filtro de abajo y dejaban la lista fuera de la vista.
+        <div className="mb-4 hidden grid-cols-2 gap-3 sm:grid lg:grid-cols-4">
           <Indicador
             titulo="Vencidos"
             valor={String(cuantos('ROJO'))}
@@ -85,8 +92,8 @@ export default async function PaginaTiemposDeEntrega({ searchParams }: PageProps
             pie="Hoy o en 3 días hábiles"
             href={ver('por-vencer')}
           />
-          <Indicador titulo="A tiempo" valor={String(cuantos('VERDE'))} tono="exito" pie="Más de 3 días hábiles" href={ver('a-tiempo')} />
-          <Indicador titulo="Sin fechas" valor={String(cuantos('SIN_FECHA'))} pie="Falta que las carguen" href={ver('sin-fechas')} />
+          <Indicador titulo="A tiempo" valor={String(cuantos('VERDE'))} tono={cuantos('VERDE') > 0 ? 'exito' : 'neutro'} pie="Más de 3 días hábiles" href={ver('a-tiempo')} />
+          <Indicador titulo="Sin fechas" valor={String(cuantos('SIN_FECHA'))} pie="Falta la de la OT o las de Diseño" href={ver('sin-fechas')} />
         </div>
       )}
 
@@ -130,7 +137,7 @@ export default async function PaginaTiemposDeEntrega({ searchParams }: PageProps
         </Tarjeta>
       ) : (
         <ul className="space-y-2" aria-label="Códigos internos sin entregar">
-          {codigos.map((c) => (
+          {enPagina.map((c) => (
             <li key={c.codigo}>
               <Link
                 href={enlaceDeTiempos(c.codigo)}
@@ -144,6 +151,7 @@ export default async function PaginaTiemposDeEntrega({ searchParams }: PageProps
           ))}
         </ul>
       )}
+      <Paginacion ruta={RUTA_TIEMPOS} pagina={pagina} paginas={paginas} total={codigos.length} porPagina={POR_PAGINA} params={params} />
     </>
   )
 }
@@ -151,15 +159,24 @@ export default async function PaginaTiemposDeEntrega({ searchParams }: PageProps
 /** Lo que dice el semáforo del código en una línea: lo que venció o lo que viene. */
 function motivo(c: CodigoConTiempos, hoy: string): string {
   const partes: string[] = []
+  // La entrega al cliente va primero cuando es ella la que venció o está por vencer.
+  const entregaUrgente = c.fecha_entrega !== null && (c.semaforo_entrega === 'ROJO' || c.semaforo_entrega === 'AMBAR')
+  if (entregaUrgente) partes.push(`La entrega ${plazoDeEntrega(c, hoy)}`)
   if (c.etapas_vencidas > 0) partes.push(`${c.etapas_vencidas} ${c.etapas_vencidas === 1 ? 'etapa vencida' : 'etapas vencidas'}`)
   if (c.etapas_por_vencer > 0) partes.push(`${c.etapas_por_vencer} por vencer`)
   if (partes.length === 0 && c.proxima_fecha) partes.push(`Próxima fecha: ${fecha(c.proxima_fecha)}`)
-  if (partes.length === 0 && c.fecha_entrega) {
-    partes.push(
-      plazoEnPalabras(c.semaforo_entrega, c.dias_habiles_entrega, { fechaPlan: c.fecha_entrega, hoy, femenino: false }).replace(/^Vencido/, 'Entrega vencida'),
-    )
-  }
+  if (partes.length === 0 && c.fecha_entrega) partes.push(`La entrega ${plazoDeEntrega(c, hoy)}`)
   return partes.join(' · ')
+}
+
+/** «vence hoy», «venció hace 2 días hábiles», «es en 12 días hábiles». */
+function plazoDeEntrega(c: CodigoConTiempos, hoy: string): string {
+  return plazoEnPalabras(c.semaforo_entrega, c.dias_habiles_entrega, { fechaPlan: c.fecha_entrega, hoy })
+    .replace(/^Vencida hace/, 'venció hace')
+    .replace(/^Vencida$/, 'ya venció')
+    .replace(/^Vence/, 'vence')
+    .replace(/^Faltan (.+)$/, 'es en $1')
+    .replace(/^A tiempo$/, 'va a tiempo')
 }
 
 function Fila({ c, hoy }: { c: CodigoConTiempos; hoy: string }) {
@@ -200,7 +217,12 @@ function Fila({ c, hoy }: { c: CodigoConTiempos; hoy: string }) {
         <span className="text-texto-suave">
           {c.fecha_entrega ? (
             <>
-              Entrega al cliente: <span className="tabular text-texto">{fecha(c.fecha_entrega)}</span>
+              Entrega al cliente:{' '}
+              <span
+                className={`tabular ${c.semaforo_entrega === 'ROJO' ? 'font-medium text-peligro' : c.semaforo_entrega === 'AMBAR' ? 'font-medium text-aviso' : 'text-texto'}`}
+              >
+                {fecha(c.fecha_entrega)}
+              </span>
             </>
           ) : (
             'Sin fecha de entrega al cliente'

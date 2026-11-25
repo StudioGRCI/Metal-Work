@@ -17256,7 +17256,33 @@ export type Database = {
         }[]
       }
       tiempos_de_entrega_codigos: {
-        Args: Record<PropertyKey, never>
+        Args: {
+          p_codigo?: string | null
+        }
+        Returns: {
+          codigo: string | null
+          ot_numero: string | null
+          ot_estado: string | null
+          cliente: string | null
+          unidad: string | null
+          fecha_entrega: string | null
+          dias_habiles_entrega: number | null
+          semaforo_entrega: string | null
+          etapas: number | null
+          etapas_terminadas: number | null
+          etapas_vencidas: number | null
+          etapas_por_vencer: number | null
+          etapas_sin_fecha: number | null
+          etapa_en_curso: string | null
+          area_en_curso: string | null
+          proxima_fecha: string | null
+          semaforo: string | null
+        }[]
+      }
+      tiempos_de_entrega_codigos_calculado: {
+        Args: {
+          p_codigo?: string | null
+        }
         Returns: {
           codigo: string | null
           ot_numero: string | null
@@ -17278,6 +17304,29 @@ export type Database = {
         }[]
       }
       tiempos_de_entrega_etapas: {
+        Args: {
+          p_codigo?: string | null
+        }
+        Returns: {
+          id: string | null
+          codigo: string | null
+          orden: number | null
+          nombre: string | null
+          padre_id: string | null
+          area_id: string | null
+          area: string | null
+          inicio_plan: string | null
+          fin_plan: string | null
+          inicio_real: string | null
+          fin_real: string | null
+          nota: string | null
+          ultimo_reporte: string | null
+          avance_reportado: number | null
+          semaforo: string | null
+          dias_habiles: number | null
+        }[]
+      }
+      tiempos_de_entrega_etapas_calculado: {
         Args: {
           p_codigo?: string | null
         }

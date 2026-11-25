@@ -94,18 +94,16 @@ grant execute on function public.exigir_ver_tiempos_de_entrega() to authenticate
 
 -- 4. Las etapas de un código, o de todos, con su semáforo ---------------------------
 -- El mismo cálculo que ven Diseño y Gerencia (`codigo_interno_etapas_calculado`),
--- con el semáforo y los días hábiles que faltan. Corre como dueño porque RR. HH.
--- no lee `codigo_etapas` ni los reportes de todas las áreas por su cuenta; el
--- permiso se exige adentro.
-create or replace function public.tiempos_de_entrega_etapas(p_codigo text default null)
+-- con el semáforo y los días hábiles que faltan. Va en dos piezas, como aquel:
+-- el cálculo, sin permiso y cerrado a la gente, que también usará la revisión
+-- diaria de los avisos (corre sin sesión); y el envoltorio que exige el permiso
+-- y corre como dueño, porque RR. HH. no lee `codigo_etapas` ni los reportes de
+-- todas las áreas por su cuenta.
+create or replace function public.tiempos_de_entrega_etapas_calculado(p_codigo text default null)
 returns table (id uuid, codigo text, orden smallint, nombre text, padre_id uuid, area_id uuid, area text,
                inicio_plan date, fin_plan date, inicio_real date, fin_real date, nota text,
                ultimo_reporte date, avance_reportado numeric, semaforo text, dias_habiles integer)
-language plpgsql stable security definer set search_path to 'public' as $$
-#variable_conflict use_column
-begin
-  perform public.exigir_ver_tiempos_de_entrega();
-  return query
+language sql stable set search_path to 'public' as $$
   select e.id, e.codigo, e.orden, e.nombre, x.padre_id, e.area_id, e.area,
          e.inicio_plan, e.fin_plan, e.inicio_real, e.fin_real, e.nota,
          e.ultimo_reporte, e.avance_reportado,
@@ -115,6 +113,19 @@ begin
     from public.codigo_interno_etapas_calculado(p_codigo) e
     join public.codigo_etapas x on x.id = e.id
    order by e.codigo, e.orden, e.id;
+$$;
+comment on function public.tiempos_de_entrega_etapas_calculado(text) is
+  'El cálculo de tiempos_de_entrega_etapas, sin permiso: lo llaman el envoltorio y la revisión diaria de avisos. Cerrado a authenticated.';
+revoke all on function public.tiempos_de_entrega_etapas_calculado(text) from public, anon, authenticated;
+
+create or replace function public.tiempos_de_entrega_etapas(p_codigo text default null)
+returns table (id uuid, codigo text, orden smallint, nombre text, padre_id uuid, area_id uuid, area text,
+               inicio_plan date, fin_plan date, inicio_real date, fin_real date, nota text,
+               ultimo_reporte date, avance_reportado numeric, semaforo text, dias_habiles integer)
+language plpgsql stable security definer set search_path to 'public' as $$
+begin
+  perform public.exigir_ver_tiempos_de_entrega();
+  return query select * from public.tiempos_de_entrega_etapas_calculado(p_codigo);
 end;
 $$;
 comment on function public.tiempos_de_entrega_etapas(text) is
@@ -124,48 +135,73 @@ grant execute on function public.tiempos_de_entrega_etapas(text) to authenticate
 
 -- 5. El tablero: un renglón por código que todavía no se entrega --------------------
 -- Entra el código de toda OT que no está entregada, facturada ni anulada, y el
--- que tiene etapas sin terminar aunque no tenga OT abierta. La OT con que se
--- nombra es la abierta que entró primero, como en «Unidades en taller».
--- El semáforo general es el peor de sus etapas sin terminar y de su fecha de
--- entrega; sin ninguna fecha, SIN_FECHA.
-create or replace function public.tiempos_de_entrega_codigos()
+-- que tiene etapas sin terminar aunque no tenga OT abierta. El que ya se
+-- entregó o se facturó y no tiene otra OT abierta no entra, aunque le hayan
+-- quedado etapas sin marcar: la unidad ya se fue. La OT con que se nombra es la
+-- abierta que entró primero, como en «Unidades en taller».
+-- Las cuentas son de etapas de arriba: una etapa cuenta como vencida si ella o
+-- alguna de sus subetapas venció, para que «1 de 6 terminadas · 2 vencidas»
+-- hablen de lo mismo. El semáforo general es el peor de sus etapas sin terminar
+-- y de su fecha de entrega; sin ninguna fecha, SIN_FECHA.
+-- Con p_codigo, solo ese código (el detalle no calcula el tablero entero).
+create or replace function public.tiempos_de_entrega_codigos_calculado(p_codigo text default null)
 returns table (codigo text, ot_numero text, ot_estado text, cliente text, unidad text,
                fecha_entrega date, dias_habiles_entrega integer, semaforo_entrega text,
                etapas integer, etapas_terminadas integer, etapas_vencidas integer, etapas_por_vencer integer,
                etapas_sin_fecha integer, etapa_en_curso text, area_en_curso text,
                proxima_fecha date, semaforo text)
-language plpgsql stable security definer set search_path to 'public' as $$
-#variable_conflict use_column
-begin
-  perform public.exigir_ver_tiempos_de_entrega();
-  return query
-  with ot as (
-    select distinct on (c.codigo)
-           c.codigo, o.numero::text as numero, o.estado::text as estado, cl.razon_social::text as cliente,
+language sql stable set search_path to 'public' as $$
+  with pedido as (
+    select public.normalizar_codigo_interno(p_codigo) as codigo
+  ), de_ot as (
+    select c.codigo, o.numero::text as numero, o.estado::text as estado, o.fecha_registro,
+           cl.razon_social::text as cliente,
            nullif(concat_ws(' · ', nullif(btrim(coalesce(u.placa::text, '')), ''), tc.nombre::text), '') as unidad,
            o.fecha_entrega_comprometida as fecha_entrega
       from public.ordenes_trabajo o
       join public.unidades u on u.id = o.unidad_id
       cross join lateral (select public.normalizar_codigo_interno(u.codigo_interno) as codigo) c
+      cross join pedido q
       left join public.clientes cl on cl.id = o.cliente_id
       left join public.tipos_carroceria tc on tc.id = u.tipo_carroceria_id
-     where o.estado not in ('ENTREGADA', 'FACTURADA', 'ANULADA')
+     where o.estado <> 'ANULADA'
        and c.codigo is not null
-     order by c.codigo, o.fecha_registro nulls last, o.numero
+       and (q.codigo is null or c.codigo = q.codigo)
+  ), ot as (
+    select distinct on (d.codigo) d.codigo, d.numero, d.estado, d.cliente, d.unidad, d.fecha_entrega
+      from de_ot d
+     where d.estado not in ('ENTREGADA', 'FACTURADA')
+     order by d.codigo, d.fecha_registro nulls last, d.numero
+  ), entregado as (
+    -- Ya se entregó o facturó y no le queda ninguna OT abierta.
+    select distinct d.codigo
+      from de_ot d
+     where d.estado in ('ENTREGADA', 'FACTURADA')
+       and not exists (select 1 from ot o where o.codigo = d.codigo)
   ), etapa as (
-    select e.codigo, e.orden, e.nombre, e.area, e.padre_id, e.fin_plan, e.inicio_real, e.fin_real, e.semaforo
-      from public.tiempos_de_entrega_etapas(null) e
+    select e.id, e.codigo, e.orden, e.nombre, e.area, e.padre_id, e.fin_plan, e.inicio_real, e.fin_real, e.semaforo
+      from public.tiempos_de_entrega_etapas_calculado(p_codigo) e
   ), por_codigo as (
     select e.codigo,
            count(*) filter (where e.padre_id is null)::integer as etapas,
            count(*) filter (where e.padre_id is null and e.fin_real is not null)::integer as terminadas,
-           count(*) filter (where e.semaforo = 'ROJO')::integer as vencidas,
-           count(*) filter (where e.semaforo = 'AMBAR')::integer as por_vencer,
-           count(*) filter (where e.semaforo = 'SIN_FECHA')::integer as sin_fecha,
+           count(*) filter (where e.padre_id is null and e.semaforo = 'SIN_FECHA')::integer as sin_fecha,
            count(*) filter (where e.fin_real is null)::integer as pendientes,
            min(e.fin_plan) filter (where e.fin_real is null) as proxima
       from etapa e
      group by e.codigo
+  ), por_etapa as (
+    -- Cada etapa de arriba con lo peor de ella y de sus subetapas.
+    select e.codigo, coalesce(e.padre_id, e.id) as raiz,
+           bool_or(e.semaforo = 'ROJO') as rojo, bool_or(e.semaforo = 'AMBAR') as ambar
+      from etapa e
+     group by e.codigo, coalesce(e.padre_id, e.id)
+  ), plazos as (
+    select g.codigo,
+           count(*) filter (where g.rojo)::integer as vencidas,
+           count(*) filter (where g.ambar and not g.rojo)::integer as por_vencer
+      from por_etapa g
+     group by g.codigo
   ), en_curso as (
     -- La etapa de arriba en que va: la empezada sin terminar; si ninguna, la primera sin terminar.
     select distinct on (e.codigo) e.codigo, e.nombre, e.area
@@ -175,32 +211,50 @@ begin
   ), codigos as (
     select o.codigo from ot o
     union
-    select p.codigo from por_codigo p where p.pendientes > 0
+    select p.codigo from por_codigo p
+     where p.pendientes > 0
+       and not exists (select 1 from entregado x where x.codigo = p.codigo)
   )
   select c.codigo, o.numero, o.estado, o.cliente, o.unidad,
          o.fecha_entrega,
          case when o.fecha_entrega is not null then public.dias_habiles_entre(current_date, o.fecha_entrega) end,
          public.semaforo_de_fecha(o.fecha_entrega),
-         coalesce(p.etapas, 0), coalesce(p.terminadas, 0), coalesce(p.vencidas, 0), coalesce(p.por_vencer, 0),
+         coalesce(p.etapas, 0), coalesce(p.terminadas, 0), coalesce(z.vencidas, 0), coalesce(z.por_vencer, 0),
          coalesce(p.sin_fecha, 0), k.nombre, k.area,
          p.proxima,
          case
-           when coalesce(p.vencidas, 0) > 0 or public.semaforo_de_fecha(o.fecha_entrega) = 'ROJO' then 'ROJO'
-           when coalesce(p.por_vencer, 0) > 0 or public.semaforo_de_fecha(o.fecha_entrega) = 'AMBAR' then 'AMBAR'
+           when coalesce(z.vencidas, 0) > 0 or public.semaforo_de_fecha(o.fecha_entrega) = 'ROJO' then 'ROJO'
+           when coalesce(z.por_vencer, 0) > 0 or public.semaforo_de_fecha(o.fecha_entrega) = 'AMBAR' then 'AMBAR'
            when p.proxima is not null or o.fecha_entrega is not null then 'VERDE'
            else 'SIN_FECHA'
          end
     from codigos c
     left join ot o on o.codigo = c.codigo
     left join por_codigo p on p.codigo = c.codigo
+    left join plazos z on z.codigo = c.codigo
     left join en_curso k on k.codigo = c.codigo
    order by c.codigo;
+$$;
+comment on function public.tiempos_de_entrega_codigos_calculado(text) is
+  'El cálculo de tiempos_de_entrega_codigos, sin permiso: lo llaman el envoltorio y la revisión diaria de avisos. Cerrado a authenticated.';
+revoke all on function public.tiempos_de_entrega_codigos_calculado(text) from public, anon, authenticated;
+
+create or replace function public.tiempos_de_entrega_codigos(p_codigo text default null)
+returns table (codigo text, ot_numero text, ot_estado text, cliente text, unidad text,
+               fecha_entrega date, dias_habiles_entrega integer, semaforo_entrega text,
+               etapas integer, etapas_terminadas integer, etapas_vencidas integer, etapas_por_vencer integer,
+               etapas_sin_fecha integer, etapa_en_curso text, area_en_curso text,
+               proxima_fecha date, semaforo text)
+language plpgsql stable security definer set search_path to 'public' as $$
+begin
+  perform public.exigir_ver_tiempos_de_entrega();
+  return query select * from public.tiempos_de_entrega_codigos_calculado(p_codigo);
 end;
 $$;
-comment on function public.tiempos_de_entrega_codigos() is
-  'El tablero de tiempos de entrega: cada código interno sin entregar con su OT, su cliente, la fecha de entrega al cliente con su propio semáforo, cuántas etapas lleva, cuántas vencidas y por vencer, en qué etapa va y su semáforo general. Exige rrhh.tiempos_entrega.';
-revoke all on function public.tiempos_de_entrega_codigos() from public, anon;
-grant execute on function public.tiempos_de_entrega_codigos() to authenticated;
+comment on function public.tiempos_de_entrega_codigos(text) is
+  'El tablero de tiempos de entrega: cada código interno sin entregar (o solo el pedido) con su OT, su cliente, la fecha de entrega al cliente con su propio semáforo, cuántas etapas lleva, cuántas vencidas y por vencer (contando sus subetapas), en qué etapa va y su semáforo general. Exige rrhh.tiempos_entrega.';
+revoke all on function public.tiempos_de_entrega_codigos(text) from public, anon;
+grant execute on function public.tiempos_de_entrega_codigos(text) to authenticated;
 
 -- 6. Las actividades de un código con su avance -------------------------------------
 -- Lo que cada área reporta en su reporte diario para el código: la actividad y

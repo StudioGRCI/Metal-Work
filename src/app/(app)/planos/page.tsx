@@ -8,6 +8,7 @@ import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
+import { limitePorVencer } from '@/lib/datos/limite-por-vencer'
 import {
   areasParaEtapas,
   dxfDeCodigo,
@@ -90,6 +91,7 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
     return Boolean(q && ot && coincide(palabras, [ot.numero, ot.cliente]))
   }
   const hoy = hoyLima()
+  const limite = await limitePorVencer()
 
   const veOt = puede(perfil, 'ordenes.ver')
   const [planos, todasLasEtapas, dxf, ots, codigosConocidos, todasLasAreas] = await Promise.all([
@@ -226,6 +228,7 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
                       <ListaEtapas
                         etapas={susEtapas}
                         hoy={hoy}
+                        limite={limite}
                         acciones={(e, lugar) => (
                           <>
                             <MarcarEtapa etapa={e} hoy={hoy} />

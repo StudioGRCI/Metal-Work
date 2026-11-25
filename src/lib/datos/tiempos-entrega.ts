@@ -28,6 +28,7 @@ export type CodigoConTiempos = {
   semaforo_entrega: Semaforo
   etapas: number
   etapas_terminadas: number
+  /** Etapas de arriba vencidas: cuenta una vez la etapa con su subetapa vencida. */
   etapas_vencidas: number
   etapas_por_vencer: number
   etapas_sin_fecha: number
@@ -38,12 +39,29 @@ export type CodigoConTiempos = {
   semaforo: Semaforo
 }
 
+/** El renglón de un solo código, o nada si ya no está por entregar. */
+export async function codigoConTiempos(codigo: string): Promise<CodigoConTiempos | null> {
+  return (await leerCodigos(normalizarCodigo(codigo)))[0] ?? null
+}
+
 /** El tablero: lo vencido primero y, dentro de cada color, lo que vence antes. */
 export async function codigosConTiempos(): Promise<CodigoConTiempos[]> {
+  const filas = await leerCodigos(null)
+  // La fecha que manda en la fila: la más próxima entre sus etapas y su entrega.
+  const antes = (c: CodigoConTiempos) => [c.proxima_fecha, c.fecha_entrega].filter(Boolean).sort()[0] ?? '9999-12-31'
+  return filas.sort(
+    (a, b) => pesoDeSemaforo(a.semaforo) - pesoDeSemaforo(b.semaforo) || antes(a).localeCompare(antes(b)) || a.codigo.localeCompare(b.codigo),
+  )
+}
+
+async function leerCodigos(codigo: string | null): Promise<CodigoConTiempos[]> {
   const supabase = await createClient()
-  const { data, error } = await todasLasFilas(() => supabase.rpc('tiempos_de_entrega_codigos'), ['codigo'])
+  const { data, error } = await todasLasFilas(
+    () => supabase.rpc('tiempos_de_entrega_codigos', codigo ? { p_codigo: codigo } : {}),
+    ['codigo'],
+  )
   if (error) throw new Error(`No se pudieron leer los tiempos de entrega: ${error.message}`)
-  const filas = (data ?? []).flatMap((c): CodigoConTiempos[] =>
+  return (data ?? []).flatMap((c): CodigoConTiempos[] =>
     c.codigo
       ? [
           {
@@ -67,11 +85,6 @@ export async function codigosConTiempos(): Promise<CodigoConTiempos[]> {
           },
         ]
       : [],
-  )
-  // La fecha que manda en la fila: la más próxima entre sus etapas y su entrega.
-  const antes = (c: CodigoConTiempos) => [c.proxima_fecha, c.fecha_entrega].filter(Boolean).sort()[0] ?? '9999-12-31'
-  return filas.sort(
-    (a, b) => pesoDeSemaforo(a.semaforo) - pesoDeSemaforo(b.semaforo) || antes(a).localeCompare(antes(b)) || a.codigo.localeCompare(b.codigo),
   )
 }
 

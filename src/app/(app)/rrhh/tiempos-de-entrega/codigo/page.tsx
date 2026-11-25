@@ -8,7 +8,7 @@ import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabl
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import {
   actividadesConAvance,
-  codigosConTiempos,
+  codigoConTiempos,
   etapasConTiempos,
   type ActividadConAvance,
   type EtapaConTiempos,
@@ -31,16 +31,17 @@ export default async function PaginaTiemposDelCodigo({ searchParams }: PageProps
   if (typeof params.codigo !== 'string' || !params.codigo.trim()) notFound()
   const codigo = normalizarCodigo(params.codigo)
 
-  const [todos, etapas, actividades] = await Promise.all([codigosConTiempos(), etapasConTiempos(codigo), actividadesConAvance(codigo)])
-  const resumen = todos.find((c) => c.codigo === codigo) ?? null
+  const [resumen, etapas, actividades] = await Promise.all([codigoConTiempos(codigo), etapasConTiempos(codigo), actividadesConAvance(codigo)])
   // Ni está por entregar ni tiene etapas ni reportes: ese código no es de aquí.
   if (!resumen && etapas.length === 0 && actividades.length === 0) notFound()
 
   const hoy = hoyLima()
   const arriba = etapas.filter((e) => !e.padre_id)
   const terminadas = arriba.filter((e) => e.fin_real).length
-  const vencidas = etapas.filter((e) => e.semaforo === 'ROJO').length
-  const porVencer = etapas.filter((e) => e.semaforo === 'AMBAR').length
+  // Como el tablero: la etapa cuenta una vez, con lo peor de ella y de sus subetapas.
+  const conLoSuyo = arriba.map((e) => [e, ...etapas.filter((s) => s.padre_id === e.id)].map((x) => x.semaforo))
+  const vencidas = conLoSuyo.filter((s) => s.includes('ROJO')).length
+  const porVencer = conLoSuyo.filter((s) => s.includes('AMBAR') && !s.includes('ROJO')).length
   const semaforoEntrega = resumen?.semaforo_entrega ?? 'SIN_FECHA'
 
   return (
@@ -73,7 +74,7 @@ export default async function PaginaTiemposDelCodigo({ searchParams }: PageProps
             valor={arriba.length > 0 ? `${terminadas} de ${arriba.length}` : '0'}
             pie={arriba.length > 0 ? 'Terminadas' : 'Diseño todavía no las cargó'}
           />
-          <Indicador titulo="Vencidas" valor={String(vencidas)} tono={vencidas > 0 ? 'peligro' : 'neutro'} pie="Pasaron su fecha sin terminar" />
+          <Indicador titulo="Vencidas" valor={String(vencidas)} tono={vencidas > 0 ? 'peligro' : 'neutro'} pie="Ellas o una subetapa pasaron su fecha" />
           <Indicador titulo="Por vencer" valor={String(porVencer)} tono={porVencer > 0 ? 'aviso' : 'neutro'} pie="Hoy o en 3 días hábiles" />
         </div>
 
@@ -153,7 +154,7 @@ function FilaDeEtapa({ e, numero, hoy, sub = false }: { e: EtapaConTiempos; nume
         {!e.fin_real && <span className="text-xs text-texto-suave">{e.inicio_real ? 'En proceso' : 'Por empezar'}</span>}
       </div>
       <p className="text-xs text-texto-suave">
-        Plan: {e.inicio_plan ? fecha(e.inicio_plan) : 'sin inicio'} → {e.fin_plan ? fecha(e.fin_plan) : 'sin fecha comprometida'}
+        Plan: {e.inicio_plan ? fecha(e.inicio_plan) : 'sin inicio'} → {e.fin_plan ? fecha(e.fin_plan) : 'sin fin'}
         {(e.inicio_real || e.fin_real) && (
           <span className="text-texto">
             {' '}
