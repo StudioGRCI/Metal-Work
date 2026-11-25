@@ -121,15 +121,22 @@ export function estadoEtapa(e: EtapaConFechas): Def & { valor: 'PENDIENTE' | 'EN
   return { valor: 'PENDIENTE', etiqueta: 'Por empezar', tono: 'neutro' }
 }
 
-/** Cuántos días antes de la fecha comprometida se avisa que vence. */
+/**
+ * Cuántos días antes de la fecha comprometida se avisa que vence, si la
+ * pantalla no trae el límite de la base. Desde la migración 20261125100000 son
+ * días hábiles y los cuenta la base (`limite_por_vencer`): quien pinta el
+ * semáforo le pasa ese `limite` a `plazoEtapa` para decir lo mismo que el
+ * tablero de RR. HH. y que los avisos.
+ */
 export const DIAS_POR_VENCER = 3
 
 /**
  * El semáforo de una etapa contra su fecha comprometida, como la hoja «Control
  * de plazos»: terminada a tiempo o con atraso; si no terminó, vencida, por
- * vencer, a tiempo o sin fecha.
+ * vencer, a tiempo o sin fecha. `limite` es el último día que todavía es «por
+ * vencer» (hoy más tres días hábiles, de la base); sin él, tres días corridos.
  */
-export function plazoEtapa(e: EtapaConFechas, hoy: string): Def {
+export function plazoEtapa(e: EtapaConFechas, hoy: string, limite?: string | null): Def {
   if (e.fin_real) {
     const atraso = e.fin_plan ? diasEntre(e.fin_plan, e.fin_real) : 0
     return atraso > 0
@@ -140,7 +147,7 @@ export function plazoEtapa(e: EtapaConFechas, hoy: string): Def {
   const faltan = diasEntre(hoy, e.fin_plan)
   if (faltan < 0) return { etiqueta: `Vencida hace ${-faltan} ${faltan === -1 ? 'día' : 'días'}`, tono: 'peligro' }
   if (faltan === 0) return { etiqueta: 'Vence hoy', tono: 'aviso' }
-  if (faltan <= DIAS_POR_VENCER) return { etiqueta: `Vence en ${faltan} ${faltan === 1 ? 'día' : 'días'}`, tono: 'aviso' }
+  if (limite ? e.fin_plan <= limite : faltan <= DIAS_POR_VENCER) return { etiqueta: `Vence en ${faltan} ${faltan === 1 ? 'día' : 'días'}`, tono: 'aviso' }
   return { etiqueta: `Vence el ${fecha(e.fin_plan)}`, tono: 'info' }
 }
 
