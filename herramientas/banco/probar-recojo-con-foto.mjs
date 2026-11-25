@@ -168,7 +168,7 @@ let FOTO
 }
 
 async function entrar(correo, ancho, escala = 1) {
-  const contexto = await navegador.newContext({ viewport: { width: ancho, height: ancho < 500 ? 844 : 900 }, hasTouch: ancho < 500, deviceScaleFactor: escala })
+  const contexto = await navegador.newContext({ locale: 'es-PE', viewport: { width: ancho, height: ancho < 500 ? 844 : 900 }, hasTouch: ancho < 500, deviceScaleFactor: escala })
   const pagina = await contexto.newPage()
   const errores = []
   pagina.on('console', (m) => {
@@ -187,6 +187,27 @@ async function entrar(correo, ancho, escala = 1) {
 const texto = async (loc) => (await loc.innerText()).replace(/\s+/g, ' ')
 const tarjeta = (pagina, oc) => pagina.locator('main section > div').filter({ has: pagina.getByRole('heading', { name: new RegExp(oc.replace(/[-]/g, '\\-')) }) })
 const fila = async (sql, valores) => (await consulta(sql, valores))[0]
+/**
+ * La miniatura carga con `loading="lazy"`: fuera de la vista no se pide. Se la
+ * trae a la vista, se espera a que cargue y se pide su enlace, que es el que
+ * abre la foto entera.
+ */
+async function fotoQueAbre(pagina, tarjetaDeLaOc) {
+  const img = tarjetaDeLaOc.locator('img').first()
+  await img.waitFor({ timeout: 10000 })
+  await img.scrollIntoViewIfNeeded()
+  const cargo = await img
+    .evaluate((i) => (i.complete && i.naturalWidth > 0) || new Promise((listo) => {
+      i.addEventListener('load', () => listo(i.naturalWidth > 0), { once: true })
+      i.addEventListener('error', () => listo(false), { once: true })
+      setTimeout(() => listo(false), 10000)
+    }))
+    .catch(() => false)
+  const enlace = await tarjetaDeLaOc.locator('a:has(img)').first().getAttribute('href')
+  const abre = enlace ? (await pagina.request.get(enlace)).ok() : false
+  return cargo === true && abre
+}
+
 async function sinDesborde(pagina, donde) {
   const [ancho, ventana] = await pagina.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth])
   comprobar(ancho <= ventana, `${donde}: la página no se desborda a lo ancho (${ancho} de ${ventana})`)
@@ -235,9 +256,7 @@ try {
     const [enStorage] = await consulta(`select count(*)::int as n from storage.objects where bucket_id = 'fotos-recojo' and name = $1`, [fotos[0]?.ruta ?? ''])
     comprobar(enStorage.n === 1, 'la foto está en el bucket privado fotos-recojo')
     await a.getByText('Fotos del recojo (1 foto)').waitFor({ timeout: 10000 })
-    const img = a.locator('img').first()
-    await img.waitFor({ timeout: 10000 })
-    comprobar((await img.evaluate((i) => i.complete && i.naturalWidth > 0)) === true, `${donde}: la tarjeta muestra la foto y abre`)
+    comprobar(await fotoQueAbre(pagina, a), `${donde}: la tarjeta muestra la foto y abre`)
     comprobar((await a.getByRole('button', { name: 'No se pudo recoger' }).count()) === 0, `${donde}: ya recogida, no ofrece «No se pudo recoger»`)
     await sinDesborde(pagina, donde)
     comprobar(errores.length === 0, `${donde}: sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
@@ -326,8 +345,7 @@ try {
       comprobar(enPorProgramar === 1, `${donde}: ${ocB} está en «Por programar»`)
       comprobar((await texto(b)).includes('No se pudo recoger') && (await texto(b)).includes(MOTIVO_B), `${donde}: con lo que dijo el conductor`)
       const a = tarjeta(pagina, ocA)
-      await a.locator('img').first().waitFor({ timeout: 10000 })
-      comprobar((await a.locator('img').first().evaluate((i) => i.complete && i.naturalWidth > 0)) === true, `${donde}: ve la foto del recojo de ${ocA}, que abre`)
+      comprobar(await fotoQueAbre(pagina, a), `${donde}: ve la foto del recojo de ${ocA}, que abre`)
       comprobar((await pagina.getByRole('button', { name: /No se pudo recoger|Ya la recogí|Salgo a recoger/ }).count()) === 0, `${donde}: sin los botones del conductor`)
       await sinDesborde(pagina, donde)
       await b.scrollIntoViewIfNeeded()

@@ -122,7 +122,7 @@ function YaLaRecogi({ id, nombre, cuentaId }: { id: string; nombre: string; cuen
           {/* Trabado mientras se envía: una foto elegida o quitada entonces no iba con el recojo. */}
           <fieldset disabled={envio.enviando} className="min-w-0 space-y-1">
             <legend className="text-sm font-medium text-texto">Fotos del recojo (opcional)</legend>
-            <p className="text-xs text-texto-suave">La guía firmada o el bulto. Hasta {MAXIMO_FOTOS_RECOJO} fotos.</p>
+            <p className="text-xs text-texto-suave">La guía firmada o el bulto.</p>
             <SelectorFotos
               fotos={fotos}
               alCambiar={setFotos}
