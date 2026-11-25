@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { menuDe, modulosDelInicio, pestanasDe, rutasDeTrabajo } from './navegacion.ts'
 
-// Los permisos de Gerencia en producción el 2026-11-25 (`docs/PERMISOS.md`).
+// Los 32 permisos de Gerencia en producción el 2026-11-25 (leídos de `roles_permisos`).
 const GERENCIA = [
   'adquisiciones.ver', 'almacen.ver', 'asistencia.ver', 'auditoria.ver', 'clientes.ver', 'codigos_internos.cerrar',
   'codigos_internos.ver', 'compras.configurar_aprobacion', 'compras.ver', 'costos.ver', 'cotizaciones.revisar',
@@ -33,15 +33,18 @@ test('Gerencia ve por área las 34 pantallas que su permiso le abre, cada una un
   }
 })
 
-test('lo que Gerencia consulta no es su trabajo: ni pendientes, ni cifras, ni «Tus módulos»', () => {
+test('lo que Gerencia consulta no es su trabajo; lo que ya tenía en su menú, sí', () => {
   const grupos = menuDe(GERENCIA, false, 'GERENTE')
   assert.deepEqual(grupos.filter((g) => !g.consulta).map((g) => g.titulo), ['Principal', 'Por aprobar'])
+  // Las mismas diez rutas que su menú tenía antes del 2026-11-25: ni un pendiente ni una cifra de más o de menos.
   assert.deepEqual([...rutasDeTrabajo(GERENCIA, false, 'GERENTE')].sort(), [
-    '/', '/avance/trabajos', '/codigos-internos', '/compras/aprobacion', '/cotizaciones/pdf', '/reportes-diarios',
+    '/', '/adquisiciones', '/avance/trabajos', '/codigos-internos', '/compras/aprobacion', '/costos/gastos-generales',
+    '/cotizaciones/pdf', '/reportes-diarios', '/tesoreria/por-cobrar', '/tesoreria/por-pagar',
   ])
   assert.ok(!rutasDeTrabajo(GERENCIA, false, 'GERENTE').has('/ordenes'))
   assert.deepEqual(rutas(modulosDelInicio(GERENCIA, false, 'GERENTE')), [
     '/', '/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos',
+    '/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales',
   ])
   assert.deepEqual(pestanasDe(GERENCIA, false, 'GERENTE').map((p) => p.ruta), [
     '/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios',

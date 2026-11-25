@@ -388,8 +388,8 @@ export const NAVEGACION = [
       },
       // Lo ven también Almacén, Costos y Supervisión (`proveedores.ver`), pero
       // en el menú solo de quienes llevan el padrón: Logística y Contabilidad.
-      // Gerencia también lo edita, pero desde el 2026-10-15 no lo tiene en su
-      // menú: lo abre por su dirección.
+      // Gerencia también lo edita y, desde el 2026-11-25, lo tiene en su menú
+      // entre las pantallas de Logística que consulta.
       {
         titulo: 'Proveedores',
         ruta: '/proveedores',
@@ -605,6 +605,11 @@ type MenuDePuesto = {
   }[]
   /** Las pestañas de abajo en el teléfono, en orden: van las cuatro primeras que la persona ve. */
   telefono: readonly RutaDeModulo[]
+  /**
+   * Las pantallas de un grupo de consulta que sí son del puesto: van en «Tus
+   * módulos» y le cuentan pendientes y cifras como su trabajo.
+   */
+  alInicio?: readonly RutaDeModulo[]
 }
 
 /**
@@ -692,9 +697,11 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // Desde el 2026-11-25 ve además todas las pantallas que su permiso le deja
   // leer, por área y en el orden del circuito (StudioGRCI:
   // «en gerencia general quieren ver todo, todas las pantallas»). Las consulta
-  // sin registrar: Gerencia consulta y aprueba (migración 20261020206000). Lo
+  // sin registrar: Gerencia consulta y aprueba (migración 20261020206000); la
+  // única que todavía le deja registrar es Proveedores (`proveedores.editar`). Lo
   // de las áreas no es su trabajo (`consulta`): no le cuenta pendientes, cifras
-  // ni el bloque de OT, y no va en «Tus módulos». Las 25 pantallas que su
+  // ni el bloque de OT, y no va en «Tus módulos», salvo las cuatro que ya
+  // consultaba desde su menú antes (`alInicio`). Las 25 pantallas que su
   // permiso no abre no están aquí: las que se le abran en lectura, con su
   // migración, se suman a su área. No ve los datos reservados del personal
   // (planillas, costeo, pagos de la oficina, DNI), la evaluación de desempeño
@@ -744,8 +751,10 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       },
     ],
     telefono: ['/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios'],
+    // Lo que consultaba desde su menú antes del 2026-11-25 sigue en su inicio.
+    alInicio: ['/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales'],
   },
-  // Cerrado desde #28, como Gerencia.
+  // Cerrado desde #28, como lo estuvo Gerencia hasta el 2026-11-25.
   // Primero Adquisiciones y después la caja diaria, con la que abre y cierra
   // cada día (DKS, 2026-10-20). Después Cuentas por cobrar, Cuentas por pagar y
   // Pagos de servicio, en el orden en que Gerencia las nombró el 2026-10-14, y
@@ -982,13 +991,19 @@ export function menuDe(permisos: readonly string[], esAdmin: boolean, rolCodigo:
 }
 
 /**
- * Los grupos del menú que son trabajo del puesto, sin lo que solo consulta:
- * «Tus módulos» del dashboard. A Gerencia le quedan el dashboard, Códigos
- * internos y lo que espera su visto; las áreas que consulta siguen en la barra
- * y en «Más».
+ * Los grupos del menú que son trabajo del puesto, sin lo que solo consulta
+ * (salvo lo que su puesto pone en `alInicio`): «Tus módulos» del dashboard. A
+ * Gerencia le quedan el dashboard, Códigos internos, lo que espera su visto y
+ * las cuatro de Finanzas que ya tenía; las demás áreas que consulta siguen en
+ * la barra y en «Más».
  */
 export function modulosDelInicio(permisos: readonly string[], esAdmin: boolean, rolCodigo: string): GrupoNavegacion[] {
-  return menuDe(permisos, esAdmin, rolCodigo).filter((g) => !g.consulta)
+  const alInicio: ReadonlySet<string> = new Set((esAdmin ? undefined : MENU_POR_PUESTO[rolCodigo])?.alInicio ?? [])
+  return menuDe(permisos, esAdmin, rolCodigo).flatMap((g) => {
+    if (!g.consulta) return [g]
+    const items = g.items.filter((i) => alInicio.has(i.ruta))
+    return items.length > 0 ? [{ ...g, items }] : []
+  })
 }
 
 /**
