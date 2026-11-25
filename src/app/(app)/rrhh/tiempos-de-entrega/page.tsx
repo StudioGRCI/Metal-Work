@@ -179,6 +179,11 @@ function plazoDeEntrega(c: CodigoConTiempos, hoy: string): string {
     .replace(/^A tiempo$/, 'va a tiempo')
 }
 
+/** « y 1 OT más»: el código tiene otra OT abierta además de la que se nombra. */
+function otrasOt(c: CodigoConTiempos): string {
+  return c.ots_abiertas > 1 ? ` y ${c.ots_abiertas - 1} OT más` : ''
+}
+
 function Fila({ c, hoy }: { c: CodigoConTiempos; hoy: string }) {
   const semaforo = SEMAFORO_DE_CODIGO[c.semaforo]
   const detalle = motivo(c, hoy)
@@ -187,7 +192,7 @@ function Fila({ c, hoy }: { c: CodigoConTiempos; hoy: string }) {
       <div className="min-w-0 space-y-1">
         <p className="font-mono text-sm font-semibold break-all text-texto">{c.codigo}</p>
         <p className="text-xs text-texto-suave">
-          {[c.ot_numero ? `OT ${c.ot_numero}` : 'Sin OT abierta', c.cliente, c.unidad].filter(Boolean).join(' · ')}
+          {[c.ot_numero ? `OT ${c.ot_numero}${otrasOt(c)}` : 'Sin OT abierta', c.cliente, c.unidad].filter(Boolean).join(' · ')}
         </p>
         <p className="text-xs text-texto">
           {c.etapas === 0 ? (

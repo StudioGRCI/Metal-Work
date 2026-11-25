@@ -17277,6 +17277,7 @@ export type Database = {
           area_en_curso: string | null
           proxima_fecha: string | null
           semaforo: string | null
+          ots_abiertas: number | null
         }[]
       }
       tiempos_de_entrega_codigos_calculado: {
@@ -17301,6 +17302,7 @@ export type Database = {
           area_en_curso: string | null
           proxima_fecha: string | null
           semaforo: string | null
+          ots_abiertas: number | null
         }[]
       }
       tiempos_de_entrega_etapas: {

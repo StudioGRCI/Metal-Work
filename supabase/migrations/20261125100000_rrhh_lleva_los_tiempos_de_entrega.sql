@@ -58,10 +58,12 @@ grant execute on function public.dias_por_vencer() to authenticated;
 -- comparan contra esta fecha para decir lo mismo que el tablero de RR. HH.
 create or replace function public.limite_por_vencer()
 returns date language sql stable set search_path to 'public' as $$
-  select public.sumar_dias_habiles(current_date, public.dias_por_vencer());
+  -- El día anterior al cuarto día hábil: así un domingo o un feriado que cae
+  -- dentro de los tres días hábiles también es «por vencer».
+  select public.sumar_dias_habiles(current_date, public.dias_por_vencer() + 1) - 1;
 $$;
 comment on function public.limite_por_vencer() is
-  'Hoy más los días hábiles de dias_por_vencer(): una fecha comprometida hasta ese día, y no vencida, está por vencer.';
+  'El último día al que faltan dias_por_vencer() días hábiles o menos: una fecha comprometida hasta ese día, y no vencida, está por vencer.';
 revoke all on function public.limite_por_vencer() from public, anon;
 grant execute on function public.limite_por_vencer() to authenticated;
 
@@ -138,7 +140,7 @@ grant execute on function public.tiempos_de_entrega_etapas(text) to authenticate
 -- que tiene etapas sin terminar aunque no tenga OT abierta. El que ya se
 -- entregó o se facturó y no tiene otra OT abierta no entra, aunque le hayan
 -- quedado etapas sin marcar: la unidad ya se fue. La OT con que se nombra es la
--- abierta que entró primero, como en «Unidades en taller».
+-- abierta que se entrega antes; si hay más de una, se dice cuántas.
 -- Las cuentas son de etapas de arriba: una etapa cuenta como vencida si ella o
 -- alguna de sus subetapas venció, para que «1 de 6 terminadas · 2 vencidas»
 -- hablen de lo mismo. El semáforo general es el peor de sus etapas sin terminar
@@ -149,7 +151,7 @@ returns table (codigo text, ot_numero text, ot_estado text, cliente text, unidad
                fecha_entrega date, dias_habiles_entrega integer, semaforo_entrega text,
                etapas integer, etapas_terminadas integer, etapas_vencidas integer, etapas_por_vencer integer,
                etapas_sin_fecha integer, etapa_en_curso text, area_en_curso text,
-               proxima_fecha date, semaforo text)
+               proxima_fecha date, semaforo text, ots_abiertas integer)
 language sql stable set search_path to 'public' as $$
   with pedido as (
     select public.normalizar_codigo_interno(p_codigo) as codigo
@@ -159,8 +161,12 @@ language sql stable set search_path to 'public' as $$
            nullif(concat_ws(' · ', nullif(btrim(coalesce(u.placa::text, '')), ''), tc.nombre::text), '') as unidad,
            o.fecha_entrega_comprometida as fecha_entrega
       from public.ordenes_trabajo o
-      join public.unidades u on u.id = o.unidad_id
-      cross join lateral (select public.normalizar_codigo_interno(u.codigo_interno) as codigo) c
+      left join public.unidades u on u.id = o.unidad_id
+      -- El mantenimiento y la garantía van por el número de su OT, no por el
+      -- código de la unidad, que es el de su fabricación (migración 20261120500000).
+      cross join lateral (select public.normalizar_codigo_interno(
+                                   case when o.tipo_trabajo::text in ('MANTENIMIENTO', 'GARANTIA')
+                                        then public.codigo_de_la_ot(o.numero) else u.codigo_interno end) as codigo) c
       cross join pedido q
       left join public.clientes cl on cl.id = o.cliente_id
       left join public.tipos_carroceria tc on tc.id = u.tipo_carroceria_id
@@ -168,10 +174,12 @@ language sql stable set search_path to 'public' as $$
        and c.codigo is not null
        and (q.codigo is null or c.codigo = q.codigo)
   ), ot as (
-    select distinct on (d.codigo) d.codigo, d.numero, d.estado, d.cliente, d.unidad, d.fecha_entrega
+    -- Con dos OT abiertas para el mismo código manda la que se entrega antes.
+    select distinct on (d.codigo) d.codigo, d.numero, d.estado, d.cliente, d.unidad, d.fecha_entrega,
+           count(*) over (partition by d.codigo)::integer as abiertas
       from de_ot d
      where d.estado not in ('ENTREGADA', 'FACTURADA')
-     order by d.codigo, d.fecha_registro nulls last, d.numero
+     order by d.codigo, d.fecha_entrega nulls last, d.fecha_registro nulls last, d.numero
   ), entregado as (
     -- Ya se entregó o facturó y no le queda ninguna OT abierta.
     select distinct d.codigo
@@ -227,7 +235,8 @@ language sql stable set search_path to 'public' as $$
            when coalesce(z.por_vencer, 0) > 0 or public.semaforo_de_fecha(o.fecha_entrega) = 'AMBAR' then 'AMBAR'
            when p.proxima is not null or o.fecha_entrega is not null then 'VERDE'
            else 'SIN_FECHA'
-         end
+         end,
+         coalesce(o.abiertas, 0)
     from codigos c
     left join ot o on o.codigo = c.codigo
     left join por_codigo p on p.codigo = c.codigo
@@ -244,7 +253,7 @@ returns table (codigo text, ot_numero text, ot_estado text, cliente text, unidad
                fecha_entrega date, dias_habiles_entrega integer, semaforo_entrega text,
                etapas integer, etapas_terminadas integer, etapas_vencidas integer, etapas_por_vencer integer,
                etapas_sin_fecha integer, etapa_en_curso text, area_en_curso text,
-               proxima_fecha date, semaforo text)
+               proxima_fecha date, semaforo text, ots_abiertas integer)
 language plpgsql stable security definer set search_path to 'public' as $$
 begin
   perform public.exigir_ver_tiempos_de_entrega();

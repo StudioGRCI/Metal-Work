@@ -19,6 +19,8 @@ export type CodigoConTiempos = {
   codigo: string
   ot_numero: string | null
   ot_estado: string | null
+  /** Cuántas OT abiertas tiene el código; la que se nombra es la que se entrega antes. */
+  ots_abiertas: number
   cliente: string | null
   unidad: string | null
   fecha_entrega: string | null
@@ -68,6 +70,7 @@ async function leerCodigos(codigo: string | null): Promise<CodigoConTiempos[]> {
             codigo: c.codigo,
             ot_numero: c.ot_numero,
             ot_estado: c.ot_estado,
+            ots_abiertas: n(c.ots_abiertas),
             cliente: c.cliente,
             unidad: c.unidad,
             fecha_entrega: c.fecha_entrega,

@@ -60,6 +60,15 @@ begin
   values (v_cli, v_uni, true, (select id from public.sedes order by creado_en limit 1), 'Check 460 · por vencer',
           public.sumar_dias_habiles(current_date, 1));
 
+  -- El código C tiene otra OT abierta, que se entrega más tarde: manda la primera.
+  insert into public.ordenes_trabajo (cliente_id, unidad_id, abierta_en_taller, sede_id, descripcion, fecha_entrega_comprometida)
+  values (v_cli, v_uni, true, (select id from public.sedes order by creado_en limit 1), 'Check 460 · segunda OT',
+          public.sumar_dias_habiles(current_date, 30));
+
+  -- Un mantenimiento sin unidad, con la entrega vencida: va por el número de su OT.
+  insert into public.ordenes_trabajo (cliente_id, tipo_trabajo, abierta_en_taller, sede_id, descripcion, fecha_entrega_comprometida)
+  values (v_cli, 'MANTENIMIENTO', true, (select id from public.sedes order by creado_en limit 1), 'Check 460 · mantenimiento', current_date - 1);
+
   -- Código D: sin etapas y sin fecha de entrega.
   insert into public.unidades (cliente_id, codigo_interno, marca) values (v_cli, 'CHK460_D', 'Prueba') returning id into v_uni;
   insert into public.ordenes_trabajo (cliente_id, unidad_id, abierta_en_taller, sede_id, descripcion)
@@ -126,6 +135,20 @@ select test.afirmar(
   (select t.semaforo = 'AMBAR' and t.semaforo_entrega = 'AMBAR' and t.etapas = 0 and t.etapa_en_curso is null
      from public.tiempos_de_entrega_codigos() t where t.codigo = 'CHK460_C'),
   'el código C, sin etapas y con la entrega a un día hábil, sale en ámbar por su fecha de entrega');
+select test.afirmar(
+  (select t.ots_abiertas = 2 and t.fecha_entrega = public.sumar_dias_habiles(current_date, 1)
+     from public.tiempos_de_entrega_codigos() t where t.codigo = 'CHK460_C'),
+  'con dos OT abiertas, el código C sale una vez, con la que se entrega antes, y dice que son dos');
+select test.afirmar(
+  (select count(*) = 1 and bool_and(t.semaforo = 'ROJO' and t.ots_abiertas = 1 and t.codigo = public.codigo_de_la_ot(o.numero))
+     from public.ordenes_trabajo o
+     join public.tiempos_de_entrega_codigos() t on t.ot_numero = o.numero::text
+    where o.descripcion = 'Check 460 · mantenimiento'),
+  'el mantenimiento sin unidad sale por el número de su OT, en rojo por su entrega vencida');
+select test.afirmar(
+  (select bool_and((public.semaforo_de_fecha(d::date) = 'AMBAR') = (public.dias_habiles_entre(current_date, d::date) <= 3))
+     from generate_series(current_date, current_date + 20, interval '1 day') d),
+  'por vencer es exactamente «faltan 3 días hábiles o menos», también si la fecha cae en domingo o feriado');
 select test.afirmar(
   (select t.semaforo = 'SIN_FECHA' and t.fecha_entrega is null
      from public.tiempos_de_entrega_codigos() t where t.codigo = 'CHK460_D'),

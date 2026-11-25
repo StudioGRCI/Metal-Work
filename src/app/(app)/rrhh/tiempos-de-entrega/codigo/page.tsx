@@ -50,7 +50,7 @@ export default async function PaginaTiemposDelCodigo({ searchParams }: PageProps
         titulo={<span className="font-mono break-all">{codigo}</span>}
         descripcion={
           resumen
-            ? [resumen.ot_numero ? `OT ${resumen.ot_numero}` : 'Sin OT abierta', resumen.cliente, resumen.unidad].filter(Boolean).join(' · ')
+            ? [resumen.ot_numero ? `OT ${resumen.ot_numero}${resumen.ots_abiertas > 1 ? ` y ${resumen.ots_abiertas - 1} OT más` : ''}` : 'Sin OT abierta', resumen.cliente, resumen.unidad].filter(Boolean).join(' · ')
             : 'Ya no está entre los códigos por entregar'
         }
         migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'Tiempos de entrega', ruta: RUTA_TIEMPOS }, { titulo: codigo }]}
