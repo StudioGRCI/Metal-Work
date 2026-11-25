@@ -296,6 +296,15 @@ try {
   comprobar((await gerencia.pagina.locator('main').getByRole('button', { name: /Marcar (el ingreso|la salida)|Anular/ }).count()) === 0, 'Gerencia no tiene botones de marcar ni de anular')
   await pastilla(gerencia.pagina, 'Dentro ahora').click()
   comprobar((await gerencia.pagina.getByRole('region', { name: 'Dentro ahora' }).getByText(beto.nombres).count()) === 1, 'Gerencia ve a Beto en «Dentro ahora»')
+  // Otro día es otra lista: la elegida hoy no se queda puesta.
+  await gerencia.pagina.getByRole('link', { name: 'Día anterior' }).click()
+  await gerencia.pagina.waitForURL(/fecha=/, { timeout: 15000 })
+  await gerencia.pagina.getByRole('heading', { name: 'Asistencia', exact: true }).waitFor({ timeout: 15000 })
+  comprobar((await gerencia.pagina.getByRole('region', { name: /Dentro ahora|Todavía no llegan/ }).count()) === 0, 'en el día anterior no queda puesta la lista de hoy')
+  comprobar((await gerencia.pagina.locator('main ul > li').count()) === (await cuentasDeHoy()).todos, 'el día anterior lista a todo el personal activo')
+  await gerencia.pagina.getByRole('link', { name: 'Día siguiente' }).click()
+  await gerencia.pagina.getByRole('group', { name: 'Qué lista se ve' }).waitFor({ timeout: 15000 })
+  comprobar((await gerencia.pagina.getByRole('group', { name: 'Qué lista se ve' }).getByRole('button', { pressed: true }).innerText()).startsWith('Todos'), 'al volver a hoy, la lista es «Todos»')
   const htmlGerencia = await gerencia.pagina.content()
   comprobar(![ana, beto, tomas].some((p) => htmlGerencia.includes(p.dni)), 'tampoco a Gerencia le llega el DNI')
   await gerencia.contexto.close()
@@ -310,7 +319,9 @@ try {
 } finally {
   await navegador.close()
   // El personal de la prueba no se queda en la lista del banco.
-  await base.query(`update public.trabajadores set activo = false where id = any($1)`, [[ana.id, beto.id, tomas.id]]).catch(() => {})
+  await base
+    .query(`update public.trabajadores set activo = false where id = any($1)`, [[ana.id, beto.id, tomas.id]])
+    .catch((e) => fallas.push(`no se pudo dar de baja al personal de prueba: ${e.message}`))
   await base.end()
 }
 
