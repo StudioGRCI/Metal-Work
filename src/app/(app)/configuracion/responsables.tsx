@@ -151,7 +151,7 @@ function FilaDeArea({
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo={`Responsable de ${area.nombre}`}
-        descripcion="La cuenta que responde por el área. Lo que se le avise al área irá a ella."
+        descripcion="La cuenta que responde por el área. Las próximas entregas le avisarán a ella lo que vaya al área."
         ancho="sm"
       >
         <form onSubmit={envio.alEnviar} className="space-y-4">

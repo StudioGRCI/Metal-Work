@@ -49,7 +49,8 @@ function comprobar(cond, texto) {
 
 const una = async (sql, valores = []) => (await base.query(sql, valores)).rows[0]
 // Las pantallas nombran la cuenta por su puesto (migración 109), no por la persona.
-const cuenta = async (correo) => una('select u.id, public.puesto(u) as puesto from public.usuarios u where lower(u.correo) = lower($1)', [correo])
+const cuenta = async (correo) =>
+  una('select u.id, u.activo, public.puesto(u) as puesto from public.usuarios u where lower(u.correo) = lower($1)', [correo])
 const area = async (codigo) =>
   una('select a.id, a.nombre, a.encargado, a.jefe_id from public.areas a where a.codigo = $1', [codigo])
 
@@ -71,16 +72,41 @@ if (!admin || !supervisor || !almacen) {
 const ANTES = { CAL: await area('CAL'), MKT: await area('MKT') }
 // La base es compartida (los auditores la usan a la vez): si la prueba se corta
 // a medio camino, deja igual las dos cuentas que da de baja y las dos áreas.
+const ACTIVAS_ANTES = { almacen: almacen.activo, supervisor: supervisor.activo }
 async function dejarComoEstaba() {
   await base.query('rollback').catch(() => {})
-  for (const c of [almacen, supervisor]) await activar(c.id, true).catch(() => {})
-  for (const a of [ANTES.CAL, ANTES.MKT])
-    await base.query('update public.areas set jefe_id = $2 where id = $1', [a.id, a.jefe_id]).catch(() => {})
+  const pasos = [
+    ['la cuenta de Almacén', () => activar(almacen.id, ACTIVAS_ANTES.almacen)],
+    ['la cuenta del Supervisor de producción', () => activar(supervisor.id, ACTIVAS_ANTES.supervisor)],
+    // Sin pasar por el disparador: lo de antes vuelve tal cual, aunque fuera una cuenta dada de baja.
+    ...[ANTES.CAL, ANTES.MKT].map((a) => [
+      `el responsable de ${a.nombre}`,
+      async () => {
+        await base.query('begin')
+        await base.query(`set local session_replication_role = replica`)
+        await base.query('update public.areas set jefe_id = $2 where id = $1', [a.id, a.jefe_id])
+        await base.query('commit')
+      },
+    ]),
+  ]
+  for (const [que, paso] of pasos) {
+    try {
+      await paso()
+    } catch (error) {
+      await base.query('rollback').catch(() => {})
+      fallas.push(`no se pudo dejar como estaba ${que}: ${error.message}`)
+      console.log(`FALLA · no se pudo dejar como estaba ${que}: ${error.message}`)
+    }
+  }
 }
 process.on('uncaughtException', async (error) => {
   console.error(error)
   await dejarComoEstaba()
   process.exit(1)
+})
+process.on('SIGINT', async () => {
+  await dejarComoEstaba()
+  process.exit(130)
 })
 // El administrador da de baja o de alta una cuenta: `fn_usuario_proteger_rol` pide su sesión.
 async function activar(id, activo) {
@@ -229,7 +255,7 @@ async function abrir(pagina, nombre) {
   const alerta = ventana.getByRole('alert')
   await alerta.waitFor({ timeout: 15000 })
   const rechazo = await textoDe(alerta)
-  comprobar(rechazo.includes('se dio de baja hace un momento'), `la cuenta dada de baja no entra y la ventana dice por qué: «${rechazo}»`)
+  comprobar(rechazo.includes('está dada de baja: elige otra'), `la cuenta dada de baja no entra y la ventana dice por qué: «${rechazo}»`)
   const lista = ventana.getByRole('combobox', { name: 'Cuenta responsable' })
   comprobar((await lista.getAttribute('aria-invalid')) === 'true', 'el rechazo marca el campo «Cuenta responsable», no solo el pie')
   // La lista se pone al día y deja de ofrecer la cuenta dada de baja.
@@ -291,7 +317,7 @@ async function abrir(pagina, nombre) {
   await ventana.getByRole('button', { name: 'Guardar' }).click()
   await ventana.getByRole('alert').waitFor({ timeout: 15000 })
   comprobar(
-    (await textoDe(ventana.getByRole('alert'))).includes('se dio de baja'),
+    (await textoDe(ventana.getByRole('alert'))).includes('está dada de baja: elige otra'),
     'guardar la cuenta dada de baja sin cambiarla se rechaza junto al campo',
   )
   await ventana.getByRole('button', { name: 'Cancelar' }).click()

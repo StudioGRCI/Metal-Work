@@ -298,7 +298,7 @@ sin área hasta que Administración se la pone al corregirlos.
 ## Responsables de área
 
 Migración `20261125205000_el_responsable_de_cada_area_es_una_cuenta`,
-comprobada con los roles reales en la base local (check 460) y con clic real en
+comprobada con los roles reales en la base local (check 461) y con clic real en
 el banco (`herramientas/banco/probar-responsables-de-area.mjs`). El responsable
 de cada área del organigrama es una cuenta, `areas.jefe_id`, y no un nombre
 escrito. El nombre que trae el organigrama (`areas.encargado`) se conserva al

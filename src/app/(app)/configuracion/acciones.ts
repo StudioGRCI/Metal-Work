@@ -340,6 +340,20 @@ export async function asignarResponsableDeArea(_previo: unknown, datos: FormData
   const v = analisis.data
 
   const supabase = await createClient()
+  // Una cuenta dada de baja no se guarda, tampoco la que ya estaba: se mira
+  // antes de escribir. El disparador cubre la que se da de baja entretanto.
+  if (v.jefe_id) {
+    const { data: elegida, error: errorCuenta } = await supabase
+      .from('usuarios')
+      .select('activo')
+      .eq('id', v.jefe_id)
+      .maybeSingle()
+    if (errorCuenta) return { ok: false, error: mensajeDeError(errorCuenta) }
+    if (!elegida?.activo) {
+      revalidatePath('/configuracion')
+      return { ok: false, error: CUENTA_YA_NO_ACTIVA }
+    }
+  }
   const { data, error } = await supabase
     .from('areas')
     .update({ jefe_id: v.jefe_id || null })
