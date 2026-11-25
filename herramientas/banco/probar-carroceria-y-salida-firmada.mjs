@@ -94,7 +94,7 @@ writeFileSync(formato, Buffer.from('%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
 
 async function entrar(correo, ancho = 1280) {
-  const contexto = await navegador.newContext({ viewport: { width: ancho, height: 900 } })
+  const contexto = await navegador.newContext({ viewport: { width: ancho, height: 900 }, deviceScaleFactor: Number(process.env.ESCALA ?? 1) })
   const pagina = await contexto.newPage()
   const errores = []
   pagina.on('console', (m) => {
@@ -139,6 +139,8 @@ if (SOLO !== 'salida') {
   const nombreCampo = ventana.getByLabel('Nombre')
   comprobar((await nombreCampo.getAttribute('aria-invalid')) === 'true', 'el campo «Nombre» queda marcado')
   comprobar(await nombreCampo.evaluate((e) => e === document.activeElement), 'el cursor vuelve al campo «Nombre»')
+  // Marcar el campo con su error lo volvía a montar (`Campo`) y mostraba el nombre de antes.
+  comprobar((await nombreCampo.inputValue()) === 'ab', `el campo conserva lo escrito («${await nombreCampo.inputValue()}»)`)
   await pagina.screenshot({ path: join(CAPTURAS, 'carroceria-nombre-corto.png') })
   comprobar((await deLaCarroceria()).nombre === carroceria.nombre, 'la base no cambió con el rechazo')
 
@@ -151,6 +153,21 @@ if (SOLO !== 'salida') {
   const fila = pagina.locator('tr', { hasText: CODIGO }).first()
   await fila.filter({ hasText: nuevo }).waitFor({ timeout: 15000 })
   comprobar(true, 'la lista muestra el nombre nuevo con el mismo código')
+
+  // Con el nombre de otra carrocería no entra: antes lo atajaba el código armado.
+  await consulta(`insert into public.tipos_carroceria (codigo, nombre, orden_secuencia, activo) values ($1, $2, 99, true)`,
+    [`G${sufijo.slice(-3)}`, `Gemela del banco ${sufijo}`])
+  const gemela = await editar(pagina, `gemela  DEL banco ${sufijo}`)
+  const repetida = gemela.getByRole('alert')
+  await repetida.waitFor({ timeout: 15000 })
+  const diceRepetida = await texto(repetida)
+  console.log(`    con el nombre de otra: «${diceRepetida}»`)
+  comprobar(diceRepetida.startsWith(`Ya hay otra carrocería con ese nombre: «Gemela del banco ${sufijo}»`)
+    && (await gemela.getByLabel('Nombre').getAttribute('aria-invalid')) === 'true'
+    && (await gemela.getByLabel('Nombre').inputValue()) === `gemela  DEL banco ${sufijo}`,
+  'el nombre de otra carrocería se rechaza junto al campo, con lo escrito a la vista')
+  comprobar((await deLaCarroceria()).nombre === nuevo, 'la base no cambió con el nombre repetido')
+  await gemela.getByRole('button', { name: 'Cancelar' }).click()
 
   // Otro la desactiva mientras Ventas tiene la ventana abierta: guardar el nombre no la reactiva.
   await pagina.goto(`${BASE}/carrocerias`, { waitUntil: 'networkidle' })

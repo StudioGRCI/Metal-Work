@@ -106,6 +106,7 @@ export function NuevaCarroceria({
               id="ncar-nombre"
               name="nombre"
               required
+              maxLength={120}
               placeholder="Tolva con tiro y suspensión mecánica"
             />
           </Campo>

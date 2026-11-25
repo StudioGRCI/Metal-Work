@@ -134,7 +134,12 @@ export async function alternarFeriadoLaborable(_previo: unknown, datos: FormData
 
 const esquemaCarroceria = z
   .object({
-    nombre: z.string().trim().min(3, 'Ponle nombre al tipo de carrocería'),
+    // Las mismas reglas que al editar: un nombre que el alta dejaba pasar
+    // (130 caracteres, solo signos) después no dejaba ni desactivarla.
+    nombre: z.string('Ponle nombre al tipo de carrocería.').trim()
+      .min(3, 'Ponle nombre al tipo de carrocería, de al menos 3 letras.')
+      .max(120, 'El nombre va en 120 caracteres como máximo.')
+      .regex(/[\p{L}\p{N}]/u, 'El nombre debe incluir letras o números.'),
     descripcion: z.string().trim().optional(),
     // Semirremolque o carrocería montada: el SR/CM de su código de producto.
     // «Sin definir» llega vacío: es lo que trae la ventana y la carrocería

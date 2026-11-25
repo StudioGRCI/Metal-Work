@@ -73,9 +73,13 @@ type PropsDescritas = {
  * 200 llamadas a `Campo` no se corrigen de una en una sin que alguna se quede
  * sin atar. Un `aria-describedby` que ya venga puesto se conserva, no se pisa.
  */
-function describirControl(hijos: React.ReactNode, id: string, invalido: boolean): React.ReactNode {
+// Pasa siempre por `Children.map`, también sin nada que describir: el map le
+// pone otra llave al hijo, y alternar entre el hijo suelto y el mapeado lo
+// volvía a montar. Un campo sin ayuda que recibía su `error` perdía lo escrito
+// y mostraba su `defaultValue` junto al rechazo («Editar» carrocería, 2026-11-25).
+function describirControl(hijos: React.ReactNode, id: string | undefined, invalido: boolean): React.ReactNode {
   return React.Children.map(hijos, (hijo) => {
-    if (!React.isValidElement<PropsDescritas>(hijo)) return hijo
+    if (!id || !React.isValidElement<PropsDescritas>(hijo)) return hijo
     const yaDescrito = hijo.props['aria-describedby']
     return React.cloneElement(hijo, {
       'aria-describedby': yaDescrito ? `${yaDescrito} ${id}` : id,
@@ -193,7 +197,7 @@ export function Campo({
           </>
         )}
       </div>
-      {idDescripcion ? describirControl(children, idDescripcion, Boolean(error)) : children}
+      {describirControl(children, idDescripcion, Boolean(error))}
       {error ? (
         // `role="alert"` para que el motivo del rechazo se lea solo al aparecer:
         // es justo la ayuda que explica por qué algo no se deja hacer.

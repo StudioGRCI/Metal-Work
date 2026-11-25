@@ -74,3 +74,45 @@ comment on function public.editar_carroceria_ventas(uuid,text,text,boolean) is
   'SECURITY DEFINER intencional: permite a Ventas editar nombre/descripcion/activo sin abrir los campos de costo; exigir_permiso limita a cotizaciones.crear. El código de la carrocería no cambia.';
 revoke all on function public.editar_carroceria_ventas(uuid,text,text,boolean) from public, anon;
 grant execute on function public.editar_carroceria_ventas(uuid,text,text,boolean) to authenticated;
+
+-- -----------------------------------------------------------------------------
+-- Dos carrocerías no se llaman igual
+-- -----------------------------------------------------------------------------
+-- Antes lo atajaba, de rebote, el código armado del nombre («Ya existe una
+-- carrocería con un nombre parecido»). Sin eso, renombrar una con el nombre de
+-- otra dejaba dos iguales en el desplegable de la cotización. Se compara el
+-- nombre como se arma un código en el alta (mayúsculas, sin tildes ni signos:
+-- `codigoDeCarroceria`), por Ventas
+-- y por Diseño, y solo cuando el nombre cambia: producción ya tiene «Cama baja»
+-- y «Plataforma» dos veces (una de cada una desactivada) y tocar la
+-- descripción o reactivarla no tiene por qué fallar. El alta ya devuelve la que
+-- había con el mismo nombre en vez de repetirla.
+create or replace function public.fn_carroceria_nombre_sin_repetir()
+returns trigger
+language plpgsql
+security definer
+set search_path = 'public'
+as $$
+declare
+  v_igual text;
+  v_clave text := trim(both '_' from regexp_replace(upper(public.unaccent(btrim(new.nombre))), '[^A-Z0-9]+', '_', 'g'));
+begin
+  if v_clave = trim(both '_' from regexp_replace(upper(public.unaccent(btrim(old.nombre))), '[^A-Z0-9]+', '_', 'g')) then
+    return new;
+  end if;
+  select t.nombre into v_igual
+    from public.tipos_carroceria t
+   where t.id <> new.id
+     and trim(both '_' from regexp_replace(upper(public.unaccent(btrim(t.nombre))), '[^A-Z0-9]+', '_', 'g')) = v_clave
+   limit 1;
+  if v_igual is not null then
+    raise exception 'Ya hay otra carrocería con ese nombre: «%». Usa otro nombre.', v_igual using errcode = '23505';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.fn_carroceria_nombre_sin_repetir() from public, anon, authenticated;
+
+create or replace trigger carroceria_nombre_sin_repetir
+  before update of nombre on public.tipos_carroceria
+  for each row execute function public.fn_carroceria_nombre_sin_repetir();

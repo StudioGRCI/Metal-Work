@@ -91,6 +91,41 @@ select test.afirmar(
   'Tras los rechazos queda lo último que sí entró, con su código'
 );
 
+-- 4c. Dos carrocerías no se llaman igual: ni por Ventas ni por Diseño, aunque
+-- cambien tildes, mayúsculas o signos. Lo que ya estaba repetido se sigue
+-- pudiendo tocar sin cambiarle el nombre.
+insert into public.tipos_carroceria (codigo, nombre, orden_secuencia, activo)
+values ('C58B', 'Furgón isotérmico del check', 99, true),
+       ('C58C', 'Furgón isotérmico del check', 99, false);
+select set_config('request.jwt.claim.sub', current_setting('prueba.ventas'), true),
+       set_config('request.jwt.claims', json_build_object('sub', current_setting('prueba.ventas'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+select test.debe_fallar(
+  format('select public.editar_carroceria_ventas(%L::uuid, %L, null, true)', current_setting('prueba.carroceria'), 'FURGON  isotermico - del check'),
+  'Ventas no la renombra con el nombre de otra',
+  'Ya hay otra carrocería con ese nombre: «Furgón isotérmico del check»'
+);
+select test.afirmar(
+  public.editar_carroceria_ventas((select id from public.tipos_carroceria where codigo = 'C58C'), 'Furgón isotérmico del check', 'Desactivada y repetida', true) is not null,
+  'La repetida de antes se reactiva y se corrige sin cambiarle el nombre'
+);
+reset role;
+do $$
+declare v_diseno uuid;
+begin
+  v_diseno := test.crear_usuario('Diseño', 'Check 458', 'diseno.458@prueba.local', 'DISENO');
+  perform set_config('prueba.diseno', v_diseno::text, true);
+end $$;
+select set_config('request.jwt.claim.sub', current_setting('prueba.diseno'), true),
+       set_config('request.jwt.claims', json_build_object('sub', current_setting('prueba.diseno'), 'role', 'authenticated')::text, true);
+set local role authenticated;
+select test.debe_fallar(
+  format('update public.tipos_carroceria set nombre = %L where id = %L::uuid', 'Furgón Isotérmico del Check', current_setting('prueba.carroceria')),
+  'Diseño tampoco la renombra con el nombre de otra',
+  'Ya hay otra carrocería con ese nombre'
+);
+reset role;
+
 -- 5. Nadie más arma el código al editar: el cuerpo de la función no lo asigna.
 select test.afirmar(
   (select prosrc !~* 'codigo\s*=' from pg_proc
