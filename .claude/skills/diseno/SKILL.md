@@ -99,7 +99,9 @@ arriba, bajo el encabezado: bajo las cifras del código interno empezaba a
 mide hasta 3 000 px en el teléfono, y `globals.css` reserva su alto con
 `scroll-padding` para que el foco no quede debajo. Si entre la fila y la
 sección hay algo que vale para todas (las cifras del código), cada `href`
-baja con `#seccion-elegida` a donde empieza la sección. La pestaña
+baja con `#seccion-elegida` a donde empieza la sección. La OT no lo lleva:
+su fila va casi arriba y volver al principio deja a la vista la tarjeta de
+avance y la sección. La pestaña
 elegida se trae a la vista solo de costado: `scrollIntoView` movía también
 la página y entrar era caer a media pantalla.
 
@@ -1074,7 +1076,7 @@ en un check con `set local role authenticated`.
   Administración dejaba cuatro entradas bajo el borde y, con una OT abierta,
   seis más; se mide a 760 px, lo que deja de alto un monitor de 900 con el
   navegador. Cada grupo de `MENU_POR_PUESTO` puede llevar su `pliegue`: `fijo`
-  (no se pliega: «Principal»; «Por aprobar» de Gerencia, con el PR 190),
+  (no se pliega: «Principal»; «Por aprobar» de Gerencia, pendiente),
   `abierto` (lo que vale si falta) o `plegado`. «Consultas» nace plegado si el
   puesto no dice otra cosa (Contabilidad lo deja `abierto`: el tipo de cambio
   es de todos los días), y un puesto con un solo grupo además de «Principal» lo lleva fijo

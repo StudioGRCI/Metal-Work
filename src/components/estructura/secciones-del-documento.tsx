@@ -31,7 +31,6 @@ export function SeccionesDelDocumento({
   etiqueta,
   secciones,
   activa,
-  id,
   pegada = false,
   className,
 }: {
@@ -39,8 +38,6 @@ export function SeccionesDelDocumento({
   etiqueta: string
   secciones: SeccionDeDocumento[]
   activa: string
-  /** Para que un `href` con `#id` deje la fila arriba de la pantalla al cambiar de sección. */
-  id?: string
   /**
    * Se queda pegada bajo la barra de arriba al deslizar: en el teléfono una
    * sección de la OT mide hasta 3 000 px y había que subirla entera para
@@ -64,11 +61,10 @@ export function SeccionesDelDocumento({
 
   return (
     <nav
-      id={id}
       aria-label={etiqueta}
       data-fila-pegada={pegada || undefined}
       className={cn(
-        '-mx-4 scroll-mt-20 lg:-mx-1 print:hidden',
+        '-mx-4 lg:-mx-1 print:hidden',
         // El alto de la barra de arriba: 56 px, o su contenido más el borde del iPhone.
         pegada && 'sticky top-[max(3.5rem,calc(2.8125rem+env(safe-area-inset-top)))] z-20 border-b border-borde bg-fondo py-1',
         className,

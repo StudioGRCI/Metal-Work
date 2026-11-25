@@ -183,6 +183,7 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
               etiqueta={`Secciones del código ${codigo}`}
               activa={vista}
               pegada
+              className="-mb-1"
               secciones={vistas.map((v) => ({
                 clave: v.valor,
                 titulo: aTodos && v.valor === 'avance' ? 'Reparto' : v.etiqueta,

@@ -50,6 +50,7 @@ export default async function PaginaSeguimientoDeCodigo({ searchParams }: PagePr
           etiqueta={`Secciones del código ${codigo}`}
           activa={vista}
           pegada
+          className="-mb-1"
           secciones={VISTAS_SEGUIMIENTO.map((v) => ({
             clave: v.valor,
             titulo: v.etiqueta,

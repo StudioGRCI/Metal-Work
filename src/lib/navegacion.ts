@@ -68,8 +68,8 @@ export type ItemNavegacion = {
  * grupo único de un puesto—; `abierto` nace abierto y se puede plegar, y es lo
  * que vale si falta, salvo en «Consultas», que nace `plegado`. Cada persona lo
  * deja como quiera y el menú lo recuerda en una cookie por puesto; el grupo
- * donde está la pantalla abierta se abre solo. Lo que aprueba Gerencia lo fija
- * el menú de Gerencia General (PR 190).
+ * donde está la pantalla abierta se abre solo. «Por aprobar» de Gerencia y sus
+ * grupos de consulta por área quedan pendientes del menú de Gerencia General.
  */
 export type Pliegue = 'fijo' | 'abierto' | 'plegado'
 
