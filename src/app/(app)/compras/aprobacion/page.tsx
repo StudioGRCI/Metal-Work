@@ -38,18 +38,20 @@ export default async function PaginaAprobacionCompras() {
   // Las mismas tres puertas que `documentos_por_aprobar` en la base.
   if (!aprueba && !configura && !puede(perfil, 'compras.ver')) redirect('/sin-permiso')
 
-  const [{ regla, compras, puestos, stockSinLeer }, anulables] = await Promise.all([
-    cargarAprobacionCompras({ puestos: configura }),
-    aprueba ? cargarComprasAnulables() : Promise.resolve([]),
-  ])
   // La que más espera, arriba (plan 0): por la hora en que se pidió su aprobación.
   const desde = (c: CompraParaAprobar) => (c.pedida_en ? Date.parse(c.pedida_en) : Number.POSITIVE_INFINITY)
-  const pendientes = compras.filter((c) => c.aprobacion === 'POR_APROBAR').sort((a, b) => desde(a) - desde(b))
-  // Los días los cuenta la base con la fecha de Lima. Sin ellos la lista sigue, solo sin la insignia.
-  const diasLeidos = await diasEnEspera(pendientes.map((c) => c.pedida_en)).catch((e: unknown) => {
-    console.error('Aprobación de compras: no se pudieron contar los días en espera.', e)
-    return null
-  })
+  const [{ regla, compras, puestos, stockSinLeer, pendientes, diasLeidos }, anulables] = await Promise.all([
+    cargarAprobacionCompras({ puestos: configura }).then(async (leido) => {
+      const pendientes = leido.compras.filter((c) => c.aprobacion === 'POR_APROBAR').sort((a, b) => desde(a) - desde(b))
+      // Los días los cuenta la base con la fecha de Lima. Sin ellos la lista sigue, sin la insignia y diciéndolo.
+      const diasLeidos = await diasEnEspera(pendientes.map((c) => c.pedida_en)).catch((e: unknown) => {
+        console.error('Aprobación de compras: no se pudieron contar los días en espera.', e)
+        return null
+      })
+      return { ...leido, pendientes, diasLeidos }
+    }),
+    aprueba ? cargarComprasAnulables() : Promise.resolve([]),
+  ])
   const dias = diasLeidos ?? pendientes.map(() => null)
   const decididas = compras.filter((c) => c.aprobacion !== 'POR_APROBAR')
 

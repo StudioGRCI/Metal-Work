@@ -7,7 +7,7 @@
 -- más esperaba quedaba al fondo.
 --
 -- La cuenta la hace la base, con la fecha de Lima, igual que el recorrido de la
--- migración 20261125130000 (`dias_en_espera`): «hoy», «hace 1 día», «hace 3
+-- migración 20261125130000 (`dias_en_espera`): «desde hoy», «hace 1 día», «hace 3
 -- días». Un documento que entró a las 11:50 p. m. lleva un día a las 12:05 a. m.,
 -- aunque hayan pasado quince minutos. Hacerla en la aplicación con el reloj del
 -- servidor (en UTC) corría el día a las 7 p. m. de Lima.
@@ -20,6 +20,15 @@
 --
 -- Todavía sin colores por demora (decisión del plan 0): solo el número.
 -- =============================================================================
+
+-- Va después de la 20261125130000, que crea `dias_en_espera`: plpgsql no revisa
+-- el cuerpo al crear la función, y sola entraría sin error y fallaría en cada uso.
+do $$
+begin
+  if to_regprocedure('public.dias_en_espera(timestamptz)') is null then
+    raise exception 'Aplica antes la migración 20261125130000 (el recorrido de cada documento): esta usa su dias_en_espera.';
+  end if;
+end $$;
 
 create or replace function public.dias_en_espera_de(p_desde timestamptz[])
 returns table (posicion integer, desde timestamptz, dias integer)

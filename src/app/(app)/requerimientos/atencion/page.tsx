@@ -17,7 +17,7 @@ import { recorridoDeRequerimientos } from '@/lib/datos/recorrido'
 import { cargarRequerimientos, catalogoParaRequerimiento, type MaterialParaRequerimiento, type RequerimientoListado } from '@/lib/datos/requerimientos'
 import { stockEnAlmacen, type MaterialEnStock } from '@/lib/datos/stock-almacen'
 import { ESTADO_METRADO, FRENO_DEL_RQ, frenaElRq, frenoDelRq, listaDeItems, queFaltaDelFreno } from '@/lib/dominio/metrado-rq'
-import { estadoDelRequerimiento, leTocaAtender, quienAtiende, tipoDeRequerimiento, type CompraDe } from '@/lib/dominio/requerimientos'
+import { ESTADOS_RQ_ABIERTOS, estadoDelRequerimiento, leTocaAtender, quienAtiende, tipoDeRequerimiento, type CompraDe } from '@/lib/dominio/requerimientos'
 import type { PasoDelRecorrido } from '@/lib/dominio/recorrido'
 import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -100,7 +100,7 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
     }),
     // Quién tiene cada RQ abierto y desde cuándo, con los días que cuenta la base
     // (fecha de Lima). Sin eso la bandeja sigue: solo sin la insignia de días.
-    recorridoDeRequerimientos(requerimientos.filter((r) => r.estado !== 'ENTREGADO' && r.estado !== 'ANULADO').map((r) => r.id)).catch(
+    recorridoDeRequerimientos(requerimientos.filter(abierto).map((r) => r.id)).catch(
       (e: unknown) => {
         console.error('Atención: no se pudieron contar los días en espera.', e)
         return null
@@ -165,7 +165,7 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
         </p>
       )}
 
-      {recorridos === null && requerimientos.some((r) => r.estado !== 'ENTREGADO' && r.estado !== 'ANULADO') && (
+      {recorridos === null && requerimientos.some(abierto) && (
         <p role="status" className="mb-3 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-dias-sin-leer>
           No se pudieron contar los días que lleva esperando cada requerimiento: la lista sigue sin ellos y sin ordenarse por antigüedad.
           Vuelve a cargar la pantalla en un momento.
@@ -240,6 +240,9 @@ async function stockDelSistema(materiales: string[] | null): Promise<Map<string,
     return 'no_se_pudo'
   }
 }
+
+/** El RQ que todavía espera a alguien: el que lleva días en espera. */
+const abierto = (r: RequerimientoListado) => (ESTADOS_RQ_ABIERTOS as readonly string[]).includes(r.estado)
 
 function sistemaDe(m: MaterialEnStock): StockDelSistema {
   return {

@@ -52,6 +52,7 @@ function comprobar(cond, texto) {
   console.log(`${cond ? '  ok' : 'FALLA'} · ${texto}`)
   if (!cond) fallas.push(texto)
 }
+const limpio = (t) => (t ?? '').replace(/\s+/g, ' ').trim()
 const haceDias = (d) => (d <= 0 ? 'desde hoy' : d === 1 ? 'hace 1 día' : `hace ${d} días`)
 const desdeHace = (d) => (d <= 0 ? haceDias(d) : `desde ${haceDias(d)}`)
 const correoDe = (puesto) => `${puesto}.local@metalwork.test`
@@ -189,7 +190,7 @@ for (const puesto of ['gerencia', 'logistica']) {
 }
 
 // ------------------------------------------------ 2. Atención de requerimiento
-for (const puesto of ['almacen', 'logistica']) {
+for (const puesto of ['almacen', 'logistica', 'administracion']) {
   const { pagina, contexto } = await entrar(puesto)
   await ir(pagina, '/requerimientos/atencion')
   const filas = await pagina.locator('tr[id^="rq-"]').evaluateAll((trs) =>
@@ -280,6 +281,32 @@ for (const puesto of ['almacen', 'logistica']) {
   )
   await contexto.close()
 }
+
+// ------------------------------------------------ 2c. Si la base no cuenta, se dice
+// Solo en el banco: se le quita un momento a `authenticated` la función que
+// cuenta (y en Atención el recorrido, de donde salen los días), y se devuelve.
+const erroresAntes = errores.length
+try {
+  await base.query('revoke execute on function public.dias_en_espera_de(timestamptz[]) from authenticated')
+  await base.query('revoke execute on function public.recorrido_de_requerimientos(uuid[]) from authenticated')
+  for (const [puesto, ruta] of [
+    ['gerencia', '/compras/aprobacion'],
+    ['almacen', '/requerimientos/atencion'],
+  ]) {
+    const { pagina, contexto } = await entrar(puesto)
+    await ir(pagina, ruta)
+    const aviso = pagina.locator('[data-dias-sin-leer]')
+    const visible = (await aviso.count()) === 1 && (await aviso.isVisible())
+    const insignias = await pagina.locator('[data-dias-en-espera]').count()
+    comprobar(visible && insignias === 0, `${puesto}: si no se pudieron contar los días, ${ruta} lo dice («${visible ? limpio(await aviso.innerText()) : 'sin aviso'}»)`)
+    await contexto.close()
+  }
+} finally {
+  await base.query('grant execute on function public.dias_en_espera_de(timestamptz[]) to authenticated')
+  await base.query('grant execute on function public.recorrido_de_requerimientos(uuid[]) to authenticated')
+}
+// Los errores de consola de ese rato son los que se provocaron a propósito.
+errores.length = erroresAntes
 
 // ------------------------------------------------ 3. Portería
 {
