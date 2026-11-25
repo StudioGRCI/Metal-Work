@@ -224,6 +224,18 @@ async function foto(pagina, nombre) {
   await contexto.close()
 }
 
+// El banco queda como estaba: la OT de la demostración vuelve a no tener
+// cotización y la de prueba, que no tiene archivo, queda anulada con su motivo
+// (un documento numerado no se borra).
+await base.query('begin')
+await base.query('set local session_replication_role = replica')
+await base.query('update public.ordenes_trabajo set cotizacion_pdf_id = null where id = $1', [ot.id])
+await base.query(
+  "update public.cotizaciones_pdf set estado = 'ANULADA', motivo_anulacion = 'Cotización de prueba del recorrido de Gerencia Comercial', anulado_por = $2, anulado_en = now() where id = $1",
+  [cot.id, gerente.id],
+)
+await base.query('commit')
+
 await navegador.close()
 await base.end()
 console.log(fallas.length ? `\n${fallas.length} fallan.` : '\nTodo pasa.')
