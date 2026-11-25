@@ -11,7 +11,8 @@
 --   4. Lo lee quien ve el documento y nadie más: la función de la cotización
 --      devuelve exactamente las que la política deja ver a cada puesto; el
 --      número de la OT, solo a quien lee las órdenes.
---   5. Ninguna de las dos devuelve un importe ni un dato de RR. HH.
+--   5. Ninguna de las dos devuelve un importe, un dato de RR. HH. ni el nombre
+--      de la persona: solo su puesto (DKS, 2026-11-25).
 --
 -- Cada lectura con la cuenta del puesto —nunca ADMIN— y `set local role
 -- authenticated`. Termina en rollback.
@@ -81,15 +82,15 @@ create or replace function pg_temp.camino_cot(p_cot text) returns text language 
 $$;
 -- Un paso del RQ, entero.
 create or replace function pg_temp.paso_rq(p_rq text, p_paso text, p_situacion text)
-returns table (puesto text, nombre text, en timestamptz, dias integer, espera text, detalle text) language sql as $$
-  select puesto, nombre, en, dias, espera, detalle
+returns table (puesto text, en timestamptz, dias integer, espera text, detalle text) language sql as $$
+  select puesto, en, dias, espera, detalle
     from public.recorrido_de_requerimientos(array[current_setting('prueba.' || p_rq)::uuid])
    where paso = p_paso and situacion = p_situacion
    order by orden desc limit 1;
 $$;
 create or replace function pg_temp.paso_cot(p_cot text, p_paso text, p_situacion text)
-returns table (puesto text, nombre text, en timestamptz, dias integer, espera text, detalle text) language sql as $$
-  select puesto, nombre, en, dias, espera, detalle
+returns table (puesto text, en timestamptz, dias integer, espera text, detalle text) language sql as $$
+  select puesto, en, dias, espera, detalle
     from public.recorrido_de_cotizaciones(array[current_setting('prueba.' || p_cot)::uuid])
    where paso = p_paso and situacion = p_situacion
    order by orden desc limit 1;
@@ -136,11 +137,10 @@ begin
   perform test.afirmar(pg_temp.camino_rq('rqa') = 'REGISTRO:HECHO > REVISION_STOCK:AHORA > LISTO:PENDIENTE > ENTREGA:PENDIENTE',
     'RQ recién registrado: lo tiene Almacén y faltan listo y entrega (' || pg_temp.camino_rq('rqa') || ')');
   select * into v from pg_temp.paso_rq('rqa', 'REGISTRO', 'HECHO');
-  perform test.afirmar(v.puesto = 'Requerimientos' and v.nombre = 'Requerimientos Check 458' and v.en is not null
-                       and v.dias is null and v.detalle = 'Maestranza',
-    'el registro dice el puesto, el nombre de la cuenta, la hora y el área que pidió');
+  perform test.afirmar(v.puesto = 'Requerimientos' and v.en is not null and v.dias is null and v.detalle = 'Maestranza',
+    'el registro dice el puesto de la cuenta, la hora y el área que pidió');
   select * into v from pg_temp.paso_rq('rqa', 'REVISION_STOCK', 'AHORA');
-  perform test.afirmar(v.puesto = 'Almacén' and v.nombre is null and v.dias = 0 and v.espera = 'REVISION_STOCK',
+  perform test.afirmar(v.puesto = 'Almacén' and v.dias = 0 and v.espera = 'REVISION_STOCK',
     'lo tiene Almacén, desde hoy');
 
   perform test.afirmar(pg_temp.camino_rq('rqb') = 'REGISTRO:HECHO > SUSTENTO:AHORA > REVISION_STOCK:PENDIENTE > LISTO:PENDIENTE > ENTREGA:PENDIENTE',
@@ -153,6 +153,8 @@ begin
     'sustentado, lo tiene Diseño (' || pg_temp.camino_rq('rqb') || ')');
   select * into v from pg_temp.paso_rq('rqb', 'VISTO_DISENO', 'AHORA');
   perform test.afirmar(v.puesto = 'Diseño' and v.espera = 'VISTO_DISENO' and v.dias = 0, 'Diseño, desde hoy');
+  select * into v from pg_temp.paso_rq('rqb', 'SUSTENTO', 'HECHO');
+  perform test.afirmar(v.puesto = 'Requerimientos' and v.detalle = '1', 'el sustento dice qué insumos sustentó (dice ' || coalesce(v.detalle, 'nada') || ')');
 end $$;
 reset role;
 
@@ -168,8 +170,8 @@ declare v record;
 begin
   perform public.autorizar_insumos(pg_temp.id('rqb'), '{1}', true, null);
   select * into v from pg_temp.paso_rq('rqb', 'VISTO_DISENO', 'HECHO');
-  perform test.afirmar(v.puesto = 'Diseño e ingeniería' and v.nombre = 'Diseno Check 458' and v.detalle = 'AUTORIZADO',
-    'Diseño ve el RQ: su visto queda con su puesto, su nombre y cómo terminó');
+  perform test.afirmar(v.puesto = 'Diseño e ingeniería' and v.detalle = 'AUTORIZADO:1',
+    'Diseño ve el RQ: su visto queda con su puesto, cómo terminó y sobre qué insumos (dice ' || coalesce(v.detalle, 'nada') || ')');
   perform test.afirmar(pg_temp.camino_rq('rqb') = 'REGISTRO:HECHO > SUSTENTO:HECHO > VISTO_DISENO:HECHO > REVISION_STOCK:AHORA > LISTO:PENDIENTE > ENTREGA:PENDIENTE',
     'autorizado, pasa a Almacén (' || pg_temp.camino_rq('rqb') || ')');
 end $$;
@@ -190,7 +192,7 @@ begin
   select * into v from pg_temp.paso_rq('rqa', 'ENTREGA', 'AHORA');
   perform test.afirmar(v.puesto = 'Maestranza' and v.espera = 'RECOJO_DEL_AREA', 'el área que lo pidió lo recoge');
   select * into v from pg_temp.paso_rq('rqa', 'REVISION_STOCK', 'HECHO');
-  perform test.afirmar(v.puesto = 'Almacenero' and v.nombre = 'Almacenero Check 458', 'la revisión queda con el puesto y el nombre de Almacén');
+  perform test.afirmar(v.puesto = 'Almacenero', 'la revisión queda con el puesto de Almacén');
 
   perform public.rq_revisar_stock(pg_temp.id('rqb'), '[{"item": 1, "en_stock": 0}]', null);
   perform test.afirmar(pg_temp.camino_rq('rqb') = 'REGISTRO:HECHO > SUSTENTO:HECHO > VISTO_DISENO:HECHO > REVISION_STOCK:HECHO > COMPRA:AHORA > LISTO:PENDIENTE > ENTREGA:PENDIENTE',
@@ -209,7 +211,7 @@ begin
   perform test.afirmar(pg_temp.camino_rq('rqb') = 'REGISTRO:HECHO > SUSTENTO:HECHO > VISTO_DISENO:HECHO > REVISION_STOCK:HECHO > COMPRA:HECHO > LISTO:AHORA > ENTREGA:PENDIENTE',
     'Logística lo toma: la compra queda hecha y falta que llegue (' || pg_temp.camino_rq('rqb') || ')');
   select * into v from pg_temp.paso_rq('rqb', 'COMPRA', 'HECHO');
-  perform test.afirmar(v.puesto = 'Compras' and v.nombre = 'Comprador Check 458', 'con el puesto y el nombre de quien lo tomó');
+  perform test.afirmar(v.puesto = 'Compras', 'con el puesto de quien lo tomó');
   select * into v from pg_temp.paso_rq('rqb', 'LISTO', 'AHORA');
   perform test.afirmar(v.puesto = 'Logística' and v.espera = 'POR_COMPRAR' and v.detalle is null,
     'mientras no va en una OC, lo sigue teniendo Logística');
@@ -245,9 +247,52 @@ begin
 end $$;
 reset role;
 
+-- La OC aprobada que Logística todavía no programó con el conductor la tiene
+-- Logística: el conductor no la ve en sus recojos hasta que tiene su fila en
+-- `programacion_recojo`. Programada, la tiene el conductor. La OC se arma sin
+-- disparadores: su ciclo tiene sus checks (329, 333).
+select set_config('prueba.oc', gen_random_uuid()::text, true);
+set local session_replication_role = replica;
+insert into public.ordenes_compra_materiales (id, requerimiento_id, proveedor, referencia, aprobacion, aprobado_por, aprobado_en, creado_por)
+values (pg_temp.id('oc'), pg_temp.id('rqb'), 'Proveedor del check 458', 'OC-0458-MW', 'APROBADA', pg_temp.id('gerente'), now() - interval '2 days', pg_temp.id('comprador'));
+update public.requerimiento_lineas set orden_compra_id = pg_temp.id('oc'), atendida_en = now(), atendida_por = pg_temp.id('comprador')
+ where requerimiento_id = pg_temp.id('rqb');
+set local session_replication_role = origin;
+select pg_temp.como('comprador');
+set local role authenticated;
+do $$
+declare v record;
+begin
+  select * into v from pg_temp.paso_rq('rqb', 'LISTO', 'AHORA');
+  perform test.afirmar(v.puesto = 'Logística' and v.espera = 'POR_PROGRAMAR' and v.detalle like '%OC-0458-MW%' and v.dias = 2,
+    'aprobada y sin programar, la tiene Logística desde que se aprobó (dice ' || coalesce(v.puesto, '?') || ', ' || coalesce(v.espera, '?') || ', ' || coalesce(v.dias::text, '?') || ')');
+end $$;
+reset role;
+set local session_replication_role = replica;
+insert into public.programacion_recojo (orden_compra_id, peso_kg, programado_por, programado_en)
+values (pg_temp.id('oc'), 120, pg_temp.id('comprador'), now());
+set local session_replication_role = origin;
+select pg_temp.como('comprador');
+set local role authenticated;
+do $$
+declare v record;
+begin
+  select * into v from pg_temp.paso_rq('rqb', 'LISTO', 'AHORA');
+  perform test.afirmar(v.puesto = 'Conductor de Logística' and v.espera = 'PENDIENTE_RECOJO' and v.dias = 0,
+    'programada, la tiene el conductor desde que se programó (dice ' || coalesce(v.puesto, '?') || ', ' || coalesce(v.espera, '?') || ')');
+end $$;
+reset role;
+
 -- La vuelta a compra: el RQ listo que vuelve porque Almacén devolvió parte al
 -- proveedor. Lo hace `reabrir_rq_por_lo_devuelto`; aquí, su misma sentencia con
 -- la sesión de Almacén, para que la bitácora la anote.
+-- Sin disparadores, el «listo» de antes se corre una hora atrás, para que el
+-- recorrido lo ponga antes de la vuelta y no por el orden del circuito.
+set local session_replication_role = replica;
+update public.requerimientos
+   set creado_en = now() - interval '2 hours', revision_stock_en = now() - interval '2 hours', listo_en_almacen_en = now() - interval '1 hour'
+ where id = pg_temp.id('rqa');
+set local session_replication_role = origin;
 select pg_temp.como('almacenero');
 do $$
 declare v record;
@@ -257,8 +302,11 @@ begin
   set local role authenticated;
   select * into v from pg_temp.paso_rq('rqa', 'VUELTA_A_COMPRA', 'HECHO');
   perform test.afirmar(v.puesto = 'Almacenero' and v.en is not null, 'la vuelta a compra sale de la bitácora, con su puesto y su hora');
-  perform test.afirmar(pg_temp.camino_rq('rqa') = 'REGISTRO:HECHO > REVISION_STOCK:HECHO > VUELTA_A_COMPRA:HECHO > LISTO:AHORA > ENTREGA:PENDIENTE',
-    'y el RQ vuelve a esperar que esté listo (' || pg_temp.camino_rq('rqa') || ')');
+  perform test.afirmar(pg_temp.camino_rq('rqa') = 'REGISTRO:HECHO > REVISION_STOCK:HECHO > LISTO:HECHO > VUELTA_A_COMPRA:HECHO > LISTO:AHORA > ENTREGA:PENDIENTE',
+    'el «listo» que la vuelta borró sigue en el recorrido, y el RQ vuelve a esperar que esté listo (' || pg_temp.camino_rq('rqa') || ')');
+  perform test.afirmar((select puesto = 'Almacenero' and en < now() from public.recorrido_de_requerimientos(array[pg_temp.id('rqa')])
+                         where paso = 'LISTO' and situacion = 'HECHO'),
+    'con el puesto y la hora de quien lo marcó');
   reset role;
   update public.requerimientos set estado = 'LISTO_EN_ALMACEN', listo_en_almacen_en = now(), listo_en_almacen_por = pg_temp.id('almacenero')
    where id = pg_temp.id('rqa');
@@ -270,7 +318,7 @@ declare v record;
 begin
   perform public.rq_entregar_con_faltante(pg_temp.id('rqa'), 'Lo recogió el supervisor de Maestranza',
     'El resto ya no se necesita: el piso se cerró con lo que había');
-  perform test.afirmar(pg_temp.camino_rq('rqa') = 'REGISTRO:HECHO > REVISION_STOCK:HECHO > VUELTA_A_COMPRA:HECHO > LISTO:HECHO > ENTREGA:HECHO',
+  perform test.afirmar(pg_temp.camino_rq('rqa') = 'REGISTRO:HECHO > REVISION_STOCK:HECHO > LISTO:HECHO > VUELTA_A_COMPRA:HECHO > LISTO:HECHO > ENTREGA:HECHO',
     'entregado: todo hecho y nadie lo tiene (' || pg_temp.camino_rq('rqa') || ')');
   select * into v from pg_temp.paso_rq('rqa', 'ENTREGA', 'HECHO');
   perform test.afirmar(v.puesto = 'Almacenero' and v.detalle = 'CON_FALTANTE', 'la entrega con faltante lo dice');
@@ -327,7 +375,7 @@ begin
   perform test.afirmar(pg_temp.camino_cot('cot1') = 'SUBIDA:HECHO > REVISION:AHORA > CODIGO_Y_OT:PENDIENTE > FACTURA:PENDIENTE',
     'cotización recién subida: la tiene Gerencia (' || pg_temp.camino_cot('cot1') || ')');
   select * into v from pg_temp.paso_cot('cot1', 'SUBIDA', 'HECHO');
-  perform test.afirmar(v.puesto = 'Agente de Ventas' and v.nombre = 'Vendedor Check 458', 'la subida, con el puesto y el nombre de Ventas');
+  perform test.afirmar(v.puesto = 'Agente de Ventas', 'la subida, con el puesto de Ventas');
   select * into v from pg_temp.paso_cot('cot1', 'REVISION', 'AHORA');
   perform test.afirmar(v.puesto = 'Gerencia' and v.dias = 0 and v.espera = 'REVISION', 'la tiene Gerencia, desde hoy');
 end $$;
@@ -339,12 +387,12 @@ do $$
 declare v record;
 begin
   update public.cotizaciones_pdf set estado = 'RECHAZADA', observacion = 'Falta el plazo de entrega' where id = pg_temp.id('cot1');
-  perform test.afirmar(pg_temp.camino_cot('cot1') = 'SUBIDA:HECHO > REVISION:HECHO > CORRECCION:AHORA > CODIGO_Y_OT:PENDIENTE > FACTURA:PENDIENTE',
-    'rechazada: vuelve a quien la subió (' || pg_temp.camino_cot('cot1') || ')');
+  perform test.afirmar(pg_temp.camino_cot('cot1') = 'SUBIDA:HECHO > REVISION:HECHO > CORRECCION:AHORA > REVISION:PENDIENTE > CODIGO_Y_OT:PENDIENTE > FACTURA:PENDIENTE',
+    'rechazada: vuelve a quien la subió, y después Gerencia revisa la corrección (' || pg_temp.camino_cot('cot1') || ')');
   select * into v from pg_temp.paso_cot('cot1', 'CORRECCION', 'AHORA');
   perform test.afirmar(v.puesto = 'Agente de Ventas' and v.espera = 'CORRECCION', 'la tiene Ventas');
   select * into v from pg_temp.paso_cot('cot1', 'REVISION', 'HECHO');
-  perform test.afirmar(v.puesto = 'Gerencia' and v.nombre = 'Gerente Check 458' and v.detalle = 'RECHAZADA', 'el rechazo, con el puesto y el nombre de Gerencia');
+  perform test.afirmar(v.puesto = 'Gerencia' and v.detalle = 'RECHAZADA', 'el rechazo, con el puesto de Gerencia');
   -- La cot2 se aprueba de frente; la cot3 se anula.
   update public.cotizaciones_pdf set estado = 'APROBADA' where id = pg_temp.id('cot2');
   update public.cotizaciones_pdf set estado = 'ANULADA', observacion = 'El cliente desistió de la compra' where id = pg_temp.id('cot3');
@@ -386,7 +434,7 @@ begin
   perform test.afirmar(pg_temp.camino_cot('cot1') = 'SUBIDA:HECHO > REVISION:HECHO > CORRECCION:HECHO > REVISION:HECHO > CODIGO_Y_OT:HECHO > FACTURA:AHORA',
     'con su código y su OT, la tiene Contabilidad (' || pg_temp.camino_cot('cot1') || ')');
   select * into v from pg_temp.paso_cot('cot1', 'CODIGO_Y_OT', 'HECHO');
-  perform test.afirmar(v.puesto = 'Administración' and v.nombre = 'Administracion Check 458' and v.detalle like 'OT 9458-%',
+  perform test.afirmar(v.puesto = 'Administración' and v.detalle like 'OT 9458-%',
     'Administración, que lee las órdenes, ve el número de la OT');
   select * into v from pg_temp.paso_cot('cot1', 'FACTURA', 'AHORA');
   perform test.afirmar(v.puesto = 'Contabilidad' and v.espera = 'FACTURA' and v.dias = 0, 'Contabilidad, desde hoy');
@@ -407,6 +455,22 @@ begin
     'facturada: todo hecho (' || pg_temp.camino_cot('cot1') || ')');
   select * into v from pg_temp.paso_cot('cot1', 'FACTURA', 'HECHO');
   perform test.afirmar(v.puesto = 'Contabilidad' and v.detalle is null, 'la factura sale con su puesto, sin número ni monto');
+end $$;
+reset role;
+
+-- La aprobada que se anula conserva su revisión y cómo terminó: la columna del
+-- estado ya dice ANULADA, y la decisión sale de la bitácora.
+select pg_temp.como('gerente');
+set local role authenticated;
+do $$
+declare v record;
+begin
+  update public.cotizaciones_pdf set estado = 'ANULADA', observacion = 'El cliente compró en otra empresa' where id = pg_temp.id('cot2');
+  perform test.afirmar(pg_temp.camino_cot('cot2') = 'SUBIDA:HECHO > REVISION:HECHO > ANULACION:HECHO',
+    'aprobada y anulada: queda su revisión y su anulación, sin nadie esperando (' || pg_temp.camino_cot('cot2') || ')');
+  select * into v from pg_temp.paso_cot('cot2', 'REVISION', 'HECHO');
+  perform test.afirmar(v.puesto = 'Gerencia' and v.detalle = 'APROBADA',
+    'y su revisión dice que se aprobó (dice ' || coalesce(v.detalle, 'nada') || ')');
 end $$;
 reset role;
 
@@ -457,9 +521,9 @@ reset role;
 -- ============================================ 5. Ni importes ni datos de RR. HH.
 select test.afirmar(
   (select bool_and(pg_get_function_result(p.oid) =
-                   'TABLE(documento uuid, orden integer, paso text, situacion text, puesto text, nombre text, en timestamp with time zone, dias integer, espera text, detalle text)')
+                   'TABLE(documento uuid, orden integer, paso text, situacion text, puesto text, en timestamp with time zone, dias integer, espera text, detalle text)')
      from pg_proc p where p.proname in ('recorrido_de_requerimientos', 'recorrido_de_cotizaciones')),
-  'las dos funciones devuelven las mismas diez columnas: ninguna es un monto');
+  'las dos funciones devuelven las mismas nueve columnas: ninguna es un monto ni el nombre de la persona');
 select pg_temp.como('gerente');
 set local role authenticated;
 select test.afirmar(
@@ -470,8 +534,8 @@ select test.afirmar(
       union all
       select to_jsonb(r)::text from public.recorrido_de_cotizaciones(array[pg_temp.id('cot1'), pg_temp.id('cot2'), pg_temp.id('cot3')]) r
     ) t
-    where t.fila ~ '7045|45\.8|45800|22900|prueba\.local'),
-  'en ningún paso sale un DNI, un costo por hora, un correo ni un importe');
+    where t.fila ~ '7045|45\.8|45800|22900|prueba\.local|Check 458'),
+  'en ningún paso sale un DNI, un costo por hora, un correo, un importe ni el nombre de la cuenta');
 reset role;
 
 -- Nadie sin sesión las ejecuta.
