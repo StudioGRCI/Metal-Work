@@ -204,6 +204,7 @@ for (const puesto of ['almacen', 'logistica', 'administracion']) {
         visible: i?.querySelector('[aria-hidden="true"]:not(svg)')?.textContent.replace(/\s+/g, ' ').trim() ?? '',
         lector: i?.querySelector('.sr-only')?.textContent.replace(/\s+/g, ' ').trim() ?? '',
         frenado: Boolean(tr.querySelector('[data-freno]')),
+        grupo: tr.dataset.grupo ?? '',
         estado: tr.querySelector('td:nth-child(3) [class*="rounded-full"]')?.innerText.trim() ?? '',
       }
     }),
@@ -228,12 +229,15 @@ for (const puesto of ['almacen', 'logistica', 'administracion']) {
   // Los frenados por el metrado van al final, como antes; antes de ellos, por grupos, el que más espera arriba.
   const primerFrenado = filas.findIndex((f) => f.frenado)
   comprobar(primerFrenado === -1 || filas.slice(primerFrenado).every((f) => f.frenado), `${puesto}: los que esperan el metrado siguen al final`)
-  if (puesto === 'logistica') {
-    // Logística no revisa ni entrega: lo suyo es lo que compra. Los demás van en un solo grupo, del más antiguo al más nuevo.
-    const suyos = filas.filter((f) => !f.frenado && /compra|Por comprar|Sin stock/i.test(f.estado))
-    const otros = filas.filter((f) => !f.frenado && !suyos.includes(f))
-    comprobar(enOrden(otros.map((f) => f.desde)), `${puesto}: lo que no le toca va del más antiguo al más nuevo (${otros.map((f) => `${f.numero} ${f.dias}`).join(', ')})`)
-  }
+  // Por grupos (le toca / no / frenado), primero lo que tiene su puesto, y en cada parte el que más espera arriba.
+  const grupos = filas.map((f) => f.grupo)
+  comprobar(grupos.every((g, i) => g !== '' && (i === 0 || grupos[i - 1] <= g)), `${puesto}: los grupos van en orden (${grupos.join(' ')})`)
+  const desordenados = [...new Set(grupos)].filter((g) => !enOrden(filas.filter((f) => f.grupo === g).map((f) => f.desde)))
+  comprobar(desordenados.length === 0, `${puesto}: en cada grupo, del más antiguo al más nuevo (${desordenados.join(', ') || 'todos'})`)
+  // Lo que tiene su puesto, primero dentro del grupo: ninguna fila «propia» queda debajo de una ajena del mismo grupo.
+  const suyo = { almacen: 'Almacén', logistica: 'Logística', administracion: 'Administración' }[puesto]
+  const mal = filas.filter((f) => f.grupo.endsWith('0') !== f.visible.startsWith(`${suyo} ·`))
+  comprobar(mal.length === 0, `${puesto}: lo que tiene ${suyo} va primero en su grupo (${mal.map((f) => `${f.numero} ${f.visible}`).join(', ') || 'bien'})`)
   await ir(pagina, '/requerimientos/atencion?vista=todos')
   const historial = await pagina.locator('tr[id^="rq-"]').evaluateAll((trs) =>
     trs.map((tr) => ({

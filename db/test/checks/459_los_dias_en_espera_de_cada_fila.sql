@@ -11,6 +11,8 @@
 -- Termina en rollback.
 \set ON_ERROR_STOP on
 begin;
+-- Como Supabase, en UTC: una cuenta hecha con la fecha de la sesión fallaría aquí.
+set local timezone = 'UTC';
 
 do $$
 declare v_id uuid := gen_random_uuid();

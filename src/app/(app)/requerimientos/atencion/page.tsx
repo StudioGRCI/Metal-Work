@@ -119,14 +119,29 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
   // no cuenta como suyo y va después de los que sí puede revisar.
   const leToca = (r: RequerimientoListado) => leTocaAtender(r, { recibe, despacha, compraDe }) && !frenoDelRq(r, metrado)
   const meToca = requerimientos.filter(leToca).length
+  // En qué grupo va cada RQ de «Por atender», para leer el orden (`data-grupo`).
+  const grupoDe = new Map<string, string>()
   if (vista === 'abiertos') {
     const orden = (r: RequerimientoListado) => (leToca(r) ? 0 : frenoDelRq(r, metrado) ? 2 : 1)
-    // Dentro de cada grupo, el que más espera arriba (plan 0): desde que lo tiene quien lo tiene.
+    // Dentro de cada grupo, primero lo que hoy tiene el puesto de quien mira
+    // (Almacén, Logística o la administradora, según su recorrido) y después lo
+    // demás; en cada parte, el que más espera arriba (plan 0): desde que lo tiene
+    // quien lo tiene. Sin el recorrido queda el orden de antes.
+    const propios = new Set([
+      ...(recibe || despacha ? ['Almacén'] : []),
+      ...(compraDe.OPERACION ? ['Logística'] : []),
+      ...(compraDe.ADMINISTRACION ? ['Administración'] : []),
+    ])
+    const ajeno = (r: RequerimientoListado) => {
+      const quien = espera.get(r.id)?.puesto
+      return quien && propios.has(quien) ? 0 : 1
+    }
     const desde = (r: RequerimientoListado) => {
       const en = espera.get(r.id)?.en
       return en ? Date.parse(en) : Number.POSITIVE_INFINITY
     }
-    requerimientos.sort((a, b) => orden(a) - orden(b) || desde(a) - desde(b))
+    requerimientos.sort((a, b) => orden(a) - orden(b) || ajeno(a) - ajeno(b) || desde(a) - desde(b))
+    for (const r of requerimientos) grupoDe.set(r.id, `${orden(r)}${ajeno(r)}`)
   }
   const grupos = compra ? insumosPorComprar(requerimientos, compraDe, metrado, espera) : []
   const porComprar = grupos.reduce((suma, g) => suma + g.insumos.length, 0)
@@ -214,6 +229,7 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
                       correcciones={correcciones.get(r.id)}
                       metrado={metrado}
                       espera={espera.get(r.id)}
+                      grupo={grupoDe.get(r.id)}
                     />
                   ))
                 )}
@@ -333,6 +349,7 @@ function Fila({
   correcciones,
   metrado,
   espera,
+  grupo,
 }: {
   rq: RequerimientoListado
   recibe: boolean
@@ -351,6 +368,8 @@ function Fila({
   metrado: Map<string, MetradoDelInsumo>
   /** Quién lo tiene ahora, desde cuándo y hace cuántos días (del recorrido); nada si no se pudo leer o ya no lo tiene nadie. */
   espera: PasoDelRecorrido | undefined
+  /** En «Por atender», su grupo en el orden: le toca / no / frenado, y si lo tiene el puesto de quien mira. */
+  grupo?: string
 }) {
   const estado = estadoDelRequerimiento(rq)
   // Los insumos que se pasan del metrado sin el visto de Diseño.
@@ -381,7 +400,7 @@ function Fila({
 
   return (
     // El ancla de la fila: la salida del kardex vuelve aquí para marcarlo entregado.
-    <TR id={`rq-${rq.id}`} className="block scroll-mt-20 sm:table-row">
+    <TR id={`rq-${rq.id}`} className="block scroll-mt-20 sm:table-row" data-grupo={grupo}>
       <TD className="block pt-3 pb-1 align-top sm:table-cell sm:py-2">
         <p className="tabular font-semibold text-texto">
           {rq.numero}
