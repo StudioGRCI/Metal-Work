@@ -18,16 +18,20 @@
 -- Desde aquí:
 --
 --   * el responsable de un área es su cuenta, `areas.jefe_id`. No se crea otra
---     columna: es la que ya usa `asignar_responsables_ot`;
+--     columna: la 067 ya la había creado para eso, y hoy nada la lee
+--     (`asignar_responsables_ot` quedó sin quien la llame), así que asignarla
+--     no cambia nada de lo que ya funciona;
 --   * el texto del organigrama se conserva tal cual hasta que todas las áreas
 --     tengan cuenta (DKS lo pidió así). La pantalla lo muestra al lado, para
 --     saber a quién buscarle la cuenta; no se borra ni se pisa aquí;
 --   * la cuenta responsable tiene que estar activa al asignarla. Una cuenta
 --     dada de baja no recibe avisos ni puede entrar a contestar;
 --   * `responsable_del_area('CAL')` da la cuenta responsable y activa de un
---     área, o nada. Es la que usan los avisos «al área»: si la cuenta se dio de
---     baja después de asignarla, no la devuelve, y la pantalla de Configuración
---     lo dice en la fila de esa área;
+--     área, o nada. Hoy ninguna función avisa todavía por aquí: la van a usar
+--     los avisos «al área» de las entregas que siguen (Calidad, Garantías,
+--     Mantenimiento) y de SSOMA y Mantenimiento de equipos, que la esperan con
+--     este nombre. Si la cuenta se dio de baja después de asignarla, no la
+--     devuelve, y la pantalla de Configuración lo dice en la fila de esa área;
 --   * lo asigna el administrador del sistema, en Configuración. La política de
 --     `areas` ya lo pide así (`es_admin()` o `configuracion.editar`, que desde
 --     la 20261017400000 solo tiene el puesto ADMIN): no cambia.
@@ -66,7 +70,7 @@ begin
 end $$;
 
 comment on function public.fn_area_responsable_activo() is
-  'La cuenta responsable de un área tiene que estar activa al asignarla. Migración 20261125200000.';
+  'La cuenta responsable de un área tiene que estar activa al asignarla. Migración 20261125205000.';
 
 revoke all on function public.fn_area_responsable_activo() from public, anon, authenticated;
 
@@ -92,7 +96,7 @@ as $$
 $$;
 
 comment on function public.responsable_del_area(text) is
-  'La cuenta responsable y activa del área con ese código («CAL», «MNT»), o null si el área no tiene responsable o su cuenta se dio de baja. Es a quien se le avisa lo que va «al área». Migración 20261125200000.';
+  'La cuenta responsable y activa del área con ese código («CAL», «MNT»), o null si el área no tiene responsable o su cuenta se dio de baja. Es a quien se le avisa lo que va «al área». Migración 20261125205000.';
 
 revoke all on function public.responsable_del_area(text) from public, anon;
 grant execute on function public.responsable_del_area(text) to authenticated;

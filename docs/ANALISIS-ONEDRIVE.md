@@ -74,7 +74,7 @@ código documental de la empresa.
 > tablero de unidades.
 >
 > El encargado de esta tabla se guardó como texto (`areas.encargado`). Desde la
-> migración `20261125200000` el responsable de cada área es una cuenta
+> migración `20261125205000` el responsable de cada área es una cuenta
 > (`areas.jefe_id`), que el administrador asigna en Configuración; el texto del
 > organigrama se conserva al lado hasta que todas las áreas tengan la suya. Las
 > áreas sin encargado en el organigrama son las que primero necesitan que se

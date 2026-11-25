@@ -295,7 +295,7 @@ sin área hasta que Administración se la pone al corregirlos.
 
 ## Responsables de área
 
-Migración `20261125200000_el_responsable_de_cada_area_es_una_cuenta`,
+Migración `20261125205000_el_responsable_de_cada_area_es_una_cuenta`,
 comprobada con los roles reales en la base local (check 460) y con clic real en
 el banco (`herramientas/banco/probar-responsables-de-area.mjs`). El responsable
 de cada área del organigrama es una cuenta, `areas.jefe_id`, y no un nombre
@@ -309,7 +309,7 @@ desde la pantalla.
 | --- | --- | --- |
 | Ver la lista de áreas con su cuenta responsable y las que no tienen | `configuracion.editar`: solo el administrador del sistema | La tarjeta «Responsables de área» de Configuración se pinta solo con ese permiso, el mismo que pide la política. Diseño entra a Configuración por `configuracion.ver` y no la ve; Gerencia y los demás puestos no entran a Configuración |
 | Asignar, cambiar o quitar la cuenta responsable de un área | `configuracion.editar`: solo el administrador del sistema | Política `editar_areas` (`es_admin()` o `configuracion.editar`), la misma que exige la acción `asignarResponsableDeArea`. Con otro puesto el UPDATE afecta cero filas y la acción lo dice en vez de dar «listo». La cuenta tiene que estar activa al asignarla (`trg_area_responsable_activo`) |
-| Saber a quién se le avisa lo que va «al área» | Toda cuenta activa, y las funciones que avisan | `responsable_del_area('CAL')`: la cuenta responsable y activa de esa área, o nada. No devuelve una cuenta que se dio de baja después de asignarla; el área la conserva y la pantalla lo dice («Cuenta dada de baja») hasta que el administrador la cambie. `anon` no la ejecuta |
+| Saber a quién se le avisa lo que va «al área» | Toda cuenta activa. Hoy ninguna función avisa todavía por aquí: la van a usar los avisos de Calidad, Garantías, Mantenimiento y SSOMA | `responsable_del_area('CAL')`: la cuenta responsable y activa de esa área, o nada. No devuelve una cuenta que se dio de baja después de asignarla; el área la conserva y la pantalla lo dice («Cuenta dada de baja») hasta que el administrador la cambie. `anon` no la ejecuta |
 
 La tabla `areas` la lee toda cuenta activa (`ver_areas`), como antes: quién
 responde por un área no es un dato reservado. Lo que no hace nadie más que el

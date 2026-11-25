@@ -5,6 +5,7 @@ import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion, NO_TOCO_NADA } from '@/lib/acciones'
 import { exigirSesion, puede } from '@/lib/sesion'
+import { CUENTA_YA_NO_ACTIVA } from '@/lib/dominio/areas'
 import { codigoDeCarroceria } from '@/lib/dominio/medidas-carroceria'
 import { createClient } from '@/lib/supabase/server'
 
@@ -326,7 +327,7 @@ export async function guardarMedidasCarroceria(
  * administrador del sistema: la política `editar_areas` pide lo mismo que
  * `exigirEdicion` (`es_admin()` o `configuracion.editar`, que solo tiene el
  * puesto ADMIN). Que la cuenta esté activa lo exige la base
- * (`fn_area_responsable_activo`, migración 20261125200000).
+ * (`fn_area_responsable_activo`, migración 20261125205000).
  */
 export async function asignarResponsableDeArea(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const problema = await exigirEdicion()
@@ -348,7 +349,15 @@ export async function asignarResponsableDeArea(_previo: unknown, datos: FormData
     .select('nombre')
     .maybeSingle()
 
-  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (error) {
+    // La cuenta se dio de baja con la ventana abierta (el disparador de la
+    // migración 20261125205000): la lista se pone al día y deja de ofrecerla.
+    if (error.code === '23514') {
+      revalidatePath('/configuracion')
+      return { ok: false, error: CUENTA_YA_NO_ACTIVA }
+    }
+    return { ok: false, error: mensajeDeError(error) }
+  }
   if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath('/configuracion')

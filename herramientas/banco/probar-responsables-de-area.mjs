@@ -1,5 +1,5 @@
 /**
- * Clic real sobre «Responsables de área» (migración 20261125200000, entrega A.0
+ * Clic real sobre «Responsables de área» (migración 20261125205000, entrega A.0
  * del plan de las demás áreas): el responsable de cada área es una cuenta.
  *
  * El administrador del sistema abre Configuración, asigna la cuenta responsable
@@ -69,6 +69,19 @@ if (!admin || !supervisor || !almacen) {
 
 // Cómo estaban las dos áreas que se tocan, para dejarlas igual al final.
 const ANTES = { CAL: await area('CAL'), MKT: await area('MKT') }
+// La base es compartida (los auditores la usan a la vez): si la prueba se corta
+// a medio camino, deja igual las dos cuentas que da de baja y las dos áreas.
+async function dejarComoEstaba() {
+  await base.query('rollback').catch(() => {})
+  for (const c of [almacen, supervisor]) await activar(c.id, true).catch(() => {})
+  for (const a of [ANTES.CAL, ANTES.MKT])
+    await base.query('update public.areas set jefe_id = $2 where id = $1', [a.id, a.jefe_id]).catch(() => {})
+}
+process.on('uncaughtException', async (error) => {
+  console.error(error)
+  await dejarComoEstaba()
+  process.exit(1)
+})
 // El administrador da de baja o de alta una cuenta: `fn_usuario_proteger_rol` pide su sesión.
 async function activar(id, activo) {
   await base.query('begin')
@@ -204,7 +217,20 @@ async function abrir(pagina, nombre) {
   const alerta = ventana.getByRole('alert')
   await alerta.waitFor({ timeout: 15000 })
   const rechazo = await textoDe(alerta)
-  comprobar(rechazo.includes('tiene que ser una cuenta activa'), `la cuenta dada de baja no entra y la ventana dice por qué: «${rechazo}»`)
+  comprobar(rechazo.includes('se dio de baja hace un momento'), `la cuenta dada de baja no entra y la ventana dice por qué: «${rechazo}»`)
+  const lista = ventana.getByRole('combobox', { name: 'Cuenta responsable' })
+  comprobar((await lista.getAttribute('aria-invalid')) === 'true', 'el rechazo marca el campo «Cuenta responsable», no solo el pie')
+  comprobar(
+    await lista.evaluate((el) => document.activeElement === el),
+    'el cursor vuelve al campo para elegir otra cuenta',
+  )
+  // La lista se pone al día y deja de ofrecer la cuenta dada de baja.
+  await pagina.waitForFunction(
+    ([id]) => !document.querySelector(`[role="dialog"] select option[value="${id}"]`),
+    [almacen.id],
+    { timeout: 15000 },
+  ).catch(() => {})
+  comprobar((await lista.locator(`option[value="${almacen.id}"]`).count()) === 0, 'la ventana ya no ofrece la cuenta dada de baja')
   comprobar((await area('MKT')).jefe_id === null, 'en la base, Marketing sigue sin cuenta')
   await activar(almacen.id, true)
   await ventana.getByRole('button', { name: 'Cancelar' }).click()
@@ -218,7 +244,7 @@ async function abrir(pagina, nombre) {
   await activar(supervisor.id, false)
   await pagina.reload({ waitUntil: 'networkidle' })
   const textoDeBaja = await textoDe(fila(pagina, 'Calidad'))
-  comprobar(textoDeBaja.includes('Cuenta dada de baja') && textoDeBaja.includes('ya no le llegan los avisos'), 'con la cuenta dada de baja, Calidad lo dice y pide elegir otra')
+  comprobar(textoDeBaja.includes('Cuenta dada de baja') && textoDeBaja.includes('ya no responde por el área'), 'con la cuenta dada de baja, Calidad lo dice y pide elegir otra')
   comprobar((await una(`select public.responsable_del_area('CAL') as r`)).r === null, 'y responsable_del_area(«CAL») ya no la da')
   const resumenDeBaja = await resumenDe(pagina)
   comprobar(resumenDeBaja.includes(`${con} de ${total} áreas`), `el resumen no la cuenta: «${resumenDeBaja}»`)
@@ -313,8 +339,7 @@ async function abrir(pagina, nombre) {
 }
 
 // La base queda como estaba.
-await base.query('update public.areas set jefe_id = $2 where id = $1', [ANTES.CAL.id, ANTES.CAL.jefe_id])
-await base.query('update public.areas set jefe_id = $2 where id = $1', [ANTES.MKT.id, ANTES.MKT.jefe_id])
+await dejarComoEstaba()
 
 await navegador.close()
 await base.end()
