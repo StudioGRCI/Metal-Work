@@ -7,12 +7,15 @@ import { AvisoTope } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { AvisoEnfocado } from '@/components/ui/aviso-enfocado'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { Recorrido } from '@/components/ui/recorrido'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { etiquetaDeMime } from '@/lib/archivo-cotizacion'
 import { catalogosDeCotizacion, listarCotizacionesPdf } from '@/lib/datos/cotizaciones-pdf'
+import { recorridoDeCotizaciones } from '@/lib/datos/recorrido'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
 import { estadoFacturaVenta } from '@/lib/dominio/finanzas'
+import { describirRecorridoDeLaCotizacion } from '@/lib/dominio/recorrido'
 import { diaLima, fecha as fmtFecha, hora, hoyLima, moneda as formatoMoneda } from '@/lib/format'
 import { exigirPermiso, puede, puedeCorregirCotizacion, puedeQuitarCotizacion } from '@/lib/sesion'
 
@@ -176,6 +179,12 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
   const visibles = cotizaciones
     .filter((c) => (enFiltro(c, filtro, mes) || (filtro === 'POR_REVISAR' && recienRevisada(c))) && buscada(c))
     .sort((a, b) => Number(arriba(b)) - Number(arriba(a)))
+
+  // El recorrido de las que se muestran. Sin él, la tarjeta sigue con todo lo demás y lo dice en su lugar.
+  const recorridos = await recorridoDeCotizaciones(visibles.flatMap((c) => (c.id ? [c.id] : []))).catch((e: unknown) => {
+    console.error('Cotización: no se pudo leer el recorrido.', e)
+    return null
+  })
 
   const opciones = [
     { valor: null, etiqueta: `Vigentes (${cotizaciones.length - anuladas})` },
@@ -399,6 +408,14 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                         </ol>
                       </details>
                     )}
+
+                    {/* Para consultar: quién hizo cada paso, quién la tiene ahora y hace cuántos días. */}
+                    <Recorrido
+                      pasos={recorridos ? describirRecorridoDeLaCotizacion((c.id && recorridos.get(c.id)) || []) : null}
+                      className="rounded-[var(--radius-base)] border border-borde"
+                      relleno="px-2.5"
+                      femenino
+                    />
 
                     {/* Una aprobada que espera su código: quien no lo da tiene
                         que saber por qué no avanza y quién la destraba. */}

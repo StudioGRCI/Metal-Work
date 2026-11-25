@@ -13871,6 +13871,12 @@ export type Database = {
         }
         Returns: number
       }
+      dias_en_espera: {
+        Args: {
+          p_desde: string | null
+        }
+        Returns: number
+      }
       dias_habiles_entre: {
         Args: {
           p_desde: string | null
@@ -15686,6 +15692,40 @@ export type Database = {
           p_devolucion: string | null
         }
         Returns: number
+      }
+      recorrido_de_cotizaciones: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          documento: string | null
+          orden: number | null
+          paso: string | null
+          situacion: string | null
+          puesto: string | null
+          nombre: string | null
+          en: string | null
+          dias: number | null
+          espera: string | null
+          detalle: string | null
+        }[]
+      }
+      recorrido_de_requerimientos: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          documento: string | null
+          orden: number | null
+          paso: string | null
+          situacion: string | null
+          puesto: string | null
+          nombre: string | null
+          en: string | null
+          dias: number | null
+          espera: string | null
+          detalle: string | null
+        }[]
       }
       reemplazar_etapas_historicas: {
         Args: {
