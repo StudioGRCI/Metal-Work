@@ -393,6 +393,11 @@ begin
     (select numero like 'RI-0003-%' from public.ssoma_reportes where id = current_setting('prueba.r3')::uuid),
     'Ventas, que no es de Almacén, reporta igual; el número sigue en 3, sin reusar el anulado');
 
+  -- El camino de todos los días: con SSOMA activa, la función dice que el aviso le llegó a SSOMA.
+  perform test.como_usuario(current_setting('prueba.vendedor')::uuid);
+  perform test.afirmar(public.ssoma_a_quien_se_aviso(current_setting('prueba.r3')::uuid) = 'SSOMA',
+    'con SSOMA activa, el aviso le llegó a SSOMA y la función lo dice');
+
   -- Sin nadie de SSOMA con cuenta activa, el aviso le llega a Gerencia y la
   -- función lo dice: la pantalla no puede decir «ya le avisamos a SSOMA».
   -- El armazón (apagar la cuenta de SSOMA) lo hace el administrador.

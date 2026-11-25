@@ -401,6 +401,26 @@ let delSupervisor = null
   await pagina.screenshot({ path: join(CAPTURAS, 'ssoma-detalle-anulado-1440.png'), fullPage: true })
   await ir(pagina, `${BASE}/ssoma?vista=anulados`)
   comprobar((await pagina.locator(`[data-reporte-ssoma="${delSupervisor?.numero}"]`).count()) === 1, '[SSOMA 1440] el anulado pasa a la vista «Anulados»')
+
+  // Lo que le contaron tarde: SSOMA lo registra con la fecha de hace 35 días; el campo no le pone el tope de 30.
+  await ir(pagina, `${BASE}/ssoma`)
+  await pagina.locator('[data-reportar-incidente]').click()
+  const vt = ventanaDe(pagina)
+  await vt.waitFor({ timeout: 10000 })
+  const lugarTarde = `Altillo de planchas ${sello}`
+  await vt.locator('input[name="tipo"][value="INCIDENTE"]').check()
+  await vt.locator('#ssoma-area').selectOption({ label: 'Almacén' })
+  await vt.locator('#ssoma-lugar').fill(lugarTarde)
+  await vt.locator('#ssoma-descripcion').fill(`Se cayó una plancha del altillo; nos lo contaron recién (${sello}).`)
+  const haceTiempo = new Date(Date.now() - 35 * 86400 * 1000 - 5 * 3600 * 1000).toISOString().slice(0, 16)
+  await vt.locator('#ssoma-cuando').fill(haceTiempo)
+  comprobar((await vt.locator('#ssoma-cuando').getAttribute('min')) === null, '[SSOMA 1440] la fecha no le pone el tope de 30 días')
+  await vt.getByRole('button', { name: 'Enviar el reporte' }).click()
+  const verdeTarde = await hasta(() => pagina.locator('p[role="status"]').first().innerText().catch(() => ''), (t) => /registrado/.test(t), 30000)
+  await quieta(pagina)
+  const tarde = await reportes('r.lugar = $1', [lugarTarde])
+  comprobar(tarde.length === 1 && /^Reporte RI-\d{4}-\d{4} registrado\.$/.test(limpio(verdeTarde).replace(/ Ver cómo va$/, '')),
+    `[SSOMA 1440] registra un hecho de hace 35 días, y el verde no dice que se avisó a sí misma: «${limpio(verdeTarde)}»`)
   comprobar(errores.length === 0, `[SSOMA 1440] sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }

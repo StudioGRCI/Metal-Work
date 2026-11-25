@@ -45,7 +45,16 @@ export default async function PaginaSsoma({ searchParams }: PageProps<'/ssoma'>)
   ])
   const alTope = reportes.length >= MAXIMO_REPORTES_SSOMA
 
-  const boton = <ReportarIncidente cuentaId={perfil.id} areaDeLaCuenta={perfil.area_id} areas={areas} personal={personal} />
+  const boton = (
+    <ReportarIncidente
+      cuentaId={perfil.id}
+      areaDeLaCuenta={perfil.area_id}
+      areas={areas}
+      personal={personal}
+      // El mismo permiso con que la base deja registrar fuera de los 30 días.
+      sinPlazo={puede(perfil, 'ssoma.gestionar')}
+    />
+  )
 
   if (veTodo) {
     const vigentes = reportes.filter((r) => r.estado !== 'ANULADO')

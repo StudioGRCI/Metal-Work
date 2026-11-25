@@ -397,7 +397,7 @@ begin
   if not exists (select 1 from public.notificaciones n where n.origen_tabla = 'ssoma_reportes' and n.origen_id = p_id)
      and not public.tiene_permiso('ssoma.gestionar') then
     perform public.avisar_a_permiso('ssoma.ver',
-      v_clase || ' en ' || v_area.nombre || ': ' || v_numero || ' (SSOMA todavía no tiene cuenta)',
+      v_clase || ' en ' || v_area.nombre || ': ' || v_numero || ' (no hay cuenta activa de SSOMA)',
       v_lugar || ' · ' || left(v_que, 200),
       '/ssoma/' || p_id::text, 'ssoma_reportes', p_id);
   end if;

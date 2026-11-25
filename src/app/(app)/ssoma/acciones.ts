@@ -29,15 +29,17 @@ function json(formulario: FormData, nombre: string): unknown {
 }
 
 /** Lo que dice el verde según a quién le llegó el aviso (`ssoma_a_quien_se_aviso`): nunca «ya le avisamos» si no llegó. */
-function aQuienSeAviso(numero: string, avisado: string | null) {
+function aQuienSeAviso(numero: string, avisado: string | null, esDeGerencia: boolean) {
   switch (avisado) {
     case 'SSOMA':
       return `Reporte ${numero} registrado: ya le avisamos a SSOMA.`
     case 'GERENCIA':
-      return `Reporte ${numero} registrado. SSOMA todavía no tiene cuenta en el sistema: le avisamos a Gerencia.`
+      return `Reporte ${numero} registrado. No hay una cuenta activa de SSOMA: le avisamos a Gerencia.`
     case 'TU':
       return `Reporte ${numero} registrado.`
     default:
+      // Quien reporta es de Gerencia y no hay SSOMA: el aviso no tenía a quién más ir.
+      if (esDeGerencia) return `Reporte ${numero} registrado. No hay una cuenta activa de SSOMA que reciba el aviso.`
       return `Reporte ${numero} registrado, pero no hay nadie de SSOMA ni de Gerencia con cuenta para recibir el aviso: cuéntaselo a tu jefe.`
   }
 }
@@ -117,7 +119,7 @@ export async function reportarIncidente(_previo: unknown, formulario: FormData):
   revalidatePath('/ssoma', 'layout')
   return {
     ok: true,
-    mensaje: aQuienSeAviso(fila.numero_reporte, fila.avisado),
+    mensaje: aQuienSeAviso(fila.numero_reporte, fila.avisado, puede(perfil, 'ssoma.ver')),
     datos: { id: fila.reporte, numero: fila.numero_reporte },
   }
 }

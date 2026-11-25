@@ -85,6 +85,7 @@ export function ReportarIncidente({
   areaDeLaCuenta,
   areas,
   personal,
+  sinPlazo = false,
 }: {
   cuentaId: string
   /** El área de quien reporta, para proponerla: casi siempre pasó ahí. */
@@ -92,6 +93,8 @@ export function ReportarIncidente({
   areas: AreaParaReportar[]
   /** La lista de RR. HH., solo para quien puede reportar a nombre de otra persona; si no, vacía. */
   personal: PersonaParaReportar[]
+  /** SSOMA registra hechos de cualquier fecha pasada; la gente, de los últimos 30 días (como la base). */
+  sinPlazo?: boolean
 }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
@@ -156,6 +159,7 @@ export function ReportarIncidente({
             areaDeLaCuenta={areaDeLaCuenta}
             areas={areas}
             personal={personal}
+            sinPlazo={sinPlazo}
             fotos={envio.fotos}
             setFotos={envio.setFotos}
             alCancelar={cerrar}
@@ -188,6 +192,7 @@ function FormularioReporte({
   areaDeLaCuenta,
   areas,
   personal,
+  sinPlazo,
   fotos,
   setFotos,
   alCancelar,
@@ -200,6 +205,7 @@ function FormularioReporte({
   areaDeLaCuenta: string | null
   areas: AreaParaReportar[]
   personal: PersonaParaReportar[]
+  sinPlazo: boolean
   fotos: FotoLista[]
   setFotos: Dispatch<SetStateAction<FotoLista[]>>
   alCancelar: () => void
@@ -209,8 +215,13 @@ function FormularioReporte({
 }) {
   const [tipo, setTipo] = useState('')
   const [trabajador, setTrabajador] = useState('')
-  // Los límites del campo de fecha, tomados al abrir la ventana: hasta ahora y desde hace 30 días, como la base.
-  const [limites] = useState(() => ({ max: horaLocalDeLima(Date.now()), min: horaLocalDeLima(Date.now() - 30 * 86400 * 1000) }))
+  // Los límites del campo de fecha, tomados al abrir la ventana: hasta el fin de hoy (lo que pasó
+  // mientras se llenaba la ventana sigue entrando; lo futuro lo rechaza la base, junto al campo)
+  // y, salvo SSOMA, desde hace 30 días, como la base.
+  const [limites] = useState(() => ({
+    max: `${horaLocalDeLima(Date.now()).slice(0, 10)}T23:59`,
+    min: sinPlazo ? undefined : horaLocalDeLima(Date.now() - 30 * 86400 * 1000),
+  }))
   const subiendo = haySubiendo(fotos)
   const fallidas = hayFallidas(fotos)
   // Con la pestaña vieja ni quitarlas ni subirlas otra vez sirve: no va a entrar.
@@ -311,7 +322,7 @@ function FormularioReporte({
         <Campo
           etiqueta="Fecha y hora del hecho"
           htmlFor="ssoma-cuando"
-          ayuda="Déjalo vacío si acaba de pasar. Se reporta hasta 30 días después."
+          ayuda={sinPlazo ? 'Déjalo vacío si acaba de pasar.' : 'Déjalo vacío si acaba de pasar. Se reporta hasta 30 días después.'}
           error={errorFecha ?? undefined}
         >
           <Entrada id="ssoma-cuando" name="ocurrido_en" type="datetime-local" min={limites.min} max={limites.max} className="sm:max-w-xs" />
