@@ -123,7 +123,7 @@ begin
   if found then
     update public.etapa_responsables
        set quitado_en = now(), quitado_por = public.usuario_actual()
-     where id = v_actual.id;
+     where id = v_actual.id and quitado_en is null;
   end if;
   insert into public.etapa_responsables (etapa_id, trabajador_id)
   values (p_etapa, p_trabajador)
@@ -138,8 +138,19 @@ grant execute on function public.asignar_responsable_de_etapa(uuid, uuid) to aut
 
 create or replace function public.quitar_responsable_de_etapa(p_etapa uuid)
 returns boolean language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_etapa public.codigo_etapas%rowtype;
 begin
   perform public.exigir_permiso_del_puesto('rrhh.tiempos_entrega_asignar');
+  -- Las mismas guardas que asignar, y el mismo candado: la terminada queda con
+  -- quien la llevó, y dos cambios a la vez no se pisan el historial.
+  select * into v_etapa from public.codigo_etapas where id = p_etapa for update;
+  if not found or v_etapa.quitada_en is not null then
+    raise exception 'Esa etapa ya no está en el código: Diseño la quitó o la cambió. Recarga la pantalla.';
+  end if;
+  if v_etapa.fin_real is not null then
+    raise exception 'La etapa «%» ya terminó: queda con quien la llevó.', v_etapa.nombre;
+  end if;
   update public.etapa_responsables
      set quitado_en = now(), quitado_por = public.usuario_actual()
    where etapa_id = p_etapa and quitado_en is null;
@@ -154,7 +165,8 @@ grant execute on function public.quitar_responsable_de_etapa(uuid) to authentica
 
 -- 4. Leer quién lleva cada etapa ----------------------------------------------------
 -- El nombre sale de `trabajadores`, que no todos leen (el supervisor sí, Diseño
--- no): corre como dueño y exige ver los responsables. Sin DNI.
+-- no): corre como dueño y exige ver los responsables. Sin DNI. Quien se dio de
+-- baja ya no lleva nada: la etapa sale sin nadie, para que RR. HH. la reasigne.
 create or replace function public.responsables_de_etapas(p_codigo text default null)
 returns table (etapa_id uuid, codigo text, trabajador_id uuid, nombre text, area text, asignado_en timestamptz)
 language plpgsql stable security definer set search_path to 'public' as $$
@@ -170,7 +182,7 @@ begin
          (t.apellidos || ', ' || t.nombres)::text, a.nombre::text, r.asignado_en
     from public.etapa_responsables r
     join public.codigo_etapas e on e.id = r.etapa_id and e.quitada_en is null
-    join public.trabajadores t on t.id = r.trabajador_id
+    join public.trabajadores t on t.id = r.trabajador_id and t.activo
     left join public.areas a on a.id = t.area_id
    where r.quitado_en is null
      and (v_codigo is null or e.codigo_interno = v_codigo)
@@ -184,17 +196,24 @@ grant execute on function public.responsables_de_etapas(text) to authenticated;
 
 -- 5. Lo de cada persona -------------------------------------------------------------
 -- Cada etapa sin terminar con alguien a cargo, con su semáforo: la vista por
--- persona de RR. HH. El cálculo va aparte, sin permiso y cerrado a la gente,
--- para que la revisión diaria de los avisos (tercera entrega) lo use sin sesión.
+-- persona de RR. HH. Solo los códigos del tablero (los que siguen por
+-- entregar): la unidad que ya se fue no deja a nadie en rojo para siempre,
+-- aunque le hayan quedado etapas sin marcar. Ni la gente de baja. El cálculo va
+-- aparte, sin permiso y cerrado a la gente, para que la revisión diaria de los
+-- avisos (tercera entrega) lo use sin sesión.
 create or replace function public.tiempos_de_entrega_por_persona_calculado()
 returns table (trabajador_id uuid, nombre text, area text, codigo text, etapa_id uuid, etapa text,
                area_etapa text, fin_plan date, inicio_real date, semaforo text, dias_habiles integer)
 language sql stable set search_path to 'public' as $$
+  with por_entregar as materialized (
+    select c.codigo from public.tiempos_de_entrega_codigos_calculado(null) c
+  )
   select r.trabajador_id, (t.apellidos || ', ' || t.nombres)::text, a.nombre::text,
          e.codigo, e.id, e.nombre, e.area, e.fin_plan, e.inicio_real, e.semaforo, e.dias_habiles
     from public.etapa_responsables r
     join public.tiempos_de_entrega_etapas_calculado(null) e on e.id = r.etapa_id
-    join public.trabajadores t on t.id = r.trabajador_id
+    join por_entregar pe on pe.codigo = e.codigo
+    join public.trabajadores t on t.id = r.trabajador_id and t.activo
     left join public.areas a on a.id = t.area_id
    where r.quitado_en is null
      and e.fin_real is null
@@ -217,3 +236,10 @@ comment on function public.tiempos_de_entrega_por_persona() is
   'Las etapas sin terminar de cada persona del personal, con su fecha comprometida y su semáforo. Exige rrhh.tiempos_entrega.';
 revoke all on function public.tiempos_de_entrega_por_persona() from public, anon;
 grant execute on function public.tiempos_de_entrega_por_persona() to authenticated;
+
+-- 6. Lo que la primera entrega prometía de las actividades -------------------------
+-- La 20261125100000 decía que la entrega siguiente les pondría fecha y
+-- responsable propios. Lo que se asigna es la etapa: la actividad que reporta
+-- cada área queda como está, como avance de esa etapa.
+comment on function public.tiempos_de_entrega_actividades(text) is
+  'Lo que cada área reportó para un código en su reporte diario: la actividad, hasta dónde llegó y su último reporte. Sin fecha ni responsable propios: la fecha y la persona a cargo son de la etapa (20261125310000). Exige rrhh.tiempos_entrega.';

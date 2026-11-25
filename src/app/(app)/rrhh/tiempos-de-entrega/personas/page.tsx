@@ -4,8 +4,10 @@ import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
-import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { etapasPorPersona } from '@/lib/datos/tiempos-entrega'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
+import { SinDatos } from '@/components/ui/tabla'
+import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
+import { codigosConTiempos, etapasConTiempos, etapasPorPersona, responsablesDeEtapas } from '@/lib/datos/tiempos-entrega'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { RUTA_TIEMPOS, SEMAFORO_DE_CODIGO, enlaceDeTiempos, plazoEnPalabras } from '@/lib/dominio/tiempos-entrega'
 import { fecha, hoyLima } from '@/lib/format'
@@ -14,6 +16,15 @@ import { exigirPermiso } from '@/lib/sesion'
 export const metadata = { title: 'Tiempos de entrega por persona' }
 
 const RUTA = `${RUTA_TIEMPOS}/personas`
+
+/** Cómo se lee el color de una persona: lo peor que lleva. */
+const SEMAFORO_DE_PERSONA = {
+  ROJO: 'Tiene vencidas',
+  AMBAR: 'Tiene por vencer',
+  VERDE: 'A tiempo',
+  SIN_FECHA: 'Sin fechas',
+  TERMINADA: 'Al día',
+} as const
 
 /**
  * Lo que lleva cada persona del personal (DKS, 2026-11-25, entrega 2 del plan
@@ -24,7 +35,21 @@ export default async function PaginaTiemposPorPersona({ searchParams }: PageProp
   await exigirPermiso('rrhh.tiempos_entrega')
   const params = await searchParams
   const q = typeof params.q === 'string' ? params.q.trim() : ''
-  const todas = await etapasPorPersona()
+  const [todas, codigos, etapas, responsables] = await Promise.all([
+    etapasPorPersona(),
+    codigosConTiempos(),
+    etapasConTiempos(null),
+    responsablesDeEtapas(null),
+  ])
+  // Lo que falta repartir: las etapas sin terminar de los códigos por entregar
+  // que todavía no lleva nadie, por código.
+  const porEntregar = new Set(codigos.map((c) => c.codigo))
+  const sinPersona = new Map<string, number>()
+  for (const e of etapas) {
+    if (e.fin_real || !porEntregar.has(e.codigo) || responsables.has(e.id)) continue
+    sinPersona.set(e.codigo, (sinPersona.get(e.codigo) ?? 0) + 1)
+  }
+  const etapasSinPersona = [...sinPersona.values()].reduce((n, v) => n + v, 0)
   const hoy = hoyLima()
   const palabras = palabrasDeBusqueda(q)
   const personas = q ? todas.filter((p) => coincide(palabras, [p.nombre, p.area, ...p.etapas.map((e) => e.codigo)])) : todas
@@ -34,7 +59,7 @@ export default async function PaginaTiemposPorPersona({ searchParams }: PageProp
   return (
     <>
       <EncabezadoPagina
-        titulo="Por persona"
+        titulo="Lo que lleva cada persona"
         descripcion={todas.length > 0 ? `${todas.length} ${todas.length === 1 ? 'persona con etapas a cargo' : 'personas con etapas a cargo'}` : undefined}
         ayuda="Cada persona del personal con las etapas sin terminar que lleva, lo vencido primero. La persona de cada etapa la pone Recursos Humanos en el detalle del código, con «Asignar persona»."
         migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'Tiempos de entrega', ruta: RUTA_TIEMPOS }, { titulo: 'Por persona' }]}
@@ -48,24 +73,47 @@ export default async function PaginaTiemposPorPersona({ searchParams }: PageProp
         </div>
       )}
 
+      {sinPersona.size > 0 && (
+        <Tarjeta className="mb-4">
+          <section aria-label="Etapas sin nadie a cargo" data-sin-persona={etapasSinPersona}>
+            <TarjetaCabecera
+              titulo="Etapas sin nadie a cargo"
+              descripcion={`${etapasSinPersona} ${etapasSinPersona === 1 ? 'etapa' : 'etapas'} sin terminar en ${sinPersona.size} ${sinPersona.size === 1 ? 'código' : 'códigos'}. Ábrelo y usa «Asignar persona».`}
+            />
+            <ul className="flex flex-wrap gap-2 px-4 py-3">
+              {[...sinPersona.entries()].map(([codigo, n]) => (
+                <li key={codigo}>
+                  <Link
+                    href={enlaceDeTiempos(codigo)}
+                    className="inline-flex min-h-11 items-center gap-2 rounded-[var(--radius-base)] border border-borde px-3 text-sm hover:bg-superficie-2"
+                    data-codigo-sin-persona={codigo}
+                  >
+                    <span className="font-mono font-semibold text-texto">{codigo}</span>
+                    <span className="text-texto-suave">{n === 1 ? '1 etapa' : `${n} etapas`}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </Tarjeta>
+      )}
+
       <div className="mb-3">
         <BuscadorSimple ruta={RUTA} etiqueta="Buscar persona" marcador="Nombre, área o código" />
       </div>
 
       {personas.length === 0 ? (
         <Tarjeta>
-          <TarjetaCuerpo>
-            <p className="text-sm font-medium text-texto">{todas.length === 0 ? 'Nadie tiene etapas a cargo todavía' : 'Nadie con esta búsqueda'}</p>
-            <p className="text-sm text-texto-suave">
-              {todas.length === 0 ? (
-                <>
-                  Abre un código en <Link href={RUTA_TIEMPOS} className="text-acento underline">Tiempos de entrega</Link> y usa «Asignar persona» en cada etapa.
-                </>
-              ) : (
-                'Borra la búsqueda para ver a todos.'
-              )}
-            </p>
-          </TarjetaCuerpo>
+          {todas.length === 0 ? (
+            <SinDatos
+              enTabla={false}
+              titulo="Nadie tiene etapas a cargo todavía"
+              descripcion="Abre un código en Tiempos de entrega y usa «Asignar persona» en cada etapa."
+              accion={<EnlaceBoton href={RUTA_TIEMPOS} variante="contorno" tamano="sm">Ir a Tiempos de entrega</EnlaceBoton>}
+            />
+          ) : (
+            <SinDatos enTabla={false} titulo="Nadie con esta búsqueda" descripcion="Borra la búsqueda para ver a todos." />
+          )}
         </Tarjeta>
       ) : (
         <div className="space-y-3">
@@ -75,7 +123,7 @@ export default async function PaginaTiemposPorPersona({ searchParams }: PageProp
                 <TarjetaCabecera
                   titulo={p.nombre}
                   descripcion={[p.area, `${p.etapas.length} ${p.etapas.length === 1 ? 'etapa' : 'etapas'} a cargo`].filter(Boolean).join(' · ')}
-                  acciones={<Insignia tono={SEMAFORO_DE_CODIGO[p.semaforo].tono}>{SEMAFORO_DE_CODIGO[p.semaforo].etiqueta}</Insignia>}
+                  acciones={<Insignia tono={SEMAFORO_DE_CODIGO[p.semaforo].tono}>{SEMAFORO_DE_PERSONA[p.semaforo]}</Insignia>}
                 />
                 <ul className="divide-y divide-borde">
                   {p.etapas.map((e) => (

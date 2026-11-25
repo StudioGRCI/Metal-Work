@@ -110,7 +110,7 @@ async function elegirPersona(pagina, nombre, boton) {
   await etapa(pagina, 'Ensamblaje').waitFor({ timeout: 60000 })
   comprobar(/Nadie a cargo todavía/.test(await texto(etapa(pagina, 'Ensamblaje'))), 'la etapa sin persona dice «Nadie a cargo todavía»')
 
-  await etapa(pagina, 'Ensamblaje').getByRole('button', { name: /Asignar quién lleva/ }).click()
+  await etapa(pagina, 'Ensamblaje').getByRole('button', { name: /Asignar persona a/ }).click()
   await pagina.getByRole('dialog').waitFor()
   await pagina.getByRole('dialog').getByRole('combobox').click()
   await pagina.getByPlaceholder('Escribe el nombre o el área').fill('QUISPE')
@@ -126,7 +126,7 @@ async function elegirPersona(pagina, nombre, boton) {
   )
 
   // Cambiarla por Luis: Rosa queda en el historial.
-  await etapa(pagina, 'Ensamblaje').getByRole('button', { name: /Cambiar a quien lleva/ }).click()
+  await etapa(pagina, 'Ensamblaje').getByRole('button', { name: /Cambiar a quién lleva/ }).click()
   await elegirPersona(pagina, 'MAMANI PRUEBA, LUIS', 'Cambiar')
   await pagina.locator('[data-etapa="Ensamblaje"] [data-responsable="MAMANI PRUEBA, LUIS"]').waitFor({ timeout: 30000 })
   comprobar(true, 'RR. HH. la cambia a Luis')
@@ -136,10 +136,10 @@ async function elegirPersona(pagina, nombre, boton) {
   )
 
   // Pintura: asignar a Rosa y dejarla sin nadie.
-  await etapa(pagina, 'Pintura').getByRole('button', { name: /Asignar quién lleva/ }).click()
+  await etapa(pagina, 'Pintura').getByRole('button', { name: /Asignar persona a/ }).click()
   await elegirPersona(pagina, 'QUISPE PRUEBA, ROSA', 'Asignar')
   await pagina.locator('[data-etapa="Pintura"] [data-responsable="QUISPE PRUEBA, ROSA"]').waitFor({ timeout: 30000 })
-  await etapa(pagina, 'Pintura').getByRole('button', { name: /Cambiar a quien lleva/ }).click()
+  await etapa(pagina, 'Pintura').getByRole('button', { name: /Cambiar a quién lleva/ }).click()
   await pagina.getByRole('dialog').getByRole('button', { name: 'Dejarla sin nadie' }).click()
   await pagina.getByRole('dialog').waitFor({ state: 'detached', timeout: 30000 })
   await pagina.locator('[data-etapa="Pintura"] [data-responsable=""]').waitFor({ timeout: 30000 })
@@ -156,6 +156,9 @@ async function elegirPersona(pagina, nombre, boton) {
   console.log(`     Luis: ${textoLuis}`)
   comprobar(/QLE_UNO · Ensamblaje/.test(textoLuis) && /Vencida hace 1 día hábil/.test(textoLuis), 'Luis sale con QLE_UNO · Ensamblaje, vencida hace 1 día hábil')
   comprobar((await pagina.locator('[data-persona="QUISPE PRUEBA, ROSA"]').count()) === 0, 'Rosa ya no sale: no tiene etapas a cargo')
+  comprobar(/Tiene vencidas/.test(textoLuis), 'la tarjeta de Luis dice «Tiene vencidas»')
+  const sinPersona = pagina.locator('[data-codigo-sin-persona="QLE_UNO"]')
+  comprobar((await sinPersona.count()) === 1 && /1 etapa/.test(await texto(sinPersona)), '«Etapas sin nadie a cargo» lista QLE_UNO con su etapa Pintura')
   await pagina.screenshot({ path: `${CAPTURAS}/7-rrhh-por-persona-1440.png`, fullPage: true })
   await luis.getByRole('link').first().click()
   await pagina.waitForURL((u) => u.pathname === '/rrhh/tiempos-de-entrega/codigo', { timeout: 60000 })
@@ -170,7 +173,7 @@ async function elegirPersona(pagina, nombre, boton) {
   await pagina.goto(DETALLE, { waitUntil: 'networkidle' })
   await etapa(pagina, 'Pintura').waitFor({ timeout: 60000 })
   comprobar((await desborda(pagina)) <= 0, 'en el teléfono el detalle con los botones no se sale de la pantalla')
-  await etapa(pagina, 'Pintura').getByRole('button', { name: /Asignar quién lleva/ }).click()
+  await etapa(pagina, 'Pintura').getByRole('button', { name: /Asignar persona a/ }).click()
   await pagina.getByRole('dialog').waitFor()
   await pagina.screenshot({ path: `${CAPTURAS}/8-rrhh-asignar-persona-390.png` })
   await pagina.getByRole('dialog').getByRole('button', { name: 'Cancelar' }).click()
@@ -188,7 +191,7 @@ async function elegirPersona(pagina, nombre, boton) {
   await pagina.goto(DETALLE, { waitUntil: 'networkidle' })
   await etapa(pagina, 'Ensamblaje').waitFor({ timeout: 60000 })
   comprobar(/La lleva: MAMANI PRUEBA, LUIS/.test(await texto(etapa(pagina, 'Ensamblaje'))), 'Gerencia ve quién lleva la etapa')
-  comprobar((await pagina.getByRole('button', { name: /Asignar quién lleva|Cambiar a quien lleva/ }).count()) === 0, 'Gerencia no tiene «Asignar persona» ni «Cambiar»')
+  comprobar((await pagina.getByRole('button', { name: /Asignar persona a|Cambiar a quién lleva/ }).count()) === 0, 'Gerencia no tiene «Asignar persona» ni «Cambiar»')
   await pagina.goto(PERSONAS, { waitUntil: 'networkidle' })
   comprobar((await pagina.locator('[data-persona="MAMANI PRUEBA, LUIS"]').count()) === 1, 'Gerencia ve la vista por persona')
   comprobar(errores.length === 0, `sin errores de consola como Gerencia (${errores.join(' · ') || 'ninguno'})`)

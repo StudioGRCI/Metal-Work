@@ -29,8 +29,11 @@ export function AsignarResponsable({
   const [abierta, setAbierta] = useState(false)
   const [persona, setPersona] = useState(actual?.trabajador_id ?? '')
   const cerrar = () => setAbierta(false)
-  const asignar = useEnvio(asignarResponsable, cerrar)
-  const quitar = useEnvio(quitarResponsable, cerrar)
+  // Corrige lo que la fila muestra: la ventana se cierra cuando la fila ya
+  // dice quién la lleva. Cerrada antes, volver a abrirla traía a la persona de
+  // antes y «Cambiar» deshacía la asignación sin aviso.
+  const asignar = useEnvio(asignarResponsable, cerrar, { corrige: true, documento: etapa.id })
+  const quitar = useEnvio(quitarResponsable, cerrar, { corrige: true, documento: etapa.id })
   const enviando = asignar.enviando || quitar.enviando
   const abrir = () => {
     setPersona(actual?.trabajador_id ?? '')
@@ -42,7 +45,7 @@ export function AsignarResponsable({
 
   return (
     <>
-      <Boton type="button" variante="contorno" tamano="sm" onClick={abrir} aria-label={`${actual ? 'Cambiar a quien lleva' : 'Asignar quién lleva'} «${etapa.nombre}»`}>
+      <Boton type="button" variante="contorno" tamano="sm" onClick={abrir} aria-label={actual ? `Cambiar a quién lleva «${etapa.nombre}»` : `Asignar persona a «${etapa.nombre}»`}>
         {actual ? <UserRound aria-hidden className="size-4" /> : <UserPlus aria-hidden className="size-4" />}
         {actual ? 'Cambiar' : 'Asignar persona'}
       </Boton>
@@ -50,7 +53,7 @@ export function AsignarResponsable({
         abierta={abierta}
         alCerrar={cerrar}
         titulo={`Quién lleva «${etapa.nombre}»`}
-        descripcion="La persona del personal a cargo de la etapa. Si ya había otra, queda en el historial. Las fechas las sigue poniendo Diseño."
+        descripcion="La persona del personal a cargo de la etapa. Las fechas las sigue poniendo Diseño."
         ancho="sm"
       >
         <form onSubmit={asignar.alEnviar} className="space-y-4">
@@ -70,7 +73,7 @@ export function AsignarResponsable({
               />
             </Campo>
           </fieldset>
-          <PieDeVentana error={asignar.error ?? quitar.error} enviando={asignar.enviando} alCancelar={cerrar} texto={actual ? 'Cambiar' : 'Asignar'} disabled={quitar.enviando} />
+          <PieDeVentana error={asignar.error} enviando={asignar.enviando} alCancelar={cerrar} texto={actual ? 'Cambiar' : 'Asignar'} disabled={quitar.enviando} />
         </form>
         {actual && (
           <form onSubmit={quitar.alEnviar} className="mt-4 border-t border-borde pt-4">
@@ -79,6 +82,11 @@ export function AsignarResponsable({
             <Boton type="submit" variante="contornoPeligro" tamano="sm" cargando={quitar.enviando} disabled={asignar.enviando}>
               Dejarla sin nadie
             </Boton>
+            {quitar.error && (
+              <p role="alert" className="mt-2 text-sm text-peligro">
+                {quitar.error}
+              </p>
+            )}
           </form>
         )}
       </Ventana>

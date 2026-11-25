@@ -111,10 +111,11 @@ export type EtapaConTiempos = {
   dias_habiles: number | null
 }
 
-export async function etapasConTiempos(codigo: string): Promise<EtapaConTiempos[]> {
+/** Las etapas de un código, o las de todos con `null`. */
+export async function etapasConTiempos(codigo: string | null): Promise<EtapaConTiempos[]> {
   const supabase = await createClient()
   const { data, error } = await todasLasFilas(
-    () => supabase.rpc('tiempos_de_entrega_etapas', { p_codigo: normalizarCodigo(codigo) }),
+    () => supabase.rpc('tiempos_de_entrega_etapas', codigo ? { p_codigo: normalizarCodigo(codigo) } : {}),
     ['codigo', 'orden', 'id'],
   )
   if (error) throw new Error(`No se pudieron leer las etapas: ${error.message}`)

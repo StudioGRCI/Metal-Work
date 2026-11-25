@@ -29,7 +29,8 @@ export const metadata = { title: 'Tiempos de entrega del código' }
 /**
  * Los tiempos de un código interno, para Recursos Humanos: la entrega al
  * cliente, cada etapa contra su fecha comprometida y lo que cada área reporta.
- * Solo lectura: las fechas las pone Diseño y las marca el supervisor del área.
+ * Las fechas las pone Diseño y las marca el supervisor del área; aquí RR. HH.
+ * solo asigna quién lleva cada etapa (migración 20261125310000).
  */
 export default async function PaginaTiemposDelCodigo({ searchParams }: PageProps<'/rrhh/tiempos-de-entrega/codigo'>) {
   const perfil = await exigirPermiso('rrhh.tiempos_entrega')
