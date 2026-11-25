@@ -1,6 +1,7 @@
 import { FileText, MapPin, Scale } from 'lucide-react'
 import Link from 'next/link'
 
+import { FotosDelRecojo, NoSeLogroRecoger } from '@/components/compras/evidencia-del-recojo'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos } from '@/components/ui/tabla'
@@ -149,6 +150,8 @@ function TarjetaGestion({ compra: c, quien, cuantas }: { compra: CompraParaRecoj
         }
       />
       <TarjetaCuerpo className="space-y-4">
+        {/* El conductor la devolvió: el porqué, para volver a programarla. */}
+        {pendiente && <NoSeLogroRecoger compra={c} />}
         <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <ul className="space-y-1.5 text-sm text-texto">
             <li className="flex items-start gap-2">
@@ -207,6 +210,8 @@ function TarjetaGestion({ compra: c, quien, cuantas }: { compra: CompraParaRecoj
             )}
           </ul>
         </div>
+
+        <FotosDelRecojo compra={c} />
 
         {quien.programa && pendiente && (
           <div className="space-y-3 border-t border-borde pt-3">

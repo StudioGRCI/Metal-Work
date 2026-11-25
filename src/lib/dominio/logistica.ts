@@ -219,6 +219,18 @@ export function telefonoDiceMas(texto: string | null | undefined, numeros: Telef
   return soloCifras(texto).length !== numeros.reduce((suma, t) => suma + soloCifras(t.texto).length, 0)
 }
 
+/**
+ * Las fotos que el conductor suma al marcar «Ya la recogí»: la guía firmada o el
+ * bulto. Opcionales, hasta tres y de hasta 5 MB, como exige la base (migración
+ * 20261125100000). Van en `{cuenta}/{compra}/` del bucket privado.
+ */
+export const BUCKET_FOTOS_RECOJO = 'fotos-recojo'
+export const MAXIMO_FOTOS_RECOJO = 3
+export const MAXIMO_MB_FOTO_RECOJO = 5
+
+/** «No se pudo recoger»: el motivo que lee Logística para volver a programarla. Lo mismo exige la base. */
+export const MOTIVO_NO_LOGRADO = { minimo: 10, maximo: 500 }
+
 /** La dirección del proveedor en el mapa del teléfono: abre la aplicación de mapas si la hay, o el navegador. */
 export function enlaceAlMapa(direccion: string) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccion)}`

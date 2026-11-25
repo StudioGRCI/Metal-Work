@@ -2,6 +2,7 @@ import { FileText, MapPin, Phone, Receipt, Scale, User } from 'lucide-react'
 import Link from 'next/link'
 import { Fragment } from 'react'
 
+import { FotosDelRecojo, NoSeLogroRecoger } from '@/components/compras/evidencia-del-recojo'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
@@ -45,7 +46,7 @@ export default async function PaginaRecojos() {
         titulo="Recojos"
         ayuda={
           conductor
-            ? 'Las compras que Logística te programó, en el orden en que tienes que recogerlas, con su peso y su guía de remisión. Marca «Salgo a recoger» cuando vas al proveedor, «Ya la recogí» al salir con el material y «La dejé en almacén» al entregarla: el requerimiento muestra en qué va y Almacén valida el ingreso sin volver a registrarlo. En cada parada puedes llamar al proveedor y abrir su dirección en el mapa; abajo queda lo que recogiste y dejaste hoy, con su hora.'
+            ? 'Las compras que Logística te programó, en el orden en que tienes que recogerlas, con su peso y su guía de remisión. Marca «Salgo a recoger» cuando vas al proveedor, «Ya la recogí» al salir con el material (si quieres, con una foto de la guía firmada o del bulto) y «La dejé en almacén» al entregarla; si no se pudo, «No se pudo recoger» con el motivo la devuelve a Logística: el requerimiento muestra en qué va y Almacén valida el ingreso sin volver a registrarlo. En cada parada puedes llamar al proveedor y abrir su dirección en el mapa; abajo queda lo que recogiste y dejaste hoy, con su hora.'
             : 'Lo que el conductor tiene que recoger, en el orden que le programó Logística, lo que recogió y dejó hoy con su hora, y lo que ya dejó en almacén esta semana.'
         }
       />
@@ -64,7 +65,7 @@ export default async function PaginaRecojos() {
               />
             </Tarjeta>
           ) : (
-            pendientes.map((r) => <TarjetaRecojo key={r.id} recojo={r} conductor={conductor} />)
+            pendientes.map((r) => <TarjetaRecojo key={r.id} recojo={r} conductor={conductor} cuentaId={perfil.id} />)
           )}
           {sinProgramar.length > 0 && (
             <p className="text-sm text-texto-suave">
@@ -117,7 +118,7 @@ export default async function PaginaRecojos() {
           <section className="space-y-3">
             <h2 className="text-base font-semibold text-texto">Dejadas en almacén esta semana</h2>
             {dejadas.map((r) => (
-              <TarjetaRecojo key={r.id} recojo={r} conductor={false} />
+              <TarjetaRecojo key={r.id} recojo={r} conductor={false} cuentaId={perfil.id} />
             ))}
           </section>
         )}
@@ -146,7 +147,7 @@ function paraQuienEs(r: Pick<CompraParaRecojo, 'codigo_interno' | 'origen'>): st
  */
 const BOTON_DE_PARADA = 'h-auto min-h-11 flex-auto justify-center whitespace-normal px-4 py-2 text-center sm:flex-none'
 
-function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; conductor: boolean }) {
+function TarjetaRecojo({ recojo: r, conductor, cuentaId }: { recojo: CompraParaRecojo; conductor: boolean; cuentaId: string }) {
   const estado = RECOJO_COMPRA[r.recojo]
   // El conductor, camino al proveedor, llama y abre el mapa con botones grandes. Después, y para Logística,
   // la dirección y los números quedan como enlaces del texto, como siempre estuvieron.
@@ -171,6 +172,8 @@ function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; con
         acciones={estado && <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>}
       />
       <TarjetaCuerpo className="space-y-4">
+        {/* Volvió a la lista después de un intento: lo que pasó la vez anterior. */}
+        {(r.recojo === 'POR_RECOGER' || r.recojo === 'EN_RECOJO') && <NoSeLogroRecoger compra={r} />}
         <ul className="space-y-1 text-sm text-texto">
           {r.proveedor_direccion && (
             <li className="flex items-start gap-2">
@@ -285,6 +288,8 @@ function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; con
           ))}
         </ul>
 
+        <FotosDelRecojo compra={r} />
+
         <p className="text-xs text-texto-suave">
           {[
             r.pedido_en && `Mandada a recojo ${fechaHora(r.pedido_en)}`,
@@ -298,7 +303,7 @@ function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; con
 
         {/* Sale a recoger solo lo que Logística le programó; la base también lo exige. */}
         {conductor && SIGUIENTE_PASO[r.recojo] && (r.recojo !== 'POR_RECOGER' || r.en_lista) && (
-          <PasoRecojo id={r.id} nombre={r.nombre} paso={SIGUIENTE_PASO[r.recojo]} />
+          <PasoRecojo id={r.id} nombre={r.nombre} paso={SIGUIENTE_PASO[r.recojo]} cuentaId={cuentaId} />
         )}
       </TarjetaCuerpo>
     </Tarjeta>
