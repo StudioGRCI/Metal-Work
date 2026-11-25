@@ -29,6 +29,7 @@ import { ConteoFisico } from './conteo'
 import { ConteoInicial } from './conteo-inicial'
 import { DevolverAlProveedor, EsperanReposicion } from './devolucion-proveedor'
 import { FiltroMaterial } from './filtro-material'
+import { IrALaConsulta } from './ir-a-la-consulta'
 import { NuevoIngreso } from './ingreso'
 import { SalidasPorCerrar } from './por-cerrar'
 import { BandejaPorValidar } from './por-validar'
@@ -237,7 +238,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
           tablero y los filtros iban arriba: en el teléfono lo pendiente empezaba
           a 1 230 px, tres pantallas más abajo (revisión de diseño del 2026-11-25). */}
       {!elegido && (porValidar.length > 0 || puedeIngreso) && (
-        <Tarjeta id="por-validar" className="mb-4 scroll-mt-20">
+        <Tarjeta id="por-validar" className="mb-4">
           <TarjetaCabecera
             titulo={porValidar.length === 0 ? 'Ingresos por validar' : `Ingresos por validar · ${porValidar.length === 1 ? '1 compra' : `${porValidar.length} compras`}`}
             ayuda="Lo que el conductor de Logística dejó en almacén. Revisa lo que llegó y valídalo: entra al kardex sin volver a registrarlo."
@@ -250,7 +251,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
       )}
 
       {!elegido && (porReponer.length > 0 || puedeIngreso) && (
-        <Tarjeta id="por-reponer" className="mb-4 scroll-mt-20">
+        <Tarjeta id="por-reponer" className="mb-4">
           <TarjetaCabecera
             titulo={porReponer.length === 0 ? 'Esperan reposición' : `Esperan reposición · ${porReponer.length === 1 ? '1 devolución' : `${porReponer.length} devoluciones`}`}
             ayuda="Lo devuelto al proveedor que dijo que lo repone. Cuando llegue, recíbelo aquí; si ya no viene, lo que falta vuelve a la lista de Logística."
@@ -266,7 +267,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
       )}
 
       {!elegido && (porCerrar.length > 0 || puedeSalida) && (
-        <Tarjeta id="por-cerrar" className="mb-4 scroll-mt-20">
+        <Tarjeta id="por-cerrar" className="mb-4">
           {/* El título y el cuerpo cuentan lo mismo: lo del almacén elegido (decía «2 salidas» y abajo «ninguna»). */}
           <TarjetaCabecera
             titulo={porCerrarDelAlmacen.length === 0 ? 'Salidas por cerrar' : `Salidas por cerrar · ${porCerrarDelAlmacen.length === 1 ? '1 salida' : `${porCerrarDelAlmacen.length} salidas`}`}
@@ -302,6 +303,8 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
         </Tarjeta>
       )}
 
+      {/* Donde empieza lo que se consulta: `IrALaConsulta` baja hasta aquí al filtrar. */}
+      <div id="consulta" className="scroll-mt-20">
       {!elegido && (
         <section aria-label="Los cuatro almacenes" className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
           {tablero.map((t) => {
@@ -319,7 +322,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                   ayuda={t.def.regla}
                   claseAyuda="relative text-xs"
                   descripcion={
-                    <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                    <p id={`almacen-${t.almacen}`} className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
                       <Insignia tono={t.def.tono}>{t.conSaldo === 1 ? '1 material' : `${t.conSaldo} materiales`}</Insignia>
                       <span>
                         {t.bajoMinimo > 0 && <span className="font-medium text-peligro">{t.bajoMinimo} bajo mínimo</span>}
@@ -331,6 +334,8 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                   }
                 >
                   <Link href={activo ? '/almacen/kardex' : `/almacen/kardex?almacen=${t.almacen}`} aria-current={activo ? 'page' : undefined}
+                    // El lector de pantalla lee el almacén con sus cuentas, como cuando la tarjeta entera era el enlace.
+                    aria-describedby={`almacen-${t.almacen}`}
                     className="text-sm font-semibold outline-none after:absolute after:inset-0 after:content-['']">
                     {t.def.etiqueta}
                   </Link>
@@ -387,6 +392,13 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
           />
         </TarjetaCuerpo>
       </Tarjeta>
+      </div>
+      <IrALaConsulta
+        filtro={[filtros.almacen, filtros.tipo, filtros.desde, filtros.hasta, filtros.unidad].some(Boolean)
+          ? [filtros.almacen, filtros.tipo, filtros.desde, filtros.hasta, filtros.unidad].join('|')
+          : ''}
+        pagina={pagina}
+      />
 
       {elegido && (
         <>
@@ -423,7 +435,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
         </>
       )}
 
-      <Tarjeta className="overflow-hidden">
+      <Tarjeta id="historial" className="scroll-mt-20 overflow-hidden">
         <TarjetaCabecera
           titulo={elegido ? `${elegido.descripcion} · ${elegido.codigo}` : filtros.almacen ? `Historial de ${almacenEnFrase(filtros.almacen)}` : 'Historial de movimientos'}
           ayuda={elegido

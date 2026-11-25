@@ -31,10 +31,13 @@ const TIPO_UNIDAD: Record<string, string> = {
  * migración 20261001213000). Ventas conserva el alta y el nombre para no
  * frenar una cotización.
  *
- * En el teléfono cada carrocería es una ficha (`<Tabla apilada>`): el nombre,
- * sus fichas técnicas debajo con todo el ancho y los botones en un renglón. Como
- * tabla de seis columnas en 390 px, las fichas quedaban en una columna de 100 px
- * —una palabra por renglón— y los tres botones apilados: la página medía 9 856 px.
+ * Por debajo de 768 px cada carrocería es una ficha (`<Tabla apilada>`): el
+ * nombre, sus fichas técnicas debajo con todo el ancho y los botones en un
+ * renglón. Como tabla de seis columnas en 390 px, las fichas quedaban en una
+ * columna de 100 px —una palabra por renglón— y los tres botones apilados: la
+ * página medía 9 856 px. Tipo, capacidad y verificación tienen columna donde
+ * caben (`columna`); por debajo van en un renglón bajo el nombre, para que las
+ * fichas técnicas y los botones tengan sitio sin que la tabla se deslice.
  */
 export default async function PaginaCarrocerias({ searchParams }: PageProps<'/carrocerias'>) {
   const perfil = await exigirPermiso(['diseno.planos', 'configuracion.ver', 'cotizaciones.crear'])
@@ -44,6 +47,16 @@ export default async function PaginaCarrocerias({ searchParams }: PageProps<'/ca
   const carrocerias = await carroceriasConFicha(incluirInactivas, verDetalleTecnico)
   const puedeEditar = puede(perfil, ['diseno.carrocerias', 'cotizaciones.crear'])
   const puedeMedidas = puede(perfil, 'diseno.carrocerias')
+  const esAdmin = perfil.rol.codigo === 'ADMIN'
+  // El ancho de la columna de botones, para que quepan en un renglón: sin él
+  // la tabla le da el mínimo y quedan uno por renglón (`AccionesDeFila`).
+  // Tipo, capacidad y verificación: con columna propia donde caben, y bajo el
+  // nombre donde no. A Diseño, que lleva las fichas técnicas y tres botones, le
+  // caben desde 1536 px: a 1440 con las seis columnas las fichas quedaban en
+  // 310 px y la página medía 4 976 px; con tres, 3 900. A Ventas, desde 768.
+  const columna = verDetalleTecnico ? 'hidden 2xl:table-cell' : 'hidden md:table-cell'
+  const bajoElNombre = verDetalleTecnico ? 'sm:block 2xl:hidden' : 'sm:block md:hidden'
+  const anchoAcciones = !puedeEditar ? undefined : esAdmin ? 'md:w-[27rem]' : puedeMedidas ? 'md:w-80' : 'md:w-56'
 
   const conFicha = carrocerias.filter((c) => c.plantillas.length > 0).length
   const fichas = carrocerias.reduce((n, c) => n + c.plantillas.length, 0)
@@ -70,18 +83,25 @@ export default async function PaginaCarrocerias({ searchParams }: PageProps<'/ca
           <TablaCabecera>
             <tr>
               <TH>Carrocería</TH>
-              <TH className="hidden sm:table-cell">Tipo</TH>
-              <TH className="hidden md:table-cell">Capacidad</TH>
+              <TH className={columna}>Tipo</TH>
+              <TH className={columna}>Capacidad</TH>
               {verDetalleTecnico && <TH>Fichas técnicas</TH>}
-              {verDetalleTecnico && <TH className="hidden lg:table-cell text-right">Verificación</TH>}
-              <TH className="text-right">Acciones</TH>
+              {verDetalleTecnico && <TH className={cn('text-right', columna)}>Verificación</TH>}
+              <TH className={cn('text-right', anchoAcciones)}>Acciones</TH>
             </tr>
           </TablaCabecera>
           <tbody>
             {carrocerias.length === 0 ? (
               <SinDatos titulo="El catálogo de carrocerías está vacío" colSpan={verDetalleTecnico ? 6 : 4} />
             ) : (
-              carrocerias.map((c) => (
+              carrocerias.map((c) => {
+                // Lo que tiene columna en el monitor ancho; por debajo va bajo el nombre.
+                const detalle = [
+                  c.tipo_unidad ? TIPO_UNIDAD[c.tipo_unidad] ?? c.tipo_unidad : null,
+                  c.capacidad ? `Capacidad ${c.capacidad}` : null,
+                  verDetalleTecnico ? `${c.pasos_verificacion} pasos de verificación` : null,
+                ].filter(Boolean)
+                return (
                 <TR key={c.id}>
                   <TD>
                     {/* El espacio deja partir entre el nombre y el código: pegados,
@@ -96,19 +116,16 @@ export default async function PaginaCarrocerias({ searchParams }: PageProps<'/ca
                         {resumenMedidas(c) ?? 'Sin medidas técnicas'}
                       </span>
                     )}
-                    {/* Tipo y capacidad tienen columna desde `sm` y `md`; por debajo van aquí. */}
-                    {(c.tipo_unidad || c.capacidad) && (
-                      <DetalleEnTelefono className={cn('text-xs text-texto-suave', c.capacidad && 'sm:block md:hidden')}>
-                        {c.tipo_unidad && <span className="sm:hidden">{TIPO_UNIDAD[c.tipo_unidad] ?? c.tipo_unidad}</span>}
-                        {c.tipo_unidad && c.capacidad && <span className="sm:hidden"> · </span>}
-                        {c.capacidad && <span>Capacidad {c.capacidad}</span>}
+                    {detalle.length > 0 && (
+                      <DetalleEnTelefono data-detalle className={cn('text-xs text-texto-suave', bajoElNombre)}>
+                        {detalle.join(' · ')}
                       </DetalleEnTelefono>
                     )}
                   </TD>
-                  <TD className="hidden text-texto-suave sm:table-cell">
+                  <TD className={cn('text-texto-suave', columna)}>
                     {c.tipo_unidad ? TIPO_UNIDAD[c.tipo_unidad] ?? c.tipo_unidad : '—'}
                   </TD>
-                  <TD className="hidden text-texto-suave md:table-cell">{c.capacidad ?? '—'}</TD>
+                  <TD className={cn('text-texto-suave', columna)}>{c.capacidad ?? '—'}</TD>
                   {verDetalleTecnico && <TD data-rotulo="Fichas técnicas">
                     {c.plantillas.length === 0 ? (
                       <span className="text-xs text-texto-tenue">Sin ficha técnica registrada</span>
@@ -129,18 +146,19 @@ export default async function PaginaCarrocerias({ searchParams }: PageProps<'/ca
                       </ul>
                     )}
                   </TD>}
-                  {verDetalleTecnico && <TD className="tabular hidden text-right text-texto-suave lg:table-cell">
+                  {verDetalleTecnico && <TD className={cn('tabular text-right text-texto-suave', columna)}>
                     {c.pasos_verificacion} pasos
                   </TD>}
                   <TD>
                     <AccionesDeFila>
                       {puedeEditar && <EditarCarroceria id={c.id} nombre={c.nombre} descripcion={c.descripcion} activo={c.activo} />}
                       {puedeMedidas && <EditarMedidas carroceria={c} conTexto />}
-                      <AccionesCatalogo tipo="carroceria" id={c.id} nombre={c.nombre} activo={c.activo} puedeEditar={puedeEditar} esAdmin={perfil.rol.codigo === 'ADMIN'} className="xl:flex-nowrap" />
+                      <AccionesCatalogo tipo="carroceria" id={c.id} nombre={c.nombre} activo={c.activo} puedeEditar={puedeEditar} esAdmin={esAdmin} enFila />
                     </AccionesDeFila>
                   </TD>
                 </TR>
-              ))
+                )
+              })
             )}
           </tbody>
         </Tabla>

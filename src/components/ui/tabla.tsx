@@ -27,14 +27,15 @@ export function Tabla({
   ...props
 }: React.TableHTMLAttributes<HTMLTableElement> & {
   /**
-   * En el teléfono cada fila pasa a ser una ficha: sus celdas se apilan, la
-   * cabecera se va y la celda que lleve `data-rotulo` lo muestra encima. Es
-   * para la lista cuyas filas llevan botones o bloques largos (Carrocerías):
-   * ahí ni esconder columnas ni `DetalleEnTelefono` alcanzan, porque los
-   * botones no se pueden pintar dos veces —cada uno guarda su ventana y su
-   * envío—. Una sola fila en el HTML, dos formas de verla (`globals.css`,
-   * «UNA TABLA QUE EN EL TELÉFONO ES UNA LISTA DE FICHAS»). Las columnas que
-   * en el teléfono no van siguen con `hidden sm:table-cell`.
+   * Por debajo de `md` (768 px) cada fila pasa a ser una ficha: sus celdas se
+   * apilan, la cabecera se va y la celda que lleve `data-rotulo` lo muestra
+   * encima. Es para la lista cuyas filas llevan botones o bloques largos
+   * (Carrocerías): ahí ni esconder columnas ni `DetalleEnTelefono` alcanzan,
+   * porque los botones no se pueden pintar dos veces —cada uno guarda su
+   * ventana y su envío—. Una sola fila en el HTML, dos formas de verla
+   * (`globals.css`, «UNA TABLA QUE EN EL TELÉFONO ES UNA LISTA DE FICHAS»).
+   * La columna que en la ficha no va lleva `hidden md:table-cell` o un corte
+   * mayor, nunca `sm:table-cell`: entre 640 y 767 volvería celda a un bloque.
    */
   apilada?: boolean
 }) {
@@ -80,22 +81,19 @@ export function TD({ className, ...props }: React.TdHTMLAttributes<HTMLTableCell
  * escribía a mano como un `<p>` y había tres aspectos distintos (revisión de
  * diseño del 2026-11-25).
  */
-export function SinDatos({
-  titulo,
-  descripcion,
-  accion,
-  colSpan = 99,
-  enTabla = true,
-  compacto = false,
-}: {
-  titulo: string
-  descripcion?: string
-  accion?: React.ReactNode
-  colSpan?: number
-  enTabla?: boolean
-  /** Para una bandeja entre varias: sin centrar y sin el aire del grande. Va fuera de tabla. */
-  compacto?: boolean
-}) {
+type VacioComun = { titulo: string; descripcion?: string; accion?: React.ReactNode }
+/** El grande: dentro de un `<tbody>` (por omisión) o suelto con `enTabla={false}`. */
+type VacioGrande = VacioComun & { compacto?: false; colSpan?: number; enTabla?: boolean }
+/**
+ * El de una bandeja entre varias: sin centrar y sin el aire del grande. Va
+ * siempre fuera de tabla —es un `<div>`—, y por eso no admite `colSpan` ni
+ * `enTabla`: dentro de un `<tbody>` sería HTML inválido.
+ */
+type VacioCompacto = VacioComun & { compacto: true; colSpan?: never; enTabla?: never }
+
+export function SinDatos(props: VacioGrande | VacioCompacto) {
+  const { titulo, descripcion, accion, compacto = false } = props
+  const { colSpan = 99, enTabla = true } = props
   if (compacto) {
     return (
       <div data-sin-datos="compacto">
@@ -129,21 +127,30 @@ export function SinDatos({
  * Los botones de una fila, siempre igual: en un renglón, lo que más se usa
  * primero y con contorno, lo que casi nunca (desactivar, eliminar) al final y
  * sin borde. En el monitor van a la derecha de la fila; en el teléfono, a la
- * izquierda bajo el dato, y si no caben bajan de renglón en vez de apilarse de
- * a uno. Desde `xl` no bajan: la columna toma el ancho de sus botones y la fila
- * mide un renglón (desde `lg` la tabla de Carrocerías se deslizaba en 1024). Había tres maneras: íconos sueltos en Materiales, tres botones
+ * izquierda bajo el dato. Si no caben bajan de renglón en vez de ensanchar la
+ * tabla, así que **la columna lleva su ancho** (`md:w-80` en la cabecera) para
+ * que quepan: sin ancho, la tabla le da el mínimo y quedan uno por renglón.
+ * No se fuerza con `flex-nowrap`: a 1280 px un aviso largo en la fila corría
+ * la tabla 150 px y dejaba «Desactivar» fuera de la vista (auditoría del
+ * 2026-11-25). Había tres maneras: íconos sueltos en Materiales, tres botones
  * apilados en Carrocerías (cada fila medía 84 px) y botón más texto en
- * Unidades (revisión de diseño del 2026-11-25).
+ * Unidades.
+ *
+ * Provisional en una cosa: DKS decidió que borrar y desactivar vayan dentro de
+ * un menú «⋯» de la fila (decisión 6 del plan de orden y diseño). Ese menú
+ * todavía no existe —una `Ventana` dentro de un desplegable se desmonta al
+ * cerrarlo— y hasta que exista van al final y sin borde.
  */
 export function AccionesDeFila({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('flex flex-wrap items-center gap-x-2 gap-y-1 sm:justify-end xl:flex-nowrap', className)} {...props} />
+  return <div className={cn('flex flex-wrap items-center gap-x-2 gap-y-1 md:justify-end', className)} {...props} />
 }
 
 /**
  * Lo que en el monitor va en sus columnas y en el teléfono baja a la primera
  * celda, debajo del nombre. Es la manera de la casa para que una tabla entre
  * en 390 px (Clientes, Órdenes, el Kardex): las columnas que no caben llevan
- * `hidden sm:table-cell` y su contenido se repite aquí. Una tabla que solo
+ * `hidden sm:table-cell` y su contenido se repite aquí (en una `Tabla apilada`
+ * el corte es `md` o mayor: se le pasa en `className`). Una tabla que solo
  * esconde columnas pierde el dato; una que no esconde ninguna se aprieta hasta
  * partir una palabra por renglón (Carrocerías medía 9 856 px de alto).
  */

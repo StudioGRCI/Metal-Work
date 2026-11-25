@@ -9,15 +9,19 @@
  *   2. Los seis botones siguen ahí, lo de todos los días primero.
  *   3. La «i» de un almacén abre su regla sin navegar; tocar la tarjeta filtra
  *      por ese almacén, queda marcada, y con el teclado se quita el filtro.
- *   4. «Registrar ingreso» sigue abriendo su ventana.
+ *   4. Al filtrar, la vista baja hasta el tablero y los filtros: no se queda
+ *      arriba, con el historial filtrado tres pantallas más abajo.
+ *   5. «Registrar ingreso» sigue abriendo su ventana.
  *
  * Carrocerías, como Diseño (Editar, Medidas, Desactivar) y como Ventas
  * (Editar, Desactivar):
- *   5. Los botones de la fila van en un solo renglón, dentro de la pantalla,
+ *   6. Los botones de la fila van en un solo renglón, dentro de la pantalla,
  *      y en el teléfono con 40 px o más de alto.
- *   6. «Editar» y «Medidas» abren su ventana.
- *   7. En el teléfono la fila es una ficha: el rótulo «Fichas técnicas» se ve
- *      solo ahí y la tabla no se desliza de costado.
+ *   7. «Editar» y «Medidas» abren su ventana.
+ *   8. En el teléfono la fila es una ficha: el rótulo «Fichas técnicas» se ve
+ *      solo ahí, el tipo de unidad va bajo el nombre y la tabla no se desliza.
+ *   9. En los anchos del medio (640 a 1366), activas y desactivadas: la tabla
+ *      no se desliza y ningún botón queda fuera de ella.
  *
  * En ninguna hay desborde ni errores de consola. No escribe en la base.
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), BANCO_CHROMIUM.
@@ -93,6 +97,9 @@ for (const tamano of [TELEFONO, MONITOR]) {
   await pagina.mouse.click(caja.x + caja.width - 6, caja.y + caja.height - 6)
   await pagina.waitForURL(/almacen=ACCESORIOS/, { timeout: 15000 }).catch(() => {})
   comprobar(/almacen=ACCESORIOS/.test(pagina.url()), 'tocar la tarjeta filtra por ese almacén')
+  await pagina.waitForTimeout(600)
+  const consulta = await pagina.evaluate(() => Math.round(document.getElementById('consulta').getBoundingClientRect().top))
+  comprobar(consulta >= 0 && consulta < 200, 'y la vista queda en el tablero y los filtros, no arriba', String(consulta))
   comprobar((await tarjeta.locator('a').getAttribute('aria-current')) === 'page', 'y queda marcada como la actual')
   comprobar(await pagina.locator('h2', { hasText: /Historial de / }).isVisible(), 'el historial dice de qué almacén es')
   await tarjeta.locator('a').focus()
@@ -135,12 +142,41 @@ for (const [puesto, esperados] of [['diseno', ['Editar', 'Medidas', 'Desactivar'
       comprobar(tamano === TELEFONO ? /Fichas técnicas/.test(rotulo) : rotulo === 'none', 'el rótulo «Fichas técnicas» se ve solo en el teléfono', rotulo)
     }
 
+    if (tamano === TELEFONO) {
+      // «Bombona» es semirremolque: su tipo no tiene columna en la ficha y va bajo el nombre.
+      const detalle = pagina.locator('tbody tr', { hasText: 'Bombona' }).first().locator('[data-detalle]')
+      comprobar((await detalle.isVisible()) && /Semirremolque/.test(await detalle.innerText()), 'el tipo de unidad va bajo el nombre')
+    }
+
     comprobar((await desborde(pagina)) <= 0, 'sin desborde')
     const desliza = await pagina.locator('.tabla-con-corte').first().evaluate((e) => e.scrollWidth - e.clientWidth)
     comprobar(desliza <= 1, 'la tabla no se desliza de costado', String(desliza))
     comprobar(errores.length === 0, 'sin errores de consola', errores.join(' | '))
     await contexto.close()
   }
+
+  // Los anchos del medio: una ventana a media pantalla, una tableta, una portátil chica.
+  console.log(`\nCarrocerías como ${puesto}, de 640 a 1366 px`)
+  const { pagina, contexto } = await entrar(puesto, MONITOR)
+  for (const ruta of ['/carrocerias', '/carrocerias?estado=inactivas']) {
+    const malos = []
+    for (const ancho of [640, 768, 900, 1024, 1180, 1280, 1366]) {
+      await pagina.setViewportSize({ width: ancho, height: 900 })
+      await pagina.goto(`${BASE}${ruta}`, { waitUntil: 'networkidle' })
+      const m = await pagina.evaluate(() => {
+        const caja = document.querySelector('.tabla-con-corte')
+        const borde = caja.getBoundingClientRect().right
+        return {
+          desliza: caja.scrollWidth - caja.clientWidth,
+          fuera: [...caja.querySelectorAll('tbody button')].filter((b) => b.getBoundingClientRect().width > 0 && b.getBoundingClientRect().right > borde + 1).length,
+          desborde: document.documentElement.scrollWidth - window.innerWidth,
+        }
+      })
+      if (m.desliza > 1 || m.fuera > 0 || m.desborde > 0) malos.push(`${ancho}: ${JSON.stringify(m)}`)
+    }
+    comprobar(malos.length === 0, `${ruta.includes('inactivas') ? 'con las desactivadas' : 'las activas'}: no se desliza ni deja botones fuera`, malos.join(' · '))
+  }
+  await contexto.close()
 }
 
 await navegador.close()

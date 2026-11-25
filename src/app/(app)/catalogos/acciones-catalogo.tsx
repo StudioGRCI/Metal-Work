@@ -11,6 +11,10 @@ import { cambiarEstadoCatalogo, eliminarCatalogo } from './acciones'
 
 type TipoCatalogo = 'cliente' | 'unidad' | 'carroceria'
 
+// El aviso dentro de `AccionesDeFila`: ancho cero y mínimo el del renglón, así
+// baja a su propia línea y no le suma ancho a la columna.
+const AVISO_EN_FILA = 'w-0 min-w-full text-pretty md:text-right'
+
 export function AccionesCatalogo({
   tipo,
   id,
@@ -18,7 +22,7 @@ export function AccionesCatalogo({
   activo,
   puedeEditar,
   esAdmin,
-  className,
+  enFila = false,
 }: {
   tipo: TipoCatalogo
   id: string
@@ -26,8 +30,13 @@ export function AccionesCatalogo({
   activo: boolean
   puedeEditar: boolean
   esAdmin: boolean
-  /** Para la fila que no quiere que bajen de renglón en el monitor (Carrocerías). */
-  className?: string
+  /**
+   * Va dentro de un `AccionesDeFila`: sus botones se suman al renglón de los
+   * demás (`contents`) y el aviso baja a su propia línea sin ensanchar la
+   * columna. Al lado de los botones, en Carrocerías a 1280 px el aviso corría
+   * la tabla 150 px y quedaba fuera de la vista (auditoría del 2026-11-25).
+   */
+  enFila?: boolean
 }) {
   const [confirmar, setConfirmar] = useState(false)
   const estado = useAccion(cambiarEstadoCatalogo, undefined, { documento: `${tipo}:${id}` })
@@ -41,7 +50,7 @@ export function AccionesCatalogo({
   }
 
   return (
-    <div className={cn('flex flex-wrap items-center gap-2', className)}>
+    <div className={enFila ? 'contents' : 'flex flex-wrap items-center gap-2'}>
       {!activo && <span className="rounded-full bg-superficie-2 px-2 py-1 text-xs text-texto-suave">Inactivo</span>}
       {puedeEditar && (
         // Sin borde, como «Eliminar»: en listas de 34 filas pesaba igual que «Editar».
@@ -65,10 +74,10 @@ export function AccionesCatalogo({
           <Boton type="button" tamano="sm" variante="fantasma" onClick={() => setConfirmar(false)}>Cancelar</Boton>
         </span>
       )}
-      {estado.resultado && !estado.resultado.ok && <span role="alert" className="text-xs text-peligro">{estado.resultado.error}</span>}
-      {borrado.resultado && !borrado.resultado.ok && <span role="alert" className="text-xs text-peligro">{borrado.resultado.error}</span>}
-      {estado.resultado?.ok && <span role="status" className="text-xs text-exito">{estado.resultado.mensaje}</span>}
-      {borrado.resultado?.ok && <span role="status" className="text-xs text-exito">{borrado.resultado.mensaje}</span>}
+      {estado.resultado && !estado.resultado.ok && <span role="alert" className={cn('text-xs text-peligro', enFila && AVISO_EN_FILA)}>{estado.resultado.error}</span>}
+      {borrado.resultado && !borrado.resultado.ok && <span role="alert" className={cn('text-xs text-peligro', enFila && AVISO_EN_FILA)}>{borrado.resultado.error}</span>}
+      {estado.resultado?.ok && <span role="status" className={cn('text-xs text-exito', enFila && AVISO_EN_FILA)}>{estado.resultado.mensaje}</span>}
+      {borrado.resultado?.ok && <span role="status" className={cn('text-xs text-exito', enFila && AVISO_EN_FILA)}>{borrado.resultado.mensaje}</span>}
     </div>
   )
 }

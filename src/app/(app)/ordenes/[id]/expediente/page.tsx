@@ -747,7 +747,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
                       />
                     </a>
                     <p className="mt-1 text-xs text-texto">{r.actividad}</p>
-                    <p className="text-[11px] text-texto-tenue">
+                    <p className="text-xs text-texto-tenue">
                       {r.area} · {fecha(r.fecha)} · +{porcentaje(r.avance_pct)}
                     </p>
                   </li>
@@ -918,7 +918,7 @@ function Proceso({ expediente, eventos }: { expediente: Expediente; eventos: Eve
                         )}
                       </p>
                       {p.detalle && <p className="mt-0.5 text-sm text-texto-suave">{p.detalle}</p>}
-                      <p className="mt-0.5 text-[11px] text-texto-tenue">
+                      <p className="mt-0.5 text-xs text-texto-tenue">
                         {hora(p.cuando)}
                         {p.quien && ` · ${p.quien}`}
                       </p>

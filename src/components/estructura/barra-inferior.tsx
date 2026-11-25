@@ -61,8 +61,9 @@ export function BarraInferior({
 
   const clasePestana = (activo: boolean) =>
     cn(
-      // eslint-disable-next-line no-restricted-syntax -- la etiqueta de la pestaña se queda en 11 px: a 12, «Subcontratos» se cortaba en «Subcontra…» en un teléfono de 390
-      'flex min-h-14 w-full flex-col items-center justify-center gap-0.5 px-1 text-[11px] font-medium transition-colors',
+      // A 12 px como todo el sistema. Con `px-1`, «Subcontratos» se cortaba en
+      // «Subcontra…» en un teléfono de 390; con `px-0.5` entran las de los 16 puestos.
+      'flex min-h-14 w-full flex-col items-center justify-center gap-0.5 px-0.5 text-xs font-medium transition-colors',
       activo ? 'text-acento' : 'text-texto-suave hover:text-texto',
     )
   const claseIcono = (activo: boolean) =>
