@@ -214,6 +214,14 @@ if (SOLO !== 'salida') {
   console.log(`    alta con el nombre de ahora: «${conElDeAhora}»`)
   comprobar(conElDeAhora.includes('ya estaba') && (await conNombre(`${nuevo} bis`)).length === 1,
     'el nombre que la carrocería tiene ahora la encuentra y no la repite')
+  // Dos nombres largos que solo difieren pasados los 40 caracteres son dos carrocerías.
+  const largo = (cual) => `Semirremolque plataforma cama baja de tres ejes ${cual} rampa ${sufijo}`
+  await consulta(`insert into public.tipos_carroceria (codigo, nombre, orden_secuencia, activo) values ($1, $2, 99, true)`,
+    [`L${sufijo.slice(-3)}`, largo('con')])
+  const conOtroFinal = await agregar(largo('sin'))
+  console.log(`    alta de un nombre largo parecido: «${conOtroFinal}»`)
+  comprobar(/agregado/i.test(conOtroFinal) && (await conNombre(largo('sin'))).length === 1,
+    'un nombre largo que difiere al final da de alta otra, no elige la parecida')
   comprobar(errores.length === 0, `sin errores de consola como Ventas ${errores.join(' | ')}`)
   await contexto.close()
 }

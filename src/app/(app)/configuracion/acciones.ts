@@ -5,7 +5,7 @@ import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion, NO_TOCO_NADA } from '@/lib/acciones'
 import { exigirSesion, puede } from '@/lib/sesion'
-import { codigoDeCarroceria } from '@/lib/dominio/medidas-carroceria'
+import { codigoDeCarroceria, nombreDeCarroceria } from '@/lib/dominio/medidas-carroceria'
 import { createClient } from '@/lib/supabase/server'
 
 async function exigirEdicion() {
@@ -181,12 +181,12 @@ export async function crearCarroceria(
   // «Ya estaba» se decide por el nombre, no por el código: el código es el de
   // la empresa (TOL, C34…) y no cambia al renombrar, así que buscarlo armado
   // del nombre daba por existente otra carrocería, o ninguna.
-  const comoNombre = codigoDeCarroceria(v.nombre)
+  const comoNombre = nombreDeCarroceria(v.nombre)
   const { data: catalogo, error: alLeer } = await supabase
     .from('tipos_carroceria')
     .select('id, nombre, codigo, activo')
   if (alLeer) return { ok: false, error: mensajeDeError(alLeer) }
-  const iguales = (catalogo ?? []).filter((t) => codigoDeCarroceria(t.nombre) === comoNombre)
+  const iguales = (catalogo ?? []).filter((t) => nombreDeCarroceria(t.nombre) === comoNombre)
   const existente = iguales.find((t) => t.activo) ?? iguales[0]
 
   if (existente) {
@@ -200,8 +200,9 @@ export async function crearCarroceria(
   // El código nuevo sale del nombre; si otra carrocería ya lo usa con otro
   // nombre, lleva un número para no chocar con ella.
   const usados = new Set((catalogo ?? []).map((t) => t.codigo))
-  let codigo = comoNombre
-  for (let n = 2; usados.has(codigo); n++) codigo = `${comoNombre}_${n}`
+  const armado = codigoDeCarroceria(v.nombre)
+  let codigo = armado
+  for (let n = 2; usados.has(codigo); n++) codigo = `${armado}_${n}`
 
   const { data, error } = await supabase
     .from('tipos_carroceria')
