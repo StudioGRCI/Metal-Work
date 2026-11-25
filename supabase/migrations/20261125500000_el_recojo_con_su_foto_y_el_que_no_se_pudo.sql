@@ -341,7 +341,7 @@ begin
   end if;
   select * into v_compra from public.ordenes_compra_materiales where id = p_compra for update;
   if not found then
-    raise exception 'La compra no existe.' using errcode = 'foreign_key_violation';
+    raise exception 'La compra no existe: recarga la pantalla.' using errcode = 'check_violation';
   end if;
   v_nombre := public.nombre_de_oc(v_compra.numero, v_compra.referencia);
 
@@ -407,7 +407,7 @@ begin
 
   select * into v_compra from public.ordenes_compra_materiales where id = p_compra for update;
   if not found then
-    raise exception 'La compra no existe.' using errcode = 'foreign_key_violation';
+    raise exception 'La compra no existe: recarga la pantalla.' using errcode = 'check_violation';
   end if;
   v_nombre := public.nombre_de_oc(v_compra.numero, v_compra.referencia);
   select * into v_prog from public.programacion_recojo where orden_compra_id = p_compra;
@@ -478,7 +478,7 @@ begin
   -- El punto va después de las comillas; el del final del motivo sobraría («…a las 10.».).
   perform public.avisar_a_quien_tiene('compras.programar_recojo',
     'No se pudo recoger: ' || v_nombre,
-    v_compra.proveedor || '. El conductor dice: «' || rtrim(v_motivo, '.') || '». Volvió a «Por programar»: ponla otra vez en su lista cuando se pueda recoger.'
+    v_compra.proveedor || '. El conductor dice: «' || rtrim(v_motivo, '.') || '». Volvió a «Por programar»: ponla otra vez en la lista del conductor cuando se pueda recoger.'
       || case when v_con_guia then ' Su guía de remisión sigue cargada.' else '' end,
     '/compras/gestion', p_compra);
   return p_id;

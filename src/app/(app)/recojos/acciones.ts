@@ -53,6 +53,9 @@ function ponerAlDia() {
   revalidatePath('/requerimientos/atencion')
 }
 
+/** PostgREST no conoce la función (PGRST202), o Postgres no la tiene (42883): la migración todavía no se aplicó. */
+const faltaLaFuncion = (e: { code?: string } | null) => e?.code === 'PGRST202' || e?.code === '42883'
+
 function json(datos: FormData, nombre: string): unknown {
   const valor = datos.get(nombre)
   if (typeof valor !== 'string' || !valor) return undefined
@@ -85,10 +88,18 @@ export async function marcarRecogida(_previo: unknown, datos: FormData): Promise
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('marcar_compra_recogida_con_fotos', {
+  let { data, error } = await supabase.rpc('marcar_compra_recogida_con_fotos', {
     p_compra: analisis.data.id,
     p_fotos: analisis.data.fotos,
   })
+  // Mientras la base no tenga la 20261125500000, la función con fotos no existe:
+  // sin fotos se marca como antes; con fotos se dice, sin marcarla sin ellas.
+  if (faltaLaFuncion(error)) {
+    if (analisis.data.fotos.length > 0) {
+      return { ok: false, error: 'Las fotos del recojo todavía no se pueden guardar: quítalas y márcala sin ellas, o avisa a Logística.' }
+    }
+    ;({ data, error } = await supabase.rpc('marcar_compra_recogida', { p_compra: analisis.data.id }))
+  }
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== analisis.data.id) return { ok: false, error: 'No quedó marcada como recogida. Recarga la pantalla.' }
 
@@ -131,6 +142,7 @@ export async function avisarQueNoSePudoRecoger(_previo: unknown, datos: FormData
     p_compra: analisis.data.compra,
     p_motivo: analisis.data.motivo,
   })
+  if (faltaLaFuncion(error)) return { ok: false, error: '«No se pudo recoger» todavía no está disponible: llama a Logística para que la saque de tu lista.' }
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== analisis.data.id) return { ok: false, error: 'El aviso no quedó registrado. Recarga la pantalla.' }
 

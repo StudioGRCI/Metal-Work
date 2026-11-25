@@ -230,6 +230,10 @@ try {
 
     await a.getByRole('button', { name: 'Salgo a recoger' }).click()
     await a.getByRole('button', { name: 'Ya la recogí' }).waitFor({ timeout: 15000 })
+    const enYaLaRecogi = await pagina
+      .waitForFunction(() => document.activeElement?.textContent?.includes('Ya la recogí'), null, { timeout: 5000 })
+      .then(() => true, () => false)
+    comprobar(enYaLaRecogi, `${donde}: tras «Salgo a recoger», el cursor queda en «Ya la recogí»`)
     await a.getByRole('button', { name: 'Ya la recogí' }).click()
     const ventana = pagina.getByRole('dialog')
     await ventana.waitFor({ timeout: 10000 })

@@ -317,7 +317,11 @@ async function enlacesDeFotosDeRecojo(supabase: Awaited<ReturnType<typeof create
   const enlaces: Record<string, string> = {}
   if (rutas.length === 0) return enlaces
   const { data, error } = await supabase.storage.from(BUCKET_FOTOS_RECOJO).createSignedUrls(rutas, 3600)
-  if (error || !data) return enlaces
+  if (error || !data) {
+    // La tarjeta dice que hay fotos y que no se pudieron abrir; el porqué queda en el registro del servidor.
+    console.error(`No se pudieron firmar las fotos del recojo: ${error?.message ?? 'sin respuesta'}`)
+    return enlaces
+  }
   for (const item of data) if (item.path && item.signedUrl) enlaces[item.path] = item.signedUrl
   return enlaces
 }

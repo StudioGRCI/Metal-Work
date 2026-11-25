@@ -1,7 +1,7 @@
 'use client'
 
 import { CircleSlash, Package, PackageCheck, Truck } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { EstadoDelEnvio, fotosParaEnviar, hayFallidas, haySubiendo, SelectorFotos, useFotosDelEnvio } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
@@ -42,12 +42,19 @@ export function PasoRecojo({
   // paso: el cursor pasa a «La dejé en almacén» (`data-cursor-vuelve`) y esta
   // línea, siempre montada, dice lo que entró.
   const [recogida, setRecogida] = useState('')
+  // Tras «Salgo a recoger» su botón se va: el cursor pasa a «Ya la recogí» cuando aparece.
+  const alSiguiente = useRef(false)
   const marca = `paso-recojo:${id}`
+  useEffect(() => {
+    if (!alSiguiente.current || paso !== 'RECOGIDO') return
+    alSiguiente.current = false
+    document.querySelector<HTMLElement>(`[data-cursor-vuelve="${CSS.escape(marca)}"]`)?.focus()
+  }, [paso, marca])
   return (
     <div className="space-y-2">
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start">
         {paso === 'EN_RECOJO' ? (
-          <SalgoARecoger id={id} />
+          <SalgoARecoger id={id} alSalir={() => (alSiguiente.current = true)} />
         ) : paso === 'RECOGIDO' ? (
           <YaLaRecogi id={id} nombre={nombre} cuentaId={cuentaId} marca={marca} alRecoger={setRecogida} />
         ) : (
@@ -62,8 +69,8 @@ export function PasoRecojo({
   )
 }
 
-function SalgoARecoger({ id }: { id: string }) {
-  const accion = useAccion(marcarRecojo, undefined, { documento: id })
+function SalgoARecoger({ id, alSalir }: { id: string; alSalir: () => void }) {
+  const accion = useAccion(marcarRecojo, alSalir, { documento: id })
   return (
     <div className="space-y-2">
       <Boton
@@ -113,10 +120,10 @@ function YaLaRecogi({
   const delEnvio = useFotosDelEnvio(BUCKET_FOTOS_RECOJO)
   const { fotos, setFotos } = delEnvio
   const envio = useEnvio(delEnvio.conFotos(marcarRecogida), (resultado) => {
-    // Cerrada mientras se enviaba, lo dice `EstadoDelEnvio`; aquí no se repite.
-    if (delEnvio.seCerroAlEnviar()) return
+    // También si se cerró mientras se enviaba: la línea vive en la tarjeta, que
+    // se queda aunque este botón se vaya con el paso.
     alRecoger(resultado.mensaje ?? 'Marcada como recogida.')
-    setAbierta(false)
+    if (!delEnvio.seCerroAlEnviar()) setAbierta(false)
   })
   const subiendo = haySubiendo(fotos)
   const fallidas = hayFallidas(fotos)
@@ -344,6 +351,9 @@ function FormularioNoSePudo({
         alEnviar(e)
       }}
       className="space-y-4"
+      // El motivo lo revisa el formulario y lo dice en su campo: el globo del
+      // navegador hablaba de otra manera, y en el idioma del navegador.
+      noValidate
     >
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="compra" value={compra} />
@@ -361,7 +371,6 @@ function FormularioNoSePudo({
             onChange={() => setMotivoCorto(null)}
             name="motivo"
             required
-            minLength={MOTIVO_NO_LOGRADO.minimo}
             maxLength={MOTIVO_NO_LOGRADO.maximo}
             rows={3}
             placeholder="Por ejemplo: el almacén del proveedor estaba cerrado; dicen que abren el lunes a las 8."
