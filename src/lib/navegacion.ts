@@ -34,6 +34,8 @@ import {
   ReceiptText,
   Route,
   Settings,
+  ShieldAlert,
+  ShieldCheck,
   Tag,
   Truck,
   UserCog,
@@ -543,6 +545,23 @@ export const NAVEGACION = [
       { titulo: 'Planillas', ruta: '/rrhh', icono: UserCog, permiso: 'rrhh.ver_planillas', descripcion: 'Planillas del mes y su distribución por unidad', disponible: true },
     ],
   },
+  // SSOMA lleva los reportes de seguridad (Plan 15, migración 20261125150100):
+  // los ve enteros, con quién reportó; Gerencia los consulta. La misma pantalla
+  // está otra vez en «Reportar», sin permiso: ahí reporta cualquier puesto y ve
+  // los suyos. Vale la primera que la persona puede ver.
+  {
+    titulo: 'SSOMA',
+    items: [
+      {
+        titulo: 'Reportes de seguridad',
+        ruta: '/ssoma',
+        icono: ShieldCheck,
+        permiso: ['ssoma.gestionar', 'ssoma.ver'],
+        descripcion: 'Cada accidente, incidente o condición insegura reportada, con su número y cómo va',
+        disponible: true,
+      },
+    ],
+  },
   {
     titulo: 'Administración del sistema',
     items: [
@@ -560,6 +579,20 @@ export const NAVEGACION = [
         icono: Settings,
         permiso: 'configuracion.ver',
         descripcion: 'Calendario laboral y catálogos del taller',
+        disponible: true,
+      },
+    ],
+  },
+  // Lo que reporta cualquier puesto, sin permiso: va al final del menú de todos
+  // (`RUTAS_PARA_TODOS`). Reportar un incidente no puede depender de un permiso.
+  {
+    titulo: 'Reportar',
+    items: [
+      {
+        titulo: 'Reportar incidente',
+        ruta: '/ssoma',
+        icono: ShieldAlert,
+        descripcion: 'Un accidente, un incidente o algo inseguro que viste: le llega a SSOMA al instante',
         disponible: true,
       },
     ],
@@ -842,11 +875,25 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     grupos: [{ titulo: 'Ventas', rutas: ['/cotizaciones/pdf', '/clientes', '/unidades', '/carrocerias'] }],
     telefono: ['/cotizaciones/pdf', '/clientes', '/unidades', '/'],
   },
+  // Seguridad y salud en el trabajo (Plan 15): lo que la gente reporta es lo
+  // que espera por SSOMA cada día. Las acciones correctivas, las charlas, las
+  // inspecciones y la entrega de EPP se suman aquí con sus entregas.
+  SSOMA: {
+    grupos: [{ titulo: 'SSOMA', rutas: ['/ssoma'] }],
+    telefono: ['/ssoma', '/'],
+  },
 }
 // El líder de Diseño hace el trabajo de Diseño y además revisa el de su equipo
 // (`docs/PERMISOS.md`): lleva su mismo menú. Sin esta línea le salía el
 // catálogo completo, con Configuración, y en el teléfono sin Planos ni Etapas.
 MENU_POR_PUESTO.DISENO_LIDER = MENU_POR_PUESTO.DISENO
+
+/**
+ * Lo que va en el menú de todos los puestos, al final y en el grupo «Reportar»:
+ * no se repite en cada entrada de `MENU_POR_PUESTO`. Una pantalla que cualquier
+ * puesto usa para avisar de algo (un incidente, una avería) se suma aquí.
+ */
+const RUTAS_PARA_TODOS: readonly RutaDeModulo[] = ['/ssoma']
 
 function lePermite(item: ItemNavegacion, permisos: readonly string[], esAdmin: boolean) {
   if (!item.permiso || esAdmin) return true
@@ -863,7 +910,7 @@ function lePermite(item: ItemNavegacion, permisos: readonly string[], esAdmin: b
 export function menuDe(permisos: readonly string[], esAdmin: boolean, rolCodigo: string): GrupoNavegacion[] {
   const propio = esAdmin ? undefined : MENU_POR_PUESTO[rolCodigo]
   const grupos: GrupoNavegacion[] = propio
-    ? [{ titulo: 'Principal', rutas: ['/', ...(propio.principal ?? [])] }, ...propio.grupos].map((g) => ({
+    ? [{ titulo: 'Principal', rutas: ['/', ...(propio.principal ?? [])] }, ...propio.grupos, { titulo: 'Reportar', rutas: RUTAS_PARA_TODOS }].map((g) => ({
         titulo: g.titulo,
         // Una pantalla compartida está en el catálogo una vez por cada área que
         // la usa, con el permiso de esa área: vale la que esta persona ve.
@@ -964,6 +1011,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/rrhh/costeo', corto: 'Costeo' },
   { ruta: '/rrhh/pagos-oficina', corto: 'Pagos' },
   { ruta: '/rrhh/observaciones', corto: 'Observaciones' },
+  { ruta: '/ssoma', corto: 'Seguridad' },
   { ruta: '/reportes-diarios', corto: 'Reporte' },
   { ruta: '/codigos-internos', corto: 'Códigos' },
   { ruta: '/diseno/planos', corto: 'Planos' },
