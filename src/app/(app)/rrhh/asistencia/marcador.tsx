@@ -322,8 +322,14 @@ function TarjetaPersona({
   anula: boolean
   alMarcar: (nueva: Ultima, tarjeta: HTMLElement | null) => void
 }) {
-  // Un reintento manda el mismo id y la base no duplica; al marcar bien, se estrena otro.
-  const [marcaId, setMarcaId] = useState(() => crypto.randomUUID())
+  // Un reintento manda el mismo id y la base no duplica; al marcar bien, se
+  // estrena otro. Uno por botón: con uno solo para los dos, el ingreso que entró
+  // sin que llegara la respuesta dejaba su id en «Salida».
+  const [ids, setIds] = useState<Record<Tipo, string>>(() => ({ INGRESO: crypto.randomUUID(), SALIDA: crypto.randomUUID() }))
+  // Un id que ya está en la lista terminó, vigente o anulado: la marca que sigue
+  // lleva otro (entró sin respuesta y la lista se puso al día después).
+  const gastado = (['INGRESO', 'SALIDA'] as const).find((tipo) => marcas.some((m) => m.id === ids[tipo]))
+  if (gastado) setIds({ ...ids, [gastado]: crypto.randomUUID() })
   // El «Ingreso marcado.» de la tarjeta es de una marca: si después se anula, se calla.
   const [aviso, setAviso] = useState<{ de: string | null; texto: string } | null>(null)
   const tarjeta = useRef<HTMLLIElement>(null)
@@ -331,7 +337,7 @@ function TarjetaPersona({
   const enviado = useRef<{ id: string; tipo: Tipo } | null>(null)
   const envio = useEnvio(marcarAsistencia, (r) => {
     const fue = enviado.current
-    setMarcaId(crypto.randomUUID())
+    if (fue) setIds((antes) => (antes[fue.tipo] === fue.id ? { ...antes, [fue.tipo]: crypto.randomUUID() } : antes))
     setAviso(r.mensaje ? { de: fue?.id ?? null, texto: r.mensaje } : null)
     if (fue) alMarcar({ id: fue.id, persona: p, tipo: fue.tipo, hora: r.datos?.hora ?? null, es_tardanza: r.datos?.es_tardanza ?? false, tardanza_minutos: r.datos?.tardanza_minutos ?? 0 }, tarjeta.current)
   }, { documento: p.id })
@@ -381,12 +387,12 @@ function TarjetaPersona({
               key={tipo}
               onSubmit={(e) => {
                 setAviso(null)
-                enviado.current = { id: marcaId, tipo }
+                enviado.current = { id: ids[tipo], tipo }
                 envio.alEnviar(e)
               }}
               className="flex-1"
             >
-              <input type="hidden" name="marca_id" value={marcaId} />
+              <input type="hidden" name="marca_id" value={ids[tipo]} />
               <input type="hidden" name="trabajador_id" value={p.id} />
               <input type="hidden" name="tipo" value={tipo} />
               <Boton

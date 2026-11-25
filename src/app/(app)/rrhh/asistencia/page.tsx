@@ -76,6 +76,10 @@ export default async function PaginaAsistencia({ searchParams }: PageProps<'/rrh
       </div>
 
       <Marcador
+        // Otro día es otra lista: sin esto, Next deja montado el marcador al
+        // cambiar ?fecha= y la lista elegida hoy («Dentro ahora») seguía puesta
+        // en el día anterior, vacía y sin pastillas para volver.
+        key={fecha}
         personal={personal.map((p) => ({
           id: p.id,
           nombres: p.nombres,
