@@ -176,19 +176,19 @@ function FilaCompra({
         {c.numero === null && <p className="text-xs text-texto-suave">Ref. del proveedor: {c.referencia}</p>}
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 sm:hidden">
           <span className="tabular text-sm font-semibold text-texto">{moneda(c.monto, divisa(c.moneda))}</span>
-          <span className="text-[11px] text-texto-suave">sin IGV</span>
+          <span className="text-xs text-texto-suave">sin IGV</span>
           <Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>
           {reposicion}
           {c.tiene_factura ? (
             <Insignia tono="exito">Comprobante adjunto</Insignia>
           ) : sinCurso ? (
-            <span className="text-[11px] text-texto-suave">No se paga</span>
+            <span className="text-xs text-texto-suave">No se paga</span>
           ) : (
-            <span className="text-[11px] text-texto-suave">{comprobantePendiente(c)}</span>
+            <span className="text-xs text-texto-suave">{comprobantePendiente(c)}</span>
           )}
         </div>
         <p className="text-xs text-texto">{c.proveedor}</p>
-        <p className="text-[11px] text-texto-suave">
+        <p className="text-xs text-texto-suave">
           {[
             c.numero !== null && c.referencia && c.referencia !== c.numero ? `Ref. ${c.referencia}` : null,
             condicionDePago(c.condicion_pago, c.dias_credito),
@@ -204,7 +204,7 @@ function FilaCompra({
             {c.aprobacion === 'ANULADA' ? 'Anulada' : 'Rechazada'}: {c.motivo_rechazo}
           </p>
         )}
-        <p className="text-[11px] text-texto-suave md:hidden">Para {para || '—'}</p>
+        <p className="text-xs text-texto-suave md:hidden">Para {para || '—'}</p>
         <HistorialDeCorrecciones correcciones={correcciones} />
       </TD>
       <TD className="hidden text-texto-suave md:table-cell">{para || '—'}</TD>
@@ -223,9 +223,9 @@ function FilaCompra({
         ) : (
           <span className="text-xs text-texto-suave">{comprobantePendiente(c)}</span>
         )}
-        {!sinCurso && <p className="text-[11px] text-texto-suave">{comprobante.etiqueta}</p>}
+        {!sinCurso && <p className="text-xs text-texto-suave">{comprobante.etiqueta}</p>}
         {c.facturas.length > 0 && (
-          <ul className="mt-1 space-y-0.5 text-[11px] text-texto">
+          <ul className="mt-1 space-y-0.5 text-xs text-texto">
             {c.facturas.map((f) => (
               // El mismo número puede ir anexado dos veces a la OC: la clave es el anexo.
               <li key={f.id} className="tabular whitespace-nowrap">

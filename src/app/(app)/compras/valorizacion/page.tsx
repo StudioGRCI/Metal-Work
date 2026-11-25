@@ -131,7 +131,7 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
                 <TR key={m.material_id}>
                   <TD className="max-w-72">
                     <span className="line-clamp-2 text-sm">{m.descripcion}</span>
-                    <span className="block font-mono text-[10px] text-texto-tenue">{m.codigo}</span>
+                    <span className="block font-mono text-xs text-texto-tenue">{m.codigo}</span>
                     {/* En el teléfono el precio y de dónde sale van aquí, para que
                         «Fijar precio» quepa en la fila sin correrla de costado. */}
                     <span className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-texto-suave sm:hidden">
@@ -141,7 +141,7 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
                   </TD>
                   <TD className="tabular text-right">
                     {cantidad(m.existencia)}
-                    {m.unidad && <span className="ml-1 text-[10px] text-texto-tenue">{m.unidad}</span>}
+                    {m.unidad && <span className="ml-1 text-xs text-texto-tenue">{m.unidad}</span>}
                   </TD>
                   <TD className="tabular hidden text-right md:table-cell">
                     {m.ultima_compra !== null && monedaCompra ? moneda(m.ultima_compra, monedaCompra) : <span className="text-texto-tenue">—</span>}
@@ -150,7 +150,7 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
                     {m.precio !== null && monedaLogistica ? (
                       <>
                         {moneda(m.precio, monedaLogistica)}
-                        <span className="block text-[10px] text-texto-tenue">desde {fecha(m.valorizado_en)}</span>
+                        <span className="block text-xs text-texto-tenue">desde {fecha(m.valorizado_en)}</span>
                       </>
                     ) : <span className="text-texto-tenue">—</span>}
                   </TD>

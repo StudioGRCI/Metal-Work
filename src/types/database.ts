@@ -13980,6 +13980,10 @@ export type Database = {
         }
         Returns: number
       }
+      dias_por_vencer: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
       documentos_compra_tesoreria: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -14293,6 +14297,10 @@ export type Database = {
         Returns: null
       }
       exigir_ver_codigos_de_diseno: {
+        Args: Record<PropertyKey, never>
+        Returns: null
+      }
+      exigir_ver_tiempos_de_entrega: {
         Args: Record<PropertyKey, never>
         Returns: null
       }
@@ -14782,6 +14790,10 @@ export type Database = {
           para_repartir: number | null
           tomado_solo: number | null
         }[]
+      }
+      limite_por_vencer: {
+        Args: Record<PropertyKey, never>
+        Returns: string
       }
       llegado_de_la_linea_de_compra: {
         Args: {
@@ -17047,6 +17059,13 @@ export type Database = {
           en_recojo_en: string | null
         }[]
       }
+      semaforo_de_fecha: {
+        Args: {
+          p_fecha: string | null
+          p_terminada?: boolean | null
+        }
+        Returns: string
+      }
       sembrar_feriados: {
         Args: {
           p_anio: number | null
@@ -17371,6 +17390,115 @@ export type Database = {
           p_monto: number | null
         }
         Returns: string
+      }
+      tiempos_de_entrega_actividades: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          clave: string | null
+          area: string | null
+          descripcion: string | null
+          avance: number | null
+          ultima_fecha: string | null
+          reportes: number | null
+        }[]
+      }
+      tiempos_de_entrega_codigos: {
+        Args: {
+          p_codigo?: string | null
+        }
+        Returns: {
+          codigo: string | null
+          ot_numero: string | null
+          ot_estado: string | null
+          cliente: string | null
+          unidad: string | null
+          fecha_entrega: string | null
+          dias_habiles_entrega: number | null
+          semaforo_entrega: string | null
+          etapas: number | null
+          etapas_terminadas: number | null
+          etapas_vencidas: number | null
+          etapas_por_vencer: number | null
+          etapas_sin_fecha: number | null
+          etapa_en_curso: string | null
+          area_en_curso: string | null
+          proxima_fecha: string | null
+          semaforo: string | null
+          ots_abiertas: number | null
+        }[]
+      }
+      tiempos_de_entrega_codigos_calculado: {
+        Args: {
+          p_codigo?: string | null
+        }
+        Returns: {
+          codigo: string | null
+          ot_numero: string | null
+          ot_estado: string | null
+          cliente: string | null
+          unidad: string | null
+          fecha_entrega: string | null
+          dias_habiles_entrega: number | null
+          semaforo_entrega: string | null
+          etapas: number | null
+          etapas_terminadas: number | null
+          etapas_vencidas: number | null
+          etapas_por_vencer: number | null
+          etapas_sin_fecha: number | null
+          etapa_en_curso: string | null
+          area_en_curso: string | null
+          proxima_fecha: string | null
+          semaforo: string | null
+          ots_abiertas: number | null
+        }[]
+      }
+      tiempos_de_entrega_etapas: {
+        Args: {
+          p_codigo?: string | null
+        }
+        Returns: {
+          id: string | null
+          codigo: string | null
+          orden: number | null
+          nombre: string | null
+          padre_id: string | null
+          area_id: string | null
+          area: string | null
+          inicio_plan: string | null
+          fin_plan: string | null
+          inicio_real: string | null
+          fin_real: string | null
+          nota: string | null
+          ultimo_reporte: string | null
+          avance_reportado: number | null
+          semaforo: string | null
+          dias_habiles: number | null
+        }[]
+      }
+      tiempos_de_entrega_etapas_calculado: {
+        Args: {
+          p_codigo?: string | null
+        }
+        Returns: {
+          id: string | null
+          codigo: string | null
+          orden: number | null
+          nombre: string | null
+          padre_id: string | null
+          area_id: string | null
+          area: string | null
+          inicio_plan: string | null
+          fin_plan: string | null
+          inicio_real: string | null
+          fin_real: string | null
+          nota: string | null
+          ultimo_reporte: string | null
+          avance_reportado: number | null
+          semaforo: string | null
+          dias_habiles: number | null
+        }[]
       }
       tiene_permiso: {
         Args: {

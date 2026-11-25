@@ -203,7 +203,7 @@ export default async function PaginaUnidad({ params }: PageProps<'/unidades/[id]
                             <Link href={`/ordenes/${o.id}`} className="font-medium text-acento hover:underline">
                               {o.numero}
                             </Link>
-                            <span className="tabular block text-[11px] text-texto-tenue">Registro {fecha(o.fecha_registro)}</span>
+                            <span className="tabular block text-xs text-texto-tenue">Registro {fecha(o.fecha_registro)}</span>
                           </TD>
                           <TD className="max-w-64">
                             <span className="flex flex-wrap gap-1">
@@ -216,7 +216,7 @@ export default async function PaginaUnidad({ params }: PageProps<'/unidades/[id]
                             {o.acta ? (
                               <>
                                 {fecha(o.acta.fecha_entrega)}
-                                <span className="block text-[11px] text-texto-tenue">Acta {o.acta.numero}</span>
+                                <span className="block text-xs text-texto-tenue">Acta {o.acta.numero}</span>
                               </>
                             ) : o.fecha_entrega_comprometida ? (
                               <span className="text-texto-suave">Prometida {fecha(o.fecha_entrega_comprometida)}</span>
@@ -231,7 +231,7 @@ export default async function PaginaUnidad({ params }: PageProps<'/unidades/[id]
                                 <>
                                   <span className={costo.pen > 0 ? 'text-texto' : 'text-texto-tenue'}>{moneda(costo.pen)}</span>
                                   {costo.margenPct !== null && (
-                                    <span className={cn('block text-[11px]', costo.margenPct < 0 ? 'text-peligro' : 'text-texto-suave')}>
+                                    <span className={cn('block text-xs', costo.margenPct < 0 ? 'text-peligro' : 'text-texto-suave')}>
                                       {costo.cierre ? 'Margen al cierre' : 'Margen a hoy'} {porcentajeYMonto(costo.margenPct, costo.margenPen, 'PEN', 1)}
                                     </span>
                                   )}

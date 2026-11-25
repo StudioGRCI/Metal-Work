@@ -414,7 +414,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
                         const programa = programaDeEtapa(etapa, hoyLima())
                         return (
                           <li key={etapa.etapa_id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
-                            <span className="tabular grid size-6 shrink-0 place-items-center rounded-full bg-superficie-2 text-[11px] font-semibold text-texto-suave">
+                            <span className="tabular grid size-6 shrink-0 place-items-center rounded-full bg-superficie-2 text-xs font-semibold text-texto-suave">
                               {etapa.orden_secuencia}
                             </span>
                             <div className="min-w-0 flex-1">
@@ -425,7 +425,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
                                 {programa.tocaAhora && <Insignia tono="aviso">Toca ahora</Insignia>}
                               </p>
                               {(etapa.estado !== 'PENDIENTE' || programa.fin) && (
-                                <p className="text-[11px] text-texto-suave">
+                                <p className="text-xs text-texto-suave">
                                   {[etapa.estado !== 'PENDIENTE' ? estadoEtapa.etiqueta : null, programa.fin ? `hasta el ${fecha(programa.fin)}` : null]
                                     .filter(Boolean)
                                     .join(' · ')}

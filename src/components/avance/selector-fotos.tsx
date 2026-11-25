@@ -742,7 +742,7 @@ export function SelectorFotos({
               // eslint-disable-next-line @next/next/no-img-element
               <img src={foto.vistaPrevia} alt={foto.archivo.name} className="size-full object-cover" />
             ) : (
-              <p className="p-1.5 text-[11px] text-peligro">{foto.error === SE_QUITO_SE_ACTUALIZO ? 'Se quitó' : 'No entró'}</p>
+              <p className="p-1.5 text-xs text-peligro">{foto.error === SE_QUITO_SE_ACTUALIZO ? 'Se quitó' : 'No entró'}</p>
             )}
 
             {foto.subiendo && (
@@ -788,7 +788,7 @@ export function SelectorFotos({
 
         {(maximo === undefined || fotos.length < maximo) && <label className={cn(MOSAICO, 'pointer-fine:hidden')}>
           <Camera aria-hidden className="size-5" />
-          <span className="text-[11px]">Tomar foto</span>
+          <span className="text-xs">Tomar foto</span>
           <input
             type="file"
             accept="image/*"
@@ -803,8 +803,8 @@ export function SelectorFotos({
 
         {(maximo === undefined || fotos.length < maximo) && <label className={MOSAICO}>
           <Images aria-hidden className="size-5" />
-          <span className="text-[11px] pointer-fine:hidden">De la galería</span>
-          <span className="hidden text-[11px] pointer-fine:inline">{maximo === 1 ? 'Elegir foto' : 'Elegir fotos'}</span>
+          <span className="text-xs pointer-fine:hidden">De la galería</span>
+          <span className="hidden text-xs pointer-fine:inline">{maximo === 1 ? 'Elegir foto' : 'Elegir fotos'}</span>
           <input
             type="file"
             accept="image/*"
@@ -835,7 +835,7 @@ export function SelectorFotos({
         </ul>
       )}
 
-      <p className="mt-1 text-[11px] text-texto-tenue">
+      <p className="mt-1 text-xs text-texto-tenue">
         {comprimir
           ? `${maximo ? `Hasta ${maximo} ${maximo === 1 ? 'foto' : 'fotos'}` : 'Varias a la vez desde la galería'}, en ${TIPOS_TEXTO}, de hasta ${MAXIMO_ORIGINAL_MB} MB cada una. Se achican en el teléfono antes de subir.`
           : `${maximo === 1 ? 'Una foto' : 'Varias a la vez desde la galería'}. Hasta ${maximoMb} MB por foto, en ${TIPOS_TEXTO}.`}

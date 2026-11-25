@@ -202,7 +202,7 @@ function ItemObservacion({ ordenId, observacion: o }: { ordenId: string; observa
           <Insignia tono={o.abierta ? 'aviso' : 'exito'}>{o.abierta ? 'Abierta' : 'Resuelta'}</Insignia>
           <span className="text-sm font-medium text-texto">Para {o.area}</span>
         </p>
-        <p className="mt-1 text-[11px] text-texto-tenue">
+        <p className="mt-1 text-xs text-texto-tenue">
           {o.registrado_por_nombre ?? 'Alguien del taller'} · {fechaHora(o.creado_en)}
         </p>
       </div>

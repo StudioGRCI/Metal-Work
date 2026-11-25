@@ -157,7 +157,7 @@ export function FilaMaterial({
           la tabla fuera del teléfono: se parte donde haga falta. */}
       <TD className="[overflow-wrap:anywhere] sm:min-w-48">
         <p className="text-sm font-medium text-texto">{material.descripcion}</p>
-        <p className="text-[11px] text-texto-suave">
+        <p className="text-xs text-texto-suave">
           {material.codigo_almacen_origen ?? material.codigo}
           {material.codigo_almacen_origen && material.codigo !== material.codigo_almacen_origen && (
             <span className="ml-2">clave interna {material.codigo}</span>
