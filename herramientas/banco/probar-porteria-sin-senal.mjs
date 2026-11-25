@@ -199,13 +199,22 @@ try {
       }
       db.close()
     }
-    const caches_ = 'caches' in window ? await caches.keys() : []
+    // La caché del service worker (en el build) guarda la página sin conexión:
+    // se lee entera, y lo que cuenta es que no tenga la marca.
+    const guardadas = []
+    for (const nombre of 'caches' in window ? await caches.keys() : []) {
+      const cache = await caches.open(nombre)
+      for (const pedido of await cache.keys()) {
+        guardadas.push(`${pedido.method} ${new URL(pedido.url).pathname}`)
+        partes.push(await (await cache.match(pedido))?.text())
+      }
+    }
     const texto = partes.join(' ')
-    return { conPersona: ids.some((id) => texto.includes(id)), conMarca: /INGRESO|marca_id/.test(texto), bases: bases.map((b) => b.name), caches: caches_.length }
+    return { conPersona: ids.some((id) => texto.includes(id)), conMarca: /INGRESO|marca_id/.test(texto), bases: bases.map((b) => b.name), guardadas }
   }, todos.map((p) => p.id))
   comprobar(
-    !guardado.conPersona && !guardado.conMarca && guardado.caches === 0,
-    `el teléfono no guardó la marca: ni localStorage, ni sessionStorage, ni IndexedDB (${guardado.bases.join(', ') || 'vacía'}), ni caché`,
+    !guardado.conPersona && !guardado.conMarca && guardado.guardadas.every((g) => g.startsWith('GET ')),
+    `el teléfono no guardó la marca: ni localStorage, ni sessionStorage, ni IndexedDB (${guardado.bases.join(', ') || 'vacía'}), ni caché (${guardado.guardadas.join(', ') || 'vacía'})`,
   )
   const alto = await enDuda(ana).getByRole('button', { name: /Reintentar/ }).evaluate((e) => e.getBoundingClientRect().height)
   comprobar(alto >= 44, `«Reintentar» mide ${Math.round(alto)} px de alto`)
@@ -403,7 +412,10 @@ try {
       return ruta.fulfill({ response: respuesta })
     }
     // Una ida a pedir la pantalla: el árbol de Next (`_rsc`) o la página entera.
-    const pidePantalla = /[?&]_rsc=/.test(pedido.url()) || pedido.headers()['rsc'] === '1' || pedido.resourceType() === 'document'
+    // El adelanto de los enlaces del menú (`next-router-prefetch`, solo en el
+    // build) no es esa ida: no pinta nada y su fallo no se nota.
+    const adelanto = pedido.headers()['next-router-prefetch'] === '1'
+    const pidePantalla = !adelanto && (/[?&]_rsc=/.test(pedido.url()) || pedido.headers()['rsc'] === '1' || pedido.resourceType() === 'document')
     if (accionVolvio && pedido.method() === 'GET' && pidePantalla) {
       cortadas += 1
       console.log(`     cortada: ${pedido.url().replace(BASE, '')}`)
