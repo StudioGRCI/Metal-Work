@@ -128,7 +128,7 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
     }
     requerimientos.sort((a, b) => orden(a) - orden(b) || desde(a) - desde(b))
   }
-  const grupos = compra ? insumosPorComprar(requerimientos, compraDe, metrado) : []
+  const grupos = compra ? insumosPorComprar(requerimientos, compraDe, metrado, espera) : []
   const porComprar = grupos.reduce((suma, g) => suma + g.insumos.length, 0)
   const cuenta = { abiertos: requerimientos.length, comprar: porComprar, todos: requerimientos.length }
 
@@ -162,6 +162,13 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
         <p role="status" className="mb-3 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-metrado-sin-leer>
           No se pudo leer el metrado de Diseño. Si un requerimiento se pasa del metrado, el sistema no deja revisarlo ni comprarlo y
           dice por qué. Vuelve a cargar la pantalla en un momento.
+        </p>
+      )}
+
+      {recorridos === null && requerimientos.some((r) => r.estado !== 'ENTREGADO' && r.estado !== 'ANULADO') && (
+        <p role="status" className="mb-3 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-dias-sin-leer>
+          No se pudieron contar los días que lleva esperando cada requerimiento: la lista sigue sin ellos y sin ordenarse por antigüedad.
+          Vuelve a cargar la pantalla en un momento.
         </p>
       )}
 
@@ -269,7 +276,13 @@ function insumosPorComprar(
   requerimientos: RequerimientoListado[],
   compraDe: CompraDe,
   metrado: Map<string, MetradoDelInsumo>,
+  espera: Map<string, PasoDelRecorrido>,
 ): GrupoPorComprar[] {
+  // El que más espera, arriba (plan 0): desde que lo tiene quien compra.
+  const desde = (r: RequerimientoListado) => {
+    const en = espera.get(r.id)?.en
+    return en ? Date.parse(en) : Number.POSITIVE_INFINITY
+  }
   return (['OPERACION', 'ADMINISTRACION'] as const)
     .filter((tipo) => compraDe[tipo])
     .map((tipo) => ({
@@ -277,6 +290,7 @@ function insumosPorComprar(
       ...TITULO_POR_COMPRAR[tipo],
       insumos: requerimientos
         .filter((r) => tipoDeRequerimiento(r) === tipo && (r.estado === 'SIN_STOCK' || r.estado === 'EN_ATENCION'))
+        .sort((a, b) => desde(a) - desde(b))
         .flatMap((r) =>
           r.lineas
             // Lo que se pasa del metrado sin el visto de Diseño no va en una OC (la base lo rechaza).
@@ -294,6 +308,8 @@ function insumosPorComprar(
               material: l.material_nombre ?? l.descripcion,
               codigo_material: l.material_codigo,
               fecha_requerida: r.fecha_requerida,
+              dias: espera.get(r.id)?.dias ?? null,
+              desde: espera.get(r.id)?.en ?? null,
             })),
         ),
     }))
@@ -419,7 +435,8 @@ function Fila({
           ) : (
             rq.estado
           )}
-          <DiasEnEspera dias={espera?.dias} desde={espera?.en} quien={espera?.puesto} />
+          {/* Aquí no todo lo tiene quien mira (la OC espera a Gerencia, el conductor salió): se ve de quién son los días. */}
+          <DiasEnEspera dias={espera?.dias} desde={espera?.en} quien={espera?.puesto} verQuien />
         </span>
         <AvanceDelRequerimiento rq={rq} frenado={enEspera && { etiqueta: enEspera.etapa, tono: enEspera.tono }} />
         <ul className="mt-1 space-y-0.5 text-xs text-texto-suave">

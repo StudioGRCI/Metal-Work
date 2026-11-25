@@ -46,10 +46,11 @@ export default async function PaginaAprobacionCompras() {
   const desde = (c: CompraParaAprobar) => (c.pedida_en ? Date.parse(c.pedida_en) : Number.POSITIVE_INFINITY)
   const pendientes = compras.filter((c) => c.aprobacion === 'POR_APROBAR').sort((a, b) => desde(a) - desde(b))
   // Los días los cuenta la base con la fecha de Lima. Sin ellos la lista sigue, solo sin la insignia.
-  const dias = await diasEnEspera(pendientes.map((c) => c.pedida_en)).catch((e: unknown) => {
+  const diasLeidos = await diasEnEspera(pendientes.map((c) => c.pedida_en)).catch((e: unknown) => {
     console.error('Aprobación de compras: no se pudieron contar los días en espera.', e)
-    return pendientes.map(() => null)
+    return null
   })
+  const dias = diasLeidos ?? pendientes.map(() => null)
   const decididas = compras.filter((c) => c.aprobacion !== 'POR_APROBAR')
 
   let resumen = 'Falta la regla de aprobación en la base.'
@@ -74,6 +75,12 @@ export default async function PaginaAprobacionCompras() {
           <h2 className="text-base font-semibold text-texto">
             Por aprobar <span className="tabular text-texto-suave">({pendientes.length})</span>
           </h2>
+          {diasLeidos === null && pendientes.length > 0 && (
+            <p className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-texto" role="status" data-dias-sin-leer>
+              No se pudieron contar los días que lleva esperando cada compra. Siguen de la más antigua a la más nueva; vuelve a cargar
+              la pantalla en un momento para ver los días.
+            </p>
+          )}
           {stockSinLeer && pendientes.some((c) => c.tipo !== 'OS') && (
             <p className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-texto" role="status">
               No se pudo leer cuánto hay en el almacén y cuánto ya viene en otras órdenes. Recarga la pantalla antes de aprobar una compra.

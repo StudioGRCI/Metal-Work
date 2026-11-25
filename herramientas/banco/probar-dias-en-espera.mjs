@@ -53,6 +53,7 @@ function comprobar(cond, texto) {
   if (!cond) fallas.push(texto)
 }
 const haceDias = (d) => (d <= 0 ? 'desde hoy' : d === 1 ? 'hace 1 día' : `hace ${d} días`)
+const desdeHace = (d) => (d <= 0 ? haceDias(d) : `desde ${haceDias(d)}`)
 const correoDe = (puesto) => `${puesto}.local@metalwork.test`
 
 /** Lo que da la base con la sesión de esa cuenta y el rol authenticated. */
@@ -124,7 +125,12 @@ async function sinDesborde(pagina, donde) {
 /** De cada insignia de días: el número, el texto y desde cuándo. */
 const insignias = (raiz) =>
   raiz.locator('[data-dias-en-espera]').evaluateAll((es) =>
-    es.map((e) => ({ dias: Number(e.dataset.diasEnEspera), desde: e.dataset.desde ?? null, texto: e.innerText.replace(/\s+/g, ' ').trim(), lector: e.textContent.replace(/\s+/g, ' ').trim() })),
+    es.map((e) => ({
+      dias: Number(e.dataset.diasEnEspera),
+      desde: e.dataset.desde ?? null,
+      visible: e.querySelector('[aria-hidden="true"]:not(svg)')?.textContent.replace(/\s+/g, ' ').trim() ?? '',
+      lector: e.querySelector('.sr-only')?.textContent.replace(/\s+/g, ' ').trim() ?? '',
+    })),
   )
 const enOrden = (lista) => lista.every((x, i) => i === 0 || Date.parse(lista[i - 1]) <= Date.parse(x))
 
@@ -168,7 +174,10 @@ for (const puesto of ['gerencia', 'logistica']) {
     `${puesto}: los días son los de la base y la que más espera va arriba (pantalla ${vistas.map((v) => v.dias).join(', ')}; base ${esperado.map((e) => e.dias).join(', ')})`,
   )
   comprobar(enOrden(vistas.map((v) => v.desde)), `${puesto}: de la más antigua a la más nueva`)
-  comprobar(vistas.every((v) => v.lector === `Espera ${haceDias(v.dias)}`), `${puesto}: dice «hace N días» y el lector oye «Espera hace N días» (${vistas.map((v) => v.lector).join(' | ')})`)
+  comprobar(
+    vistas.every((v) => v.visible === haceDias(v.dias) && v.lector === `Espera ${desdeHace(v.dias)}`),
+    `${puesto}: dice «hace N días» y el lector oye «Espera desde hace N días» (${vistas.map((v) => `${v.visible} / ${v.lector}`).join(' | ')})`,
+  )
   // Lo de antes sigue: «Por aprobar» y, para quien aprueba, sus botones.
   const porAprobarInsignias = await seccion.getByText('Por aprobar', { exact: true }).count()
   comprobar(porAprobarInsignias === esperado.length, `${puesto}: cada una sigue con su «Por aprobar» (${porAprobarInsignias})`)
@@ -191,7 +200,8 @@ for (const puesto of ['almacen', 'logistica']) {
         numero: tr.querySelector('p')?.innerText.trim().split(/\s/)[0],
         dias: i ? Number(i.dataset.diasEnEspera) : null,
         desde: i?.dataset.desde ?? null,
-        lector: i?.textContent.replace(/\s+/g, ' ').trim() ?? '',
+        visible: i?.querySelector('[aria-hidden="true"]:not(svg)')?.textContent.replace(/\s+/g, ' ').trim() ?? '',
+        lector: i?.querySelector('.sr-only')?.textContent.replace(/\s+/g, ' ').trim() ?? '',
         frenado: Boolean(tr.querySelector('[data-freno]')),
         estado: tr.querySelector('td:nth-child(3) [class*="rounded-full"]')?.innerText.trim() ?? '',
       }
@@ -209,9 +219,9 @@ for (const puesto of ['almacen', 'logistica']) {
   comprobar(filas.length > 0, `${puesto}: la bandeja tiene RQ abiertos (${filas.length})`)
   const malos = filas.filter((f) => {
     const a = porId.get(f.id)
-    return !a || f.dias !== Number(a.dias) || !f.lector.startsWith(`Lo tiene ${a.puesto} `)
+    return !a || f.dias !== Number(a.dias) || f.lector !== `Lo tiene ${a.puesto} ${desdeHace(Number(a.dias))}` || f.visible !== `${a.puesto} · ${haceDias(Number(a.dias))}`
   })
-  comprobar(malos.length === 0, `${puesto}: cada RQ dice quién lo tiene y sus días, los del recorrido (${filas.map((f) => `${f.numero} ${f.lector}`).join(' | ')})`)
+  comprobar(malos.length === 0, `${puesto}: cada RQ dice quién lo tiene y sus días, los del recorrido (${filas.map((f) => `${f.numero} ${f.visible} / ${f.lector}`).join(' | ')})`)
   const leyenda = await pagina.getByText(/espera(n)? por ti\.$|Ninguno espera por ti\./).count()
   comprobar(leyenda === 1, `${puesto}: sigue el «… espera(n) por ti»`)
   // Los frenados por el metrado van al final, como antes; antes de ellos, por grupos, el que más espera arriba.
@@ -237,6 +247,40 @@ for (const puesto of ['almacen', 'logistica']) {
   await contexto.close()
 }
 
+// ------------------------------------------------ 2b. Por comprar, la vista de trabajo de Logística
+{
+  const { pagina, contexto } = await entrar('logistica')
+  await ir(pagina, '/requerimientos/atencion?vista=comprar')
+  // Cada insumo, con el número de su RQ y su insignia.
+  const filas = await pagina.locator('tbody tr').evaluateAll((trs) =>
+    trs
+      .filter((tr) => tr.querySelector('input[type="checkbox"][aria-label^="Marcar "]:not([aria-label^="Marcar todo"])'))
+      .map((tr) => {
+        const i = tr.querySelector('[data-dias-en-espera]')
+        return {
+          numero: tr.querySelector('td:nth-child(3) .tabular')?.textContent.trim() ?? '',
+          dias: i ? Number(i.dataset.diasEnEspera) : null,
+          visible: i?.querySelector('[aria-hidden="true"]:not(svg)')?.textContent.trim() ?? '',
+        }
+      }),
+  )
+  comprobar(filas.length > 0, `logistica: «Por comprar» tiene insumos para mirar (${filas.length})`)
+  const numeros = [...new Set(filas.map((f) => f.numero))]
+  const ids = await consulta(`select id, numero from public.requerimientos where numero = any($1)`, [numeros])
+  const pasos = await comoCuenta(
+    'logistica',
+    `select r.numero, p.dias from public.recorrido_de_requerimientos($1::uuid[]) p join public.requerimientos r on r.id = p.documento where p.situacion = 'AHORA'`,
+    [ids.map((r) => r.id)],
+  )
+  const diasDe = new Map(pasos.map((p) => [p.numero, Number(p.dias)]))
+  const malos = filas.filter((f) => f.dias === null || f.dias !== diasDe.get(f.numero) || f.visible !== haceDias(f.dias))
+  comprobar(
+    malos.length === 0,
+    `logistica: cada insumo por comprar dice los días de su RQ, los de la base (${filas.map((f) => `${f.numero} ${f.visible}`).join(' | ')})`,
+  )
+  await contexto.close()
+}
+
 // ------------------------------------------------ 3. Portería
 {
   const { pagina, contexto } = await entrar('porteria')
@@ -252,6 +296,7 @@ for (const ancho of [390, 1440]) {
   for (const [puesto, ruta, archivo] of [
     ['almacen', '/requerimientos/atencion', 'dias-atencion-almacen'],
     ['gerencia', '/compras/aprobacion', 'dias-aprobacion-gerencia'],
+    ['logistica', '/requerimientos/atencion?vista=comprar', 'dias-por-comprar-logistica'],
   ]) {
     const { pagina, contexto } = await entrar(puesto, ancho)
     await ir(pagina, ruta)
