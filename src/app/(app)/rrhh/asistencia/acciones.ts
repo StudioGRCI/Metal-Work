@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { hoyLima } from '@/lib/format'
 import { editaComoRrhh, exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -52,7 +53,19 @@ export async function marcarAsistencia(_previo: unknown, formulario: FormData): 
 
   // La marca ya entró: si esta lectura falla, la pantalla dice que entró y la
   // hora llega con la lista al día.
-  const { data: fila } = await supabase.from('asistencias').select('hora, es_tardanza, tardanza_minutos').eq('id', d.marca_id).maybeSingle()
+  const { data: fila } = await supabase
+    .from('asistencias')
+    .select('trabajador_id, tipo, fecha, marcado_en, anulado_en, hora, es_tardanza, tardanza_minutos')
+    .eq('id', d.marca_id)
+    .maybeSingle()
+  // La base contesta «ya está» a un id que ya guardó, sin mirar de qué marca
+  // era. Si ese id es de otra marca —otra persona, la salida con el id del
+  // ingreso, la de ayer o una ya anulada—, esta no entró: decir «marcada» sería
+  // mentir. La pantalla estrena id al recargar. «De otro día» no cuenta para la
+  // que se acaba de guardar: marcada a las 23:59:59, aquí ya es mañana.
+  const deOtroDia = fila ? fila.fecha !== hoyLima() && Date.now() - new Date(fila.marcado_en).getTime() > 120_000 : false
+  if (fila && (fila.trabajador_id !== d.trabajador_id || fila.tipo !== d.tipo || deOtroDia || fila.anulado_en !== null))
+    return { ok: false, error: 'Esa marca no entró: su envío ya se había usado para otra marca. Vuelve a cargar la pantalla y márcala otra vez.' }
 
   revalidatePath('/rrhh/asistencia')
   revalidatePath('/rrhh/tardanzas')

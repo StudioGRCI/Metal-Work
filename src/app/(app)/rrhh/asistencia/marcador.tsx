@@ -1,7 +1,7 @@
 'use client'
 
-import { Ban, CircleCheck, LogIn, LogOut, Search } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { Ban, CircleCheck, LogIn, LogOut, RotateCw, Search, WifiOff } from 'lucide-react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { flushSync } from 'react-dom'
 
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
@@ -12,7 +12,7 @@ import { Ventana } from '@/components/ui/ventana'
 import type { Marca, Trabajador } from '@/lib/datos/rrhh'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { horaCorta, minutosLargos } from '@/lib/dominio/rrhh'
-import { motivoDelFallo, useEnvio } from '@/lib/envio'
+import { motivoDelFallo, quedoEnDuda, useEnvio } from '@/lib/envio'
 import { cn } from '@/lib/utils'
 
 import { anularAsistencia, buscarPorDni, marcarAsistencia } from './acciones'
@@ -29,6 +29,25 @@ type RespuestaDni = { dni: string; id: string | null; error?: string }
  * que además dice si después se anuló.
  */
 type Ultima = { id: string; persona: Persona; tipo: Tipo; hora: string | null; es_tardanza: boolean; tardanza_minutos: number }
+
+/**
+ * Si el teléfono dice tener conexión. Solo avisa: los botones siguen vivos,
+ * porque el navegador a veces dice que hay señal y no la hay, y al revés.
+ */
+function useEnLinea() {
+  return useSyncExternalStore(
+    (avisar) => {
+      window.addEventListener('online', avisar)
+      window.addEventListener('offline', avisar)
+      return () => {
+        window.removeEventListener('online', avisar)
+        window.removeEventListener('offline', avisar)
+      }
+    },
+    () => navigator.onLine,
+    () => true,
+  )
+}
 
 /** Las dos listas de solo lectura de hoy; `null` es la de marcar, con todos. */
 type Vista = 'dentro' | 'faltan' | null
@@ -66,6 +85,9 @@ export function Marcador({
   const [respuesta, setRespuesta] = useState<RespuestaDni | null>(null)
   const [ultima, setUltima] = useState<Ultima | null>(null)
   const [vista, setVista] = useState<Vista>(null)
+  // Cada «Buscar otra vez» del DNI que no contestó.
+  const [intentoDni, setIntentoDni] = useState(0)
+  const enLinea = useEnLinea()
   const buscador = useRef<HTMLInputElement>(null)
   const confirmacion = useRef<HTMLDivElement>(null)
   const digitos = busqueda.replace(/\s/g, '')
@@ -77,11 +99,11 @@ export function Marcador({
     let vigente = true
     buscarPorDni(dni)
       .then((r) => vigente && setRespuesta({ dni, ...r }))
-      .catch((e: unknown) => vigente && setRespuesta({ dni, id: null, error: motivoDelFallo(e, 'No se pudo buscar. Revisa la conexión y vuelve a escribirlo.') }))
+      .catch((e: unknown) => vigente && setRespuesta({ dni, id: null, error: motivoDelFallo(e, 'No se pudo buscar: no llegó la respuesta. Revisa la señal y toca «Buscar otra vez».') }))
     return () => {
       vigente = false
     }
-  }, [dni])
+  }, [dni, intentoDni])
 
   const porPersona = new Map<string, Marca[]>()
   for (const m of marcas) porPersona.set(m.trabajador_id, [...(porPersona.get(m.trabajador_id) ?? []), m])
@@ -141,6 +163,22 @@ export function Marcador({
 
   return (
     <div>
+      {/* Siempre montada: la región que nace con su texto no se anuncia. */}
+      <p
+        role="status"
+        data-sin-senal=""
+        className={marca && esHoy && !enLinea ? 'mb-3 flex max-w-xl items-start gap-2 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave p-3 text-sm text-texto' : 'sr-only'}
+      >
+        {marca && esHoy && !enLinea && (
+          <>
+            <WifiOff aria-hidden className="mt-0.5 size-4 shrink-0 text-aviso" />
+            <span>
+              <strong className="font-semibold">Este teléfono está sin señal.</strong> Las marcas no se guardan en el teléfono: la hora la pone el sistema cuando la
+              marca llega. Espera la señal y vuelve a tocar.
+            </span>
+          </>
+        )}
+      </p>
       {/* Siempre montada y vacía: la región que nace con su texto no se anuncia. */}
       <div ref={confirmacion} role="status" tabIndex={-1} data-confirmacion-de-marca="" className="scroll-mt-20 outline-none">
         {ultima && (
@@ -182,12 +220,25 @@ export function Marcador({
           />
         )}
         {visibles.length === 0 ? (
-          <p
-            role="status"
-            className="rounded-[var(--radius-base)] border border-borde bg-superficie p-4 text-center text-sm text-texto-suave"
-          >
-            {vacio}
-          </p>
+          <div role="status" className="rounded-[var(--radius-base)] border border-borde bg-superficie p-4 text-center text-sm text-texto-suave">
+            <p>{vacio}</p>
+            {/* La búsqueda por DNI no contestó: se pregunta otra vez sin borrar lo escrito. */}
+            {contestado?.error && (
+              <Boton
+                type="button"
+                variante="contorno"
+                tamano="lg"
+                className="mt-3"
+                onClick={() => {
+                  setRespuesta(null)
+                  setIntentoDni((n) => n + 1)
+                }}
+              >
+                <RotateCw aria-hidden className="size-4" />
+                Buscar otra vez
+              </Boton>
+            )}
+          </div>
         ) : vista ? (
           <ListaEnLectura vista={vista} personas={visibles} ingresoDe={(p) => vigente(p, 'INGRESO')} filtrada={buscaAlgo} />
         ) : (
@@ -322,16 +373,27 @@ function TarjetaPersona({
   anula: boolean
   alMarcar: (nueva: Ultima, tarjeta: HTMLElement | null) => void
 }) {
-  // Un reintento manda el mismo id y la base no duplica; al marcar bien, se estrena otro.
-  const [marcaId, setMarcaId] = useState(() => crypto.randomUUID())
+  // Un reintento manda el mismo id y la base no duplica; al marcar bien, se
+  // estrena otro. Uno por botón: con uno solo para los dos, el ingreso que entró
+  // sin que llegara la respuesta dejaba su id en «Salida», y la base contestaba
+  // que esa salida «ya estaba» sin haberla guardado.
+  const [ids, setIds] = useState<Record<Tipo, string>>(() => ({ INGRESO: crypto.randomUUID(), SALIDA: crypto.randomUUID() }))
+  // Un id que ya está en la lista terminó, vigente o anulado: la marca que
+  // sigue lleva otro. Pasa cuando entró sin respuesta y la lista se puso al día
+  // después. Con el mismo, volver a marcar tras anularla no guardaba nada.
+  const gastado = (['INGRESO', 'SALIDA'] as const).find((tipo) => marcas.some((m) => m.id === ids[tipo]))
+  if (gastado) setIds({ ...ids, [gastado]: crypto.randomUUID() })
   // El «Ingreso marcado.» de la tarjeta es de una marca: si después se anula, se calla.
   const [aviso, setAviso] = useState<{ de: string | null; texto: string } | null>(null)
   const tarjeta = useRef<HTMLLIElement>(null)
-  // Lo que salió en el último toque: la respuesta no dice si fue ingreso o salida.
+  // Lo que salió en el último toque: la respuesta no dice si fue ingreso o
+  // salida, y si no llega, es lo que «Reintentar» vuelve a mandar tal cual.
   const enviado = useRef<{ id: string; tipo: Tipo } | null>(null)
+  const [intento, setIntento] = useState<{ id: string; tipo: Tipo } | null>(null)
   const envio = useEnvio(marcarAsistencia, (r) => {
     const fue = enviado.current
-    setMarcaId(crypto.randomUUID())
+    if (fue) setIds((antes) => (antes[fue.tipo] === fue.id ? { ...antes, [fue.tipo]: crypto.randomUUID() } : antes))
+    setIntento(null)
     setAviso(r.mensaje ? { de: fue?.id ?? null, texto: r.mensaje } : null)
     if (fue) alMarcar({ id: fue.id, persona: p, tipo: fue.tipo, hora: r.datos?.hora ?? null, es_tardanza: r.datos?.es_tardanza ?? false, tardanza_minutos: r.datos?.tardanza_minutos ?? 0 }, tarjeta.current)
   }, { documento: p.id })
@@ -339,6 +401,18 @@ function TarjetaPersona({
   const ingreso = vigentes.find((m) => m.tipo === 'INGRESO')
   const salida = vigentes.find((m) => m.tipo === 'SALIDA')
   const anuladas = marcas.filter((m) => m.anulado_en !== null)
+  // No llegó la respuesta, o el servidor cayó a medio camino: la marca pudo
+  // entrar. Si la lista ya la trae, no hay nada que reintentar: lo dice su fila.
+  const sinRespuesta = envio.error ? quedoEnDuda(envio.error) : false
+  const enDuda = sinRespuesta && intento && !marcas.some((m) => m.id === intento.id) ? intento : null
+  const yaLlego = sinRespuesta && !enDuda
+
+  function alEnviar(e: React.FormEvent<HTMLFormElement>, tipo: Tipo, id: string) {
+    setAviso(null)
+    enviado.current = { id, tipo }
+    setIntento({ id, tipo })
+    envio.alEnviar(e)
+  }
 
   return (
     <li ref={tarjeta} className="rounded-[var(--radius-base)] border border-borde bg-superficie p-3">
@@ -377,16 +451,8 @@ function TarjetaPersona({
         <div className="mt-3 flex gap-2">
           {(['INGRESO', 'SALIDA'] as const).map((tipo) => (
             // Un formulario por botón: el valor del botón pulsado no viaja en el FormData.
-            <form
-              key={tipo}
-              onSubmit={(e) => {
-                setAviso(null)
-                enviado.current = { id: marcaId, tipo }
-                envio.alEnviar(e)
-              }}
-              className="flex-1"
-            >
-              <input type="hidden" name="marca_id" value={marcaId} />
+            <form key={tipo} onSubmit={(e) => alEnviar(e, tipo, ids[tipo])} className="flex-1">
+              <input type="hidden" name="marca_id" value={ids[tipo]} />
               <input type="hidden" name="trabajador_id" value={p.id} />
               <input type="hidden" name="tipo" value={tipo} />
               <Boton
@@ -405,10 +471,36 @@ function TarjetaPersona({
           ))}
         </div>
       )}
-      {envio.error && (
-        <p role="alert" className="mt-2 text-sm text-peligro">
-          {envio.error}
-        </p>
+      {enDuda ? (
+        // El mismo envío otra vez: mismo id, y la base no lo guarda dos veces.
+        <form
+          onSubmit={(e) => alEnviar(e, enDuda.tipo, enDuda.id)}
+          role="alert"
+          data-marca-en-duda=""
+          className="mt-3 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave p-3"
+        >
+          <input type="hidden" name="marca_id" value={enDuda.id} />
+          <input type="hidden" name="trabajador_id" value={p.id} />
+          <input type="hidden" name="tipo" value={enDuda.tipo} />
+          <p className="text-sm font-semibold text-texto">
+            No se sabe si {enDuda.tipo === 'INGRESO' ? 'el ingreso' : 'la salida'} de {p.nombres} quedó {enDuda.tipo === 'INGRESO' ? 'marcado' : 'marcada'}: no llegó la
+            respuesta.
+          </p>
+          <p className="mt-1 text-sm text-texto">
+            En el teléfono no se guardó nada. Cuando haya señal, toca «Reintentar»: si ya había entrado, no se marca dos veces y sale con su hora.
+          </p>
+          <Boton type="submit" tamano="lg" className="mt-3 w-full justify-center sm:w-auto" cargando={envio.enviando}>
+            <RotateCw aria-hidden className="size-4" />
+            Reintentar {enDuda.tipo === 'INGRESO' ? 'el ingreso' : 'la salida'}
+          </Boton>
+        </form>
+      ) : (
+        envio.error &&
+        !yaLlego && (
+          <p role="alert" className="mt-2 text-sm text-peligro">
+            {envio.error}
+          </p>
+        )
       )}
       {aviso && !envio.error && !anuladas.some((m) => m.id === aviso.de) && (
         <p role="status" className="mt-2 text-sm text-exito">

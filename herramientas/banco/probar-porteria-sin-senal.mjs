@@ -1,0 +1,290 @@
+/**
+ * Recorre con clic real qué pasa cuando la portería marca sin señal (Plan 14,
+ * entrega 14.2), con la cuenta de portería en el teléfono (390) y cortando la
+ * red del navegador:
+ *
+ *   1. Sin red, la pantalla lo avisa arriba. Al tocar «Ingreso» la marca no
+ *      entra, la tarjeta dice que no se sabe si quedó y ofrece «Reintentar»; la
+ *      pantalla sigue ahí (no sale la página sin conexión del navegador) y en
+ *      el teléfono no se guarda nada: ni localStorage, ni sessionStorage, ni
+ *      IndexedDB, ni la caché.
+ *   2. Con la red de vuelta, «Reintentar» (tocado tres veces) deja una sola
+ *      marca, con la hora que puso la base al llegar, no la del primer toque.
+ *   3. La marca que entró pero cuya respuesta se perdió: la base tiene una
+ *      fila, la pantalla dice que no se sabe; «Reintentar» manda el mismo
+ *      envío, sigue habiendo una fila y la confirmación dice la hora de esa.
+ *   4. Esa misma, si la lista se pone al día antes de reintentar: el aviso se
+ *      va solo. Anulada y vuelta a marcar, entra una marca nueva (no el «ya
+ *      está» de la anulada).
+ *   5. El servidor no da por marcada la salida que llega con el envío de otra
+ *      marca: lo dice y no guarda nada.
+ *   6. La búsqueda por DNI sin red lo dice y ofrece «Buscar otra vez».
+ *
+ * Necesita las cuentas `*.local@metalwork.test` de portería y RR. HH. El
+ * personal lo crea el script y lo da de baja al terminar. Variables:
+ * BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE, BANCO_CHROMIUM.
+ */
+import { existsSync, mkdirSync } from 'node:fs'
+
+import pg from 'pg'
+import { chromium } from 'playwright-core'
+
+const BASE = process.env.BASE ?? 'http://localhost:3111'
+const CLAVE = process.env.BANCO_CLAVE
+const NAVEGADOR = process.env.BANCO_CHROMIUM ?? ['/opt/pw-browsers/chromium', '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'].find((r) => existsSync(r))
+const CAPTURAS = process.env.CAPTURAS ?? '/tmp/banco-capturas'
+const CUENTAS = {
+  rrhh: process.env.RRHH ?? 'rrhh.local@metalwork.test',
+  porteria: process.env.PORTERIA ?? 'porteria.local@metalwork.test',
+}
+if (!CLAVE) {
+  console.error('Falta BANCO_CLAVE.')
+  process.exit(1)
+}
+mkdirSync(CAPTURAS, { recursive: true })
+
+const base = new pg.Client({
+  host: process.env.PGHOST ?? '/tmp',
+  port: Number(process.env.PGPORT ?? 5433),
+  user: process.env.PGUSER ?? 'postgres',
+  database: process.env.BANCO_BASE ?? 'mw_demo',
+})
+await base.connect()
+const consulta = async (sql, valores = []) => (await base.query(sql, valores)).rows
+
+const fallas = []
+function comprobar(cond, texto) {
+  console.log(`${cond ? '  ok' : 'FALLA'} · ${texto}`)
+  if (!cond) fallas.push(texto)
+}
+
+// ------------------------------------------------ los datos de la prueba
+const sello = Date.now().toString().slice(-6)
+const persona = (nombre, n) => ({ id: crypto.randomUUID(), nombres: `${nombre} ${sello}`, apellidos: 'Prueba Señal', dni: `7${sello}${n}` })
+const ana = persona('Ana', 1)
+const beto = persona('Beto', 2)
+const carla = persona('Carla', 3)
+const dana = persona('Dana', 4)
+const todos = [ana, beto, carla, dana]
+
+const [{ id: rrhhId }] = await consulta('select id from public.usuarios where correo = $1', [CUENTAS.rrhh])
+await base.query('begin')
+await base.query(`select set_config('request.jwt.claim.sub', $1, true), set_config('request.jwt.claim.role', 'authenticated', true)`, [rrhhId])
+await base.query('set local role authenticated')
+for (const p of todos) {
+  await base.query(
+    `select public.rrhh_guardar_trabajador($1, $2, $3, $4, 'Soldador', null, '23:58', '23:59', 'Banco de Pruebas', 'AHORROS', $5, null)`,
+    [p.id, p.nombres, p.apellidos, p.dni, `191-${p.dni}`],
+  )
+}
+await base.query('commit')
+
+const marcasDe = (p) =>
+  consulta(
+    `select id, tipo, to_char(hora, 'HH24:MI') as hora, to_char(hora, 'HH24:MI:SS') as hora_larga, anulado_en is not null as anulada
+       from public.asistencias where trabajador_id = $1 and fecha = (now() at time zone 'America/Lima')::date order by marcado_en`,
+    [p.id],
+  )
+
+// ------------------------------------------------ el navegador
+const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
+const contexto = await navegador.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 })
+const pagina = await contexto.newPage()
+const errores = []
+pagina.on('pageerror', (e) => errores.push(e.message.slice(0, 300)))
+
+const limpio = (t) => (t ?? '').replace(/\s+/g, ' ').trim()
+const tarjetaDe = (p) => pagina.locator('main li').filter({ hasText: p.nombres }).first()
+const confirmacion = pagina.locator('[data-confirmacion-de-marca]')
+const sinSenal = pagina.locator('[data-sin-senal]')
+const enDuda = (p) => tarjetaDe(p).locator('[data-marca-en-duda]')
+const buscar = (texto) => pagina.getByRole('searchbox').fill(texto)
+
+/**
+ * Deja pasar al servidor el próximo envío de una marca y le corta la respuesta
+ * al navegador: la marca entra y la pantalla no se entera.
+ */
+async function perderLaRespuestaDelProximoEnvio() {
+  let armado = true
+  await pagina.route('**/rrhh/asistencia*', async (ruta) => {
+    const pedido = ruta.request()
+    if (!armado || pedido.method() !== 'POST' || !pedido.headers()['next-action']) return ruta.fallback()
+    armado = false
+    await ruta.fetch().catch(() => {})
+    await ruta.abort('connectionreset')
+  })
+}
+
+try {
+  await pagina.goto(`${BASE}/ingresar`, { waitUntil: 'networkidle' })
+  await pagina.fill('input[type="email"]', CUENTAS.porteria)
+  await pagina.fill('input[type="password"]', CLAVE)
+  await Promise.all([pagina.waitForURL((u) => !u.pathname.startsWith('/ingresar'), { timeout: 30000 }), pagina.click('button[type="submit"]')])
+  await pagina.goto(`${BASE}/rrhh/asistencia`, { waitUntil: 'networkidle' })
+
+  // ---------------------------------------------- 1. sin red
+  console.log('\n1. Sin red: lo dice, no marca y no guarda nada en el teléfono')
+  await buscar(`Señal ${ana.nombres}`)
+  await tarjetaDe(ana).waitFor({ timeout: 15000 })
+  comprobar(limpio(await sinSenal.textContent()) === '', 'con red, el aviso de «sin señal» está callado')
+  await contexto.setOffline(true)
+  await sinSenal.getByText('sin señal').waitFor({ timeout: 10000 })
+  console.log(`     arriba: «${limpio(await sinSenal.innerText())}»`)
+  comprobar(/no se guardan en el teléfono/.test(await sinSenal.innerText()), 'arriba dice que está sin señal y que las marcas no se guardan en el teléfono')
+  const horaDelToque = (await consulta(`select to_char(now() at time zone 'America/Lima', 'HH24:MI:SS') as h`))[0].h
+  await tarjetaDe(ana).getByRole('button', { name: /Marcar el ingreso/ }).click()
+  await enDuda(ana).waitFor({ timeout: 20000 })
+  const aviso = limpio(await enDuda(ana).innerText())
+  console.log(`     tarjeta: «${aviso}»`)
+  comprobar(/No se sabe si el ingreso de Ana/.test(aviso) && /no llegó la respuesta/.test(aviso), 'la tarjeta dice en claro que no llegó la respuesta')
+  comprobar(/Reintentar el ingreso/.test(aviso) && /no se marca dos veces/.test(aviso), 'ofrece «Reintentar» y dice que no se marca dos veces')
+  comprobar((await marcasDe(ana)).length === 0, 'en la base no hay ninguna marca de Ana')
+  comprobar(limpio(await confirmacion.textContent()) === '', 'no hay confirmación de una marca que no entró')
+  comprobar((await pagina.getByRole('heading', { name: 'Asistencia de hoy' }).count()) === 1, 'la pantalla sigue ahí: no salió la página sin conexión del navegador')
+  // Lo que haya en el teléfono se lee entero: una base de IndexedDB que no
+  // nombra a la persona ni la marca no es la marca guardada (en `next dev` hay
+  // una de las herramientas de Next).
+  const guardado = await pagina.evaluate(async (ids) => {
+    const partes = [JSON.stringify({ ...localStorage }), JSON.stringify({ ...sessionStorage })]
+    const bases = typeof indexedDB.databases === 'function' ? await indexedDB.databases() : []
+    for (const { name } of bases) {
+      const db = await new Promise((listo, fallo) => {
+        const pedido = indexedDB.open(name)
+        pedido.onsuccess = () => listo(pedido.result)
+        pedido.onerror = () => fallo(pedido.error)
+      })
+      for (const almacen of db.objectStoreNames) {
+        const filas = await new Promise((listo) => {
+          const pedido = db.transaction(almacen).objectStore(almacen).getAll()
+          pedido.onsuccess = () => listo(pedido.result)
+          pedido.onerror = () => listo([])
+        })
+        partes.push(JSON.stringify(filas))
+      }
+      db.close()
+    }
+    const caches_ = 'caches' in window ? await caches.keys() : []
+    const texto = partes.join(' ')
+    return { conPersona: ids.some((id) => texto.includes(id)), conMarca: /INGRESO|marca_id/.test(texto), bases: bases.map((b) => b.name), caches: caches_.length }
+  }, todos.map((p) => p.id))
+  comprobar(
+    !guardado.conPersona && !guardado.conMarca && guardado.caches === 0,
+    `el teléfono no guardó la marca: ni localStorage, ni sessionStorage, ni IndexedDB (${guardado.bases.join(', ') || 'vacía'}), ni caché`,
+  )
+  const alto = await enDuda(ana).getByRole('button', { name: /Reintentar/ }).evaluate((e) => e.getBoundingClientRect().height)
+  comprobar(alto >= 44, `«Reintentar» mide ${Math.round(alto)} px de alto`)
+  await enDuda(ana).scrollIntoViewIfNeeded()
+  await pagina.screenshot({ path: `${CAPTURAS}/porteria-390-sin-senal-1-no-llego.png` })
+
+  // Sigue sin red: reintentar no cambia nada.
+  await enDuda(ana).getByRole('button', { name: /Reintentar/ }).click()
+  await pagina.waitForTimeout(1500)
+  await enDuda(ana).waitFor({ timeout: 20000 })
+  comprobar((await marcasDe(ana)).length === 0, 'reintentar sin red tampoco marca, y el aviso sigue')
+
+  // ---------------------------------------------- 2. vuelve la red
+  console.log('\n2. Vuelve la red: «Reintentar» marca una sola vez, con la hora de la base')
+  await pagina.waitForTimeout(1200) // para que la hora de la base sea otra que la del primer toque
+  await contexto.setOffline(false)
+  await pagina.waitForFunction(() => !document.querySelector('[data-sin-senal]')?.textContent?.trim(), null, { timeout: 10000 })
+  comprobar(true, 'con la red de vuelta, el aviso de arriba se calla')
+  const reintentar = enDuda(ana).getByRole('button', { name: /Reintentar/ })
+  await reintentar.click()
+  await reintentar.click({ force: true, timeout: 1500 }).catch(() => {})
+  await reintentar.click({ force: true, timeout: 1500 }).catch(() => {})
+  await confirmacion.getByText('Ingreso marcado').waitFor({ timeout: 20000 })
+  let filas = await marcasDe(ana)
+  let dicho = limpio(await confirmacion.innerText())
+  console.log(`     confirmación: «${dicho}»`)
+  comprobar(filas.length === 1, `tres toques en «Reintentar» dejan una sola marca (hay ${filas.length})`)
+  comprobar(dicho.includes(ana.nombres) && dicho.includes(filas[0]?.hora), `la confirmación dice la hora de la base (${filas[0]?.hora})`)
+  comprobar(filas[0]?.hora_larga > horaDelToque, `la hora es la de cuando llegó (${filas[0]?.hora_larga}), no la del toque sin red (${horaDelToque})`)
+  comprobar((await enDuda(ana).count()) === 0, 'el aviso de la tarjeta se fue')
+  await pagina.screenshot({ path: `${CAPTURAS}/porteria-390-sin-senal-2-reintento-entro.png` })
+
+  // ---------------------------------------------- 3. entró y se perdió la respuesta
+  console.log('\n3. La marca entró pero la respuesta se perdió: reintentar no la duplica')
+  await buscar(`Señal ${beto.nombres}`)
+  await tarjetaDe(beto).waitFor({ timeout: 15000 })
+  await perderLaRespuestaDelProximoEnvio()
+  await tarjetaDe(beto).getByRole('button', { name: /Marcar el ingreso/ }).click()
+  await enDuda(beto).waitFor({ timeout: 20000 })
+  filas = await marcasDe(beto)
+  comprobar(filas.length === 1, `la base ya tiene la marca de Beto (${filas.length}) y la pantalla dice que no se sabe`)
+  const primera = filas[0]
+  await pagina.waitForTimeout(1200)
+  await enDuda(beto).getByRole('button', { name: /Reintentar/ }).click()
+  await confirmacion.getByText(beto.nombres).waitFor({ timeout: 20000 })
+  filas = await marcasDe(beto)
+  dicho = limpio(await confirmacion.innerText())
+  console.log(`     confirmación: «${dicho}»`)
+  comprobar(filas.length === 1 && filas[0].id === primera?.id && filas[0].hora_larga === primera?.hora_larga, 'sigue habiendo una sola marca, la misma, con su hora de antes')
+  comprobar(dicho.includes('Ingreso marcado') && dicho.includes(primera?.hora), 'la confirmación dice esa marca y su hora')
+
+  // ---------------------------------------------- 4. la lista se pone al día antes de reintentar
+  console.log('\n4. Entró sin respuesta y la lista se pone al día: el aviso se va; anulada, se vuelve a marcar de verdad')
+  await buscar('Prueba Señal')
+  await tarjetaDe(carla).waitFor({ timeout: 15000 })
+  await perderLaRespuestaDelProximoEnvio()
+  await tarjetaDe(carla).getByRole('button', { name: /Marcar el ingreso/ }).click()
+  await enDuda(carla).waitFor({ timeout: 20000 })
+  comprobar((await marcasDe(carla)).length === 1, 'la marca de Carla entró y su tarjeta está en duda')
+  // La marca de otra persona pone la lista al día.
+  await tarjetaDe(dana).getByRole('button', { name: /Marcar el ingreso/ }).click()
+  await confirmacion.getByText(dana.nombres).waitFor({ timeout: 20000 })
+  await tarjetaDe(carla).getByText(/Ingreso \d\d:\d\d/).waitFor({ timeout: 20000 })
+  comprobar((await enDuda(carla).count()) === 0, 'con la lista al día, la tarjeta de Carla muestra su ingreso y ya no pide reintentar')
+  comprobar((await tarjetaDe(carla).getByRole('alert').count()) === 0, 'ni queda otro aviso rojo en su tarjeta')
+  await tarjetaDe(carla).getByRole('button', { name: /^Anular el ingreso/ }).click()
+  const ventana = pagina.getByRole('dialog')
+  await ventana.getByLabel('Motivo').fill(`Prueba de señal ${sello}: no era ella`)
+  await ventana.getByRole('button', { name: 'Anular', exact: true }).click()
+  await tarjetaDe(carla).getByText('Sin ingreso').waitFor({ timeout: 20000 })
+  await tarjetaDe(carla).getByRole('button', { name: /Marcar el ingreso/ }).click()
+  await confirmacion.getByText(carla.nombres).waitFor({ timeout: 20000 })
+  filas = await marcasDe(carla)
+  comprobar(filas.length === 2 && filas[0].anulada && !filas[1].anulada && filas[0].id !== filas[1].id, `vuelta a marcar, hay una marca nueva vigente además de la anulada (${filas.length} filas)`)
+
+  // ---------------------------------------------- 5. la guarda del servidor
+  console.log('\n5. El servidor no da por marcada la salida que llega con el envío de otra marca')
+  const [ingresoDana] = await marcasDe(dana)
+  // Como si la pantalla hubiera conservado el id del ingreso para la salida.
+  await tarjetaDe(dana).locator('form input[name="tipo"][value="SALIDA"]').evaluate((campo, id) => {
+    campo.form.querySelector('input[name="marca_id"]').value = id
+  }, ingresoDana.id)
+  await tarjetaDe(dana).getByRole('button', { name: /Marcar la salida/ }).click()
+  const rechazo = tarjetaDe(dana).getByRole('alert')
+  await rechazo.waitFor({ timeout: 20000 })
+  console.log(`     tarjeta: «${limpio(await rechazo.innerText())}»`)
+  comprobar(/Esa marca no entró/.test(await rechazo.innerText()), 'dice que la marca no entró, en vez de «Salida marcada»')
+  comprobar((await marcasDe(dana)).filter((m) => m.tipo === 'SALIDA').length === 0, 'y en la base no hay ninguna salida de Dana')
+  comprobar(!limpio(await confirmacion.innerText()).includes('Salida marcada'), 'la confirmación no dice «Salida marcada»')
+
+  // ---------------------------------------------- 6. el DNI sin red
+  console.log('\n6. La búsqueda por DNI sin red lo dice y se puede repetir')
+  await contexto.setOffline(true)
+  await buscar(ana.dni)
+  const otraVez = pagina.getByRole('button', { name: 'Buscar otra vez' })
+  await otraVez.waitFor({ timeout: 20000 })
+  const vacio = limpio(await pagina.locator('main [role="status"]').filter({ hasText: 'No se pudo buscar' }).innerText())
+  console.log(`     lista: «${vacio}»`)
+  comprobar(/no llegó la respuesta/.test(vacio), 'dice que no se pudo buscar porque no llegó la respuesta')
+  await pagina.screenshot({ path: `${CAPTURAS}/porteria-390-sin-senal-3-dni-sin-red.png` })
+  await contexto.setOffline(false)
+  await otraVez.click()
+  await tarjetaDe(ana).waitFor({ timeout: 20000 })
+  comprobar((await pagina.locator('main ul > li').count()) === 1, 'con la red de vuelta, «Buscar otra vez» trae la tarjeta de ese DNI')
+  comprobar(!(await pagina.content()).includes(`191-${ana.dni}`), 'y sigue sin llegar ninguna cuenta bancaria')
+  comprobar(errores.length === 0, `sin errores de la página${errores.length ? `: ${errores[0]}` : ''}`)
+} catch (e) {
+  fallas.push(`se cortó: ${e.message.split('\n')[0]}`)
+  console.error(e)
+  await pagina.screenshot({ path: `${CAPTURAS}/porteria-sin-senal-donde-se-corto.png` }).catch(() => {})
+} finally {
+  await navegador.close()
+  await base.query(`update public.trabajadores set activo = false where id = any($1)`, [todos.map((p) => p.id)]).catch(() => {})
+  await base.end()
+}
+
+console.log(fallas.length ? `\n${fallas.length} FALLAS:\n- ${fallas.join('\n- ')}` : '\nTodo pasa.')
+process.exit(fallas.length ? 1 : 0)
