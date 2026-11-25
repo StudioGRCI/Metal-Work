@@ -96,7 +96,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
   const puedeFijarPresupuesto = verMargen && puede(perfil, ['cotizaciones.revisar', 'ordenes.editar'])
   // La misma regla que el resumen de la OT: el documento comercial solo lo
   // abren Gerencia, Administración y Tesorería.
-  const verCotizacion = ['GERENTE', 'ADMINISTRACION', 'TESORERIA', 'ADMIN'].includes(perfil.rol.codigo)
+  const verCotizacion = ['GERENTE', 'GERENTE_COMERCIAL', 'ADMINISTRACION', 'TESORERIA', 'ADMIN'].includes(perfil.rol.codigo)
 
   // Con código interno, el costo de la unidad es el de su código (el mismo de
   // Códigos internos); lo de la tarjeta de costo es solo lo cargado a esta OT.
