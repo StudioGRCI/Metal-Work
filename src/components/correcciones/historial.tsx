@@ -20,7 +20,7 @@ export function HistorialDeCorrecciones({ correcciones }: { correcciones: Correc
       <ol className="mt-1 space-y-2 border-l-2 border-borde pl-3 text-left">
         {correcciones.map((c) => (
           <li key={c.id}>
-            <p className="text-[11px] text-texto-suave">
+            <p className="text-xs text-texto-suave">
               {fechaHora(c.corregido_en)} · {c.quien}
             </p>
             <p className="text-texto">{c.motivo}</p>

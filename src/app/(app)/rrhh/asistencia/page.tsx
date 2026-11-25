@@ -23,10 +23,7 @@ export default async function PaginaAsistencia({ searchParams }: PageProps<'/rrh
   const esHoy = fecha === hoy
 
   const [personal, marcas] = await Promise.all([listarTrabajadores('activos'), marcasDelDia(fecha)])
-  // Solo del personal activo, que es el que se lista: con la marca de alguien
-  // dado de baja ese mismo día, el resumen decía «8 de 4 con ingreso».
-  const activos = new Set(personal.map((p) => p.id))
-  const vigentes = marcas.filter((m) => m.anulado_en === null && activos.has(m.trabajador_id))
+  const vigentes = marcas.filter((m) => m.anulado_en === null)
   const ingresos = vigentes.filter((m) => m.tipo === 'INGRESO')
   const tarde = ingresos.filter((m) => m.es_tardanza)
 

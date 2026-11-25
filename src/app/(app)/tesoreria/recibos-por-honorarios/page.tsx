@@ -156,7 +156,7 @@ function Fila({
         {/* En el teléfono baja bajo el subcontratista, alineada a la izquierda como el resto. */}
         <div className="sm:text-right">
           <p className="tabular text-base font-semibold text-texto">{moneda(r.monto_neto, r.moneda)}</p>
-          <p className="text-[11px] text-texto-suave">
+          <p className="text-xs text-texto-suave">
             bruto <span className="tabular">{moneda(r.monto_bruto, r.moneda)}</span>
             {r.retencion_porcentaje > 0 ? (
               <>
