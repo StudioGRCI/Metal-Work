@@ -27,6 +27,13 @@
  *   7. Quien marca desde «Todos» sin buscar se queda donde está: la tarjeta no
  *      se corre bajo el dedo y, como la confirmación grande quedó fuera de la
  *      vista, la tarjeta dice «Ingreso marcado, HH:MM».
+ *   8. La señal se va justo después de que la marca entra: no hay otra ida al
+ *      servidor que pueda caer en la página sin conexión; la confirmación y la
+ *      lista llegan con la respuesta.
+ *   9. Lo que estaba sin confirmar y RR. HH. anuló entretanto: «Reintentar» no
+ *      la marca otra vez y dice que entró, que se anuló y con qué motivo.
+ *  10. Quien se va a otra pantalla con la marca en camino y la respuesta se pierde:
+ *      arriba se dice que no se sabe si la marca quedó.
  *
  * Necesita las cuentas `*.local@metalwork.test` de portería y RR. HH. El
  * personal lo crea el script y lo da de baja al terminar. Variables:
@@ -117,13 +124,14 @@ const buscar = (texto) => pagina.getByRole('searchbox').fill(texto)
  * Deja pasar al servidor el próximo envío de una marca y le corta la respuesta
  * al navegador: la marca entra y la pantalla no se entera.
  */
-async function perderLaRespuestaDelProximoEnvio() {
+async function perderLaRespuestaDelProximoEnvio(pag = pagina, { espera = 0 } = {}) {
   let armado = true
-  await pagina.route('**/rrhh/asistencia*', async (ruta) => {
+  await pag.route('**/rrhh/asistencia*', async (ruta) => {
     const pedido = ruta.request()
     if (!armado || pedido.method() !== 'POST' || !pedido.headers()['next-action']) return ruta.fallback()
     armado = false
     await ruta.fetch().catch(() => {})
+    if (espera) await new Promise((listo) => setTimeout(listo, espera))
     await ruta.abort('connectionreset')
   })
 }
@@ -315,7 +323,7 @@ try {
   const rechazo = tarjetaDe(dana).getByRole('alert')
   await rechazo.waitFor({ timeout: 20000 })
   console.log(`     tarjeta: «${limpio(await rechazo.innerText())}»`)
-  comprobar(/como el ingreso de Dana .*esta marca no entró/.test(await rechazo.innerText()), 'dice que ese envío ya fue el ingreso de Dana y que esta marca no entró')
+  comprobar(/como el ingreso de Dana .*esta no entró/.test(await rechazo.innerText()), 'dice que ese envío ya fue el ingreso de Dana y que esta marca no entró')
   comprobar((await marcasDe(dana)).filter((m) => m.tipo === 'SALIDA').length === 0, 'y en la base no hay ninguna salida de Dana')
   comprobar(!limpio(await confirmacion.innerText()).includes('Salida marcada'), 'la confirmación no dice «Salida marcada»')
   comprobar((await sinConfirmar.count()) === 0, 'y no la deja en «Sin confirmar»: no hay duda')
@@ -374,6 +382,88 @@ try {
     comprobar((await marcasDe(elegida.p)).length === 1, `${vuelta}: una marca en la base`)
   }
   await tercera.screenshot({ path: `${CAPTURAS}/porteria-390-sin-senal-6-desde-todos.png` })
+
+  // ---------------------------------------------- 8. la señal se va justo después del ok
+  console.log('\n8. La señal se va justo después de que la marca entra')
+  const [r8, r9] = relleno.slice(-2)
+  await tercera.getByRole('searchbox').fill(`Relleno ${r8.nombres}`.replace(/^Relleno /, ''))
+  await tarjetaEn(tercera, r8).waitFor({ timeout: 15000 })
+  // Después de la acción, cualquier ida a pedir la pantalla se corta: la señal ya se fue.
+  let cortadas = 0
+  let accionVolvio = false
+  await tercera.route('**/*', async (ruta) => {
+    const pedido = ruta.request()
+    if (pedido.method() === 'POST' && pedido.headers()['next-action']) {
+      const respuesta = await ruta.fetch()
+      accionVolvio = true
+      return ruta.fulfill({ response: respuesta })
+    }
+    // Una ida a pedir la pantalla: el árbol de Next (`_rsc`) o la página entera.
+    const pidePantalla = /[?&]_rsc=/.test(pedido.url()) || pedido.headers()['rsc'] === '1' || pedido.resourceType() === 'document'
+    if (accionVolvio && pedido.method() === 'GET' && pidePantalla) {
+      cortadas += 1
+      console.log(`     cortada: ${pedido.url().replace(BASE, '')}`)
+      return ruta.abort('internetdisconnected')
+    }
+    return ruta.fallback()
+  })
+  await tarjetaEn(tercera, r8).getByRole('button', { name: /Marcar el ingreso/ }).click()
+  await tercera.locator('[data-confirmacion-de-marca]').getByText('Ingreso marcado').waitFor({ timeout: 20000 })
+  await tarjetaEn(tercera, r8).getByText(/Ingreso \d\d:\d\d/).waitFor({ timeout: 20000 })
+  await tercera.waitForTimeout(1500)
+  console.log(`     idas cortadas después del ok: ${cortadas}`)
+  comprobar(cortadas === 0, 'después del ok no sale otra ida al servidor: la respuesta ya trae la lista')
+  comprobar(
+    (await tercera.getByRole('heading', { name: 'Asistencia de hoy' }).count()) === 1 && (await marcasDe(r8)).length === 1,
+    'la pantalla sigue ahí, con la confirmación y la tarjeta al día, y hay una marca',
+  )
+  await tercera.unroute('**/*')
+
+  // ---------------------------------------------- 9. sin confirmar y anulada por RR. HH.
+  console.log('\n9. Sin confirmar, y RR. HH. la anula antes del reintento')
+  await tercera.getByRole('searchbox').fill(r9.nombres)
+  await tarjetaEn(tercera, r9).waitFor({ timeout: 15000 })
+  await perderLaRespuestaDelProximoEnvio(tercera)
+  await tarjetaEn(tercera, r9).getByRole('button', { name: /Marcar el ingreso/ }).click()
+  const pendiente9 = tercera.locator(`[data-pendiente-de="${r9.id}"]`)
+  await pendiente9.getByRole('button', { name: /Reintentar/ }).waitFor({ timeout: 20000 })
+  const [marca9] = await marcasDe(r9)
+  const motivo9 = `RR. HH. corrige ${sello}: no vino`
+  await base.query('begin')
+  await base.query(`select set_config('request.jwt.claim.sub', $1, true), set_config('request.jwt.claim.role', 'authenticated', true)`, [rrhhId])
+  await base.query('set local role authenticated')
+  await base.query('select public.anular_asistencia($1, $2)', [marca9.id, motivo9])
+  await base.query('commit')
+  await pendiente9.getByRole('button', { name: /Reintentar/ }).click()
+  await pendiente9.getByText('Sí entró').waitFor({ timeout: 20000 })
+  const dicho9 = limpio(await pendiente9.innerText())
+  console.log(`     arriba: «${dicho9}»`)
+  comprobar(/después se anuló/.test(dicho9) && dicho9.includes(motivo9), 'dice que entró, que después se anuló y con qué motivo')
+  const filas9 = await marcasDe(r9)
+  comprobar(filas9.length === 1 && filas9[0].anulada, 'y no la marca otra vez: sigue una sola, anulada por RR. HH.')
+  comprobar(!/sin confirmar/i.test(limpio(await tarjetaEn(tercera, r9).innerText())), 'la tarjeta ya no dice «sin confirmar»')
+  await tercera.screenshot({ path: `${CAPTURAS}/porteria-390-sin-senal-7-anulada-por-rrhh.png` })
+  await pendiente9.getByRole('button', { name: 'Entendido' }).click()
+  comprobar(await tercera.evaluate(() => document.activeElement?.getAttribute('type') === 'search'), '«Entendido» deja el cursor en el buscador')
+
+  // ---------------------------------------------- 10. se va con la marca en camino
+  console.log('\n10. Se va a otra pantalla con la marca en camino y la respuesta se pierde')
+  const libres = []
+  for (const p of relleno.slice(0, 6)) if ((await marcasDe(p)).length === 0) libres.push(p)
+  const p10 = libres[0] ?? relleno[0]
+  await tercera.getByRole('searchbox').fill(p10.nombres)
+  await tarjetaEn(tercera, p10).waitFor({ timeout: 15000 })
+  await perderLaRespuestaDelProximoEnvio(tercera, { espera: 2500 })
+  await tarjetaEn(tercera, p10).getByRole('button', { name: /Marcar el ingreso/ }).click()
+  // Al Dashboard, por el menú de abajo: la ida es de la aplicación, no del navegador.
+  await tercera.getByRole('link', { name: 'Dashboard' }).first().click()
+  await tercera.waitForURL((u) => !u.pathname.startsWith('/rrhh/asistencia'), { timeout: 20000 })
+  const linea = tercera.getByText(new RegExp(`No se sabe si la marca de ${p10.nombres}`))
+  await linea.waitFor({ timeout: 20000 })
+  console.log(`     arriba: «${limpio(await linea.innerText()).slice(0, 160)}»`)
+  comprobar(true, 'en la otra pantalla, arriba dice que no se sabe si la marca quedó')
+  comprobar((await marcasDe(p10)).length === 1, 'y la marca sí estaba en la base (se perdió solo la respuesta)')
+  await tercera.screenshot({ path: `${CAPTURAS}/porteria-390-sin-senal-8-se-fue.png` })
   await tercera.close()
   comprobar(errores.length === 0, `sin errores de la página${errores.length ? `: ${errores[0]}` : ''}`)
 } catch (e) {

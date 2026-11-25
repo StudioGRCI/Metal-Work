@@ -78,6 +78,9 @@ export async function marcarAsistencia(_previo: unknown, formulario: FormData): 
           datos: { ...vigente, ya_estaba: true },
         }
       }
+      // Ese envío ya fue otra marca, o se anuló: la lista al día dice cuál y,
+      // si se anuló, con qué motivo.
+      revalidatePath('/rrhh/asistencia')
     }
     return { ok: false, error: mensajeDeError(error) }
   }

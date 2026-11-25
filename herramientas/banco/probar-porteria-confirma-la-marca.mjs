@@ -170,6 +170,8 @@ try {
   console.log('\n2. «Dentro ahora» y «Todavía no llegan», solo para leer')
   await buscar(pagina, '')
   let cuentas = await cuentasDeHoy()
+  // La lista llega con la respuesta de la acción, un poco después de la confirmación.
+  await pagina.getByRole('group', { name: 'Qué lista se ve' }).getByRole('button', { name: `Dentro ahora (${cuentas.dentro})` }).waitFor({ timeout: 15000 })
   const etiquetas = (await pagina.getByRole('group', { name: 'Qué lista se ve' }).getByRole('button').allTextContents()).map(limpio)
   console.log(`     pastillas: ${etiquetas.join(' | ')}`)
   comprobar(etiquetas.includes(`Todos (${cuentas.todos})`), `«Todos» cuenta al personal activo (${cuentas.todos})`)

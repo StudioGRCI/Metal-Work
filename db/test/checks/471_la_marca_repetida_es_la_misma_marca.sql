@@ -12,6 +12,7 @@ select id as sede_id from public.sedes where codigo = 'QA471' \gset
 select test.crear_usuario('Rosa', 'Humanos', 'rrhh471@demo.pe', 'RECURSOS_HUMANOS', :'sede_id') as rrhh_id \gset
 select test.crear_usuario('Pedro', 'Portón', 'porteria471@demo.pe', 'PORTERO', :'sede_id') as portero_id \gset
 select test.crear_usuario('Luis', 'Compras', 'logistica471@demo.pe', 'LOGISTICA', :'sede_id') as logistica_id \gset
+select test.crear_usuario('Pía', 'Garita', 'porteria2471@demo.pe', 'PORTERO', :'sede_id') as portero2_id \gset
 select set_config('prueba.ana', gen_random_uuid()::text, true);
 select set_config('prueba.beto', gen_random_uuid()::text, true);
 select set_config('prueba.ingreso', gen_random_uuid()::text, true);
@@ -46,16 +47,28 @@ select test.afirmar((select count(*) from public.asistencias where trabajador_id
 
 -- Ese envío no sirve para la salida, ni para otra persona, ni con otra observación.
 select test.debe_fallar(format($q$select public.marcar_asistencia(%L, %L, 'SALIDA', null)$q$, current_setting('prueba.ingreso'), current_setting('prueba.ana')),
-  'la salida con el envío del ingreso no se da por marcada', 'como el ingreso de Ana Prueba 471: esta marca no entró');
+  'la salida con el envío del ingreso no se da por marcada', 'ya había entrado como el ingreso de Ana Prueba 471: esta no entró');
 select test.debe_fallar(format($q$select public.marcar_asistencia(%L, %L, 'INGRESO', null)$q$, current_setting('prueba.ingreso'), current_setting('prueba.beto')),
-  'el ingreso de otra persona con ese envío no se da por marcado', 'ya se usó como el ingreso de Ana');
+  'el ingreso de otra persona con ese envío no se da por marcado', 'como el ingreso de Ana');
 select test.debe_fallar(format($q$select public.marcar_asistencia(%L, %L, 'INGRESO', 'Llegó con permiso')$q$, current_setting('prueba.ingreso'), current_setting('prueba.ana')),
-  'con otra observación tampoco', 'esta marca no entró');
+  'con otra observación tampoco', 'esta no entró');
 select test.afirmar((select count(*) from public.asistencias where trabajador_id = current_setting('prueba.ana')::uuid and tipo = 'SALIDA') = 0,
   'Ana sigue sin salida');
 select test.afirmar((select count(*) from public.asistencias where trabajador_id = current_setting('prueba.beto')::uuid) = 0,
   'Beto sigue sin marcas');
 
+reset role;
+
+-- Otra cuenta de la portería que reenvía ese envío no recibe «marcado»: la
+-- marca la registró la primera.
+select test.como_usuario(:'portero2_id');
+set local role authenticated;
+select test.debe_fallar(format($q$select public.marcar_asistencia(%L, %L, 'INGRESO', null)$q$, current_setting('prueba.ingreso'), current_setting('prueba.ana')),
+  'otra cuenta con el mismo envío no se da por marcada', 'esta no entró');
+reset role;
+
+select test.como_usuario(:'portero_id');
+set local role authenticated;
 -- Anulada, el mismo envío dice que se anuló; un envío nuevo la marca otra vez.
 select public.anular_asistencia(current_setting('prueba.ingreso')::uuid, 'Prueba 471: se marcó a quien no era');
 select test.debe_fallar(format($q$select public.marcar_asistencia(%L, %L, 'INGRESO', null)$q$, current_setting('prueba.ingreso'), current_setting('prueba.ana')),

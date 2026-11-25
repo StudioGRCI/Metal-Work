@@ -13,7 +13,17 @@ import type { ResultadoAccion } from '@/lib/acciones'
 import type { Marca, Trabajador } from '@/lib/datos/rrhh'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { horaCorta, minutosLargos } from '@/lib/dominio/rrhh'
-import { motivoDelFallo, quedoEnDuda, useCursorAlRechazo, useEnvio } from '@/lib/envio'
+import {
+  decirElRechazoSiSeFue,
+  esDeLaVersionAnterior,
+  motivoDelFallo,
+  partida,
+  quedoEnDuda,
+  SIN_RESPUESTA,
+  useCursorAlRechazo,
+  useEnvio,
+  type Partida,
+} from '@/lib/envio'
 import { hora as horaDe } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -55,10 +65,6 @@ const nombreDe = (p: Persona) => `${p.nombres} ${p.apellidos}`
 const queEs = (tipo: Tipo) => (tipo === 'INGRESO' ? 'el ingreso' : 'la salida')
 
 /**
- * Si el teléfono dice tener conexión. Solo avisa: los botones siguen vivos,
- * porque el navegador a veces dice que hay señal y no la hay, y al revés.
- */
-/**
  * La hora de Lima, «HH:MM», al día cada minuto: «Pasó su hora» no se queda con
  * la de cuando se abrió la lista. Vacía en el servidor.
  */
@@ -73,6 +79,10 @@ function useHoraDeLima() {
   )
 }
 
+/**
+ * Si el teléfono dice tener conexión. Solo avisa: los botones siguen vivos,
+ * porque el navegador a veces dice que hay señal y no la hay, y al revés.
+ */
 function useEnLinea() {
   return useSyncExternalStore(
     (avisar) => {
@@ -148,7 +158,14 @@ export function Marcador({
       .then((r) => vigente && setRespuesta({ dni, ...r }))
       .catch(
         (e: unknown) =>
-          vigente && setRespuesta({ dni, id: null, red: true, error: motivoDelFallo(e, 'No se pudo buscar: no llegó la respuesta. Revisa la señal y toca «Buscar otra vez».') }),
+          // Desde una pantalla de antes del despliegue, repetir daría lo mismo: no se ofrece.
+          vigente &&
+          setRespuesta({
+            dni,
+            id: null,
+            red: !esDeLaVersionAnterior(e),
+            error: motivoDelFallo(e, 'No se pudo buscar: no llegó la respuesta. Revisa la señal y toca «Buscar otra vez».'),
+          }),
       )
     return () => {
       vigente = false
@@ -272,11 +289,11 @@ export function Marcador({
           className="mb-3 max-w-xl scroll-mt-20 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave p-3"
         >
           <h2 id="sin-confirmar-titulo" className="text-sm font-semibold text-texto">
-            {sinConfirmar.length > 0 ? `Sin confirmar (${sinConfirmar.length})` : 'Ya llegó la respuesta'}
+            Lo que salió sin respuesta
           </h2>
           {sinConfirmar.length > 0 && (
             <p className="mt-0.5 text-xs text-texto">
-              No llegó la respuesta: no se sabe si entraron. En este equipo no se guardó nada. Con señal, toca «Reintentar»: si ya había entrado, no se marca dos veces y
+              <strong className="font-semibold">Sin confirmar ({sinConfirmar.length}).</strong> No llegó la respuesta: no se sabe si entraron. En este equipo no se guardó nada. Con señal, toca «Reintentar»: si ya había entrado, no se marca dos veces y
               sale con su hora.
             </p>
           )}
@@ -286,9 +303,14 @@ export function Marcador({
                 key={x.id}
                 pendiente={x}
                 entro={x.entro}
+                alRechazo={(error) => alQuedarEnDuda({ id: x.id, tipo: x.tipo, persona: x.persona, error })}
                 alMarcar={alMarcar}
                 alGastar={gastar}
-                alQuitar={() => setPendientes((previos) => previos.filter((y) => y.id !== x.id))}
+                alQuitar={() => {
+                  // El botón tocado se va: el cursor vuelve al buscador, como en «Marcar a otra persona».
+                  flushSync(() => setPendientes((previos) => previos.filter((y) => y.id !== x.id)))
+                  buscador.current?.focus()
+                }}
               />
             ))}
           </ul>
@@ -497,6 +519,7 @@ function InsigniaDeLlegada({ minutos, tarde }: { minutos: number; tarde: boolean
 function PendienteDeMarca({
   pendiente: x,
   entro,
+  alRechazo,
   alMarcar,
   alGastar,
   alQuitar,
@@ -504,6 +527,8 @@ function PendienteDeMarca({
   pendiente: Pendiente
   /** La lista ya la trae: entró, y se dice con su hora. */
   entro: Marca | null
+  /** No entró, sin duda: deja de estar «sin confirmar» y la tarjeta vuelve a ofrecer el botón. */
+  alRechazo: (error: string) => void
   alMarcar: (guardada: MarcaGuardada, persona: Persona, tipo: Tipo, tarjeta: HTMLElement | null) => boolean
   alGastar: (id: string) => void
   alQuitar: () => void
@@ -514,7 +539,10 @@ function PendienteDeMarca({
   // Un rechazo que no deja duda: el envío ya no sirve, y la tarjeta estrena otro.
   const enviar = async (previo: unknown, datos: FormData): Promise<ResultadoAccion<MarcaGuardada>> => {
     const r = await marcarAsistencia(previo, datos)
-    if (!r.ok && !quedoEnDuda(r.error)) alGastar(x.id)
+    if (!r.ok && !quedoEnDuda(r.error)) {
+      alGastar(x.id)
+      alRechazo(r.error)
+    }
     return r
   }
   const envio = useEnvio(
@@ -522,7 +550,10 @@ function PendienteDeMarca({
     (r) => {
       if (r.datos) alMarcar(r.datos, x.persona, x.tipo, fila.current)
     },
-    { documento: `pendiente-${x.id}` },
+    // La respuesta ya trae la pantalla al día (`revalidatePath`): otra ida
+    // después del ok, con la señal que va y viene, caía en la página sin
+    // conexión y se llevaba la confirmación y lo que estaba sin confirmar.
+    { documento: `pendiente-${x.id}`, refrescar: false },
   )
   const definitivo = x.error ?? (envio.error && !quedoEnDuda(envio.error) ? envio.error : null)
 
@@ -556,7 +587,9 @@ function PendienteDeMarca({
       {/* Siempre puesta: la región que nace con su texto no se anuncia. */}
       <p role="status" className={entro ? 'mt-1 text-sm font-medium text-exito' : 'sr-only'}>
         {entro &&
-          `Sí entró: ${x.tipo === 'INGRESO' ? 'el ingreso de' : 'la salida de'} ${x.persona.nombres} quedó a las ${horaCorta(entro.hora)}${entro.anulado_en ? ', y después se anuló' : ''}.`}
+          `Sí entró: ${x.tipo === 'INGRESO' ? 'el ingreso de' : 'la salida de'} ${x.persona.nombres} quedó a las ${horaCorta(entro.hora)}${
+            entro.anulado_en ? `, y después se anuló. Motivo: ${entro.motivo_anulacion ?? 'sin motivo'}` : ''
+          }.`.replace(/\.\.$/, '.')}
       </p>
       {entro ? (
         <Boton ref={entendido} type="button" variante="contorno" tamano="lg" className="mt-2 w-full justify-center sm:w-auto" onClick={alQuitar}>
@@ -612,7 +645,7 @@ function ListaEnLectura({
   personas: Persona[]
   ingresoDe: (p: Persona) => Marca | undefined
   filtrada: boolean
-  /** «HH:MM» de Lima cuando se eligió la lista. */
+  /** «HH:MM» de Lima, al día cada minuto. */
   horaDeLaLista: string
   /** Quien puede marcar: a él se le dice dónde. */
   marca: boolean
@@ -708,14 +741,20 @@ function TarjetaPersona({
     }
   }, [])
   // Lo que salió en el último toque: la respuesta no dice si fue ingreso o salida.
-  const enviado = useRef<{ id: string; tipo: Tipo } | null>(null)
+  const enviado = useRef<{ id: string; tipo: Tipo; desde: Partida } | null>(null)
+  // Si ya se fue de Asistencia (o a otro día), la línea de arriba de la
+  // aplicación lo dice; en la misma pantalla lo dice «Sin confirmar», y esa
+  // línea calla (sin `de`, `decirElRechazoSiSeFue` solo habla si se pidió otra
+  // pantalla). Con las dos, la duda se decía dos veces.
+  const siSeVa = { que: `la marca de ${nombreDe(p)}`, enlace: 'Volver a Asistencia' }
   const enviar = async (previo: unknown, datos: FormData): Promise<ResultadoAccion<MarcaGuardada>> => {
     const r = await marcarAsistencia(previo, datos)
     const fue = enviado.current
     if (!r.ok && !quedoEnDuda(r.error) && fue) {
       alGastar(fue.id)
       // Sin tarjeta, el rechazo va a la lista de arriba, que no se desmonta.
-      if (!montada.current) alQuedarEnDuda({ ...fue, persona: p, error: r.error })
+      if (!montada.current) alQuedarEnDuda({ id: fue.id, tipo: fue.tipo, persona: p, error: r.error })
+      decirElRechazoSiSeFue(fue.desde, r.error, siSeVa)
     }
     return r
   }
@@ -733,15 +772,19 @@ function TarjetaPersona({
     },
     {
       documento: p.id,
-      // Lo que se dice si la tarjeta ya no está lo dice «Sin confirmar»; con la
-      // línea de arriba de `useAccion`, la duda se decía dos veces y esa línea
+      // La respuesta ya trae la pantalla al día: ver `PendienteDeMarca`.
+      refrescar: false,
+      // Lo de la tarjeta que ya no está lo dice «Sin confirmar», y fuera de la
+      // pantalla, `decirElRechazoSiSeFue` (en `enviar` y `alQuedarEnDuda`). Con
+      // la línea de `useAccion`, en la misma pantalla se decía dos veces y
       // seguía después de que el reintento entrara.
       siSeVa: null,
       // Sin respuesta: pasa a «Sin confirmar», arriba, que no se pierde al buscar a otra persona.
-      alQuedarEnDuda: (datos) => {
+      alQuedarEnDuda: (datos, desde) => {
         const id = datos.get('marca_id')
         const tipo = datos.get('tipo')
         if (typeof id === 'string' && (tipo === 'INGRESO' || tipo === 'SALIDA')) alQuedarEnDuda({ id, tipo, persona: p })
+        decirElRechazoSiSeFue(desde, SIN_RESPUESTA, siSeVa)
       },
     },
   )
@@ -795,7 +838,7 @@ function TarjetaPersona({
               key={tipo}
               onSubmit={(e) => {
                 setAviso(null)
-                enviado.current = { id: ids[tipo], tipo }
+                enviado.current = { id: ids[tipo], tipo, desde: partida() }
                 envio.alEnviar(e)
               }}
               className="flex-1"
@@ -861,7 +904,8 @@ function LineaMarca({ marca: m, anula, de }: { marca: Marca; anula: boolean; de:
  */
 function AnularMarca({ marca: m, de, conTexto = false }: { marca: Pick<Marca, 'id' | 'tipo' | 'hora'>; de: string; conTexto?: boolean }) {
   const [abierta, setAbierta] = useState(false)
-  const envio = useEnvio(anularAsistencia, () => setAbierta(false))
+  // La respuesta ya trae la pantalla al día: ver `PendienteDeMarca`.
+  const envio = useEnvio(anularAsistencia, () => setAbierta(false), { refrescar: false })
   const que = `${queEs(m.tipo as Tipo)} de ${de}, de las ${horaCorta(m.hora)}`
   const campo = `anular-${conTexto ? 'confirmada-' : ''}${m.id}`
   const aviso = useRef<HTMLParagraphElement>(null)

@@ -8,7 +8,7 @@
 -- cuando ahora se pide la salida, una marca que después se anuló—, contestaba
 -- «listo» sin guardar nada, y la pantalla decía «Salida marcada» con la salida
 -- sin marcar. El mismo envío es todo lo que el envío lleva (skill `seguridad`):
--- la persona, si es ingreso o salida y la observación. Si todo coincide y la
+-- la persona, si es ingreso o salida, la observación y la cuenta que la registró. Si todo coincide y la
 -- marca sigue vigente, es la misma y se devuelve; si no, se dice qué pasó.
 --
 -- Lo demás de la función queda igual: la hora la pone la base, en Lima; el
@@ -28,7 +28,7 @@ begin
   if huella is null then
     raise exception 'Falta la función marcar_asistencia: esta base no tiene las migraciones anteriores.';
   end if;
-  if huella not in ('ec56f2e5aeb1fae87ed0272e80b60350', '43c36ea5263b6f93c501200b507708a4') then
+  if huella not in ('ec56f2e5aeb1fae87ed0272e80b60350', '4e52a0f7e26d5be713da3430e5b0a51e') then
     raise exception 'La función marcar_asistencia no es la que conoce el repositorio (se cambió a mano, huella %): no se reemplaza. Avisa antes de seguir.', huella;
   end if;
 end $$;
@@ -66,21 +66,23 @@ begin
   end if;
 
   perform pg_advisory_xact_lock(hashtextextended(p_trabajador_id::text, 0));
-  -- El mismo envío otra vez: misma persona, mismo tipo, misma observación y
-  -- todavía vigente. Si no, ese envío ya fue otra marca y esta no entra.
+  -- El mismo envío otra vez: misma persona, mismo tipo, misma observación, la
+  -- misma cuenta que lo registró y todavía vigente. Si no, ese envío ya fue
+  -- otra marca y esta no entra.
   select * into v_previa from public.asistencias where id = p_id;
   if found then
     if v_previa.trabajador_id = p_trabajador_id and v_previa.tipo = p_tipo
        and coalesce(v_previa.observacion, '') = coalesce(nullif(btrim(coalesce(p_observacion, '')), ''), '')
+       and v_previa.registrado_por = public.usuario_actual()
        and v_previa.anulado_en is null then
       return p_id;
     end if;
     if v_previa.anulado_en is not null then
-      raise exception 'Ese envío ya se usó en una marca que después se anuló: esta no entró. Vuelve a marcarla.'
+      raise exception 'Esa marca ya había entrado y después se anuló: esta no entró. Mira el motivo de la anulación antes de marcarla otra vez.'
         using errcode = 'unique_violation';
     end if;
     select t.nombres || ' ' || t.apellidos into v_de from public.trabajadores t where t.id = v_previa.trabajador_id;
-    raise exception 'Ese envío ya se usó como % de %: esta marca no entró. Vuelve a marcarla.',
+    raise exception 'Esa marca ya había entrado como % de %: esta no entró.',
       case v_previa.tipo when 'INGRESO' then 'el ingreso' else 'la salida' end, coalesce(v_de, 'otra persona')
       using errcode = 'unique_violation';
   end if;
