@@ -65,6 +65,13 @@ test('el permiso de lectura no cuelga pantallas en el catálogo de quien no tien
   assert.ok(!todas.includes('/requerimientos/atencion'))
 })
 
+test('el permiso de lectura no sostiene una entrada del trabajo del puesto', () => {
+  // Administración tiene «Órdenes de compra» en su trabajo: sin `compras.crear`, la entrada se va aunque tenga `compras.ver`.
+  const todas = rutas(menuDe(['compras.ver', 'requerimientos.ver'], false, 'ADMINISTRACION'))
+  assert.ok(!todas.includes('/compras/ordenes'))
+  assert.ok(!todas.includes('/requerimientos/atencion'))
+})
+
 test('un puesto sin grupos de consulta trabaja todo su menú, como antes', () => {
   const permisos = ['almacen.recibir', 'almacen.despachar', 'almacen.ver', 'almacen.stock', 'codigos_internos.seguimiento']
   const menu = new Set(rutas(menuDe(permisos, false, 'ALMACENERO')).map((r) => r.split(/[?#]/)[0]))

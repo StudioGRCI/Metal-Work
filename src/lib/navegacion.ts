@@ -51,10 +51,11 @@ export type ItemNavegacion = {
   permiso?: string | readonly string[]
   /**
    * Los permisos con los que la pantalla también abre, solo para leer. Valen
-   * cuando el menú propio del puesto la nombra (Gerencia consulta las OC sin
-   * `compras.crear`), no en el catálogo filtrado: así un puesto sin menú propio
-   * no recibe pantallas ajenas por un permiso de lectura. Son los mismos que
-   * acepta el `exigirPermiso` de la página.
+   * solo en un grupo de consulta del menú propio de un puesto (Gerencia
+   * consulta las OC sin `compras.crear`): ni en su trabajo, donde quitarle el
+   * permiso le quita la entrada, ni en el catálogo filtrado, donde un puesto sin
+   * menú propio recibiría pantallas ajenas. Son los mismos que acepta el
+   * `exigirPermiso` de la página.
    */
   lectura?: string | readonly string[]
   descripcion?: string
@@ -69,7 +70,8 @@ export type GrupoNavegacion = {
    * Un grupo que el puesto solo consulta: sale en su menú, pero no es su
    * trabajo. Sus pantallas no cuentan pendientes ni cifras para él, no le
    * traen el bloque de OT al dashboard y no van en «Tus módulos»
-   * (`rutasDeTrabajo`, `modulosDelInicio`).
+   * (`rutasDeTrabajo`, `modulosDelInicio`), salvo las que su puesto pone en
+   * `alInicio`.
    */
   consulta?: boolean
 }
@@ -695,8 +697,9 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // una unidad; la OT ya no está). Después lo que espera su visto, en el orden
   // del circuito, siempre abierto.
   // Desde el 2026-11-25 ve además todas las pantallas que su permiso le deja
-  // leer, por área y en el orden del circuito (StudioGRCI:
-  // «en gerencia general quieren ver todo, todas las pantallas»). Las consulta
+  // leer, por área y en el orden del circuito (StudioGRCI: «en gerencia
+  // general verdad quieren ver todo todas las pantallas aunque sean
+  // diferentes en slide bar»). Las consulta
   // sin registrar: Gerencia consulta y aprueba (migración 20261020206000); la
   // única que todavía le deja registrar es Proveedores (`proveedores.editar`). Lo
   // de las áreas no es su trabajo (`consulta`): no le cuenta pendientes, cifras
@@ -965,11 +968,12 @@ export function menuDe(permisos: readonly string[], esAdmin: boolean, rolCodigo:
         ...('consulta' in g && g.consulta ? { consulta: true } : {}),
         // Una pantalla compartida está en el catálogo una vez por cada área que
         // la usa, con el permiso de esa área: vale la que esta persona ve, y
-        // si ninguna la deja con su permiso, la que la deja leer.
+        // en lo que solo consulta, si ninguna la deja con su permiso, la que
+        // la deja leer.
         items: g.rutas.flatMap(
           (r) =>
             CATALOGO.find((i) => i.ruta === r && i.disponible && lePermite(i, permisos, esAdmin)) ??
-            CATALOGO.find((i) => i.ruta === r && i.disponible && lePermite(i, permisos, esAdmin, true)) ??
+            CATALOGO.find((i) => i.ruta === r && i.disponible && lePermite(i, permisos, esAdmin, 'consulta' in g && g.consulta === true)) ??
             [],
         ),
       }))
