@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { UserCheck, UserPlus } from 'lucide-react'
 
 import { Boton } from '@/components/ui/boton'
@@ -97,6 +97,16 @@ function FilaDeArea({
   // 109). Primero las de la misma área: entre diecisiete, la que se busca casi
   // siempre es una de esas.
   const deLaCasa = cuentas.filter((c) => c.area_id === area.id)
+  // Si la lista cambia (tras el rechazo, la cuenta dada de baja sale de ella),
+  // el campo se vuelve a montar con lo guardado: un select sin dueño caía en
+  // la primera opción, «Sin cuenta responsable», y el siguiente «Guardar»
+  // quitaba al responsable.
+  const claveDeLaLista = `${responsable?.id ?? ''}:${cuentas.map((c) => c.id).join(',')}`
+  // El campo vuelto a montar es otro: el cursor que tenía el de antes se
+  // perdía, y vuelve a él mientras siga el rechazo.
+  useEffect(() => {
+    if (errorDeLaCuenta) campo.current?.focus()
+  }, [claveDeLaLista, errorDeLaCuenta])
   const lasDemas = cuentas.filter((c) => c.area_id !== area.id)
 
   return (
@@ -153,7 +163,7 @@ function FilaDeArea({
             ayudaEnIcono={false}
             error={errorDeLaCuenta ?? undefined}
           >
-            <Seleccion ref={campo} id={idCampo} name="jefe_id" defaultValue={responsable?.id ?? ''} className="w-full">
+            <Seleccion key={claveDeLaLista} ref={campo} id={idCampo} name="jefe_id" defaultValue={responsable?.id ?? ''} className="w-full">
               <option value="">Sin cuenta responsable</option>
               {/* La cuenta dada de baja no está entre las activas: se muestra
                   para que el campo diga lo que hay guardado. */}

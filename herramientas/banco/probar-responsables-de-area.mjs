@@ -128,7 +128,10 @@ const fila = (pagina, nombre) =>
   pagina.locator(`${TARJETA} li`).filter({ has: pagina.getByText(nombre, { exact: true }) })
 const textoDe = async (localizador) => (await localizador.innerText()).replace(/\s+/g, ' ')
 const nombreDe = (c) => c.puesto
-const resumenDe = (pagina) => textoDe(pagina.locator(TARJETA).getByText(/áreas tienen (su )?cuenta responsable/))
+const resumenDe = (pagina) => textoDe(pagina.locator(TARJETA).getByText(/áreas tienen? (su )?cuenta responsable/))
+// Lo que tiene que decir la cabecera con `con` de `total` áreas con cuenta activa.
+const resumenEsperado = (con, total) =>
+  con === 0 ? `Ninguna de las ${total} áreas tiene cuenta responsable todavía` : `${con} de ${total} áreas tienen cuenta responsable`
 
 /** Abre la ventana de un área con su botón («Asignar» o «Cambiar») y la devuelve. */
 async function abrir(pagina, nombre) {
@@ -154,7 +157,7 @@ async function abrir(pagina, nombre) {
   const filas = await tarjeta.locator('li').count()
   comprobar(filas === total, `la lista trae las ${total} áreas activas de la base (${filas} filas)`)
   const resumen = await resumenDe(pagina)
-  comprobar(resumen.includes(`${con} de ${total} áreas tienen cuenta responsable`), `el resumen cuenta las que tienen: «${resumen}»`)
+  comprobar(resumen.includes(resumenEsperado(con, total)), `el resumen cuenta las que tienen: «${resumen}»`)
 
   const calidad = fila(pagina, 'Calidad')
   comprobar((await textoDe(calidad)).includes('Sin cuenta'), 'Calidad dice «Sin cuenta» y ofrece «Asignar»')
@@ -176,6 +179,13 @@ async function abrir(pagina, nombre) {
   // Tres toques seguidos: un solo envío, con el botón trabado.
   const { ultimo } = await una('select coalesce(max(id), 0)::text as ultimo from public.audit_log')
   const guardar = ventana.getByRole('button', { name: 'Guardar' })
+  // Una acción de servidor es un POST con la cabecera `next-action`: se cuentan
+  // los envíos, porque la auditoría no anota un UPDATE que deja la fila igual.
+  let envios = 0
+  const contarEnvio = (q) => {
+    if (q.method() === 'POST' && q.headers()['next-action']) envios++
+  }
+  pagina.on('request', contarEnvio)
   await guardar.click()
   await guardar.click({ force: true, timeout: 1000 }).catch(() => {})
   await guardar.click({ force: true, timeout: 1000 }).catch(() => {})
@@ -189,14 +199,16 @@ async function abrir(pagina, nombre) {
     'y lo anuncia para el lector de pantalla',
   )
   const resumenDespues = await resumenDe(pagina)
-  comprobar(resumenDespues.includes(`${con + 1} de ${total} áreas`), `el resumen sube a ${con + 1}: «${resumenDespues}»`)
+  comprobar(resumenDespues.includes(resumenEsperado(con + 1, total)), `el resumen sube a ${con + 1}: «${resumenDespues}»`)
   const { responsable } = await una(`select public.responsable_del_area('CAL') as responsable`)
   comprobar(responsable === supervisor.id, 'responsable_del_area(«CAL») da esa cuenta')
   const cambios = await una(
     `select count(*)::int as n from public.audit_log where tabla = 'areas' and registro_id = $1 and id > $2::bigint`,
     [ANTES.CAL.id, ultimo],
   )
-  comprobar(cambios.n === 1, `los tres toques dejaron un solo cambio en la auditoría (${cambios.n})`)
+  pagina.off('request', contarEnvio)
+  comprobar(envios === 1, `los tres toques salieron como un solo envío (${envios})`)
+  comprobar(cambios.n === 1, `y un solo cambio en la auditoría (${cambios.n})`)
   await pagina.screenshot({ path: join(CAPTURAS, 'a0-configuracion-1440-asignado.png'), fullPage: true })
 
   // --- recargar: lo guardado sigue ahí
@@ -220,10 +232,6 @@ async function abrir(pagina, nombre) {
   comprobar(rechazo.includes('se dio de baja hace un momento'), `la cuenta dada de baja no entra y la ventana dice por qué: «${rechazo}»`)
   const lista = ventana.getByRole('combobox', { name: 'Cuenta responsable' })
   comprobar((await lista.getAttribute('aria-invalid')) === 'true', 'el rechazo marca el campo «Cuenta responsable», no solo el pie')
-  comprobar(
-    await lista.evaluate((el) => document.activeElement === el),
-    'el cursor vuelve al campo para elegir otra cuenta',
-  )
   // La lista se pone al día y deja de ofrecer la cuenta dada de baja.
   await pagina.waitForFunction(
     ([id]) => !document.querySelector(`[role="dialog"] select option[value="${id}"]`),
@@ -231,6 +239,11 @@ async function abrir(pagina, nombre) {
     { timeout: 15000 },
   ).catch(() => {})
   comprobar((await lista.locator(`option[value="${almacen.id}"]`).count()) === 0, 'la ventana ya no ofrece la cuenta dada de baja')
+  await pagina.waitForTimeout(300)
+  comprobar(
+    await lista.evaluate((el) => document.activeElement === el),
+    'el cursor queda en el campo para elegir otra cuenta',
+  )
   comprobar((await area('MKT')).jefe_id === null, 'en la base, Marketing sigue sin cuenta')
   await activar(almacen.id, true)
   await ventana.getByRole('button', { name: 'Cancelar' }).click()
@@ -240,6 +253,27 @@ async function abrir(pagina, nombre) {
   await ventana.getByRole('button', { name: 'Cancelar' }).click()
   await ventana.waitFor({ state: 'detached', timeout: 15000 })
 
+  // --- el mismo rechazo en un área que ya tiene responsable: el campo vuelve
+  // a lo guardado, y otro «Guardar» no se lo lleva
+  await pagina.reload({ waitUntil: 'networkidle' })
+  ventana = await abrir(pagina, 'Calidad')
+  await activar(almacen.id, false)
+  await ventana.getByRole('combobox', { name: 'Cuenta responsable' }).selectOption(almacen.id)
+  await ventana.getByRole('button', { name: 'Guardar' }).click()
+  await ventana.getByRole('alert').waitFor({ timeout: 15000 })
+  await pagina
+    .waitForFunction(([id]) => !document.querySelector(`[role="dialog"] select option[value="${id}"]`), [almacen.id], { timeout: 15000 })
+    .catch(() => {})
+  comprobar(
+    (await ventana.getByRole('combobox', { name: 'Cuenta responsable' }).inputValue()) === supervisor.id,
+    'tras el rechazo, el campo de Calidad vuelve a su cuenta guardada, no a «Sin cuenta responsable»',
+  )
+  await ventana.getByRole('button', { name: 'Guardar' }).click()
+  await ventana.waitFor({ state: 'detached', timeout: 15000 })
+  comprobar((await area('CAL')).jefe_id === supervisor.id, 'y otro «Guardar» no le quita el responsable')
+  await activar(almacen.id, true)
+  await pagina.reload({ waitUntil: 'networkidle' })
+
   // --- la cuenta que se da de baja después de asignada: la fila lo dice
   await activar(supervisor.id, false)
   await pagina.reload({ waitUntil: 'networkidle' })
@@ -247,13 +281,24 @@ async function abrir(pagina, nombre) {
   comprobar(textoDeBaja.includes('Cuenta dada de baja') && textoDeBaja.includes('ya no responde por el área'), 'con la cuenta dada de baja, Calidad lo dice y pide elegir otra')
   comprobar((await una(`select public.responsable_del_area('CAL') as r`)).r === null, 'y responsable_del_area(«CAL») ya no la da')
   const resumenDeBaja = await resumenDe(pagina)
-  comprobar(resumenDeBaja.includes(`${con} de ${total} áreas`), `el resumen no la cuenta: «${resumenDeBaja}»`)
+  comprobar(resumenDeBaja.includes(resumenEsperado(con, total)), `el resumen no la cuenta: «${resumenDeBaja}»`)
   ventana = await abrir(pagina, 'Calidad')
   comprobar(
     (await textoDe(ventana.getByRole('combobox', { name: 'Cuenta responsable' }).locator('option:checked'))).includes('(dada de baja)'),
     'la ventana muestra la cuenta guardada como dada de baja',
   )
+  // «Guardar» sin cambiarla no es «listo»: esa cuenta no responde por nada.
+  await ventana.getByRole('button', { name: 'Guardar' }).click()
+  await ventana.getByRole('alert').waitFor({ timeout: 15000 })
+  comprobar(
+    (await textoDe(ventana.getByRole('alert'))).includes('se dio de baja'),
+    'guardar la cuenta dada de baja sin cambiarla se rechaza junto al campo',
+  )
+  await ventana.getByRole('button', { name: 'Cancelar' }).click()
+  await ventana.waitFor({ state: 'detached', timeout: 15000 })
   await activar(supervisor.id, true)
+  await pagina.reload({ waitUntil: 'networkidle' })
+  ventana = await abrir(pagina, 'Calidad')
 
   // --- cambiar por otra y quitar
   await ventana.getByRole('combobox', { name: 'Cuenta responsable' }).selectOption(almacen.id)

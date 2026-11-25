@@ -346,7 +346,9 @@ export async function asignarResponsableDeArea(_previo: unknown, datos: FormData
     .eq('id', v.area_id)
     // Una fila que el RLS esconde no es un error: sin esto diría «listo» sin
     // haber guardado nada.
-    .select('nombre')
+    // La cuenta, para saber si sigue activa: el disparador no vuelve a juzgar
+    // la que no cambió, y «Guardar» con la dada de baja no es «listo».
+    .select('nombre, responsable:usuarios!areas_jefe_id_fkey(activo)')
     .maybeSingle()
 
   if (error) {
@@ -359,6 +361,11 @@ export async function asignarResponsableDeArea(_previo: unknown, datos: FormData
     return { ok: false, error: mensajeDeError(error) }
   }
   if (!data) return { ok: false, error: NO_TOCO_NADA }
+  const cuenta = data.responsable as unknown as { activo: boolean } | null
+  if (v.jefe_id && !cuenta?.activo) {
+    revalidatePath('/configuracion')
+    return { ok: false, error: CUENTA_YA_NO_ACTIVA }
+  }
 
   revalidatePath('/configuracion')
   return {
