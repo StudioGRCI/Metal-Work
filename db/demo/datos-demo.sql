@@ -435,3 +435,55 @@ begin
     (select count(*) from public.materiales);
 end;
 $$;
+
+-- -----------------------------------------------------------------------------
+-- El padrón de equipos de la planta (Plan 16). Códigos con la forma de la hoja
+-- de máquinas del taller y personas inventadas: unos operativos, uno con
+-- observación, dos parados y uno dado de baja, para que Mantenimiento, Almacén
+-- y Gerencia tengan qué mirar. El código lo pone la base cuando va vacío.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  e record;
+begin
+  if exists (select 1 from public.equipos) then
+    return;
+  end if;
+  for e in select * from (values
+    ('Máquina de soldar',   'MIG 350 trifásica',            'MILLER',    'MK120455Y', 'MK118820W', 'PRD', 'Nave 1, puesto 3',   'JORGE QUISPE',     'OPERATIVO',       null),
+    ('Máquina de soldar',   'MIG 350 trifásica',            'MILLER',    'MK120461Y', 'MK118827W', 'PRD', 'Nave 1, puesto 5',   'LUIS HUAMÁN',      'PARADO',          'No arrastra el alambre: el cabezal se traba.'),
+    ('Máquina de soldar',   'Inversora de arco 250 A',      'LINCOLN',   'U1190833',  null,        'MTZ', 'Banco de trabajo 2', null,               'OPERATIVO',       null),
+    ('Tronzadora de 14"',   'Tronzadora de disco de 14"',   'DEWALT',    null,        null,        'MTZ', 'Zona de corte',      null,               'OPERATIVO',       null),
+    ('Tronzadora de 14"',   'Tronzadora de disco de 14"',   'DEWALT',    null,        null,        'MTZ', 'Zona de corte',      null,               'CON_OBSERVACION', 'La guarda del disco está floja.'),
+    ('Rectificadora',       'Rectificadora recta',          'BOSCH',     null,        null,        'ACB', 'Cabina de pintura',  'PEDRO CCAMA',      'OPERATIVO',       null),
+    ('Amoladora de 4 1/2"', 'Amoladora angular de 4 1/2"',  'BOSCH',     null,        null,        'PRD', 'Nave 1',             'JORGE QUISPE',     'OPERATIVO',       null),
+    ('Amoladora de 4 1/2"', 'Amoladora angular de 4 1/2"',  'BOSCH',     null,        null,        'PRD', 'Nave 1',             'LUIS HUAMÁN',      'OPERATIVO',       null),
+    ('Amoladora de 4 1/2"', 'Amoladora angular de 4 1/2"',  'DEWALT',    null,        null,        'PRD', 'Nave 2',             'CONTRATISTA RAMOS','PARADO',          'Se quemó el motor.'),
+    ('Amoladora de 4 1/2"', 'Amoladora angular de 4 1/2"',  'DEWALT',    null,        null,        'ALM', 'Estante de herramientas', null,          'OPERATIVO',       null),
+    ('Amoladora de 7"',     'Amoladora angular de 7"',      'BOSCH',     null,        null,        'PRD', 'Nave 2',             'CONTRATISTA RAMOS','OPERATIVO',       null),
+    ('Amoladora de 7"',     'Amoladora angular de 7"',      'MAKITA',    null,        null,        'ACB', 'Zona de masillado',  'PEDRO CCAMA',      'OPERATIVO',       null),
+    ('Taladro',             'Taladro percutor de 1/2"',     'BOSCH',     null,        null,        'PRD', 'Nave 1',             null,               'OPERATIVO',       null),
+    ('Taladro',             'Taladro atornillador a batería','BOSCH',    null,        null,        'ALM', 'Estante de herramientas', null,          'OPERATIVO',       null),
+    ('Equipo de cómputo',   'Laptop de Diseño',             'LENOVO',    'PF3K7Q2M',  null,        'DIS', 'Oficina de Diseño',  'DISEÑO',           'OPERATIVO',       null)
+  ) as t(categoria, descripcion, marca, serie, cabezal, area, ubicacion, a_cargo, estado, nota)
+  loop
+    insert into public.equipos
+      (codigo, descripcion, categoria_id, marca, serie_maquina, serie_cabezal, area_id, ubicacion, a_cargo_de, estado, estado_nota)
+    values
+      ('', e.descripcion,
+       (select id from public.equipo_categorias where nombre = e.categoria),
+       e.marca, e.serie, e.cabezal,
+       (select id from public.areas where codigo = e.area),
+       e.ubicacion, e.a_cargo, e.estado, e.nota);
+  end loop;
+
+  -- Uno que ya no existe: no se borra, queda dado de baja con su motivo.
+  insert into public.equipos (codigo, descripcion, categoria_id, marca, area_id, ubicacion)
+  values ('', 'Amoladora angular de 7"',
+          (select id from public.equipo_categorias where nombre = 'Amoladora de 7"'),
+          'DEWALT', (select id from public.areas where codigo = 'PRD'), 'Nave 2');
+  update public.equipos
+     set activo = false, baja_motivo = 'Carcasa rota, no tiene arreglo.'
+   where codigo = 'AM-07-03';
+end;
+$$;
