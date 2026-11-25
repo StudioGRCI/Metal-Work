@@ -318,7 +318,7 @@ export function SeleccionBuscable({
                         salía igual en siete opciones. */}
                     <span className="line-clamp-2">{o.etiqueta}</span>
                     {o.detalle && (
-                      <span className="block truncate text-[11px] text-texto-suave">
+                      <span className="block truncate text-xs text-texto-suave">
                         {o.detalle}
                       </span>
                     )}
@@ -328,7 +328,7 @@ export function SeleccionBuscable({
             ))}
 
             {ocultas > 0 && (
-              <li className="px-3 py-2 text-center text-[11px] text-texto-tenue">
+              <li className="px-3 py-2 text-center text-xs text-texto-tenue">
                 y {ocultas} más — sigue escribiendo para acotar
               </li>
             )}

@@ -201,7 +201,7 @@ export function MedidasCarroceria({
         <p className="text-texto">
           {carroceria.nombre}
           {!carroceria.activo && (
-            <span className="ml-2 text-[11px] text-texto-tenue">(inactivo)</span>
+            <span className="ml-2 text-xs text-texto-tenue">(inactivo)</span>
           )}
         </p>
         {/* Sin medidas se dice, y se dice qué se pierde: una lista de nombres no

@@ -137,7 +137,7 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
                       <p className="text-sm text-texto">
                         {[u.marca, u.modelo, u.anio].filter(Boolean).join(' ') || 'Sin datos'}
                       </p>
-                      <p className="text-[11px] text-texto-suave">
+                      <p className="text-xs text-texto-suave">
                         {tipoDeVehiculo(u.tipo_vehiculo)}
                         {u.numero_chasis ? ` · chasis ${u.numero_chasis}` : ''}
                         {u.capacidad_m3 ? ` · ${u.capacidad_m3} m³` : ''}
@@ -214,7 +214,7 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
                         <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
                         <div className="min-w-40 flex-1">
                           <p className="truncate text-sm text-texto">{o.descripcion}</p>
-                          <p className="text-[11px] text-texto-suave">
+                          <p className="text-xs text-texto-suave">
                             {nombreDeUnidad({ placa: o.placa })} · {fecha(o.fecha_registro)}
                           </p>
                         </div>
@@ -252,7 +252,7 @@ function NombreUnidad({ unidad }: { unidad: UnidadNombrable }) {
     >
       {nombre}
       {falta && !nombre.includes('sin placa') && (
-        <span className="ml-1 text-[11px] font-normal text-texto-tenue">sin placa</span>
+        <span className="ml-1 text-xs font-normal text-texto-tenue">sin placa</span>
       )}
     </span>
   )

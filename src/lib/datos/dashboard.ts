@@ -205,6 +205,11 @@ const ordenesDeCompra = (c: Contexto) =>
     return r.data ?? []
   })
 
+/**
+ * Las cifras de Ventas cuentan lo del Agente que las subió; quien no cotiza
+ * (Gerencia Comercial, desde el 2026-11-25) las ve de todo el equipo.
+ */
+const deVentas = (c: Contexto) => !puede(c.perfil, 'cotizaciones.crear')
 const deDiseno = (c: Contexto) => c.una('diseno', () => codigosDeDiseno())
 
 const trabajadoresActivos = (c: Contexto) =>
@@ -768,14 +773,27 @@ const CIFRAS = {
       const observados = cuenta('OBSERVADO')
       const porValidar = cuenta('POR_VALIDAR')
       const validados = cuenta('VALIDADO')
+      // Quien da solo el visto de Gerencia (Gerencia General y la de Producción)
+      // ve primero lo que espera el suyo: «por validar» cuenta también lo que ya
+      // tiene su visto y espera a RR. HH.
+      const soloGerencia = puede(c.perfil, 'reporte_diario.validar_gerencia') && !puede(c.perfil, 'reporte_diario.validar_rrhh')
+      const faltaGerencia = filas.filter((f) => estadoDeReporte(f) === 'POR_VALIDAR' && !f.visto_gerencia_en).length
       const pie = [
+        soloGerencia ? `${plural(faltaGerencia, 'espera', 'esperan')} el visto de Gerencia` : null,
         observados > 0 ? plural(observados, 'observado', 'observados') : null,
         porValidar > 0 ? `${porValidar} por validar` : null,
         plural(validados, 'validado', 'validados'),
       ]
         .filter(Boolean)
         .join(' · ')
-      return { titulo: 'Reportes diarios del mes', valor: String(filas.length), pie, icono: ClipboardList, tono: observados > 0 ? 'aviso' : 'neutro' }
+      return {
+        titulo: 'Reportes diarios del mes',
+        valor: String(filas.length),
+        pie,
+        icono: ClipboardList,
+        tono: observados > 0 || (soloGerencia && faltaGerencia > 0) ? 'aviso' : 'neutro',
+        ...(soloGerencia && faltaGerencia > 0 ? { href: '/reportes-diarios?estado=falta-gerencia' } : {}),
+      }
     },
   },
   planos_del_area: {
@@ -881,30 +899,38 @@ const CIFRAS = {
   cotizaciones_en_gerencia: {
     ruta: '/cotizaciones/pdf?estado=POR_REVISAR&de=mias',
     calcular: async (c) => {
-      const r = await c.supabase
-        .from('v_cotizaciones_pdf')
-        .select('id', { count: 'exact', head: true })
-        .eq('estado', 'POR_REVISAR')
-        .eq('registrado_por', c.perfil.id)
+      const deTodos = deVentas(c)
+      let consulta = c.supabase.from('v_cotizaciones_pdf').select('id', { count: 'exact', head: true }).eq('estado', 'POR_REVISAR')
+      if (!deTodos) consulta = consulta.eq('registrado_por', c.perfil.id)
+      const r = await consulta
       fallo(r)
-      return { titulo: 'En revisión de Gerencia', valor: String(r.count ?? 0), pie: 'de las que subiste', icono: Clock }
+      return {
+        titulo: 'En revisión de Gerencia',
+        valor: String(r.count ?? 0),
+        pie: deTodos ? 'de todo Ventas' : 'de las que subiste',
+        icono: Clock,
+        ...(deTodos ? { href: '/cotizaciones/pdf?estado=POR_REVISAR' } : {}),
+      }
     },
   },
   aprobadas_del_mes: {
     ruta: '/cotizaciones/pdf?estado=APROBADA_MES&de=mias',
     calcular: async (c) => {
-      const [r, subidas] = await Promise.all([
-        c.supabase
-          .from('v_cotizaciones_pdf')
-          .select('moneda, monto_venta')
-          .eq('estado', 'APROBADA')
-          .eq('registrado_por', c.perfil.id)
-          .gte('revisado_en', `${c.mes}T00:00:00-05:00`)
-          .limit(500),
-        // Las que subió este mes y cuántas de ellas ya se aprobaron (DKS, 27/10/2026: porcentaje y costo).
-        // Se cuenta dentro de las mismas: una subida en septiembre y aprobada ahora pasaba del 100 %.
-        c.supabase.from('v_cotizaciones_pdf').select('estado').eq('registrado_por', c.perfil.id).gte('creado_en', `${c.mes}T00:00:00-05:00`).limit(500),
-      ])
+      const deTodos = deVentas(c)
+      let aprobadas = c.supabase
+        .from('v_cotizaciones_pdf')
+        .select('moneda, monto_venta')
+        .eq('estado', 'APROBADA')
+        .gte('revisado_en', `${c.mes}T00:00:00-05:00`)
+        .limit(500)
+      // Las que se subieron este mes y cuántas de ellas ya se aprobaron (DKS, 27/10/2026: porcentaje y costo).
+      // Se cuenta dentro de las mismas: una subida en septiembre y aprobada ahora pasaba del 100 %.
+      let delMesConsulta = c.supabase.from('v_cotizaciones_pdf').select('estado').gte('creado_en', `${c.mes}T00:00:00-05:00`).limit(500)
+      if (!deTodos) {
+        aprobadas = aprobadas.eq('registrado_por', c.perfil.id)
+        delMesConsulta = delMesConsulta.eq('registrado_por', c.perfil.id)
+      }
+      const [r, subidas] = await Promise.all([aprobadas, delMesConsulta])
       fallo(r)
       fallo(subidas)
       const filas = r.data ?? []
@@ -919,13 +945,14 @@ const CIFRAS = {
         titulo: 'Aprobadas este mes',
         valor: String(filas.length),
         pie: [
-          montos.length > 0 ? `de las que subiste, por ${montos.join(' y ')}` : 'de las que subiste',
+          montos.length > 0 ? `${deTodos ? 'de todo Ventas' : 'de las que subiste'}, por ${montos.join(' y ')}` : deTodos ? 'de todo Ventas' : 'de las que subiste',
           parteAprobada !== null ? `${porcentaje(parteAprobada)} de ${plural(delMes.length, 'subida', 'subidas')} este mes` : null,
         ]
           .filter(Boolean)
           .join(' · '),
         icono: FileText,
         tono: filas.length > 0 ? 'exito' : 'neutro',
+        ...(deTodos ? { href: '/cotizaciones/pdf?estado=APROBADA_MES' } : {}),
       }
     },
   },
@@ -960,6 +987,9 @@ const CIFRAS_POR_PUESTO: Record<string, { titulo: string; cifras: ClaveCifra[] }
   SUPERVISOR: { titulo: 'Tu área', cifras: ['reportes_del_mes', 'planos_del_area', 'rq_abiertos'] },
   SUPERVISOR_GENERAL: { titulo: 'Seguimiento', cifras: ['seguimiento_en_curso', 'rq_abiertos', 'vehiculos_en_planta', 'bajo_minimo'] },
   VENDEDOR: { titulo: 'Ventas', cifras: ['cotizaciones_en_gerencia', 'aprobadas_del_mes', 'clientes'] },
+  // Las mismas cifras de Ventas, pero de todo el equipo (`deVentas`).
+  GERENTE_COMERCIAL: { titulo: 'Ventas', cifras: ['cotizaciones_en_gerencia', 'aprobadas_del_mes', 'clientes'] },
+  GERENTE_PRODUCCION: { titulo: 'Avance', cifras: ['reportes_del_mes', 'seguimiento_en_curso'] },
 }
 // El líder de Diseño ve las cifras de Diseño (mismo menú, `navegacion.ts`).
 CIFRAS_POR_PUESTO.DISENO_LIDER = CIFRAS_POR_PUESTO.DISENO
