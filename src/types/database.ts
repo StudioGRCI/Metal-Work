@@ -15703,7 +15703,6 @@ export type Database = {
           paso: string | null
           situacion: string | null
           puesto: string | null
-          nombre: string | null
           en: string | null
           dias: number | null
           espera: string | null
@@ -15720,7 +15719,6 @@ export type Database = {
           paso: string | null
           situacion: string | null
           puesto: string | null
-          nombre: string | null
           en: string | null
           dias: number | null
           espera: string | null

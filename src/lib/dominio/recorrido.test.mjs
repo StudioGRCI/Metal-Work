@@ -1,14 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { describirRecorridoDeLaCotizacion, describirRecorridoDelRequerimiento, haceDias } from './recorrido.ts'
+import { describirRecorridoDeLaCotizacion, describirRecorridoDelRequerimiento, haceDias, insumos } from './recorrido.ts'
 
 const paso = (orden, paso, situacion, mas = {}) => ({
-  orden, paso, situacion, puesto: null, nombre: null, en: null, dias: null, espera: null, detalle: null, ...mas,
+  orden, paso, situacion, puesto: null, en: null, dias: null, espera: null, detalle: null, ...mas,
 })
 
 test('los días se dicen como se habla', () => {
-  assert.equal(haceDias(0), 'hoy')
-  assert.equal(haceDias(-1), 'hoy')
+  assert.equal(haceDias(0), 'desde hoy')
+  assert.equal(haceDias(-1), 'desde hoy')
   assert.equal(haceDias(1), 'hace 1 día')
   assert.equal(haceDias(3), 'hace 3 días')
 })
@@ -17,7 +17,7 @@ test('el recorrido del RQ dice lo hecho, quién lo tiene y lo que falta', () => 
   const pasos = describirRecorridoDelRequerimiento([
     // Llega desordenado: manda el orden de la base.
     paso(3, 'LISTO', 'PENDIENTE'),
-    paso(1, 'REGISTRO', 'HECHO', { puesto: 'Requerimientos', nombre: 'Ana Ruiz', en: '2026-11-20T15:00:00Z', detalle: 'Maestranza' }),
+    paso(1, 'REGISTRO', 'HECHO', { puesto: 'Requerimientos', en: '2026-11-20T15:00:00Z', detalle: 'Maestranza' }),
     paso(2, 'COMPRA', 'AHORA', { puesto: 'Gerencia', dias: 3, espera: 'OC_POR_APROBAR', detalle: 'OC-0001-MW' }),
     paso(4, 'ENTREGA', 'PENDIENTE'),
   ])
@@ -26,7 +26,7 @@ test('el recorrido del RQ dice lo hecho, quién lo tiene y lo que falta', () => 
   assert.equal(pasos[0].nota, 'Para Maestranza')
   assert.equal(pasos[1].titulo, 'Compra de lo que falta')
   assert.equal(pasos[1].nota, 'Aprueba la OC-0001-MW.')
-  assert.equal(pasos[2].titulo, 'Listo en almacén')
+  assert.equal(pasos[2].titulo, 'Listo para recoger')
   assert.equal(pasos[2].nota, null)
 })
 
@@ -39,12 +39,29 @@ test('lo que el RQ espera sin orden de compra todavía no la nombra', () => {
 
 test('el visto de Diseño y la entrega cambian de frase según cómo terminaron', () => {
   const pasos = describirRecorridoDelRequerimiento([
-    paso(1, 'VISTO_DISENO', 'HECHO', { detalle: 'RECHAZADO' }),
-    paso(2, 'VISTO_DISENO', 'HECHO', { detalle: 'AUTORIZADO' }),
+    paso(1, 'VISTO_DISENO', 'HECHO', { detalle: 'RECHAZADO:2' }),
+    paso(2, 'VISTO_DISENO', 'HECHO', { detalle: 'AUTORIZADO:1,3' }),
     paso(3, 'ENTREGA', 'HECHO', { detalle: 'CON_FALTANTE' }),
     paso(4, 'ENTREGA', 'HECHO'),
   ])
   assert.deepEqual(pasos.map((p) => p.titulo), ['Diseño no lo autorizó', 'Diseño lo autorizó', 'Entregado al área, con faltante', 'Entregado al área'])
+  assert.deepEqual(pasos.map((p) => p.nota), ['Insumo 2', 'Insumos 1 y 3', null, null])
+})
+
+test('el sustento dice qué insumos sustentó, en orden', () => {
+  assert.equal(insumos('3,1,10'), 'Insumos 1, 3 y 10')
+  assert.equal(insumos(''), null)
+  const [s] = describirRecorridoDelRequerimiento([paso(1, 'SUSTENTO', 'HECHO', { detalle: '2' })])
+  assert.equal(s.nota, 'Insumo 2')
+})
+
+test('la compra aprobada sin recojo programado y la observada dicen qué falta', () => {
+  const [p, o] = describirRecorridoDelRequerimiento([
+    paso(1, 'COMPRA', 'AHORA', { puesto: 'Logística', dias: 1, espera: 'POR_PROGRAMAR', detalle: 'OC-0001-MW' }),
+    paso(2, 'COMPRA', 'AHORA', { puesto: 'Logística', dias: 1, espera: 'OBSERVADO', detalle: 'OC-0002-MW' }),
+  ])
+  assert.equal(p.nota, 'Falta programar el recojo de la OC-0001-MW con el conductor.')
+  assert.equal(o.nota, 'Almacén observó el ingreso de la OC-0002-MW: trae lo que falta.')
 })
 
 test('el recorrido de la cotización nombra la OT solo si la base la manda', () => {

@@ -24,7 +24,6 @@
 --   paso        la clave del paso; su etiqueta vive en `src/lib/dominio/recorrido.ts`
 --   situacion   HECHO, AHORA (lo tiene alguien) o PENDIENTE (todavía no le toca)
 --   puesto      de lo hecho, el puesto de la cuenta que lo hizo; de AHORA, quién lo tiene
---   nombre      de lo hecho, el nombre de la cuenta; vacío en lo demás
 --   en          cuándo se hizo; de AHORA, desde cuándo espera
 --   dias        solo de AHORA: días que lleva esperando, contados por fecha de Lima
 --   espera      solo de AHORA: qué se espera (la clave; la frase vive en la aplicación)
@@ -32,9 +31,15 @@
 --
 -- Quién las lee: quien ya ve el documento, ni uno más. La del RQ exige
 -- `puede_ver_requerimientos()`, que es la política de `requerimientos`; la de la
--- cotización repite la política `ver_cotizaciones_pdf` fila por fila. De cada
--- paso sale el puesto y el nombre de la cuenta, nunca un importe ni un dato de
--- RR. HH. (ni DNI, ni costo por hora).
+-- cotización repite la política `ver_cotizaciones_pdf` fila por fila. Las dos son
+-- `security definer` porque leen lo que quien mira no lee directo (la bitácora,
+-- el metrado de Diseño, la firma de la OT y de la factura): por eso el alcance lo
+-- ponen ellas y no el RLS.
+--
+-- De cada paso sale solo el puesto de quien lo hizo, como en el resto del sistema
+-- desde la migración 20260101000109 (DKS lo confirmó para el recorrido el
+-- 2026-11-25): el nombre sería el de quien tiene hoy la cuenta, no el de quien
+-- hizo el paso. Nunca un importe ni un dato de RR. HH. (ni DNI, ni costo por hora).
 -- =============================================================================
 
 -- =============================================================================
@@ -77,7 +82,6 @@ returns table (
   paso      text,
   situacion text,
   puesto    text,
-  nombre    text,
   en        timestamptz,
   dias      integer,
   espera    text,
@@ -102,7 +106,7 @@ begin
 
   return query
   with rq as (
-    select r.id, r.tipo, r.estado, r.creado_por, r.creado_en,
+    select r.id, r.tipo, r.estado, r.creado_por, r.creado_en, r.codigo_desde,
            r.revision_stock_por, r.revision_stock_en, r.en_atencion_por, r.en_atencion_en,
            r.listo_en_almacen_por, r.listo_en_almacen_en, r.entregado_por, r.entregado_en,
            r.faltante_al_entregar, r.anulado_por, r.anulado_en,
@@ -114,7 +118,7 @@ begin
   ),
   -- Cada vez que quien pidió sustentó lo que se pasa del metrado, y cada visto de Diseño.
   sustentos as (
-    select l.requerimiento_id as rq, s.sustentado_por, s.sustentado_en, s.decidido_por, s.decidido_en, s.decision
+    select l.requerimiento_id as rq, l.item, s.sustentado_por, s.sustentado_en, s.decidido_por, s.decidido_en, s.decision
       from public.requerimiento_sustentos s
       join public.requerimiento_lineas l on l.id = s.requerimiento_linea_id
      where l.requerimiento_id = any(p_ids)
@@ -154,12 +158,16 @@ begin
   ),
   -- De los insumos que todavía no llegan, el más atrasado y su orden de compra, si ya va en una.
   atrasado as (
-    select distinct on (i.rq) i.rq, i.etapa,
+    -- La OC aprobada que Logística todavía no programó con el conductor es de
+    -- Logística (`POR_PROGRAMAR`): el conductor no la ve en sus recojos hasta
+    -- que tiene su fila en `programacion_recojo`.
+    select distinct on (i.rq) i.rq,
+           case when i.etapa = 'PENDIENTE_RECOJO' and pr.programado_en is null then 'POR_PROGRAMAR' else i.etapa end as etapa,
            case when c.id is not null then public.nombre_de_oc(c.numero, c.referencia) end as oc,
            case i.etapa
              when 'POR_COMPRAR' then case c.aprobacion when 'RECHAZADA' then c.rechazado_en when 'ANULADA' then c.anulada_en end
              when 'OC_POR_APROBAR' then coalesce(c.aprobacion_pedida_en, c.creado_en)
-             when 'PENDIENTE_RECOJO' then coalesce(c.recojo_pedido_en, c.aprobado_en, c.creado_en)
+             when 'PENDIENTE_RECOJO' then coalesce(pr.programado_en, c.recojo_pedido_en, c.aprobado_en, c.creado_en)
              when 'EN_RECOJO' then c.en_recojo_en
              when 'RECOGIDO' then c.recogido_en
              when 'EN_STOCK' then null
@@ -167,6 +175,7 @@ begin
            end as desde
       from insumos i
       left join public.ordenes_compra_materiales c on c.id = i.orden_compra_id
+      left join lateral (select max(p.programado_en) as programado_en from public.programacion_recojo p where p.orden_compra_id = c.id) pr on true
      where i.por_llegar > 0
      order by i.rq, i.porcentaje, i.item
   ),
@@ -179,9 +188,12 @@ begin
   ),
   -- El único paso sin columna: el RQ listo en almacén que volvió a compra porque
   -- Almacén devolvió parte al proveedor (`reabrir_rq_por_lo_devuelto` borra la
-  -- firma de «listo»). La bitácora guarda cuándo y desde qué cuenta.
+  -- firma de «listo»). La bitácora guarda cuándo, desde qué cuenta, y la firma
+  -- del «listo» que se borró.
   vueltas as (
-    select b.registro_id as rq, b.usuario_id, b.creado_en
+    select b.registro_id as rq, b.usuario_id, b.creado_en,
+           nullif(b.datos_antes ->> 'listo_en_almacen_por', '')::uuid as listo_por,
+           nullif(b.datos_antes ->> 'listo_en_almacen_en', '')::timestamptz as listo_en
       from public.audit_log b
      where b.tabla = 'requerimientos' and b.registro_id = any(p_ids) and b.accion = 'UPDATE'
        and b.datos_antes ->> 'estado' = 'LISTO_EN_ALMACEN'
@@ -207,8 +219,11 @@ begin
              -- La compra entró y no alcanzó: el resto no va en ninguna orden y lo pide de nuevo quien hizo el RQ.
              when t.etapa in ('EN_KARDEX', 'EN_STOCK') then coalesce(public.puesto_de(q.creado_por), 'Quien lo pidió')
              when t.etapa = 'OC_POR_APROBAR' then 'Gerencia'
+             when t.etapa = 'POR_PROGRAMAR' and q.tipo = 'ADMINISTRACION' then 'Administración'
+             when t.etapa = 'POR_PROGRAMAR' then 'Logística'
              when t.etapa in ('PENDIENTE_RECOJO', 'EN_RECOJO', 'RECOGIDO') then 'Conductor de Logística'
-             when t.etapa in ('POR_VALIDAR', 'OBSERVADO') then 'Almacén'
+             when t.etapa = 'POR_VALIDAR' then 'Almacén'
+             -- Lo observado (no llegó completo) lo trae quien compra, como dice la tarjeta.
              when q.tipo = 'ADMINISTRACION' then 'Administración'
              else 'Logística'
            end as puesto,
@@ -222,8 +237,12 @@ begin
              else coalesce(t.etapa, 'POR_COMPRAR')
            end as espera,
            case
+             -- El sustento falta desde lo último que lo pidió: el registro, el código o
+             -- una cantidad corregidos, o un visto de Diseño que no lo autorizó.
              when coalesce(f.falta_sustento, false) then
-               greatest(q.creado_en, (select max(s.decidido_en) from sustentos s where s.rq = q.id))
+               greatest(q.creado_en, q.codigo_desde,
+                        (select max(l.cantidad_desde) from public.requerimiento_lineas l where l.requerimiento_id = q.id),
+                        (select max(s.decidido_en) from sustentos s where s.rq = q.id))
              when coalesce(f.espera_diseno, false) then
                coalesce((select max(s.sustentado_en) from sustentos s where s.rq = q.id and s.decidido_en is null), q.creado_en)
              when q.estado = 'POR_ATENDER' then
@@ -248,13 +267,21 @@ begin
            q.creado_en as en, null::text as espera, q.area as detalle
       from rq q
     union all
-    -- 20 · Cada sustento de lo que se pasa del metrado
-    select s.rq, 20, 'SUSTENTO', 'HECHO', s.sustentado_por, null, s.sustentado_en, null, null
-      from (select distinct rq, sustentado_por, sustentado_en from sustentos) s
+    -- 20 · Cada sustento de lo que se pasa del metrado, con los insumos que
+    -- sustentó en ese momento (detalle: «1,2»). Lo de un mismo minuto es un envío.
+    select s.rq, 20, 'SUSTENTO', 'HECHO', s.sustentado_por, null, min(s.sustentado_en), null,
+           string_agg(distinct s.item::text, ',')
+      from sustentos s
+     group by s.rq, s.sustentado_por, date_trunc('minute', s.sustentado_en)
     union all
-    -- 30 · Cada visto de Diseño, autorizado o no
-    select s.rq, 30, 'VISTO_DISENO', 'HECHO', s.decidido_por, null, s.decidido_en, null, s.decision
-      from (select distinct rq, decidido_por, decidido_en, decision from sustentos where decidido_en is not null) s
+    -- 30 · Cada visto de Diseño, autorizado o no, con sus insumos (detalle:
+    -- «AUTORIZADO:1,2»): dos vistos del mismo minuto sobre insumos distintos no
+    -- se leen como si el RQ se hubiera autorizado y rechazado a la vez.
+    select s.rq, 30, 'VISTO_DISENO', 'HECHO', s.decidido_por, null, min(s.decidido_en), null,
+           s.decision || ':' || string_agg(distinct s.item::text, ',')
+      from sustentos s
+     where s.decidido_en is not null
+     group by s.rq, s.decidido_por, s.decision, date_trunc('minute', s.decidido_en)
     union all
     -- 40 · Almacén revisó el stock
     select q.id, 40, 'REVISION_STOCK', 'HECHO', q.revision_stock_por, null, q.revision_stock_en, null, null
@@ -268,9 +295,12 @@ begin
     select v.rq, 55, 'VUELTA_A_COMPRA', 'HECHO', v.usuario_id, null, v.creado_en, null, null
       from vueltas v
     union all
-    -- 60 · Listo en almacén
+    -- 60 · Listo en almacén; y el de antes de cada vuelta a compra, que la vuelta borró (de la bitácora)
     select q.id, 60, 'LISTO', 'HECHO', q.listo_en_almacen_por, null, q.listo_en_almacen_en, null, null
       from rq q where q.listo_en_almacen_en is not null
+    union all
+    select v.rq, 60, 'LISTO', 'HECHO', v.listo_por, null, v.listo_en, null, null
+      from vueltas v where v.listo_en is not null
     union all
     -- 70 · Entregado al área
     select q.id, 70, 'ENTREGA', 'HECHO', q.entregado_por, null, q.entregado_en, null,
@@ -305,7 +335,6 @@ begin
                      case when p.situacion = 'HECHO' then p.en end, p.canon))::integer,
          p.paso, p.situacion,
          case when p.situacion = 'HECHO' then public.puesto(u) else p.puesto_fijo end,
-         case when p.situacion = 'HECHO' then nullif(btrim(u.nombres || ' ' || u.apellidos), '') end,
          p.en,
          case when p.situacion = 'AHORA' then public.dias_en_espera(p.en) end,
          p.espera, p.detalle
@@ -315,7 +344,7 @@ end;
 $$;
 
 comment on function public.recorrido_de_requerimientos(uuid[]) is
-  'El recorrido de cada requerimiento, un paso por fila: lo hecho con su puesto, nombre y fecha; quién lo tiene ahora y hace cuántos días (fecha de Lima); y lo que falta. Lo lee quien ve los requerimientos. Sin importes ni datos de RR. HH.';
+  'El recorrido de cada requerimiento, un paso por fila: lo hecho con el puesto de quien lo hizo y su fecha; quién lo tiene ahora y hace cuántos días (fecha de Lima); y lo que falta. Lo lee quien ve los requerimientos. Sin importes ni datos de RR. HH.';
 
 revoke all on function public.recorrido_de_requerimientos(uuid[]) from public, anon;
 grant execute on function public.recorrido_de_requerimientos(uuid[]) to authenticated;
@@ -341,7 +370,6 @@ returns table (
   paso      text,
   situacion text,
   puesto    text,
-  nombre    text,
   en        timestamptz,
   dias      integer,
   espera    text,
@@ -422,15 +450,26 @@ begin
     select v.cot, v.version * 10 + 25, 'CORRECCION', 'HECHO', c.registrado_por, null, v.corregida_en, null, 'versión ' || (v.version + 1)
       from versiones v join cot c on c.id = v.cot
     union all
-    -- La revisión de la versión vigente
-    select c.id, c.version * 10 + 20, 'REVISION', 'HECHO', c.revisado_por, null, c.revisado_en, null, c.estado
-      from cot c where c.estado in ('APROBADA', 'RECHAZADA') and c.revisado_en is not null
+    -- La revisión de la versión vigente. La anulada conserva quién la revisó y
+    -- cuándo; cómo terminó esa revisión (aprobada o rechazada) ya no está en
+    -- ninguna columna y sale de la bitácora, del estado que tenía al anularse.
+    select c.id, c.version * 10 + 20, 'REVISION', 'HECHO', c.revisado_por, null, c.revisado_en, null,
+           case when c.estado = 'ANULADA' then
+                  (select b.datos_antes ->> 'estado' from public.audit_log b
+                    where b.tabla = 'cotizaciones_pdf' and b.registro_id = c.id and b.accion = 'UPDATE'
+                      and b.datos_despues ->> 'estado' = 'ANULADA'
+                    order by b.creado_en desc limit 1)
+                else c.estado end
+      from cot c where c.estado in ('APROBADA', 'RECHAZADA', 'ANULADA') and c.revisado_en is not null
     union all
     select c.id, c.version * 10 + 20, 'REVISION', 'AHORA', null, 'Gerencia', c.archivo_subido_en, 'REVISION', null
       from cot c where c.estado = 'POR_REVISAR'
     union all
-    -- Rechazada: vuelve a quien la subió
+    -- Rechazada: vuelve a quien la subió, y después Gerencia revisa la corrección
     select c.id, c.version * 10 + 25, 'CORRECCION', 'AHORA', null, coalesce(public.puesto_de(c.registrado_por), 'Ventas'), c.revisado_en, 'CORRECCION', null
+      from cot c where c.estado = 'RECHAZADA'
+    union all
+    select c.id, c.version * 10 + 30, 'REVISION', 'PENDIENTE', null, null, null, null, null
       from cot c where c.estado = 'RECHAZADA'
     union all
     -- Administración le dio el código interno y subió la OT
@@ -467,7 +506,6 @@ begin
                      case when p.situacion = 'HECHO' then p.en end, p.canon))::integer,
          p.paso, p.situacion,
          case when p.situacion = 'HECHO' then public.puesto(u) else p.puesto_fijo end,
-         case when p.situacion = 'HECHO' then nullif(btrim(u.nombres || ' ' || u.apellidos), '') end,
          p.en,
          case when p.situacion = 'AHORA' then public.dias_en_espera(p.en) end,
          p.espera, p.detalle
@@ -480,7 +518,7 @@ end;
 $$;
 
 comment on function public.recorrido_de_cotizaciones(uuid[]) is
-  'El recorrido de cada cotización, un paso por fila: lo hecho con su puesto, nombre y fecha; quién la tiene ahora y hace cuántos días (fecha de Lima); y lo que falta. Devuelve solo las que la política ver_cotizaciones_pdf deja ver a quien llama. Sin importes ni datos de RR. HH.';
+  'El recorrido de cada cotización, un paso por fila: lo hecho con el puesto de quien lo hizo y su fecha; quién la tiene ahora y hace cuántos días (fecha de Lima); y lo que falta. Devuelve solo las que la política ver_cotizaciones_pdf deja ver a quien llama. Sin importes ni datos de RR. HH.';
 
 revoke all on function public.recorrido_de_cotizaciones(uuid[]) from public, anon;
 grant execute on function public.recorrido_de_cotizaciones(uuid[]) to authenticated;

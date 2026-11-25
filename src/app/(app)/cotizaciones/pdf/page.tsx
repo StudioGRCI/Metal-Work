@@ -409,14 +409,6 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                       </details>
                     )}
 
-                    {/* Para consultar: quién hizo cada paso, quién la tiene ahora y hace cuántos días. */}
-                    <Recorrido
-                      pasos={recorridos ? describirRecorridoDeLaCotizacion((c.id && recorridos.get(c.id)) || []) : null}
-                      className="rounded-[var(--radius-base)] border border-borde"
-                      relleno="px-2.5"
-                      femenino
-                    />
-
                     {/* Una aprobada que espera su código: quien no lo da tiene
                         que saber por qué no avanza y quién la destraba. */}
                     {!cargaOt && sinCodigo(c) && (
@@ -457,6 +449,14 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                         Ya está facturada: no se corrige. Si hay que cambiarla, Contabilidad anula primero la factura.
                       </p>
                     )}
+                    {/* Para consultar, justo encima de las acciones: quién hizo cada paso, quién la tiene ahora y hace cuántos días. */}
+                    <Recorrido
+                      pasos={recorridos ? describirRecorridoDeLaCotizacion((c.id && recorridos.get(c.id)) || []) : null}
+                      className="rounded-[var(--radius-base)] border border-borde"
+                      relleno="px-2.5"
+                      femenino
+                    />
+
                     {(revisa && c.estado === 'POR_REVISAR' || cargaOt && sinCodigo(c) || corrige || quitable) && (
                       <div className="flex flex-wrap items-center gap-2">
                         {revisa && c.estado === 'POR_REVISAR' && c.id && (

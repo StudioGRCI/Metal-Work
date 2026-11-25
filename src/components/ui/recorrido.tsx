@@ -49,7 +49,7 @@ export function Recorrido({
   const ultimo = hechos.at(-1)
 
   return (
-    <details className={cn('group/recorrido', className)} data-recorrido>
+    <details className={cn('group/recorrido overflow-hidden', className)} data-recorrido>
       <summary
         className={cn(
           'flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1 py-2 hover:bg-superficie-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-acento [&::-webkit-details-marker]:hidden',
@@ -89,7 +89,7 @@ export function Recorrido({
                 <>
                   <p className="text-sm font-medium break-words text-texto">{p.titulo}</p>
                   <p className="text-xs break-words text-texto-suave">
-                    {[p.puesto, p.nombre].filter(Boolean).join(' · ') || 'Sin cuenta registrada'}
+                    {p.puesto || 'Sin cuenta registrada'}
                   </p>
                   <p className="tabular text-xs text-texto-tenue">{fechaHora(p.en)}</p>
                   {p.nota && <p className="text-xs break-words text-texto-suave">{p.nota}</p>}

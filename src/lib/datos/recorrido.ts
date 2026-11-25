@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 
 /**
  * El recorrido de cada documento, por su id (migración 20261125130000): lo
- * hecho con su puesto, su nombre y su hora; quién lo tiene ahora y hace cuántos
+ * hecho con el puesto de quien lo hizo y su hora (nunca su nombre); quién lo tiene ahora y hace cuántos
  * días; y lo que falta. La función de cada documento decide quién lo lee: quien
  * ya ve el documento. Las frases se ponen con `src/lib/dominio/recorrido.ts`.
  */
@@ -18,7 +18,6 @@ type Fila = {
   paso: string | null
   situacion: string | null
   puesto: string | null
-  nombre: string | null
   en: string | null
   dias: number | null
   espera: string | null
@@ -40,18 +39,26 @@ async function leer(funcion: 'recorrido_de_requerimientos' | 'recorrido_de_cotiz
   const respuestas = await Promise.all(
     tandas.map((tanda) => todasLasFilas<Fila>(() => supabase.rpc(funcion, { p_ids: tanda }), ['documento', 'orden'])),
   )
+  let sueltas = 0
+  const raras = new Set<string>()
   for (const { data, error } of respuestas) {
     if (error) throw new Error(`No se pudo leer el recorrido de ${de}: ${error.message}`)
     for (const f of data) {
-      if (!f.documento || f.orden == null || !f.paso) continue
-      const situacion = SITUACIONES.includes(f.situacion as SituacionDelPaso) ? (f.situacion as SituacionDelPaso) : 'PENDIENTE'
+      // La función siempre da documento, orden y paso: si falta uno, se cuenta y se dice abajo.
+      if (!f.documento || f.orden == null || !f.paso) {
+        sueltas++
+        continue
+      }
+      const conocida = SITUACIONES.includes(f.situacion as SituacionDelPaso)
+      if (!conocida) raras.add(String(f.situacion))
+      // Una situación que la pantalla no conoce se pinta como lo que falta, nunca como hecho.
+      const situacion = conocida ? (f.situacion as SituacionDelPaso) : 'PENDIENTE'
       const pasos = porDocumento.get(f.documento) ?? []
       pasos.push({
         orden: f.orden,
         paso: f.paso,
         situacion,
         puesto: f.puesto,
-        nombre: f.nombre,
         en: f.en,
         dias: f.dias == null ? null : Number(f.dias),
         espera: f.espera,
@@ -59,6 +66,11 @@ async function leer(funcion: 'recorrido_de_requerimientos' | 'recorrido_de_cotiz
       })
       porDocumento.set(f.documento, pasos)
     }
+  }
+  if (sueltas > 0 || raras.size > 0) {
+    console.error(
+      `[recorrido] ${funcion}: ${sueltas} filas sin documento, orden o paso; situaciones desconocidas: ${[...raras].join(', ') || 'ninguna'}`,
+    )
   }
   for (const pasos of porDocumento.values()) pasos.sort((a, b) => a.orden - b.orden)
   return porDocumento

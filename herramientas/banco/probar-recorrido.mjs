@@ -6,8 +6,8 @@
  *      que haya en el banco: su tarjeta trae «Recorrido», cerrado dice quién lo
  *      tiene y hace cuánto, y abierto muestra los mismos pasos, en el mismo
  *      orden, que da la base con la sesión de esa cuenta: lo hecho con su
- *      puesto, su nombre y su hora; quién lo tiene ahora con sus días; y lo que
- *      falta. La tarjeta conserva lo que ya tenía (la barra de pasos y los insumos).
+ *      puesto y su hora, nunca el nombre de la persona; quién lo tiene ahora con
+ *      sus días; y lo que falta. La tarjeta conserva lo que ya tenía (la barra de pasos y los insumos).
  *   2. En la lista entera, cada tarjeta de RQ trae su recorrido y ninguno dice
  *      «No se pudo leer».
  *   3. Ventas, Gerencia, Administración y Contabilidad ven lo mismo en cada
@@ -59,7 +59,7 @@ function comprobar(cond, texto) {
   if (!cond) fallas.push(texto)
 }
 const limpio = (t) => (t ?? '').replace(/\s+/g, ' ').trim()
-const haceDias = (d) => (d <= 0 ? 'hoy' : d === 1 ? 'hace 1 día' : `hace ${d} días`)
+const haceDias = (d) => (d <= 0 ? 'desde hoy' : d === 1 ? 'hace 1 día' : `hace ${d} días`)
 const correoDe = (puesto) => `${puesto}.local@metalwork.test`
 
 /** Lo que da la base con la sesión de esa cuenta y el rol authenticated, o el error que levanta. */
@@ -147,9 +147,8 @@ async function contrastar(tarjeta, esperado, quien, cual) {
     const v = vistos[i]
     if (!v) continue
     if (p.situacion === 'HECHO') {
-      const firma = [p.puesto, p.nombre].filter(Boolean).join(' · ')
       comprobar(
-        v.texto.includes(firma || 'Sin cuenta registrada') && /\d{2}\/\d{2}\/\d{4}/.test(v.texto),
+        v.texto.includes(p.puesto || 'Sin cuenta registrada') && /\d{2}\/\d{2}\/\d{4}/.test(v.texto),
         `${quien}: ${p.paso} dice quién y cuándo («${v.texto}»)`,
       )
     } else if (p.situacion === 'AHORA') {
@@ -164,6 +163,9 @@ async function contrastar(tarjeta, esperado, quien, cual) {
   // Ni importes ni datos de RR. HH. en ningún paso.
   const todo = limpio(await recorrido.innerText())
   comprobar(!/S\/|US\$|\bDNI\b|@/.test(todo), `${quien}: el recorrido de ${cual} no trae importes, DNI ni correos`)
+  // Solo el puesto (DKS, 2026-11-25): ningún nombre de persona del banco.
+  const conNombre = NOMBRES.filter((n) => todo.includes(n))
+  comprobar(conNombre.length === 0, `${quien}: el recorrido de ${cual} dice el puesto y ningún nombre (${conNombre.join(', ') || 'ninguno'})`)
   return cerrado
 }
 
@@ -175,6 +177,8 @@ async function contrastar(tarjeta, esperado, quien, cual) {
  */
 async function capturar(pagina, archivo) {
   await pagina.addStyleTag({ content: 'nextjs-portal { display: none !important }' })
+  // La flecha del recorrido gira al abrirlo: se espera a que termine, o sale a medio girar.
+  await pagina.waitForTimeout(400)
   const ventana = pagina.viewportSize()
   const alto = await pagina.evaluate(() => Math.max(document.documentElement.scrollHeight, document.body.scrollHeight))
   await pagina.setViewportSize({ width: ventana.width, height: Math.max(alto, ventana.height) })
@@ -189,6 +193,9 @@ async function sinDesborde(pagina, donde) {
 }
 
 // ---------------------------------------------------------------- lo que hay
+const NOMBRES = (await consulta(`select distinct trim(nombres || ' ' || coalesce(apellidos, '')) as n from public.usuarios where nombres is not null`))
+  .map((u) => u.n)
+  .filter((n) => n.length >= 5)
 const rqs = await consulta(
   `select distinct on (estado) id, numero, estado from public.requerimientos order by estado, creado_en desc`,
 )
@@ -219,8 +226,8 @@ if (vieja) {
 }
 await base.query('commit')
 
-const RQ_SQL = `select paso, situacion, puesto, nombre, dias from public.recorrido_de_requerimientos(array[$1]::uuid[]) order by orden`
-const COT_SQL = `select paso, situacion, puesto, nombre, dias from public.recorrido_de_cotizaciones(array[$1]::uuid[]) order by orden`
+const RQ_SQL = `select paso, situacion, puesto, dias from public.recorrido_de_requerimientos(array[$1]::uuid[]) order by orden`
+const COT_SQL = `select paso, situacion, puesto, dias from public.recorrido_de_cotizaciones(array[$1]::uuid[]) order by orden`
 
 // ------------------------------------------------------- 1 y 2. El RQ
 for (const puesto of ['requerimientos', 'almacen', 'logistica', 'gerencia']) {
