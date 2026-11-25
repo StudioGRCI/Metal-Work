@@ -13,13 +13,21 @@ function dato(formulario: FormData, nombre: string) {
   return typeof valor === 'string' ? valor.trim() : ''
 }
 
-/** Lo que la base guardó de la marca: la hora la pone ella, en Lima. `null` si no se pudo leer. */
-export type MarcaGuardada = { hora: string | null; es_tardanza: boolean; tardanza_minutos: number }
+/**
+ * Lo que la base guardó de la marca: la hora la pone ella, en Lima (`null` si
+ * no se pudo leer). `id` es el de la marca que vale; con `ya_estaba`, la
+ * persona ya tenía esa marca de hoy y este envío no guardó otra.
+ */
+export type MarcaGuardada = { id: string; hora: string | null; es_tardanza: boolean; tardanza_minutos: number; ya_estaba: boolean }
+
+const COLUMNAS_MARCA_GUARDADA = 'id, hora, es_tardanza, tardanza_minutos'
 
 /**
  * El portero marca el ingreso o la salida de una persona. Mismo permiso que
  * `marcar_asistencia`. Devuelve la hora que puso la base, para decirla en
- * grande apenas entra: la lee de `asistencias`, que la portería ya ve.
+ * grande apenas entra: la lee de `asistencias`, que la portería ya ve. Que el
+ * mismo envío entre una vez, y solo como la marca que era, lo decide la base
+ * (migración 20261125100000).
  */
 export async function marcarAsistencia(_previo: unknown, formulario: FormData): Promise<ResultadoAccion<MarcaGuardada>> {
   const perfil = await exigirSesion()
@@ -48,31 +56,43 @@ export async function marcarAsistencia(_previo: unknown, formulario: FormData): 
     p_tipo: d.tipo,
     p_observacion: d.observacion || null,
   })
-  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (error) {
+    // La persona ya tiene esa marca hoy: la que entró sin que llegara su
+    // respuesta y se tocó otra vez con la pantalla de antes, u otro teléfono
+    // de la portería. No es un error: es la marca que ya estaba, y se dice con
+    // su hora en vez de un rojo junto a «Sin ingreso».
+    if (error.code === '23505') {
+      const { data: vigente } = await supabase
+        .from('asistencias')
+        .select(COLUMNAS_MARCA_GUARDADA)
+        .eq('trabajador_id', d.trabajador_id)
+        .eq('tipo', d.tipo)
+        .eq('fecha', hoyLima())
+        .is('anulado_en', null)
+        .maybeSingle()
+      if (vigente) {
+        revalidatePath('/rrhh/asistencia')
+        return {
+          ok: true,
+          mensaje: d.tipo === 'INGRESO' ? 'Ya tenía su ingreso de hoy.' : 'Ya tenía su salida de hoy.',
+          datos: { ...vigente, ya_estaba: true },
+        }
+      }
+    }
+    return { ok: false, error: mensajeDeError(error) }
+  }
   if (data !== d.marca_id) return { ok: false, error: 'La marca no quedó registrada. Recarga la pantalla.' }
 
   // La marca ya entró: si esta lectura falla, la pantalla dice que entró y la
   // hora llega con la lista al día.
-  const { data: fila } = await supabase
-    .from('asistencias')
-    .select('trabajador_id, tipo, fecha, marcado_en, anulado_en, hora, es_tardanza, tardanza_minutos')
-    .eq('id', d.marca_id)
-    .maybeSingle()
-  // La base contesta «ya está» a un id que ya guardó, sin mirar de qué marca
-  // era. Si ese id es de otra marca —otra persona, la salida con el id del
-  // ingreso, la de ayer o una ya anulada—, esta no entró: decir «marcada» sería
-  // mentir. La pantalla estrena id al recargar. «De otro día» no cuenta para la
-  // que se acaba de guardar: marcada a las 23:59:59, aquí ya es mañana.
-  const deOtroDia = fila ? fila.fecha !== hoyLima() && Date.now() - new Date(fila.marcado_en).getTime() > 120_000 : false
-  if (fila && (fila.trabajador_id !== d.trabajador_id || fila.tipo !== d.tipo || deOtroDia || fila.anulado_en !== null))
-    return { ok: false, error: 'Esa marca no entró: su envío ya se había usado para otra marca. Vuelve a cargar la pantalla y márcala otra vez.' }
+  const { data: fila } = await supabase.from('asistencias').select(COLUMNAS_MARCA_GUARDADA).eq('id', d.marca_id).maybeSingle()
 
   revalidatePath('/rrhh/asistencia')
   revalidatePath('/rrhh/tardanzas')
   return {
     ok: true,
     mensaje: d.tipo === 'INGRESO' ? 'Ingreso marcado.' : 'Salida marcada.',
-    datos: { hora: fila?.hora ?? null, es_tardanza: fila?.es_tardanza ?? false, tardanza_minutos: fila?.tardanza_minutos ?? 0 },
+    datos: { id: d.marca_id, hora: fila?.hora ?? null, es_tardanza: fila?.es_tardanza ?? false, tardanza_minutos: fila?.tardanza_minutos ?? 0, ya_estaba: false },
   }
 }
 
