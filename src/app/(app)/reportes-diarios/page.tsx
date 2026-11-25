@@ -18,6 +18,14 @@ export const metadata = { title: 'Reporte diario' }
 
 /** El filtro por estado: lo que espera a quien mira primero. */
 const FILTRO_ESTADO: Record<string, EstadoReporte> = { 'por-validar': 'POR_VALIDAR', observados: 'OBSERVADO', validados: 'VALIDADO' }
+/**
+ * Lo que espera el visto de Gerencia: desde el 2026-11-25 es todo el trabajo de
+ * Gerencia de Producción, y «Por validar» cuenta también lo que ya tiene su
+ * visto y espera a RR. HH.
+ */
+const FALTA_GERENCIA = 'falta-gerencia'
+const faltaGerencia = (r: { anulado_en: string | null; observado_en: string | null; visto_gerencia_en: string | null; visto_rrhh_en: string | null }) =>
+  estadoDeReporte(r) === 'POR_VALIDAR' && !r.visto_gerencia_en
 
 export default async function PaginaReportesDiarios({ searchParams }: PageProps<'/reportes-diarios'>) {
   const perfil = await exigirPermiso(['reporte_diario.registrar', 'reporte_diario.ver'])
@@ -27,14 +35,22 @@ export default async function PaginaReportesDiarios({ searchParams }: PageProps<
   const mesActual = mesDeLima(hoyLima())
   const mes = mesValido(params.mes) ? params.mes : mesActual
   const area = typeof params.area === 'string' ? params.area : null
-  const filtro = typeof params.estado === 'string' && params.estado in FILTRO_ESTADO ? params.estado : null
+  const daVistoGerencia = puede(perfil, 'reporte_diario.validar_gerencia')
+  const filtro =
+    typeof params.estado === 'string' && (params.estado in FILTRO_ESTADO || (daVistoGerencia && params.estado === FALTA_GERENCIA))
+      ? params.estado
+      : null
 
   // RR. HH. ve lo que cuestan esas horas: el costeo por código ya las tiene con su costo.
   const veCosto = puede(perfil, 'rrhh.personal')
   const [todos, tareos] = await Promise.all([listarReportesDiarios(mes), veCosto ? tareosDelMes(mes) : Promise.resolve([])])
   const areas = [...new Set(todos.map((r) => r.area ?? 'Sin área'))].sort()
   const deLaArea = area ? todos.filter((r) => (r.area ?? 'Sin área') === area) : todos
-  const reportes = filtro ? deLaArea.filter((r) => estadoDeReporte(r) === FILTRO_ESTADO[filtro]) : deLaArea
+  const reportes = !filtro
+    ? deLaArea
+    : filtro === FALTA_GERENCIA
+      ? deLaArea.filter(faltaGerencia)
+      : deLaArea.filter((r) => estadoDeReporte(r) === FILTRO_ESTADO[filtro])
   const vigentes = reportes.filter((r) => !r.anulado_en)
   const horas = vigentes.reduce((n, r) => n + r.personal.reduce((m, p) => m + p.horas, 0), 0)
   const idsVigentes = new Set(vigentes.map((r) => r.id))
@@ -103,6 +119,9 @@ export default async function PaginaReportesDiarios({ searchParams }: PageProps<
         etiqueta="Estado"
         opciones={[
           { valor: null, etiqueta: 'Todos' },
+          ...(daVistoGerencia
+            ? [{ valor: FALTA_GERENCIA, etiqueta: `Falta Gerencia (${deLaArea.filter(faltaGerencia).length})` }]
+            : []),
           { valor: 'por-validar', etiqueta: `Por validar (${cuantos('POR_VALIDAR')})` },
           { valor: 'observados', etiqueta: `Observados (${cuantos('OBSERVADO')})` },
           { valor: 'validados', etiqueta: `Validados (${cuantos('VALIDADO')})` },

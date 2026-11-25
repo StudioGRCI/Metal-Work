@@ -281,7 +281,7 @@ export function FilaDePersona({
           {persona.cargo && <div className="text-xs text-texto-suave">{persona.cargo}</div>}
           {/* El correo es la columna que se esconde en el teléfono; aquí abajo
               sigue estando, que es el dato con el que se le escribe. */}
-          <div className="text-[11px] break-all text-texto-suave sm:hidden">{persona.correo}</div>
+          <div className="text-xs break-all text-texto-suave sm:hidden">{persona.correo}</div>
           {/* El puesto y el alcance también bajan aquí en el teléfono: con sus
               columnas y los tres botones, la tabla se corría de costado. */}
           <div className="mt-1 text-xs text-texto sm:hidden">

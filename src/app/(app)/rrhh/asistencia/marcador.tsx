@@ -368,7 +368,7 @@ function TarjetaPersona({
         </div>
       </div>
       {anuladas.length > 0 && (
-        <ul className="mt-2 space-y-0.5 text-[11px] text-texto-suave">
+        <ul className="mt-2 space-y-0.5 text-xs text-texto-suave">
           {anuladas.map((m) => (
             <li key={m.id}>
               <s className="tabular">

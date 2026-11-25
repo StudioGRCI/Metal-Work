@@ -172,7 +172,7 @@ function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; con
             <li key={`${l.material_codigo}-${i}`} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
               <div className="min-w-0">
                 <p className="text-texto">{l.material}</p>
-                <p className="text-[11px] text-texto-suave">{[l.material_codigo, l.orden ? `OT ${l.orden}` : null].filter(Boolean).join(' · ')}</p>
+                <p className="text-xs text-texto-suave">{[l.material_codigo, l.orden ? `OT ${l.orden}` : null].filter(Boolean).join(' · ')}</p>
               </div>
               <p className="tabular shrink-0 font-semibold text-texto">
                 {cantidad(l.cantidad)} {l.unidad}

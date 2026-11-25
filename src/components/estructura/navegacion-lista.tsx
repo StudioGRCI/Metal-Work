@@ -51,7 +51,7 @@ export function NavegacionLista({
     <nav aria-label="Menú principal" className="flex h-full flex-col gap-5 overflow-y-auto px-3 py-5">
       {grupos.map((grupo) => (
         <div key={grupo.titulo}>
-          <p className="px-3 pb-2 text-[11px] font-semibold tracking-wide text-texto-suave">
+          <p className="px-3 pb-2 text-xs font-semibold tracking-wide text-texto-suave">
             {grupo.titulo}
           </p>
           <ul className="space-y-0.5">
@@ -70,7 +70,7 @@ export function NavegacionLista({
                     >
                       <Icono aria-hidden className="size-4 shrink-0" />
                       <span className="truncate">{item.titulo}</span>
-                      <span className="ml-auto text-[10px] tracking-wide uppercase">pronto</span>
+                      <span className="ml-auto text-xs tracking-wide uppercase">pronto</span>
                     </span>
                   </li>
                 )
@@ -98,13 +98,13 @@ export function NavegacionLista({
                     <span className="min-w-0 flex-1">
                       {item.titulo}
                       {/* El «!» solo no explica nada a quien mira: una línea dice qué pasó. */}
-                      {falla && <span className="block text-[11px] font-normal text-texto-suave">No se pudo contar; vuelve a cargar</span>}
+                      {falla && <span className="block text-xs font-normal text-texto-suave">No se pudo contar; vuelve a cargar</span>}
                     </span>
                     {activo && <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-current" />}
                     {/* Lo que le toca a este puesto en ese módulo, a la vista
                         sin entrar: el mismo globo de la campana. */}
                     {(falla || n > 0) && (
-                      <span className="tabular ml-auto rounded-full bg-aviso-suave px-1.5 text-[11px] font-semibold text-aviso">
+                      <span className="tabular ml-auto rounded-full bg-aviso-suave px-1.5 text-xs font-semibold text-aviso">
                         {falla ? '!' : n > 99 ? '99+' : n}
                       </span>
                     )}
