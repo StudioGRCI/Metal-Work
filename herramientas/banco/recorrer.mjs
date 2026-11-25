@@ -92,6 +92,7 @@ const RUTAS = [
   ['rrhh-pagos-oficina', '/rrhh/pagos-oficina'],
   ['rrhh-observaciones', '/rrhh/observaciones'],
   ['rrhh-horas-extras', '/rrhh/horas-extras'],
+  ['rrhh-tiempos-de-entrega', '/rrhh/tiempos-de-entrega'],
   ['planilla-diaria', '/planilla-diaria'],
   ['equipos', '/equipos'],
   ['equipos-de-baja', '/equipos?ver=de-baja'],

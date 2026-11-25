@@ -61,7 +61,10 @@ export function BarraInferior({
 
   const clasePestana = (activo: boolean) =>
     cn(
-      'flex min-h-14 w-full flex-col items-center justify-center gap-0.5 px-1 text-[11px] font-medium transition-colors',
+      // A 12 px como todo el sistema, y sin relleno a los lados: con `px-1`,
+      // «Subcontratos» (72,9 px) se cortaba en «Subcontra…» a 390 px. Así entra
+      // desde 365 px; a 360 se corta por 1 px, como ya pasaba a 11 px.
+      'flex min-h-14 w-full flex-col items-center justify-center gap-0.5 text-xs font-medium transition-colors',
       activo ? 'text-acento' : 'text-texto-suave hover:text-texto',
     )
   const claseIcono = (activo: boolean) =>
@@ -97,6 +100,7 @@ export function BarraInferior({
                     {/* El mismo globo de la campana: lo que le toca a este
                         puesto en ese módulo, sin tener que entrar a mirar. */}
                     {(falla || n > 0) && (
+                      // eslint-disable-next-line no-restricted-syntax -- la burbuja del contador mide 16 px: uno o dos dígitos, no texto que se lee
                       <span className="absolute -top-1 right-1 flex min-w-4 items-center justify-center rounded-full bg-peligro px-1 text-[10px] leading-4 font-semibold text-peligro-texto">
                         {falla ? '!' : n > 9 ? '9+' : n}
                       </span>
@@ -119,6 +123,7 @@ export function BarraInferior({
               <span className={cn(claseIcono(enMas || abierto), 'relative')}>
                 <LayoutGrid aria-hidden className="size-5" />
                 {(fallaEnOtros || enOtros > 0) && (
+                  // eslint-disable-next-line no-restricted-syntax -- la burbuja del contador mide 16 px: uno o dos dígitos, no texto que se lee
                   <span className="absolute -top-1 right-1 flex min-w-4 items-center justify-center rounded-full bg-peligro px-1 text-[10px] leading-4 font-semibold text-peligro-texto">
                     {fallaEnOtros ? '!' : enOtros > 9 ? '9+' : enOtros}
                   </span>

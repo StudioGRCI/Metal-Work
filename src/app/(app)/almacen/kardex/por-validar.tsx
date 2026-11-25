@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { SinDatos } from '@/components/ui/tabla'
 import type { EntregaPorValidar } from '@/lib/datos/ingresos-por-validar'
 import { partesDeNombreDeOc } from '@/lib/dominio/adquisiciones'
 import { useEnvio } from '@/lib/envio'
@@ -23,7 +24,7 @@ export function BandejaPorValidar({ entregas, puedeValidar, abreOt }: { entregas
     <div className="space-y-3">
       {mensaje && <p role="status" className="text-sm text-exito">{mensaje}</p>}
       {entregas.length === 0 ? (
-        <p className="text-sm text-texto-suave">Nada por validar. Cuando el conductor deje una compra en almacén, aparecerá aquí y te llegará un aviso.</p>
+        <SinDatos compacto titulo="Nada por validar" descripcion="Cuando el conductor deje una compra en almacén, aparecerá aquí y te llegará un aviso." />
       ) : entregas.map((e) => (
         <EntregaParaValidar key={e.compraId} entrega={e} puedeValidar={puedeValidar} abreOt={abreOt} alValidar={setMensaje} />
       ))}

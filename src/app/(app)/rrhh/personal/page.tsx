@@ -142,7 +142,7 @@ function FilaTrabajador({
             )}
           </p>
         )}
-        <p className="tabular text-[11px] text-texto-suave md:hidden">{horario}</p>
+        <p className="tabular text-xs text-texto-suave md:hidden">{horario}</p>
       </TD>
       <TD className="hidden align-top md:table-cell">
         <span className="tabular text-sm text-texto">{horario}</span>
@@ -155,12 +155,12 @@ function FilaTrabajador({
                 {t.cuenta.banco} · {TIPO_CUENTA[t.cuenta.tipo_cuenta]?.etiqueta ?? t.cuenta.tipo_cuenta}
               </p>
               <p className="tabular text-xs text-texto-suave">{t.cuenta.numero_cuenta}</p>
-              {t.cuenta.cci && <p className="tabular text-[11px] text-texto-suave">CCI {t.cuenta.cci}</p>}
+              {t.cuenta.cci && <p className="tabular text-xs text-texto-suave">CCI {t.cuenta.cci}</p>}
             </>
           ) : (
             <span className="text-xs text-texto-suave">Sin cuenta</span>
           )}
-          <p className="mt-1 text-[11px] text-texto-suave">
+          <p className="mt-1 text-xs text-texto-suave">
             {t.remuneracion_mensual ? (
               <>
                 Gana <span className="tabular">{moneda(t.remuneracion_mensual)}</span> al mes ·{' '}
@@ -170,7 +170,7 @@ function FilaTrabajador({
               'Sin remuneración mensual: sus horas validadas esperan para entrar a la planilla diaria'
             )}
           </p>
-          <p className="mt-0.5 text-[11px] text-texto-suave">
+          <p className="mt-0.5 text-xs text-texto-suave">
             {t.costo_mensual ? (
               <>
                 Cuesta <span className="tabular">{moneda(t.costo_mensual)}</span> al mes
@@ -185,15 +185,15 @@ function FilaTrabajador({
       )}
       <TD className="align-top">
         {t.activo ? <Insignia tono="exito">Activo</Insignia> : <Insignia tono="neutro">De baja</Insignia>}
-        <p className="mt-1 text-[11px] text-texto-suave" data-planilla={t.planilla}>
+        <p className="mt-1 text-xs text-texto-suave" data-planilla={t.planilla}>
           {t.planilla === 'ADMINISTRATIVA' ? 'Planilla administrativa' : 'Planilla de taller'}
         </p>
-        <p className="tabular mt-1 text-[11px] text-texto-suave">
+        <p className="tabular mt-1 text-xs text-texto-suave">
           {t.fecha_ingreso ? `Desde el ${fecha(t.fecha_ingreso)}` : 'Sin fecha de ingreso'}
           {t.fecha_baja && ` · hasta el ${fecha(t.fecha_baja)}`}
         </p>
         {antes.map((q) => (
-          <p key={q.baja} className="tabular text-[11px] text-texto-suave">
+          <p key={q.baja} className="tabular text-xs text-texto-suave">
             Antes: {q.ingreso ? `del ${fecha(q.ingreso)} ` : ''}al {fecha(q.baja)}
           </p>
         ))}

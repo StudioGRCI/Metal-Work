@@ -50,7 +50,7 @@ export function PlanContraReal({ etapas, hoy, viva }: { etapas: FilaPlan[]; hoy:
           <span className="hidden sm:block" />
           <div className="relative h-4">
             <span
-              className="absolute -translate-x-1/2 rounded-full bg-superficie-2 px-1.5 text-[10px] font-medium text-texto-suave"
+              className="absolute -translate-x-1/2 rounded-full bg-superficie-2 px-1.5 text-xs font-medium text-texto-suave"
               style={{ left: `${marcaHoy}%` }}
             >
               Hoy
@@ -106,7 +106,7 @@ export function PlanContraReal({ etapas, hoy, viva }: { etapas: FilaPlan[]; hoy:
 
       <div aria-hidden className="mt-2 grid grid-cols-1 sm:grid-cols-[minmax(10rem,15rem)_1fr] sm:gap-3">
         <span className="hidden sm:block" />
-        <div className="tabular flex justify-between text-[11px] text-texto-tenue">
+        <div className="tabular flex justify-between text-xs text-texto-tenue">
           <span>{fecha(rango.desde)}</span>
           <span>{fecha(rango.hasta)}</span>
         </div>

@@ -95,8 +95,8 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
   // Las llaves de `fijar_presupuesto_ot`: decidir y, además, ver costo y precio.
   const puedeFijarPresupuesto = verMargen && puede(perfil, ['cotizaciones.revisar', 'ordenes.editar'])
   // La misma regla que el resumen de la OT: el documento comercial solo lo
-  // abren Gerencia, Administración y Tesorería.
-  const verCotizacion = ['GERENTE', 'ADMINISTRACION', 'TESORERIA', 'ADMIN'].includes(perfil.rol.codigo)
+  // abren Gerencia (la General y la Comercial), Administración y Tesorería.
+  const verCotizacion = ['GERENTE', 'GERENTE_COMERCIAL', 'ADMINISTRACION', 'TESORERIA', 'ADMIN'].includes(perfil.rol.codigo)
 
   // Con código interno, el costo de la unidad es el de su código (el mismo de
   // Códigos internos); lo de la tarjeta de costo es solo lo cargado a esta OT.
@@ -747,7 +747,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
                       />
                     </a>
                     <p className="mt-1 text-xs text-texto">{r.actividad}</p>
-                    <p className="text-[11px] text-texto-tenue">
+                    <p className="text-xs text-texto-tenue">
                       {r.area} · {fecha(r.fecha)} · +{porcentaje(r.avance_pct)}
                     </p>
                   </li>
@@ -918,7 +918,7 @@ function Proceso({ expediente, eventos }: { expediente: Expediente; eventos: Eve
                         )}
                       </p>
                       {p.detalle && <p className="mt-0.5 text-sm text-texto-suave">{p.detalle}</p>}
-                      <p className="mt-0.5 text-[11px] text-texto-tenue">
+                      <p className="mt-0.5 text-xs text-texto-tenue">
                         {hora(p.cuando)}
                         {p.quien && ` · ${p.quien}`}
                       </p>

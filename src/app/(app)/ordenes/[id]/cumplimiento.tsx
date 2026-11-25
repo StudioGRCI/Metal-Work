@@ -148,7 +148,7 @@ export function Cumplimiento({
                 {resumen?.planos_entregados ?? 0}
                 <span className="text-sm font-normal text-texto-suave"> / {resumen?.planos ?? 0}</span>
               </span>
-              <span className="text-[11px] text-texto-suave">
+              <span className="text-xs text-texto-suave">
                 {resumen?.ultimo_plano ? `Último el ${fecha(resumen.ultimo_plano)}` : 'Diseño todavía no entregó ninguno'}
               </span>
             </Cifra>
@@ -157,7 +157,7 @@ export function Cumplimiento({
                 {resumen?.piezas_armadas ?? 0}
                 <span className="text-sm font-normal text-texto-suave"> / {resumen?.piezas ?? 0}</span>
               </span>
-              <span className="text-[11px] text-texto-suave">
+              <span className="text-xs text-texto-suave">
                 {resumen?.piezas_entregadas ?? 0} entregadas por Maestranza
               </span>
             </Cifra>}
@@ -165,7 +165,7 @@ export function Cumplimiento({
               <span className={cn('tabular text-lg font-semibold', pesoTotal === 100 ? 'text-texto' : 'text-aviso')}>
                 {porcentaje(pesoTotal, 0)}
               </span>
-              <span className="text-[11px] text-texto-suave">
+              <span className="text-xs text-texto-suave">
                 {pesoTotal === 100
                   ? 'Los planos suman 100'
                   : pesoTotal > 100
@@ -250,7 +250,7 @@ export function Cumplimiento({
 
       {versiones.length === 200 && <p className="text-sm text-aviso">Se muestran las 200 revisiones más recientes de esta orden.</p>}
 
-      {planos.some(p => p.lista.length > 0) && <p className="text-[11px] text-texto-suave">
+      {planos.some(p => p.lista.length > 0) && <p className="text-xs text-texto-suave">
         Cómo avanza una pieza: habilitada 25 % · entregada por Maestranza 50 % · recibida por
         Producción 75 % · armada 100 %. Un ensamble: empezado 50 % · armado 100 %.
       </p>}
@@ -261,7 +261,7 @@ export function Cumplimiento({
 function Cifra({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[11px] font-semibold tracking-wide text-texto-suave uppercase">{titulo}</span>
+      <span className="text-xs font-semibold tracking-wide text-texto-suave uppercase">{titulo}</span>
       {children}
     </div>
   )
@@ -854,7 +854,7 @@ function ObservarPieza({ ordenId, numeroPlano, pieza }: { ordenId: string; numer
   return (
     <Link
       href={`/ordenes/${ordenId}?vista=resumen&observar=DIS&sobre=${encodeURIComponent(sobre)}#observaciones`}
-      className="inline-flex min-h-11 items-center gap-1 text-[11px] text-aviso hover:underline sm:min-h-0"
+      className="inline-flex min-h-11 items-center gap-1 text-xs text-aviso hover:underline sm:min-h-0"
       title="Anotar una observación a Diseño sobre esta pieza"
     >
       <MessageSquareWarning aria-hidden className="size-3.5" />
@@ -920,13 +920,13 @@ function TablaPiezas({
     <Tabla className="text-xs">
       <TablaCabecera>
         <tr className="border-b border-borde">
-          <th colSpan={3} className="px-3 py-1 text-left text-[10px] font-semibold tracking-wide text-texto-suave uppercase">
+          <th colSpan={3} className="px-3 py-1 text-left text-xs font-semibold tracking-wide text-texto-suave uppercase">
             Diseño
           </th>
-          <th colSpan={4} className="border-l border-borde px-3 py-1 text-center text-[10px] font-semibold tracking-wide text-texto-suave uppercase">
+          <th colSpan={4} className="border-l border-borde px-3 py-1 text-center text-xs font-semibold tracking-wide text-texto-suave uppercase">
             Maestranza
           </th>
-          <th colSpan={4} className="border-l border-borde px-3 py-1 text-center text-[10px] font-semibold tracking-wide text-texto-suave uppercase">
+          <th colSpan={4} className="border-l border-borde px-3 py-1 text-center text-xs font-semibold tracking-wide text-texto-suave uppercase">
             Producción
           </th>
           <th colSpan={2} className="border-l border-borde" />
@@ -1031,7 +1031,7 @@ function TarjetaPieza({
             {pieza.nombre}
             {ensamble && <Insignia tono="info" className="ml-1.5">Ensamble</Insignia>}
           </p>
-          <p className="text-[11px] text-texto-suave">
+          <p className="text-xs text-texto-suave">
             {fmtCantidad(pieza.cantidad)} unid.
             {pieza.observacion ? ` · ${pieza.observacion}` : ''}
           </p>
@@ -1044,7 +1044,7 @@ function TarjetaPieza({
           <li
             key={p.etiqueta}
             className={cn(
-              'rounded-full px-2 py-0.5 text-[11px]',
+              'rounded-full px-2 py-0.5 text-xs',
               p.si ? 'bg-exito-suave text-exito' : 'bg-neutro-suave text-texto-tenue',
             )}
           >
@@ -1069,7 +1069,7 @@ function TarjetaPieza({
             </Boton>
           )}
           {puedeReportar && manos.includes('MTZ') && !ensamble && !planoEntregado && (
-            <span className="text-[11px] text-texto-tenue">Maestranza espera el plano</span>
+            <span className="text-xs text-texto-tenue">Maestranza espera el plano</span>
           )}
           {puedeReportar && manos.includes('PRD') && (
             <Boton variante={abierta === 'prd' ? 'primario' : 'contorno'} tamano="sm" onClick={() => alternar('prd')}>
@@ -1132,7 +1132,7 @@ function FilaPieza({
   const id = pieza.id ?? ''
   const ensamble = Boolean(pieza.es_ensamble)
   const manos = manosDe(areaPropia)
-  const enlace = 'text-[11px] text-acento hover:underline disabled:cursor-not-allowed disabled:text-texto-tenue disabled:no-underline'
+  const enlace = 'text-xs text-acento hover:underline disabled:cursor-not-allowed disabled:text-texto-tenue disabled:no-underline'
 
   return (
     <>
@@ -1141,12 +1141,12 @@ function FilaPieza({
         <TD>
           <span className="font-medium">{pieza.nombre}</span>
           {ensamble && <Insignia tono="info" className="ml-1.5">Ensamble</Insignia>}
-          {pieza.observacion && <span className="block text-[11px] text-texto-suave">{pieza.observacion}</span>}
+          {pieza.observacion && <span className="block text-xs text-texto-suave">{pieza.observacion}</span>}
         </TD>
         <TD className="tabular text-right">{fmtCantidad(pieza.cantidad)}</TD>
 
         {ensamble ? (
-          <TD colSpan={4} className="border-l border-borde text-center text-[11px] text-texto-tenue">
+          <TD colSpan={4} className="border-l border-borde text-center text-xs text-texto-tenue">
             no pasa por Maestranza
           </TD>
         ) : (
@@ -1160,7 +1160,7 @@ function FilaPieza({
 
         {ensamble ? (
           <>
-            <TD colSpan={2} className="border-l border-borde text-center text-[11px] text-texto-tenue">—</TD>
+            <TD colSpan={2} className="border-l border-borde text-center text-xs text-texto-tenue">—</TD>
             <TD><Fecha valor={pieza.prd_inicio} /></TD>
             <TD><Visto si={pieza.prd_armado} etiqueta="Armado" /></TD>
           </>
@@ -1190,7 +1190,7 @@ function FilaPieza({
               </button>
             )}
             {puedeReportar && manos.includes('MTZ') && !ensamble && !planoEntregado && (
-              <span className="text-[11px] text-texto-tenue">Maestranza espera el plano</span>
+              <span className="text-xs text-texto-tenue">Maestranza espera el plano</span>
             )}
             {puedeReportar && manos.includes('PRD') && (
               <button type="button" className={enlace} onClick={() => alternar('prd')}>

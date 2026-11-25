@@ -161,7 +161,7 @@ export function CorregirReporte({
               </div>
 
               {reporte.clase === 'orden' && (
-                <p className="text-[11px] text-texto-tenue">
+                <p className="text-xs text-texto-tenue">
                   El porcentaje de la etapa no se corrige acá: movió la etapa al registrarse. Si quedó mal,
                   registra un avance nuevo con el que va.
                 </p>
