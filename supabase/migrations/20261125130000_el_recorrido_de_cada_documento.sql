@@ -162,7 +162,9 @@ begin
     -- Logística (`POR_PROGRAMAR`): el conductor no la ve en sus recojos hasta
     -- que está en su lista, con posición, en `programacion_recojo`. La que
     -- Logística sacó de la lista (`quitar_recojo_de_la_lista` deja la fila sin
-    -- posición) vuelve a ser de Logística.
+    -- posición) vuelve a ser de Logística. Con varias OC en el mismo punto, la
+    -- que falta programar va primero: mientras quede una, el RQ es de Logística
+    -- aunque el conductor ya tenga otra.
     select distinct on (i.rq) i.rq,
            case when i.etapa = 'PENDIENTE_RECOJO' and pr.programado_en is null then 'POR_PROGRAMAR' else i.etapa end as etapa,
            case when c.id is not null then public.nombre_de_oc(c.numero, c.referencia) end as oc,
@@ -173,6 +175,11 @@ begin
              when 'EN_RECOJO' then c.en_recojo_en
              when 'RECOGIDO' then c.recogido_en
              when 'EN_STOCK' then null
+             -- Lo observado lo tiene quien compra desde que Almacén lo observó, no desde que se dejó.
+             when 'OBSERVADO' then coalesce(
+               (select max(ip.validado_en) from public.ingresos_pendientes_almacen ip
+                 where ip.orden_compra_id = c.id and ip.estado = 'OBSERVADO'),
+               c.dejado_en, c.entregado_almacen_en)
              else coalesce(c.dejado_en, c.entregado_almacen_en)
            end as desde
       from insumos i
@@ -180,7 +187,7 @@ begin
       left join lateral (select max(p.programado_en) as programado_en from public.programacion_recojo p
                           where p.orden_compra_id = c.id and p.posicion is not null) pr on true
      where i.por_llegar > 0
-     order by i.rq, i.porcentaje, i.item
+     order by i.rq, i.porcentaje, (i.etapa = 'PENDIENTE_RECOJO' and pr.programado_en is not null), i.item
   ),
   -- El RQ en compra al que ya no le falta llegar nada, y desde cuándo: lo último que se supo de sus insumos.
   llego as (
