@@ -113,7 +113,9 @@ export function NavegacionLista({
   const estaAbierto = (g: GrupoNavegacion, conActiva: boolean) => {
     if (g.pliegue === 'fijo') return true
     if (conActiva) return !(plegadoAqui?.titulo === g.titulo && plegadoAqui.ruta === activa)
-    return guardado[g.titulo] ?? g.pliegue !== 'plegado'
+    // Solo sí o no: lo demás de la cookie (tocada a mano) vale como si no estuviera.
+    const dejado = guardado[g.titulo]
+    return typeof dejado === 'boolean' ? dejado : g.pliegue !== 'plegado'
   }
 
   const cambiar = (g: GrupoNavegacion, conActiva: boolean, abierto: boolean) => {

@@ -275,6 +275,15 @@ const detalle = (codigo) => `${BASE}${RUTA}/codigo?${new URLSearchParams({ codig
 // ------------------------------------------------------------------ 5. Gerencia consulta
 {
   const { pagina, contexto, errores } = await entrar('gerencia.local@metalwork.test')
+  // «Consultas» nace plegado (entrega 2 del plan de orden y diseño): se abre antes de tocar su enlace.
+  {
+    // Hasta que hidrata el botón no responde: se toca hasta que se abre.
+    const grupo = pagina.locator('nav[aria-label="Menú principal"] button[aria-expanded]', { hasText: 'Consultas' })
+    for (let i = 0; i < 20 && (await grupo.getAttribute('aria-expanded').catch(() => null)) === 'false'; i++) {
+      await grupo.click()
+      await pagina.waitForTimeout(300)
+    }
+  }
   const enMenu = pagina.locator('nav[aria-label="Menú principal"] a', { hasText: 'Tiempos de entrega' })
   comprobar((await enMenu.count()) === 1, 'Gerencia tiene «Tiempos de entrega» en su menú')
   await enMenu.click()

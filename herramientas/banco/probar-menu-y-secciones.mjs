@@ -17,7 +17,8 @@
  *      cambiar de sección queda pegada arriba con la sección a la vista.
  *
  * Necesita una OT y una unidad con código interno: si el banco no trae
- * unidad con código, le pone uno de prueba (`PRB_SECCIONES`) a la primera.
+ * unidad con código, le pone uno de prueba (`PRB_SECCIONES`) a la primera y
+ * se lo quita al terminar.
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE,
  * BANCO_CHROMIUM.
  */
@@ -55,11 +56,13 @@ const { rows: [orden] } = await base.query('select id, numero from public.ordene
 let { rows: [unidad] } = await base.query(
   'select codigo_interno from public.unidades where codigo_interno is not null and activo order by codigo_interno limit 1',
 )
+// Sin unidad con código, le pone uno de prueba a la primera y se lo quita al terminar.
+let sembrada = null
 if (!unidad) {
   ;({ rows: [unidad] } = await base.query(`update public.unidades set codigo_interno = 'PRB_SECCIONES'
-     where id = (select id from public.unidades where activo order by placa limit 1) returning codigo_interno`))
+     where id = (select id from public.unidades where activo order by placa limit 1) returning id, codigo_interno`))
+  sembrada = unidad?.id ?? null
 }
-await base.end()
 if (!orden || !unidad) {
   console.error('El banco no trae una OT o una unidad: corre preparar.sh.')
   process.exit(1)
@@ -241,6 +244,8 @@ console.log(`4. El código interno ${unidad.codigo_interno}, en el teléfono`)
 }
 
 await navegador.close()
+if (sembrada) await base.query('update public.unidades set codigo_interno = null where id = $1', [sembrada])
+await base.end()
 if (fallas.length) {
   console.log(`\n${fallas.length} fallas:\n- ${fallas.join('\n- ')}`)
   process.exit(1)

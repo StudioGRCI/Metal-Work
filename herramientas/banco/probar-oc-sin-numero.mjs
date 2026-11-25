@@ -262,6 +262,15 @@ writeFileSync(
   comprobar(items.includes('Adquisiciones') && items.indexOf('Adquisiciones') < items.indexOf('Cuentas por cobrar'),
     'Gerencia tiene Adquisiciones en «Consultas», antes de Cuentas por cobrar')
   // Sin el enlace, por su dirección: lo demás se comprueba igual.
+  // «Consultas» nace plegado (entrega 2 del plan de orden y diseño): se abre antes de tocar su enlace.
+  {
+    // Hasta que hidrata el botón no responde: se toca hasta que se abre.
+    const grupo = pagina.locator('nav[aria-label="Menú principal"] button[aria-expanded]', { hasText: 'Consultas' })
+    for (let i = 0; i < 20 && (await grupo.getAttribute('aria-expanded').catch(() => null)) === 'false'; i++) {
+      await grupo.click()
+      await pagina.waitForTimeout(300)
+    }
+  }
   const enlace = pagina.locator('nav[aria-label="Menú principal"] a', { hasText: 'Adquisiciones' }).first()
   if (await enlace.count()) await enlace.click()
   else await pagina.goto(`${BASE}/adquisiciones`)
