@@ -180,7 +180,7 @@ export default async function PaginaEquipos({ searchParams }: PageProps<'/equipo
                     {e.estado !== 'OPERATIVO' && (
                       <>
                         <p className="mt-1 text-xs text-texto">{e.estado_nota}</p>
-                        <p className="text-[11px] text-texto-suave">Desde el {fecha(e.estado_desde)}</p>
+                        <p className="text-xs text-texto-suave">Desde el {fecha(e.estado_desde)}</p>
                       </>
                     )}
                   </>
@@ -188,7 +188,7 @@ export default async function PaginaEquipos({ searchParams }: PageProps<'/equipo
                   <>
                     <Insignia tono="neutro">Dado de baja</Insignia>
                     <p className="mt-1 text-xs text-texto">{e.baja_motivo}</p>
-                    <p className="text-[11px] text-texto-suave">
+                    <p className="text-xs text-texto-suave">
                       Desde el {fecha(e.dado_de_baja_en)}
                       {e.baja && ` · por ${[e.baja.nombres, e.baja.apellidos].filter(Boolean).join(' ')}`}
                     </p>
@@ -202,7 +202,7 @@ export default async function PaginaEquipos({ searchParams }: PageProps<'/equipo
                         <span className="font-normal text-texto-suave"> · </span>
                         {e.descripcion}
                       </p>
-                      {(e.marca || series) && <p className="text-[11px] text-texto-suave">{[e.marca, series].filter(Boolean).join(' · ')}</p>}
+                      {(e.marca || series) && <p className="text-xs text-texto-suave">{[e.marca, series].filter(Boolean).join(' · ')}</p>}
                       <p className="text-xs text-texto-suave md:hidden">{[e.categoria?.nombre, donde].filter(Boolean).join(' · ')}</p>
                       {e.a_cargo_de && <p className="text-xs text-texto-suave lg:hidden">A cargo de {e.a_cargo_de}</p>}
                       <div className="mt-1.5 sm:hidden">{estadoODeBaja}</div>

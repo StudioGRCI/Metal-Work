@@ -451,13 +451,13 @@ begin
   end if;
   for e in select * from (values
     ('Máquina de soldar',   'MIG 350 trifásica',            'MILLER',    'MK120455Y', 'MK118820W', 'PRD', 'Nave 1, puesto 3',   'JORGE QUISPE',     'OPERATIVO',       null),
-    ('Máquina de soldar',   'MIG 350 trifásica',            'MILLER',    'MK120461Y', 'MK118827W', 'PRD', 'Nave 1, puesto 5',   'LUIS HUAMÁN',      'PARADO',          'No arrastra el alambre: el cabezal se traba.'),
+    ('Máquina de soldar',   'MIG 350 trifásica',            'MILLER',    'MK120461Y', 'MK118827W', 'PRD', 'Nave 1, puesto 5',   'LUIS TORRES',      'PARADO',          'No arrastra el alambre: el cabezal se traba.'),
     ('Máquina de soldar',   'Inversora de arco 250 A',      'LINCOLN',   'U1190833',  null,        'MTZ', 'Banco de trabajo 2', null,               'OPERATIVO',       null),
     ('Tronzadora de 14"',   'Tronzadora de disco de 14"',   'DEWALT',    null,        null,        'MTZ', 'Zona de corte',      null,               'OPERATIVO',       null),
     ('Tronzadora de 14"',   'Tronzadora de disco de 14"',   'DEWALT',    null,        null,        'MTZ', 'Zona de corte',      null,               'CON_OBSERVACION', 'La guarda del disco está floja.'),
     ('Rectificadora',       'Rectificadora recta',          'BOSCH',     null,        null,        'ACB', 'Cabina de pintura',  'PEDRO CCAMA',      'OPERATIVO',       null),
     ('Amoladora de 4 1/2"', 'Amoladora angular de 4 1/2"',  'BOSCH',     null,        null,        'PRD', 'Nave 1',             'JORGE QUISPE',     'OPERATIVO',       null),
-    ('Amoladora de 4 1/2"', 'Amoladora angular de 4 1/2"',  'BOSCH',     null,        null,        'PRD', 'Nave 1',             'LUIS HUAMÁN',      'OPERATIVO',       null),
+    ('Amoladora de 4 1/2"', 'Amoladora angular de 4 1/2"',  'BOSCH',     null,        null,        'PRD', 'Nave 1',             'LUIS TORRES',      'OPERATIVO',       null),
     ('Amoladora de 4 1/2"', 'Amoladora angular de 4 1/2"',  'DEWALT',    null,        null,        'PRD', 'Nave 2',             'CONTRATISTA RAMOS','PARADO',          'Se quemó el motor.'),
     ('Amoladora de 4 1/2"', 'Amoladora angular de 4 1/2"',  'DEWALT',    null,        null,        'ALM', 'Estante de herramientas', null,          'OPERATIVO',       null),
     ('Amoladora de 7"',     'Amoladora angular de 7"',      'BOSCH',     null,        null,        'PRD', 'Nave 2',             'CONTRATISTA RAMOS','OPERATIVO',       null),

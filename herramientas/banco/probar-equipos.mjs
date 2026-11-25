@@ -179,10 +179,25 @@ const cerrada = (pagina) => ventana(pagina).waitFor({ state: 'hidden', timeout: 
     await otra.contexto.close()
   }
 
-  // Corregir desde «Editar», con la lista pintada antes de lo de Almacén.
+  // Corregir desde «Editar», con la lista pintada antes de lo de Almacén: la
+  // base ve que la fila cambió desde que se abrió y no pisa nada.
   await pagina.getByRole('button', { name: `Editar ${equipo.codigo}` }).click()
-  const editar = ventana(pagina)
+  let editar = ventana(pagina)
   comprobar((await editar.getByLabel('A cargo de', { exact: true }).count()) === 0, '«Editar» no trae «A cargo de»: tiene su botón')
+  await editar.getByLabel('Ubicación').fill('Nave 2, puesto 4')
+  await editar.getByRole('button', { name: 'Guardar cambios' }).click()
+  const ajeno = editar.getByRole('alert').filter({ hasText: /Alguien más cambió/ })
+  await ajeno.waitFor({ timeout: 20000 })
+  comprobar(/Cierra, recarga la pantalla/.test(await ajeno.innerText()), 'con la pantalla vieja, «Guardar cambios» dice que alguien más lo cambió')
+  const sinPisar = await una('select ubicacion, a_cargo_de from public.equipos where id = $1', [equipo.id])
+  comprobar(sinPisar.ubicacion !== 'Nave 2, puesto 4' && sinPisar.a_cargo_de === 'ENTREGADO POR ALMACÉN', 'y no guardó nada encima de lo de Almacén')
+  await editar.getByRole('button', { name: 'Cancelar' }).click()
+  await cerrada(pagina)
+
+  // Recargada, la corrección entra.
+  await pagina.reload({ waitUntil: 'networkidle' })
+  await pagina.getByRole('button', { name: `Editar ${equipo.codigo}` }).click()
+  editar = ventana(pagina)
   await editar.getByLabel('Ubicación').fill('Nave 2, puesto 4')
   await editar.getByRole('button', { name: 'Guardar cambios' }).click()
   await cerrada(pagina)
