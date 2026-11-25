@@ -268,7 +268,7 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
                   <TD className="min-w-36 align-top">
                     <NombreProveedor proveedor={f.proveedor} acceso={acceso} />
                     {f.referencia && f.referencia !== f.numero && (
-                      <p className="mt-0.5 max-w-48 text-[11px] text-texto-suave">Ref. del proveedor: {f.referencia}</p>
+                      <p className="mt-0.5 max-w-48 text-xs text-texto-suave">Ref. del proveedor: {f.referencia}</p>
                     )}
                   </TD>
                   <TD className="align-top">
@@ -326,12 +326,12 @@ function NumeroDeOrden({ f, acceso }: { f: CompraTrazada; acceso: Acceso }) {
           <span className="tabular font-medium whitespace-nowrap">{nombreDe(f)}</span>
         )}
       </p>
-      <p className="text-[11px] text-texto-suave">
+      <p className="text-xs text-texto-suave">
         <span className="tabular">{fecha(f.creado_en)}</span>
         {f.emitido_por && ` · ${f.emitido_por}`}
       </p>
       {f.tipo === 'OS' && f.descripcion && <p className="line-clamp-2 max-w-56 text-xs text-texto-suave">{f.descripcion}</p>}
-      {!f.numero && f.referencia && <p className="text-[11px] text-texto-tenue sm:hidden">Ref. del proveedor: {f.referencia}</p>}
+      {!f.numero && f.referencia && <p className="text-xs text-texto-tenue sm:hidden">Ref. del proveedor: {f.referencia}</p>}
     </div>
   )
 }
@@ -403,7 +403,7 @@ function Total({ f }: { f: CompraTrazada }) {
       <p className="tabular font-semibold whitespace-nowrap text-texto">
         {f.total === null ? '—' : f.sin_precio ? <span className="font-normal text-aviso">Precio pendiente</span> : moneda(f.total, codigo(f.moneda))}
       </p>
-      <p className="text-[11px] whitespace-nowrap text-texto-suave">
+      <p className="text-xs whitespace-nowrap text-texto-suave">
         {condicionDePago(f.condicion_pago, f.dias_credito)}
         {/* La que iba con boleta y el proveedor entregó factura ya no es «sin factura». */}
         {f.tipo === 'OC' &&
@@ -430,11 +430,11 @@ function EnQueVa({ f }: { f: CompraTrazada }) {
     <div className="flex flex-wrap items-start gap-1 sm:flex-col">
       <Insignia tono={aprobacion.tono}>{aprobacion.etiqueta}</Insignia>
       {/* La fecha va pegada a la aprobación: debajo del avance parecía la del recojo. */}
-      {f.aprobado_en && f.aprobacion === 'APROBADA' && <span className="tabular text-[11px] text-texto-suave">el {fecha(f.aprobado_en)}</span>}
+      {f.aprobado_en && f.aprobacion === 'APROBADA' && <span className="tabular text-xs text-texto-suave">el {fecha(f.aprobado_en)}</span>}
       {avance && <Insignia tono={avance.tono}>{avance.etiqueta}</Insignia>}
-      {f.aprobacion === 'RECHAZADA' && f.motivo_rechazo && <p className="w-full max-w-48 text-[11px] text-texto-suave">{f.motivo_rechazo}</p>}
+      {f.aprobacion === 'RECHAZADA' && f.motivo_rechazo && <p className="w-full max-w-48 text-xs text-texto-suave">{f.motivo_rechazo}</p>}
       {f.anulado_en && (
-        <p className="w-full max-w-48 text-[11px] text-texto-suave">
+        <p className="w-full max-w-48 text-xs text-texto-suave">
           Anulada el {fecha(f.anulado_en)}
           {f.motivo_anulacion && `: ${f.motivo_anulacion}`}
         </p>

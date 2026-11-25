@@ -51,6 +51,11 @@ export function ValidarReporte({ id, lado, yaDioVisto }: { id: string; lado: Lad
           {visto.error}
         </p>
       )}
+      {visto.resultado?.ok && visto.resultado.mensaje && (
+        <p role="status" className="text-sm text-texto-suave">
+          {visto.resultado.mensaje}
+        </p>
+      )}
       <Ventana
         abierta={abierta}
         alCerrar={() => setAbierta(false)}

@@ -134,7 +134,7 @@ export default async function PaginaConfiguracion({
             />
             <TarjetaCuerpo className="space-y-3">
               <div>
-                <p className="mb-1 text-[11px] font-semibold tracking-wide text-texto-suave uppercase">
+                <p className="mb-1 text-xs font-semibold tracking-wide text-texto-suave uppercase">
                   Fichas técnicas preescritas
                 </p>
                 {catalogos.fichas.length === 0 ? (
@@ -149,7 +149,7 @@ export default async function PaginaConfiguracion({
                 )}
               </div>
               <div>
-                <p className="mb-1 text-[11px] font-semibold tracking-wide text-texto-suave uppercase">
+                <p className="mb-1 text-xs font-semibold tracking-wide text-texto-suave uppercase">
                   Pasos de verificación por carrocería
                 </p>
                 {catalogos.verificaciones.length === 0 ? (

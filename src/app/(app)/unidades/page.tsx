@@ -142,7 +142,7 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                         {nombre}
                       </Link>
                       {avisarFalta && (
-                        <span className="block text-[11px] font-normal text-texto-tenue">
+                        <span className="block text-xs font-normal text-texto-tenue">
                           sin placa
                         </span>
                       )}
@@ -153,8 +153,8 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                           {cliente ? cliente.razon_social : u.cliente_id ? null : 'Del taller'}
                         </span>
                         <span className="block text-xs text-texto">{[u.marca, u.modelo, u.anio].filter(Boolean).join(' ')}</span>
-                        {detalle && <span className="block text-[11px] text-texto-suave">{detalle}</span>}
-                        {u.numero_chasis && <span className="block font-mono text-[10px] break-all text-texto-tenue">chasis {u.numero_chasis}</span>}
+                        {detalle && <span className="block text-xs text-texto-suave">{detalle}</span>}
+                        {u.numero_chasis && <span className="block font-mono text-xs break-all text-texto-tenue">chasis {u.numero_chasis}</span>}
                       </span>
                     </TD>
                     <TD className="hidden sm:table-cell">

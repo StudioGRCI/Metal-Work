@@ -298,7 +298,7 @@ function Recibo({ r, subcontratoId, gestiona }: { r: ReciboHonorarios; subcontra
         </div>
         <div className="text-right">
           <p className="tabular text-base font-semibold text-texto">{moneda(r.monto_neto, r.moneda)}</p>
-          <p className="text-[11px] text-texto-suave">neto a pagar</p>
+          <p className="text-xs text-texto-suave">neto a pagar</p>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2 text-xs">

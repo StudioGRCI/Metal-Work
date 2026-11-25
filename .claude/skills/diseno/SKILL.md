@@ -17,6 +17,27 @@ En `src/components/ui/`:
   `acciones`), `TarjetaCuerpo`
 - `Tabla`, `TablaCabecera`, `TH`, `TD`, `TR`, `SinDatos` (estado vacío con
   título y descripción)
+- Una lista en el teléfono (390 px), de menos a más: la columna que no cabe
+  lleva `hidden sm:table-cell` y su dato se repite en la primera celda dentro
+  de `DetalleEnTelefono` (una tabla que solo esconde pierde el dato); si la
+  fila lleva botones o un bloque largo, `<Tabla apilada>`: por debajo de 768 px
+  cada fila pasa a ser una ficha, sin cabecera, y la celda con
+  `data-rotulo="…"` muestra su rótulo encima (Carrocerías). En una apilada la
+  columna que se esconde reaparece desde `md` o más, nunca desde `sm`. Los botones no se pintan dos veces —cada uno
+  guarda su ventana y su envío—: por eso la ficha es la misma fila.
+- `AccionesDeFila` para los botones de una fila: un renglón, lo que más se
+  usa primero y con `contorno`, lo que casi nunca (desactivar, eliminar) al
+  final y `fantasma`. Nunca apilados en un `space-y-*`. La columna lleva su
+  ancho en la cabecera (`md:w-80`) para que quepan; no se fuerza con
+  `flex-nowrap`, que corre la tabla cuando aparece un aviso. El estado de la
+  fila («Inactivo») va junto al nombre, no entre los botones: ahí mandaba
+  «Reactivar» a otro renglón. Lo de
+  desactivar y eliminar es **provisional**: DKS decidió que vayan dentro de
+  un menú «⋯» de la fila (decisión 6 del plan de orden y diseño), y ese menú
+  todavía no existe.
+- `SinDatos` tiene dos tamaños: el grande es para la lista que es el trabajo
+  de la pantalla; `compacto` para la bandeja que comparte pantalla con otras
+  (lo pendiente del Kardex). No se escribe el vacío a mano con un `<p>`.
 - `Campo` (etiqueta + ayuda + requerido), `Entrada`, `Seleccion`, `AreaTexto`
 - `ElegirArchivo` para todo archivo que se elige en un formulario, nunca
   `Entrada type="file"`: el botón del navegador sale en su idioma («Choose
@@ -56,6 +77,20 @@ Estructura: `EncabezadoPagina` (migas, título, descripción, ayuda, acciones) a
 de toda pantalla; las secciones de un detalle van por pestañas con
 `?vista=` en la URL (ver `ordenes/[id]/pestanas.tsx`), y cada pestaña carga
 **solo sus datos** en el server component.
+
+## El orden de una pantalla de trabajo
+
+De arriba abajo: el encabezado; los botones, lo de todos los días primero y
+lo de una vez al final; **lo que espera a quien entra** (bandejas de
+pendientes); y recién después lo que se consulta (tableros, filtros, el
+historial). En el Kardex el tablero y los filtros iban arriba y lo pendiente
+empezaba a 1 230 px en el teléfono (revisión del 2026-11-25). Una regla que
+solo explica va detrás de la «i», aunque esté dentro de una tarjeta que es
+enlace: la tarjeta se cubre con el `::after` del enlace y la «i» queda encima
+(`almacen/kardex/page.tsx`, «Los cuatro almacenes»). Y si los filtros quedan
+debajo de lo pendiente, al filtrar hay que llevar la vista hasta ellos: cada
+cambio de URL devuelve la página arriba y parece que el toque no hizo nada
+(`almacen/kardex/ir-a-la-consulta.tsx`).
 
 ## Jerarquía de las pestañas de la OT
 
@@ -817,6 +852,16 @@ borran (pasó con la evaluación de desempeño, 2026-10-01)—; y un `fontSize` 
 línea siguiente.
 
 ## Texto
+
+**La letra más chica es de 12 px (`text-xs`)**, también en cabeceras de
+tabla, códigos, notas y las pestañas de la barra de abajo (decisión de DKS,
+2026-11-25): había 183 textos de 9, 10 y 11 px y en el teléfono del taller no
+se leían. ESLint lo corta (`eslint.config.mjs`): ve `text-[11px]` y
+`text-[0.7rem]`; no ve un `style={{ fontSize }}` ni el CSS, que no se usan
+para esto. Quedan fuera, con su permiso escrito al lado, la burbuja del
+contador (campana y barra de abajo), el glifo «i» de `Campo` y el formato de
+salida de almacén, que se imprime y se firma. La cotización y el expediente
+son pantallas de trabajo: van a 12 px.
 
 Castellano peruano de taller, sin anglicismos de oficina: «dar de alta»,
 «visto bueno», «no se pudo». Los títulos dicen qué es la cosa. Para qué sirve
