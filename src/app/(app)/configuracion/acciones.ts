@@ -321,6 +321,45 @@ export async function guardarMedidasCarroceria(
   }
 }
 
+/**
+ * La cuenta responsable de un área (`areas.jefe_id`), o ninguna. Solo el
+ * administrador del sistema: la política `editar_areas` pide lo mismo que
+ * `exigirEdicion` (`es_admin()` o `configuracion.editar`, que solo tiene el
+ * puesto ADMIN). Que la cuenta esté activa lo exige la base
+ * (`fn_area_responsable_activo`, migración 20261125200000).
+ */
+export async function asignarResponsableDeArea(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const problema = await exigirEdicion()
+  if (problema) return { ok: false, error: 'Asignar el responsable de un área es del administrador del sistema.' }
+
+  const analisis = z
+    .object({ area_id: z.guid(), jefe_id: z.union([z.literal(''), z.guid()]) })
+    .safeParse(Object.fromEntries(datos))
+  if (!analisis.success) return { ok: false, error: 'Elige una cuenta de la lista.' }
+  const v = analisis.data
+
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('areas')
+    .update({ jefe_id: v.jefe_id || null })
+    .eq('id', v.area_id)
+    // Una fila que el RLS esconde no es un error: sin esto diría «listo» sin
+    // haber guardado nada.
+    .select('nombre')
+    .maybeSingle()
+
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
+
+  revalidatePath('/configuracion')
+  return {
+    ok: true,
+    mensaje: v.jefe_id
+      ? `${data.nombre} ya tiene su cuenta responsable.`
+      : `${data.nombre} quedó sin cuenta responsable.`,
+  }
+}
+
 function nuloSiVacio(valor?: string) {
   const t = valor?.trim()
   return t ? t : null

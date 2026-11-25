@@ -3,6 +3,7 @@ import { Boton } from '@/components/ui/boton'
 import { Entrada } from '@/components/ui/campos'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import {
+  areasConResponsable,
   calendarioLaboral,
   catalogosDelTaller,
 } from '@/lib/datos/configuracion'
@@ -11,6 +12,7 @@ import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { DiasLaborables, Feriados } from './calendario'
 import { MedidasCarroceria, type CarroceriaConMedidas } from './medidas-carroceria'
+import { ResponsablesDeArea } from './responsables'
 
 export const metadata = { title: 'Configuración' }
 
@@ -23,11 +25,16 @@ export default async function PaginaConfiguracion({
   const hoy = new Date().getFullYear()
   const anio = Number(typeof query.anio === 'string' ? query.anio : hoy) || hoy
 
-  const [calendario, catalogos] = await Promise.all([
+  const puedeEditar = puede(perfil, 'configuracion.editar')
+  // Los responsables de área son del administrador del sistema, que es quien
+  // da de alta las cuentas: Diseño entra aquí por las plantillas de la ficha
+  // (`configuracion.ver`) y no los ve. Es el mismo permiso que pide la política
+  // de `areas` para cambiarlos.
+  const [calendario, catalogos, responsables] = await Promise.all([
     calendarioLaboral(anio),
     catalogosDelTaller(),
+    puedeEditar ? areasConResponsable() : null,
   ])
-  const puedeEditar = puede(perfil, 'configuracion.editar')
   // Las medidas de las carrocerías las lleva Diseño (migración 20261001213000):
   // Administración las ve aquí, pero ya no las corrige.
   const puedeMedidas = puede(perfil, 'diseno.carrocerias')
@@ -66,6 +73,9 @@ export default async function PaginaConfiguracion({
         <div className="space-y-4">
           <DiasLaborables dias={calendario.diasLaborables} puedeEditar={puedeEditar} />
           <Feriados anio={anio} feriados={calendario.feriados} puedeEditar={puedeEditar} />
+          {/* Junto al calendario, que es lo otro que el administrador lleva
+              aquí: la columna de la derecha son los catálogos del taller. */}
+          {responsables && <ResponsablesDeArea areas={responsables.areas} cuentas={responsables.cuentas} />}
         </div>
 
         <div className="space-y-4">

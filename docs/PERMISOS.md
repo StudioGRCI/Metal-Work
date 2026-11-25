@@ -293,6 +293,28 @@ sin área hasta que Administración se la pone al corregirlos.
 | Adjuntar el contrato del subcontrato, al registrarlo o después, y otra versión encima | `subcontratos.gestionar`: Administración | `adjuntar_contrato_subcontrato` (migración `20261020202000`), en `subcontrato_contratos`: no a uno anulado; un contrato adjunto no se cambia ni se borra, el último es el vigente. Lo ve quien ve los subcontratos (`puede_ver_subcontratos()`); el supervisor no, porque lleva el monto. El contrato de la orden de servicio va con los documentos de la OS (PR de Adquisiciones) |
 | Los archivos | Suben Administración (el recibo y el contrato) y Tesorería (el voucher) | Bucket privado `subcontratos`, ruta `{subcontrato}/{archivo}`, hasta 10 MB, PDF o foto; solo a un subcontrato no anulado. Lo ve quien ve los subcontratos si una fila lo nombra |
 
+## Responsables de área
+
+Migración `20261125200000_el_responsable_de_cada_area_es_una_cuenta`,
+comprobada con los roles reales en la base local (check 460) y con clic real en
+el banco (`herramientas/banco/probar-responsables-de-area.mjs`). El responsable
+de cada área del organigrama es una cuenta, `areas.jefe_id`, y no un nombre
+escrito. El nombre que trae el organigrama (`areas.encargado`) se conserva al
+lado hasta que todas las áreas tengan su cuenta: dice a quién hay que dársela.
+La pantalla nombra cada cuenta por su puesto, como todo el sistema (migración
+`109`). La migración no asigna a nadie: las cuentas las pone el administrador
+desde la pantalla.
+
+| Qué | Quién | Cómo lo exige la base |
+| --- | --- | --- |
+| Ver la lista de áreas con su cuenta responsable y las que no tienen | `configuracion.editar`: solo el administrador del sistema | La tarjeta «Responsables de área» de Configuración se pinta solo con ese permiso, el mismo que pide la política. Diseño entra a Configuración por `configuracion.ver` y no la ve; Gerencia y los demás puestos no entran a Configuración |
+| Asignar, cambiar o quitar la cuenta responsable de un área | `configuracion.editar`: solo el administrador del sistema | Política `editar_areas` (`es_admin()` o `configuracion.editar`), la misma que exige la acción `asignarResponsableDeArea`. Con otro puesto el UPDATE afecta cero filas y la acción lo dice en vez de dar «listo». La cuenta tiene que estar activa al asignarla (`trg_area_responsable_activo`) |
+| Saber a quién se le avisa lo que va «al área» | Toda cuenta activa, y las funciones que avisan | `responsable_del_area('CAL')`: la cuenta responsable y activa de esa área, o nada. No devuelve una cuenta que se dio de baja después de asignarla; el área la conserva y la pantalla lo dice («Cuenta dada de baja») hasta que el administrador la cambie. `anon` no la ejecuta |
+
+La tabla `areas` la lee toda cuenta activa (`ver_areas`), como antes: quién
+responde por un área no es un dato reservado. Lo que no hace nadie más que el
+administrador es cambiarlo.
+
 ## El menú de cada puesto
 
 Desde el 2026-10-14 cada puesto tiene su propio menú (`MENU_POR_PUESTO` en
