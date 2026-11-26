@@ -10,10 +10,12 @@
  *      (`registrar_salida_vehiculo`). Uno de fabricación, con un código que va
  *      en 0 %, se pone como dueño: el banco no tiene un código interno con OT
  *      por el que pueda entrar, y solo sirve para ver que «Puede salir» no
- *      aparece donde la base dice qué falta.
+ *      aparece donde la base dice qué falta. Y uno de mantenimiento con su OT
+ *      terminada y Tesorería atendida, también como dueño, que sí dice «Puede salir».
  *   2. En «En planta» va primero el que lleva más días; cada uno dice sus días
- *      y «Lo registró Requerimientos»; el de cochera dice «Puede salir», el de
- *      fabricación no, y sí lo que le falta.
+ *      y «Lo registró Requerimientos»; el de cochera y el de «otro» no dicen
+ *      «Puede salir» (la base no les exige nada para salir: decisión de DKS del
+ *      26/11), y el de fabricación dice lo que le falta.
  *   3. En «Historial», el que salió dice «La registró Requerimientos» y
  *      «Estuvo 7 días».
  *   4. Gerencia (`vehiculos.ver`) ve lo mismo sin los botones; Ventas no entra.
@@ -78,8 +80,8 @@ async function como(puesto, sql, valores = []) {
 // ------------------------------------------------ 1. La siembra, con el rol de Requerimientos
 const sufijo = randomUUID().slice(0, 4).toUpperCase()
 // Sin guion: la base guarda la placa normalizada.
-const placa = { cochera: `C${sufijo}6`, hoy: `H${sufijo}0`, salio: `S${sufijo}9`, fabrica: `F${sufijo}3` }
-const ids = { cochera: randomUUID(), hoy: randomUUID(), salio: randomUUID(), fabrica: randomUUID() }
+const placa = { cochera: `C${sufijo}6`, hoy: `H${sufijo}0`, salio: `S${sufijo}9`, fabrica: `F${sufijo}3`, listo: `M${sufijo}2` }
+const ids = { cochera: randomUUID(), hoy: randomUUID(), salio: randomUUID(), fabrica: randomUUID(), listo: randomUUID() }
 
 const [{ id: requerimientos }] = await consulta('select id from public.usuarios where correo = $1', [correoDe('requerimientos')])
 /** La foto que exige la base, «subida» por Requerimientos a su carpeta: en el banco Storage es una tabla. */
@@ -110,6 +112,26 @@ await base.query(
            (select id from public.usuarios where correo = $4))`,
   [ids.fabrica, placa.fabrica, `S${sufijo}`, correoDe('requerimientos')],
 )
+// Uno de mantenimiento con su OT terminada y Tesorería ya atendida: la base le exige algo y no le
+// falta nada, el único caso en que la pantalla dice «Puede salir» (DKS, 26/11). Como dueño, por lo
+// mismo que el de fabricación: la OT y el visto de Tesorería son de otros puestos.
+const { rows: [ot] } = await base.query(
+  `select o.id from public.ordenes_trabajo o
+    where o.tipo_trabajo = 'MANTENIMIENTO' and o.estado <> 'ANULADA' and public.orden_garantia_terminada(o.id)
+    order by o.numero limit 1`)
+if (!ot) throw new Error('El banco no tiene una OT de mantenimiento terminada para probar «Puede salir».')
+await base.query(
+  `insert into public.registro_vehiculos (id, placa, unidad, empresa, motivo, codigo_interno, orden_id, ingreso_en, ingreso_por)
+   values ($1, $2, 'CAMIÓN DE PRUEBA', 'TRANSPORTES SONDA S.A.C.', 'MANTENIMIENTO', $3, $4, now() - interval '1 day',
+           (select id from public.usuarios where correo = $5))`,
+  [ids.listo, placa.listo, `OT M${sufijo}`, ot.id, correoDe('requerimientos')],
+)
+await base.query(
+  `insert into public.registro_vehiculo_revisiones (registro_id, concepto, estado, respuesta, solicitado_por, atendido_por, atendido_en)
+   select $1, 'Salida del mantenimiento', 'ATENDIDA', 'Sin nada que cobrar', u.id, u.id, now()
+     from public.usuarios u where u.correo = $2`,
+  [ids.listo, correoDe('requerimientos')],
+)
 await base.query('commit')
 
 // La base, con el rol real: el puesto de quien registró se lee, y lo que falta lo dice ella.
@@ -120,12 +142,12 @@ await base.query('commit')
        left join public.usuarios i on i.id = r.ingreso_por
        left join public.usuarios s on s.id = r.salida_por
       where r.id = any($1::uuid[])`, [Object.values(ids)])
-  comprobar(filas.length === 4 && filas.every((f) => f.ingreso === 'Requerimientos'), 'Requerimientos lee el puesto de quien registró cada ingreso')
+  comprobar(filas.length === 5 && filas.every((f) => f.ingreso === 'Requerimientos'), 'Requerimientos lee el puesto de quien registró cada ingreso')
   comprobar(filas.find((f) => f.placa === placa.salio)?.salida === 'Requerimientos', 'y el de quien registró la salida')
   const gerencia = await como('gerencia',
     `select count(*)::int as n from public.registro_vehiculos r join public.usuarios i on i.id = r.ingreso_por where r.id = any($1::uuid[])`,
     [Object.values(ids)])
-  comprobar(gerencia[0].n === 4, `Gerencia (vehiculos.ver) también lo lee (${gerencia[0].n} de 4)`)
+  comprobar(gerencia[0].n === 5, `Gerencia (vehiculos.ver) también lo lee (${gerencia[0].n} de 5)`)
   const ventas = await como('ventas', 'select count(*)::int as n from public.registro_vehiculos where id = any($1::uuid[])', [Object.values(ids)])
   comprobar(ventas[0].n === 0, 'Ventas no ve ningún registro de vehículos')
 }
@@ -212,17 +234,18 @@ try {
     comprobar(de('cochera')?.textoDias === '6 días en planta', `${puesto}: ${placa.cochera} dice «6 días en planta» (${de('cochera')?.textoDias})`)
     comprobar(de('hoy')?.textoDias === 'Entró hoy', `${puesto}: ${placa.hoy} dice «Entró hoy» (${de('hoy')?.textoDias})`)
     comprobar(de('fabrica')?.textoDias === '3 días en planta', `${puesto}: ${placa.fabrica} dice «3 días en planta» (${de('fabrica')?.textoDias})`)
-    comprobar(de('cochera')?.puedeSalir && de('hoy')?.puedeSalir, `${puesto}: los de cochera y «otro» dicen «Puede salir»`)
+    comprobar(!de('cochera')?.puedeSalir && !de('hoy')?.puedeSalir, `${puesto}: los de cochera y «otro» no dicen «Puede salir»: la base no les exige nada`)
     comprobar(!de('fabrica')?.puedeSalir && de('fabrica')?.faltaParaSalir && /va en 0 %/.test(de('fabrica')?.falta ?? ''),
       `${puesto}: el de fabricación dice «Falta para salir» y qué le falta («${de('fabrica')?.falta}»), no «Puede salir»`)
     comprobar(!de('cochera')?.faltaParaSalir, `${puesto}: el de cochera no dice «Falta para salir»`)
+    comprobar(de('listo')?.puedeSalir && !de('listo')?.faltaParaSalir, `${puesto}: el mantenimiento terminado, con Tesorería atendida, dice «Puede salir»`)
     comprobar((de('fabrica')?.texto ?? '').includes(`Código S${sufijo}`), `${puesto}: el de fabricación rotula su código interno («Código S${sufijo}»)`)
     if (puesto === 'requerimientos') {
       // Lo que falta va en la columna de la salida, junto a su estado, con el id que cita «Marcar salida».
       const enSalida = await pagina.locator(`#veh-bloqueo-${ids.fabrica}`).evaluate((e) => e.closest('td')?.cellIndex ?? -1)
       comprobar(enSalida === 3, `lo que falta va en la columna de la salida (columna ${enSalida})`)
     }
-    comprobar(['cochera', 'hoy', 'fabrica'].every((c) => de(c)?.ingreso === 'Lo registró Requerimientos'), `${puesto}: cada ingreso dice «Lo registró Requerimientos»`)
+    comprobar(['cochera', 'hoy', 'fabrica', 'listo'].every((c) => de(c)?.ingreso === 'Lo registró Requerimientos'), `${puesto}: cada ingreso dice «Lo registró Requerimientos»`)
     comprobar(!de('salio'), `${puesto}: el que salió no está en «En planta»`)
     const conDias = todas.filter((f) => f.dias !== null).map((f) => f.dias)
     comprobar(conDias.every((d, i) => i === 0 || conDias[i - 1] >= d), `${puesto}: va primero el que lleva más días (${conDias.join(', ')})`)
@@ -252,7 +275,7 @@ try {
     await ir(pagina, '/vehiculos')
     const todas = await filas(pagina)
     const cochera = todas.find((f) => f.placa === placa.cochera)
-    comprobar(cochera?.textoDias === '6 días en planta' && cochera?.puedeSalir, 'a 390, la fila dice sus días y «Puede salir»')
+    comprobar(cochera?.textoDias === '6 días en planta' && !cochera?.puedeSalir, 'a 390, la fila dice sus días, sin «Puede salir»')
     comprobar(/lo registró Requerimientos/.test(cochera?.texto ?? ''), 'a 390, la fila dice quién registró el ingreso')
     await sinDesborde(pagina, '«En planta» a 390')
     await capturar(pagina, 'vehiculos-en-planta-390.png')
@@ -268,7 +291,7 @@ try {
 } finally {
   // Lo sembrado no se queda en la planta del banco, aunque algo falle: Requerimientos lo anula,
   // con motivo, como se haría con un ingreso mal anotado.
-  for (const clave of ['cochera', 'hoy', 'fabrica']) {
+  for (const clave of ['cochera', 'hoy', 'fabrica', 'listo']) {
     await como('requerimientos', 'select public.anular_registro_vehiculo($1, $2)', [ids[clave], 'Registro de la sonda 3.2 del banco de pruebas'])
   }
   await navegador.close()

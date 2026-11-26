@@ -243,7 +243,7 @@ function Situacion({ registro: r, estado, dias }: { registro: RegistroVehiculo; 
       ) : (
         <Insignia>En planta</Insignia>
       )}
-      {estado && !estado.falta_para_salir && (
+      {estado?.exige && !estado.falta_para_salir && (
         <Insignia tono="exito" data-puede-salir>
           Puede salir
         </Insignia>
