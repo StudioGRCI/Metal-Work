@@ -3,6 +3,7 @@ import 'server-only'
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import { todasLasFilas } from '@/lib/datos/todas-las-filas'
 import { nombreDeOc } from '@/lib/dominio/adquisiciones'
+import { ESTADOS_RQ_ABIERTOS } from '@/lib/dominio/requerimientos'
 import { createClient } from '@/lib/supabase/server'
 
 export type LineaRequerimiento = {
@@ -120,6 +121,29 @@ const SELECT_RQ =
   'id, numero, tipo, area_id, creado_por, codigo_interno, justificacion, fecha_requerida, estado, motivo_anulacion, nota_almacen, nota_logistica, nota_entrega, faltante_al_entregar, motivo_del_faltante, revision_stock_en, en_atencion_en, listo_en_almacen_en, entregado_en, creado_en, area:areas(nombre), lineas:requerimiento_lineas(id, item, descripcion, cantidad, cantidad_en_stock, sin_salida_al_entregar, material_id, material_nuevo, recompra_de, material:materiales(codigo, descripcion, unidad_pendiente), unidad:unidades_medida(codigo), categoria:categorias_material(nombre), orden_compra:ordenes_compra_materiales(numero, referencia, aprobacion, fecha_estimada))'
 
 /**
+ * Cuántos RQ en camino (por entregar) se necesitan entre esas fechas, con los
+ * mismos filtros de la lista: las cifras de «Se necesita esta semana» y
+ * «Vencido sin entregar». Las cuenta la base, sin el tope de la lista.
+ */
+export async function contarRequerimientosAbiertos(opciones: {
+  tipo?: 'OPERACION' | 'ADMINISTRACION'
+  area?: string
+  codigo?: string
+  necesitadoDesde: string | null
+  necesitadoHasta: string
+}): Promise<number> {
+  const supabase = await createClient()
+  let consulta = supabase.from('requerimientos').select('id', { count: 'exact', head: true }).in('estado', [...ESTADOS_RQ_ABIERTOS])
+  if (opciones.tipo) consulta = consulta.eq('tipo', opciones.tipo)
+  if (opciones.area) consulta = consulta.eq('area_id', opciones.area)
+  if (opciones.codigo) consulta = consulta.eq('codigo_interno', opciones.codigo)
+  if (opciones.necesitadoDesde) consulta = consulta.gte('fecha_requerida', opciones.necesitadoDesde)
+  const { count, error } = await consulta.lte('fecha_requerida', opciones.necesitadoHasta)
+  if (error) throw new Error(`No se pudieron contar los requerimientos por su fecha: ${error.message}`)
+  return count ?? 0
+}
+
+/**
  * Los requerimientos, del más nuevo al más viejo. Con `soloAbiertos`, los que
  * todavía esperan a Almacén, a quien compra o a que el área los recoja: es lo
  * que la bandeja de atención muestra. Con `tipo`, solo los de operación o solo
@@ -138,17 +162,26 @@ export async function cargarRequerimientos(
     area?: string
     codigo?: string
     conEntregado?: boolean
+    /** Solo los que se necesitan entre estas fechas (YYYY-MM-DD, inclusive), del que vence primero al último. */
+    necesitadoDesde?: string | null
+    necesitadoHasta?: string
   } = {},
 ): Promise<RequerimientoListado[]> {
   const supabase = await createClient()
   let consulta = supabase.from('requerimientos').select(SELECT_RQ)
-  if (opciones.soloAbiertos) consulta = consulta.in('estado', ['POR_ATENDER', 'SIN_STOCK', 'EN_ATENCION', 'LISTO_EN_ALMACEN'])
+  if (opciones.soloAbiertos) consulta = consulta.in('estado', [...ESTADOS_RQ_ABIERTOS])
   if (opciones.tipo) consulta = consulta.eq('tipo', opciones.tipo)
   if (opciones.id) consulta = consulta.eq('id', opciones.id)
   if (opciones.ids) consulta = consulta.in('id', opciones.ids)
   if (opciones.area) consulta = consulta.eq('area_id', opciones.area)
   if (opciones.codigo) consulta = consulta.eq('codigo_interno', opciones.codigo)
-  const { data, error } = await consulta.order('creado_en', { ascending: false }).limit(300)
+  if (opciones.necesitadoDesde) consulta = consulta.gte('fecha_requerida', opciones.necesitadoDesde)
+  if (opciones.necesitadoHasta) consulta = consulta.lte('fecha_requerida', opciones.necesitadoHasta)
+  // Por fecha, el más vencido primero: es lo que se mira con «Vencido sin entregar».
+  const { data, error } = await (opciones.necesitadoHasta
+    ? consulta.order('fecha_requerida', { ascending: true }).order('creado_en', { ascending: true })
+    : consulta.order('creado_en', { ascending: false })
+  ).limit(300)
   if (error) throw new Error(`No se pudieron leer los requerimientos: ${error.message}`)
   // El avance lo calcula la base con la OC y el recojo de cada insumo. Trae
   // también el nombre de la OC (migración 20261023130000), porque Supervisión no
@@ -323,4 +356,47 @@ export async function catalogosDelRequerimiento() {
     materiales,
     codigos,
   }
+}
+
+/**
+ * Lo que el supervisor no lee de cada insumo de sus RQ (migración
+ * 20261126332000): el visto de Diseño si se pasa del metrado, la fecha en que
+ * se espera su compra y quién lo recibió del almacén. De la compra, solo la
+ * fecha: ni proveedor ni precio. La base da solo los RQ del área de quien mira.
+ * La llave es `requerimiento:item`.
+ */
+export type SeguimientoDelInsumo = {
+  visto_diseno: string | null
+  fecha_esperada: string | null
+  recibido_por: string | null
+  recibido_en: string | null
+}
+
+/** La función acepta hasta 500 RQ por llamada. */
+const RQ_POR_SEGUIMIENTO = 500
+
+export async function seguimientoDeInsumos(ids: string[]): Promise<Map<string, SeguimientoDelInsumo>> {
+  const porInsumo = new Map<string, SeguimientoDelInsumo>()
+  const unicos = [...new Set(ids)]
+  if (unicos.length === 0) return porInsumo
+  const supabase = await createClient()
+  const tandas: string[][] = []
+  for (let i = 0; i < unicos.length; i += RQ_POR_SEGUIMIENTO) tandas.push(unicos.slice(i, i + RQ_POR_SEGUIMIENTO))
+  // Una fila por insumo: 500 RQ pasan de mil, y Supabase corta en mil sin avisar.
+  const respuestas = await Promise.all(
+    tandas.map((tanda) => todasLasFilas(() => supabase.rpc('seguimiento_de_insumos', { p_ids: tanda }), ['requerimiento_id', 'item'])),
+  )
+  for (const { data, error } of respuestas) {
+    if (error) throw new Error(`No se pudo leer cómo va cada insumo: ${error.message}`)
+    for (const f of data) {
+      if (!f.requerimiento_id || f.item == null) continue
+      porInsumo.set(`${f.requerimiento_id}:${f.item}`, {
+        visto_diseno: f.visto_diseno,
+        fecha_esperada: f.fecha_esperada,
+        recibido_por: f.recibido_por,
+        recibido_en: f.recibido_en,
+      })
+    }
+  }
+  return porInsumo
 }

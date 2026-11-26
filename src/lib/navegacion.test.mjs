@@ -23,17 +23,19 @@ const GERENCIA = [
 
 const rutas = (grupos) => grupos.flatMap((g) => g.items.map((i) => i.ruta))
 
-test('Gerencia ve por área las 49 pantallas que su permiso le abre, cada una una vez', () => {
+test('Gerencia ve por área las 51 pantallas que su permiso le abre, cada una una vez', () => {
   const grupos = menuDe(GERENCIA, false, 'GERENTE')
   assert.deepEqual(grupos.map((g) => g.titulo), [
-    'Principal', 'Por aprobar', 'Ventas', 'Diseño e Ingeniería', 'Requerimientos', 'Almacén', 'Mantenimiento', 'Logística', 'Administración',
+    'Principal', 'Por aprobar', 'Ventas', 'Diseño e Ingeniería', 'Requerimientos', 'Almacén', 'Logística', 'Administración',
     'Finanzas', 'Recursos Humanos', 'SSOMA',
   ])
   const todas = rutas(grupos)
-  assert.equal(todas.length, 49)
-  assert.equal(new Set(todas).size, 49)
+  // 49 en main el 2026-11-26 (con Averías), más Por decidir (plan 12, entrega 12.1) y el Control de compras de Almacén.
+  assert.equal(todas.length, 51)
+  assert.equal(new Set(todas).size, 51)
   // Las averías y los reportes de seguridad, en lo que consulta: no se repiten en «Reportar», que va al final para todos.
-  assert.deepEqual(rutas(grupos.filter((g) => g.titulo === 'Mantenimiento')), ['/averias'])
+  // Las averías van con los equipos en Almacén: un grupo más no entraba en el monitor.
+  assert.deepEqual(rutas(grupos.filter((g) => g.titulo === 'Almacén')).slice(-2), ['/equipos', '/averias'])
   assert.deepEqual(rutas(grupos.filter((g) => g.titulo === 'SSOMA')), ['/ssoma'])
   assert.ok(!grupos.some((g) => g.titulo === 'Reportar'))
   // Las once que se le abrieron en lectura el 2026-11-26, y Proveedores sin `proveedores.editar`.
@@ -62,18 +64,20 @@ test('Gerencia ve por área las 49 pantallas que su permiso le abre, cada una un
 test('lo que Gerencia consulta no es su trabajo; lo que ya tenía en su menú, sí', () => {
   const grupos = menuDe(GERENCIA, false, 'GERENTE')
   assert.deepEqual(grupos.filter((g) => !g.consulta).map((g) => g.titulo), ['Principal', 'Por aprobar'])
-  // Las mismas once rutas que su menú tiene en main: ni un pendiente ni una cifra de más o de menos.
+  // Las once rutas que su menú tenía en main, más «Por decidir» (plan 12.1), que no lleva
+  // pendiente propio, y las OT por aprobar (2026-11-26): ni un pendiente ni una cifra de más.
   assert.deepEqual([...rutasDeTrabajo(GERENCIA, false, 'GERENTE')].sort(), [
     '/', '/adquisiciones', '/avance/trabajos', '/codigos-internos', '/compras/aprobacion', '/costos/gastos-generales',
-    '/cotizaciones/pdf', '/reportes-diarios', '/rrhh/tiempos-de-entrega', '/tesoreria/por-cobrar', '/tesoreria/por-pagar',
+    '/cotizaciones/pdf', '/ordenes', '/por-decidir', '/reportes-diarios', '/rrhh/tiempos-de-entrega', '/tesoreria/por-cobrar', '/tesoreria/por-pagar',
   ])
-  assert.ok(!rutasDeTrabajo(GERENCIA, false, 'GERENTE').has('/ordenes'))
+  // Las OT por aprobar son su trabajo (2026-11-26): /ordenes va en «Por aprobar» y cuenta.
+  assert.ok(rutasDeTrabajo(GERENCIA, false, 'GERENTE').has('/ordenes'))
   assert.deepEqual(rutas(modulosDelInicio(GERENCIA, false, 'GERENTE')), [
-    '/', '/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos',
+    '/', '/codigos-internos', '/por-decidir', '/cotizaciones/pdf', '/ordenes', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos',
     '/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales', '/rrhh/tiempos-de-entrega',
   ])
   assert.deepEqual(pestanasDe(GERENCIA, false, 'GERENTE').map((p) => p.ruta), [
-    '/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios',
+    '/codigos-internos', '/cotizaciones/pdf', '/por-decidir', '/reportes-diarios',
   ])
 })
 
@@ -111,7 +115,7 @@ test('en Gerencia, lo que espera su visto va siempre abierto y cada área nace p
     grupos.map((g) => [g.titulo, g.pliegue]),
     [
       ['Principal', 'fijo'], ['Por aprobar', 'fijo'], ['Ventas', 'plegado'], ['Diseño e Ingeniería', 'plegado'], ['Requerimientos', 'plegado'],
-      ['Almacén', 'plegado'], ['Mantenimiento', 'plegado'],
+      ['Almacén', 'plegado'],
       ['Logística', 'plegado'], ['Administración', 'plegado'], ['Finanzas', 'plegado'], ['Recursos Humanos', 'plegado'],
       ['SSOMA', 'plegado'],
     ],
