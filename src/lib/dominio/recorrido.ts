@@ -2,7 +2,7 @@
  * El recorrido de un documento numerado: por dónde pasó, quién hizo cada paso y
  * cuándo, quién lo tiene ahora y hace cuántos días (migración 20261125130000).
  * La base da las claves (`recorrido_de_requerimientos`,
- * `recorrido_de_cotizaciones`); las frases viven aquí. Un documento nuevo suma
+ * `recorrido_de_cotizaciones`, `recorrido_de_reportes_diarios`); las frases viven aquí. Un documento nuevo suma
  * su función con la misma forma y su mapa de pasos en este archivo.
  */
 
@@ -130,6 +130,26 @@ const ESPERAS_DE_LA_COTIZACION: Record<string, (detalle: string | null) => strin
   FACTURA: () => 'Registra su factura.',
 }
 
+const PASOS_DEL_REPORTE: Record<string, Frases> = {
+  ENVIO: { hecho: (d) => (d === 'CORRIGE' ? 'Subió la corrección de un reporte observado' : 'Subido'), falta: 'Subida' },
+  VISTO_RRHH: { hecho: 'Visto bueno de Recursos Humanos', falta: 'Visto bueno de Recursos Humanos' },
+  VISTO_GERENCIA: { hecho: 'Visto bueno de Gerencia', falta: 'Visto bueno de Gerencia' },
+  VALIDACION: { hecho: 'Validado', falta: 'Visto bueno de Gerencia y de Recursos Humanos' },
+  OBSERVACION: {
+    hecho: (area) => `Observado por ${area === 'GERENCIA' ? 'Gerencia' : area === 'RRHH' ? 'Recursos Humanos' : 'quien lo valida'}`,
+    falta: 'Observación',
+  },
+  CORRECCION: { hecho: 'Corregido y subido de nuevo', falta: 'Corrección' },
+  ANULACION: { hecho: 'Anulado', falta: 'Anulación' },
+}
+
+const ESPERAS_DEL_REPORTE: Record<string, (detalle: string | null) => string> = {
+  VALIDACION: () => 'Le dan su visto bueno, en cualquier orden, o lo observan.',
+  VISTO_RRHH: () => 'Le da su visto bueno a la gente y sus horas, o lo observa.',
+  VISTO_GERENCIA: () => 'Le da su visto bueno al trabajo y su avance, o lo observa.',
+  CORRECCION: () => 'Lo corrige y lo sube de nuevo con «Corregir y subir de nuevo».',
+}
+
 function describir(
   pasos: readonly PasoDelRecorrido[],
   frases: Record<string, Frases>,
@@ -157,3 +177,7 @@ export const describirRecorridoDelRequerimiento = (pasos: readonly PasoDelRecorr
 /** El recorrido de una cotización, en palabras. */
 export const describirRecorridoDeLaCotizacion = (pasos: readonly PasoDelRecorrido[]) =>
   describir(pasos, PASOS_DE_LA_COTIZACION, ESPERAS_DE_LA_COTIZACION)
+
+/** El recorrido de un reporte diario, en palabras. */
+export const describirRecorridoDelReporte = (pasos: readonly PasoDelRecorrido[]) =>
+  describir(pasos, PASOS_DEL_REPORTE, ESPERAS_DEL_REPORTE)

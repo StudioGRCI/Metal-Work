@@ -148,6 +148,44 @@ export async function listarReportesDiarios(mes: string): Promise<ReporteListado
 }
 
 /**
+ * Un reporte observado que todavía espera su corrección: lo justo para decir
+ * qué se observó y llevar a corregirlo.
+ */
+export type ReporteObservado = {
+  id: string
+  fecha: string
+  codigo_interno: string
+  asunto: string
+  observado_en: string
+  observacion_area: LadoValidacion | null
+  observacion: string | null
+}
+
+/**
+ * Los reportes que subió esta cuenta, observados por Gerencia o por RR. HH. y
+ * todavía sin corregir, de cualquier mes: al corregirlo, el observado queda
+ * anulado, así que «observado y vigente» es lo que falta corregir. El más
+ * antiguo primero.
+ */
+export async function reportesObservadosPorCorregir(usuario: string): Promise<ReporteObservado[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('reportes_diarios')
+    .select('id, fecha, codigo_interno, asunto, observado_en, observacion_area, observacion')
+    .eq('registrado_por', usuario)
+    .not('observado_en', 'is', null)
+    .is('anulado_en', null)
+    .order('observado_en', { ascending: true })
+    .limit(100)
+  if (error) throw new Error(`No se pudieron leer los reportes observados: ${error.message}`)
+  return (data ?? []).flatMap((r) =>
+    r.observado_en
+      ? [{ ...r, observado_en: r.observado_en, observacion_area: (r.observacion_area as LadoValidacion | null) ?? null }]
+      : [],
+  )
+}
+
+/**
  * Un reporte con todo lo suyo, o `null` si no existe o quien mira no lo puede
  * ver. `veCosteo`: quien mira es RR. HH. y lee el tareo; para los demás el
  * tareo llega vacío y el estado del costeo no se muestra.

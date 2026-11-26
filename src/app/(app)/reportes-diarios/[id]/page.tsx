@@ -6,10 +6,13 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia, type Tono } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
+import { Recorrido } from '@/components/ui/recorrido'
 import { TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { recorridoDeReportesDiarios } from '@/lib/datos/recorrido'
 import { reporteDiario, type PersonaReporte } from '@/lib/datos/reportes-diarios'
 import { diaDeLima } from '@/lib/dominio/expediente'
+import { describirRecorridoDelReporte } from '@/lib/dominio/recorrido'
 import {
   AREA_QUE_VALIDA,
   DIAS_PARA_EL_REPORTE,
@@ -42,8 +45,16 @@ export default async function PaginaReporteDiario({ params, searchParams }: Page
   const { subido } = await searchParams
   if (!GUID.test(id)) notFound()
   const veCosteo = puede(perfil, 'rrhh.personal')
-  const r = await reporteDiario(id, veCosteo)
+  const [r, recorridos] = await Promise.all([
+    reporteDiario(id, veCosteo),
+    // Si la base no contesta, el reporte sale igual y el recorrido dice que no se pudo leer.
+    recorridoDeReportesDiarios([id]).catch((e: unknown) => {
+      console.error('Reporte diario: no se pudo leer el recorrido.', e)
+      return null
+    }),
+  ])
   if (!r) notFound()
+  const pasos = recorridos ? describirRecorridoDelReporte(recorridos.get(id) ?? []) : null
 
   const anulado = r.anulado_en !== null
   const estado = estadoDeReporte(r)
@@ -152,7 +163,7 @@ export default async function PaginaReporteDiario({ params, searchParams }: Page
 
       <div className="max-w-3xl space-y-5">
         {!anulado && (
-          <Tarjeta>
+          <Tarjeta className="overflow-hidden">
             <TarjetaCabecera
               titulo="Validación"
               ayuda="Sus horas entran a la planilla diaria cuando le dan su visto bueno Gerencia y Recursos Humanos, en cualquier orden."
@@ -176,6 +187,13 @@ export default async function PaginaReporteDiario({ params, searchParams }: Page
                 )
               })}
             </ul>
+            {/* Por dónde pasó: quién lo tiene ahora y hace cuántos días, y cada paso con el puesto que lo dio. */}
+            <Recorrido pasos={pasos} className="border-t border-borde" />
+          </Tarjeta>
+        )}
+        {anulado && (
+          <Tarjeta className="overflow-hidden">
+            <Recorrido pasos={pasos} />
           </Tarjeta>
         )}
 

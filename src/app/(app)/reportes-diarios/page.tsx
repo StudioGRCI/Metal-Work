@@ -1,15 +1,26 @@
-import { Camera, ChevronLeft, ChevronRight, Plus } from 'lucide-react'
+import { Camera, ChevronLeft, ChevronRight, PencilLine, Plus } from 'lucide-react'
 import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { DiasEnEspera } from '@/components/ui/dias-en-espera'
 import { Progreso } from '@/components/ui/progreso'
-import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { listarReportesDiarios, type ReporteListado } from '@/lib/datos/reportes-diarios'
+import { Recorrido } from '@/components/ui/recorrido'
+import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { recorridoDeReportesDiarios, type Recorridos } from '@/lib/datos/recorrido'
+import { listarReportesDiarios, reportesObservadosPorCorregir, type ReporteListado, type ReporteObservado } from '@/lib/datos/reportes-diarios'
 import { tareosDelMes } from '@/lib/datos/rrhh'
-import { ESTADO_REPORTE, estadoDeReporte, faltaParaValidar, horasPorPersona, type EstadoReporte } from '@/lib/dominio/reporte-diario'
+import { describirRecorridoDelReporte } from '@/lib/dominio/recorrido'
+import {
+  AREA_QUE_VALIDA,
+  ESTADO_REPORTE,
+  estadoDeReporte,
+  faltaParaValidar,
+  horasPorPersona,
+  type EstadoReporte,
+} from '@/lib/dominio/reporte-diario'
 import { horasCortas, mesDeLima, mesValido, mesVecino } from '@/lib/dominio/rrhh'
 import { fechaLarga, hoyLima, mesLargo, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -43,7 +54,12 @@ export default async function PaginaReportesDiarios({ searchParams }: PageProps<
 
   // RR. HH. ve lo que cuestan esas horas: el costeo por código ya las tiene con su costo.
   const veCosto = puede(perfil, 'rrhh.personal')
-  const [todos, tareos] = await Promise.all([listarReportesDiarios(mes), veCosto ? tareosDelMes(mes) : Promise.resolve([])])
+  // Lo observado que espera su corrección va arriba, de cualquier mes: es lo único que le toca hacer al supervisor.
+  const [todos, tareos, observados] = await Promise.all([
+    listarReportesDiarios(mes),
+    veCosto ? tareosDelMes(mes) : Promise.resolve([]),
+    sube ? reportesObservadosPorCorregir(perfil.id) : Promise.resolve([]),
+  ])
   const areas = [...new Set(todos.map((r) => r.area ?? 'Sin área'))].sort()
   const deLaArea = area ? todos.filter((r) => (r.area ?? 'Sin área') === area) : todos
   const reportes = !filtro
@@ -56,6 +72,12 @@ export default async function PaginaReportesDiarios({ searchParams }: PageProps<
   const idsVigentes = new Set(vigentes.map((r) => r.id))
   const costoHoras = tareos.filter((t) => !t.anulado_en && t.reporte && idsVigentes.has(t.reporte.id)).reduce((n, t) => n + t.costo, 0)
   const cuantos = (e: EstadoReporte) => deLaArea.filter((r) => estadoDeReporte(r) === e).length
+  // Quién tiene cada reporte y hace cuántos días (migración 20261126331000). Si
+  // la base no contesta, la lista sale igual y cada tarjeta dice que no se pudo leer.
+  const recorridos = await recorridoDeReportesDiarios([...reportes.map((r) => r.id), ...observados.map((r) => r.id)]).catch((e: unknown) => {
+    console.error('Reporte diario: no se pudo leer el recorrido.', e)
+    return null
+  })
   const enlaceMes = (m: string) =>
     `/reportes-diarios?mes=${m}${area ? `&area=${encodeURIComponent(area)}` : ''}${filtro ? `&estado=${filtro}` : ''}`
 
@@ -78,6 +100,8 @@ export default async function PaginaReportesDiarios({ searchParams }: PageProps<
           )
         }
       />
+
+      {observados.length > 0 && <ObservadosPorCorregir reportes={observados} recorridos={recorridos} />}
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1">
@@ -158,7 +182,7 @@ export default async function PaginaReportesDiarios({ searchParams }: PageProps<
         <ul className="space-y-3">
           {reportes.map((r) => (
             <li key={r.id}>
-              <FilaReporte reporte={r} conArea={veTodos} />
+              <FilaReporte reporte={r} conArea={veTodos} recorridos={recorridos} />
             </li>
           ))}
         </ul>
@@ -167,51 +191,107 @@ export default async function PaginaReportesDiarios({ searchParams }: PageProps<
   )
 }
 
-function FilaReporte({ reporte: r, conArea }: { reporte: ReporteListado; conArea: boolean }) {
+/**
+ * Lo observado que espera su corrección, arriba de todo y de cualquier mes: qué
+ * área lo observó, hace cuántos días, el motivo, y el salto a corregirlo.
+ */
+function ObservadosPorCorregir({ reportes, recorridos }: { reportes: ReporteObservado[]; recorridos: Recorridos | null }) {
+  return (
+    <Tarjeta className="mb-5 border-aviso" data-observados-por-corregir>
+      <TarjetaCabecera
+        titulo={reportes.length === 1 ? 'Un reporte observado por corregir' : `${reportes.length} reportes observados por corregir`}
+        ayuda="Gerencia o Recursos Humanos los observaron y sus horas no entran a la planilla diaria hasta que los corrijas. «Corregir y subir de nuevo» abre el reporte con lo que ya escribiste y sus fotos; el observado queda anulado."
+      />
+      <ul className="divide-y divide-borde">
+        {reportes.map((r) => {
+          // Los días los cuenta la base, desde que lo observaron: es el paso que espera.
+          const espera = recorridos?.get(r.id)?.find((p) => p.situacion === 'AHORA')
+          return (
+            <li key={r.id} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3" data-observado={r.id}>
+              <div className="min-w-0 flex-1 basis-64 space-y-1">
+                <p className="text-xs text-texto-suave first-letter:uppercase">
+                  {fechaLarga(r.fecha)} · <span className="font-mono text-texto">{r.codigo_interno}</span>
+                </p>
+                <p className="font-semibold break-words text-texto">{r.asunto}</p>
+                <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-texto">
+                  <span className="font-medium">Observado por {AREA_QUE_VALIDA[r.observacion_area ?? 'RRHH']}</span>
+                  <DiasEnEspera dias={espera?.dias} desde={espera?.en ?? r.observado_en} />
+                </p>
+                {r.observacion && <p className="text-sm break-words text-texto-suave">{r.observacion}</p>}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <EnlaceBoton href={`/reportes-diarios/nuevo?corrige=${r.id}`} tamano="sm">
+                  <PencilLine aria-hidden className="size-4" />
+                  Corregir y subir de nuevo
+                </EnlaceBoton>
+                <EnlaceBoton href={`/reportes-diarios/${r.id}`} variante="secundario" tamano="sm">
+                  Ver el reporte
+                </EnlaceBoton>
+              </div>
+            </li>
+          )
+        })}
+      </ul>
+    </Tarjeta>
+  )
+}
+
+function FilaReporte({
+  reporte: r,
+  conArea,
+  recorridos,
+}: {
+  reporte: ReporteListado
+  conArea: boolean
+  recorridos: Recorridos | null
+}) {
   const personas = horasPorPersona(r.personal).size
   const horas = r.personal.reduce((n, p) => n + p.horas, 0)
   const anulado = r.anulado_en !== null
   const estado = estadoDeReporte(r)
   const falta = faltaParaValidar(r)
   return (
-    <Link
-      href={`/reportes-diarios/${r.id}`}
-      className={`block rounded-[var(--radius-base)] border border-borde bg-superficie p-4 hover:border-acento ${anulado ? 'opacity-60' : ''}`}
+    <div
+      className="overflow-hidden rounded-[var(--radius-base)] border border-borde bg-superficie has-[>a:hover]:border-acento"
       data-reporte={r.id}
     >
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-xs text-texto-suave first-letter:uppercase">
-            {fechaLarga(r.fecha)}
-            {conArea && ` · ${r.area ?? 'Sin área'}`}
-          </p>
-          <p className={`font-semibold text-texto ${anulado ? 'line-through' : ''}`}>{r.asunto}</p>
-          <p className="font-mono text-xs text-texto">{r.codigo_interno}</p>
+      <Link href={`/reportes-diarios/${r.id}`} className={`block p-4 ${anulado ? 'opacity-60' : ''}`}>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-xs text-texto-suave first-letter:uppercase">
+              {fechaLarga(r.fecha)}
+              {conArea && ` · ${r.area ?? 'Sin área'}`}
+            </p>
+            <p className={`font-semibold text-texto ${anulado ? 'line-through' : ''}`}>{r.asunto}</p>
+            <p className="font-mono text-xs text-texto">{r.codigo_interno}</p>
+          </div>
+          <div className="text-right">
+            <Insignia tono={ESTADO_REPORTE[estado].tono}>{ESTADO_REPORTE[estado].etiqueta}</Insignia>
+            {falta && <p className="mt-1 text-xs text-texto-suave">{falta}</p>}
+          </div>
         </div>
-        <div className="text-right">
-          <Insignia tono={ESTADO_REPORTE[estado].tono}>{ESTADO_REPORTE[estado].etiqueta}</Insignia>
-          {falta && <p className="mt-1 text-xs text-texto-suave">{falta}</p>}
-        </div>
-      </div>
-      {estado === 'OBSERVADO' && r.observacion && <p className="mt-1 text-xs text-texto">Observación: {r.observacion}</p>}
-      <ul className="mt-2 space-y-1">
-        {r.trabajos.map((t) => (
-          <li key={t.id} className="grid grid-cols-[1fr_6.5rem] items-center gap-3 text-xs">
-            <span className="truncate text-texto">{t.descripcion}</span>
-            <Progreso valor={t.avance} alto="sm" mostrarValor etiqueta={`Avance de ${t.descripcion}`} />
-          </li>
-        ))}
-      </ul>
-      <p className="mt-2 text-xs text-texto-suave">
-        {personas} {personas === 1 ? 'persona' : 'personas'} · <span className="tabular">{horasCortas(horas)}</span>
-        {r.personal_general && ' · personal general'}
-        {r.fotos > 0 && (
-          <>
-            {' · '}
-            <Camera aria-hidden className="inline size-3.5 align-[-2px]" /> {r.fotos}
-          </>
-        )}
-      </p>
-    </Link>
+        {estado === 'OBSERVADO' && r.observacion && <p className="mt-1 text-xs text-texto">Observación: {r.observacion}</p>}
+        <ul className="mt-2 space-y-1">
+          {r.trabajos.map((t) => (
+            <li key={t.id} className="grid grid-cols-[1fr_6.5rem] items-center gap-3 text-xs">
+              <span className="truncate text-texto">{t.descripcion}</span>
+              <Progreso valor={t.avance} alto="sm" mostrarValor etiqueta={`Avance de ${t.descripcion}`} />
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2 text-xs text-texto-suave">
+          {personas} {personas === 1 ? 'persona' : 'personas'} · <span className="tabular">{horasCortas(horas)}</span>
+          {r.personal_general && ' · personal general'}
+          {r.fotos > 0 && (
+            <>
+              {' · '}
+              <Camera aria-hidden className="inline size-3.5 align-[-2px]" /> {r.fotos}
+            </>
+          )}
+        </p>
+      </Link>
+      {/* Quién lo tiene y hace cuánto, sin abrirlo; abierto, cada paso con su puesto y su hora. */}
+      <Recorrido pasos={recorridos ? describirRecorridoDelReporte(recorridos.get(r.id) ?? []) : null} className="border-t border-borde" />
+    </div>
   )
 }
