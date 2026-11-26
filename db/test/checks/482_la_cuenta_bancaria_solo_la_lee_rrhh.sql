@@ -44,6 +44,19 @@ values ('48200000-0000-4000-8000-0000000000b1', 'Cata Prueba Cuenta', '48200001'
        ('48200000-0000-4000-8000-0000000000b1', 'Dino Prueba Cuenta', '48200002', 1400, public.usuario_actual()),
        ('48200000-0000-4000-8000-0000000000b1', 'Zoe Sin Ficha', null, 900, public.usuario_actual());
 
+-- Una planilla diaria con Cata y Dino, sembrada sin sus disparadores (enviarla de
+-- verdad pide horas validadas que este check no arma): lo que se prueba es quién
+-- lee sus cuentas, no cómo se envía. Número inventado; todo termina en rollback.
+reset role;
+set local session_replication_role = replica;
+insert into public.planillas_diarias (id, numero, fecha, personas, total, enviada_por)
+values ('48200000-0000-4000-8000-0000000000e1', 'PD-9482-2031', date '2031-04-15', 2, 200,
+        current_setting('prueba.recursos_humanos')::uuid);
+insert into public.planilla_diaria_personas (planilla_id, trabajador_id, nombre, horas_ordinarias, horas_extras, monto_ordinarias, monto_extras, total)
+values ('48200000-0000-4000-8000-0000000000e1', '48200000-0000-4000-8000-000000000001', 'Cata Prueba Cuenta', 8, 0, 100, 0, 100),
+       ('48200000-0000-4000-8000-0000000000e1', '48200000-0000-4000-8000-000000000002', 'Dino Prueba Cuenta', 8, 0, 100, 0, 100);
+set local session_replication_role = origin;
+
 -- ============================================ 1. RR. HH. la lee
 set local role authenticated;
 select test.afirmar(
@@ -89,8 +102,13 @@ reset role;
 select pg_temp.como('tesoreria');
 set local role authenticated;
 select test.afirmar(
-  (select count(*) = 0 from public.planilla_diaria_cuentas(gen_random_uuid())),
-  'Tesorería sigue entrando a las cuentas de la planilla diaria');
+  (select array_agg(coalesce(numero_cuenta, 'sin cuenta') order by numero_cuenta nulls last)
+     from public.planilla_diaria_cuentas('48200000-0000-4000-8000-0000000000e1'))
+  = array['000-482-000001', 'sin cuenta'],
+  'Tesorería lee la cuenta de cada persona de la planilla diaria para pagarle: la de Cata, y que Dino no tiene');
+select test.afirmar(
+  (select count(*) = 0 from public.trabajador_cuentas),
+  'Tesorería no lee la tabla de cuentas: solo las de la planilla que paga');
 reset role;
 
 -- ============================================ 5. La política de audit_log es restrictiva

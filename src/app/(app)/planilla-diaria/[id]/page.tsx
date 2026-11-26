@@ -96,8 +96,10 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
           <TarjetaCabecera
             titulo="Lo que se le paga a cada persona"
             ayuda={
-              paga
+              paga && veCuentas
                 ? 'Paga a la cuenta de cada persona y registra el pago con su comprobante; después adjunta su boleta de pago.'
+                : paga
+                  ? 'Lo que se le paga a cada persona, con su pago y su boleta. La cuenta a la que se paga la ven Tesorería y Recursos Humanos.'
                 : arma
                   ? 'Cuando Tesorería adjunte la boleta de pago, entrégasela a la persona y márcala como entregada.'
                   : 'Las horas validadas de cada persona, con lo que se le paga.'

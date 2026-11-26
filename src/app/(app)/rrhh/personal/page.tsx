@@ -38,7 +38,7 @@ export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/r
     <>
       <EncabezadoPagina
         titulo="Personal"
-        ayuda="La ficha de cada persona de planta y oficina: sus datos, la cuenta donde se le paga, su horario y lo que gana y lo que cuesta al mes. Con el horario, la marca del portero sabe si llegó tarde; con la remuneración se le paga en la planilla diaria; con el costo, sus horas se cargan a cada código interno."
+        ayuda={`La ficha de cada persona de planta y oficina: sus datos, ${gestiona ? 'la cuenta donde se le paga, ' : ''}su horario y lo que gana y lo que cuesta al mes. Con el horario, la marca del portero sabe si llegó tarde; con la remuneración se le paga en la planilla diaria; con el costo, sus horas se cargan a cada código interno.`}
         migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'Personal' }]}
         acciones={gestiona && <NuevoTrabajador areas={areas} />}
       />
