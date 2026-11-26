@@ -193,13 +193,30 @@ $$;
 revoke all on function public.puede_ver_todas_las_averias() from public, anon;
 grant execute on function public.puede_ver_todas_las_averias() to authenticated;
 
--- El área de quien pregunta, para «los de tu área». Una cuenta dada de baja no tiene.
-create or replace function public.averias_area_de_la_cuenta()
-returns uuid language sql stable security definer set search_path to 'public' as $$
-  select u.area_id from public.usuarios u where u.id = public.usuario_actual() and u.activo;
+-- Las áreas de quien pregunta, para «los de tu área»: la suya y las que tiene a
+-- cargo como responsable (`areas.jefe_id`), que puede ser de otra área. El aviso
+-- le llega al responsable: tiene que poder abrir lo que le llegó. Una cuenta
+-- dada de baja no tiene ninguna.
+create or replace function public.averias_areas_de_la_cuenta()
+returns uuid[] language sql stable security definer set search_path to 'public' as $$
+  select coalesce(array_agg(x.id), '{}')
+    from (select u.area_id as id from public.usuarios u
+           where u.id = public.usuario_actual() and u.activo and u.area_id is not null
+          union
+          select a.id from public.areas a
+            join public.usuarios u on u.id = a.jefe_id and u.activo
+           where a.jefe_id = public.usuario_actual() and a.activo) x;
 $$;
-revoke all on function public.averias_area_de_la_cuenta() from public, anon;
-grant execute on function public.averias_area_de_la_cuenta() to authenticated;
+revoke all on function public.averias_areas_de_la_cuenta() from public, anon;
+grant execute on function public.averias_areas_de_la_cuenta() to authenticated;
+
+-- SSOMA recibe la avería que es un riesgo para las personas: la abre, sin ver las demás.
+create or replace function public.averias_ve_las_de_riesgo()
+returns boolean language sql stable security definer set search_path to 'public' as $$
+  select public.tiene_permiso('ssoma.gestionar');
+$$;
+revoke all on function public.averias_ve_las_de_riesgo() from public, anon;
+grant execute on function public.averias_ve_las_de_riesgo() to authenticated;
 
 alter table public.averias enable row level security;
 alter table public.averia_fotos enable row level security;
@@ -208,7 +225,8 @@ do $$ begin
     create policy ver_averias on public.averias for select to authenticated
       using ((select public.puede_ver_todas_las_averias())
              or registrado_por = (select public.usuario_actual())
-             or area_id = (select public.averias_area_de_la_cuenta()));
+             or area_id = any((select public.averias_areas_de_la_cuenta())::uuid[])
+             or (riesgo_personas and (select public.averias_ve_las_de_riesgo())));
   end if;
   -- Quien ve el reporte ve sus fotos: la consulta pasa por la política de arriba.
   if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'averia_fotos' and policyname = 'ver_averia_fotos') then
@@ -353,7 +371,7 @@ revoke all on function public.averias_a_quien_se_aviso(uuid) from public, anon, 
 -- devuelve el reporte que ya entró; con otra cosa, dice que ya quedó.
 create or replace function public.averias_reportar(
   p_id uuid, p_equipo uuid, p_tipo text, p_detiene boolean, p_riesgo boolean, p_descripcion text, p_fotos jsonb
-) returns table (averia uuid, numero_averia text, equipo_parado boolean,
+) returns table (averia uuid, numero_averia text, codigo_equipo text, equipo_parado boolean,
                  aviso_mantenimiento boolean, aviso_responsable boolean, aviso_ssoma boolean, aviso_gerencia boolean)
 language plpgsql security definer set search_path to 'public' as $$
 declare
@@ -380,7 +398,8 @@ begin
   select * into v_actual from public.averias where id = p_id;
   if found then
     if v_actual.registrado_por = v_yo and public.mismo_envio(p_id, 'REPORTE_AVERIA', v_envio) then
-      return query select v_actual.id, v_actual.numero, v_actual.paro_el_equipo, q.mantenimiento, q.responsable, q.ssoma, q.gerencia
+      return query select v_actual.id, v_actual.numero, (select e.codigo from public.equipos e where e.id = v_actual.equipo_id),
+                          v_actual.paro_el_equipo, q.mantenimiento, q.responsable, q.ssoma, q.gerencia
                      from public.averias_a_quien_se_aviso(v_actual.id) q;
       return;
     end if;
@@ -445,9 +464,8 @@ begin
 
   -- El responsable del área del equipo, si tiene cuenta activa y no es quien
   -- reporta ni ya recibió el de Mantenimiento.
-  select a.jefe_id into v_jefe
-    from public.areas a join public.usuarios u on u.id = a.jefe_id and u.activo
-   where a.id = v_equipo.area_id;
+  -- `responsable_del_area` (migración 20261125205000): la cuenta activa de un área activa.
+  select public.responsable_del_area(a.codigo) into v_jefe from public.areas a where a.id = v_equipo.area_id;
   if v_jefe is not null and v_jefe <> v_yo
      and not exists (select 1 from public.notificaciones n where n.origen_tabla = 'averias' and n.origen_id = p_id and n.usuario_id = v_jefe) then
     insert into public.notificaciones (usuario_id, titulo, cuerpo, ruta, origen_tabla, origen_id)
@@ -471,10 +489,18 @@ begin
                            join public.usuarios u on u.id = n.usuario_id
                            join public.roles_permisos rp on rp.rol_id = u.rol_id and rp.permiso_codigo = 'ssoma.gestionar'
                           where n.origen_tabla = 'averias' and n.origen_id = p_id)) then
-    perform public.avisar_a_permiso('averias.ver', v_titulo || ' (sin quien la reciba)', v_cuerpo, v_ruta, 'averias', p_id);
+    perform public.avisar_a_permiso('averias.ver',
+      v_titulo || case when not public.tiene_permiso('averias.atender')
+                            and not exists (select 1 from public.notificaciones n
+                                              join public.usuarios u on u.id = n.usuario_id
+                                              join public.roles_permisos rp on rp.rol_id = u.rol_id and rp.permiso_codigo = 'averias.atender'
+                                             where n.origen_tabla = 'averias' and n.origen_id = p_id)
+                       then ' (no hay cuenta de Mantenimiento que la reciba)'
+                       else ' (no hay cuenta de SSOMA que reciba el riesgo)' end,
+      v_cuerpo, v_ruta, 'averias', p_id);
   end if;
 
-  return query select p_id, v_numero, v_paro, q.mantenimiento, q.responsable, q.ssoma, q.gerencia
+  return query select p_id, v_numero, v_equipo.codigo, v_paro, q.mantenimiento, q.responsable, q.ssoma, q.gerencia
                  from public.averias_a_quien_se_aviso(p_id) q;
 end;
 $$;
@@ -521,7 +547,12 @@ begin
   -- lo que dijo esa persona manda.
   if v_av.paro_el_equipo then
     select * into v_equipo from public.equipos where id = v_av.equipo_id for update;
-    if v_equipo.activo and v_equipo.estado = 'PARADO' and v_equipo.estado_desde = v_av.equipo_parado_desde then
+    -- Y si otro reporte vigente del mismo equipo dice que detiene el trabajo, sigue
+    -- parado: anular el repetido no arregla la falla que el otro reporta.
+    if v_equipo.activo and v_equipo.estado = 'PARADO' and v_equipo.estado_desde = v_av.equipo_parado_desde
+       and not exists (select 1 from public.averias o
+                        where o.equipo_id = v_av.equipo_id and o.id <> p_id
+                          and o.estado = 'REPORTADA' and o.detiene_trabajo) then
       update public.equipos
          set estado = v_av.equipo_estado_antes, estado_nota = v_av.equipo_nota_antes
        where id = v_av.equipo_id;
@@ -546,7 +577,8 @@ grant execute on function public.averias_anular(uuid, text) to authenticated;
 -- Una sola lectura para la lista (p_id vacío) y el detalle, con el equipo: el
 -- padrón no se lee sin los permisos de equipos, y quien reporta no los tiene.
 -- `alcance` dice por qué lo ve: TODAS (Mantenimiento, Gerencia, el
--- administrador), PROPIA (quien la reportó) o AREA (quien trabaja en el área).
+-- administrador), PROPIA (quien la reportó), AREA (quien trabaja en el área o
+-- la tiene a cargo) o RIESGO (SSOMA, la que es un riesgo para las personas).
 create or replace function public.averias_visibles(p_id uuid)
 returns table (
   id uuid, numero text, tipo text, detiene_trabajo boolean, riesgo_personas boolean, descripcion text,
@@ -557,15 +589,18 @@ returns table (
   anulado_en timestamptz, anulo text, motivo_anulacion text)
 language sql stable security definer set search_path to 'public' rows 200 as $$
   with yo as (
-    select u.id, u.area_id, public.puede_ver_todas_las_averias() as todo
+    select u.id, public.averias_areas_de_la_cuenta() as areas, public.puede_ver_todas_las_averias() as todo,
+           public.averias_ve_las_de_riesgo() as riesgo
       from public.usuarios u
      where u.id = public.usuario_actual() and u.activo
   ), visibles as (
-    select v.*, case when yo.todo then 'TODAS' when v.registrado_por = yo.id then 'PROPIA' else 'AREA' end as alcance
+    select v.*, case when yo.todo then 'TODAS' when v.registrado_por = yo.id then 'PROPIA'
+                     when v.area_id = any(yo.areas) then 'AREA' else 'RIESGO' end as alcance
       from public.averias v
       cross join yo
      where (p_id is null or v.id = p_id)
-       and (yo.todo or v.registrado_por = yo.id or v.area_id = yo.area_id)
+       -- La política `ver_averias`, tal cual.
+       and (yo.todo or v.registrado_por = yo.id or v.area_id = any(yo.areas) or (v.riesgo_personas and yo.riesgo))
   )
   select v.id, v.numero, v.tipo, v.detiene_trabajo, v.riesgo_personas, v.descripcion,
          v.estado, v.creado_en,
@@ -586,7 +621,7 @@ language sql stable security definer set search_path to 'public' rows 200 as $$
    order by v.creado_en desc;
 $$;
 comment on function public.averias_visibles(uuid) is
-  'Los reportes de avería que ve quien pregunta (uno, o todos con p_id vacío), con su equipo: todos (Mantenimiento, Gerencia), los suyos y los del área donde trabaja. dias_en_espera se cuenta con la fecha de Lima.';
+  'Los reportes de avería que ve quien pregunta (uno, o todos con p_id vacío), con su equipo: todos (Mantenimiento, Gerencia), los suyos, los del área donde trabaja o que tiene a cargo, y SSOMA los que son un riesgo. dias_en_espera se cuenta con la fecha de Lima.';
 revoke all on function public.averias_visibles(uuid) from public, anon;
 grant execute on function public.averias_visibles(uuid) to authenticated;
 
@@ -619,7 +654,8 @@ as $$
 declare
   v_yo   constant uuid := public.usuario_actual();
   v_todo constant boolean := public.puede_ver_todas_las_averias();
-  v_area constant uuid := public.averias_area_de_la_cuenta();
+  v_areas  constant uuid[] := public.averias_areas_de_la_cuenta();
+  v_riesgo constant boolean := public.averias_ve_las_de_riesgo();
 begin
   if v_yo is null or not public.es_usuario_activo() then
     raise exception 'Entra con tu cuenta para ver el recorrido.' using errcode = 'insufficient_privilege';
@@ -637,7 +673,7 @@ begin
       from public.averias v
      where v.id = any(p_ids)
        -- La política `ver_averias`, tal cual.
-       and (v_todo or v.registrado_por = v_yo or v.area_id = v_area)
+       and (v_todo or v.registrado_por = v_yo or v.area_id = any(v_areas) or (v.riesgo_personas and v_riesgo))
   ),
   pasos as (
     select a.id as av, 10 as canon, 'REPORTE' as paso, 'HECHO' as situacion, a.registrado_por as quien, null::text as puesto_fijo,

@@ -52,7 +52,7 @@ function aAveria(f: Fila): Averia | null {
     estado: f.estado,
     creado_en: f.creado_en,
     dias_en_espera: f.dias_en_espera,
-    alcance: f.alcance === 'TODAS' || f.alcance === 'PROPIA' ? f.alcance : 'AREA',
+    alcance: f.alcance === 'TODAS' || f.alcance === 'PROPIA' || f.alcance === 'RIESGO' ? f.alcance : 'AREA',
     equipo_id: f.equipo_id,
     equipo_codigo: f.equipo_codigo,
     equipo_descripcion: f.equipo_descripcion ?? '',

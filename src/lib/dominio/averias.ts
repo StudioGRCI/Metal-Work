@@ -35,15 +35,11 @@ export const MAXIMO_FOTOS_AVERIA = 4
 /** Lo que pesa como máximo una foto ya achicada en el teléfono (el tope del bucket). */
 export const MAXIMO_MB_FOTO_AVERIA = 5
 
-/** Por qué alcance ve un reporte quien mira (`averias_visibles`). */
-export type AlcanceAveria = 'TODAS' | 'PROPIA' | 'AREA'
-
-/** «hoy», «hace 1 día», «hace 3 días»: lo que lleva esperando, contado en la base con la fecha de Lima. */
-export function diasEnEspera(dias: number | null): string | null {
-  if (dias === null) return null
-  if (dias <= 0) return 'hoy'
-  return `hace ${dias} ${dias === 1 ? 'día' : 'días'}`
-}
+/**
+ * Por qué alcance ve un reporte quien mira (`averias_visibles`): todos, el suyo,
+ * el de su área (donde trabaja o que tiene a cargo) o, SSOMA, el que es un riesgo.
+ */
+export type AlcanceAveria = 'TODAS' | 'PROPIA' | 'AREA' | 'RIESGO'
 
 /** A quién le llegó el aviso del reporte, como lo cuenta `averias_a_quien_se_aviso`. */
 export type AvisosDeLaAveria = {
@@ -70,17 +66,21 @@ export function aQuienSeAviso(
   { atiende, riesgo, parado, codigo }: { atiende: boolean; riesgo: boolean; parado: boolean; codigo: string },
 ): string {
   const partes: string[] = []
-  if (avisos.mantenimiento) partes.push('Mantenimiento')
+  // Quien es de Mantenimiento no se avisa a sí mismo: no se le dice que «le avisamos a Mantenimiento».
+  if (avisos.mantenimiento && !atiende) partes.push('Mantenimiento')
   if (avisos.responsable) partes.push('el responsable del área')
   if (avisos.ssoma) partes.push('SSOMA')
-  const equipo = parado ? ` El equipo ${codigo} quedó parado.` : ''
-  if (atiende) return `Reporte ${numero} registrado.${equipo}`
-  let texto = `Reporte ${numero} registrado.${equipo}`
+  let texto = `Reporte ${numero} registrado.${parado ? ` El equipo ${codigo} quedó parado.` : ''}`
   if (partes.length > 0) texto += ` Ya le avisamos a ${enLista(partes)}.`
-  if (!avisos.mantenimiento && avisos.gerencia) texto += ' No hay una cuenta activa de Mantenimiento: le avisamos a Gerencia.'
-  else if (riesgo && !avisos.ssoma && avisos.gerencia) texto += ' No hay una cuenta activa de SSOMA para el riesgo: le avisamos a Gerencia.'
-  if (partes.length === 0 && !avisos.gerencia) {
-    texto += ' No hay nadie con cuenta para recibir el aviso: cuéntaselo a tu jefe.'
+  // Lo que no tenía quién lo recibiera, todo junto: sin Mantenimiento y sin SSOMA a la vez se dicen los dos.
+  const faltan = [
+    ...(!atiende && !avisos.mantenimiento ? ['Mantenimiento'] : []),
+    ...(riesgo && !avisos.ssoma ? ['SSOMA'] : []),
+  ]
+  if (faltan.length > 0) {
+    texto += avisos.gerencia
+      ? ` No hay una cuenta activa de ${enLista(faltan)}: le avisamos a Gerencia.`
+      : ` No hay una cuenta activa de ${enLista(faltan)} para recibir el aviso: cuéntaselo a tu jefe.`
   }
   return texto
 }

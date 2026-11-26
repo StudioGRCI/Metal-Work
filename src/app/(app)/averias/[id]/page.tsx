@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Recorrido } from '@/components/ui/recorrido'
+import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cargarAveria } from '@/lib/datos/averias'
 import { recorridoDeAverias } from '@/lib/datos/recorrido'
@@ -59,11 +60,13 @@ export default async function PaginaAveria({ params }: PageProps<'/averias/[id]'
         <Tarjeta>
           <TarjetaCuerpo className="space-y-4">
             <div className="flex flex-wrap items-start gap-x-8 gap-y-3 text-sm">
-              <Dato titulo="Qué le pasa">
+              <Dato titulo="Tipo">
                 <span className="flex flex-wrap gap-1.5">
                   {tipo ? <Insignia tono={tipo.tono}>{tipo.etiqueta}</Insignia> : a.tipo}
-                  {a.detiene_trabajo && <Insignia tono="peligro">Detiene el trabajo</Insignia>}
-                  {a.riesgo_personas && <Insignia tono="peligro">Riesgo para las personas</Insignia>}
+                  {/* Anulado, lo urgente ya no se pinta en rojo, como en la lista: se lee en texto. */}
+                  {a.detiene_trabajo && (anulada ? <Insignia>Decía que detiene el trabajo</Insignia> : <Insignia tono="peligro">Detiene el trabajo</Insignia>)}
+                  {a.riesgo_personas &&
+                    (anulada ? <Insignia>Decía que es un riesgo para las personas</Insignia> : <Insignia tono="peligro">Riesgo para las personas</Insignia>)}
                 </span>
               </Dato>
               <Dato titulo="Cómo va">{estado ? <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia> : a.estado}</Dato>
@@ -78,7 +81,7 @@ export default async function PaginaAveria({ params }: PageProps<'/averias/[id]'
               </Dato>
             </div>
             <div>
-              <p className="text-xs text-texto-suave">Qué le pasa</p>
+              <p className="text-xs text-texto-suave">Qué hace el equipo</p>
               <p className="mt-1 max-w-3xl text-sm whitespace-pre-wrap text-texto">{a.descripcion}</p>
             </div>
             {a.paro_el_equipo && !anulada && (
@@ -106,7 +109,7 @@ export default async function PaginaAveria({ params }: PageProps<'/averias/[id]'
           <TarjetaCabecera titulo={`Fotos${a.fotosDelReporte.length > 0 ? ` · ${a.fotosDelReporte.length}` : ''}`} />
           <TarjetaCuerpo>
             {a.fotosDelReporte.length === 0 ? (
-              <p className="text-sm text-texto-suave">El reporte se envió sin fotos.</p>
+              <SinDatos compacto titulo="Sin fotos" descripcion="El reporte se envió sin fotos." />
             ) : (
               <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
                 {a.fotosDelReporte.map((f) => (

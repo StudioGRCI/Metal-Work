@@ -86,11 +86,11 @@ export async function reportarAveria(
     return { ok: false, error: 'El reporte no quedó registrado. Recarga la pantalla.' }
   }
 
-  // El código del equipo, para decir cuál quedó parado: lo lee la misma función que la lista.
-  const { data: fila } = await supabase.rpc('averias_visibles', { p_id: data.averia }).maybeSingle()
-  const codigo = fila?.equipo_codigo ?? 'elegido'
+  const codigo = data.codigo_equipo ?? 'elegido'
 
   revalidatePath('/averias', 'layout')
+  // La que detiene el trabajo cambió el estado del equipo en el padrón.
+  if (data.equipo_parado) revalidatePath('/equipos', 'layout')
   return {
     ok: true,
     mensaje: aQuienSeAviso(

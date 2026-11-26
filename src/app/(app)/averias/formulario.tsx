@@ -167,12 +167,15 @@ const DEL_EQUIPO = /Elige el equipo|dado de baja/
 
 function SiNo({ nombre, etiqueta, ayuda, valor, alCambiar }: { nombre: string; etiqueta: string; ayuda: string; valor: string; alCambiar: (v: string) => void }) {
   return (
-    <fieldset className="space-y-2">
+    // La ayuda se oye al llegar a la pregunta, no solo se ve.
+    <fieldset className="space-y-2" aria-describedby={`averia-${nombre}-ayuda`}>
       <legend className="mb-1 text-xs font-medium text-texto-suave">
         {etiqueta}
         <span className="ml-0.5 text-peligro">*</span>
       </legend>
-      <p className="text-xs text-texto-suave">{ayuda}</p>
+      <p id={`averia-${nombre}-ayuda`} className="text-xs text-texto-suave">
+        {ayuda}
+      </p>
       <div className="grid grid-cols-2 gap-2 sm:max-w-xs">
         {(['SI', 'NO'] as const).map((v) => (
           <label key={v} className={OPCION}>
@@ -236,7 +239,7 @@ function FormularioAveria({
           etiqueta="Equipo"
           htmlFor="averia-equipo"
           requerido
-          ayuda="Busca por el código que lleva grabado o por lo que es: «AM-04», «soldadora», «laptop»."
+          ayuda="Busca por el código que lleva grabado o por lo que es: «AM-04», «soldadora», «laptop». ¿No está en la lista? Avísale a Mantenimiento para que lo dé de alta en el padrón."
           ayudaEnIcono={false}
           error={errorEquipo ?? undefined}
         >
@@ -265,7 +268,7 @@ function FormularioAveria({
 
         <fieldset className="space-y-2">
           <legend className="mb-2 text-xs font-medium text-texto-suave">
-            ¿Qué le pasa?<span className="ml-0.5 text-peligro">*</span>
+            ¿Avería o posible avería?<span className="ml-0.5 text-peligro">*</span>
           </legend>
           {TIPOS_AVERIA.map((valor) => (
             <label key={valor} className={OPCION}>
@@ -297,7 +300,7 @@ function FormularioAveria({
         />
 
         <Campo
-          etiqueta="Qué le pasa"
+          etiqueta="Qué hace el equipo"
           htmlFor="averia-descripcion"
           requerido
           ayuda="Con tus palabras: qué hace o qué deja de hacer, desde cuándo, y qué se hizo en el momento."

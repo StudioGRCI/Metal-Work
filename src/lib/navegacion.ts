@@ -1215,7 +1215,6 @@ export function rutaActiva(ruta: string, rutas: string[]) {
  */
 export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/cotizaciones/pdf', corto: 'Cotizar' },
-  { ruta: '/averias', corto: 'Averías' },
   { ruta: '/ordenes', corto: 'Órdenes' },
   { ruta: '/almacen/kardex', corto: 'Kardex' },
   { ruta: '/diseno/informe-semanal', corto: 'Informe' },
@@ -1254,6 +1253,8 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/rrhh/pagos-oficina', corto: 'Pagos' },
   { ruta: '/rrhh/observaciones', corto: 'Observaciones' },
   { ruta: '/ssoma', corto: 'Seguridad' },
+  // Solo el nombre corto: en el orden de ADMIN va lejos, para no quitarle ninguna de sus cuatro pestañas.
+  { ruta: '/averias', corto: 'Averías' },
   { ruta: '/reportes-diarios', corto: 'Reporte' },
   { ruta: '/codigos-internos', corto: 'Códigos' },
   { ruta: '/diseno/planos', corto: 'Planos' },

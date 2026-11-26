@@ -971,7 +971,7 @@ const CIFRAS = {
         titulo: 'Averías por atender',
         valor: String(filas.length),
         pie: detienen > 0 ? `${plural(detienen, 'detiene', 'detienen')} el trabajo` : 'reportadas y sin atender',
-        icono: AlertTriangle,
+        icono: Wrench,
         tono: detienen > 0 ? 'peligro' : filas.length > 0 ? 'aviso' : 'neutro',
         href: '/averias',
       }

@@ -12773,9 +12773,9 @@ export type Database = {
           equipo_vuelve_a: string | null
         }[]
       }
-      averias_area_de_la_cuenta: {
+      averias_areas_de_la_cuenta: {
         Args: Record<PropertyKey, never>
-        Returns: string
+        Returns: string[]
       }
       averias_equipos_para_elegir: {
         Args: Record<PropertyKey, never>
@@ -12810,12 +12810,17 @@ export type Database = {
         Returns: {
           averia: string | null
           numero_averia: string | null
+          codigo_equipo: string | null
           equipo_parado: boolean | null
           aviso_mantenimiento: boolean | null
           aviso_responsable: boolean | null
           aviso_ssoma: boolean | null
           aviso_gerencia: boolean | null
         }[]
+      }
+      averias_ve_las_de_riesgo: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
       }
       averias_visibles: {
         Args: {

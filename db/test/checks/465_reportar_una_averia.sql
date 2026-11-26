@@ -18,6 +18,7 @@ select test.crear_usuario('Jaime', 'Jefe', 'jefe465@demo.pe', 'SUPERVISOR', :'se
 select test.crear_usuario('Coti', 'Compañero', 'comp465@demo.pe', 'OPERARIO', :'sede_id') as comp_id \gset
 select test.crear_usuario('Remo', 'Reporta', 'rep465@demo.pe', 'VENDEDOR', :'sede_id') as rep_id \gset
 select test.crear_usuario('Ajo', 'Ajeno', 'ajeno465@demo.pe', 'VENDEDOR', :'sede_id') as ajeno_id \gset
+select test.crear_usuario('Sofi', 'Seguridad', 'ssoma465@demo.pe', 'SSOMA', :'sede_id') as ssoma_id \gset
 
 -- El equipo es de Maestranza; su jefe y un compañero trabajan ahí. Quien
 -- reporta es de Gerencia Comercial, y el ajeno, de Logística.
@@ -26,6 +27,8 @@ update public.usuarios set area_id = (select id from public.areas where codigo =
 update public.usuarios set area_id = (select id from public.areas where codigo = 'GCO') where id = :'rep_id';
 update public.usuarios set area_id = (select id from public.areas where codigo = 'LOG') where id = :'ajeno_id';
 update public.areas set jefe_id = :'jefe_id' where codigo = 'MTZ';
+-- SSOMA entra recién en la sección 11: hasta entonces, la de riesgo va a Gerencia.
+update public.usuarios set activo = false where id = :'ssoma_id';
 
 select set_config('prueba.mnt', :'mnt_id', true);
 select set_config('prueba.ger', :'ger_id', true);
@@ -34,6 +37,7 @@ select set_config('prueba.comp', :'comp_id', true);
 select set_config('prueba.rep', :'rep_id', true);
 select set_config('prueba.ajeno', :'ajeno_id', true);
 select set_config('prueba.admin', :'admin_id', true);
+select set_config('prueba.ssoma', :'ssoma_id', true);
 create or replace function pg_temp.id(p_clave text) returns uuid language sql as $$
   select current_setting('prueba.' || p_clave)::uuid;
 $$;
@@ -54,6 +58,9 @@ select set_config('prueba.av1', gen_random_uuid()::text, true);
 select set_config('prueba.av2', gen_random_uuid()::text, true);
 select set_config('prueba.av3', gen_random_uuid()::text, true);
 select set_config('prueba.av4', gen_random_uuid()::text, true);
+select set_config('prueba.av5', gen_random_uuid()::text, true);
+select set_config('prueba.av6', gen_random_uuid()::text, true);
+select set_config('prueba.av7', gen_random_uuid()::text, true);
 select set_config('prueba.foto1', :'rep_id' || '/' || current_setting('prueba.av1') || '/' || gen_random_uuid() || '.jpg', true);
 
 -- 0. Lo que la migración dejó ----------------------------------------------------
@@ -296,6 +303,86 @@ set local role authenticated;
 select test.afirmar((select count(*) from public.recorrido_de_averias(array[pg_temp.id('av1'), pg_temp.id('av2')])) = 0,
   'otra área no ve el recorrido');
 reset role;
+
+-- 11. Al que le llega el aviso, lo abre: el responsable de otra área y SSOMA ---------
+-- El responsable de Maestranza puede trabajar en otra área (aquí, el de Logística),
+-- y SSOMA no trabaja en Maestranza. A los dos les llega el aviso con su enlace.
+select test.como_usuario(:'admin_id');
+update public.areas set jefe_id = :'ajeno_id' where codigo = 'MTZ';
+update public.usuarios set activo = true where id = :'ssoma_id';
+select test.como_usuario(:'rep_id');
+set local role authenticated;
+do $$
+declare r record;
+begin
+  select * into r from public.averias_reportar(pg_temp.id('av5'), pg_temp.id('e1'), 'POSIBLE_AVERIA', null, true,
+    'El cable de la amoladora está pelado cerca del mango.', '[]');
+  perform test.afirmar(r.aviso_mantenimiento and r.aviso_responsable and r.aviso_ssoma and not r.aviso_gerencia,
+    'la de riesgo le llega a Mantenimiento, al responsable y a SSOMA; con SSOMA activo, a Gerencia no');
+  perform test.afirmar(r.codigo_equipo = 'AM-04-91', 'y devuelve el código del equipo, para decirlo en pantalla');
+end $$;
+reset role;
+select test.afirmar(
+  exists (select 1 from public.notificaciones where origen_id = pg_temp.id('av5') and usuario_id = pg_temp.id('ajeno') and titulo like '%(en tu área)')
+  and exists (select 1 from public.notificaciones where origen_id = pg_temp.id('av5') and usuario_id = pg_temp.id('ssoma') and titulo like 'Riesgo para las personas:%'),
+  'el aviso le llegó al responsable de otra área y a SSOMA');
+
+select test.como_usuario(:'ajeno_id');
+set local role authenticated;
+do $$ begin
+  perform test.afirmar(
+    exists (select 1 from public.averias_visibles(pg_temp.id('av5')) where alcance = 'AREA')
+    and exists (select 1 from public.averias where id = pg_temp.id('av5'))
+    and exists (select 1 from public.recorrido_de_averias(array[pg_temp.id('av5')])),
+    'el responsable de otra área abre el reporte que le llegó, con su recorrido');
+  perform test.afirmar((select count(*) from public.averias_visibles(null) where alcance = 'AREA') = 5,
+    'y ve todos los del área que tiene a cargo');
+end $$;
+reset role;
+
+select test.como_usuario(:'ssoma_id');
+set local role authenticated;
+do $$ begin
+  perform test.afirmar(
+    exists (select 1 from public.averias_visibles(pg_temp.id('av5')) where alcance = 'RIESGO')
+    and exists (select 1 from public.averias where id = pg_temp.id('av5'))
+    and exists (select 1 from public.recorrido_de_averias(array[pg_temp.id('av5')])),
+    'SSOMA abre la de riesgo que le llegó, con su recorrido');
+  perform test.afirmar(
+    not exists (select 1 from public.averias where id = pg_temp.id('av2'))
+    and not exists (select 1 from public.averias_visibles(null) where not riesgo_personas),
+    'y no ve las que no son un riesgo');
+  perform test.debe_fallar(format('select * from public.averias_anular(%L, ''No me parece una avería.'')', current_setting('prueba.av5')),
+    'ni las anula', 'lo anula Mantenimiento');
+end $$;
+reset role;
+select test.como_usuario(:'admin_id');
+update public.areas set jefe_id = :'jefe_id' where codigo = 'MTZ';
+
+-- 12. Anular el repetido no arregla la falla que otro reporte sigue diciendo ---------
+select test.como_usuario(:'mnt_id');
+update public.equipos set estado = 'OPERATIVO', estado_nota = null where id = pg_temp.id('e1');
+select test.como_usuario(:'rep_id');
+set local role authenticated;
+do $$
+declare r record;
+begin
+  select * into r from public.averias_reportar(pg_temp.id('av6'), pg_temp.id('e1'), 'AVERIA', true, false, 'Ya no prende: el interruptor no hace contacto.', '[]');
+  perform test.afirmar(r.equipo_parado, 'la primera deja el equipo parado');
+  select * into r from public.averias_reportar(pg_temp.id('av7'), pg_temp.id('e1'), 'AVERIA', true, false, 'No prende, el interruptor está suelto.', '[]');
+  perform test.afirmar(not r.equipo_parado, 'la segunda lo encuentra ya parado');
+end $$;
+reset role;
+select test.como_usuario(:'mnt_id');
+set local role authenticated;
+do $$
+declare r record;
+begin
+  select * into r from public.averias_anular(pg_temp.id('av6'), 'Es la misma falla del otro reporte, se queda el otro.');
+  perform test.afirmar(r.equipo_vuelve_a is null, 'anular el que lo paró no lo devuelve mientras el otro siga diciendo que detiene');
+end $$;
+reset role;
+select test.afirmar((select estado = 'PARADO' from public.equipos where id = pg_temp.id('e1')), 'y el equipo sigue parado');
 
 -- 10. Nadie borra ni corrige por debajo -------------------------------------------------
 select test.como_usuario(:'admin_id');

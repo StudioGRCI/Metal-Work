@@ -3,11 +3,12 @@ import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Vistas } from '@/components/estructura/vistas'
+import { DiasEnEspera } from '@/components/ui/dias-en-espera'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
-import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
+import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { equiposParaReportar, listarAverias, MAXIMO_AVERIAS, type Averia } from '@/lib/datos/averias'
-import { diasEnEspera, ESTADO_AVERIA, TIPO_AVERIA } from '@/lib/dominio/averias'
+import { ESTADO_AVERIA, TIPO_AVERIA } from '@/lib/dominio/averias'
 import { fechaHora } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
 
@@ -37,7 +38,10 @@ export default async function PaginaAverias({ searchParams }: PageProps<'/averia
   const [averias, equipos] = await Promise.all([listarAverias(), equiposParaReportar()])
   const alTope = averias.length >= MAXIMO_AVERIAS
 
-  const boton = <ReportarAveria cuentaId={perfil.id} equipos={equipos} equipoInicial={equipoInicial} />
+  // Sin equipos en el padrón no hay qué elegir: en vez de una ventana que no deja
+  // enviar, se dice por qué y qué hacer.
+  const boton = equipos.length > 0 ? <ReportarAveria cuentaId={perfil.id} equipos={equipos} equipoInicial={equipoInicial} /> : null
+  const sinPadron = equipos.length === 0 && <PadronVacio />
 
   if (veTodo) {
     const vigentes = averias.filter((a) => a.estado !== 'ANULADA')
@@ -52,9 +56,10 @@ export default async function PaginaAverias({ searchParams }: PageProps<'/averia
           acciones={boton}
           estado={<EstadoDelReporteDeAveria />}
         />
+        {sinPadron}
         <Vistas
           etiqueta="Vista"
-          className="mb-3"
+          className="mb-4"
           vistas={VISTAS.map((v) => ({
             clave: v.valor,
             titulo: v.titulo,
@@ -84,16 +89,18 @@ export default async function PaginaAverias({ searchParams }: PageProps<'/averia
 
   const mias = averias.filter((a) => a.alcance === 'PROPIA')
   const delArea = averias.filter((a) => a.alcance === 'AREA' && a.estado !== 'ANULADA')
+  // SSOMA recibe las que son un riesgo para las personas.
+  const deRiesgo = averias.filter((a) => a.alcance === 'RIESGO' && a.estado !== 'ANULADA')
   return (
     <>
       <EncabezadoPagina
         titulo="Reportar avería"
-        descripcion="Una máquina o una herramienta que falla, o que está por fallar: repórtala en el momento, con foto si puedes."
-        ayuda="Tu reporte le llega a Mantenimiento al instante, con su número, y al responsable del área del equipo. Si es un riesgo para las personas, también a SSOMA. Aquí ves cómo va cada uno de los tuyos y los de tu área."
+        ayuda="Una máquina o una herramienta que falla, o que está por fallar: repórtala en el momento, con foto si puedes. Tu reporte le llega a Mantenimiento al instante, con su número, y al responsable del área del equipo. Si es un riesgo para las personas, también a SSOMA. Aquí ves cómo va cada uno de los tuyos y los de tu área."
         migas={[{ titulo: 'Reportar' }]}
         acciones={boton}
         estado={<EstadoDelReporteDeAveria />}
       />
+      {sinPadron}
       <div className="space-y-5">
         <Tarjeta className="overflow-hidden">
           <TarjetaCabecera titulo="Tus reportes" descripcion={mias.length > 0 ? `${mias.length} ${mias.length === 1 ? 'reporte' : 'reportes'}` : undefined} />
@@ -107,13 +114,37 @@ export default async function PaginaAverias({ searchParams }: PageProps<'/averia
         </Tarjeta>
         {delArea.length > 0 && (
           <Tarjeta className="overflow-hidden">
-            <TarjetaCabecera titulo="En tu área" descripcion="Lo que se reportó de los equipos de tu área, para que estés al tanto." />
+            <TarjetaCabecera titulo="En tu área" ayuda="Lo que se reportó de los equipos de tu área, o del área que tienes a cargo, para que estés al tanto." />
             <TablaDeAverias averias={delArea} vacio={{ titulo: 'Nada reportado en tu área', descripcion: '' }} />
+          </Tarjeta>
+        )}
+        {deRiesgo.length > 0 && (
+          <Tarjeta className="overflow-hidden">
+            <TarjetaCabecera
+              titulo="Con riesgo para las personas"
+              ayuda="Las averías que alguien marcó como un riesgo para las personas: te llegan para que SSOMA tome sus medidas. Las atiende Mantenimiento."
+            />
+            <TablaDeAverias averias={deRiesgo} conAutor vacio={{ titulo: 'Nada con riesgo', descripcion: '' }} />
           </Tarjeta>
         )}
       </div>
       {alTope && <Tope />}
     </>
+  )
+}
+
+/** El padrón todavía vacío: no hay equipo que elegir, y se dice a quién avisar mientras tanto. */
+function PadronVacio() {
+  return (
+    <Tarjeta className="mb-5">
+      <TarjetaCuerpo data-padron-vacio>
+        <SinDatos
+          compacto
+          titulo="Todavía no hay equipos en el padrón"
+          descripcion="Para reportar una avería se elige el equipo de la lista, y Mantenimiento todavía no la cargó. Mientras tanto, avísale a Mantenimiento por teléfono o en persona."
+        />
+      </TarjetaCuerpo>
+    </Tarjeta>
   )
 }
 
@@ -222,11 +253,10 @@ function FilaAveria({ averia: a, conAutor }: { averia: Averia; conAutor: boolean
 /** En quién está el reporte y desde cuándo. */
 function Situacion({ averia: a }: { averia: Averia }) {
   const estado = ESTADO_AVERIA[a.estado]
-  const espera = diasEnEspera(a.dias_en_espera)
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {estado ? <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia> : a.estado}
-      {espera && <span className="text-xs text-texto-suave">desde {espera}</span>}
+      <DiasEnEspera dias={a.dias_en_espera} desde={a.creado_en} quien="Mantenimiento" />
     </div>
   )
 }
