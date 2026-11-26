@@ -431,8 +431,8 @@ try {
   {
     const { pagina, contexto, errores } = await entrar('gerencia', 1440)
     await ir(pagina, '/reportes-diarios')
-    const hayLista = (await pagina.locator('main ul:has(> li > a[data-reporte])').count()) > 0
-    if (hayLista) comprobar((await separacion(pagina, 'main ul:has(> li > a[data-reporte])')) === 20, 'Reporte diario: 20 px entre los filtros y la lista')
+    const hayLista = (await pagina.locator('main ul:has(> li > [data-reporte])').count()) > 0
+    if (hayLista) comprobar((await separacion(pagina, 'main ul:has(> li > [data-reporte])')) === 20, 'Reporte diario: 20 px entre los filtros y la lista')
     else console.log('  — Reporte diario sin reportes este mes: no se mide la separación')
     comprobarCaja(await leerTabla(pagina), errores, 'Reporte diario 1440')
     await contexto.close()

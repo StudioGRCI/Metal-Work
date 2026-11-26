@@ -18836,6 +18836,22 @@ export type Database = {
           detalle: string | null
         }[]
       }
+      recorrido_de_reportes_diarios: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          documento: string | null
+          orden: number | null
+          paso: string | null
+          situacion: string | null
+          puesto: string | null
+          en: string | null
+          dias: number | null
+          espera: string | null
+          detalle: string | null
+        }[]
+      }
       recorrido_de_requerimientos: {
         Args: {
           p_ids: string[] | null
