@@ -168,6 +168,12 @@ const ESPERAS_DE_LA_COTIZACION: Record<string, (detalle: string | null) => strin
   COBRO: (detalle) => (detalle === 'EN_PARTE' ? 'Cobra lo que falta: ya cobró una parte.' : 'Cobra sus facturas.'),
 }
 
+/** «1 hora», «26.5 horas», como `horas` de averias.ts (aquí sin importarla: el test corre sin el alias). */
+function horasParado(valor: number): string {
+  const texto = Number.isInteger(valor) ? String(valor) : valor.toFixed(1)
+  return `${texto} ${valor === 1 ? 'hora' : 'horas'}`
+}
+
 const PASOS_DEL_INFORME_DISENO: Record<string, Frases> = {
   REGISTRO: { hecho: 'Borrador empezado', falta: 'Borrador' },
   ENVIO: { hecho: 'Enviado a Diseño', falta: 'Envío a Diseño' },
@@ -191,14 +197,30 @@ const PASOS_DE_LA_AVERIA: Record<string, Frases> = {
     hecho: (d) => (d === 'PARADO' ? 'Reportada: el equipo quedó parado' : 'Reportada'),
     falta: 'Reporte',
   },
-  ATENCION: { hecho: 'Mantenimiento la atendió', falta: 'Atención de Mantenimiento' },
-  CIERRE: { hecho: 'Mantenimiento la cerró', falta: 'Cierre: el equipo vuelve a operativo' },
+  ATENCION: { hecho: 'Mantenimiento anotó su diagnóstico', falta: 'Diagnóstico de Mantenimiento' },
+  CIERRE: {
+    hecho: 'Mantenimiento la cerró',
+    falta: 'Cierre: el equipo vuelve a operativo',
+    // Las horas que estuvo parado y el trabajo hecho («26.5|Se cambió…»): si no
+    // quedó bien, la ficha ya no muestra el primer trabajo, y quien la vuelve a
+    // atender lo lee aquí.
+    nota: (d) => {
+      const [h, ...resto] = d.split('|')
+      const trabajo = resto.join('|').trim()
+      const parado = h && Number.isFinite(Number(h)) ? `Parado: ${horasParado(Number(h))}` : null
+      return [parado, trabajo || null].filter(Boolean).join('. ') || null
+    },
+  },
+  // Lo que dijo quien la reportó: la ficha muestra solo la última vez.
+  REAPERTURA: { hecho: 'No quedó bien: volvió a Mantenimiento', falta: 'Reapertura', nota: (t) => (t ? `«${t}»` : null) },
   CONFIRMACION: { hecho: 'Quien la reportó confirmó que quedó bien', falta: 'Quien la reportó confirma que quedó bien' },
   ANULACION: { hecho: 'Anulada por Mantenimiento', falta: 'Anulación' },
 }
 
 const ESPERAS_DE_LA_AVERIA: Record<string, (detalle: string | null) => string> = {
-  ATENCION: () => 'La revisa, anota qué tiene y qué se hizo.',
+  ATENCION: () => 'La revisa y anota qué tiene.',
+  CIERRE: () => 'La arregla y la cierra con el trabajo hecho y las horas parado.',
+  CONFIRMACION: () => 'Prueba el equipo y dice si quedó bien.',
 }
 
 function describir(
