@@ -534,7 +534,19 @@ for (const vista of [
 }
 
 // ------------------------------------------------- 8. los que no la llevan
-for (const puesto of ['gerencia', 'contabilidad']) {
+// Gerencia la consulta desde la migración 20261126310000 (`tesoreria.ver_caja`):
+// la tiene en su menú y entra, pero sin un solo botón que escriba.
+{
+  const { pagina, contexto } = await entrar(CUENTAS.gerencia)
+  comprobar((await pagina.locator('nav a[href="/tesoreria/caja-diaria"]').count()) > 0, 'gerencia tiene «Caja diaria» en su menú, para consultar')
+  await pagina.goto(RUTA, { waitUntil: 'networkidle' })
+  comprobar(!pagina.url().includes('/sin-permiso'), 'gerencia entra a consultar la caja')
+  const escribe = await pagina.locator('main button:visible').allInnerTexts()
+  const queEscriben = escribe.filter((t) => /registrar|transferir|cerrar|reabrir|anular|corregir|agregar|nueva|dar de alta/i.test(t))
+  comprobar(queEscriben.length === 0, `gerencia no ve botones que escriban${queEscriben.length ? ` (ve: ${queEscriben.join(' | ')})` : ''}`)
+  await contexto.close()
+}
+for (const puesto of ['contabilidad']) {
   const { pagina, contexto } = await entrar(CUENTAS[puesto])
   comprobar((await pagina.locator('nav a[href="/tesoreria/caja-diaria"]').count()) === 0, `${puesto} no tiene «Caja diaria» en su menú`)
   await pagina.goto(RUTA, { waitUntil: 'networkidle' })

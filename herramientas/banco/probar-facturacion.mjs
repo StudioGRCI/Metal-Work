@@ -126,8 +126,8 @@ async function esperarVentana(pagina) {
 // El globo de pendientes va pegado al nombre del módulo («Facturación1»): se quita.
 const menu = async (pagina) => (await pagina.locator('nav[aria-label="Menú principal"] a').allTextContents()).map((t) => limpio(t).replace(/\d+\+?$/, ''))
 const franja = async (pagina) => limpio(await pagina.locator('main').textContent())
-// Lo que espera en un módulo ya no se lista en el Dashboard (2026-10-19): se lee
-// del globo del menú, que lleva la cantidad en su etiqueta accesible.
+// Lo que espera en un módulo se lee del globo del menú, que lleva la cantidad en
+// su etiqueta accesible (el Dashboard lo lista en «Te toca», con el mismo número).
 const globo = async (pagina, ruta) => (await pagina.locator(`nav a[href="${ruta}"]`).first().getAttribute('aria-label')) ?? ''
 const ruta = (pagina) => new URL(pagina.url()).pathname
 
@@ -501,7 +501,9 @@ console.log(`     sembrado: ${COT} con la OT del código ${CODIGO}, ${COT_SIN} s
 {
   const { pagina, contexto } = await entrar(CUENTAS.gerencia)
   const items = await menu(pagina)
-  comprobar(!items.includes('Órdenes de trabajo') && items.includes('Códigos internos'), 'Gerencia sigue cada trabajo en Códigos internos, sin la OT en su menú')
+  // Sigue cada trabajo en Códigos internos; la OT está en su menú desde el #190 y,
+  // desde el #222, en «Por aprobar», para que su globo cuente las que esperan su aprobación.
+  comprobar(items.includes('Códigos internos') && items.includes('Órdenes de trabajo'), 'Gerencia sigue cada trabajo en Códigos internos, y aprueba la OT desde «Por aprobar»')
   await ir(pagina, `${BASE}/cotizaciones/pdf`)
   const fila = limpio(await pagina.locator('li', { hasText: COT }).first().textContent())
   comprobar(fila.includes(`Factura ${FACTURA}`) && fila.includes('cobro a cuenta'), 'en la cotización, Gerencia ve la factura y en qué va su cobro')
