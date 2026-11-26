@@ -314,7 +314,7 @@ function FormularioClasificar({
 }
 
 /** Las cuentas, como las ofrece el buscador: nombre, y debajo el puesto y el área. */
-function opcionesDeCuentas(cuentas: CuentaParaAsignar[]) {
+export function opcionesDeCuentas(cuentas: CuentaParaAsignar[]) {
   return cuentas.map((c) => ({
     valor: c.id,
     etiqueta: c.nombre,
@@ -331,24 +331,32 @@ const CLAVE_ACCION = 'ssoma:accion'
  */
 export function AgregarAccion({
   reporteId,
+  respuestaId,
   numero,
   cuentas,
   hoy,
   corregido = false,
+  discreto = false,
 }: {
-  reporteId: string
+  /** La acción es de un reporte o del hallazgo de una inspección: llega uno de los dos. */
+  reporteId?: string
+  respuestaId?: string
+  /** Cómo se nombra de dónde sale, para el título: «RI-0012-2026», o «hallazgo del punto 3». */
   numero: string
   cuentas: CuentaParaAsignar[]
   /** Hoy en Lima, como lo dice el servidor: la fecha límite va desde hoy. */
   hoy: string
   /** El reporte ya está corregido: otra acción lo vuelve a «En corrección». */
   corregido?: boolean
+  /** Un botón pequeño y de contorno: el hallazgo ya nació con su acción, otra es la excepción. */
+  discreto?: boolean
 }) {
+  const origen = reporteId ?? respuestaId ?? ''
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
-  const [entro, setEntro] = useEstadoCompartido<string | null>(`${CLAVE_ACCION}:${reporteId}`, null)
+  const [entro, setEntro] = useEstadoCompartido<string | null>(`${CLAVE_ACCION}:${origen}`, null)
   const router = useRouter()
-  const id = useIdDelEnvio('accion_ssoma', () => refrescarSiEsDeLaPestana(router), reporteId)
+  const id = useIdDelEnvio('accion_ssoma', () => refrescarSiEsDeLaPestana(router), origen)
   const { alEnviar, enviando, error, limpiar } = useEnvio(
     (previo: unknown, datos: FormData) => {
       id.salio()
@@ -366,8 +374,9 @@ export function AgregarAccion({
       <Boton
         type="button"
         // En un reporte ya corregido no es lo que más llama: la ficha terminó.
-        variante={corregido ? 'secundario' : 'primario'}
-        data-agregar-accion
+        variante={discreto ? 'contorno' : corregido ? 'secundario' : 'primario'}
+        tamano={discreto ? 'sm' : undefined}
+        data-agregar-accion={origen}
         onClick={() => {
           limpiar()
           setEntro(null)
@@ -396,6 +405,7 @@ export function AgregarAccion({
             key={`${vez}:${id.id}`}
             id={id.id}
             reporteId={reporteId}
+            respuestaId={respuestaId}
             cuentas={cuentas}
             hoy={hoy}
             alEnviar={alEnviar}
@@ -415,6 +425,7 @@ const DE_LA_FECHA_LIMITE = /fecha límite/
 function FormularioAccion({
   id,
   reporteId,
+  respuestaId,
   cuentas,
   hoy,
   alEnviar,
@@ -423,7 +434,8 @@ function FormularioAccion({
   alCancelar,
 }: {
   id: string
-  reporteId: string
+  reporteId?: string
+  respuestaId?: string
   cuentas: CuentaParaAsignar[]
   hoy: string
   alEnviar: (evento: FormEvent<HTMLFormElement>) => void
@@ -448,7 +460,8 @@ function FormularioAccion({
   return (
     <form onSubmit={alEnviar} className="space-y-4">
       <input type="hidden" name="operacion_id" value={id} />
-      <input type="hidden" name="reporte_id" value={reporteId} />
+      {reporteId && <input type="hidden" name="reporte_id" value={reporteId} />}
+      {respuestaId && <input type="hidden" name="respuesta_id" value={respuestaId} />}
       <fieldset disabled={enviando} className="min-w-0 space-y-4">
         <Campo etiqueta="Qué se tiene que hacer" htmlFor={`ssoma-que-${id}`} requerido>
           <AreaTexto

@@ -82,7 +82,9 @@ export default async function PaginaCarrocerias({ searchParams }: PageProps<'/ca
         <Tabla apilada>
           <TablaCabecera>
             <tr>
-              <TH>Carrocería</TH>
+              {/* Su ancho, para Diseño: con un código largo que ya se puede partir
+                  (abajo), la tabla le daría el mínimo y el nombre iría letra por letra. */}
+              <TH className={verDetalleTecnico ? 'md:w-1/4' : undefined}>Carrocería</TH>
               <TH className={columna}>Tipo</TH>
               <TH className={columna}>Capacidad</TH>
               {verDetalleTecnico && <TH>Fichas técnicas</TH>}
@@ -103,12 +105,15 @@ export default async function PaginaCarrocerias({ searchParams }: PageProps<'/ca
                 ].filter(Boolean)
                 return (
                 <TR key={c.id}>
-                  <TD>
+                  {/* Un código largo sin espacios (40 letras) no se podía partir:
+                      a 768 px fijaba el ancho de la columna y la tabla se salía
+                      de su tarjeta. Se parte donde haga falta. */}
+                  <TD className="[overflow-wrap:anywhere]">
                     {/* El espacio deja partir entre el nombre y el código: pegados,
                         «Repotenciación REPOTENCIACION» fijaba la columna en 238 px
                         y le quitaba el ancho a las fichas técnicas. */}
                     <span className="font-medium">{c.nombre}</span>{' '}
-                    <span className="ml-1 rounded bg-superficie-2 px-1 text-xs font-semibold text-texto-suave">
+                    <span className="ml-1 rounded bg-superficie-2 px-1 text-xs font-semibold text-texto-suave" data-codigo-carroceria>
                       {c.codigo}
                     </span>
                     {!c.activo && <Insignia className="ml-1.5">Inactivo</Insignia>}

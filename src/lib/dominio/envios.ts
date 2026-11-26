@@ -43,6 +43,9 @@ export const CLAVES_DEL_ENVIO = [
   'cierre_accion_ssoma',
   // SSOMA 15.3: la charla o inducción no se registra dos veces tras «No llegó la respuesta».
   'charla_ssoma',
+  // SSOMA 15.4: la inspección (con las acciones de sus hallazgos) y el punto de la lista no entran dos veces.
+  'inspeccion_ssoma',
+  'punto_ssoma',
   // El reporte de avería (Plan 16.2): reabrir tras «No llegó la respuesta» no da otro número AV a la misma falla.
   'reporte_averia',
   // Calidad (A.1): reabrir tras «No llegó la respuesta» no registra dos veces la
@@ -54,6 +57,8 @@ export const CLAVES_DEL_ENVIO = [
   'fecha_prometida',
   // El reclamo de garantía (A.2): reabrir tras «No llegó la respuesta» no da otro número RG al mismo reclamo.
   'reclamo_garantia',
+  // El trámite (plan «El puesto de Tramitador», entrega 1): reabrir tras «No llegó la respuesta» no da otro número TR al mismo trámite.
+  'tramite',
 ] as const
 
 export type ClaveDelEnvio = (typeof CLAVES_DEL_ENVIO)[number]

@@ -39,7 +39,7 @@ mkdirSync(CAPTURAS, { recursive: true })
 const PUESTOS = [
   'gerencia', 'administracion', 'almacen', 'logistica', 'mantenimiento', 'conductor', 'contabilidad',
   'diseno', 'colaborador', 'porteria', 'rrhh', 'requerimientos',
-  'sup.prd', 'sup.mtz', 'sup.acb', 'tesoreria', 'ventas',
+  'sup.prd', 'sup.mtz', 'sup.acb', 'tesoreria', 'tramitador', 'ventas',
 ]
 const elegidos = process.argv.slice(2)
 const puestos = elegidos.length ? PUESTOS.filter((p) => elegidos.includes(p)) : PUESTOS
@@ -61,7 +61,7 @@ const FIJAS = [
   '/rrhh/tardanzas', '/seguimiento', '/subcontratos', '/subcontratos/area', '/tesoreria',
   '/tesoreria/caja-diaria', '/tesoreria/cuentas', '/tesoreria/pagos-de-servicio',
   '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/tesoreria/recibos-por-honorarios',
-  '/tesoreria/tipo-de-cambio', '/unidades', '/vehiculos',
+  '/tesoreria/tipo-de-cambio', '/tramites', '/unidades', '/vehiculos',
 ]
 
 async function entrar(ctx, correo) {

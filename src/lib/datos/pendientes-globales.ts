@@ -4,12 +4,14 @@ import { cache } from 'react'
 
 import type { Tono } from '@/components/ui/etiqueta-estado'
 import { codigosDeDiseno, planosDeCodigo } from '@/lib/datos/diseno-codigos'
+import { otsDeMantenimiento } from '@/lib/datos/mantenimiento'
 import { recorridoDeRequerimientos } from '@/lib/datos/recorrido'
 import { cargarRequerimientos } from '@/lib/datos/requerimientos'
 import { planillaAjusteDesde } from '@/lib/datos/rrhh'
 import { todasLasFilas } from '@/lib/datos/todas-las-filas'
 import { ESTADOS_ACTIVOS_OT } from '@/lib/dominio/estados'
 import { totalConIgv } from '@/lib/dominio/finanzas'
+import { PERMISO_OTS_DE_MANTENIMIENTO, tieneTrabajoHoy } from '@/lib/dominio/mantenimiento'
 import { devueltaEntera } from '@/lib/dominio/pago-de-boleta'
 import { estadoDePlanilla } from '@/lib/dominio/planilla-diaria'
 import { ESTADOS_RQ_ABIERTOS, leTocaAtender, loTieneQuienAtiende, quienAtiende, tieneParaRecoger, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
@@ -681,6 +683,23 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
             .eq('registrado_por', perfil.id),
         ),
     })
+    // La venta que se reabrió: su OT pasó a otro comprador y allí se anuló. Espera
+    // a que quien la registró diga si sigue o la cancele (migración 20261126988000).
+    tareas.push({
+      clave: 'pdf_ventas_reabiertas',
+      ruta: '/cotizaciones/pdf?estado=APROBADA_SIN_OT&de=mias',
+      tono: 'aviso',
+      texto: (n) => plural(n, 'venta tuya que volvió a esperar su OT: decide si sigue', 'ventas tuyas que volvieron a esperar su OT: decide si siguen'),
+      contar: () =>
+        cabeza(
+          supabase
+            .from('v_cotizaciones_pdf')
+            .select('id', { count: 'exact', head: true })
+            .eq('estado', 'APROBADA')
+            .eq('registrado_por', perfil.id)
+            .not('reabierta_por_ot_anulada', 'is', null),
+        ),
+    })
   }
 
   // ── Lo que cada puesto atiende desde que el trabajo va por código interno ──
@@ -746,16 +765,23 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
           .eq('registrado_por', perfil.id).is('anulado_en', null).not('observado_en', 'is', null),
       ),
     })
+    // Mantenimiento no trabaja unidades todos los días: se le pide el reporte
+    // solo el día en que tiene el vehículo de una OT de mantenimiento en la
+    // planta, sin pausa (plan «Las demás áreas», A.3). Lleva a su lista de OT,
+    // donde cada tarjeta trae «Reportar el día» con su número ya puesto.
+    const porOt = puede(perfil, PERMISO_OTS_DE_MANTENIMIENTO)
     // El domingo no se trabaja: no se le pide reporte.
     if (new Date(`${hoy}T12:00:00Z`).getUTCDay() !== 0) tareas.push({
-      clave: 'reporte_de_hoy', ruta: '/reportes-diarios', tono: 'acento',
+      clave: 'reporte_de_hoy', ruta: porOt ? '/mantenimiento' : '/reportes-diarios', tono: 'acento',
       texto: () => 'Tu reporte diario de hoy todavía no está subido',
       contar: async () => {
         const n = await cabeza(
           supabase.from('reportes_diarios').select('id', { count: 'exact', head: true })
             .eq('registrado_por', perfil.id).eq('fecha', hoy).is('anulado_en', null),
         )
-        return n > 0 ? 0 : 1
+        if (n > 0) return 0
+        if (!porOt) return 1
+        return (await otsDeMantenimiento()).some(tieneTrabajoHoy) ? 1 : 0
       },
     })
   }
@@ -1159,6 +1185,40 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
         if (error) throw new Error('No se pudo consultar el pendiente.')
         return (data ?? []).length
       },
+    })
+  }
+  // Trámites (plan «El puesto de Tramitador», entrega 1): a Gerencia, las
+  // anulaciones que esperan su visto; a quien los lleva, los que pasaron su
+  // fecha límite y los que la entidad observó. Cuál le toca a quien mira lo
+  // dice la base (`puede_resolver_anulacion`, `puede_actualizar`), con la misma
+  // regla que la función que escribe. El observado que además venció se cuenta
+  // una vez, con los vencidos, que es lo más urgente.
+  const tramites = async (filtro: 'por_resolver' | 'vencidos' | 'observados') => {
+    const consulta = supabase.rpc('tramites_visibles', { p_id: null }).select('id')
+    const { data, error } = await (filtro === 'por_resolver'
+      ? consulta.eq('puede_resolver_anulacion', true)
+      : filtro === 'vencidos'
+        ? consulta.eq('puede_actualizar', true).eq('vencido', true)
+        : consulta.eq('puede_actualizar', true).eq('estado', 'OBSERVADO').eq('vencido', false))
+    if (error) throw new Error('No se pudo consultar el pendiente.')
+    return (data ?? []).length
+  }
+  // El visto es de quien tiene el permiso: al administrador no se le cuenta, como en «Por decidir».
+  if (puede(perfil, 'tramites.aprobar_anulacion') && perfil.rol.codigo !== 'ADMIN') tareas.push({
+    clave: 'tramites_por_anular', ruta: '/tramites?vista=por-anular', tono: 'aviso',
+    texto: n => plural(n, 'anulación de trámite espera tu visto', 'anulaciones de trámite esperan tu visto'),
+    contar: () => tramites('por_resolver'),
+  })
+  if (puede(perfil, 'tramites.gestionar')) {
+    tareas.push({
+      clave: 'tramites_vencidos', ruta: '/tramites', tono: 'peligro',
+      texto: n => plural(n, 'trámite pasó su fecha límite', 'trámites pasaron su fecha límite'),
+      contar: () => tramites('vencidos'),
+    })
+    tareas.push({
+      clave: 'tramites_observados', ruta: '/tramites?vista=observados', tono: 'aviso',
+      texto: n => plural(n, 'trámite observado por la entidad', 'trámites observados por la entidad'),
+      contar: () => tramites('observados'),
     })
   }
   // SSOMA (15.2): las acciones correctivas a cargo de quien mira, que puede ser

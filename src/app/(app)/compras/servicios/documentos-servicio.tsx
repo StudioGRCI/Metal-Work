@@ -14,7 +14,9 @@ import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
 import type { DocumentoDeServicio } from '@/lib/datos/logistica'
 import { COMPROBANTES_DE_SERVICIO, etiquetaDocumentoServicio, TIPO_DOCUMENTO_SERVICIO } from '@/lib/dominio/adquisiciones'
 import { BUCKET_DOCUMENTOS_SERVICIO, MAXIMO_MB_FINANZAS, TIPOS_COMPROBANTE_PAGO } from '@/lib/dominio/finanzas'
-import { useEnvio, useIdDelEnvio } from '@/lib/envio'
+import { useCursorAlRechazo, useEnvio, useIdDelEnvio } from '@/lib/envio'
+import { fecha, hoyLima } from '@/lib/format'
+import { cn } from '@/lib/utils'
 
 import { adjuntarDocumentoServicio, anularDocumentoServicio } from './acciones'
 
@@ -26,7 +28,16 @@ const esComprobante = (tipo: string) => (COMPROBANTES_DE_SERVICIO as readonly st
  * el recibo con que se paga y el contrato del trabajo, cada uno con su enlace.
  * Quien los adjunta los anula con su motivo; no se borran.
  */
-export function ListaDocumentosServicio({ documentos, anula }: { documentos: DocumentoDeServicio[]; anula: boolean }) {
+export function ListaDocumentosServicio({
+  documentos,
+  anula,
+  enOtraMoneda = false,
+}: {
+  documentos: DocumentoDeServicio[]
+  anula: boolean
+  /** La OS no está en soles: anular su factura la devuelve al tipo de cambio del día en que se emitió. */
+  enOtraMoneda?: boolean
+}) {
   if (documentos.length === 0) return null
   return (
     <ul className="mt-1 space-y-1" aria-label="Documentos de la orden de servicio">
@@ -43,6 +54,8 @@ export function ListaDocumentosServicio({ documentos, anula }: { documentos: Doc
               <span className="tabular truncate">{etiquetaDocumentoServicio(d)}</span>
             </span>
           )}
+          {/* La fecha que dice el comprobante: la de la factura decide el cambio de la OS en dólares. */}
+          {d.fecha_emision && <span className="tabular text-texto-suave">emitida el {fecha(d.fecha_emision)}</span>}
           {/* Antes del «Anular» que recomienda: el archivo que ya no está no vuelve recargando. */}
           {!d.url &&
             (d.faltaArchivo ? (
@@ -53,7 +66,14 @@ export function ListaDocumentosServicio({ documentos, anula }: { documentos: Doc
             ) : (
               <span className="block w-full text-texto-suave">No se pudo abrir: recarga la pantalla.</span>
             ))}
-          {anula && <AnularDocumentoServicio documentoId={d.id} tipo={d.tipo} etiqueta={etiquetaDocumentoServicio(d)} />}
+          {anula && (
+            <AnularDocumentoServicio
+              documentoId={d.id}
+              tipo={d.tipo}
+              etiqueta={etiquetaDocumentoServicio(d)}
+              mueveElCambio={enOtraMoneda && d.tipo === 'FACTURA' && Boolean(d.fecha_emision)}
+            />
+          )}
         </li>
       ))}
     </ul>
@@ -69,10 +89,21 @@ export function ListaDocumentosServicio({ documentos, anula }: { documentos: Doc
  * anota otro, y si aquel entró, la ventana lo dice al volver a abrirse y el
  * siguiente lleva otro.
  */
-export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenServicioId: string; numero: string }) {
+export function AdjuntarDocumentoServicio({
+  ordenServicioId,
+  numero,
+  enOtraMoneda,
+}: {
+  ordenServicioId: string
+  numero: string
+  /** La OS no está en soles: su factura lleva la fecha de emisión, que decide su tipo de cambio (20261126947000). */
+  enOtraMoneda: boolean
+}) {
   const documento = useIdDelEnvio('documento_servicio', undefined, ordenServicioId)
   const [abierta, setAbierta] = useState(false)
   const [tipo, setTipo] = useState('FACTURA')
+  // Lo que la base hizo con la fecha de la factura: la ventana ya se cerró, se dice junto al botón.
+  const [aviso, setAviso] = useState<{ texto: string; vez: number } | null>(null)
 
   async function adjuntar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
     const archivo = datos.get('archivo')
@@ -88,14 +119,19 @@ export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenSe
   }
   const { alEnviar, enviando, error } = useEnvio(
     adjuntar,
-    () => {
+    (resultado) => {
       setAbierta(false)
       documento.otro()
+      if (enOtraMoneda && resultado.mensaje) setAviso((antes) => ({ texto: resultado.mensaje ?? '', vez: (antes?.vez ?? 0) + 1 }))
     },
     { alYaEntrar: documento.otro },
   )
   const campo = (nombre: string) => `${nombre}-documento-os-${ordenServicioId}`
   const pideNumero = esComprobante(tipo)
+  const pideFecha = enOtraMoneda && tipo === 'FACTURA'
+  // Lo que la base dice de la fecha va en su campo, y el cursor con él: en el pie quedaba lejos.
+  const deLaFecha = pideFecha && error && /^(La|Escribe la) fecha de emisión/.test(error) ? error : null
+  useCursorAlRechazo(enviando, deLaFecha, () => document.getElementById(campo('fecha-emision')))
 
   return (
     <>
@@ -120,7 +156,13 @@ export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenSe
         ancho="md"
       >
         <EnvioAnterior texto={documento.anterior} />
-        <form onSubmit={alEnviar} className="space-y-4">
+        <form
+          onSubmit={(e) => {
+            setAviso(null)
+            alEnviar(e)
+          }}
+          className="space-y-4"
+        >
           <input type="hidden" name="id" value={documento.id ?? ''} />
           <input type="hidden" name="orden_servicio_id" value={ordenServicioId} />
           <div className="grid gap-4 sm:grid-cols-2">
@@ -138,13 +180,34 @@ export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenSe
                 <Entrada id={campo('numero')} name="numero" required minLength={3} maxLength={30} autoComplete="off" className="tabular uppercase" />
               </Campo>
             )}
+            {pideFecha && (
+              <Campo
+                etiqueta="Fecha de emisión de la factura"
+                htmlFor={campo('fecha-emision')}
+                requerido
+                error={deLaFecha ?? undefined}
+                ayuda="La que dice la factura. La orden toma el tipo de cambio de ese día para su monto en soles y su detracción, salvo que la detracción ya esté depositada o la orden ya esté pagada."
+              >
+                <Entrada id={campo('fecha-emision')} name="fecha_emision" type="date" required max={hoyLima()} className="tabular" />
+              </Campo>
+            )}
           </div>
           <Campo etiqueta="Archivo" htmlFor={campo('archivo')} requerido>
             <ElegirArchivo id={campo('archivo')} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} required />
           </Campo>
-          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Adjuntar" />
+          <PieDeVentana error={deLaFecha ? null : error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Adjuntar" />
         </form>
       </Ventana>
+      {/* Siempre puesto, para que el lector lo anuncie al llegar; vacío no ocupa lugar en el renglón. */}
+      <p
+        key={aviso?.vez ?? 0}
+        role="status"
+        // Separado de la fila de botones que sigue: pegado, parecía el pie del botón de abajo.
+        className={aviso ? cn('mt-1 mb-2 basis-full text-left text-xs', /no estaba registrado|todavía no está registrado/.test(aviso.texto) ? 'text-aviso' : 'text-texto') : 'sr-only'}
+        data-aviso-documento-servicio={numero}
+      >
+        {aviso?.texto}
+      </p>
     </>
   )
 }
@@ -158,7 +221,18 @@ function queAnula(tipo: string) {
  * Anular con su motivo un documento adjunto por error: queda en el historial.
  * El botón dice qué anula: en la fila de la OS está a la altura del «Anular» de la orden.
  */
-function AnularDocumentoServicio({ documentoId, tipo, etiqueta }: { documentoId: string; tipo: string; etiqueta: string }) {
+function AnularDocumentoServicio({
+  documentoId,
+  tipo,
+  etiqueta,
+  mueveElCambio,
+}: {
+  documentoId: string
+  tipo: string
+  etiqueta: string
+  /** Es la factura con fecha de una OS en otra moneda: sin ella la OS vuelve al cambio del día en que se emitió. */
+  mueveElCambio: boolean
+}) {
   const [abierta, setAbierta] = useState(false)
   const { alEnviar, enviando, error } = useEnvio(anularDocumentoServicio, () => setAbierta(false))
   return (
@@ -177,7 +251,7 @@ function AnularDocumentoServicio({ documentoId, tipo, etiqueta }: { documentoId:
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo={`Anular ${etiqueta}`}
-        descripcion="No se borra: queda con su archivo, el motivo, quién y cuándo, y deja de contar para el pago."
+        descripcion={`No se borra: queda con su archivo, el motivo, quién y cuándo, y deja de contar para el pago.${mueveElCambio ? ' La orden pasa al tipo de cambio de la factura que le quede o, si no le queda ninguna, al del día en que se emitió, salvo que su detracción ya esté depositada o la orden ya esté pagada.' : ''}`}
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">

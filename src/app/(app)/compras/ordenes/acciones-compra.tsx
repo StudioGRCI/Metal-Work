@@ -20,12 +20,13 @@ import { corregirCompra, lineasDeLaCompra, mandarARecojo, type LineaParaCorregir
 /**
  * Lo que Logística hace con una compra desde la lista: mandarla a recojo,
  * adjuntarle el comprobante y corregir si viene con factura o su código interno.
+ * Solo para la OC vigente: la rechazada y la anulada no llevan ninguno, y la
+ * lista no pinta este componente para ellas.
  */
 export function AccionesCompra({
   id,
   oc,
   recojo,
-  adjuntar,
   conFactura,
   codigoInterno,
   codigosDeInsumos,
@@ -45,7 +46,6 @@ export function AccionesCompra({
   moneda: string
   /** Se puede mandar a recojo: aprobada (o sin aprobación) y nadie la llevó todavía. */
   recojo: boolean
-  adjuntar: boolean
   conFactura: boolean
   codigoInterno: string | null
   /** Compra insumos de RQ: el código es el de cada insumo y se corrige en su RQ, no aquí. */
@@ -95,26 +95,22 @@ export function AccionesCompra({
           Mandar a recojo
         </Boton>
       )}
-      {adjuntar && (
-        <Boton
-          type="button"
-          variante="contorno"
-          tamano="sm"
-          onClick={() => {
-            documento.abrir()
-            setDocumentos(true)
-          }}
-        >
-          <FileUp aria-hidden className="size-4" />
-          Adjuntar
-        </Boton>
-      )}
-      {adjuntar && (
-        <Boton type="button" variante="fantasma" tamano="sm" onClick={() => void abrirCorreccion()} aria-label={`Corregir la compra ${oc.nombre}`}>
-          <Pencil aria-hidden className="size-4" />
-          Corregir
-        </Boton>
-      )}
+      <Boton
+        type="button"
+        variante="contorno"
+        tamano="sm"
+        onClick={() => {
+          documento.abrir()
+          setDocumentos(true)
+        }}
+      >
+        <FileUp aria-hidden className="size-4" />
+        Adjuntar
+      </Boton>
+      <Boton type="button" variante="fantasma" tamano="sm" onClick={() => void abrirCorreccion()} aria-label={`Corregir la compra ${oc.nombre}`}>
+        <Pencil aria-hidden className="size-4" />
+        Corregir
+      </Boton>
       {envio.error && (
         <p role="alert" className="order-last basis-full text-xs md:text-right text-peligro">
           {envio.error}

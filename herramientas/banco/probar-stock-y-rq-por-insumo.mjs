@@ -196,7 +196,10 @@ const ir = (pagina, ruta) => pagina.goto(`${BASE}${ruta}`, { waitUntil: 'network
   const suMenu = await menu(pagina)
   const supervision = suMenu.find((g) => g.grupo === 'Supervisión')?.items ?? []
   console.log('    menú de Supervisión:', supervision.join(' · '))
-  comprobar(supervision.at(-1) === 'Stock en almacén' && supervision.indexOf('Requerimientos') === supervision.length - 2,
+  // Justo después, no «al final»: desde A.1 le siguen las Observaciones de calidad.
+  // Y por el comienzo del texto: el ítem lleva pegado su globo («Requerimientos1»).
+  const enQue = (titulo) => supervision.findIndex((i) => i.startsWith(titulo))
+  comprobar(enQue('Stock en almacén') >= 0 && enQue('Stock en almacén') === enQue('Requerimientos') + 1,
     'el supervisor tiene «Stock en almacén» después de Requerimientos')
 
   await ir(pagina, '/almacen/stock')

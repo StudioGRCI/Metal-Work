@@ -1,9 +1,10 @@
 import 'server-only'
 
-import type { DetraccionDeServicio, TipoDetraccion } from '@/lib/dominio/detraccion'
+import type { DetraccionDeServicio, OrigenDelCambio, TipoDetraccion } from '@/lib/dominio/detraccion'
 import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { BUCKET_DOCUMENTOS_SERVICIO } from '@/lib/dominio/finanzas'
 import { BUCKET_FOTOS_RECOJO, validacionDeCompra, type ValidacionIngreso } from '@/lib/dominio/logistica'
+import { diaLima } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 
 /** Una orden de compra en el listado de Logística: número, para qué y en qué va. */
@@ -365,6 +366,8 @@ export type DocumentoDeServicio = {
   numero: string | null
   nombre: string
   creado_en: string
+  /** La fecha de emisión que dice el comprobante; la de la factura decide el cambio de la OS en dólares (20261126947000). */
+  fecha_emision: string | null
   /** Null si la firma falló o la política de quien mira no lo deja abrir: el documento se lista igual. */
   url: string | null
   /** Storage firmó la tanda y este archivo no estaba: hay que anularlo y adjuntarlo de nuevo. */
@@ -385,7 +388,7 @@ export async function documentosDeServicios(ids: string[]): Promise<Map<string, 
     tandas.map(async (tanda) => {
       const { data, error } = await supabase
         .from('documentos_orden_servicio')
-        .select('id, orden_servicio_id, tipo, numero, nombre_archivo, ruta_storage, creado_en')
+        .select('id, orden_servicio_id, tipo, numero, nombre_archivo, ruta_storage, creado_en, fecha_emision')
         .in('orden_servicio_id', tanda)
         .is('anulado_en', null)
         .order('creado_en')
@@ -414,6 +417,7 @@ export async function documentosDeServicios(ids: string[]): Promise<Map<string, 
       numero: f.numero,
       nombre: f.nombre_archivo,
       creado_en: f.creado_en,
+      fecha_emision: f.fecha_emision,
       url: urls.get(f.ruta_storage) ?? null,
       faltaArchivo: faltan.has(f.ruta_storage),
     })
@@ -436,7 +440,7 @@ export async function cargarTiposDetraccion(): Promise<TipoDetraccion[]> {
 
 /** La detracción tal como la guarda y la calcula la base. */
 export const COLUMNAS_DETRACCION =
-  'id, codigo_interno, detraccion_afecta, detraccion_codigo, detraccion_porcentaje, detraccion_minimo, detraccion_motivo, total_con_igv_pen, detraccion_monto, creado_en'
+  'id, codigo_interno, detraccion_afecta, detraccion_codigo, detraccion_porcentaje, detraccion_minimo, detraccion_motivo, total_con_igv_pen, detraccion_monto, creado_en, fecha_cambio, moneda'
 
 type FilaDetraccion = {
   id: string
@@ -449,6 +453,8 @@ type FilaDetraccion = {
   total_con_igv_pen: number | null
   detraccion_monto: number | null
   creado_en: string
+  fecha_cambio: string | null
+  moneda: string
 }
 
 const SIN_DEFINIR: DetraccionDeServicio = {
@@ -462,7 +468,46 @@ const SIN_DEFINIR: DetraccionDeServicio = {
   monto: null,
 }
 
-export function detraccionDeFila(f: FilaDetraccion | undefined, tipos: TipoDetraccion[]): DetraccionDeServicio {
+/**
+ * De dónde sale el cambio de una OS en otra moneda, como lo dice la base
+ * (`cambio_de_los_servicios`, 20261126947000). La pantalla no lo deduce: depende de la factura, de
+ * los pagos y de los cambios registrados, y no todo el que ve la OS puede leerlos (Almacén leía
+ * «su detracción ya estaba depositada» de una OS sin pagos, porque no veía su factura).
+ */
+export type CambioDelServicio = {
+  origen: OrigenDelCambio
+  dia: string
+  registrado_el: string | null
+  se_espera: boolean
+}
+
+/** El cambio de esas OS, por su id. La que está en soles, o la que quien mira no ve, no viene. */
+export async function cambioDeLosServicios(ids: string[]): Promise<Map<string, CambioDelServicio>> {
+  if (ids.length === 0) return new Map()
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('cambio_de_los_servicios', { p_ids: ids })
+  if (error) throw new Error(`No se pudo leer con qué tipo de cambio van las órdenes de servicio: ${error.message}`)
+  return new Map(
+    (data ?? []).flatMap((c) =>
+      c.orden_servicio_id && c.dia
+        ? [[c.orden_servicio_id, { origen: c.origen as OrigenDelCambio, dia: c.dia, registrado_el: c.registrado_el, se_espera: c.se_espera === true }] as const]
+        : [],
+    ),
+  )
+}
+
+/** El día que le toca a la OS para su cambio: el de su factura o, sin ella, el día en que se emitió. */
+const diaQueLeToca = (f: Pick<FilaDetraccion, 'fecha_cambio' | 'creado_en'>) => f.fecha_cambio ?? diaLima(f.creado_en)
+
+export function detraccionDeFila(
+  f: FilaDetraccion | undefined,
+  tipos: TipoDetraccion[],
+  /**
+   * De dónde sale su cambio (`cambioDeLosServicios`), donde la pantalla lo dice. Sin él no se dice
+   * con qué cambio va: Aprobación decide antes de que exista la factura, y ahí no se dice que falta.
+   */
+  cambio?: CambioDelServicio,
+): DetraccionDeServicio {
   if (!f) return SIN_DEFINIR
   const numeroONulo = (v: number | null) => (v === null ? null : Number(v))
   return {
@@ -474,7 +519,11 @@ export function detraccionDeFila(f: FilaDetraccion | undefined, tipos: TipoDetra
     motivo: f.detraccion_motivo,
     total_con_igv_pen: numeroONulo(f.total_con_igv_pen),
     monto: numeroONulo(f.detraccion_monto),
-    emitida_en: f.creado_en,
+    // El día cuyo cambio le toca: el de su factura; sin factura, el día en que se emitió.
+    dia_del_cambio: cambio?.dia ?? diaQueLeToca(f),
+    ...(f.moneda === 'PEN' || !cambio
+      ? { origen_del_cambio: null }
+      : { origen_del_cambio: cambio.origen, cambio_registrado_el: cambio.registrado_el, espera_el_cambio: cambio.se_espera }),
   }
 }
 
@@ -493,7 +542,10 @@ export async function cargarOrdenesServicio(): Promise<OrdenServicioListada[]> {
   if (error) throw new Error(`No se pudieron leer las órdenes de servicio: ${error.message}`)
   if (extra.error) throw new Error(`No se pudo leer la detracción de las órdenes de servicio: ${extra.error.message}`)
   const porId = new Map((extra.data ?? []).map((f) => [f.id, f]))
-  const documentos = await documentosDeServicios((data ?? []).flatMap((s) => (s.id ? [s.id] : [])))
+  const [documentos, cambios] = await Promise.all([
+    documentosDeServicios((data ?? []).flatMap((s) => (s.id ? [s.id] : []))),
+    cambioDeLosServicios((extra.data ?? []).filter((f) => f.moneda !== 'PEN').map((f) => f.id)),
+  ])
   return (data ?? []).map((s) => ({
     id: s.id ?? '',
     numero: s.numero ?? '',
@@ -520,7 +572,7 @@ export async function cargarOrdenesServicio(): Promise<OrdenServicioListada[]> {
     emitida_por: s.emitida_por,
     atrasada: s.atrasada === true,
     codigo_interno: porId.get(s.id ?? '')?.codigo_interno ?? null,
-    detraccion: detraccionDeFila(porId.get(s.id ?? ''), tipos),
+    detraccion: detraccionDeFila(porId.get(s.id ?? ''), tipos, cambios.get(s.id ?? '')),
     documentos: documentos.get(s.id ?? '') ?? [],
   }))
 }
