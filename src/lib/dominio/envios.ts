@@ -36,6 +36,8 @@ export const CLAVES_DEL_ENVIO = [
   'tareo',
   'uso_saldo',
   'cuenta_caja',
+  // El reporte a SSOMA (Plan 15.1): reabrir tras «No llegó la respuesta» no da otro número RI al mismo hecho.
+  'reporte_ssoma',
 ] as const
 
 export type ClaveDelEnvio = (typeof CLAVES_DEL_ENVIO)[number]
