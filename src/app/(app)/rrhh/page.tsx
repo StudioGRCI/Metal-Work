@@ -91,8 +91,9 @@ export default async function PaginaRRHH() {
   // Los reportes del mes que faltan los lee quien lee los reportes; «tu visto» y
   // «Darles el visto» son solo para quien lo da (no el administrador, que mira).
   const veReportes = puede(perfil, 'reporte_diario.ver')
-  // Quién no tiene cuenta lo lee quien lee las cuentas, como en la base.
-  const veCuentas = puede(perfil, 'rrhh.personal')
+  // Quién no tiene cuenta lo lee quien lee las cuentas, como en la base: solo
+  // RR. HH., sin el atajo del administrador (migración 20261126620000).
+  const veCuentas = editaComoRrhh(perfil, 'rrhh.personal')
   const daElVisto = editaComoRrhh(perfil, 'reporte_diario.validar_rrhh')
   const restadoDe = new Map(restados)
   const comoEntra = new Map<string, PersonaAlCosto>(alCosto.flatMap((m) => [...m]))
@@ -482,7 +483,8 @@ function LoQueFaltaParaCerrar({
       <p className="flex items-start gap-2 text-sm text-texto-suave" data-lo-que-falta="nada">
         <CheckCircle2 aria-hidden className="mt-0.5 size-4 shrink-0 text-exito" />
         <span>
-          No falta nada para cerrarla: {revisa.join(' y ')} están al día.
+          {/* Sin `veCuentas` (el administrador) no sabe de las cuentas: no dice «no falta nada». */}
+          {veCuentas ? `No falta nada para cerrarla: ${revisa.join(' y ')} están al día.` : `${revisa.join(' y ').replace(/^./, (c) => c.toUpperCase())} están al día.`}
         </span>
       </p>
     )
