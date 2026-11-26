@@ -16,8 +16,7 @@
  *      recorrido en Almacén. Al final se deshace, para poder repetir la sonda.
  *   6. Logística y el supervisor no entran.
  *
- * Necesita lo que siembran `sembrar-diseno-por-codigo.sql` y
- * `sembrar-insumos-por-autorizar.sql`. Variables: BANCO_CLAVE, BASE
+ * Necesita lo que siembra `sembrar-insumos-por-autorizar.sql`. Variables: BANCO_CLAVE, BASE
  * (http://localhost:3111), BANCO_BASE (mw_demo), BANCO_CHROMIUM, CAPTURAS.
  */
 import { mkdirSync } from 'node:fs'
@@ -152,11 +151,11 @@ async function recorridoEnLaBase() {
   return de
 }
 const enBase = await recorridoEnLaBase()
-/** Los RQ que esperan el visto de Diseño, del sustento más antiguo al más nuevo, según la base. */
+/** Los RQ que esperan el visto de Diseño, del que más espera al que menos, contado como la base: desde su sustento más reciente. */
 const esperanVistoEnLaBase = async () => {
   const filas = await comoCuenta(
     'diseno',
-    `select q.numero, min(m.sustentado_en) as desde
+    `select q.numero, max(m.sustentado_en) as desde
        from public.metrado_de_requerimientos($1::uuid[]) m join public.requerimientos q on q.id = m.requerimiento_id
       where m.estado = 'POR_AUTORIZAR' group by q.numero order by 2`,
     [ids],
@@ -177,7 +176,7 @@ const porPaso = (paso) => [...enBase].filter(([, r]) => r.paso === paso).sort(([
   comprobar(esperanVisto.length >= 3, `la base tiene al menos tres RQ que esperan a Diseño (${esperanVisto.join(', ')})`)
   comprobar(
     JSON.stringify(visto.map((t) => t.numero)) === JSON.stringify(esperanVisto),
-    `«Esperan tu visto» va del sustento más antiguo al más nuevo: ${visto.map((t) => t.numero).join(', ')} (base: ${esperanVisto.join(', ')})`,
+    `«Esperan tu visto» va del que más espera al que menos: ${visto.map((t) => t.numero).join(', ')} (base: ${esperanVisto.join(', ')})`,
   )
   for (const t of visto) {
     const b = enBase.get(t.numero)
@@ -209,7 +208,7 @@ const porPaso = (paso) => [...enBase].filter(([, r]) => r.paso === paso).sort(([
   const yaAutorizados = [...enBase].filter(([, r]) => r.paso === 'REVISION_STOCK').map(([n]) => n)
   comprobar(
     autorizados.length > 0 && yaAutorizados.every((n) => autorizados.some((t) => t.numero === n)),
-    `«Ya los autorizaste» lleva ${yaAutorizados.join(', ')} (${autorizados.map((t) => t.numero).join(', ')})`,
+    `«Ya autorizados por Diseño» lleva ${yaAutorizados.join(', ')} (${autorizados.map((t) => t.numero).join(', ')})`,
   )
   for (const t of autorizados.filter((x) => yaAutorizados.includes(x.numero))) {
     const b = enBase.get(t.numero)
@@ -275,7 +274,7 @@ for (const ancho of [390, 1440]) {
   await conReact(pagina)
   const despues = await tarjetas(pagina, 'ya-autorizados')
   const fila = despues.find((t) => t.numero === numero)
-  comprobar(Boolean(fila), `${numero} pasó a «Ya los autorizaste» tras el toque`)
+  comprobar(Boolean(fila), `${numero} pasó a «Ya autorizados por Diseño» tras el toque`)
   comprobar(fila?.ahora?.includes('Lo tiene Almacén'), `${numero}: su recorrido dice que ya lo tiene Almacén («${fila?.ahora}»)`)
   comprobar(
     !(await tarjetas(pagina, 'por-autorizar')).some((t) => t.numero === numero),

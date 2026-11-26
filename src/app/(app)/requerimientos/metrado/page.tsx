@@ -88,13 +88,15 @@ export default async function PaginaPorAutorizar({ searchParams }: PageProps<'/r
       ? (recorridos?.get(r.id) ?? []).filter((p) => p.paso === 'SUSTENTO' && p.situacion === 'HECHO' && p.en && p.en <= en).at(-1)?.puesto ?? null
       : null
   // El que más espera arriba. Lo que espera tu visto, desde el sustento más
-  // antiguo de lo que espera tu visto (si otro insumo del RQ espera sustento, el
-  // recorrido dice que lo tiene quien pidió); lo demás, desde que lo tiene quien
-  // lo tiene. Sin el recorrido, desde que se registró. Solo se comparan fechas.
+  // reciente de lo que espera tu visto, que es desde donde la base cuenta sus
+  // días (si otro insumo del RQ espera sustento, el recorrido dice que lo tiene
+  // quien pidió); lo demás, desde que lo tiene quien lo tiene. Sin el
+  // recorrido, desde que se registró. Solo se comparan fechas.
   const desdeElSustento = (r: RequerimientoListado) =>
     de(r, ['POR_AUTORIZAR'])
       .map((l) => metrado.get(l.id)?.sustentado_en ?? r.creado_en)
-      .sort()[0] ?? r.creado_en
+      .sort()
+      .at(-1) ?? r.creado_en
   const desde = (r: RequerimientoListado) => ahora(r)?.en ?? r.creado_en
   porAutorizar.sort((a, b) => desdeElSustento(a).localeCompare(desdeElSustento(b)))
   sinSustento.sort((a, b) => desde(a).localeCompare(desde(b)))
@@ -218,7 +220,8 @@ export default async function PaginaPorAutorizar({ searchParams }: PageProps<'/r
               Ya autorizados por Diseño <span className="tabular font-normal text-texto-suave">· {todosLosAutorizados.length}</span>
             </h2>
             <p className="text-xs text-texto-suave">
-              Siguen abiertos: abre su recorrido para ver por dónde van después del visto, quién los tiene y hace cuántos días.
+              Siguen abiertos.
+              {recorridos !== null && ' Abre su recorrido para ver por dónde van después del visto, quién los tiene y hace cuántos días.'}
               {todosLosAutorizados.length > AUTORIZADOS_A_LA_VISTA &&
                 ` Van los ${AUTORIZADOS_A_LA_VISTA} de visto más reciente; para uno anterior, búscalo por su código.`}
             </p>

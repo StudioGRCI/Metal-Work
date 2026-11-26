@@ -1,15 +1,17 @@
 -- Siembra del banco para «Insumos por autorizar» (plan 6, entrega 6.2): RQ de
 -- unidad que se pasan del metrado de Diseño, cada uno en un punto del circuito,
 -- para ver los días en espera, quién pidió y el recorrido tras autorizar.
--- Se corre sobre mw_demo recién preparado: si SR-101 no tiene metrado, lo carga
--- (24 angulares y 6 bisagras). Cada paso lo da la cuenta del puesto; las fechas
--- se corren hacia atrás al final, sin disparadores, para que haya días que contar.
+-- Se corre sobre mw_demo recién preparado: si el metrado de SR-101 no tiene los
+-- ángulos ni las bisagras, los carga (24 y 6). Cada paso lo da la cuenta del
+-- puesto; las fechas se corren hacia atrás al final, sin disparadores, para que
+-- haya días que contar.
 --   A · RQ de Maestranza que espera el visto de Diseño hace 3 días.
 --   B · RQ de Producción que lo espera desde ayer.
 --   C · RQ que todavía espera el sustento de quien pidió.
 --   D · RQ de SR-102 que Diseño ya autorizó: lo tiene Almacén.
---   E · RQ con un insumo que espera el visto y otro sin sustento: el recorrido
---       dice que lo tiene quien pidió, aunque espere a Diseño.
+--   E · RQ registrado ayer con un insumo que espera el visto desde hoy y otro
+--       sin sustento: el recorrido dice que lo tiene quien pidió, aunque espere
+--       a Diseño. Se registra después que B para que sus bisagras se pasen.
 \set ON_ERROR_STOP on
 
 create or replace function pg_temp.como(p_correo text) returns void language plpgsql as $$
@@ -34,13 +36,14 @@ do $$ begin
   end if;
 end $$;
 
--- Diseño carga el metrado (SR-101, si no lo tiene: 24 y 6; SR-102: 10) ------------
+-- Diseño carga el metrado (SR-101, lo que no tenga: 24 y 6; SR-102: 10) ----------
 select pg_temp.como('diseno.local@metalwork.test');
 set role authenticated;
 select public.guardar_material_codigo(null, 'SR-101', (select id from public.materiales where codigo = x.codigo), x.cantidad, null, null)
-  from (values ('AE-ET-AC-AM-00017', 24), ('AE-ET-AC-BI-00011', 6)) x(codigo, cantidad)
- where not exists (select 1 from public.codigo_materiales where codigo_interno = 'SR-101' and quitado_en is null);
-select public.guardar_material_codigo(null, 'SR-102', (select id from public.materiales where codigo = 'AE-ET-AC-AM-00017'), 10, null,
+  from (values ('MP-PR-AC-AG-0076', 24), ('AE-ET-AC-BI-00011', 6)) x(codigo, cantidad)
+ where not exists (select 1 from public.codigo_materiales c join public.materiales m on m.id = c.material_id
+                    where c.codigo_interno = 'SR-101' and m.codigo = x.codigo and c.quitado_en is null);
+select public.guardar_material_codigo(null, 'SR-102', (select id from public.materiales where codigo = 'MP-PR-AC-AG-0076'), 10, null,
                                       'Metrado del plano de piso');
 reset role;
 
@@ -53,23 +56,23 @@ select pg_temp.como('sup.mtz.local@metalwork.test');
 set role authenticated;
 -- A: 30 de 24 → se pasa en 6; lo sustenta y espera a Diseño desde hace 3 días.
 select public.emitir_requerimiento((select id from rq_banco where clave = 'a'), 'OPERACION', pg_temp.area('MTZ'), 'SR-101',
-  'Angulares para el piso y los largueros (banco 6.2)', null, jsonb_build_array(pg_temp.linea('AE-ET-AC-AM-00017', 30)));
+  'Ángulos para el piso y los largueros (banco 6.2)', null, jsonb_build_array(pg_temp.linea('MP-PR-AC-AG-0076', 30)));
 select public.sustentar_insumos((select id from rq_banco where clave = 'a'),
   '[{"item":1,"sustento":"El plano de piso no cuenta los refuerzos de las cuatro esquinas: van 6 más."}]');
--- C: 5 más del mismo angular, sin sustento todavía.
+-- C: 5 más del mismo ángulo, sin sustento todavía.
 select public.emitir_requerimiento((select id from rq_banco where clave = 'c'), 'OPERACION', pg_temp.area('MTZ'), 'SR-101',
-  'Angulares de reposición por corte mal hecho (banco 6.2)', null, jsonb_build_array(pg_temp.linea('AE-ET-AC-AM-00017', 5)));
+  'Ángulos de reposición por corte mal hecho (banco 6.2)', null, jsonb_build_array(pg_temp.linea('MP-PR-AC-AG-0076', 5)));
 -- D: 14 de 10 en SR-102; lo sustenta y Diseño lo autoriza.
 select public.emitir_requerimiento((select id from rq_banco where clave = 'd'), 'OPERACION', pg_temp.area('MTZ'), 'SR-102',
-  'Angulares para el chasis de la cisterna (banco 6.2)', null, jsonb_build_array(pg_temp.linea('AE-ET-AC-AM-00017', 14)));
+  'Ángulos para el chasis de la cisterna (banco 6.2)', null, jsonb_build_array(pg_temp.linea('MP-PR-AC-AG-0076', 14)));
 select public.sustentar_insumos((select id from rq_banco where clave = 'd'),
   '[{"item":1,"sustento":"La cisterna lleva dos travesaños más que el modelo del metrado."}]');
--- E: 2 angulares más (se pasa) y 3 bisagras (se pasa); sustenta solo los angulares.
+-- E: 2 ángulos más (se pasa) y 3 bisagras (se pasa); sustenta solo los ángulos.
 select public.emitir_requerimiento((select id from rq_banco where clave = 'e'), 'OPERACION', pg_temp.area('MTZ'), 'SR-101',
-  'Angulares y bisagras para la compuerta (banco 6.2)', null,
-  jsonb_build_array(pg_temp.linea('AE-ET-AC-AM-00017', 2), pg_temp.linea('AE-ET-AC-BI-00011', 3)));
+  'Ángulos y bisagras para la compuerta (banco 6.2)', null,
+  jsonb_build_array(pg_temp.linea('MP-PR-AC-AG-0076', 2), pg_temp.linea('AE-ET-AC-BI-00011', 3)));
 select public.sustentar_insumos((select id from rq_banco where clave = 'e'),
-  '[{"item":1,"sustento":"La compuerta trasera lleva dos angulares de refuerzo que no están en el plano."}]');
+  '[{"item":1,"sustento":"La compuerta trasera lleva dos ángulos de refuerzo que no están en el plano."}]');
 reset role;
 
 select pg_temp.como('sup.prd.local@metalwork.test');
@@ -96,7 +99,7 @@ update public.requerimientos q set creado_en = now() - (x.dias || ' days')::inte
 update public.requerimiento_sustentos s set sustentado_en = now() - (x.dias || ' days')::interval, creado_en = now() - (x.dias || ' days')::interval
   from public.requerimiento_lineas l
   join rq_banco b on b.id = l.requerimiento_id
-  join (values ('a', 3), ('b', 1), ('d', 4), ('e', 2)) x(clave, dias) on x.clave = b.clave
+  join (values ('a', 3), ('b', 1), ('d', 4)) x(clave, dias) on x.clave = b.clave
  where s.requerimiento_linea_id = l.id;
 update public.requerimiento_sustentos s set decidido_en = now() - interval '2 days'
   from public.requerimiento_lineas l join rq_banco b on b.id = l.requerimiento_id and b.clave = 'd'
