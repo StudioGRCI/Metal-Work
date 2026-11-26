@@ -252,11 +252,14 @@ const esquemaCancelarVenta = z.object({
  * anuló y la cotización volvió a esperar su OT (StudioGRCI, 2026-11-26). La
  * cotización queda anulada con su motivo, no se borra. La base decide quién y
  * cuál (`cancelar_venta_reabierta`, migración 20261126988000): quien la
- * registró, aprobada, sin OT vigente ni factura vigente.
+ * registró o Gerencia (20261126998600), aprobada, sin OT vigente ni factura vigente.
  */
 export async function cancelarVentaReabierta(_previo: unknown, datos: FormData): Promise<ResultadoAccion<{ yaEstaba: boolean }>> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, 'cotizaciones.crear')) return { ok: false, error: 'La venta la cancela quien registró la cotización.' }
+  // Quien la registró o Gerencia (migración 20261126998600): los mismos dos permisos que acepta la función.
+  if (!puede(perfil, 'cotizaciones.crear') && !puede(perfil, 'cotizaciones.revisar')) {
+    return { ok: false, error: 'La venta la cancela quien registró la cotización, o Gerencia General.' }
+  }
 
   const analisis = esquemaCancelarVenta.safeParse(Object.fromEntries(datos))
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'No se pudo identificar la cotización.' }

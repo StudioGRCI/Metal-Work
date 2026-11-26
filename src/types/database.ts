@@ -16622,6 +16622,13 @@ export type Database = {
           por_reponer: number | null
         }[]
       }
+      cuenta_que_registra_cotizaciones: {
+        Args: {
+          p_activo: boolean | null
+          p_rol: string | null
+        }
+        Returns: boolean
+      }
       cumplimiento_de_proveedores: {
         Args: {
           p_ids: string[] | null
@@ -19169,6 +19176,12 @@ export type Database = {
           p_usuario: string | null
         }
         Returns: string
+      }
+      quien_registro_la_puede_cancelar: {
+        Args: {
+          p_cotizacion: string | null
+        }
+        Returns: boolean
       }
       quien_subio_y_quien_leyo: {
         Args: {
@@ -22069,6 +22082,16 @@ export type Database = {
           placa: string | null
           vehiculo: string | null
           ordenes: string | null
+        }[]
+      }
+      unidades_que_pasaron_a_otro_comprador: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          cotizacion_id: string | null
+          pasaron: number | null
+          unidades: number | null
         }[]
       }
       unidades_que_salieron_de_la_cotizacion: {

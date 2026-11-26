@@ -40,8 +40,11 @@ export type CotizacionPdf = Omit<Vistas<'v_cotizaciones_pdf'>, 'ordenes' | 'unid
   /**
    * La venta se reabrió: su OT pasó a otro comprador y allí se anuló, y volvió a esperar su OT
    * hasta que Ventas la cancele (migración 20261126988000). Con el número de esa OT si se puede leer.
+   * `sin_quien_la_registro`: quien la registró ya no la puede cancelar (no tiene cuenta activa o
+   * cambió de puesto); lo sabe solo quien revisa cotizaciones, que entonces es quien la cancela
+   * (migración 20261126998600).
    */
-  reabierta_por_ot_anulada: { numero: string | null } | null
+  reabierta_por_ot_anulada: { numero: string | null; sin_quien_la_registro: boolean } | null
   url: string | null
   urlAprobada: string | null
   versiones: VersionCotizacion[]
@@ -159,7 +162,10 @@ export async function listarCotizacionesPdf(limite = 200): Promise<CotizacionPdf
       unidades_a_otro_comprador: Array.isArray(f.unidades_a_otro_comprador) ? (f.unidades_a_otro_comprador as UnidadQuePaso[]) : [],
       reabierta_por_ot_anulada:
         f.reabierta_por_ot_anulada && typeof f.reabierta_por_ot_anulada === 'object' && !Array.isArray(f.reabierta_por_ot_anulada)
-          ? { numero: typeof f.reabierta_por_ot_anulada.numero === 'string' ? f.reabierta_por_ot_anulada.numero : null }
+          ? {
+              numero: typeof f.reabierta_por_ot_anulada.numero === 'string' ? f.reabierta_por_ot_anulada.numero : null,
+              sin_quien_la_registro: f.reabierta_por_ot_anulada.sin_quien_la_registro === true,
+            }
           : null,
       cliente: f.cliente ?? (f.id && clientes.get(f.id)) ?? null,
       facturas: (facturas.data ?? []).filter((x) => x.cotizacion_pdf_id === f.id),

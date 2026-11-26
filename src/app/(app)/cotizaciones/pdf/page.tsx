@@ -94,6 +94,12 @@ function EnlaceArchivo({ url, mime, nombre, descarga }: { url: string; mime: str
  * veces lo mismo. Lo que el sistema sí guarda es la traza —quién la subió, qué
  * observó Gerencia en cada vuelta, quién la aprobó, qué orden salió— y el papel.
  */
+/** El motivo lo escribe una persona, con punto o sin él: la frase que sigue no se le pega. */
+function conPuntoFinal(texto: string) {
+  const t = texto.trim()
+  return /[.!?…]$/.test(t) ? t : `${t}.`
+}
+
 const FILTROS_ESTADO = ['POR_REVISAR', 'APROBADA_MES', 'APROBADA_SIN_OT', 'RECHAZADA', 'CON_OT', 'ANULADA'] as const
 type FiltroEstado = (typeof FILTROS_ESTADO)[number]
 
@@ -188,8 +194,16 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
   const sinCodigo = faltaSuOt
   // La venta que se reabrió (su OT pasó a otro comprador y allí se anuló) la
   // decide quien la registró: sigue, o la cancela (migración 20261126988000).
-  const puedeCancelar = (c: (typeof cotizaciones)[number]) =>
+  const cancelaComoAutor = (c: (typeof cotizaciones)[number]) =>
     puedeSubir && c.estado === 'APROBADA' && c.reabierta_por_ot_anulada !== null && c.registrado_por === perfil.id && !c.facturada
+  // Gerencia también tiene el botón, por si quien la registró ya no está
+  // (StudioGRCI, 2026-11-26; migración 20261126998600). No se le sube arriba
+  // como suya mientras esa persona siga con cuenta: la decide primero quien la
+  // vendió. Si ya no tiene cuenta activa o cambió de puesto, la decide Gerencia y sí sube.
+  const puedeCancelar = (c: (typeof cotizaciones)[number]) =>
+    cancelaComoAutor(c) || (revisa && c.estado === 'APROBADA' && c.reabierta_por_ot_anulada !== null && !c.facturada)
+  const cancelaPorQuienSeFue = (c: (typeof cotizaciones)[number]) =>
+    revisa && c.estado === 'APROBADA' && c.reabierta_por_ot_anulada?.sin_quien_la_registro === true && !c.facturada
   // La que espera su decisión, aunque tenga una factura por anular antes: Inicio las cuenta todas.
   const esperaSuDecision = (c: (typeof cotizaciones)[number]) =>
     puedeSubir && c.estado === 'APROBADA' && c.reabierta_por_ot_anulada !== null && c.registrado_por === perfil.id
@@ -197,7 +211,8 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
     (revisa && c.estado === 'POR_REVISAR') ||
     (cargaOt && sinCodigo(c)) ||
     (puedeCorregirCotizacion(perfil, c) && !c.facturada) ||
-    puedeCancelar(c)
+    cancelaComoAutor(c) ||
+    cancelaPorQuienSeFue(c)
   // La que Gerencia acaba de revisar se queda donde estaba, ya aprobada o
   // rechazada, también en «Por revisar»: si se iba al fondo, bajo el dedo
   // quedaba el «Aprobar» de otra y un segundo toque aprobaba la equivocada.
@@ -406,7 +421,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
 
                     {c.estado === 'ANULADA' && (
                       <p className="rounded-[var(--radius-base)] bg-peligro-suave px-2.5 py-2 text-sm text-peligro">
-                        Anulada: {c.observacion || 'Consulta el motivo con Gerencia.'} El número y el archivo se conservan en el historial.
+                        Anulada: {c.observacion?.trim() ? conPuntoFinal(c.observacion) : 'Consulta el motivo con Gerencia.'} El número y el archivo se conservan en el historial.
                       </p>
                     )}
 
@@ -493,13 +508,17 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                           <span className="font-medium">
                             Su OT{reabierta.numero ? ` ${reabierta.numero}` : ''} pasó a otro comprador y allí se anuló: la venta volvió a esperar su OT.
                           </span>{' '}
-                          {cancela
+                          {cancela && esMia
                             ? 'Si la venta sigue, Administración le carga su OT. Si ya no sigue, cancélala con «Cancelar la venta».'
                             : puedeSubir && esMia
                               ? 'Si la venta sigue, Administración le carga su OT. Para cancelarla, Contabilidad anula primero su factura.'
-                              : cargaOt
-                                ? `Antes de cargarle otra OT, confirma con ${c.registrado_por_nombre ?? 'quien la registró'} si la venta sigue; si no sigue, la cancela esa persona${c.facturada ? ', después de que Contabilidad anule su factura' : ''}.`
-                                : `Si la venta ya no sigue, la cancela quien la registró${c.registrado_por_nombre ? ` (${c.registrado_por_nombre})` : ''}.`}
+                              : revisa
+                                ? reabierta.sin_quien_la_registro
+                                  ? `Quien la registró ya no tiene cuenta activa o cambió de puesto. Si la venta ya no sigue, ${c.facturada ? 'la cancelas tú después de que Contabilidad anule su factura' : 'cancélala tú con «Cancelar la venta»'}.`
+                                  : `Si la venta ya no sigue, la cancela quien la registró${c.registrado_por_nombre ? ` (${c.registrado_por_nombre})` : ''}. También puedes cancelarla tú${c.facturada ? ', después de que Contabilidad anule su factura' : ' con «Cancelar la venta»'}.`
+                                : cargaOt
+                                  ? `Antes de cargarle otra OT, confirma con ${c.registrado_por_nombre ?? 'quien la registró'} si la venta sigue; si no sigue, la cancela esa persona o Gerencia General${c.facturada ? ', después de que Contabilidad anule su factura' : ''}.`
+                                  : `Si la venta ya no sigue, la cancela quien la registró${c.registrado_por_nombre ? ` (${c.registrado_por_nombre})` : ''} o Gerencia General.`}
                         </span>
                       </p>
                     )}

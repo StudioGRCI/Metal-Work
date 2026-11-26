@@ -92,6 +92,11 @@ function pasoAOtroComprador(c: CotizacionParaFacturar, ordenes: (string | null)[
   return `${ot} ${paso} a otro comprador: esta venta ya no lleva OT.${porCobrar ? ' Queda cobrar su factura, o anularla.' : ''}`
 }
 
+/** «1 de 3 unidades pasó a otro comprador.» */
+function unidadesAOtroComprador({ pasaron, unidades }: { pasaron: number; unidades: number }) {
+  return `${pasaron} de ${unidades} unidades ${pasaron === 1 ? 'pasó' : 'pasaron'} a otro comprador.`
+}
+
 /**
  * Quién tiene la unidad que espera factura y desde cuándo. Contabilidad la
  * tiene desde que su OT tiene código interno; la que está en corrección la
@@ -283,6 +288,18 @@ export default async function PaginaFacturacion() {
                       </p>
                     )}
 
+                    {/* Una unidad de varias pasó a otro comprador: el total de arriba sigue siendo el de la
+                        cotización entera, que guarda un solo monto. Se avisa y Contabilidad decide (StudioGRCI, 2026-11-26). */}
+                    {c.unidades_a_otro_comprador && (
+                      <p data-unidades-a-otro-comprador className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-aviso-suave px-2.5 py-1.5 text-xs text-aviso">
+                        <UserRoundX aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+                        <span>
+                          <span className="font-medium">{unidadesAOtroComprador(c.unidades_a_otro_comprador)}</span>{' '}
+                          El total de venta es el de la cotización entera: revisa cuánto corresponde facturar.
+                        </span>
+                      </p>
+                    )}
+
                     {c.paso_a_otro_comprador ? (
                       <p data-paso-a-otro-comprador className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-neutro-suave px-2.5 py-1.5 text-xs text-texto-suave">
                         <UserRoundX aria-hidden className="mt-0.5 size-3.5 shrink-0" />
@@ -330,6 +347,7 @@ export default async function PaginaFacturacion() {
                         monedaCotizacion={m}
                         totalCotizacion={total}
                         facturado={facturado}
+                        unidadesAOtroComprador={c.unidades_a_otro_comprador}
                         unidades={
                           varias ? c.unidades.map((u) => ({ numero: u.numero, codigo: u.codigo, parte: u.parte, facturado: u.facturado })) : undefined
                         }
