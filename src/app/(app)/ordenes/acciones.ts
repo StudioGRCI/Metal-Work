@@ -127,9 +127,11 @@ export async function cambiarEstadoOrden(
 
   // El mismo mapa que fn_ot_permiso_por_estado en la base; facturada la marca
   // la oficina (`ordenes.editar`, migración 110) y el taller que ya cambiaba
-  // estados sigue pudiendo.
+  // estados sigue pudiendo. Pausar lo hace también Administración, con
+  // `ordenes.pausar` (migración 20261126337000); reanudar, abajo.
   const permisosNecesarios =
-    estado === 'APROBADA' ? ['ordenes.aprobar']
+    estado === 'PAUSADA' ? ['ordenes.pausar', 'ordenes.cambiar_estado']
+    : estado === 'APROBADA' ? ['ordenes.aprobar']
     : estado === 'ANULADA' ? ['ordenes.anular']
     : estado === 'ENTREGADA' ? ['ordenes.entregar']
     : estado === 'FACTURADA' ? ['ordenes.editar', 'ordenes.cambiar_estado']
@@ -141,6 +143,12 @@ export async function cambiarEstadoOrden(
   // quien tiene `ordenes.revisar_taller`: es el mismo atajo que tiene el
   // disparador fn_ot_permiso_por_estado (migración 098), y solo para esa.
   let permitido = puede(perfil, permisosNecesarios)
+  // Reanudar es pasar a EN_PROCESO desde PAUSADA: con `ordenes.pausar` vale
+  // solo desde ahí (iniciar o reabrir siguen con `ordenes.cambiar_estado`).
+  if (!permitido && estado === 'EN_PROCESO' && puede(perfil, 'ordenes.pausar')) {
+    const { data: actual } = await supabase.from('ordenes_trabajo').select('estado').eq('id', orden_id).maybeSingle()
+    permitido = actual?.estado === 'PAUSADA'
+  }
   if (!permitido && (estado === 'APROBADA' || estado === 'ANULADA') && puede(perfil, 'ordenes.revisar_taller')) {
     const { data: actual } = await supabase
       .from('ordenes_trabajo')

@@ -47,7 +47,9 @@ const SIGUIENTES: Record<string, Transicion[]> = {
     { estado: 'ANULADA', etiqueta: 'Anular', permisos: ['ordenes.anular'], motivo: true },
   ],
   EN_PROCESO: [
-    { estado: 'PAUSADA', etiqueta: 'Pausar', permisos: ['ordenes.cambiar_estado'], motivo: true },
+    // Pausar y reanudar los hace también Administración, con su permiso propio
+    // (DKS, 2026-11-26; migración 20261126337000).
+    { estado: 'PAUSADA', etiqueta: 'Pausar', permisos: ['ordenes.pausar', 'ordenes.cambiar_estado'], motivo: true },
     {
       estado: 'TERMINADA',
       etiqueta: 'Terminar',
@@ -60,7 +62,7 @@ const SIGUIENTES: Record<string, Transicion[]> = {
     { estado: 'ANULADA', etiqueta: 'Anular', permisos: ['ordenes.anular'], motivo: true },
   ],
   PAUSADA: [
-    { estado: 'EN_PROCESO', etiqueta: 'Reanudar', permisos: ['ordenes.cambiar_estado'] },
+    { estado: 'EN_PROCESO', etiqueta: 'Reanudar', permisos: ['ordenes.pausar', 'ordenes.cambiar_estado'] },
     { estado: 'ANULADA', etiqueta: 'Anular', permisos: ['ordenes.anular'], motivo: true },
   ],
   // CONTROL_CALIDAD sigue en el enum de la base pero ya no se llega a él:
