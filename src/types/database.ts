@@ -15881,6 +15881,18 @@ export type Database = {
         }
         Returns: boolean
       }
+      ocs_que_traban_las_facturas: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          adquisicion_id: string | null
+          orden_compra_id: string | null
+          nombre: string | null
+          aprobacion: string | null
+          pedida_en: string | null
+        }[]
+      }
       orden_compra_de_ruta: {
         Args: {
           p_ruta: string | null

@@ -15,7 +15,8 @@
  * Funciones puras: las usan las pantallas y `lo-que-falta.test.mjs`.
  */
 
-export type QuienLoTiene = 'Contabilidad' | 'Gerencia' | 'Logística' | 'Tesorería'
+/** El área que lo tiene. La aprobación es del puesto que dice la regla (hoy, Gerencia). */
+export type QuienLoTiene = 'Contabilidad' | 'Gerencia' | 'Logística' | 'Tesorería' | (string & {})
 
 /** Una cosa que falta: qué es, quién la tiene y, si se sabe, desde cuándo y cuántos días lleva. */
 export type LoQueFalta = {
@@ -27,46 +28,41 @@ export type LoQueFalta = {
   dias?: number | null
 }
 
-type OcDeLaFactura = { nombre: string; aprobacion: string | null; pedidaEn?: string | null; dias?: number | null }
+/**
+ * La OC que traba el pago de la factura, como la dice la base
+ * (`ocs_que_traban_las_facturas`, la misma regla que rechaza el pago).
+ */
+export type OcQueTraba = { nombre: string; aprobacion: string | null; desde?: string | null; dias?: number | null }
 
 /** Las OC de una factura que Gerencia todavía no aprueba, rechazó o se anularon. */
 export function ocsQueTraban<T extends { aprobacion: string | null }>(ordenes: readonly T[]): T[] {
   return ordenes.filter((o) => o.aprobacion !== null && o.aprobacion !== 'APROBADA' && o.aprobacion !== 'NO_REQUERIDA')
 }
 
-const juntar = (nombres: string[]) => (nombres.length <= 1 ? (nombres[0] ?? '') : `${nombres.slice(0, -1).join(', ')} y ${nombres.at(-1)}`)
 
 /** La factura de compra registrada (Facturas por pagar). */
 export function faltaDeLaFactura(f: {
   saldo: number
   /** La OC con boleta se dio por pagada fuera: Contabilidad dice si se pagó (`fn_pago_factura_en_espera`). */
   enEspera: boolean
-  ordenes: readonly OcDeLaFactura[]
+  /** La OC que no deja pagarla, de la base: la de la factura, la vieja o la que la anexó (`fn_pago_factura_oc_aprobada`). */
+  traba: OcQueTraba | null
   /** Espera lo pagado por la boleta de su OC, en otra moneda (`fn_factura_sin_pago_directo`). */
   esperaLaBoleta: boolean
+  /** El puesto que aprueba las compras, según la regla. */
+  aprueba?: string
 }): LoQueFalta[] {
   if (f.saldo <= 0) return []
   if (f.enEspera) return [{ que: 'que diga si la OC con boleta ya se pagó fuera del sistema', quien: 'Contabilidad', traba: true }]
-  const traban = ocsQueTraban(f.ordenes)
-  const rechazada = traban.find((o) => o.aprobacion === 'RECHAZADA' || o.aprobacion === 'ANULADA')
-  if (rechazada) {
+  const t = f.traba
+  if (t && (t.aprobacion === 'RECHAZADA' || t.aprobacion === 'ANULADA')) {
     return [{
-      que: `ver con el proveedor qué pasa con la factura: la ${rechazada.nombre} está ${rechazada.aprobacion === 'ANULADA' ? 'anulada' : 'rechazada'} y no se paga`,
+      que: `ver con el proveedor qué pasa con la factura: la ${t.nombre} está ${t.aprobacion === 'ANULADA' ? 'anulada' : 'rechazada'} y no se paga`,
       quien: 'Contabilidad',
       traba: true,
     }]
   }
-  if (traban.length > 0) {
-    // Los días, los de la que espera desde antes.
-    const primera = [...traban].sort((a, b) => (b.dias ?? -1) - (a.dias ?? -1))[0]
-    return [{
-      que: `la aprobación de la ${juntar(traban.map((o) => o.nombre))}`,
-      quien: 'Gerencia',
-      traba: true,
-      desde: primera.pedidaEn ?? null,
-      dias: primera.dias ?? null,
-    }]
-  }
+  if (t) return [{ que: `la aprobación de la ${t.nombre}`, quien: f.aprueba ?? 'Gerencia', traba: true, desde: t.desde ?? null, dias: t.dias ?? null }]
   if (f.esperaLaBoleta) return [{ que: 'pasar a esta factura lo pagado por la boleta, al cambio', quien: 'Tesorería', traba: true }]
   return [{ que: 'el pago, con su voucher', quien: 'Tesorería', traba: false }]
 }
@@ -110,7 +106,7 @@ export function faltaDeLaParte(x: { saldo: number }): LoQueFalta[] {
  * Gerencia, eso va primero: aunque llegue la factura, no se paga sin la
  * aprobación (`fn_pago_factura_oc_aprobada`).
  */
-export function faltaDeLaCompraACredito(oc: { nombre: string; aprobacion: string | null; desde?: string | null; dias?: number | null }): LoQueFalta[] {
+export function faltaDeLaCompraACredito(oc: { nombre: string; aprobacion: string | null; desde?: string | null; dias?: number | null; aprueba?: string }): LoQueFalta[] {
   const factura: LoQueFalta = { que: 'registrar la factura en Adquisiciones', quien: 'Contabilidad', traba: true }
   if (oc.aprobacion === 'RECHAZADA' || oc.aprobacion === 'ANULADA') {
     return [{
@@ -120,7 +116,7 @@ export function faltaDeLaCompraACredito(oc: { nombre: string; aprobacion: string
     }]
   }
   if (oc.aprobacion === 'POR_APROBAR') {
-    return [{ que: `la aprobación de la ${oc.nombre}`, quien: 'Gerencia', traba: true, desde: oc.desde ?? null, dias: oc.dias ?? null }, factura]
+    return [{ que: `la aprobación de la ${oc.nombre}`, quien: oc.aprueba ?? 'Gerencia', traba: true, desde: oc.desde ?? null, dias: oc.dias ?? null }, factura]
   }
   return [factura]
 }
@@ -128,8 +124,6 @@ export function faltaDeLaCompraACredito(oc: { nombre: string; aprobacion: string
 /** La orden de servicio aprobada (Pagos de servicio). Gerencia ya la aprobó: si no, no saldría. */
 export function faltaDelServicio(s: {
   cancelada: boolean
-  /** Quien mira puede adjuntarla él mismo (`tesoreria.pagar_servicios`). */
-  adjuntaTesoreria?: boolean
   /** La factura o el recibo del proveedor, adjunto a la OS. */
   conComprobante: boolean
   conforme: boolean
@@ -137,17 +131,24 @@ export function faltaDelServicio(s: {
   todoPagado: boolean
   saldoProveedor: number
   saldoDetraccion: number
+  /** Logística no dijo si la OS lleva detracción (`afecta` vacío). */
+  detraccionSinDefinir?: boolean
+  /** Lleva detracción y es en dólares, pero no hay tipo de cambio del día: no se sabe cuánto va al Banco de la Nación. */
+  sinTipoDeCambio?: boolean
 }): LoQueFalta[] {
   if (s.cancelada) return []
   const falta: LoQueFalta[] = []
   if (!s.conComprobante) {
-    falta.push({
-      que: `la factura o el recibo del proveedor: la adjunta Logística en la OS${s.adjuntaTesoreria ? ', o tú aquí' : ''}`,
-      quien: 'Logística',
-      traba: false,
-    })
+    falta.push({ que: 'la factura o el recibo del proveedor, adjunto a la OS', quien: 'Logística', traba: false })
   }
   if (!s.conforme) falta.push({ que: 'la conformidad del servicio', quien: 'Logística', traba: false })
+  if (s.detraccionSinDefinir) falta.push({ que: 'decir en la OS si lleva detracción', quien: 'Logística', traba: false })
+  if (s.sinTipoDeCambio) {
+    // Sin el cambio, la detracción no tiene monto: el saldo no dice cuánto falta y nada se da por pagado.
+    falta.push({ que: 'el tipo de cambio del día, para saber cuánto va de detracción', quien: 'Contabilidad', traba: true })
+    if (s.saldoProveedor > 0) falta.push({ que: 'el pago al proveedor, con su voucher', quien: 'Tesorería', traba: false })
+    return falta
+  }
   if (s.todoPagado) {
     // Ya se pagó todo pero ningún pago la canceló: otro pago no entra hasta rehacer el último.
     falta.push({ que: 'anular el último pago y registrarlo otra vez con «Sí, queda pagada»: se pagó todo, pero ningún pago la canceló', quien: 'Tesorería', traba: true })

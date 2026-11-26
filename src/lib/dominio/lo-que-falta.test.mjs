@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { faltaDeLaBoleta, faltaDeLaCompraACredito, faltaDeLaFactura, faltaDelServicio, faltaDeLaParte, ocsQueTraban } from './lo-que-falta.ts'
 
 const oc = (nombre, aprobacion, mas = {}) => ({ nombre, aprobacion, ...mas })
-const factura = (mas = {}) => ({ saldo: 100, enEspera: false, ordenes: [oc('OC-0001-MW', 'APROBADA')], esperaLaBoleta: false, ...mas })
+const factura = (mas = {}) => ({ saldo: 100, enEspera: false, traba: null, esperaLaBoleta: false, ...mas })
 const quien = (lista) => lista.map((f) => `${f.quien}${f.traba ? '!' : ''}`)
 
 test('solo traban las OC por aprobar, rechazadas o anuladas', () => {
@@ -16,24 +16,26 @@ test('la factura sin nada pendiente le toca a Tesorería: el pago con su voucher
   assert.deepEqual(faltaDeLaFactura(factura({ saldo: 0 })), [])
 })
 
-test('la factura de una OC por aprobar espera a Gerencia, con los días de la que espera desde antes', () => {
-  const r = faltaDeLaFactura(factura({
-    ordenes: [oc('OC-0001-MW', 'POR_APROBAR', { pedidaEn: '2026-11-25T10:00:00Z', dias: 1 }), oc('OC-0002-MW', 'POR_APROBAR', { pedidaEn: '2026-11-20T10:00:00Z', dias: 6 })],
-  }))
+test('la factura que la base traba por una OC por aprobar espera a quien aprueba, con sus días', () => {
+  const traba = oc('OC-0002-MW', 'POR_APROBAR', { desde: '2026-11-20T10:00:00Z', dias: 6 })
+  const r = faltaDeLaFactura(factura({ traba }))
   assert.deepEqual(quien(r), ['Gerencia!'])
-  assert.equal(r[0].que, 'la aprobación de la OC-0001-MW y OC-0002-MW')
+  assert.equal(r[0].que, 'la aprobación de la OC-0002-MW')
   assert.equal(r[0].dias, 6)
   assert.equal(r[0].desde, '2026-11-20T10:00:00Z')
+  // El puesto lo dice la regla: si aprueba otro, la línea es suya.
+  assert.deepEqual(quien(faltaDeLaFactura(factura({ traba, aprueba: 'Administración' }))), ['Administración!'])
 })
 
-test('la OC rechazada manda sobre la que espera: no se paga, lo ve Contabilidad', () => {
-  const r = faltaDeLaFactura(factura({ ordenes: [oc('OC-0001-MW', 'POR_APROBAR'), oc('OC-0002-MW', 'RECHAZADA')] }))
+test('la OC rechazada o anulada no se paga: lo ve Contabilidad', () => {
+  const r = faltaDeLaFactura(factura({ traba: oc('OC-0002-MW', 'RECHAZADA') }))
   assert.deepEqual(quien(r), ['Contabilidad!'])
   assert.match(r[0].que, /OC-0002-MW está rechazada/)
+  assert.match(faltaDeLaFactura(factura({ traba: oc('OC-0003-MW', 'ANULADA') }))[0].que, /OC-0003-MW está anulada/)
 })
 
 test('la que espera a Contabilidad no pregunta por Gerencia', () => {
-  assert.deepEqual(quien(faltaDeLaFactura(factura({ enEspera: true, ordenes: [oc('X', 'POR_APROBAR')] }))), ['Contabilidad!'])
+  assert.deepEqual(quien(faltaDeLaFactura(factura({ enEspera: true, traba: oc('X', 'POR_APROBAR') }))), ['Contabilidad!'])
 })
 
 test('la factura que espera lo pagado por la boleta en otra moneda es de Tesorería, y traba', () => {
@@ -74,6 +76,18 @@ test('la orden de servicio: Logística da la factura y la conformidad; Tesorerí
   )
   assert.deepEqual(quien(faltaDelServicio(servicio({ todoPagado: true, saldoProveedor: 0 }))), ['Tesorería!'])
   assert.deepEqual(faltaDelServicio(servicio({ cancelada: true })), [])
+})
+
+test('la OS en dólares sin tipo de cambio no se da por pagada: espera el cambio de Contabilidad', () => {
+  // Pagado al proveedor todo lo que se sabe, la detracción sin monto: no propone «Sí, queda pagada».
+  const r = faltaDelServicio(servicio({ sinTipoDeCambio: true, todoPagado: true, saldoProveedor: 0 }))
+  assert.deepEqual(quien(r), ['Contabilidad!'])
+  assert.match(r[0].que, /tipo de cambio/)
+  assert.deepEqual(quien(faltaDelServicio(servicio({ sinTipoDeCambio: true }))), ['Contabilidad!', 'Tesorería'])
+})
+
+test('la OS sin decir si lleva detracción se lo pide a Logística', () => {
+  assert.deepEqual(quien(faltaDelServicio(servicio({ detraccionSinDefinir: true }))), ['Logística', 'Tesorería'])
 })
 
 test('la compra a crédito por aprobar espera primero a Gerencia, con sus días', () => {

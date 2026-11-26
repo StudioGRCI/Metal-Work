@@ -572,7 +572,11 @@ const CIFRAS = {
         })
       const filas = saldos.data ?? []
       const saldo = (m: string) => filas.filter((s) => (s.moneda === 'USD') === (m === 'USD')).reduce((n, s) => n + falta(s), 0)
-      return { titulo: 'Servicios por pagar', ...soles(saldo('PEN'), saldo('USD'), plural(pendientes.length, 'orden de servicio', 'órdenes de servicio')), icono: Wrench }
+      // La tarea «N servicios conformes por pagar» cuenta solo las conformes; la cifra, todas las aprobadas
+      // sin cancelar. Se dicen las dos para que no parezcan contradecirse (plan 11.2).
+      const conformes = pendientes.filter((s) => s.estado === 'CONFORME').length
+      const pie = `${plural(pendientes.length, 'orden de servicio', 'órdenes de servicio')} · ${conformes === 0 ? 'ninguna conforme' : plural(conformes, 'conforme', 'conformes')}`
+      return { titulo: 'Servicios por pagar', ...soles(saldo('PEN'), saldo('USD'), pie), icono: Wrench }
     },
   },
   recibos_por_pagar: {

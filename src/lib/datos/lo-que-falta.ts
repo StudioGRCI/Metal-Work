@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { diasEnEspera } from '@/lib/datos/dias-en-espera'
-import type { ReglaDeAprobacion } from '@/lib/dominio/lo-que-falta'
+import type { OcQueTraba, ReglaDeAprobacion } from '@/lib/dominio/lo-que-falta'
 import { createClient } from '@/lib/supabase/server'
 
 /** Desde cuándo espera una OC la aprobación de Gerencia, y cuántos días van (con la fecha de Lima). */
@@ -30,6 +30,39 @@ export async function esperaDeGerencia(ids: string[]): Promise<Map<string, Esper
     return filas.map(() => null)
   })
   filas.forEach((f, i) => mapa.set(f.id, { aprobacion: f.aprobacion, desde: f.aprobacion_pedida_en, dias: dias[i] ?? null }))
+  return mapa
+}
+
+/**
+ * Qué OC traba el pago de cada factura, dicho por la base con la misma regla que
+ * rechaza el pago (`ocs_que_traban_las_facturas`, migración 20261126560000): la
+ * de la factura, la de la columna vieja o la que la anexó. Con los días de la
+ * que espera a Gerencia. `'error'` si no se pudo leer, para que la pantalla lo
+ * diga en vez de ofrecer un pago que la base va a rechazar.
+ */
+export async function ocsQueTrabanLasFacturas(ids: string[]): Promise<Map<string, OcQueTraba> | 'error'> {
+  const mapa = new Map<string, OcQueTraba>()
+  const unicos = [...new Set(ids)]
+  if (unicos.length === 0) return mapa
+  const supabase = await createClient()
+  const filas: { adquisicion_id: string | null; nombre: string | null; aprobacion: string | null; pedida_en: string | null }[] = []
+  for (let i = 0; i < unicos.length; i += 500) {
+    const { data, error } = await supabase.rpc('ocs_que_traban_las_facturas', { p_ids: unicos.slice(i, i + 500) })
+    if (error) {
+      console.error(`No se pudo leer qué traba el pago de las facturas: ${error.message}`)
+      return 'error'
+    }
+    filas.push(...(data ?? []))
+  }
+  const dias = await diasEnEspera(filas.map((f) => (f.aprobacion === 'POR_APROBAR' ? f.pedida_en : null))).catch((e: unknown) => {
+    console.error(e instanceof Error ? e.message : e)
+    return filas.map(() => null)
+  })
+  filas.forEach((f, i) => {
+    if (f.adquisicion_id) {
+      mapa.set(f.adquisicion_id, { nombre: f.nombre ?? 'OC', aprobacion: f.aprobacion, desde: f.aprobacion === 'POR_APROBAR' ? f.pedida_en : null, dias: dias[i] ?? null })
+    }
+  })
   return mapa
 }
 

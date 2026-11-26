@@ -207,13 +207,14 @@ function Servicio({
         <LoQueFaltaDeLaFila
           mias={paga ? ['Tesorería'] : []}
           falta={queLeFaltaAlServicio({
-            adjuntaTesoreria: adjunta,
             cancelada: Boolean(s.cancelada),
             conComprobante: comprobante,
             conforme: s.estado === 'CONFORME',
             todoPagado,
             saldoProveedor: saldo.saldoProveedor,
             saldoDetraccion: saldo.saldoDetraccion,
+            detraccionSinDefinir: s.detraccion.afecta === null,
+            sinTipoDeCambio: Boolean(s.detraccion.afecta) && s.detraccion.total_con_igv_pen === null,
           })}
         />
         <ParaPagar documentos={documentos} cuentas={s.cancelada ? [] : s.cuentas} monedaDocumento={m} sinCuentas={s.cancelada ? null : sinCuentas} />

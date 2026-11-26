@@ -120,7 +120,7 @@ await como('requerimientos')
 await consulta(
   `select public.emitir_requerimiento($1, $2, 'PLA_SR_O4_1_26/21', $3, null,
      (select jsonb_agg(jsonb_build_object('descripcion', 'Insumo ' || n, 'cantidad', 2, 'unidad_medida_id', $4::text, 'categoria_id', $5::text))
-        from generate_series(1, 6) n))`,
+        from generate_series(1, 8) n))`,
   [rq, area, `Prueba de lo que falta ${SUFIJO}`, und, cat],
 )
 await como('almacen')
@@ -144,8 +144,13 @@ const ocAnexada = await emitir(4, 35, false, 'CONTADO', 0)
 const ocCredito = await emitir(5, 55, true)
 // 6: compra a crédito sin comprobante que todavía espera a Gerencia.
 const ocCreditoGerencia = await emitir(6, 45, true)
+// 7 y 8: la factura de una OC aprobada (8) que Logística anexó también a una OC con boleta que
+// espera a Gerencia (7). La base no deja pagarla (`fn_pago_factura_oc_aprobada` mira los anexos):
+// la pantalla tiene que decir lo mismo, no «Te toca» (auditoría del 2026-11-26).
+const ocBoletaGerencia = await emitir(7, 30, false, 'CONTADO', 0)
+const ocAnexadaLista = await emitir(8, 60, true)
 await como('gerencia')
-for (const oc of [ocLista, ocSinBoleta, ocAnexada, ocCredito]) await consulta(`select public.aprobar_compra($1)`, [oc])
+for (const oc of [ocLista, ocSinBoleta, ocAnexada, ocCredito, ocAnexadaLista]) await consulta(`select public.aprobar_compra($1)`, [oc])
 // La que espera a Gerencia se pidió hace 4 días: se corre la fecha sin disparadores, como la dejaría el tiempo.
 await como(null)
 await base.query('begin')
@@ -161,11 +166,23 @@ const NOMBRE = {
   anexada: await nombreDe(ocAnexada),
   credito: await nombreDe(ocCredito),
   creditoGerencia: await nombreDe(ocCreditoGerencia),
+  boletaGerencia: await nombreDe(ocBoletaGerencia),
 }
 
+// Logística anexa a la OC con boleta la factura que después registra Contabilidad para la OC 8.
+await como('logistica')
+{
+  const [{ id: doc }] = await consulta(`select gen_random_uuid() as id`)
+  await subir('documentos-compras', `compra/${ocBoletaGerencia}/${doc}.pdf`, 'logistica')
+  await consulta(
+    `insert into documentos_compra_material (id, orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por, numero_documento, fecha_emision)
+     values ($1, $2, 'FACTURA', 'factura.pdf', $3, 'application/pdf', $4, $5, $6, $7::date)`,
+    [doc, ocBoletaGerencia, `compra/${ocBoletaGerencia}/${doc}.pdf`, PDF.length, ids[CUENTAS.logistica], `F082-${SUFIJO}`, hoy],
+  )
+}
 await como('contabilidad')
 const FACTURA = {}
-for (const [clave, oc, i] of [['gerencia', ocGerencia, 0], ['lista', ocLista, 1]]) {
+for (const [clave, oc, i] of [['gerencia', ocGerencia, 0], ['lista', ocLista, 1], ['anexada', ocAnexadaLista, 2]]) {
   const [{ id }] = await consulta(`select gen_random_uuid() as id`)
   const [{ total }] = await consulta(`select public.total_orden_compra($1)::float as total`, [oc])
   await consulta(
@@ -204,6 +221,28 @@ const [{ dias: diasGerencia }] = await consulta(
   [ocGerencia],
 )
 comprobar(Number(diasGerencia) === 4, `la base cuenta 4 días de espera de Gerencia (${diasGerencia})`)
+// La base, con el rol de Tesorería: la lista dice la OC que traba, y el pago la rechaza por la misma.
+await como('tesoreria')
+await base.query('begin')
+await base.query('set local role authenticated')
+const trabas = await consulta(`select adquisicion_id, nombre, aprobacion from public.ocs_que_traban_las_facturas($1)`, [[FACTURA.gerencia, FACTURA.lista, FACTURA.anexada]])
+await base.query('rollback')
+const trabaDe = (id) => trabas.find((x) => x.adquisicion_id === id)
+comprobar(trabaDe(FACTURA.gerencia)?.nombre === NOMBRE.gerencia && !trabaDe(FACTURA.lista) && trabaDe(FACTURA.anexada)?.nombre === NOMBRE.boletaGerencia,
+  `la base, como Tesorería, dice qué OC traba cada factura (${JSON.stringify(trabas)})`)
+// El insert directo está cerrado a `authenticated`: se prueba el disparador que guarda el pago, el que
+// corre bajo `registrar_pago_factura`, y su mensaje nombra la OC por la que espera.
+let rechazo = ''
+await como(null)
+await base.query('begin')
+try {
+  await consulta(`insert into pagos_adquisicion (adquisicion_id, fecha, monto, referencia, registrado_por) values ($1, current_date, 1, 'Prueba', $2)`, [FACTURA.anexada, ids[CUENTAS.tesoreria]])
+} catch (e) {
+  rechazo = e.message
+}
+await base.query('rollback')
+comprobar(rechazo.includes(NOMBRE.boletaGerencia) && rechazo.includes('espera la aprobación'), `y el pago lo rechaza por la misma OC: «${rechazo}»`)
+await como(null)
 console.log(`Sembrado ${SUFIJO}: ${Object.values(NOMBRE).join(', ')} y ${NUMERO_OS}`)
 
 // ---------------------------------------------------------------- pantallas
@@ -270,6 +309,14 @@ for (const puesto of ['tesoreria', 'gerencia']) {
     comprobar(tiene(fLista, 'Tesorería', 'el pago, con su voucher') && fLista[0]?.texto.includes(insignia('Tesorería')),
       `${t} · la factura aprobada: falta el pago, «${insignia('Tesorería')}» (${JSON.stringify(fLista)})`)
 
+    // La factura con su OC aprobada, pero anexada a una OC con boleta por aprobar: la base la traba.
+    const filaAnexada = pagina.locator(`#factura-${FACTURA.anexada}`)
+    const fFacturaAnexada = await loQueFalta(filaAnexada)
+    comprobar(tiene(fFacturaAnexada, 'Gerencia', `la aprobación de la ${NOMBRE.boletaGerencia}`) && fFacturaAnexada[0]?.texto.includes(insignia('Gerencia'))
+      && !tiene(fFacturaAnexada, 'Tesorería', 'el pago'),
+      `${t} · la factura anexada a una OC por aprobar espera a Gerencia por esa OC, no «Te toca» (${JSON.stringify(fFacturaAnexada)})`)
+    comprobar((await filaAnexada.getByRole('button', { name: /Pagar/ }).count()) === 0, `${t} · y no ofrece pagarla`)
+
     const fSinBoleta = await loQueFalta(pagina.locator(`#compra-${ocSinBoleta}`))
     comprobar(tiene(fSinBoleta, 'Logística', 'la boleta del proveedor') && tiene(fSinBoleta, 'Tesorería', 'el pago, con su voucher'),
       `${t} · la OC con boleta sin boleta: la boleta de Logística y el pago de Tesorería (${JSON.stringify(fSinBoleta)})`)
@@ -297,8 +344,6 @@ for (const puesto of ['tesoreria', 'gerencia']) {
     comprobar(tiene(fOs, 'Logística', 'la factura o el recibo del proveedor') && tiene(fOs, 'Logística', 'la conformidad del servicio'),
       `${t} · la OS: la factura y la conformidad, de Logística (${JSON.stringify(fOs)})`)
     comprobar(tiene(fOs, 'Tesorería', 'el pago al proveedor, con su voucher'), `${t} · la OS: el pago al proveedor, de Tesorería`)
-    comprobar(fOs.some((f) => f.texto.includes('o tú aquí')) === (puesto === 'tesoreria'),
-      `${t} · «o tú aquí» solo para quien puede adjuntarla (${puesto === 'tesoreria' ? 'sí' : 'no'})`)
     const anchoOs = await pagina.evaluate(() => document.documentElement.scrollWidth)
     comprobar(anchoOs <= ancho, `${t} · pagos de servicio entra en ${ancho} px (mide ${anchoOs})`)
     await pagina.locator(`[data-servicio="${NUMERO_OS}"]`).scrollIntoViewIfNeeded()

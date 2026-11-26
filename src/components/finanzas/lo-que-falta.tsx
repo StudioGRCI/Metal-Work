@@ -21,14 +21,18 @@ export function LoQueFaltaDeLaFila({ falta, mias = [], className }: { falta: rea
       {falta.map((f) => {
         const mia = mias.includes(f.quien)
         return (
-          <li key={`${f.quien}-${f.que}`} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs" data-falta-de={f.quien} data-traba={f.traba || undefined}>
-            <CircleDashed aria-hidden className={cn('size-3.5 shrink-0', f.traba ? 'text-aviso' : 'text-texto-suave')} />
-            <span className="text-texto">
-              <span className="font-medium">Falta</span> {f.que}
+          // El ícono en su propia columna: en el teléfono, el texto que pasa de renglón no se mete debajo de él.
+          <li key={`${f.quien}-${f.que}`} className="grid grid-cols-[auto_1fr] items-start gap-x-2 text-xs" data-falta-de={f.quien} data-traba={f.traba || undefined}>
+            <CircleDashed aria-hidden className={cn('mt-0.5 size-3.5 shrink-0', f.traba ? 'text-aviso' : 'text-texto-suave')} />
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="text-texto">
+                <span className="font-medium">Falta</span> {f.que}
+              </span>
+              <Insignia tono={mia ? 'aviso' : 'neutro'}>{mia ? 'Te toca' : `Lo tiene ${f.quien}`}</Insignia>
+              {/* Los días que lleva esperando, contados por la base con la fecha de Lima. Quién lo tiene ya
+                  lo dice la insignia de al lado: el lector no lo oye dos veces. */}
+              {f.dias != null && <DiasEnEspera dias={f.dias} desde={f.desde} quien={null} />}
             </span>
-            <Insignia tono={mia ? 'aviso' : 'neutro'}>{mia ? 'Te toca' : `Lo tiene ${f.quien}`}</Insignia>
-            {/* Los días que lleva esperando, contados por la base con la fecha de Lima. */}
-            {f.dias != null && <DiasEnEspera dias={f.dias} desde={f.desde} quien={mia ? null : f.quien} />}
           </li>
         )
       })}
