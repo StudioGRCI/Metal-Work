@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
 import { moneda } from '@/lib/format'
@@ -11,7 +11,8 @@ import {
 } from '@/lib/dominio/vencimiento'
 
 /** El color del rótulo: lo vencido en rojo, lo de hoy en ámbar; lo demás, sin alarma. */
-const TONO: Record<GrupoDeVencimiento | 'APARTE', string> = {
+const TONO: Record<GrupoDeVencimiento | 'APARTE' | 'PRIMERO', string> = {
+  PRIMERO: 'text-peligro',
   VENCIDO: 'text-peligro',
   HOY: 'text-aviso',
   SEMANA: 'text-texto',
@@ -51,7 +52,7 @@ function Grupo({
   children,
 }: {
   lista: string
-  clave: GrupoDeVencimiento | 'APARTE'
+  clave: GrupoDeVencimiento | 'APARTE' | 'PRIMERO'
   titulo: string
   cuantos: string
   totales: TotalesPorMoneda | null
@@ -83,7 +84,9 @@ function Grupo({
  *
  * `aparte` son las filas que no se pueden pagar todavía (esperan a otra área):
  * van al final, en su propio grupo y con su propio total, para que no inflen lo
- * que vence.
+ * que vence. `primero` son las que le piden a quien mira algo que no es pagar
+ * (lo pagado de más, la factura en otra moneda): van antes de «Vencido», sin
+ * total, como salían antes de los grupos.
  */
 export function GruposPorVencimiento<T>({
   lista,
@@ -96,6 +99,7 @@ export function GruposPorVencimiento<T>({
   nombre: [uno, varios],
   fila,
   aparte,
+  primero,
 }: {
   /** Nombre corto y único en la pantalla (por pagar tiene tres listas): arma el id de cada rótulo. */
   lista: string
@@ -109,13 +113,15 @@ export function GruposPorVencimiento<T>({
   nombre: [string, string]
   fila: (fila: T) => ReactNode
   aparte?: { titulo: string; filas: readonly T[]; conTotal?: boolean }
+  primero?: { titulo: string; filas: readonly T[] }
 }) {
   const cuantos = (n: number) => `${n} ${n === 1 ? uno : varios}`
   const grupos = agruparPorVencimiento(filas, dia, hoy)
   // El índice de la lista: cada grupo con su total, para saber de un vistazo cuánto vence hoy o esta
   // semana sin bajar (en el teléfono la lista mide miles de píxeles). Con un solo grupo no hace falta.
   const indice = [
-    ...grupos.map((g) => ({ clave: g.grupo as GrupoDeVencimiento | 'APARTE', titulo: NOMBRE_DEL_GRUPO[g.grupo], totales: totalesPorMoneda(g.filas, monedaDe, monto), n: g.filas.length })),
+    ...(primero && primero.filas.length > 0 ? [{ clave: 'PRIMERO' as const, titulo: primero.titulo, totales: null, n: primero.filas.length }] : []),
+    ...grupos.map((g) => ({ clave: g.grupo as GrupoDeVencimiento | 'APARTE' | 'PRIMERO', titulo: NOMBRE_DEL_GRUPO[g.grupo], totales: totalesPorMoneda(g.filas, monedaDe, monto), n: g.filas.length })),
     ...(aparte && aparte.filas.length > 0
       ? [{ clave: 'APARTE' as const, titulo: aparte.titulo, totales: aparte.conTotal === false ? null : totalesPorMoneda(aparte.filas, monedaDe, monto), n: aparte.filas.length }]
       : []),
@@ -139,6 +145,13 @@ export function GruposPorVencimiento<T>({
           </ul>
         </nav>
       )}
+      {primero && primero.filas.length > 0 && (
+        <Grupo lista={lista} clave="PRIMERO" titulo={primero.titulo} cuantos={cuantos(primero.filas.length)} totales={null}>
+          {primero.filas.map((f) => (
+            <Fragment key={clave(f)}>{fila(f)}</Fragment>
+          ))}
+        </Grupo>
+      )}
       {grupos.map((g) => (
         <Grupo
           key={g.grupo}
@@ -149,7 +162,7 @@ export function GruposPorVencimiento<T>({
           totales={totalesPorMoneda(g.filas, monedaDe, monto)}
         >
           {g.filas.map((f) => (
-            <div key={clave(f)}>{fila(f)}</div>
+            <Fragment key={clave(f)}>{fila(f)}</Fragment>
           ))}
         </Grupo>
       ))}
@@ -163,7 +176,7 @@ export function GruposPorVencimiento<T>({
           aparte
         >
           {aparte.filas.map((f) => (
-            <div key={clave(f)}>{fila(f)}</div>
+            <Fragment key={clave(f)}>{fila(f)}</Fragment>
           ))}
         </Grupo>
       )}
