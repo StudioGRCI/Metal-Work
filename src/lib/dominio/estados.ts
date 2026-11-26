@@ -36,7 +36,9 @@ export const ESTADO_COTIZACION: Record<string, Def> = {
 /**
  * Cómo va la unidad del cliente, en una palabra, para Ventas (Plan 9.2). Lo
  * decide la base (`unidades_del_cliente_con_su_entrega`) con la OT y el avance
- * de su código; aquí solo se dice. Sin porcentaje: el vendedor no lo recibe.
+ * de su código, el acta y la salida que anotó Portería; aquí solo se dice.
+ * La función no entrega el porcentaje (el avance general de la OT lo sigue
+ * mostrando «Órdenes de trabajo» a quien tiene `ordenes.ver`).
  */
 export const ESTADO_DE_LA_UNIDAD: Record<string, Def> = {
   APROBADA: { etiqueta: 'Aprobada', tono: 'info', descripcion: 'Tiene su OT; el taller todavía no empieza' },

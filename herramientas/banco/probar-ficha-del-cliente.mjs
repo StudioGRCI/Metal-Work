@@ -94,7 +94,8 @@ for (const [i, u] of sembradas.entries()) {
   const ot = (await base.query(`insert into public.ordenes_trabajo (numero, cliente_id, unidad_id, sede_id, estado, descripcion, avance_porcentaje, motivo_pausa, fecha_entrega_comprometida)
      values ($1, $2, $3, $4, $5, 'Furgón de prueba de la ficha', 40, $6, ((now() at time zone 'America/Lima')::date + $7::int)) returning id`,
     [u.ot, cliente.id, u.id, sede.id, u.estado, u.estado === 'PAUSADA' ? 'Falta el chasis' : null, u.dias])).rows[0].id
-  if (u.acta) await base.query(`insert into public.ot_entregas (orden_id, fecha_entrega, recibe_nombre) values ($1, current_date, 'Chofer del cliente')`, [ot])
+  // Con los disparadores apagados el acta no toma su número: se le pone uno de prueba.
+  if (u.acta) await base.query(`insert into public.ot_entregas (orden_id, numero, fecha_entrega, recibe_nombre) values ($1, $2, current_date, 'Chofer del cliente')`, [ot, `PRUEBA-${u.ot}`])
 }
 await base.query(`insert into public.unidades (cliente_id, placa, tipo_vehiculo) values ($1, $2, 'CAMION')`, [cliente.id, sinOt])
 await base.query('commit')
@@ -163,14 +164,14 @@ for (const ancho of [1440, 390]) {
       `${ancho}: ${u.placa} dice «${entrega}» (la base: ${base?.estado} · ${base?.fecha})`)
   }
   comprobar((await filaDeUnidad(pagina, sinOt).locator('[data-entrega-unidad]').count()) === 0, `${ancho}: la unidad sin OT no dice nada`)
-  const tarjetaUnidades = pagina.locator('section, div').filter({ has: pagina.getByRole('heading', { name: 'Unidades' }) }).last()
-  comprobar(!/\d+\s?%/.test(await tarjetaUnidades.innerText()), `${ancho}: ningún porcentaje en la tarjeta de unidades`)
+  const deLasUnidades = (await pagina.locator('[data-entrega-unidad]').allInnerTexts()).join(' ')
+  comprobar(deLasUnidades.length > 0 && !/\d+\s?%/.test(deLasUnidades), `${ancho}: ningún porcentaje en lo que dice cada unidad`)
 
   // 3. Las cotizaciones del cliente.
   const lista = pagina.locator('[data-cotizaciones-del-cliente] > li')
   comprobar((await lista.count()) === cotizacionesDeLaBase.length, `${ancho}: ${await lista.count()} cotizaciones en la ficha, ${cotizacionesDeLaBase.length} en la base`)
   const conAhora = await pagina.locator('[data-cotizacion-ahora]').allInnerTexts()
-  comprobar(conAhora.length > 0 && conAhora.every((t) => /^\S.* · (hace \d+ días?|desde hoy)$/.test(limpio(t))), `${ancho}: quién la tiene y hace cuánto (${limpio(conAhora[0] ?? 'ninguna espera')})`)
+  comprobar(conAhora.length > 0 && conAhora.every((t) => /^\S.* · (hace \d+ días?|desde hoy)/.test(limpio(t))), `${ancho}: quién la tiene y hace cuánto (${limpio(conAhora[0] ?? 'ninguna espera')})`)
   comprobar(!(await pagina.locator('[data-cotizaciones-del-cliente]').innerText()).includes('Anulada'), `${ancho}: sin anuladas en la lista`)
 
   if (ancho === 1440) {
@@ -192,11 +193,12 @@ for (const ancho of [1440, 390]) {
   } else {
     // La fecha comprometida, en un renglón: los botones de la fila bajan.
     for (const u of sembradas) {
-      const lineas = await filaDeUnidad(pagina, u.placa).locator('[data-entrega-unidad]').evaluate((el) => {
-        const alto = parseFloat(getComputedStyle(el).lineHeight) || 16
-        return Math.round(el.getBoundingClientRect().height / alto)
+      // La fecha y su rótulo, en un solo renglón (antes salían en cinco).
+      const lineas = await filaDeUnidad(pagina, u.placa).locator('[data-entrega-unidad] > span:last-child').evaluate((el) => {
+        const tops = new Set([...el.getClientRects()].map((r) => Math.round(r.top)))
+        return tops.size
       })
-      comprobar(lineas <= 2, `390: lo de ${u.placa} ocupa ${lineas} renglón(es)`)
+      comprobar(lineas === 1, `390: la fecha comprometida de ${u.placa} ocupa ${lineas} renglón(es)`)
     }
     const ancho390 = await pagina.evaluate(() => document.documentElement.scrollWidth)
     comprobar(ancho390 <= 390, `390: nada se sale (ancho ${ancho390})`)

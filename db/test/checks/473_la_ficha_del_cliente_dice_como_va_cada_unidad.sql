@@ -90,7 +90,11 @@ begin
       ('QAA-005', 'TERMINADA', 100, false),
       ('QAA-006', 'ENTREGADA', 100, false),
       ('QAA-007', 'TERMINADA', 100, true),
-      ('QAA-009', 'ANULADA', 0, false)) as t(placa, estado, avance, con_acta) loop
+      ('QAA-009', 'ANULADA', 0, false),
+      ('QAA-010', 'BORRADOR', 0, false),
+      ('QAA-011', 'APROBADA', 0, false),
+      ('QAA-012', 'APROBADA', 0, false),
+      ('QAA-013', 'APROBADA', 0, false)) as t(placa, estado, avance, con_acta) loop
     insert into public.unidades (cliente_id, placa, tipo_vehiculo) values (v_cli, v.placa, 'CAMION') returning id into v_u;
     insert into public.ordenes_trabajo (numero, cliente_id, unidad_id, sede_id, estado, descripcion, avance_porcentaje, motivo_pausa, motivo_anulacion, fecha_entrega_comprometida)
     values ('9' || right(v.placa, 3) || '-2026', v_cli, v_u, v_sede, v.estado::public.estado_ot, 'Carrocería de prueba 473', v.avance,
@@ -102,6 +106,20 @@ begin
     end if;
   end loop;
   insert into public.unidades (cliente_id, placa, tipo_vehiculo) values (v_cli, 'QAA-008', 'CAMION');
+  -- Una OT nueva en borrador no tapa a la vigente de la unidad.
+  insert into public.ordenes_trabajo (numero, cliente_id, unidad_id, sede_id, estado, descripcion, fecha_entrega_comprometida, creado_en)
+  select '9101-2026', v_cli, u.id, v_sede, 'BORRADOR', 'Otra carrocería, sin aprobar', current_setting('prueba.hoy')::date + 60, now() + interval '1 hour'
+    from public.unidades u where u.placa = 'QAA-001';
+  -- Portería: la 011 salió después de abrirse su OT (entró antes); la 012 salió al
+  -- arenado; la 013 salió y volvió a entrar.
+  insert into public.registro_vehiculos (placa, unidad, empresa, motivo, ingreso_en, ingreso_por, salida_en, salida_por, sale_al_arenado, unidad_id)
+  select u.placa, 'Camión', 'Cliente de prueba', 'FABRICACION', now() - r.entro, pg_temp.id('administracion'),
+         now() + r.salio, case when r.salio is not null then pg_temp.id('administracion') end, r.arenado, u.id
+    from (values ('QAA-011', interval '1 day', interval '1 hour', false),
+                 ('QAA-012', interval '1 day', interval '1 hour', true),
+                 ('QAA-013', interval '2 days', interval '1 hour', false),
+                 ('QAA-013', interval '-2 hours', null::interval, false)) as r(placa, entro, salio, arenado)
+    join public.unidades u on u.placa = r.placa and u.cliente_id = v_cli;
   insert into public.unidades (cliente_id, placa, tipo_vehiculo) values (pg_temp.id('otro_cliente'), 'QAA-OTR', 'CAMION') returning id into v_u;
   insert into public.ordenes_trabajo (numero, cliente_id, unidad_id, sede_id, estado, descripcion, fecha_entrega_comprometida)
   values ('9999-2026', pg_temp.id('otro_cliente'), v_u, v_sede, 'EN_PROCESO', 'Del otro cliente', current_setting('prueba.hoy')::date + 9);
@@ -146,6 +164,11 @@ begin
   perform test.afirmar(pg_temp.de('QAA-007') like '9007-2026 · ENTREGADA · %', 'terminada que salió con su acta: ENTREGADA (' || pg_temp.de('QAA-007') || ')');
   perform test.afirmar(pg_temp.de('QAA-008') = 'nada', 'la unidad sin OT no sale');
   perform test.afirmar(pg_temp.de('QAA-009') = 'nada', 'la de la OT anulada no sale');
+  perform test.afirmar(pg_temp.de('QAA-010') = 'nada', 'la de la OT en borrador no sale: su fecha no se le prometió a nadie');
+  perform test.afirmar(pg_temp.de('QAA-001') like '9001-%', 'una OT nueva en borrador no tapa a la vigente (' || pg_temp.de('QAA-001') || ')');
+  perform test.afirmar(pg_temp.de('QAA-011') like '9011-2026 · ENTREGADA · %', 'Portería anotó su salida, con la OT todavía APROBADA: ENTREGADA (' || pg_temp.de('QAA-011') || ')');
+  perform test.afirmar(pg_temp.de('QAA-012') like '9012-2026 · APROBADA · %', 'salió al arenado: no está entregada (' || pg_temp.de('QAA-012') || ')');
+  perform test.afirmar(pg_temp.de('QAA-013') like '9013-2026 · APROBADA · %', 'salió y volvió a entrar: no está entregada (' || pg_temp.de('QAA-013') || ')');
   perform test.afirmar(
     (select e.ot_numero like '8473-%' and e.estado = 'APROBADA' and e.fecha_entrega = v_hoy + 45
        from public.unidades_del_cliente_con_su_entrega(pg_temp.id('cliente')) e where e.unidad_id = current_setting('prueba.unidad_cot')::uuid),
@@ -154,8 +177,8 @@ begin
     not exists (select 1 from public.unidades_del_cliente_con_su_entrega(pg_temp.id('cliente')) e
                   join public.unidades u on u.id = e.unidad_id where u.cliente_id <> pg_temp.id('cliente')),
     'solo las unidades de ese cliente');
-  perform test.afirmar((select count(*) from public.unidades_del_cliente_con_su_entrega(pg_temp.id('cliente'))) = 8,
-    'una fila por unidad con OT vigente: siete y la de la cotización');
+  perform test.afirmar((select count(*) from public.unidades_del_cliente_con_su_entrega(pg_temp.id('cliente'))) = 11,
+    'una fila por unidad con OT vigente: diez y la de la cotización');
 end $$;
 reset role;
 

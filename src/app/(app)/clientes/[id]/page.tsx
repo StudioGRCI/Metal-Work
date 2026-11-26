@@ -50,7 +50,18 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
   // Administración): cómo va cada una sin abrir esa pantalla (Plan 9.2).
   const veCotizaciones = puede(perfil, 'cotizaciones.ver_pdf_comercial')
 
-  const [unidades, contactos, { ordenes, total: totalOrdenes }, entregas, delCliente] = await Promise.all([
+  // Quién tiene cada cotización y hace cuántos días: el paso que espera de su
+  // recorrido. Se pide apenas llegan las cotizaciones, sin esperar al resto.
+  const cotizacionesConRecorrido = async () => {
+    const delCliente = await cotizacionesDelCliente(id)
+    const ids = delCliente.cotizaciones.flatMap((c) => (c.id ? [c.id] : []))
+    const recorridos = ids.length === 0 ? null : await recorridoDeCotizaciones(ids).catch((e: unknown) => {
+      console.error('Ficha del cliente: no se pudo leer el recorrido de sus cotizaciones.', e)
+      return null
+    })
+    return { delCliente, recorridos }
+  }
+  const [unidades, contactos, { ordenes, total: totalOrdenes }, entregas, cotizaciones] = await Promise.all([
     listarUnidades({ clienteId: id }),
     contactosDeCliente(id),
     ordenesDeCliente(id),
@@ -59,15 +70,10 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
       console.error('Ficha del cliente: no se pudo leer cómo va cada unidad.', e)
       return null
     }),
-    veCotizaciones ? cotizacionesDelCliente(id) : Promise.resolve(null),
+    veCotizaciones ? cotizacionesConRecorrido() : Promise.resolve(null),
   ])
-  // Quién tiene cada cotización y hace cuántos días: el paso que espera de su recorrido.
-  const recorridos = delCliente && delCliente.cotizaciones.length > 0
-    ? await recorridoDeCotizaciones(delCliente.cotizaciones.flatMap((c) => (c.id ? [c.id] : []))).catch((e: unknown) => {
-        console.error('Ficha del cliente: no se pudo leer el recorrido de sus cotizaciones.', e)
-        return null
-      })
-    : null
+  const delCliente = cotizaciones?.delCliente ?? null
+  const recorridos = cotizaciones?.recorridos ?? null
 
   const vendedor = cliente.vendedor as unknown as { puesto: string | null } | null
 
@@ -344,19 +350,18 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
  * mientras el taller avanza) y el acta de entrega.
  */
 const AYUDA_DE_UNIDADES = (
+  // Va dentro del párrafo de la «i»: solo piezas en línea, cada una en su renglón.
   <>
-    <p>De cada unidad con OT: en qué va, en una palabra, y la fecha de entrega que se le prometió al cliente.</p>
-    <ul className="mt-2 space-y-1">
-      {Object.values(ESTADO_DE_LA_UNIDAD).map((e) => (
-        <li key={e.etiqueta}>
-          <span className="font-medium">{e.etiqueta}</span>: {e.descripcion?.toLowerCase()}.
-        </li>
-      ))}
-    </ul>
-    <p className="mt-2">
-      Puede no coincidir con el estado de la OT en «Órdenes de trabajo»: aquí cuenta también el avance del taller
-      en su código interno y el acta de entrega.
-    </p>
+    <span className="block">De cada unidad con OT: en qué va, en una palabra, y la fecha de entrega que se le prometió al cliente.</span>
+    {Object.values(ESTADO_DE_LA_UNIDAD).map((e) => (
+      <span key={e.etiqueta} className="mt-1 block">
+        <span className="font-medium">{e.etiqueta}</span>: {e.descripcion?.toLowerCase()}.
+      </span>
+    ))}
+    <span className="mt-2 block">
+      Puede no coincidir con el estado de la OT en «Órdenes de trabajo»: aquí cuenta también el avance del taller en
+      su código interno, el acta de entrega y la salida que anotó Portería.
+    </span>
   </>
 )
 
