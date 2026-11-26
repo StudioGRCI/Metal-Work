@@ -25,6 +25,10 @@
 -- Solo lectura, sin montos. La pide `codigos_internos.ver`, como la lista de
 -- documentos del código. Cambia la forma de lo que devuelve si ya existía: se
 -- quita antes de crearla, y volver a correrla deja lo mismo.
+--
+-- Al final, `codigo_interno_lo_vendido`: lo vendido y lo facturado de cada
+-- cotización del código, para que la cabecera compare como la bandeja de
+-- Contabilidad sin pasar por su tope de 300 cotizaciones.
 
 drop function if exists public.codigo_interno_recorrido(text);
 
@@ -98,3 +102,63 @@ comment on function public.codigo_interno_recorrido(text) is
 
 revoke all on function public.codigo_interno_recorrido(text) from public, anon;
 grant execute on function public.codigo_interno_recorrido(text) to authenticated;
+
+-- Lo vendido y lo facturado de cada cotización del código, para comparar en la
+-- cabecera como compara la bandeja de Contabilidad (`estadoDe`, cotización por
+-- cotización). La bandeja lee `cotizaciones_para_facturar`, que trae las 300
+-- más recientes: un código viejo no entraba y lo facturado salía como hecho
+-- sin haberse comparado. Esta la lee por código, sin tope, con la misma puerta
+-- que la bandeja (`contabilidad.facturar` o `cotizaciones.ver_aprobadas`) y las
+-- mismas cotizaciones: no anuladas, aprobadas alguna vez y de este código.
+drop function if exists public.codigo_interno_lo_vendido(text);
+
+create function public.codigo_interno_lo_vendido(p_codigo text)
+returns table (
+  cotizacion_id          uuid,
+  numero                 text,
+  moneda                 text,
+  monto_venta            numeric,
+  incluye_igv            boolean,  -- null: Ventas no lo confirmó
+  facturas               integer,  -- las vigentes
+  facturado_en_su_moneda numeric,  -- lo facturado en la moneda de la cotización
+  en_otra_moneda         boolean   -- alguna factura vigente va en otra moneda
+)
+language plpgsql
+stable
+security definer
+set search_path to 'public'
+as $$
+#variable_conflict use_column
+declare
+  v_codigo constant text := public.normalizar_codigo_interno(p_codigo);
+begin
+  if not (public.es_admin() or public.tiene_permiso('contabilidad.facturar') or public.tiene_permiso('cotizaciones.ver_aprobadas')) then
+    raise exception 'No tienes permiso para ver las cotizaciones aprobadas.' using errcode = 'insufficient_privilege';
+  end if;
+  if v_codigo is null then
+    return;
+  end if;
+
+  return query
+  select c.id, c.numero::text, c.moneda::text, c.monto_venta::numeric, ig.incluye_igv,
+         coalesce(fx.facturas, 0), coalesce(fx.en_su_moneda, 0), coalesce(fx.otra, false)
+    from public.cotizaciones_pdf c
+    left join public.cotizaciones_pdf_igv ig on ig.cotizacion_id = c.id
+    left join lateral (
+      select count(*)::integer as facturas,
+             sum(f.total) filter (where f.moneda::text = c.moneda::text)::numeric as en_su_moneda,
+             bool_or(f.moneda::text <> c.moneda::text) as otra
+        from public.facturas_venta f
+       where f.cotizacion_pdf_id = c.id and f.anulada_en is null) fx on true
+   where c.estado::text <> 'ANULADA'
+     and public.cotizacion_fue_aprobada(c.id)
+     and public.codigo_interno_de_cotizacion(c.id) = v_codigo
+   order by c.creado_en;
+end;
+$$;
+
+comment on function public.codigo_interno_lo_vendido(text) is
+  'Lo vendido y lo facturado de cada cotización aprobada de un código, sin tope, para la cabecera del código. La misma puerta que cotizaciones_para_facturar. Plan 12, entrega 12.3.';
+
+revoke all on function public.codigo_interno_lo_vendido(text) from public, anon;
+grant execute on function public.codigo_interno_lo_vendido(text) to authenticated;

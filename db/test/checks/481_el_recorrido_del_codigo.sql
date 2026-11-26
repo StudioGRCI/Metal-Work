@@ -13,6 +13,8 @@
 -- - entre dos cotizaciones del código, manda la aprobada aunque sea la vieja;
 -- - un código con solo una garantía la muestra, sin cotización;
 -- - un código sin unidad devuelve una fila vacía, no un error.
+-- Y `codigo_interno_lo_vendido`, lo vendido y lo facturado de cada cotización
+-- del código, sin el tope de la bandeja: sin las anuladas y sin mezclar monedas.
 \set ON_ERROR_STOP on
 begin;
 
@@ -111,6 +113,36 @@ begin
 end $$;
 reset role;
 
+-- Lo vendido y lo facturado, cotización por cotización, para comparar en la cabecera.
+-- La A, en soles, lleva una factura por la mitad, otra anulada y otra en dólares.
+do $$
+begin
+  set local session_replication_role = replica;
+  update public.cotizaciones_pdf set monto_venta = 10000, moneda = 'PEN' where numero = 'CHK481-A';
+  insert into public.facturas_venta (codigo_interno, cotizacion_pdf_id, cotizacion_numero, cliente, numero, fecha_emision, fecha_vencimiento,
+                                     moneda, total, ruta_storage, nombre_archivo, tamano_bytes)
+  select 'CHK481', c.id, c.numero, 'CLIENTE DE PRUEBA 481 S.A.C.', x.numero, current_date, current_date + 30,
+         x.moneda, x.total, 'f/' || x.numero || '.pdf', x.numero || '.pdf', 1024
+    from (values ('CHK481-A', 'E481-1', 'PEN', 5000), ('CHK481-A', 'E481-2', 'PEN', 1000), ('CHK481-A', 'E481-3', 'USD', 500)) x(cot, numero, moneda, total)
+    join public.cotizaciones_pdf c on c.numero = x.cot;
+  update public.facturas_venta set anulada_en = now(), anulada_por = current_setting('prueba.gerente')::uuid, motivo_anulacion = 'Mal emitida, con otro monto' where numero = 'E481-2';
+  set local session_replication_role = origin;
+end $$;
+
+select set_config('request.jwt.claim.sub', current_setting('prueba.gerente'), true);
+set local role authenticated;
+do $$
+declare r record;
+begin
+  perform test.afirmar((select array_agg(numero) = array['CHK481-A'] from public.codigo_interno_lo_vendido('CHK481')),
+    'lo vendido trae solo la cotización aprobada del código: ni la que espera revisión ni la de la OT anulada');
+  select * into strict r from public.codigo_interno_lo_vendido('CHK481');
+  perform test.afirmar(r.monto_venta = 10000 and r.facturas = 2 and r.facturado_en_su_moneda = 5000,
+    'la A: 10 000 vendidos, dos facturas vigentes y 5 000 en soles (la anulada no cuenta, la de dólares no suma)');
+  perform test.afirmar(r.en_otra_moneda, 'y dice que una va en otra moneda');
+end $$;
+reset role;
+
 -- Administración consulta los códigos en lectura: ve lo mismo.
 select set_config('request.jwt.claim.sub', current_setting('prueba.administracion'), true);
 set local role authenticated;
@@ -128,12 +160,17 @@ set local role authenticated;
 select test.debe_fallar(
   $q$select * from public.codigo_interno_recorrido('CHK481')$q$,
   'Gerencia de Producción no lee el recorrido del código');
+select test.debe_fallar(
+  $q$select * from public.codigo_interno_lo_vendido('CHK481')$q$,
+  'ni lo vendido del código');
 reset role;
 
 do $$
 begin
   perform test.afirmar(not has_function_privilege('anon', 'public.codigo_interno_recorrido(text)', 'execute'),
     'anon no ejecuta codigo_interno_recorrido');
+  perform test.afirmar(not has_function_privilege('anon', 'public.codigo_interno_lo_vendido(text)', 'execute'),
+    'anon no ejecuta codigo_interno_lo_vendido');
 end $$;
 
 rollback;

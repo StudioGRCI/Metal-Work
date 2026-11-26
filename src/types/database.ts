@@ -14136,6 +14136,21 @@ export type Database = {
           recibido_por_area: string | null
         }[]
       }
+      codigo_interno_lo_vendido: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          cotizacion_id: string | null
+          numero: string | null
+          moneda: string | null
+          monto_venta: number | null
+          incluye_igv: boolean | null
+          facturas: number | null
+          facturado_en_su_moneda: number | null
+          en_otra_moneda: boolean | null
+        }[]
+      }
       codigo_interno_recorrido: {
         Args: {
           p_codigo: string | null

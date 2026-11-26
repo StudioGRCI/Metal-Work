@@ -45,6 +45,7 @@ import {
   ESTADO_SERVICIO_CODIGO,
   TIPO_DOCUMENTO_CODIGO,
   VISTAS_CODIGO,
+  cambioDesdeElCierre,
   costoDelCodigo,
   dolaresAlCambio,
   dondeAparece,
@@ -103,7 +104,9 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
   const [{ codigos: conDocumentos, diseno: deDiseno, avances }, facturado, reparto, horasDelMes, faltaOficina, faltaPlanilla, lineas, delRecorrido] = await Promise.all([
     leerListaDeCodigos(),
     // Lo facturado va en el recorrido de arriba, que PLANTA y TODOS LOS ACTIVOS no tienen.
-    veFacturas && !noEsUnidad(codigo) ? facturadoDelCodigo(codigo) : Promise.resolve(null),
+    veFacturas && !noEsUnidad(codigo)
+      ? facturadoDelCodigo(codigo, puede(perfil, ['contabilidad.facturar', 'cotizaciones.ver_aprobadas']))
+      : Promise.resolve(null),
     aTodos ? repartoATodosLosActivos() : Promise.resolve<RepartoATodosFila[]>([]),
     miraMes ? repartoDelMes(`${hoyLima().slice(0, 7)}-01`) : Promise.resolve([]),
     // Quien cierra ve antes de intentarlo los meses que esperan los pagos de la oficina.
@@ -694,7 +697,7 @@ function LineaCierre({
       </div>
     )
   }
-  const diferencia = Math.round((c.costo_pen - z.costo_pen) * 100) / 100
+  const diferencia = cambioDesdeElCierre(c.costo_pen, z.costo_pen)
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-base)] border border-exito p-3 text-xs" data-cierre="cerrado">
       <div>

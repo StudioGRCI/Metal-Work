@@ -221,6 +221,13 @@ try {
     comprobar(altos.every((h) => h >= 44), `cada enlace mide 44 px o más para el dedo (${altos.map(Math.round).join(', ')})`)
     await recorrido(pagina).screenshot({ path: `${CAPTURAS}/390-gerencia-recorrido.png` })
     await pagina.screenshot({ path: `${CAPTURAS}/390-gerencia.png` })
+    // «Ver el costeo» baja a la sección, como las pestañas: en el teléfono empieza dos pantallas más abajo.
+    await paso(pagina, 'costo').getByRole('link', { name: 'Ver el costeo' }).click()
+    await pagina.waitForURL(/vista=costeo/, { timeout: 30000 })
+    await quieta(pagina)
+    await pagina.waitForFunction(() => window.scrollY > 0, null, { timeout: 10000 }).catch(() => {})
+    const y = await pagina.evaluate(() => window.scrollY)
+    comprobar(y > 0, `en el teléfono, «Ver el costeo» baja hasta la sección (scrollY ${Math.round(y)})`)
     await contexto.close()
   }
 
@@ -295,7 +302,7 @@ try {
         )
         if (r.ot_entregada_el) {
           const [d] = await consulta(`select to_char($1::date, 'DD/MM/YYYY') as f`, [r.ot_entregada_el])
-          comprobar(de.orden.situacion === 'HECHO' && de.orden.texto.includes(`entregada el ${d.f}`), `${c}: con la fecha de entrega de esa OT (${d.f})`)
+          comprobar(de.orden.situacion === 'HECHO' && de.orden.texto.toLowerCase().includes(`entregada el ${d.f}`), `${c}: con la fecha de entrega de esa OT (${d.f})`)
         }
       }
       const [cierre] = await consulta(
@@ -303,10 +310,23 @@ try {
           where codigo = $1 and reabierto_en is null order by cerrado_en desc limit 1`,
         [c],
       )
+      const [cobro] = await consulta(
+        `select coalesce(sum(total), 0) as total, coalesce(sum(cobrado), 0) as cobrado, coalesce(sum(saldo), 0) as saldo
+           from public.v_facturas_venta where codigo_interno = $1 and anulada_en is null`,
+        [c],
+      )
+      if (Number(cobro.saldo) === 0 && Number(cobro.cobrado) < Number(cobro.total)) {
+        comprobar(
+          de.cobrado?.texto.includes('dio por cancelada con menos de lo facturado') && !de.cobrado.texto.includes('todo lo facturado está cobrado'),
+          `${c}: cancelada con ${dinero(cobro.cobrado)} de ${dinero(cobro.total)}, no dice «todo cobrado»`,
+        )
+      }
       if (cierre) {
         comprobar(
           de.costo?.texto.includes(dinero(cierre.costo_pen)) && de.costo.texto.includes(`costeo cerrado el ${cierre.el}`) && !de.costo.texto.includes('del presupuesto'),
           `${c}: el costo es el congelado al cierre (${dinero(cierre.costo_pen)}), sin porcentaje del presupuesto`,
+        )
+        comprobar(de.costo.situacion === 'HECHO', `${c}: con el costeo cerrado, el paso del costo va hecho`
         )
       }
     }

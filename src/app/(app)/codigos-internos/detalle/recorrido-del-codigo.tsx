@@ -5,7 +5,7 @@ import { Marca, Recorrido } from '@/components/ui/recorrido'
 import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
 import type { RecorridoDelCodigoBase, ResumenCodigo } from '@/lib/datos/codigos-internos'
 import type { FacturadoDelCodigo } from '@/lib/datos/facturacion'
-import { costoDelCodigo, enlaceCodigo, faltanteDelCosto } from '@/lib/dominio/codigos-internos'
+import { cambioDesdeElCierre, costoDelCodigo, enlaceCodigo, faltanteDelCosto } from '@/lib/dominio/codigos-internos'
 import { ESTADO_COTIZACION, TIPO_TRABAJO, definir, estadoDeOrden } from '@/lib/dominio/estados'
 import type { PasoDescrito } from '@/lib/dominio/recorrido'
 import { fecha, moneda, porcentaje, type CodigoMoneda } from '@/lib/format'
@@ -25,29 +25,25 @@ type Paso = {
   tono?: 'exito' | 'aviso' | 'peligro' | 'neutro'
   /** El pie en aviso: algo no cuadra o falta para que la cifra esté completa. */
   pieEnAviso?: boolean
+  /** El pie en peligro: el costo de hoy pasó el presupuesto. */
+  pieEnPeligro?: boolean
   enlace?: { href: string; texto: string } | null
 }
 
+/** El símbolo y la cifra no se separan de renglón: «US$» arriba y «29,500.00» abajo no se lee. */
+const sinPartir = (t: string) => t.replace(/(S\/|US\$) /g, '$1\u00a0')
+const monto = (n: number, m: CodigoMoneda = 'PEN') => sinPartir(moneda(n, m))
 const montos = (r: Record<CodigoMoneda, number>) =>
   (['PEN', 'USD'] as const)
     .filter((m) => r[m] > 0)
-    .map((m) => moneda(r[m], m))
-    .join(' + ') || moneda(0)
+    .map((m) => monto(r[m], m))
+    .join(' + ') || monto(0)
 
-/**
- * Lo facturado contra lo vendido con IGV. Si se facturó en una moneda que la cotización no tiene, no se
- * compara (Contabilidad lo ve como «Facturada en otra moneda»): no se convierte aquí.
- */
-function compararConLoVendido(f: FacturadoDelCodigo): { enParte: boolean; otraMoneda: boolean; falta: Record<CodigoMoneda, number> } | null {
-  if (!f.vendido) return null
-  const vendido = f.vendido
-  const monedas = ['PEN', 'USD'] as const
-  if (monedas.some((m) => f.total[m] > 0 && vendido[m] <= 0)) {
-    return { enParte: false, otraMoneda: true, falta: { PEN: 0, USD: 0 } }
-  }
-  const falta = { PEN: 0, USD: 0 }
-  for (const m of monedas) falta[m] = Math.max(0, Math.round((vendido[m] - f.total[m]) * 100) / 100)
-  return { enParte: falta.PEN + falta.USD > 0, otraMoneda: false, falta }
+/** Por qué lo facturado no se comparó con lo vendido: se dice, no se da por hecho. */
+const SIN_COMPARAR: Record<NonNullable<FacturadoDelCodigo['sinComparar']>, string> = {
+  SIN_PERMISO: 'sin comparar con lo vendido',
+  SIN_MONTO: 'no se compara: una cotización no tiene monto',
+  NO_SE_PUDO: 'no se pudo comparar con lo vendido',
 }
 
 const ENTREGADA = new Set(['ENTREGADA', 'FACTURADA'])
@@ -136,9 +132,9 @@ export function RecorridoDelCodigo({
       situacion: ENTREGADA.has(orden.estado) || orden.entregadaEl ? 'HECHO' : 'AHORA',
       valor: `OT ${orden.numero}`,
       pie: [
-        e.etiqueta,
+        orden.entregadaEl && orden.estado === 'ENTREGADA' ? `Entregada el ${fecha(orden.entregadaEl)}` : e.etiqueta,
         orden.tipo && orden.tipo !== 'FABRICACION' && definir(TIPO_TRABAJO, orden.tipo).etiqueta.toLowerCase(),
-        orden.entregadaEl && `entregada el ${fecha(orden.entregadaEl)}`,
+        orden.entregadaEl && orden.estado !== 'ENTREGADA' && `entregada el ${fecha(orden.entregadaEl)}`,
         base.ordenes > 1 && `y ${base.ordenes - 1} más`,
       ]
         .filter(Boolean)
@@ -152,69 +148,80 @@ export function RecorridoDelCodigo({
   //    y si el costo de hoy es otro, se dice.
   const costo = costoDelCodigo(c)
   const cerrado = c.cierre?.costo_pen ?? null
-  const desdeElCierre = cerrado !== null ? Math.round((costo.pen - cerrado) * 100) / 100 : 0
+  const desdeElCierre = cerrado !== null ? cambioDesdeElCierre(costo.pen, cerrado) : 0
   const presupuesto = c.venta?.presupuesto_pen ?? null
   const faltante = faltanteDelCosto({ sinPrecio: c.materiales_sin_precio, horasSinCosto: c.horas_sin_costo, sinCambio: c.lineas_sin_cambio })
   const cifra = cerrado ?? costo.pen
-  // Sin presupuesto por un dato que falta en la cotización: se dice cuál, como el indicador de margen.
-  const sinPresupuesto =
-    presupuesto === null && c.venta
-      ? c.venta.sin_igv > 0
-        ? 'sin presupuesto: falta confirmar si la cotización incluye IGV'
-        : c.venta.sin_cambio > 0
-          ? 'sin presupuesto: falta el tipo de cambio del día en que se aprobó'
-          : null
-      : null
+  // Sin presupuesto por un dato que falta en la cotización; el motivo ya lo dice la cifra de Margen.
+  const sinPresupuesto = presupuesto === null && c.venta ? 'sin presupuesto' : null
+  // Cerrado, manda lo congelado; pero si el costo de hoy ya pasó el presupuesto, se dice.
+  const hoySePaso = cerrado !== null && presupuesto !== null && costo.pen > presupuesto
   pasos.push({
     clave: 'costo',
     titulo: presupuesto !== null ? 'Costo contra presupuesto' : 'Costo',
-    situacion: cerrado !== null && desdeElCierre === 0 ? 'HECHO' : costo.pen + costo.usd > 0 ? 'AHORA' : 'FALTA',
-    valor: presupuesto !== null ? `${moneda(cifra)} de ${moneda(presupuesto)}` : moneda(cifra),
+    situacion: cerrado !== null ? 'HECHO' : costo.pen + costo.usd > 0 ? 'AHORA' : 'FALTA',
+    valor: presupuesto !== null ? `${monto(cifra)} de ${monto(presupuesto)}` : monto(cifra),
     pie: [
-      costo.usd > 0 && `+ ${moneda(costo.usd, 'USD')} sin cambio`,
+      costo.usd > 0 && `+ ${monto(costo.usd, 'USD')} sin cambio`,
       cerrado === null && c.venta?.consumido_pct != null && `${porcentaje(c.venta.consumido_pct)} del presupuesto`,
       cerrado === null && c.venta?.semaforo === 'EXCEDIDO' && 'se pasó',
       c.cierre ? `costeo cerrado el ${fecha(c.cierre.cerrado_en)}` : 'hasta hoy',
-      desdeElCierre !== 0 && `hoy ${moneda(costo.pen)}: ${desdeElCierre > 0 ? 'subió' : 'bajó'} ${moneda(Math.abs(desdeElCierre))} desde el cierre`,
+      desdeElCierre !== 0 && `hoy ${monto(costo.pen)}: ${desdeElCierre > 0 ? 'subió' : 'bajó'} ${monto(Math.abs(desdeElCierre))} desde el cierre`,
+      hoySePaso && presupuesto !== null && `hoy pasa el presupuesto en ${monto(costo.pen - presupuesto)}`,
       faltante,
       sinPresupuesto,
     ]
       .filter(Boolean)
       .join(' · '),
     pieEnAviso: desdeElCierre !== 0 || Boolean(faltante) || costo.usd > 0 || Boolean(sinPresupuesto),
+    pieEnPeligro: hoySePaso,
     tono: cerrado !== null ? undefined : c.venta?.semaforo === 'EXCEDIDO' ? 'peligro' : c.venta?.semaforo === 'AJUSTADO' ? 'aviso' : undefined,
-    enlace: { href: enlaceCodigo(codigo, 'costeo'), texto: 'Ver el costeo' },
+    // Baja a la sección, como las pestañas: en el teléfono empieza dos pantallas más abajo.
+    enlace: { href: `${enlaceCodigo(codigo, 'costeo')}#seccion-elegida`, texto: 'Ver el costeo' },
   })
 
   // 4 y 5. Lo facturado y lo cobrado, para quien los lee.
   if (facturado) {
     const sinFactura = facturado.facturas === 0
     const porCobrar = facturado.saldo.PEN + facturado.saldo.USD > 0
+    // Sin saldo y con menos cobrado que facturado: un cobro la dio por cancelada (`cancela`), no se cobró todo.
+    const canceladaConMenos = !sinFactura && !porCobrar && (['PEN', 'USD'] as const).some((m) => facturado.cobrado[m] < facturado.total[m] - 0.005)
     const cuantas = `en ${facturado.facturas} ${facturado.facturas === 1 ? 'factura' : 'facturas'}`
-    // Contra lo vendido con IGV, la cuenta de la bandeja de Contabilidad: si falta facturar, no está hecho.
-    const delVendido = sinFactura ? null : compararConLoVendido(facturado)
+    // Contra lo vendido con IGV, cotización por cotización con la regla de la bandeja de Contabilidad
+    // (`comoVaLaFactura`): hecho solo si se comparó y no falta nada.
+    const v = facturado.contraVendido
+    const enParte = Boolean(v?.como.some((c) => c === 'EN_PARTE' || c === 'POR_FACTURAR'))
+    const otraMoneda = Boolean(v?.como.includes('OTRA_MONEDA'))
+    const sinComparar = facturado.sinComparar ? SIN_COMPARAR[facturado.sinComparar] : null
     pasos.push({
       clave: 'facturado',
       titulo: 'Facturado',
-      situacion: sinFactura ? 'FALTA' : delVendido?.enParte ? 'AHORA' : 'HECHO',
-      valor: sinFactura ? 'Sin factura' : delVendido?.enParte ? `${montos(facturado.total)} de ${montos(facturado.vendido!)}` : montos(facturado.total),
+      situacion: sinFactura ? 'FALTA' : !v || enParte || otraMoneda ? 'AHORA' : 'HECHO',
+      valor: sinFactura ? 'Sin factura' : enParte && v ? `${montos(facturado.total)} de ${montos(v.vendido)}` : montos(facturado.total),
       pie: sinFactura
-        ? facturado.vendido
-          ? `por facturar ${montos(facturado.vendido)} con IGV · la registra Contabilidad`
+        ? v
+          ? `por facturar ${montos(v.vendido)} con IGV · la registra Contabilidad`
           : 'La registra Contabilidad sobre la cotización aprobada'
-        : [cuantas, delVendido?.enParte && `falta facturar ${montos(delVendido.falta)}`, delVendido?.otraMoneda && 'en otra moneda que la cotización']
+        : [cuantas, enParte && v && `falta facturar ${montos(v.falta)}`, otraMoneda && 'en otra moneda que la cotización: no se compara', sinComparar]
             .filter(Boolean)
             .join(' · '),
-      pieEnAviso: Boolean(delVendido?.enParte || delVendido?.otraMoneda),
-      tono: delVendido?.enParte ? 'aviso' : undefined,
-      enlace: { href: enlaceCodigo(codigo, 'facturacion'), texto: 'Ver factura y cobro' },
+      pieEnAviso: enParte || otraMoneda || Boolean(sinComparar),
+      tono: enParte ? 'aviso' : undefined,
+      enlace: { href: `${enlaceCodigo(codigo, 'facturacion')}#seccion-elegida`, texto: 'Ver factura y cobro' },
     })
     pasos.push({
       clave: 'cobrado',
       titulo: 'Cobrado',
       situacion: sinFactura ? 'FALTA' : porCobrar ? 'AHORA' : 'HECHO',
       valor: sinFactura ? '—' : montos(facturado.cobrado),
-      pie: sinFactura ? null : porCobrar ? `por cobrar ${montos(facturado.saldo)} de lo facturado` : 'todo lo facturado está cobrado',
+      pie: sinFactura
+        ? null
+        : porCobrar
+          ? `por cobrar ${montos(facturado.saldo)} de lo facturado`
+          : canceladaConMenos
+            ? 'Tesorería la dio por cancelada con menos de lo facturado'
+            : 'todo lo facturado está cobrado',
+      pieEnAviso: canceladaConMenos,
       // Un solo «Ver factura y cobro»: el de lo facturado lleva al mismo lugar.
     })
   }
@@ -236,7 +243,7 @@ export function RecorridoDelCodigo({
             key={p.clave}
             className={cn(
               'grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-2 px-4 py-3',
-              enColumnas === 'xl' ? 'xl:grid-cols-[auto_minmax(0,1fr)]' : 'md:grid-cols-[auto_minmax(0,1fr)]',
+              enColumnas === 'xl' ? 'xl:grid-cols-[auto_minmax(0,1fr)] xl:grid-rows-[1fr_auto]' : 'md:grid-cols-[auto_minmax(0,1fr)] md:grid-rows-[1fr_auto]',
             )}
             data-paso={p.clave}
             data-situacion={p.situacion}
@@ -250,7 +257,7 @@ export function RecorridoDelCodigo({
               <p className={cn('tabular text-sm font-medium break-words', p.situacion === 'FALTA' ? 'text-texto-suave' : 'text-texto')}>
                 {p.tono ? <Insignia tono={p.tono}>{p.valor}</Insignia> : p.valor}
               </p>
-              {p.pie && <p className={cn('text-xs break-words', p.pieEnAviso ? 'text-aviso' : 'text-texto-suave')}>{p.pie}</p>}
+              {p.pie && <p className={cn('text-xs break-words', p.pieEnPeligro ? 'text-peligro' : p.pieEnAviso ? 'text-aviso' : 'text-texto-suave')}>{p.pie}</p>}
             </div>
             {p.enlace && (
               <Link

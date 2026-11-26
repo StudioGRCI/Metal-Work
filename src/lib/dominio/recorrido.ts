@@ -137,7 +137,8 @@ const PASOS_DE_LA_COTIZACION: Record<string, Frases> = {
   CORRECCION: { hecho: 'Corrección subida', falta: 'Corrección', nota: (version) => `Pasó a la ${version}` },
   // El número de la OT llega solo a quien lee las órdenes.
   CODIGO_Y_OT: { hecho: 'Con código interno y OT', falta: 'Código interno y OT', nota: (ot) => ot },
-  FACTURA: { hecho: 'Facturada', falta: 'Factura' },
+  // «Facturada» decía que estaba toda facturada con la primera factura, que puede ser la inicial (auditoría de la 12.3).
+  FACTURA: { hecho: 'Con factura', falta: 'Factura' },
   ANULACION: { hecho: 'Anulada', falta: 'Anulación' },
 }
 

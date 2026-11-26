@@ -3,7 +3,7 @@ import 'server-only'
 import { COLUMNAS_DETRACCION, cargarTiposDetraccion, detraccionDeFila, documentosDeServicios, type DocumentoDeServicio } from '@/lib/datos/logistica'
 import { bajarComo } from '@/lib/descarga'
 import type { DetraccionDeServicio, SaldoDeServicio } from '@/lib/dominio/detraccion'
-import { BUCKET_COBROS_VENTA, BUCKET_FACTURAS_VENTA, BUCKET_PAGOS_SERVICIO, totalConIgv } from '@/lib/dominio/finanzas'
+import { BUCKET_COBROS_VENTA, BUCKET_FACTURAS_VENTA, BUCKET_PAGOS_SERVICIO, comoVaLaFactura, totalConIgv, type ComoVaLaFactura } from '@/lib/dominio/finanzas'
 import type { CodigoMoneda } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 import type { Database, Tablas, Vistas } from '@/types/database'
@@ -186,38 +186,68 @@ export async function bandejaDeFacturacion(): Promise<CotizacionParaFacturar[]> 
 }
 
 /**
- * Lo facturado de un código, en cada moneda, sin las anuladas, y lo vendido con IGV en las cotizaciones
- * aprobadas que Contabilidad factura por ese código (`cotizaciones_para_facturar`, con `totalConIgv`, la
- * misma cuenta de su bandeja). `vendido` es `null` si alguna no tiene monto: no se adivina qué falta.
+ * Lo facturado de un código contra lo vendido, cotización por cotización, con la regla de la bandeja de
+ * Contabilidad (`comoVaLaFactura`). `null`: no se comparó (sin permiso para leer lo vendido, o alguna
+ * cotización sin monto); quien lo muestra lo dice en vez de darlo por hecho.
  */
+export type FacturadoContraVendido = {
+  /** Con IGV, de las cotizaciones aprobadas del código. */
+  vendido: Record<CodigoMoneda, number>
+  /** Lo que falta facturar de las que van por facturar o en parte, en su moneda. */
+  falta: Record<CodigoMoneda, number>
+  /** En qué va cada cotización. */
+  como: ComoVaLaFactura[]
+}
+
+/** Lo facturado de un código, en cada moneda, sin las anuladas, y cómo va contra lo vendido. */
 export type FacturadoDelCodigo = {
   facturas: number
   total: Record<CodigoMoneda, number>
   cobrado: Record<CodigoMoneda, number>
   saldo: Record<CodigoMoneda, number>
-  vendido: Record<CodigoMoneda, number> | null
+  contraVendido: FacturadoContraVendido | null
+  /** Por qué no se comparó, si no se comparó. */
+  sinComparar: 'SIN_PERMISO' | 'SIN_MONTO' | 'NO_SE_PUDO' | null
 }
 
-export async function facturadoDelCodigo(codigo: string): Promise<FacturadoDelCodigo> {
+/**
+ * `leeLoVendido`: quien tiene la puerta de `codigo_interno_lo_vendido` (`contabilidad.facturar` o
+ * `cotizaciones.ver_aprobadas`). Lo vendido se lee por código en la base, sin el tope de 300 de la bandeja.
+ */
+export async function facturadoDelCodigo(codigo: string, leeLoVendido: boolean): Promise<FacturadoDelCodigo> {
   const supabase = await createClient()
   const [{ data, error }, ventas] = await Promise.all([
     supabase.from('v_facturas_venta').select('moneda, total, cobrado, saldo').eq('codigo_interno', codigo).is('anulada_en', null),
-    supabase.rpc('cotizaciones_para_facturar'),
+    leeLoVendido ? supabase.rpc('codigo_interno_lo_vendido', { p_codigo: codigo }) : Promise.resolve(null),
   ])
   if (error) throw new Error(`No se pudo leer lo facturado del código: ${error.message}`)
-  if (ventas.error) throw new Error(`No se pudo leer lo vendido del código: ${ventas.error.message}`)
   const cero = () => ({ PEN: 0, USD: 0 })
-  const delCodigo = (ventas.data ?? []).filter((v) => v.codigo_interno === codigo)
-  let vendido: Record<CodigoMoneda, number> | null = delCodigo.length > 0 ? cero() : null
-  for (const v of delCodigo) {
-    const total = totalConIgv(v.monto_venta === null ? null : Number(v.monto_venta), v.incluye_igv)
-    if (total === null || !vendido) {
-      vendido = null
-      break
+  let contraVendido: FacturadoContraVendido | null = null
+  let sinComparar: FacturadoDelCodigo['sinComparar'] = leeLoVendido ? null : 'SIN_PERMISO'
+  // Si lo vendido no se pudo leer, lo facturado igual sale: dice que no se comparó, no tumba la pantalla.
+  if (ventas?.error) sinComparar = 'NO_SE_PUDO'
+  else if (ventas) {
+    const filas = ventas.data ?? []
+    if (filas.some((v) => v.monto_venta === null)) sinComparar = 'SIN_MONTO'
+    else if (filas.length > 0) {
+      contraVendido = { vendido: cero(), falta: cero(), como: [] }
+      for (const v of filas) {
+        const m: CodigoMoneda = v.moneda === 'USD' ? 'USD' : 'PEN'
+        const total = totalConIgv(Number(v.monto_venta), v.incluye_igv) ?? 0
+        const como = comoVaLaFactura({
+          monto: Number(v.monto_venta),
+          incluyeIgv: v.incluye_igv,
+          facturas: v.facturas ?? 0,
+          facturadoEnSuMoneda: Number(v.facturado_en_su_moneda),
+          enOtraMoneda: v.en_otra_moneda ?? false,
+        })
+        contraVendido.vendido[m] += total
+        if (como === 'POR_FACTURAR' || como === 'EN_PARTE') contraVendido.falta[m] += Math.round((total - Number(v.facturado_en_su_moneda)) * 100) / 100
+        contraVendido.como.push(como)
+      }
     }
-    vendido[v.moneda === 'USD' ? 'USD' : 'PEN'] += total
   }
-  const r: FacturadoDelCodigo = { facturas: 0, total: cero(), cobrado: cero(), saldo: cero(), vendido }
+  const r: FacturadoDelCodigo = { facturas: 0, total: cero(), cobrado: cero(), saldo: cero(), contraVendido, sinComparar }
   for (const f of data ?? []) {
     const m: CodigoMoneda = f.moneda === 'USD' ? 'USD' : 'PEN'
     r.facturas += 1

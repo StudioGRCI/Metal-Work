@@ -6,7 +6,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { bandejaDeFacturacion, type CotizacionParaFacturar } from '@/lib/datos/facturacion'
 import { PERMISOS_BAJAR_COTIZACION, rutaParaBajarCotizacion } from '@/lib/descarga'
-import { totalConIgv } from '@/lib/dominio/finanzas'
+import { comoVaLaFactura, totalConIgv } from '@/lib/dominio/finanzas'
 import { fecha, hoyLima, moneda, parteDe, porcentaje, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -33,11 +33,18 @@ function enOtraMoneda(c: CotizacionParaFacturar) {
  */
 function estadoDe(c: CotizacionParaFacturar): { etiqueta: string; tono: 'aviso' | 'exito' | 'neutro' } {
   if (!c.codigo_interno) return { etiqueta: 'Sin código interno', tono: 'neutro' }
-  if (!c.facturas.some((f) => !f.anulada_en)) return { etiqueta: 'Por facturar', tono: 'aviso' }
-  const total = totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
+  // La misma regla que la cabecera del código (`comoVaLaFactura`).
+  const como = comoVaLaFactura({
+    monto: c.monto_venta === null ? null : Number(c.monto_venta),
+    incluyeIgv: c.incluye_igv,
+    facturas: c.facturas.filter((f) => !f.anulada_en).length,
+    facturadoEnSuMoneda: facturadoDe(c),
+    enOtraMoneda: enOtraMoneda(c),
+  })
+  if (como === 'POR_FACTURAR') return { etiqueta: 'Por facturar', tono: 'aviso' }
   // Facturada en dólares una cotización en soles (o al revés): no se compara, pero tampoco se la da por entera o por parte.
-  if (enOtraMoneda(c)) return { etiqueta: 'Facturada en otra moneda', tono: 'neutro' }
-  if (total !== null && facturadoDe(c) < total - 0.005) return { etiqueta: 'Facturada en parte', tono: 'aviso' }
+  if (como === 'OTRA_MONEDA') return { etiqueta: 'Facturada en otra moneda', tono: 'neutro' }
+  if (como === 'EN_PARTE') return { etiqueta: 'Facturada en parte', tono: 'aviso' }
   return { etiqueta: 'Facturada', tono: 'exito' }
 }
 

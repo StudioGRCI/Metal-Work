@@ -105,6 +105,11 @@ export function montoMixto(pen: number, usd: number) {
  * Por qué las partes no dan el total a ojo: cada parte va en su moneda y el
  * total en soles. Con la línea, Gerencia suma y cuadra. `null` sin dólares.
  */
+/** Cuánto cambió el costo de hoy desde el que se congeló al cerrar el costeo, en soles y al céntimo. */
+export function cambioDesdeElCierre(costoDeHoy: number, cerrado: number) {
+  return Math.round((costoDeHoy - cerrado) * 100) / 100
+}
+
 /** Lo que deja incompleto un costo, contado («2 salidas sin precio · 8 h sin costo»); `null` si nada. */
 export function faltanteDelCosto(f: { sinPrecio: number; horasSinCosto: number; sinCambio: number }) {
   const partes = [
