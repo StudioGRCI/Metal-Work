@@ -297,6 +297,30 @@ sin área hasta que Administración se la pone al corregirlos.
 | Adjuntar el contrato del subcontrato, al registrarlo o después, y otra versión encima | `subcontratos.gestionar`: Administración | `adjuntar_contrato_subcontrato` (migración `20261020202000`), en `subcontrato_contratos`: no a uno anulado; un contrato adjunto no se cambia ni se borra, el último es el vigente. Lo ve quien ve los subcontratos (`puede_ver_subcontratos()`); el supervisor no, porque lleva el monto. El contrato de la orden de servicio va con los documentos de la OS (PR de Adquisiciones) |
 | Los archivos | Suben Administración (el recibo y el contrato) y Tesorería (el voucher) | Bucket privado `subcontratos`, ruta `{subcontrato}/{archivo}`, hasta 10 MB, PDF o foto; solo a un subcontrato no anulado. Lo ve quien ve los subcontratos si una fila lo nombra |
 
+## SSOMA: el reporte de seguridad
+
+Plan 15, entrega 15.1. Migraciones `20261125150000_el_reporte_de_incidente_tiene_numero`
+y `20261125150100_ssoma_y_el_reporte_de_incidente`, comprobadas con los roles
+reales en la base local (check 472) y con clic real en el banco
+(`herramientas/banco/probar-ssoma.mjs`). La carpeta «18) SSOMA (SST)» del SIG
+está vacía: el reporte sigue el registro de accidentes, incidentes peligrosos
+e incidentes de la R.M. 050-2013-TR (Ley 29783), con número de la casa
+`RI-0001-2026`. Es un documento numerado: no se borra, se anula con motivo.
+
+| Qué | Quién | Cómo lo exige la base |
+| --- | --- | --- |
+| Reportar un accidente, un incidente o una condición insegura (área, lugar, qué pasó, cuándo; del accidente, solo si hubo atención médica, nunca el diagnóstico; hasta 4 fotos) | Cualquier cuenta activa, sin permiso. En el menú de todos, al final, «Reportar › Reportar incidente» (`RUTAS_PARA_TODOS`) | `ssoma_reportar` (`security definer`): exige sesión de una cuenta activa, da el número con `siguiente_correlativo('REPORTE_INCIDENTE')`, anota las fotos y avisa en la campana a quien tiene `ssoma.gestionar`; si nadie de SSOMA tiene cuenta activa, a quien tiene `ssoma.ver` (Gerencia), y devuelve a quién avisó (`ssoma_a_quien_se_aviso`) para que la pantalla no diga «ya le avisamos a SSOMA» sin que sea cierto. El hecho, de los últimos 30 días; SSOMA registra también los más antiguos. Un reenvío idéntico devuelve el mismo; uno distinto con el mismo id dice que ya quedó, y la ventana pregunta por el anterior al volver a abrirse (`useIdDelEnvio('reporte_ssoma')`) |
+| Reportar a nombre de un trabajador sin cuenta, eligiéndolo de la lista de RR. HH. (solo nombre, cargo y área) | `ssoma.reportar_por_otro`: SSOMA, Supervisión de área, jefe de Producción y jefe de Taller | `ssoma_personal_para_elegir` y `ssoma_reportar` exigen el mismo permiso; la acción también (`reportarIncidente`). Nunca DNI, cuenta ni costo |
+| Ver todos los reportes, con quién reportó, a nombre de quién y las fotos | `ssoma.gestionar` (SSOMA) y `ssoma.ver` (Gerencia, en consulta) | `ssoma_reportes_visibles` y la política `ver_ssoma_reportes` (`puede_ver_reportes_ssoma()`) |
+| Ver los suyos, con su recorrido y sus fotos | Quien lo reportó | La misma política, por `registrado_por = usuario_actual()` |
+| Ver lo que pasó en su área, sin quién lo reportó ni las fotos | Toda cuenta con `usuarios.area_id` igual al área del reporte (no anulado) | Solo por `ssoma_reportes_visibles` (alcance `AREA`, con el autor, el trabajador, la anulación y las fotos en vacío). La tabla no se la deja leer |
+| Anular con motivo (10 a 500 caracteres) | `ssoma.gestionar`: SSOMA | `ssoma_anular_reporte`: congela el reporte y avisa a quien lo reportó. La acción exige el mismo permiso (`anularReporteSsoma`). Nadie lo borra, tampoco el administrador (`fn_ssoma_reporte_guardia`), que además sella la anulación: quién y cuándo los pone la base y sin motivo no entra, venga de donde venga el UPDATE. El mismo pedido repetido entra; otro motivo sobre uno ya anulado se rechaza diciendo el que quedó |
+| Las fotos | Sube quien reporta, a su carpeta | Bucket privado `fotos-ssoma`, ruta `{cuenta}/{reporte}/{foto}`, JPEG, PNG o WEBP de hasta 5 MB. La ve quien ve el reporte con su autor; la que ninguna fila nombra solo la ve y la quita quien la subió |
+
+`ssoma_reportes` no lleva `activar_auditoria`: la auditoría copiaría quién
+reportó a `audit_log`, que lee Gerencia y el área no debe ver. Una cuenta sin
+`area_id` no tiene alcance de área: ve solo lo suyo.
+
 ## Responsables de área
 
 Migración `20261125205000_el_responsable_de_cada_area_es_una_cuenta`,
@@ -416,7 +440,7 @@ punto y coma con su nombre delante.
 | Almacén | Por atender: Atención de requerimiento, Materiales por código; Almacén: Kardex, Reposición de stock (desde el 2026-11-20), Stock en almacén (desde el 2026-10-20, el que comparte con Supervisión, Requerimientos y Administración), Equipos (desde el 2026-11-25, para anotar quién tiene cada uno) (EPP, Consumibles, Accesorios y Materia prima salieron del menú el 2026-10-15: se abren desde el tablero de arriba del kardex) | — | Atención, Materiales, Kardex, Dashboard |
 | Logística | Atención de requerimiento, Reposición de stock (desde el 2026-11-20), Gestión de compras, Órdenes de compra, Órdenes de servicio (sin «Compras agrupadas» desde el 2026-10-15: eran las compras por OT) | Adquisiciones, Proveedores, Valorización del almacén (Aprobación de compras se abre por su dirección; el visto de cada OC se ve en Órdenes de compra) | Atención, Gestión, OC, OS |
 | Conductor de Logística | Recojos | — | Recojos, Dashboard |
-| Gerencia | Códigos internos, segundo después del Dashboard; Por aprobar: Cotización, Aprobación de compras, Reporte diario (lo valida), Trabajos sin orden (desde el 2026-10-20) | Desde el 2026-11-25, por área y en el orden del circuito, las demás pantallas que su permiso le deja leer (31, para 37 en todo su menú): Ventas, Requerimientos, Almacén, Mantenimiento (Averías de equipos, desde el 2026-11-26, sin anular), Logística, Administración, Finanzas (con Adquisiciones, Cuentas por cobrar y Cuentas por pagar, sin registrar cobros ni pagos) y Recursos Humanos (con Tiempos de entrega). Solo le cuentan pendientes y cifras, y van en «Tus módulos», lo que espera su visto y las cinco que ya tenía: Tiempos de entrega y las cuatro de Finanzas | Códigos, Cotizar, Aprobar, Reporte |
+| Gerencia | Códigos internos, segundo después del Dashboard; Por aprobar: Cotización, Aprobación de compras, Reporte diario (lo valida), Trabajos sin orden (desde el 2026-10-20) | Desde el 2026-11-25, por área y en el orden del circuito, las demás pantallas que su permiso le deja leer (32, para 38 en todo su menú): Ventas, Requerimientos, Almacén, Mantenimiento (Averías de equipos, desde el 2026-11-26, sin anular), Logística, Administración, Finanzas (con Adquisiciones, Cuentas por cobrar y Cuentas por pagar, sin registrar cobros ni pagos) y Recursos Humanos (con Tiempos de entrega), y SSOMA (Reportes de seguridad, desde el 2026-11-26, sin anular). Solo le cuentan pendientes y cifras, y van en «Tus módulos», lo que espera su visto y las cinco que ya tenía: Tiempos de entrega y las cuatro de Finanzas | Códigos, Cotizar, Aprobar, Reporte |
 | Supervisor de área | Desde el 2026-10-20, en el orden que pidió DKS: Reporte diario (uno o varios códigos), Planos y etapas (lo que Diseño cargó para su área y las etapas que hace; de cada código, «Materiales y pedidos»), Subcontratos (los de su área, también Maestranza, sin montos ni recibos: inicio, fin y avance), RQ por unidad (desde el 2026-11-20: cada unidad de su área con «Nuevo RQ»), Requerimientos (lo que su área recoge de Almacén: cada RQ con su barra por insumo, para recoger y por llegar), Stock en almacén (lo que hay antes de pedirlo) | — | Reporte, Planos, Subcontratos, RQ (Stock, en «Más») |
 | Supervisor General | Seguimiento por código, Informe semanal de Diseño; Clientes y Unidades (la cotización ya no); Requerimientos y Vehículos; Kardex (los cuatro almacenes, desde su tablero) y Valorización; Gastos del mes, cada bloque con el nombre de su área y en el orden del circuito | — | Seguimiento, RQ, Kardex, Dashboard |
 | Administración | Códigos internos, segundo después del Dashboard (en lectura, desde el 2026-10-19); Administración: Cotización, Órdenes de trabajo, Trabajos sin orden (desde el 2026-10-20), Subcontratos, Gastos del mes, Tipo de cambio; Requerimiento de Administración: Requerimientos, Atención de requerimiento, Órdenes de compra, Stock en almacén (desde el 2026-10-20). Personal y Configuración salieron de su menú y de sus permisos el 2026-10-19: son del administrador del sistema | Evaluación de desempeño, Tardanzas, Observaciones, Vehículos y, al final, Clientes | Cotizar, Órdenes, Subcontratos, RQ |
@@ -430,13 +454,18 @@ punto y coma con su nombre delante.
 | Agente de Ventas | Cotización, Clientes, Unidades, Carrocerías | — | Cotizar, Clientes, Unidades, Dashboard |
 | Gerencia Comercial (desde el 2026-11-25) | — | Ventas: Cotización (cada una lleva a su OT), Clientes, Unidades, Órdenes de trabajo | Cotizar, Clientes, Órdenes, Dashboard |
 | Gerencia de Producción (desde el 2026-11-25) | Por validar: Reporte diario (da el visto de Gerencia); Avance: Seguimiento por código y Tiempos de entrega (de RR. HH., en consulta) | — | Reporte, Seguimiento, Entregas, Dashboard |
-
-Desde el 2026-11-26 todos los puestos, también los de la tabla, tienen al final
-el grupo «Reportar» con «Reportar avería» (`RUTAS_PARA_TODOS`): reportar no pide
-permiso. Mantenimiento la tiene arriba como «Averías», y Gerencia en sus Consultas.
+| SSOMA | Reportes de seguridad (desde el 2026-11-25; las acciones correctivas, las charlas, las inspecciones y el EPP se suman con sus entregas) | — | Seguridad, Dashboard |
 
 Una pantalla nueva no aparece sola en estos menús: se suma al del puesto que la
 usa. Si la ruta está mal escrita, TypeScript no compila.
+
+Desde el 2026-11-25 todos los puestos llevan al final el grupo **Reportar**
+(`RUTAS_PARA_TODOS`), con «Reportar incidente» para SSOMA, sin permiso. SSOMA
+(en su grupo «SSOMA») y Gerencia (en «Consultas») ven la misma pantalla como
+«Reportes de seguridad», una sola vez: el grupo «Reportar» no se les repite.
+Desde el 2026-11-26 el mismo grupo lleva también «Reportar avería» (Plan 16.2),
+sin permiso. Mantenimiento la tiene arriba como «Averías» y Gerencia en su grupo
+de consulta «Mantenimiento»; a ellos tampoco se les repite abajo.
 
 ## El dashboard de cada puesto
 
@@ -486,6 +515,7 @@ la OT en su menú.
 | Agente de Ventas | Cotizaciones rechazadas por corregir | En revisión de Gerencia, Aprobadas este mes, Clientes |
 | Gerencia Comercial | — | En revisión de Gerencia y Aprobadas este mes, de todo Ventas; Clientes |
 | Gerencia de Producción | Reportes diarios que esperan el visto de Gerencia | Reportes diarios del mes (con cuántos esperan el visto de Gerencia, y lleva a «Falta Gerencia»), Códigos en curso |
+| SSOMA | — (el aviso de cada reporte llega a la campana; el globo de lo que espera por SSOMA llega con las acciones correctivas, entrega 15.2) | Reportes en SSOMA (vigentes, sin anular), Reportados este mes (cuántos accidentes) |
 
 ADMIN ve las cifras de Gerencia y todos los globos. Una cifra que no se pudo
 leer sale con «—» y lo dice; nunca como si fuera cero.
