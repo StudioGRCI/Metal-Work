@@ -176,7 +176,11 @@ export async function cargarAprobacionCompras(opciones: { puestos: boolean }) {
   const [cambios, insumos, comprobante, stock, corregidas] = await Promise.all([
     // Con qué cambio va la OS en otra moneda que ya tiene su factura. La que todavía no la tiene
     // no lo dice aquí: se aprueba antes de que exista, y «falta su factura» saldría en todas.
-    cambioDeLosServicios((extra.data ?? []).filter((f) => f.moneda !== 'PEN').map((f) => f.id)),
+    // Sin leerlo, se aprueba igual: solo no se dice con qué cambio va.
+    cambioDeLosServicios((extra.data ?? []).filter((f) => f.moneda !== 'PEN').map((f) => f.id)).catch((e: unknown) => {
+      console.error('Aprobación de compras: no se pudo leer con qué tipo de cambio van las OS.', e instanceof Error ? e.message : e)
+      return new Map<string, CambioDelServicio>()
+    }),
     insumosPorCompra(supabase, idsOc),
     idsOc.length ? supabase.from('ordenes_compra_materiales').select('id, con_factura').in('id', idsOc) : Promise.resolve({ data: [], error: null }),
     idsOc.length ? supabase.rpc('stock_al_aprobar_compras', { p_compras: idsOc }) : Promise.resolve({ data: [], error: null }),

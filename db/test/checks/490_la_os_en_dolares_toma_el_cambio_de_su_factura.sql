@@ -28,6 +28,8 @@
 --   osh: US$ 1 000. Factura de un sábado: va con el cambio del viernes y no
 --        espera otro. osi: factura del lunes siguiente, sin cambio propio:
 --        va con el del viernes y espera el suyo.
+--   osr: US$ 1 000, con su factura y rechazada por Gerencia: la base ya no
+--        dice de dónde sale su cambio.
 --   osp: en soles. Su factura no pide fecha y no cambia nada.
 --
 -- En cada paso, `cambio_de_los_servicios` dice de dónde sale el cambio, de qué
@@ -64,7 +66,7 @@ begin
    order by r limit 1
   on conflict (tipo_documento, numero_documento) do update set activo = true;
   perform set_config('prueba.proveedor', (select id::text from public.proveedores where razon_social = 'PROVEEDOR DE PRUEBA 490'), true);
-  foreach v in array array['osa', 'osb', 'osc', 'osd', 'ose', 'osf', 'osg', 'osh', 'osi', 'osp', 'tc15', 'pago', 'pagod', 'pagof', 'pagog', 'adelantod', 'fa', 'fb', 'fc', 'fd', 'fe', 'ff', 'fg', 'fh', 'fi', 'fp'] loop
+  foreach v in array array['osa', 'osb', 'osc', 'osd', 'ose', 'osf', 'osg', 'osh', 'osi', 'osr', 'osp', 'tc15', 'pago', 'pagod', 'pagof', 'pagog', 'adelantod', 'fa', 'fb', 'fc', 'fd', 'fe', 'ff', 'fg', 'fh', 'fi', 'fr', 'fp'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
 end $$;
@@ -140,6 +142,8 @@ select public.emitir_orden_servicio(pg_temp.id('osh'), pg_temp.id('proveedor'), 
   'PLANTA', 'Granallado de aros, prueba 490', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'USD', 1000, 'CONTADO', 0, '025', null);
 select public.emitir_orden_servicio(pg_temp.id('osi'), pg_temp.id('proveedor'), null, (select id from public.areas where codigo = 'ACB'),
   'PLANTA', 'Cromado de pasamanos, prueba 490', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'USD', 1000, 'CONTADO', 0, '025', null);
+select public.emitir_orden_servicio(pg_temp.id('osr'), pg_temp.id('proveedor'), null, (select id from public.areas where codigo = 'ACB'),
+  'PLANTA', 'Zincado de pernos, prueba 490', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'USD', 1000, 'CONTADO', 0, '025', null);
 select public.emitir_orden_servicio(pg_temp.id('osp'), pg_temp.id('proveedor'), null, (select id from public.areas where codigo = 'ACB'),
   'PLANTA', 'Pintura de la tolva, prueba 490', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'PEN', 500, 'CONTADO', 0, '025', null);
 reset role;
@@ -482,6 +486,29 @@ select test.afirmar(pg_temp.cambio('osh') = format('FACTURA|%s|%s|false|false', 
 select test.afirmar(pg_temp.cambio('osi') = format('FACTURA|%s|%s|%s|false', pg_temp.sabado() + 2 - pg_temp.hoy(), pg_temp.sabado() - 1 - pg_temp.hoy(),
                                                     pg_temp.habil(pg_temp.sabado() + 2)),
   format('la del lunes sí espera el suyo, salvo que ese lunes sea feriado (dice %s)', pg_temp.cambio('osi')));
+
+-- ============================================ De la rechazada no se dice nada
+-- Nada le mueve ya el monto, y sin pagos se leía «quedó fija al depositar su detracción».
+select set_config('prueba.ruta_r', pg_temp.subir('osr', 'comprador'), true);
+select pg_temp.como('comprador');
+set local role authenticated;
+select public.adjuntar_documento_servicio(pg_temp.id('fr'), pg_temp.id('osr'), 'FACTURA', 'F001-4912', 'factura-r.pdf',
+                                          current_setting('prueba.ruta_r'), pg_temp.sabado() + 2);
+reset role;
+select test.afirmar(pg_temp.cambio('osr') like 'FACTURA|%' and (pg_temp.os('osr')).monto_pen = 3600.00,
+  format('por aprobar y con su factura, la base dice de dónde sale su cambio (dice %s)', pg_temp.cambio('osr')));
+select pg_temp.como('gerente');
+set local role authenticated;
+select public.rechazar_orden_servicio(pg_temp.id('osr'), 'El proveedor no es el que se cotizó');
+reset role;
+select pg_temp.como('contabilidad');
+set local role authenticated;
+update public.tipos_de_cambio set venta = 3.62, compra = 3.57 where fecha = pg_temp.sabado() - 1;
+reset role;
+select test.afirmar((pg_temp.os('osr')).monto_pen = 3600.00 and (pg_temp.os('osh')).monto_pen = 3620.00,
+  'corregido el cambio de ese día, la rechazada no se mueve y la vigente sí');
+select test.afirmar(pg_temp.cambio('osr') = 'nada' and pg_temp.cambio('osh') like 'FACTURA|%',
+  format('y de la rechazada la base ya no dice nada: no «quedó fija con otro cambio» sin ningún pago (dice %s)', pg_temp.cambio('osr')));
 
 -- ============================================ La OS en soles no pide fecha
 select set_config('prueba.ruta_p', pg_temp.subir('osp', 'comprador'), true);

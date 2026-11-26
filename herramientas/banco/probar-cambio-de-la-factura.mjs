@@ -81,8 +81,8 @@ async function como(cuenta, sql, v = []) {
 }
 
 // 1. La siembra ---------------------------------------------------------------
-const [{ hoy, hace3, hace2, sin_cambio, hace2anios }] = await q(
-  `select to_char(h, 'YYYY-MM-DD') as hoy, to_char(h - 3, 'YYYY-MM-DD') as hace3, to_char(h - 2, 'YYYY-MM-DD') as hace2, to_char(h - 40, 'YYYY-MM-DD') as sin_cambio,
+const [{ hoy, hace3, sin_cambio, hace2anios }] = await q(
+  `select to_char(h, 'YYYY-MM-DD') as hoy, to_char(h - 3, 'YYYY-MM-DD') as hace3, to_char(h - 40, 'YYYY-MM-DD') as sin_cambio,
           to_char(h - 730, 'YYYY-MM-DD') as hace2anios
      from (select (now() at time zone 'America/Lima')::date as h) x`,
 )
@@ -294,10 +294,27 @@ if (tc_sin !== null) {
 //    Contabilidad lo registra, con clic, en Tesorería › Tipo de cambio. Se hace con el día de hace
 //    dos días, que la siembra deja sin cambio: no depende de que hoy tenga o no el suyo.
 {
-  const [{ ya }] = await q(`select (select venta from public.tipos_de_cambio where fecha = $1::date) as ya`, [hace2])
-  if (ya !== null) {
-    console.log(`  (el banco ya tiene el cambio del ${dma(hace2)}: no se prueba la factura que llega antes que su cambio; rehacer el banco)`)
-  } else {
+  // El día hábil más reciente, hasta anteayer, que no tiene cambio propio. En el banco recién hecho
+  // es anteayer, con el cambio de la víspera ya sembrado; cada corrida gasta uno, y a la que no le
+  // queda víspera con cambio se la siembra Contabilidad. Si no queda ningún día la prueba falla:
+  // saltarse el paso la daba por buena sin haberlo hecho (auditoría del 2026-11-26). No se busca
+  // más atrás de 25 días, para no darle cambio al día «sin cambio» del paso 3.
+  const [libre] = await q(
+    `select to_char(d, 'YYYY-MM-DD') as dia, public.cambio_del_dia(d::date, 'VENTA') is null as sin_vispera
+       from generate_series($1::date - 25, $1::date - 2, interval '1 day') g(d)
+      where extract(isodow from d) < 6
+        and not exists (select 1 from public.feriados f where f.fecha = d::date and not f.laborable)
+        and not exists (select 1 from public.tipos_de_cambio t where t.fecha = d::date)
+      order by d desc limit 1`, [hoy])
+  comprobar(Boolean(libre), 'hay un día hábil reciente sin cambio propio para probar la factura que llega antes que su cambio (si no, rehacer el banco)')
+  if (libre?.sin_vispera) {
+    await como('contabilidad',
+      `insert into public.tipos_de_cambio (fecha, compra, venta, fuente, registrado_por)
+       select $1::date - 1, 3.70, 3.75, 'SUNAT', public.usuario_actual()
+        where not exists (select 1 from public.tipos_de_cambio where fecha = $1::date - 1)`, [libre.dia])
+  }
+  const hace2 = libre?.dia
+  if (hace2) {
     const log2 = await entrar('logistica', 1440)
     await ir(log2, '/compras/servicios')
     const errorD = await adjuntarFactura(log2, d, `F001-${SELLO}4`, hace2)

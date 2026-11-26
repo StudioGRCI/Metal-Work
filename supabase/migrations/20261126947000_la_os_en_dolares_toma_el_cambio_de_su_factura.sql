@@ -429,6 +429,10 @@ as $$
       from public.ordenes_servicio s
      where s.id = any(p_ids)
        and s.moneda <> 'PEN'
+       -- A la anulada y a la rechazada nada les mueve el monto: no se dice de dónde sale, que
+       -- sin pagos se leía «quedó fija al depositar su detracción».
+       and s.estado <> 'ANULADA'
+       and s.aprobacion <> 'RECHAZADA'
        and (public.es_admin()
             or public.tiene_permiso('compras.ver')
             or public.tiene_permiso('compras.crear')
@@ -482,4 +486,4 @@ revoke all on function public.cambio_de_los_servicios(uuid[]) from public, anon;
 grant execute on function public.cambio_de_los_servicios(uuid[]) to authenticated;
 
 comment on function public.cambio_de_los_servicios(uuid[]) is
-  'De cada OS en otra moneda que quien llama puede ver: de dónde sale el día de su cambio (su factura, el día en que se emitió, o lo que quedó fijo al depositar su detracción), qué día es, de qué día es el cambio registrado del que sale su monto en soles, si todavía se espera el de su día y si ya está fija. Para la pantalla; no entrega documentos ni pagos (20261126947000).';
+  'De cada OS vigente en otra moneda que quien llama puede ver: de dónde sale el día de su cambio (su factura, el día en que se emitió, o lo que quedó fijo al depositar su detracción), qué día es, de qué día es el cambio registrado del que sale su monto en soles, si todavía se espera el de su día y si ya está fija. Para la pantalla; no entrega documentos ni pagos (20261126947000).';
