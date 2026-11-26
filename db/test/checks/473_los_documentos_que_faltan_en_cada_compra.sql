@@ -381,6 +381,8 @@ do $$ begin
     'el conductor la dejó en el almacén sin guía: la guía sigue faltando');
   perform test.afirmar(not exists (select 1 from pg_temp.doc('ocb', 'NOTA_CREDITO')),
     'a la OC con boleta no se le pide nota de crédito de lo devuelto: no tiene factura contra la cual registrarla');
+  perform test.afirmar(not exists (select 1 from public.devoluciones_sin_nota_credito() where devolucion_id = pg_temp.id('devb')),
+    'y lo que devolvió no espera en «Esperan nota de crédito» (20261126970000)');
   perform test.afirmar((select situacion = 'FALTA' from pg_temp.doc('ocb', 'BOLETA')), 'y le falta su boleta');
   perform test.afirmar((select situacion = 'POR_REGISTRAR' and numeros = 'E102-473' and dias = 0 from pg_temp.doc('oc2', 'FACTURA')),
     'la factura que anexó Logística está por registrar, con su número, no «falta»');
@@ -398,8 +400,24 @@ do $$ begin
   perform test.afirmar((select estado = 'BORRADOR' from public.adquisiciones where id = pg_temp.id('fb')), 'el comprobante queda en borrador');
   perform test.afirmar((select situacion = 'POR_REGISTRAR' and numeros = 'FH2-473' from pg_temp.doc('ocb', 'BOLETA')),
     'con solo el borrador, la OC con boleta no se da por completa: su comprobante está por registrar');
+  perform test.afirmar(not exists (select 1 from public.devoluciones_sin_nota_credito() where devolucion_id = pg_temp.id('devb')),
+    'con la factura en borrador, lo devuelto de la OC con boleta todavía no espera nota');
 end $$;
 reset role;
+-- La misma factura, ya registrada (sin pasar por sus disparadores: solo importa su estado). Contra ella sí va la nota.
+set local session_replication_role = replica;
+update public.adquisiciones set estado = 'REGISTRADA', ruta_storage = 'fb-473.pdf' where id = pg_temp.id('fb');
+set local session_replication_role = origin;
+select pg_temp.como('contabilidad');
+set local role authenticated;
+do $$ begin
+  perform test.afirmar((select facturas->0->>'numero' = 'FH2-473' from public.devoluciones_sin_nota_credito() where devolucion_id = pg_temp.id('devb')),
+    'con la factura registrada, lo devuelto de la OC con boleta espera su nota, contra esa factura');
+end $$;
+reset role;
+set local session_replication_role = replica;
+update public.adquisiciones set estado = 'BORRADOR', ruta_storage = null where id = pg_temp.id('fb');
+set local session_replication_role = origin;
 
 -- ============================================ 6. Quién la lee, y que no toca nada
 do $$

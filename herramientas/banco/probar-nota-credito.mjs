@@ -7,7 +7,9 @@
  *      factura F1 de esa OC (118) y otra factura F2 del mismo proveedor (59), y
  *      Almacén devolvió 2 sin reposición (sembrado por SQL, con cada cuenta).
  *   2. Contabilidad ve la devolución en «Esperan nota de crédito», registra la
- *      nota con su PDF y F1 baja a 94.40. Tesorería paga lo que queda.
+ *      nota con su PDF y F1 baja a 94.40. Tesorería paga lo que queda. Lo que
+ *      Almacén devolvió de otra OC igual pero con boleta no espera nota
+ *      (migración 20261126970000).
  *   3. Contabilidad registra en la fila de F1 una nota por un descuento de 30:
  *      F1 ya estaba pagada y los 30 quedan a favor.
  *   4. Tesorería, en el teléfono, descuenta 20 de F2 y registra que el
@@ -135,6 +137,34 @@ const [{ id: pendiente }] = await consulta(`select id from ingresos_pendientes_a
 await consulta(`select public.validar_ingresos_compra($1, $2::jsonb, null)`, [oc, JSON.stringify([{ id: pendiente, movimiento_id: ing, cantidad: 10 }])])
 await consulta(`select public.devolver_al_proveedor($1, $2, 2, $3, 'Dos discos llegaron partidos', false)`, [dev, ing, `GR-NC-${SUFIJO}`])
 const [{ numero: ocNumero }] = await consulta(`select numero from ordenes_compra_materiales where id = $1`, [oc])
+// La misma compra con boleta, y Almacén devuelve 2 sin reposición: a la OC con boleta lo devuelto lo arregla
+// Tesorería con la devolución del dinero, y no espera nota de crédito (migración 20261126970000).
+const [{ rqb, ocb, ingb, devb }] = await consulta(
+  `select gen_random_uuid() as rqb, gen_random_uuid() as ocb, gen_random_uuid() as ingb, gen_random_uuid() as devb`)
+await como('requerimientos')
+await consulta(`select public.emitir_requerimiento($1, 'OPERACION', $2, $3, 'Discos con boleta para el banco de la nota de crédito', null, $4::jsonb)`,
+  [rqb, areaMtz, codigoUnidad, JSON.stringify([{ material_id: material, cantidad: 10 }])])
+await como('almacen')
+await consulta(`select public.rq_revisar_stock($1, '[{"item": 1, "en_stock": 0}]'::jsonb, null)`, [rqb])
+const [{ id: lineaB }] = await consulta(`select l.id from requerimiento_lineas l where l.requerimiento_id = $1`, [rqb])
+await como('logistica')
+await consulta(`select public.emitir_compra_de_requerimientos($1, $2::jsonb, $3, $4, null, 'CONTADO', 0, 'PEN', false)`,
+  [ocb, JSON.stringify([{ material_id: material, cantidad: 10, precio: 10, insumos: [lineaB] }]), proveedor, `COT-NCB-${SUFIJO}`])
+await como('gerencia')
+await consulta(`select public.aprobar_compra($1) from ordenes_compra_materiales where id = $1 and aprobacion = 'POR_APROBAR'`, [ocb])
+await como('logistica')
+await consulta(`select public.mandar_compra_a_recojo($1)`, [ocb])
+await consulta(`select public.programar_recojo($1, 25, null)`, [ocb])
+await como('conductor')
+await consulta(`select public.marcar_compra_en_recojo($1)`, [ocb])
+await consulta(`select public.marcar_compra_recogida($1)`, [ocb])
+await consulta(`select public.marcar_compra_dejada_almacen($1)`, [ocb])
+await como('almacen')
+const [{ id: pendienteB }] = await consulta(`select id from ingresos_pendientes_almacen where orden_compra_id = $1`, [ocb])
+await consulta(`select public.validar_ingresos_compra($1, $2::jsonb, null)`, [ocb, JSON.stringify([{ id: pendienteB, movimiento_id: ingb, cantidad: 10 }])])
+await consulta(`select public.devolver_al_proveedor($1, $2, 2, $3, 'Dos discos llegaron partidos', false)`, [devb, ingb, `GR-NCB-${SUFIJO}`])
+const [{ numero: ocbNumero, con_factura: ocbConFactura }] = await consulta(`select numero, con_factura from ordenes_compra_materiales where id = $1`, [ocb])
+if (!ocbNumero || ocbConFactura) throw new Error(`La ${ocbNumero} tenía que tener número y ser con boleta.`)
 const F1 = `F427-${SUFIJO.slice(0, 5)}1`
 const F2 = `F427-${SUFIJO.slice(0, 5)}2`
 await como('contabilidad')
@@ -239,6 +269,8 @@ try {
   const espera = con.locator(`#notas-credito [data-espera-nota="${ocNumero}"]`)
   comprobar((await espera.count()) === 1, `Contabilidad ve la devolución de la ${ocNumero} en «Esperan nota de crédito»`)
   comprobar(limpio(await espera.textContent()).includes(`${MATERIAL}: 2`), 'la fila dice qué y cuánto se devolvió')
+  comprobar((await con.locator(`#notas-credito [data-espera-nota="${ocbNumero}"]`).count()) === 0,
+    `lo devuelto de la ${ocbNumero}, con boleta, no espera nota de crédito (ni arriba ni en «esperan que se registre la factura»)`)
   await espera.getByRole('button', { name: new RegExp(`nota de crédito de la factura ${F1}`) }).click()
   let v = con.getByRole('dialog')
   await v.waitFor()
