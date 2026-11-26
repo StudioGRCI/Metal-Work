@@ -6,6 +6,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import type { CajaDelPago } from '@/lib/datos/caja'
 import type { CobroFactura, FacturaVenta } from '@/lib/datos/facturacion'
 import { estadoFacturaVenta } from '@/lib/dominio/finanzas'
+import { diasDelVencimiento } from '@/lib/dominio/vencimiento'
 import { diasHasta, fecha, moneda, parteDe, porcentaje, type CodigoMoneda } from '@/lib/format'
 
 const codigo = (m: string | null): CodigoMoneda => (m === 'USD' ? 'USD' : 'PEN')
@@ -136,17 +137,27 @@ export function FacturaDeVenta({
   )
 }
 
-/** El vencimiento dicho como se lee: lo vencido, en rojo. */
+/** El vencimiento dicho como se lee, con sus días contados en Lima: lo vencido, en rojo (plan 11.1). */
 function Vence({ dia }: { dia: string | null }) {
   const faltan = diasHasta(dia)
   if (faltan === null) return <>sin vencimiento</>
   if (faltan < 0) {
     return (
-      <span className="text-peligro">
-        venció el {fecha(dia)}, hace {-faltan} {faltan === -1 ? 'día' : 'días'}
+      <span className="text-peligro" data-dias-vencimiento={faltan}>
+        venció el {fecha(dia)}, {diasDelVencimiento(faltan)}
       </span>
     )
   }
-  if (faltan === 0) return <span className="text-aviso">vence hoy</span>
-  return <>vence el {fecha(dia)}</>
+  if (faltan === 0) {
+    return (
+      <span className="text-aviso" data-dias-vencimiento={0}>
+        vence hoy
+      </span>
+    )
+  }
+  return (
+    <span data-dias-vencimiento={faltan}>
+      vence el {fecha(dia)}, {diasDelVencimiento(faltan)}
+    </span>
+  )
 }
