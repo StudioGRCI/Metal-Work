@@ -14873,6 +14873,21 @@ export type Database = {
           unidad: string | null
         }[]
       }
+      codigo_interno_lo_vendido: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          cotizacion_id: string | null
+          numero: string | null
+          moneda: string | null
+          monto_venta: number | null
+          incluye_igv: boolean | null
+          facturas: number | null
+          facturado_en_su_moneda: number | null
+          en_otra_moneda: boolean | null
+        }[]
+      }
       codigo_interno_materiales: {
         Args: {
           p_codigo: string | null
@@ -14947,21 +14962,6 @@ export type Database = {
           subido_en: string | null
           recibido_en: string | null
           recibido_por_area: string | null
-        }[]
-      }
-      codigo_interno_lo_vendido: {
-        Args: {
-          p_codigo: string | null
-        }
-        Returns: {
-          cotizacion_id: string | null
-          numero: string | null
-          moneda: string | null
-          monto_venta: number | null
-          incluye_igv: boolean | null
-          facturas: number | null
-          facturado_en_su_moneda: number | null
-          en_otra_moneda: boolean | null
         }[]
       }
       codigo_interno_recorrido: {
@@ -15234,6 +15234,16 @@ export type Database = {
           p_cuenta: string | null
         }
         Returns: null
+      }
+      completar_monto_pen_de_servicios: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      compra_con_factura_registrada: {
+        Args: {
+          p_compra: string | null
+        }
+        Returns: boolean
       }
       compra_pagada_fuera_de_la_factura: {
         Args: {
@@ -15777,20 +15787,6 @@ export type Database = {
           codigo_interno: string | null
         }[]
       }
-      definir_etapas_diseno: {
-        Args: {
-          p_orden_id: string | null
-          p_etapas: string[] | null
-        }
-        Returns: number
-      }
-      definir_etapas_ponderadas: {
-        Args: {
-          p_orden_id: string | null
-          p_config: Json | null
-        }
-        Returns: number
-      }
       decisiones_tomadas: {
         Args: {
           p_desde: string | null
@@ -15808,6 +15804,20 @@ export type Database = {
           motivo: string | null
           enlace: string | null
         }[]
+      }
+      definir_etapas_diseno: {
+        Args: {
+          p_orden_id: string | null
+          p_etapas: string[] | null
+        }
+        Returns: number
+      }
+      definir_etapas_ponderadas: {
+        Args: {
+          p_orden_id: string | null
+          p_config: Json | null
+        }
+        Returns: number
       }
       dejar_de_esperar_reposicion: {
         Args: {
@@ -18107,6 +18117,14 @@ export type Database = {
           p_etapa_id: string | null
         }
         Returns: null
+      }
+      recalcular_monto_pen_de_servicios: {
+        Args: {
+          p_fecha: string | null
+          p_venta_vieja: number | null
+          p_venta_nueva: number | null
+        }
+        Returns: number
       }
       rechazar_compra: {
         Args: {
