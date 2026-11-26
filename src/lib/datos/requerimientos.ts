@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
+import { fechasCorregidas } from '@/lib/datos/plazos-compras'
 import { todasLasFilas } from '@/lib/datos/todas-las-filas'
 import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { ESTADOS_RQ_ABIERTOS } from '@/lib/dominio/requerimientos'
@@ -118,7 +119,7 @@ export type OpcionCatalogo = { id: string; codigo: string; nombre: string }
 export type AreaParaRequerimiento = OpcionCatalogo & { requerimiento: string }
 
 const SELECT_RQ =
-  'id, numero, tipo, area_id, creado_por, codigo_interno, justificacion, fecha_requerida, estado, motivo_anulacion, nota_almacen, nota_logistica, nota_entrega, faltante_al_entregar, motivo_del_faltante, revision_stock_en, en_atencion_en, listo_en_almacen_en, entregado_en, creado_en, area:areas(nombre), lineas:requerimiento_lineas(id, item, descripcion, cantidad, cantidad_en_stock, sin_salida_al_entregar, material_id, material_nuevo, recompra_de, material:materiales(codigo, descripcion, unidad_pendiente), unidad:unidades_medida(codigo), categoria:categorias_material(nombre), orden_compra:ordenes_compra_materiales(numero, referencia, aprobacion, fecha_estimada))'
+  'id, numero, tipo, area_id, creado_por, codigo_interno, justificacion, fecha_requerida, estado, motivo_anulacion, nota_almacen, nota_logistica, nota_entrega, faltante_al_entregar, motivo_del_faltante, revision_stock_en, en_atencion_en, listo_en_almacen_en, entregado_en, creado_en, area:areas(nombre), lineas:requerimiento_lineas(id, item, descripcion, cantidad, cantidad_en_stock, sin_salida_al_entregar, material_id, material_nuevo, recompra_de, material:materiales(codigo, descripcion, unidad_pendiente), unidad:unidades_medida(codigo), categoria:categorias_material(nombre), orden_compra:ordenes_compra_materiales(id, numero, referencia, aprobacion, fecha_estimada))'
 
 /**
  * Cuántos RQ en camino (por entregar) se necesitan entre esas fechas, con los
@@ -162,6 +163,8 @@ export async function cargarRequerimientos(
     area?: string
     codigo?: string
     conEntregado?: boolean
+    /** Para contar, sin la fecha esperada: no lee si Logística la corrigió. */
+    sinFechaCorregida?: boolean
     /** Solo los que se necesitan entre estas fechas (YYYY-MM-DD, inclusive), del que vence primero al último. */
     necesitadoDesde?: string | null
     necesitadoHasta?: string
@@ -190,16 +193,21 @@ export async function cargarRequerimientos(
   // Lo que ya salió del almacén para cada insumo y lo que llegó de su compra:
   // Supervisión no lee el kardex, así que también lo da la base (migración 20261020191000).
   const entregados = new Map<string, { entregado: number; llegado: number | null }>()
+  // Si Logística corrigió la fecha de la OC, vale la corregida (quien no lee la OC no la recibe).
+  let corregidas: Awaited<ReturnType<typeof fechasCorregidas>> = new Map()
   if (data && data.length > 0) {
     const ids = data.map((r) => r.id)
-    const [avance, entregado] = await Promise.all([
+    const idsOc = data.flatMap((r) => r.lineas.flatMap((l) => (l.orden_compra?.id ? [l.orden_compra.id] : [])))
+    const [avance, entregado, fechas] = await Promise.all([
       supabase.rpc('avance_de_requerimientos', { p_ids: ids }),
       // Una fila por insumo: con 300 RQ pasa de mil, y Supabase corta en mil sin avisar.
       opciones.conEntregado
         ? todasLasFilas(() => supabase.rpc('entregado_de_requerimientos', { p_ids: ids }), ['requerimiento_id', 'item'])
         : null,
+      opciones.sinFechaCorregida ? new Map() : fechasCorregidas(supabase, { oc: idsOc }),
     ])
     if (avance.error) throw new Error(`No se pudo calcular el avance de los requerimientos: ${avance.error.message}`)
+    corregidas = fechas
     if (entregado?.error) throw new Error(`No se pudo leer lo entregado de los requerimientos: ${entregado.error.message}`)
     for (const a of avance.data ?? []) {
       if (!a.requerimiento_id || a.porcentaje == null || !a.etapa) continue
@@ -261,7 +269,7 @@ export async function cargarRequerimientos(
             entregado: opciones.conEntregado ? (entregados.get(`${r.id}:${l.item}`)?.entregado ?? 0) : null,
             llegado: entregados.get(`${r.id}:${l.item}`)?.llegado ?? null,
             sin_salida: l.sin_salida_al_entregar == null ? null : Number(l.sin_salida_al_entregar),
-            fecha_esperada: l.orden_compra && !['RECHAZADA', 'ANULADA'].includes(l.orden_compra.aprobacion ?? '') ? l.orden_compra.fecha_estimada : null,
+            fecha_esperada: l.orden_compra && !['RECHAZADA', 'ANULADA'].includes(l.orden_compra.aprobacion ?? '') ? (corregidas.get(l.orden_compra.id)?.fecha ?? l.orden_compra.fecha_estimada) : null,
           }
         })
         .sort((a, b) => a.item - b.item),

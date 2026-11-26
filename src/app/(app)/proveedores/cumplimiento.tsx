@@ -10,7 +10,7 @@ const veces = (n: number, una: string, varias: string) => `${n} ${n === 1 ? una 
  * que llegaron, cuántas a tiempo contra la fecha que prometió al emitirlas;
  * cuántas pasaron esa fecha sin llegar, y de cuántas OC Almacén le devolvió
  * algo. La que se atrasó por causa nuestra (pago, transporte o aprobación,
- * según el último motivo anotado antes de que llegara) se dice aparte y no cuenta. Lo que pesa contra el proveedor va en tono de aviso, siempre con su
+ * según el último motivo anotado, también el enmendado después de llegar) se dice aparte y no cuenta. Lo que pesa contra el proveedor va en tono de aviso, siempre con su
  * texto. Solo cuentas, sin importes. En la columna va en renglones; bajo el
  * nombre, en uno solo.
  */

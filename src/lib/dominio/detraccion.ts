@@ -1,5 +1,5 @@
 import type { Tono } from '@/components/ui/etiqueta-estado'
-import { moneda, parteDe, porcentaje as pct, porcentajeCorto } from '@/lib/format'
+import { fecha, moneda, parteDe, porcentaje as pct, porcentajeCorto } from '@/lib/format'
 
 /**
  * La detracción (SPOT) de una orden de servicio: quien contrata deposita un
@@ -37,6 +37,11 @@ export type DetraccionDeServicio = {
   motivo: string | null
   total_con_igv_pen: number | null
   monto: number | null
+  /**
+   * Cuándo se emitió la OS: en dólares, su monto en soles sale del cambio de ese
+   * día (20261126626000), y el aviso dice cuál falta.
+   */
+  emitida_en?: string | null
 }
 
 /** Lo que la OS dice de su detracción, en una línea y su detalle. */
@@ -48,7 +53,14 @@ export function resumenDetraccion(d: DetraccionDeServicio): { texto: string; det
   const tipo = [d.codigo, d.descripcion].filter(Boolean).join(' · ')
   const porcentaje = porcentajeCorto(d.porcentaje)
   if (d.total_con_igv_pen === null) {
-    return { texto: `Detracción ${porcentaje}: falta el tipo de cambio`, detalle: tipo, tono: 'aviso' }
+    // Tesorería, que lo ve, no registra el cambio: el detalle dice de qué día y quién (DKS,
+    // 2026-11-26). La insignia no lleva la fecha: no se parte y salía de la tarjeta en el teléfono.
+    const dia = d.emitida_en ? ` del ${fecha(d.emitida_en)}` : ''
+    return {
+      texto: `Detracción ${porcentaje}: falta el tipo de cambio`,
+      detalle: `${tipo ? `${tipo}. ` : ''}Falta el tipo de cambio${dia}: lo registran Contabilidad o Administración.`,
+      tono: 'aviso',
+    }
   }
   // El IGV que va dentro del total: lo que se lee en la factura (DKS, 27/10/2026: porcentaje y costo).
   const igv = Math.round((d.total_con_igv_pen - d.total_con_igv_pen / (1 + IGV)) * 100) / 100

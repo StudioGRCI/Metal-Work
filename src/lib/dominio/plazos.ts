@@ -23,6 +23,11 @@ export type PlazoDeCompra = {
   por_llegar: LoQueFalta[] | null
   /** Lo que el conductor dejó y Almacén todavía no valida: no falta, está por validar. */
   por_validar: boolean
+  /**
+   * Pasó la fecha que salió en el documento: acepta el motivo del atraso aunque no pase la corregida,
+   * para enmendarlo (20261126945000). Solo para quien anota; a los demás, siempre falso.
+   */
+  acepta_motivo: boolean
 }
 
 export type PlazoDeServicio = PlazoDeCompra

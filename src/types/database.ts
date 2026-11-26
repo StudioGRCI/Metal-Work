@@ -15387,6 +15387,13 @@ export type Database = {
           moneda: string | null
         }[]
       }
+      compra_paso_su_primera_fecha: {
+        Args: {
+          p_tipo: string | null
+          p_documento: string | null
+        }
+        Returns: boolean
+      }
       compra_solo_su_rqa: {
         Args: Record<PropertyKey, never>
         Returns: boolean
@@ -15551,6 +15558,22 @@ export type Database = {
           ordenes: string[] | null
           lineas: Json | null
         }[]
+      }
+      compras_que_aceptan_motivo: {
+        Args: {
+          p_tipo: string | null
+          p_ids: string[] | null
+        }
+        Returns: {
+          documento: string | null
+        }[]
+      }
+      compras_que_pasaron_su_primera_fecha: {
+        Args: {
+          p_tipo: string | null
+          p_ids: string[] | null
+        }
+        Returns: string[]
       }
       compras_que_se_pueden_anular: {
         Args: Record<PropertyKey, never>
@@ -15918,20 +15941,6 @@ export type Database = {
           codigo_interno: string | null
         }[]
       }
-      definir_etapas_diseno: {
-        Args: {
-          p_orden_id: string | null
-          p_etapas: string[] | null
-        }
-        Returns: number
-      }
-      definir_etapas_ponderadas: {
-        Args: {
-          p_orden_id: string | null
-          p_config: Json | null
-        }
-        Returns: number
-      }
       decisiones_tomadas: {
         Args: {
           p_desde: string | null
@@ -15949,6 +15958,20 @@ export type Database = {
           motivo: string | null
           enlace: string | null
         }[]
+      }
+      definir_etapas_diseno: {
+        Args: {
+          p_orden_id: string | null
+          p_etapas: string[] | null
+        }
+        Returns: number
+      }
+      definir_etapas_ponderadas: {
+        Args: {
+          p_orden_id: string | null
+          p_config: Json | null
+        }
+        Returns: number
       }
       dejar_de_esperar_reposicion: {
         Args: {

@@ -1,7 +1,7 @@
-import { Check, ChevronDown, Route } from 'lucide-react'
+import { Check, ChevronDown, Route, X } from 'lucide-react'
 
 import { Insignia } from '@/components/ui/etiqueta-estado'
-import { haceDias, tardo, type PasoDescrito } from '@/lib/dominio/recorrido'
+import { enQueTermino, haceDias, tardo, type PasoDescrito } from '@/lib/dominio/recorrido'
 import { fecha, fechaHora } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -57,8 +57,8 @@ export function Recorrido({
   if (!pasos || pasos.length === 0) return null
 
   const ahora = pasos.find((p) => p.situacion === 'AHORA')
-  const hechos = pasos.filter((p) => p.situacion === 'HECHO')
-  const ultimo = hechos.at(-1)
+  // Cerrado, dice en qué terminó (ver `enQueTermino`).
+  const ultimo = enQueTermino(pasos)
 
   return (
     <details className={cn('group/recorrido overflow-hidden', className)} data-recorrido>
@@ -97,7 +97,7 @@ export function Recorrido({
           <li key={p.orden} className="relative flex gap-3 pb-3 last:pb-0" data-recorrido-paso={p.paso} data-situacion={p.situacion}>
             {/* La línea que une este paso con el siguiente. */}
             {i < pasos.length - 1 && <span aria-hidden className="absolute top-5 bottom-0 left-[9px] w-px bg-borde" />}
-            <Marca situacion={p.situacion} />
+            <Marca situacion={p.situacion} corta={p.corta === true} />
             <div className="min-w-0 flex-1">
               {p.situacion === 'HECHO' && (
                 <>
@@ -138,8 +138,19 @@ export function Recorrido({
   )
 }
 
-/** El punto de cada paso: hecho, el que espera ahora, o el que todavía no toca. Lo usa también el recorrido del código interno. */
-export function Marca({ situacion }: { situacion: PasoDescrito['situacion'] }) {
+/**
+ * El punto de cada paso: hecho, el que espera ahora, o el que todavía no toca. Lo usa también el
+ * recorrido del código interno. La anulación y el rechazo hechos van con una X roja: el recorrido
+ * cerrado dice cómo terminó, y con el visto verde «Anulada» se leía como un paso bien hecho.
+ */
+export function Marca({ situacion, corta = false }: { situacion: PasoDescrito['situacion']; corta?: boolean }) {
+  if (situacion === 'HECHO' && corta) {
+    return (
+      <span aria-hidden className="relative z-[1] mt-0.5 grid size-[19px] shrink-0 place-items-center rounded-full bg-peligro-suave text-peligro">
+        <X className="size-3" strokeWidth={3} />
+      </span>
+    )
+  }
   if (situacion === 'HECHO') {
     return (
       <span aria-hidden className="relative z-[1] mt-0.5 grid size-[19px] shrink-0 place-items-center rounded-full bg-exito-suave text-exito">

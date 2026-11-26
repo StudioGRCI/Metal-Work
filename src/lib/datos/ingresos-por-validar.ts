@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { diasEnEspera } from '@/lib/datos/dias-en-espera'
+import { fechasCorregidas } from '@/lib/datos/plazos-compras'
 import { createClient } from '@/lib/supabase/server'
 
 export type LineaPorValidar = {
@@ -96,10 +97,16 @@ export async function ingresosPorValidar(): Promise<{
   // y, si la OC viene de un RQ, que se vea su área; quien abre el kardex tiene
   // `almacen.ver`, que las ve todas. Si aun así vuelven menos, se dice.
   // Los días los cuenta la base con la fecha de Lima (`diasEnEspera`).
-  const [fechas, dias] = await Promise.all([
+  // Y si Logística corrigió la fecha, la corregida: Almacén espera la compra el
+  // mismo día que Logística.
+  const [fechas, corregidas, dias] = await Promise.all([
     entregas.length > 0
       ? db.from('ordenes_compra_materiales').select('id, fecha_estimada').in('id', entregas.map((e) => e.compraId))
       : null,
+    fechasCorregidas(db, { oc: entregas.map((e) => e.compraId) }).catch((e: unknown) => {
+      console.error('Ingresos por validar: no se pudo leer la fecha corregida de las compras.', e instanceof Error ? e.message : e)
+      return null
+    }),
     diasEnEspera(entregas.map((e) => e.dejadoEn || null)).catch((e: unknown) => {
       console.error('Ingresos por validar: no se pudieron contar los días en espera.', e instanceof Error ? e.message : e)
       return null
@@ -111,7 +118,8 @@ export async function ingresosPorValidar(): Promise<{
   } else if (fechas && (fechas.data ?? []).length < entregas.length) {
     sinLeer.push('No se pudo leer la fecha esperada de algunas OC.')
   }
-  const porId = new Map((fechas?.data ?? []).map((f) => [f.id, f.fecha_estimada]))
+  if (corregidas === null && entregas.length > 0) sinLeer.push('No se pudo leer si Logística corrigió la fecha esperada de cada OC.')
+  const porId = new Map((fechas?.data ?? []).map((f) => [f.id, corregidas?.get(f.id)?.fecha ?? f.fecha_estimada]))
   if (dias === null && entregas.length > 0) sinLeer.push('No se pudieron contar los días que espera cada compra.')
   entregas.forEach((e, i) => {
     e.fechaEsperada = porId.get(e.compraId) ?? null
