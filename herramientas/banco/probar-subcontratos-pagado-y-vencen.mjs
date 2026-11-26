@@ -5,15 +5,20 @@
  * nunca ADMIN:
  *
  *   1. Administración registra (por la misma función que la pantalla, con su
- *      rol) tres subcontratos más del código de uno que ya tiene un recibo
- *      pagado: uno vence en 3 días, uno venció hace 2 y otro vence en 20.
+ *      rol) cuatro subcontratos más del código de uno que ya tiene un recibo
+ *      pagado: uno vence en 3 días, uno venció hace 2, otro vence en 20 y uno
+ *      que anula.
  *   2. En la lista, el del recibo pagado dice lo pagado en bruto y su saldo,
- *      sacados de la base; cada uno, las fechas de su contrato.
+ *      sacados de la base; el que no tiene nada pagado, «Nada pagado»; cada
+ *      uno, las fechas de su contrato.
  *   3. «Vencen pronto» deja los que vencen en siete días o ya vencieron sin fin
  *      real, el más vencido arriba, con su insignia; el de 20 días no sale.
- *   4. Con el fin real que anota el supervisor de su área, ya no vence.
- *   5. Tesorería ve lo mismo con sus importes; Logística no entra.
+ *   4. Con el fin real que anota el supervisor de su área, ya no vence. El
+ *      anulado no muestra saldo, y la ficha dice el mismo pagado y saldo.
+ *   5. Tesorería ve lo mismo con sus importes; Logística y el supervisor no
+ *      entran, y en la del supervisor (/subcontratos/area) no hay importes.
  *   6. A 390 px nada se sale y lo pagado y el saldo se leen en la fila.
+ *   Al final anula lo que registró, para no inflar las cuentas del banco.
  *
  * Necesita haber corrido antes `probar-subcontratos.mjs` (deja un subcontrato
  * con un recibo pagado) y las cuentas `*.local@metalwork.test`.
@@ -79,7 +84,7 @@ async function como(correo, sql, valores = []) {
 
 // ------------------------------------------------------------ 1. Los subcontratos
 const pagado = await uno(`
-  select s.id, s.numero, s.codigo_interno, s.subcontratista_id, s.monto,
+  select s.id, s.numero, s.codigo_interno, s.subcontratista_id, s.monto, s.moneda,
          a.codigo as area,
          coalesce((select sum(r.monto_bruto) from public.recibos_honorarios r
                     where r.subcontrato_id = s.id and r.anulado_en is null
@@ -93,11 +98,13 @@ if (!pagado) {
   console.error('No hay un subcontrato con un recibo pagado: corre antes probar-subcontratos.mjs.')
   process.exit(1)
 }
+// En la moneda del contrato: puede ser uno en dólares.
+const importe = (n) => (pagado.moneda === 'USD' ? 'US$ ' : 'S/ ') + soles(n).slice(3)
 const hoy = (await uno(`select (now() at time zone 'America/Lima')::date::text as d`)).d
 const dia = async (n) => (await uno(`select ($1::date + $2::int)::text as d`, [hoy, n])).d
 const sello = String(Date.now()).slice(-5)
 const nuevos = {}
-for (const [clave, dias] of [['pronto', 3], ['vencido', -2], ['lejos', 20]]) {
+for (const [clave, dias] of [['pronto', 3], ['vencido', -2], ['lejos', 20], ['anulado', 5]]) {
   const id = (await uno('select gen_random_uuid() as id')).id
   await como(CUENTAS.administracion, `select public.registrar_subcontrato($1, $2, $3, $4, 'PEN', 1200, $5::date, $6::date, $7)`, [
     id, pagado.subcontratista_id, pagado.codigo_interno, `Prueba 8.2 ${clave} ${sello}: soldadura de refuerzos`,
@@ -105,7 +112,8 @@ for (const [clave, dias] of [['pronto', 3], ['vencido', -2], ['lejos', 20]]) {
   ])
   nuevos[clave] = (await uno('select id, numero, fecha_fin::text as fin from public.subcontratos where id = $1', [id]))
 }
-comprobar(Object.values(nuevos).every(Boolean), `Administración registra tres subcontratos (${Object.values(nuevos).map((n) => n?.numero).join(', ')})`)
+await como(CUENTAS.administracion, `select public.anular_subcontrato($1, $2)`, [nuevos.anulado.id, `Prueba 8.2 ${sello}: se cayó el encargo`])
+comprobar(Object.values(nuevos).every(Boolean), `Administración registra cuatro subcontratos y anula uno (${Object.values(nuevos).map((n) => n?.numero).join(', ')})`)
 
 // Lo que «Vencen pronto» debe traer, según la base.
 const esperados = await consulta(`
@@ -135,12 +143,15 @@ const fila = (pagina, numero) => pagina.locator(`[data-subcontrato="${numero}"]`
   const { pagina, contexto } = await entrar(CUENTAS.administracion)
   await pagina.goto(`${BASE}/subcontratos`, { waitUntil: 'networkidle' })
   const fp = fila(pagina, pagado.numero)
-  const celda = limpio(await fp.locator('[data-pagado-y-saldo]').first().textContent().catch(() => ''))
+  // La celda que se ve a 1440 px; la línea del teléfono va escondida.
+  const celda = limpio(await fp.locator('td[data-pagado-y-saldo]').innerText().catch(() => ''))
   const saldo = Number(pagado.monto) - Number(pagado.bruto)
-  comprobar(celda.includes(soles(pagado.bruto)) && celda.includes(`Saldo ${soles(saldo)}`),
-    `${pagado.numero}: pagado en bruto ${soles(pagado.bruto)} y saldo ${soles(saldo)}, como en la base («${celda}»)`)
+  comprobar(celda.includes(importe(pagado.bruto)) && celda.includes(`Saldo ${importe(saldo)}`),
+    `${pagado.numero}: pagado en bruto ${importe(pagado.bruto)} y saldo ${importe(saldo)}, como en la base («${celda}»)`)
   const cabecera = limpio(await pagina.locator('thead').first().textContent())
-  comprobar(cabecera.includes('Pagado en bruto y saldo'), `la columna dice qué es lo pagado («${cabecera}»)`)
+  comprobar(cabecera.includes('Pagado y saldo'), `la columna de lo pagado y el saldo («${cabecera}»)`)
+  const nada = limpio(await fila(pagina, nuevos.lejos.numero).locator('td[data-pagado-y-saldo]').innerText().catch(() => ''))
+  comprobar(nada === 'Nada pagado', `sin recibos pagados dice «Nada pagado», no ceros («${nada}»)`)
   const fechas = limpio(await fila(pagina, nuevos.lejos.numero).locator('[data-fechas-contrato]').textContent().catch(() => ''))
   comprobar(fechas.startsWith('Contrato:') && fechas.includes(nuevos.lejos.fin.split('-').reverse().join('/')),
     `cada uno dice las fechas de su contrato («${fechas}»)`)
@@ -168,16 +179,30 @@ const fila = (pagina, numero) => pagina.locator(`[data-subcontrato="${numero}"]`
   const supervisor = `sup.${pagado.area.toLowerCase()}.local@metalwork.test`
   await como(supervisor, `select public.marcar_fechas_reales_subcontrato($1, $2::date, $3::date)`, [nuevos.pronto.id, await dia(-7), hoy])
   await pagina.reload({ waitUntil: 'networkidle' })
-  comprobar((await fila(pagina, nuevos.pronto.numero).count()) === 0, 'con su fin real anotado, ya no vence pronto')
+  // Que la lista cargó: el vencido sigue; si no, contar cero no prueba nada.
+  comprobar((await fila(pagina, nuevos.vencido.numero).count()) === 1 && (await fila(pagina, nuevos.pronto.numero).count()) === 0,
+    'con su fin real anotado, ya no vence pronto (y el vencido sigue en la lista)')
+
+  // El anulado no tiene saldo.
+  await pagina.goto(`${BASE}/subcontratos?estado=ANULADO`, { waitUntil: 'networkidle' })
+  const anulada = limpio(await fila(pagina, nuevos.anulado.numero).locator('td[data-pagado-y-saldo]').innerText().catch(() => ''))
+  comprobar(anulada === 'Anulado: no se paga', `el anulado no muestra saldo («${anulada}»)`)
+
+  // La ficha dice lo mismo que la lista.
+  await pagina.goto(`${BASE}/subcontratos/${pagado.id}`, { waitUntil: 'networkidle' })
+  const cuentas = limpio(await pagina.locator('[data-cuentas]').innerText().catch(() => ''))
+  comprobar(cuentas.includes('Pagado en bruto') && cuentas.includes(importe(pagado.bruto)) && cuentas.includes('Saldo del contrato') && cuentas.includes(importe(saldo)),
+    `la ficha de ${pagado.numero} dice el pagado en bruto y el saldo del contrato («${cuentas}»)`)
+  await pagina.screenshot({ path: join(CAPTURAS, '8-2-administracion-1440-3-ficha.png'), fullPage: true })
   await contexto.close()
 }
 
 // ------------------------------------------------------------ 5. Tesorería y Logística
 {
   const { pagina, contexto } = await entrar(CUENTAS.tesoreria)
-  await pagina.goto(`${BASE}/subcontratos?estado=pronto`, { waitUntil: 'networkidle' })
-  const celda = limpio(await fila(pagina, nuevos.vencido.numero).locator('[data-pagado-y-saldo]').first().textContent().catch(() => ''))
-  comprobar(celda.includes('Saldo S/ 1,200.00'), `Tesorería, que ya ve los importes, ve lo pagado y el saldo («${celda}»)`)
+  await pagina.goto(`${BASE}/subcontratos`, { waitUntil: 'networkidle' })
+  const celda = limpio(await fila(pagina, pagado.numero).locator('td[data-pagado-y-saldo]').innerText().catch(() => ''))
+  comprobar(celda.includes(importe(pagado.bruto)) && celda.includes('Saldo'), `Tesorería, que ya ve los importes, ve lo pagado y el saldo («${celda}»)`)
   await contexto.close()
 }
 {
@@ -190,7 +215,11 @@ const fila = (pagina, numero) => pagina.locator(`[data-subcontrato="${numero}"]`
 {
   const { pagina, contexto } = await entrar(CUENTAS.supervisorPrd)
   await pagina.goto(`${BASE}/subcontratos`, { waitUntil: 'networkidle' })
-  comprobar((await pagina.locator('[data-pagado-y-saldo]').count()) === 0, `el supervisor no ve importes en Subcontratos (${new URL(pagina.url()).pathname})`)
+  comprobar(new URL(pagina.url()).pathname === '/sin-permiso', `el supervisor no entra a la lista con importes (${new URL(pagina.url()).pathname})`)
+  await pagina.goto(`${BASE}/subcontratos/area`, { waitUntil: 'networkidle' })
+  const suya = await pagina.locator('main').innerText().catch(() => '')
+  comprobar(new URL(pagina.url()).pathname === '/subcontratos/area' && suya.length > 0 && !/(S\/|US\$)\s?\d/.test(suya),
+    'en la suya (/subcontratos/area) sigue sin importes')
   await contexto.close()
 }
 
@@ -201,15 +230,24 @@ const fila = (pagina, numero) => pagina.locator(`[data-subcontrato="${numero}"]`
   const ancho = await pagina.evaluate(() => document.documentElement.scrollWidth)
   comprobar(ancho <= 390, `a 390 px nada se sale (${ancho} px)`)
   const enFila = limpio(await fila(pagina, nuevos.vencido.numero).locator('p[data-pagado-y-saldo]').textContent().catch(() => ''))
-  comprobar(enFila.includes('Pagado S/ 0.00 en bruto') && enFila.includes('Saldo S/ 1,200.00'), `en el teléfono, lo pagado y el saldo van en la fila («${enFila}»)`)
+  comprobar(enFila === 'Nada pagado todavía', `en el teléfono, sin pagos dice «Nada pagado todavía» («${enFila}»)`)
   await pagina.screenshot({ path: join(CAPTURAS, '8-2-administracion-390-vencen-pronto.png') })
   await pagina.goto(`${BASE}/subcontratos`, { waitUntil: 'networkidle' })
+  const conPago = limpio(await fila(pagina, pagado.numero).locator('p[data-pagado-y-saldo]').textContent().catch(() => ''))
+  comprobar(conPago.includes(`Pagado ${importe(pagado.bruto)} en bruto`) && conPago.includes('Saldo'), `en el teléfono, lo pagado y el saldo van en la fila («${conPago}»)`)
   await fila(pagina, pagado.numero).scrollIntoViewIfNeeded().catch(() => {})
   await pagina.screenshot({ path: join(CAPTURAS, '8-2-administracion-390-subcontratos.png') })
   await contexto.close()
 }
 
 await navegador.close()
+
+// Los de esta corrida se anulan (no se borran): si no, cada corrida sumaba tres
+// vigentes a «Vigentes» y a «Vencen pronto» para el siguiente recorrido.
+for (const clave of ['pronto', 'vencido', 'lejos']) {
+  await como(CUENTAS.administracion, `select public.anular_subcontrato($1, $2)`, [nuevos[clave].id, `Prueba 8.2 ${sello}: fin de la prueba`]).catch((e) =>
+    console.log(`  (no se pudo anular ${nuevos[clave].numero}: ${e.message})`))
+}
 await base.end()
 if (errores.length) {
   console.log('\nErrores de consola:')

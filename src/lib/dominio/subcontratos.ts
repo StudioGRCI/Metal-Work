@@ -107,7 +107,9 @@ export function cuentasDeSubcontrato(
     /**
      * Lo pagado contra lo pactado: el bruto de los recibos pagados. Tesorería
      * deposita el neto y la retención va a SUNAT a nombre del subcontratista;
-     * las dos partes descuentan del contrato (plan 8, entrega 8.2).
+     * las dos partes descuentan del contrato. El plan 8 (entrega 8.2) pide
+     * «pagado y saldo» sin decir cuál; contarlo en bruto es la propuesta del
+     * hilo, a la espera del «ok» de DKS en el PR.
      */
     pagadoBruto,
     /** Lo que falta pagar del contrato: lo pactado menos lo pagado en bruto. */
@@ -142,7 +144,11 @@ export function diasParaVencer(
   return Math.round((dia(s.fecha_fin.slice(0, 10)) - dia(hoy)) / 86_400_000)
 }
 
-/** Vence pronto: dentro de los siete días, o ya venció y sigue vigente sin fin real. */
+/**
+ * Vence pronto: dentro de los siete días (DKS, plan 8), o ya venció y sigue
+ * vigente sin fin real. Sumar los ya vencidos es la propuesta del hilo, a la
+ * espera del «ok» de DKS en el PR: son los que más urgen.
+ */
 export function vencePronto(dias: number | null): boolean {
   return dias !== null && dias <= DIAS_VENCE_PRONTO
 }

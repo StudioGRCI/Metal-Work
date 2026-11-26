@@ -71,8 +71,8 @@ export default async function PaginaSubcontratos({ searchParams }: { searchParam
       ? params.estado
       : 'VIGENTE'
   // «Vencen pronto» (plan 8, entrega 8.2): vigentes cuyo fin pactado cae en los
-  // próximos siete días, o ya pasó, y el supervisor no anotó que terminaron.
-  // Por fecha de Lima, y el que vence antes arriba.
+  // próximos siete días (DKS), o ya pasó (propuesta del hilo), y el supervisor
+  // no anotó que terminaron. Por fecha de Lima, y el que vence antes arriba.
   const hoy = hoyLima()
   const [subcontratos, subcontratistas, codigos] = await Promise.all([
     listarSubcontratos(),
@@ -106,7 +106,7 @@ export default async function PaginaSubcontratos({ searchParams }: { searchParam
     <>
       <EncabezadoPagina
         titulo="Subcontratos"
-        ayuda="Los trabajos que se le encargan a una persona de fuera, por código interno de la unidad y para Maestranza, Producción o Acabados, cuyo supervisor los ve sin montos y reporta su avance. Contra cada uno se suben sus recibos por honorarios; Tesorería los paga y adjunta el voucher."
+        ayuda={`Los trabajos que se le encargan a una persona de fuera, por código interno de la unidad y para Maestranza, Producción o Acabados, cuyo supervisor los ve sin montos y reporta su avance. Contra cada uno se suben sus recibos por honorarios; Tesorería los paga y adjunta el voucher. Lo pagado se cuenta en bruto (el neto que deposita Tesorería más la retención), y el saldo es lo pactado menos eso. «Vencen pronto» trae los vigentes cuyo fin pactado cae en los próximos ${DIAS_VENCE_PRONTO} días, o ya pasó sin que el supervisor anotara que terminaron.`}
         migas={[{ titulo: 'Administración' }, { titulo: 'Subcontratos' }]}
         acciones={gestiona && <NuevoSubcontrato subcontratistas={subcontratistas} codigos={codigos} />}
       />
@@ -158,7 +158,7 @@ export default async function PaginaSubcontratos({ searchParams }: { searchParam
               <TH className="hidden md:table-cell">Código y área</TH>
               <TH className="hidden text-right sm:table-cell">Pactado</TH>
               <TH className="hidden text-right lg:table-cell">Recibido</TH>
-              <TH className="hidden text-right sm:table-cell">Pagado en bruto y saldo</TH>
+              <TH className="hidden text-right sm:table-cell">Pagado y saldo</TH>
               <TH className="hidden sm:table-cell">En qué va</TH>
             </tr>
           </TablaCabecera>
@@ -166,7 +166,9 @@ export default async function PaginaSubcontratos({ searchParams }: { searchParam
             {visibles.length === 0 ? (
               <SinDatos
                 titulo={
-                  buscado
+                  buscado && estado === 'pronto'
+                    ? `Con el código ${buscado}, ninguno vence pronto`
+                    : buscado
                     ? `Ningún subcontrato lleva el código ${buscado}`
                     : estado === 'VIGENTE'
                       ? 'No hay subcontratos vigentes'
@@ -175,10 +177,12 @@ export default async function PaginaSubcontratos({ searchParams }: { searchParam
                         : 'No hay subcontratos aquí'
                 }
                 descripcion={
-                  buscado
+                  buscado && estado === 'pronto'
+                    ? 'Puede estar entre los vigentes que vencen más adelante: elige «Vigentes» o «Todos».'
+                    : buscado
                     ? 'Revisa cómo está escrito o borra la búsqueda para ver todos.'
                     : estado === 'pronto'
-                      ? 'Ni hay vigentes con su fecha de fin ya pasada sin que el supervisor anotara que terminaron.'
+                      ? `Aquí aparecen los vigentes ${DIAS_VENCE_PRONTO} días antes de su fecha de fin, y los que ya la pasaron sin que el supervisor anote que terminaron. Para ver todos, elige «Vigentes».`
                       : gestiona
                       ? 'Registra el primero con «Nuevo subcontrato». Si la persona no está en el padrón, dala de alta en «Subcontratistas».'
                       : 'Administración los registra; aparecen aquí con su número.'
@@ -234,7 +238,7 @@ function FilaSubcontrato({ s, dias }: { s: SubcontratoListado; dias: number | nu
         {/* En el teléfono, lo pactado y en qué va van aquí: la tabla no cabe con sus columnas. */}
         <div className="mt-2 space-y-1 sm:hidden">
           <p className="tabular text-sm font-semibold text-texto">{moneda(s.monto, s.moneda)} pactado</p>
-          <PagadoYSaldo cuentas={c} monedaSc={s.moneda} enLinea />
+          <PagadoYSaldo cuentas={c} monedaSc={s.moneda} anulado={anulado} enLinea />
           <EnQueVa tono={def.tono} etiqueta={def.etiqueta} cuentas={c} monedaSc={s.moneda} />
         </div>
       </TD>
@@ -252,7 +256,7 @@ function FilaSubcontrato({ s, dias }: { s: SubcontratoListado; dias: number | nu
         </p>
       </TD>
       <TD className="tabular hidden text-right whitespace-nowrap sm:table-cell" data-pagado-y-saldo>
-        <PagadoYSaldo cuentas={c} monedaSc={s.moneda} />
+        <PagadoYSaldo cuentas={c} monedaSc={s.moneda} anulado={anulado} />
       </TD>
       <TD className="hidden sm:table-cell">
         <EnQueVa tono={def.tono} etiqueta={def.etiqueta} cuentas={c} monedaSc={s.moneda} />
@@ -263,18 +267,30 @@ function FilaSubcontrato({ s, dias }: { s: SubcontratoListado; dias: number | nu
 
 /**
  * Lo pagado contra lo pactado y lo que falta (plan 8, entrega 8.2). Pagado es
- * el bruto de los recibos pagados: el neto que deposita Tesorería más la
- * retención que va a SUNAT, porque las dos descuentan del contrato.
+ * el bruto de los recibos pagados (`cuentasDeSubcontrato`). Un anulado no tiene
+ * saldo: no se le debe nada, y para anularlo no puede tener recibos vigentes.
  */
 function PagadoYSaldo({
   cuentas: c,
   monedaSc,
+  anulado,
   enLinea = false,
 }: {
   cuentas: ReturnType<typeof cuentasDeSubcontrato>
   monedaSc: 'PEN' | 'USD'
+  anulado: boolean
   enLinea?: boolean
 }) {
+  if (anulado || c.pagadoBruto === 0) {
+    const texto = anulado ? 'Anulado: no se paga' : enLinea ? 'Nada pagado todavía' : 'Nada pagado'
+    return enLinea ? (
+      <p className="text-xs text-texto-suave" data-pagado-y-saldo>
+        {texto}
+      </p>
+    ) : (
+      <span className="text-xs text-texto-suave">{texto}</span>
+    )
+  }
   const saldo =
     c.saldo > 0 ? (
       <span className="text-texto">Saldo {moneda(c.saldo, monedaSc)}</span>
