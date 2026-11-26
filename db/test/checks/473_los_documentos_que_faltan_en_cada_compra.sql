@@ -362,20 +362,20 @@ select test.afirmar(exists (select 1 from public.notificaciones n where n.origen
                     and exists (select 1 from public.notificaciones n where n.origen_id = pg_temp.id('ocb') and n.usuario_id = pg_temp.id('comprador')
                               and n.titulo like 'No repone lo devuelto%'),
   'y a Logística le llegan «Devuelto al proveedor» y «No repone lo devuelto»');
--- Y a Tesorería le llega «Pide el reembolso» por cada una, con lo que vale y el enlace a la OC en
+-- Y a Tesorería le llega un aviso por cada una, con lo que vale y el enlace a la OC en
 -- Cuentas por pagar, para que le pida el dinero al proveedor (DKS, 2026-11-26). De la OC con factura, nada.
 select test.afirmar((select count(*) from public.notificaciones n where n.usuario_id = pg_temp.id('tesoreria')
-                       and n.origen_id = pg_temp.id('ocb') and n.titulo like 'Pide el reembolso%'
+                       and n.origen_id = pg_temp.id('ocb') and n.titulo like 'Págala sin lo devuelto%'
                        and n.ruta = '/tesoreria/por-pagar#compra-' || pg_temp.id('ocb')
                        and n.cuerpo ~ '(S/|US\$) [0-9,]+\.[0-9]{2} a su precio en la OC') = 2,
-  'de la OC con boleta, a Tesorería le llegan los dos «Pide el reembolso», con lo que vale cada uno');
+  'de la OC con boleta, todavía sin pagar, a Tesorería le llegan los dos «Págala sin lo devuelto», con lo que vale cada uno');
 select test.afirmar(not exists (select 1 from public.notificaciones n where n.origen_id = pg_temp.id('oc')
-                                  and n.titulo like 'Pide el reembolso%'),
-  'de la OC con factura, a Tesorería no le llega «Pide el reembolso»');
-select test.afirmar(not exists (select 1 from public.notificaciones n where n.titulo like 'Pide el reembolso%'
+                                  and (n.titulo like 'Pide el reembolso%' or n.titulo like 'Págala sin lo devuelto%')),
+  'de la OC con factura, a Tesorería no le llega ese aviso');
+select test.afirmar(not exists (select 1 from public.notificaciones n where (n.titulo like 'Pide el reembolso%' or n.titulo like 'Págala sin lo devuelto%')
                                   and n.usuario_id <> pg_temp.id('tesoreria')
                                   and n.usuario_id in (select id from public.usuarios where apellidos = 'Check 473')),
-  'y «Pide el reembolso» no le llega a otro puesto del check');
+  'y no le llega a otro puesto del check');
 -- Logística anexa la factura de la otra OC con factura; Contabilidad todavía no la registra.
 insert into storage.objects (bucket_id, name, owner_id, metadata)
 values ('documentos-compras', 'compra/' || pg_temp.id('oc2') || '/anexo-473.pdf', pg_temp.id('comprador')::text,
@@ -517,8 +517,8 @@ select test.afirmar((select count(*) from public.notificaciones n where n.usuari
                        and n.origen_id = pg_temp.id('ocb') and n.titulo like 'Espera la nota de crédito%') = 2,
   'con la factura registrada, de la OC con boleta a Contabilidad le llegan los dos «Espera la nota de crédito»');
 select test.afirmar((select count(*) from public.notificaciones n where n.origen_id = pg_temp.id('ocb')
-                       and n.titulo like 'Pide el reembolso%') = 2,
-  'y a Tesorería no le llega otro «Pide el reembolso»: con factura, va por la nota de crédito');
+                       and (n.titulo like 'Pide el reembolso%' or n.titulo like 'Págala sin lo devuelto%')) = 2,
+  'y a Tesorería no le llega otro aviso: con factura, va por la nota de crédito');
 -- Las devoluciones de esta transacción llevan la misma hora: se separan para que el orden en que
 -- Almacén devolvió sea el de la prueba.
 set local session_replication_role = replica;
@@ -541,13 +541,13 @@ create or replace function pg_temp.esperan() returns text[] language sql as $$
 $$;
 -- Lo que dice el aviso es lo que vale cada una, no un monto cualquiera.
 select test.afirmar(exists (select 1 from public.notificaciones n where n.usuario_id = pg_temp.id('tesoreria')
-                              and n.origen_id = pg_temp.id('ocb') and n.titulo like 'Pide el reembolso%'
-                              and n.cuerpo like '%Dos discos llegaron partidos%(S/ '
-                                  || to_char(round(2 * current_setting('prueba.u')::numeric, 2), 'FM999G999G990D00') || ' a su precio en la OC) y regístralo%')
+                              and n.origen_id = pg_temp.id('ocb') and n.titulo like 'Págala sin lo devuelto%'
+                              and n.cuerpo like 'Lo devuelto vale S/ '
+                                  || to_char(round(2 * current_setting('prueba.u')::numeric, 2), 'FM999G999G990D00') || ' a su precio en la OC: todavía no se la pagas, así que págale sin eso. %Dos discos llegaron partidos%')
                     and exists (select 1 from public.notificaciones n where n.usuario_id = pg_temp.id('tesoreria')
-                              and n.origen_id = pg_temp.id('ocb') and n.titulo like 'Pide el reembolso%'
-                              and n.cuerpo like '%(S/ ' || to_char(round(current_setting('prueba.u')::numeric, 2), 'FM999G999G990D00')
-                                  || ' a su precio en la OC) y regístralo%' and n.cuerpo not like '%partidos%'),
+                              and n.origen_id = pg_temp.id('ocb') and n.titulo like 'Págala sin lo devuelto%'
+                              and n.cuerpo like 'Lo devuelto vale S/ ' || to_char(round(current_setting('prueba.u')::numeric, 2), 'FM999G999G990D00')
+                                  || ' a su precio en la OC: todavía no se la pagas%' and n.cuerpo not like '%partidos%'),
   'el aviso de los 2 discos dice 2u y el del disco que no se repuso dice u');
 set local session_replication_role = replica;
 select pg_temp.reembolso('reemb', 2 * current_setting('prueba.u')::numeric);
@@ -581,8 +581,8 @@ select public.devolver_al_proveedor(pg_temp.id('devb5'), pg_temp.id('ingb'), 1, 
 select public.dejar_de_esperar_reposicion(pg_temp.id('devb5'), 'El proveedor ya no tiene ese disco');
 reset role;
 select test.afirmar((select count(*) from public.notificaciones n where n.origen_id = pg_temp.id('ocb')
-                       and (n.titulo like 'Espera la nota de crédito%' or n.titulo like 'Pide el reembolso%')) = 4,
-  'lo ya cobrado de vuelta no manda «Espera la nota» ni «Pide el reembolso» al dejar de esperar');
+                       and (n.titulo like 'Espera la nota de crédito%' or n.titulo like 'Pide el reembolso%' or n.titulo like 'Págala sin lo devuelto%')) = 4,
+  'lo ya cobrado de vuelta no manda «Espera la nota» ni aviso a Tesorería al dejar de esperar');
 select test.afirmar(public.devolucion_reembolsada(pg_temp.id('devb5')), 'y devb5 cuenta como reembolsada');
 -- Anulada la devolución del dinero de 3u, quedan 3u (2u + u): cubren devb y devb2, no devb3 ni devb4.
 set local session_replication_role = replica;
@@ -597,6 +597,20 @@ do $$ begin
   perform test.afirmar((select situacion = 'FALTA' from pg_temp.doc('ocb', 'NOTA_CREDITO')), 'y vuelve a faltar en «Lo que falta»');
   reset role;
 end $$;
+-- La OC con boleta que se pagó fuera del sistema no está en Cuentas por pagar: el aviso lo dice y no manda a su tarjeta.
+set local session_replication_role = replica;
+update public.ordenes_compra_materiales set pago_en_tesoreria = false where id = pg_temp.id('ocb');
+set local session_replication_role = origin;
+select public.avisar_reembolso_a_tesoreria(pg_temp.id('ocb'), 'OC-FUERA-473', 12.5, 'USD', 'Devolución de prueba.');
+select test.afirmar((select count(*) from public.notificaciones n where n.usuario_id = pg_temp.id('tesoreria')
+                       and n.titulo = 'Pide el reembolso: OC-FUERA-473' and n.ruta = '/tesoreria/por-pagar'
+                       and n.cuerpo = 'Lo devuelto vale US$ 12.50 a su precio en la OC. La OC se pagó fuera del sistema: pídele al proveedor que te lo devuelva. Devolución de prueba.') = 1,
+  'la OC pagada fuera del sistema: «Pide el reembolso», sin enlace a una tarjeta que no existe');
+set local session_replication_role = replica;
+update public.ordenes_compra_materiales set pago_en_tesoreria = true where id = pg_temp.id('ocb');
+set local session_replication_role = origin;
+select test.afirmar(not has_function_privilege('authenticated', 'public.avisar_reembolso_a_tesoreria(uuid, text, numeric, text, text)', 'execute'),
+  'avisar_reembolso_a_tesoreria no la ejecuta authenticated');
 select test.afirmar(not has_function_privilege('authenticated', 'public.devolucion_reembolsada(uuid)', 'execute')
                     and not has_function_privilege('anon', 'public.devolucion_reembolsada(uuid)', 'execute'),
   'devolucion_reembolsada no la ejecutan authenticated ni anon');

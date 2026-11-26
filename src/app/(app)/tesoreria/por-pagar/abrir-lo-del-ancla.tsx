@@ -19,7 +19,9 @@ function idDeLaDireccion(): string {
  * y Tesorería caía arriba sin ver la OC. Lo mismo con «una OC pagada de más».
  *
  * Al montarse la pantalla, y cada vez que cambia el `#` sin salir de ella, si lo
- * que nombra está dentro de secciones cerradas, las abre y lo trae a la vista.
+ * que nombra está dentro de una sección, la abre y, si no está a la vista, lo
+ * trae. Chrome abre solo la sección al cargar con el `#`, pero la ida de Next
+ * deja la página arriba.
  * `SeccionDesplegable` no vuelve a cerrarlas: su `abierta` vale solo al cargar.
  */
 export function AbrirLoDelAncla() {
@@ -29,16 +31,15 @@ export function AbrirLoDelAncla() {
       const id = idDeLaDireccion()
       const destino = id ? document.getElementById(id) : null
       if (!destino) return
-      let cerrada = false
-      for (let s = destino.parentElement?.closest('details'); s; s = s.parentElement?.closest('details')) {
-        if (!s.open) {
-          s.open = true
-          cerrada = true
-        }
-      }
-      if (!cerrada) return
-      // Después de que el navegador pinte lo que se abrió.
-      requestAnimationFrame(() => destino.scrollIntoView({ block: 'start' }))
+      const seccion = destino.parentElement?.closest('details')
+      if (!seccion) return
+      for (let s: HTMLDetailsElement | null | undefined = seccion; s; s = s.parentElement?.closest('details')) s.open = true
+      // Después de que el navegador pinte lo que se abrió. Chrome la abre solo al cargar, pero la ida
+      // de Next deja la página arriba: si no está a la vista, se la trae.
+      requestAnimationFrame(() => {
+        const { top } = destino.getBoundingClientRect()
+        if (top < 0 || top >= window.innerHeight) destino.scrollIntoView({ block: 'start' })
+      })
     }
     const alCambiar = () => {
       cancelAnimationFrame(cuadro)

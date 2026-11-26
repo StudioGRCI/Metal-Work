@@ -57,8 +57,8 @@ begin
     select * from (values
       ('devoluciones_sin_nota_credito', '1ad7345b8cec50593309ec147f6c0056', 'd56c72a0a984b4430a5945987ca797a6'),  -- 20261022220000
       ('documentos_de_las_compras',     '4f470602806c484e314d925599ca29cf', '39d498bc4705aa219a39016e66261ce7'),  -- 20261126480000
-      ('devolver_al_proveedor',         '05764d06eb71172d75eef283edb55633', '043bbd3da1195321f5edf430177963c4'),  -- 20261026130000
-      ('dejar_de_esperar_reposicion',   'f184574800e4b163ddf709cf66303f16', '85d2751829fe1dce038955092b31716d')   -- 20261026130000
+      ('devolver_al_proveedor',         '05764d06eb71172d75eef283edb55633', '24d9185438b744188524940ad513aa49'),  -- 20261026130000
+      ('dejar_de_esperar_reposicion',   'f184574800e4b163ddf709cf66303f16', '734f31aa9eed13722c2a870b3f37a9b8')   -- 20261026130000
     ) as t (funcion, de_antes, de_ahora)
   loop
     select md5(replace(p.prosrc, E'\r', ''))
@@ -122,6 +122,47 @@ comment on function public.devolucion_reembolsada(uuid) is
   'Si lo que Tesorería ya cobró de vuelta al proveedor de esa OC (sus devoluciones del dinero vigentes, en la misma moneda; solo la OC con boleta las tiene) alcanza para esta devolución y las de antes que esperaban su nota, cada una a su precio en la OC: entonces lo devuelto ya no espera nota de crédito (DKS, 2026-11-26; 20261126975000). La llaman las funciones de la nota de crédito, no la gente.';
 
 revoke all on function public.devolucion_reembolsada(uuid) from public, anon, authenticated;
+
+create or replace function public.avisar_reembolso_a_tesoreria(p_compra uuid, p_nombre text, p_vale numeric,
+                                                               p_moneda text, p_texto text)
+returns void
+language plpgsql security definer set search_path to 'public' as $$
+-- Lo que Almacén devolvió sin reposición de una OC con boleta sin factura: Tesorería se encarga del dinero
+-- (DKS, 2026-11-26). Lo que hay que hacer va primero, antes del motivo, que puede ser largo y el aviso
+-- se corta a las 500 letras.
+declare
+  v_c    public.ordenes_compra_materiales%rowtype;
+  v_vale text := case when p_vale is null then 'Lo devuelto'
+                      else 'Lo devuelto vale ' || case when p_moneda = 'USD' then 'US$ ' else 'S/ ' end
+                           || to_char(p_vale, 'FM999G999G990D00') || ' a su precio en la OC' end;
+begin
+  select * into v_c from public.ordenes_compra_materiales where id = p_compra;
+  if not v_c.pago_en_tesoreria then
+    -- Gerencia la aprobó antes de que Tesorería pagara las boletas en el sistema: no está en Cuentas por pagar.
+    perform public.avisar_a_permiso('tesoreria.registrar_pagos', 'Pide el reembolso: ' || p_nombre,
+      v_vale || '. La OC se pagó fuera del sistema: pídele al proveedor que te lo devuelva. ' || p_texto,
+      '/tesoreria/por-pagar', 'ordenes_compra_materiales', p_compra);
+  elsif exists (select 1 from public.documentos_compra_material x
+                 where x.orden_compra_id = p_compra and x.monto_de_la_parte is not null and x.anulado_en is null) then
+    -- La que llegó en partes se paga en «Boletas de una parte», no como OC.
+    perform public.avisar_a_permiso('tesoreria.registrar_pagos', 'Pide el reembolso: ' || p_nombre,
+      v_vale || '. La OC se paga por partes, en «Boletas de una parte»: si ya pagaste la parte de lo devuelto, pídele al proveedor que te lo devuelva. ' || p_texto,
+      '/tesoreria/por-pagar', 'ordenes_compra_materiales', p_compra);
+  elsif exists (select 1 from public.pagos_orden_compra x where x.orden_compra_id = p_compra and x.anulado_en is null) then
+    perform public.avisar_a_permiso('tesoreria.registrar_pagos', 'Pide el reembolso: ' || p_nombre,
+      v_vale || ': pídele al proveedor que te lo devuelva y regístralo como devolución de la OC. ' || p_texto,
+      '/tesoreria/por-pagar#compra-' || p_compra, 'ordenes_compra_materiales', p_compra);
+  else
+    perform public.avisar_a_permiso('tesoreria.registrar_pagos', 'Págala sin lo devuelto: ' || p_nombre,
+      v_vale || ': todavía no se la pagas, así que págale sin eso. ' || p_texto,
+      '/tesoreria/por-pagar#compra-' || p_compra, 'ordenes_compra_materiales', p_compra);
+  end if;
+end $$;
+
+comment on function public.avisar_reembolso_a_tesoreria(uuid, text, numeric, text, text) is
+  'El aviso a Tesorería por lo que Almacén devolvió sin reposición de una OC con boleta sin factura: si ya la pagó, que pida el reembolso; si no, que la pague sin lo devuelto (DKS, 2026-11-26; 20261126975000). Lo llaman devolver_al_proveedor y dejar_de_esperar_reposicion, no la gente.';
+
+revoke all on function public.avisar_reembolso_a_tesoreria(uuid, text, numeric, text, text) from public, anon, authenticated;
 
 create or replace function public.devoluciones_sin_nota_credito()
 returns table (devolucion_id uuid, fecha timestamptz, compra text, orden_compra_id uuid, proveedor text, material text,
@@ -193,7 +234,7 @@ begin
          || E'       and not public.devolucion_reembolsada(m.id)\n']),
       ('devolver_al_proveedor',
        '05764d06eb71172d75eef283edb55633',   -- la de 20261026130000
-       '043bbd3da1195321f5edf430177963c4',
+       '24d9185438b744188524940ad513aa49',
        array[
          E'  if not p_se_repone then\n'
          || E'    perform public.avisar_a_permiso(''adquisiciones.registrar'', ''Espera la nota de crédito: '' || v_compra,\n'
@@ -210,20 +251,13 @@ begin
          || E'      ''/adquisiciones?vista=facturas#notas-credito'', ''ordenes_compra_materiales'', v_c.id);\n'
          || E'  elsif not p_se_repone and not v_c.con_factura and not public.compra_con_factura_registrada(v_c.id)\n'
          || E'        and not public.devolucion_reembolsada(p_id) then\n'
-         || E'    perform public.avisar_a_permiso(''tesoreria.registrar_pagos'', ''Pide el reembolso: '' || v_compra,\n'
-         || E'      v_texto || '' El proveedor no lo repone y la OC va con boleta: si ya se la pagaste, pídele que devuelva lo que vale''\n'
-         || E'      || coalesce((select '' (''\n'
-         || E'                          || case when coalesce(m.moneda, v_c.moneda)::text = ''USD'' then ''US$ '' else ''S/ '' end\n'
-         || E'                          || to_char(round(m.cantidad::numeric * m.precio_unitario, 2), ''FM999G999G990D00'')\n'
-         || E'                          || '' a su precio en la OC)''\n'
-         || E'                     from public.movimientos_materiales m where m.id = p_id), '''')\n'
-         || E'      || case when v_c.pago_en_tesoreria then '' y regístralo como devolución de la OC.''\n'
-         || E'              else ''. La OC se pagó fuera del sistema: esa devolución del dinero no se registra aquí.'' end,\n'
-         || E'      ''/tesoreria/por-pagar#compra-'' || v_c.id, ''ordenes_compra_materiales'', v_c.id);\n'
+         || E'    perform public.avisar_reembolso_a_tesoreria(v_c.id, v_compra,\n'
+         || E'      (select round(m.cantidad::numeric * m.precio_unitario, 2) from public.movimientos_materiales m where m.id = p_id),\n'
+         || E'      (select coalesce(m.moneda, v_c.moneda)::text from public.movimientos_materiales m where m.id = p_id), v_texto);\n'
          || E'  end if;\n']),
       ('dejar_de_esperar_reposicion',
        'f184574800e4b163ddf709cf66303f16',   -- la de 20261026130000
-       '85d2751829fe1dce038955092b31716d',
+       '734f31aa9eed13722c2a870b3f37a9b8',
        array[
          E'  if current_setting(''metalwork.nota_credito'', true) is distinct from p_devolucion::text then\n'
          || E'    perform public.avisar_a_permiso(''adquisiciones.registrar'', ''Espera la nota de crédito: '' || v_compra,\n'
@@ -240,14 +274,8 @@ begin
          || E'        v_texto || '' Registra su nota de crédito contra la factura.'', ''/adquisiciones?vista=facturas#notas-credito'',\n'
          || E'        ''ordenes_compra_materiales'', v_c.id);\n'
          || E'    else\n'
-         || E'      perform public.avisar_a_permiso(''tesoreria.registrar_pagos'', ''Pide el reembolso: '' || v_compra,\n'
-         || E'        v_texto || '' La OC va con boleta: si ya se la pagaste, pídele al proveedor que devuelva lo que vale (''\n'
-         || E'        || case when coalesce(v_dev.moneda, v_c.moneda)::text = ''USD'' then ''US$ '' else ''S/ '' end\n'
-         || E'        || to_char(round((v_dev.cantidad - v_repuesto)::numeric * v_dev.precio_unitario, 2), ''FM999G999G990D00'')\n'
-         || E'        || '' a su precio en la OC)''\n'
-         || E'        || case when v_c.pago_en_tesoreria then '' y regístralo como devolución de la OC.''\n'
-         || E'                else ''. La OC se pagó fuera del sistema: esa devolución del dinero no se registra aquí.'' end,\n'
-         || E'        ''/tesoreria/por-pagar#compra-'' || v_c.id, ''ordenes_compra_materiales'', v_c.id);\n'
+         || E'      perform public.avisar_reembolso_a_tesoreria(v_c.id, v_compra,\n'
+         || E'        round((v_dev.cantidad - v_repuesto)::numeric * v_dev.precio_unitario, 2), coalesce(v_dev.moneda, v_c.moneda)::text, v_texto);\n'
          || E'    end if;\n'
          || E'  end if;\n'])
     ) as t (funcion, de_antes, de_ahora, viejas, nuevas)

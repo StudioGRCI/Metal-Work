@@ -163,6 +163,21 @@ await consulta(`select public.marcar_compra_dejada_almacen($1)`, [ocb])
 await como('almacen')
 const [{ id: pendienteB }] = await consulta(`select id from ingresos_pendientes_almacen where orden_compra_id = $1`, [ocb])
 await consulta(`select public.validar_ingresos_compra($1, $2::jsonb, null)`, [ocb, JSON.stringify([{ id: pendienteB, movimiento_id: ingb, cantidad: 10 }])])
+const CAJA = `Banco nota ${SUFIJO}`
+const [{ id: caja }] = await consulta(
+  `insert into cajas (nombre, tipo, banco, moneda, saldo_inicial, fecha_inicio, creado_por)
+   values ($1, 'BANCO', 'BANCO DE PRUEBA', 'PEN', 1000, $2::date - 30, $3) returning id`,
+  [CAJA, hoy, ids[CUENTAS.tesoreria]],
+)
+// Tesorería ya pagó entera la OC con boleta antes de la devolución: le toca pedir el reembolso. La OC va
+// en «OC con boleta pagadas», que sale cerrada, y el enlace del aviso tiene que abrirla para llegar a ella.
+await como('tesoreria')
+const [{ total: totalB }] = await consulta(`select public.total_orden_compra($1)::float as total`, [ocb])
+const [{ pagoB }] = await consulta(`select gen_random_uuid() as "pagoB"`)
+await archivo('pagos-compras', `${ocb}/${pagoB}.pdf`, 'tesoreria')
+await consulta(`select public.registrar_pago_compra($1, $2, $3::date, $4, true, null, null, $5, $6, null)`,
+  [pagoB, ocb, hoy, totalB, `${ocb}/${pagoB}.pdf`, caja])
+await como('almacen')
 await consulta(`select public.devolver_al_proveedor($1, $2, 2, $3, 'Dos discos llegaron partidos', false)`, [devb, ingb, `GR-NCB-${SUFIJO}`])
 const [{ numero: ocbNumero, con_factura: ocbConFactura }] = await consulta(`select numero, con_factura from ordenes_compra_materiales where id = $1`, [ocb])
 if (!ocbNumero || ocbConFactura) throw new Error(`La ${ocbNumero} tenía que tener número y ser con boleta.`)
@@ -179,20 +194,6 @@ for (const f of [f1, f2]) {
   await archivo('comprobantes-financieros', `adquisiciones/${f}/comprobante.pdf`, 'contabilidad')
   await consulta(`update adquisiciones set ruta_storage = 'adquisiciones/' || id || '/comprobante.pdf', estado = 'REGISTRADA' where id = $1`, [f])
 }
-const CAJA = `Banco nota ${SUFIJO}`
-const [{ id: caja }] = await consulta(
-  `insert into cajas (nombre, tipo, banco, moneda, saldo_inicial, fecha_inicio, creado_por)
-   values ($1, 'BANCO', 'BANCO DE PRUEBA', 'PEN', 1000, $2::date - 30, $3) returning id`,
-  [CAJA, hoy, ids[CUENTAS.tesoreria]],
-)
-// Tesorería ya pagó entera la OC con boleta: va en «OC con boleta pagadas», que sale cerrada, y el
-// enlace de «Pide el reembolso» tiene que abrirla para llegar a la OC.
-await como('tesoreria')
-const [{ total: totalB }] = await consulta(`select public.total_orden_compra($1)::float as total`, [ocb])
-const [{ pagoB }] = await consulta(`select gen_random_uuid() as "pagoB"`)
-await archivo('pagos-compras', `${ocb}/${pagoB}.pdf`, 'tesoreria')
-await consulta(`select public.registrar_pago_compra($1, $2, $3::date, $4, true, null, null, $5, $6, null)`,
-  [pagoB, ocb, hoy, totalB, `${ocb}/${pagoB}.pdf`, caja])
 await consulta(`select set_config('request.jwt.claims', '', false), set_config('request.jwt.claim.sub', '', false)`)
 console.log(`  siembra: ${ocNumero} compra 10 de ${MATERIAL}; ${F1} (118) y ${F2} (59) de ${PROVEEDOR}; Almacén devolvió 2`)
 
@@ -337,7 +338,8 @@ try {
   // enlace abre la OC en Cuentas por pagar (DKS, 2026-11-26).
   const reembolso = await consulta(`select titulo, cuerpo, ruta from notificaciones where usuario_id = $1 and origen_id = $2 and titulo like 'Pide el reembolso%'`,
     [ids[CUENTAS.tesoreria], ocb])
-  comprobar(reembolso.length === 1 && reembolso[0].titulo === `Pide el reembolso: ${ocbNumero}` && /S\/ [\d,]+\.\d{2} a su precio en la OC/.test(reembolso[0].cuerpo),
+  comprobar(reembolso.length === 1 && reembolso[0].titulo === `Pide el reembolso: ${ocbNumero}`
+    && /^Lo devuelto vale S\/ 20\.00 a su precio en la OC: pídele al proveedor que te lo devuelva y regístralo como devolución de la OC\. Devolución de 2 /.test(reembolso[0].cuerpo),
     `a Tesorería le llega «Pide el reembolso» de la ${ocbNumero}, con lo que vale («${reembolso[0]?.cuerpo ?? ''}»)`)
   if (reembolso[0]) {
     await tes.goto(`${BASE}${reembolso[0].ruta}`, { waitUntil: 'networkidle' })

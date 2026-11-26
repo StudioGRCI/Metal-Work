@@ -13992,6 +13992,16 @@ export type Database = {
         }
         Returns: null
       }
+      avisar_reembolso_a_tesoreria: {
+        Args: {
+          p_compra: string | null
+          p_nombre: string | null
+          p_vale: number | null
+          p_moneda: string | null
+          p_texto: string | null
+        }
+        Returns: null
+      }
       avisar_tiempos_de_entrega: {
         Args: {
           p_area: string | null
