@@ -25,9 +25,9 @@ begin
       end if;
     end if;
     v_id := gen_random_uuid();
-    insert into auth.users (id, email) values (v_id, lower(replace(v, ':', '.')) || '.472@prueba.local');
+    insert into auth.users (id, email) values (v_id, lower(replace(v, ':', '.')) || '.477@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
-    select v_id, split_part(v, ':', 1), 'Check 472', lower(replace(v, ':', '.')) || '.472@prueba.local', r.id,
+    select v_id, split_part(v, ':', 1), 'Check 477', lower(replace(v, ':', '.')) || '.477@prueba.local', r.id,
            (select id from public.areas where codigo = split_part(v, ':', 2))
       from public.roles r where r.codigo = split_part(v, ':', 1);
     perform set_config('prueba.' || lower(split_part(v, ':', 1)), v_id::text, true);
@@ -38,8 +38,8 @@ begin
   foreach v in array array['p1', 'r1', 'r1b', 'p2', 'r2', 'p3', 'r3', 'd1', 'd2', 'env'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
-  perform set_config('prueba.codigo', 'CHK472-SR-01', true);
-  perform set_config('prueba.otro', 'CHK472-SR-02', true);
+  perform set_config('prueba.codigo', 'CHK477-SR-01', true);
+  perform set_config('prueba.otro', 'CHK477-SR-02', true);
   perform set_config('prueba.hoy', ((now() at time zone 'America/Lima')::date)::text, true);
 end $$;
 
