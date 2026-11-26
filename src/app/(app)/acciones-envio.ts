@@ -392,6 +392,15 @@ async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo:
       const { data } = await supabase.from('ssoma_accion_eventos').select('hecho_por, tipo').eq('id', id).maybeSingle()
       return data?.tipo === 'CERRADA' ? { por: data.hecho_por, lo: dicho('El cierre', 'Los cierres', 'otro', null) } : null
     }
+    case 'inspeccion_ssoma': {
+      const { data } = await supabase.from('ssoma_inspecciones').select('fecha, creado_por, areas(nombre)').eq('id', id).maybeSingle()
+      return data && { por: data.creado_por, lo: dicho('La inspección', 'Las inspecciones', 'otra', data.areas?.nombre ?? null) }
+    }
+    case 'punto_ssoma': {
+      const { data } = await supabase.from('ssoma_lista_puntos').select('texto, creado_por').eq('id', id).maybeSingle()
+      // Los puntos con que nace la lista no tienen autor: nunca son el envío de nadie.
+      return data?.creado_por ? { por: data.creado_por, lo: dicho('El punto', 'Los puntos', 'otro', data.texto) } : null
+    }
     case 'charla_ssoma': {
       const { data } = await supabase.from('ssoma_charlas').select('tipo, tema, creado_por').eq('id', id).maybeSingle()
       return (
