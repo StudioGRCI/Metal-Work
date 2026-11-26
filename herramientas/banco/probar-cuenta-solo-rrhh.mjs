@@ -64,6 +64,10 @@ try {
     await pagina.goto(`${BASE}/rrhh/personal/${p.id}`, { waitUntil: 'networkidle' })
     const hoja = limpio(await pagina.locator('main').innerText().catch(() => ''))
     const htmlHoja = await pagina.content()
+    // Antes que las negativas: que las dos pantallas cargaron a esta persona. Si no,
+    // «no ve la cuenta» pasaría con una pantalla en blanco o un error.
+    comprobar(lista.includes(p.apellidos), `${quien}: Personal carga y nombra a ${p.apellidos}`)
+    comprobar(hoja.includes(p.apellidos), `${quien}: la hoja de la persona carga y la nombra`)
     if (quien === 'rrhh') {
       comprobar(lista.includes(p.numero_cuenta), 'RR. HH. ve la cuenta en Personal')
       comprobar(hoja.includes(p.numero_cuenta), 'RR. HH. ve la cuenta en la hoja de la persona')

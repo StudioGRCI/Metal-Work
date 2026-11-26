@@ -14,7 +14,10 @@ mes, y el visto, la observación y la anulación de RR. HH. en el reporte diario
 exigen el permiso con `exigir_permiso_del_puesto`, sin el atajo de
 `es_admin()`; en la aplicación, `editaComoRrhh`. El administrador ve esas
 pantallas sin botones, y lee también las planillas del mes. El DNI de las cuentas, igual, desde la
-`20261020165000`.
+`20261020165000`. Y la cuenta bancaria del personal, desde la `20261126620000`: la lee solo
+RR. HH. (`rrhh.personal`), en la ficha, en su historia de `audit_log` y en «sin
+cuenta» de lo que le falta a la planilla; para pagar la planilla diaria, quien la
+arma o la paga. El administrador ve el sueldo y el costo, no la cuenta.
 
 La base de producción METAL WORK (`usnbwnemfqyjjkzdizgv`) se revisó el
 2026-09-29. La migración `20260928021551_administracion_gestiona_sistema_y_tesoreria`

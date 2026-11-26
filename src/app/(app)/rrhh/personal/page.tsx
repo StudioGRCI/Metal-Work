@@ -62,7 +62,7 @@ export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/r
               <TH>Persona</TH>
               <TH className="hidden md:table-cell">Horario</TH>
               {/* La cuenta bancaria la lee solo RR. HH. (migración 20261126620000); el administrador ve el sueldo. */}
-              {ve && <TH className="hidden lg:table-cell">{gestiona ? 'Cuenta' : 'Sueldo'}</TH>}
+              {ve && <TH className="hidden lg:table-cell">{gestiona ? 'Cuenta' : 'Sueldo y costo'}</TH>}
               <TH>Estado</TH>
               {gestiona && (
                 <TH className="text-right">

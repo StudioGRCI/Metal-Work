@@ -91,8 +91,9 @@ export default async function PaginaRRHH() {
   // Los reportes del mes que faltan los lee quien lee los reportes; «tu visto» y
   // «Darles el visto» son solo para quien lo da (no el administrador, que mira).
   const veReportes = puede(perfil, 'reporte_diario.ver')
-  // Quién no tiene cuenta lo lee quien lee las cuentas, como en la base.
-  const veCuentas = puede(perfil, 'rrhh.personal')
+  // Quién no tiene cuenta lo lee quien lee las cuentas, como en la base: solo
+  // RR. HH., sin el atajo del administrador (migración 20261126620000).
+  const veCuentas = editaComoRrhh(perfil, 'rrhh.personal')
   const daElVisto = editaComoRrhh(perfil, 'reporte_diario.validar_rrhh')
   const restadoDe = new Map(restados)
   const comoEntra = new Map<string, PersonaAlCosto>(alCosto.flatMap((m) => [...m]))

@@ -1,8 +1,10 @@
 -- La cuenta bancaria del personal la lee solo RR. HH. (migración 20261126620000).
--- Con el rol real y `set local role authenticated`: RR. HH. la lee, en la tabla y
--- en su historia de `audit_log`; el administrador no la lee en ninguna de las dos,
--- ni por `planilla_diaria_cuentas`; Tesorería sigue entrando a esa función para
--- pagar. Termina en rollback.
+-- Con el rol real y `set local role authenticated`: RR. HH. la lee en la tabla
+-- (y en `audit_log`, si tuviera `auditoria.ver`: hoy no lo tiene, así que la
+-- historia de las cuentas no la ve nadie en la aplicación); el administrador no la
+-- lee en ninguna de las dos, ni por `planilla_diaria_cuentas`, ni por «Sin cuenta
+-- bancaria» en lo que le falta a la planilla; Tesorería sigue entrando a
+-- `planilla_diaria_cuentas` para pagar. Termina en rollback.
 \set ON_ERROR_STOP on
 begin;
 
@@ -31,12 +33,27 @@ values ('48200000-0000-4000-8000-000000000001', 'Cata', 'Prueba Cuenta', '482000
         current_setting('prueba.recursos_humanos')::uuid);
 insert into public.trabajador_cuentas (trabajador_id, banco, tipo_cuenta, numero_cuenta)
 values ('48200000-0000-4000-8000-000000000001', 'Banco de Pruebas', 'AHORROS', '000-482-000001');
+-- Dino tiene ficha y no cuenta; Zoe no tiene ficha. Los tres en la planilla de taller.
+insert into public.trabajadores (id, nombres, apellidos, dni, area_id, creado_por)
+values ('48200000-0000-4000-8000-000000000002', 'Dino', 'Prueba Cuenta', '48200002', (select id from public.areas where codigo = 'PRD'),
+        current_setting('prueba.recursos_humanos')::uuid);
+insert into public.planillas (id, tipo, periodo, registrado_por)
+values ('48200000-0000-4000-8000-0000000000b1', 'TALLER', date '2031-04-01', public.usuario_actual());
+insert into public.planilla_personas (planilla_id, nombre, documento, monto, registrado_por)
+values ('48200000-0000-4000-8000-0000000000b1', 'Cata Prueba Cuenta', '48200001', 1500, public.usuario_actual()),
+       ('48200000-0000-4000-8000-0000000000b1', 'Dino Prueba Cuenta', '48200002', 1400, public.usuario_actual()),
+       ('48200000-0000-4000-8000-0000000000b1', 'Zoe Sin Ficha', null, 900, public.usuario_actual());
 
 -- ============================================ 1. RR. HH. la lee
 set local role authenticated;
 select test.afirmar(
   (select count(*) = 1 from public.trabajador_cuentas where trabajador_id = '48200000-0000-4000-8000-000000000001'),
   'RR. HH. lee la cuenta bancaria');
+select test.afirmar(
+  (select array_agg(clase || ':' || nombre order by clase, nombre)
+     from public.planilla_lo_que_falta('48200000-0000-4000-8000-0000000000b1') where clase like 'SIN_%')
+  = array['SIN_CUENTA:Dino Prueba Cuenta', 'SIN_FICHA:Zoe Sin Ficha'],
+  'a RR. HH. lo que falta de la planilla le dice quién no tiene cuenta y quién no tiene ficha');
 reset role;
 
 -- ============================================ 2. El administrador, no
@@ -53,6 +70,11 @@ select test.afirmar(
   'el administrador sigue leyendo la historia de la ficha, que no lleva la cuenta');
 select test.debe_fallar($$select * from public.planilla_diaria_cuentas(gen_random_uuid())$$,
   'el administrador no lee las cuentas de la planilla diaria', 'permiso');
+select test.afirmar(
+  (select array_agg(clase || ':' || nombre order by clase, nombre)
+     from public.planilla_lo_que_falta('48200000-0000-4000-8000-0000000000b1') where clase like 'SIN_%')
+  = array['SIN_FICHA:Zoe Sin Ficha'],
+  'al administrador lo que falta de la planilla le dice quién no tiene ficha, pero no quién no tiene cuenta');
 reset role;
 
 -- ============================================ 3. Gerencia, tampoco

@@ -31,6 +31,8 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
   const pagaDeLaCaja = paga && puede(perfil, 'tesoreria.caja')
   // La cuenta de cada persona la ve quien paga o arma la planilla, no el administrador
   // (migración 20261126620000): a él la base no se la da, y diría «sin cuenta».
+  // Por eso `editaComoRrhh` también para `pagar`: no es «edita», es «el permiso
+  // propio, sin el atajo del administrador», que es lo que mira la función.
   const veCuentas = editaComoRrhh(perfil, 'planilla_diaria.preparar') || editaComoRrhh(perfil, 'planilla_diaria.pagar')
   const { id } = await params
   if (!GUID.test(id)) notFound()
@@ -112,6 +114,7 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
                 arma={edita}
                 paga={paga}
                 conCuenta={veCuentas && !anulada}
+                cuentaSinLeer={p.cuentasSinLeer}
               />
             ))}
           </ul>
@@ -174,6 +177,7 @@ function Persona({
   arma,
   paga,
   conCuenta,
+  cuentaSinLeer,
 }: {
   g: PersonaPlanilla
   planillaId: string
@@ -182,6 +186,8 @@ function Persona({
   arma: boolean
   paga: boolean
   conCuenta: boolean
+  /** La base no dio las cuentas: se dice que no se pudo leer, no «sin cuenta». */
+  cuentaSinLeer: boolean
 }) {
   return (
     <li className="space-y-3 px-4 py-3" data-persona={g.nombre}>
@@ -228,7 +234,9 @@ function Persona({
           )}
           {conCuenta && (
             <p className="mt-1 text-xs text-texto-suave" data-cuenta>
-              {g.cuenta?.numero_cuenta ? (
+              {cuentaSinLeer ? (
+                'No se pudo leer su cuenta: vuelve a cargar la pantalla'
+              ) : g.cuenta?.numero_cuenta ? (
                 <>
                   {g.cuenta.banco} · {TIPO_CUENTA[g.cuenta.tipo_cuenta ?? '']?.etiqueta ?? g.cuenta.tipo_cuenta} ·{' '}
                   <span className="tabular text-texto">{g.cuenta.numero_cuenta}</span>
