@@ -446,6 +446,186 @@ select test.debe_fallar(format('select * from public.recorrido_de_cotizaciones(a
   'ni el de las cotizaciones', 'No tienes permiso para ver las cotizaciones');
 reset role;
 
+-- ============================================ 2b. Los días del sustento y del visto de Diseño
+-- Un RQ con dos insumos que se pasan del metrado. Los días se cuentan desde lo
+-- que de verdad espera: el visto de Diseño a un insumo no reinicia los días del
+-- otro que sigue sin sustento, y lo que Diseño tiene cuenta desde el sustento
+-- más antiguo que todavía no ve (arreglos 20261126150000 y 160000).
+do $$
+declare v_und uuid := (select id from public.unidades_medida where codigo = 'UND');
+begin
+  insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id) values
+    ('CHK458-TUB', 'Tubo cuadrado 2 pulgadas (prueba 458)',
+     (select id from public.categorias_material where activo and almacen = 'MATERIA_PRIMA' order by codigo limit 1), v_und);
+  perform set_config('prueba.tub', (select id::text from public.materiales where codigo = 'CHK458-TUB'), true);
+  perform set_config('prueba.rqe', gen_random_uuid()::text, true);
+  perform set_config('prueba.rqf', gen_random_uuid()::text, true);
+end $$;
+
+select pg_temp.como('diseno');
+set local role authenticated;
+do $$ begin
+  perform public.guardar_material_codigo(null, 'chk_458_u2', pg_temp.id('pla'), 1, null, 'Metrado del plano del techo');
+  perform public.guardar_material_codigo(null, 'chk_458_u2', pg_temp.id('tub'), 1, null, 'Metrado del plano del techo');
+end $$;
+reset role;
+
+-- E y F piden 3 planchas y 3 tubos cada uno: los dos insumos se pasan del metrado.
+select pg_temp.como('requerimientos');
+set local role authenticated;
+do $$
+declare v_rq text;
+begin
+  foreach v_rq in array array['rqe', 'rqf'] loop
+    perform public.emitir_requerimiento(pg_temp.id(v_rq), 'OPERACION', pg_temp.id('area_mtz'), 'CHK_458_U2',
+      'Planchas y tubos para el techo', null,
+      jsonb_build_array(jsonb_build_object('material_id', pg_temp.id('pla'), 'cantidad', 3),
+                        jsonb_build_object('material_id', pg_temp.id('tub'), 'cantidad', 3)));
+  end loop;
+  -- E: se sustenta solo el insumo 1. F: el insumo 1 ahora; el 2, más abajo.
+  perform public.sustentar_insumos(pg_temp.id('rqe'), '[{"item": 1, "sustento": "El techo lleva una plancha de refuerzo en cada esquina"}]');
+  perform public.sustentar_insumos(pg_temp.id('rqf'), '[{"item": 1, "sustento": "El techo lleva una plancha de refuerzo en cada esquina"}]');
+end $$;
+reset role;
+
+-- Armazón: los dos RQ se registraron hace cuatro fechas y su primer sustento
+-- entró hace tres; el metrado de Diseño ya estaba (lo pedido antes del metrado
+-- no se mide). Sin disparadores, para no mover nada más.
+set local session_replication_role = replica;
+update public.codigo_materiales set creado_en = now() - interval '5 days' where codigo_interno = 'CHK_458_U2';
+update public.requerimientos set creado_en = now() - interval '4 days', codigo_desde = now() - interval '4 days'
+ where id in (pg_temp.id('rqe'), pg_temp.id('rqf'));
+update public.requerimiento_lineas set cantidad_desde = now() - interval '4 days'
+ where requerimiento_id in (pg_temp.id('rqe'), pg_temp.id('rqf')) and cantidad_desde is not null;
+update public.requerimiento_sustentos s set sustentado_en = now() - interval '3 days'
+  from public.requerimiento_lineas l
+ where l.id = s.requerimiento_linea_id and l.requerimiento_id in (pg_temp.id('rqe'), pg_temp.id('rqf'));
+set local session_replication_role = origin;
+
+-- F: hoy se sustenta el insumo 2. Diseño tiene los dos; el 1 espera desde hace tres fechas.
+select pg_temp.como('requerimientos');
+set local role authenticated;
+do $$
+declare v record;
+begin
+  perform public.sustentar_insumos(pg_temp.id('rqf'), '[{"item": 2, "sustento": "Los tubos del techo van dobles por el peso del equipo"}]');
+  select * into v from pg_temp.paso_rq('rqf', 'VISTO_DISENO', 'AHORA');
+  perform test.afirmar(v.puesto = 'Diseño' and v.dias = 3,
+    format('Diseño tiene F desde el sustento más antiguo que no ve: 3 días, no desde el de hoy (dice %s)', coalesce(v.dias::text, 'nada')));
+end $$;
+reset role;
+
+-- E: Diseño autoriza hoy el insumo 1. El 2 sigue sin sustento desde que se registró.
+select pg_temp.como('diseno');
+set local role authenticated;
+do $$
+declare v record;
+begin
+  perform public.autorizar_insumos(pg_temp.id('rqe'), '{1}', true, null);
+  select * into v from pg_temp.paso_rq('rqe', 'SUSTENTO', 'AHORA');
+  perform test.afirmar(v.puesto = 'Requerimientos' and v.espera = 'SUSTENTO' and v.dias = 4,
+    format('autorizar el insumo 1 no reinicia los días del 2, que sigue sin sustento: 4 días (dice %s)', coalesce(v.dias::text, 'nada')));
+
+  -- Diseño no autoriza hoy el insumo 1 de F: ese sí vuelve a pedir el sustento, desde hoy.
+  perform public.autorizar_insumos(pg_temp.id('rqf'), '{1}', false, 'El plano del techo no lleva refuerzo en las esquinas');
+  select * into v from pg_temp.paso_rq('rqf', 'SUSTENTO', 'AHORA');
+  perform test.afirmar(v.puesto = 'Requerimientos' and v.dias = 0,
+    format('el insumo que Diseño no autorizó pide el sustento otra vez desde hoy (dice %s)', coalesce(v.dias::text, 'nada')));
+end $$;
+reset role;
+
+-- Cada insumo frenado cuenta sus propios días (arreglo 20261126160000): lo que
+-- le pasa a uno no mueve los del otro. Cada RQ va con su propio código, para que
+-- lo pedido por uno no cuente en el metrado del otro.
+--   G: el insumo 1 nunca se sustentó (5 fechas); el 2 se rechazó hace 2 y hoy se autorizó.
+--   H: el insumo 2 falta sustentar (5 fechas); hoy se corrige la cantidad del 1, que entra en el metrado.
+--   K: el sustento del insumo 1 quedó sin visto porque Diseño amplió el metrado; hoy se sustenta el 2.
+do $$ begin
+  perform set_config('prueba.rqg', gen_random_uuid()::text, true);
+  perform set_config('prueba.rqh', gen_random_uuid()::text, true);
+  perform set_config('prueba.rqk', gen_random_uuid()::text, true);
+end $$;
+
+select pg_temp.como('diseno');
+set local role authenticated;
+do $$ begin
+  perform public.guardar_material_codigo(null, 'chk_458_g', pg_temp.id('pla'), 1, null, 'Metrado del plano G');
+  perform public.guardar_material_codigo(null, 'chk_458_g', pg_temp.id('tub'), 1, null, 'Metrado del plano G');
+  perform public.guardar_material_codigo(null, 'chk_458_h', pg_temp.id('pla'), 10, null, 'Metrado del plano H');
+  perform public.guardar_material_codigo(null, 'chk_458_h', pg_temp.id('tub'), 1, null, 'Metrado del plano H');
+  perform public.guardar_material_codigo(null, 'chk_458_k', pg_temp.id('pla'), 1, null, 'Metrado del plano K');
+  perform public.guardar_material_codigo(null, 'chk_458_k', pg_temp.id('tub'), 1, null, 'Metrado del plano K');
+end $$;
+reset role;
+
+select pg_temp.como('requerimientos');
+set local role authenticated;
+do $$ begin
+  perform public.emitir_requerimiento(pg_temp.id('rqg'), 'OPERACION', pg_temp.id('area_mtz'), 'CHK_458_G', 'Planchas y tubos G', null,
+    jsonb_build_array(jsonb_build_object('material_id', pg_temp.id('pla'), 'cantidad', 3), jsonb_build_object('material_id', pg_temp.id('tub'), 'cantidad', 3)));
+  perform public.emitir_requerimiento(pg_temp.id('rqh'), 'OPERACION', pg_temp.id('area_mtz'), 'CHK_458_H', 'Planchas y tubos H', null,
+    jsonb_build_array(jsonb_build_object('material_id', pg_temp.id('pla'), 'cantidad', 3), jsonb_build_object('material_id', pg_temp.id('tub'), 'cantidad', 3)));
+  perform public.emitir_requerimiento(pg_temp.id('rqk'), 'OPERACION', pg_temp.id('area_mtz'), 'CHK_458_K', 'Planchas y tubos K', null,
+    jsonb_build_array(jsonb_build_object('material_id', pg_temp.id('pla'), 'cantidad', 3), jsonb_build_object('material_id', pg_temp.id('tub'), 'cantidad', 3)));
+  perform public.sustentar_insumos(pg_temp.id('rqg'), '[{"item": 2, "sustento": "Los tubos del techo van dobles por el peso del equipo"}]');
+  perform public.sustentar_insumos(pg_temp.id('rqk'), '[{"item": 1, "sustento": "El techo lleva una plancha de refuerzo en cada esquina"}]');
+end $$;
+reset role;
+
+select pg_temp.como('diseno');
+set local role authenticated;
+do $$ begin
+  perform public.autorizar_insumos(pg_temp.id('rqg'), '{2}', false, 'El plano del techo lleva tubos simples, no dobles');
+end $$;
+reset role;
+
+-- Armazón: los tres se registraron hace cinco fechas y el metrado ya estaba; el
+-- rechazo de G fue hace dos y su sustento, hace tres; el sustento de K, hace cuatro.
+set local session_replication_role = replica;
+update public.codigo_materiales set creado_en = now() - interval '6 days' where codigo_interno in ('CHK_458_G', 'CHK_458_H', 'CHK_458_K');
+update public.requerimientos set creado_en = now() - interval '5 days', codigo_desde = now() - interval '5 days'
+ where id in (pg_temp.id('rqg'), pg_temp.id('rqh'), pg_temp.id('rqk'));
+update public.requerimiento_lineas set cantidad_desde = now() - interval '5 days'
+ where requerimiento_id in (pg_temp.id('rqg'), pg_temp.id('rqh'), pg_temp.id('rqk')) and cantidad_desde is not null;
+update public.requerimiento_sustentos s set sustentado_en = now() - interval '3 days', decidido_en = now() - interval '2 days'
+  from public.requerimiento_lineas l where l.id = s.requerimiento_linea_id and l.requerimiento_id = pg_temp.id('rqg');
+update public.requerimiento_sustentos s set sustentado_en = now() - interval '4 days'
+  from public.requerimiento_lineas l where l.id = s.requerimiento_linea_id and l.requerimiento_id = pg_temp.id('rqk');
+-- H: hoy se corrige la cantidad del insumo 1, que sigue dentro del metrado.
+update public.requerimiento_lineas set cantidad = 4, cantidad_desde = now()
+ where requerimiento_id = pg_temp.id('rqh') and item = 1;
+-- K: Diseño amplió el metrado de las planchas y el insumo 1 entra; su sustento queda sin visto.
+update public.codigo_materiales set cantidad = 6 where codigo_interno = 'CHK_458_K' and material_id = pg_temp.id('pla');
+set local session_replication_role = origin;
+
+-- G: hoy se sustenta otra vez el insumo 2 y Diseño lo autoriza. K: hoy se sustenta el 2.
+select pg_temp.como('requerimientos');
+set local role authenticated;
+do $$ begin
+  perform public.sustentar_insumos(pg_temp.id('rqg'), '[{"item": 2, "sustento": "El equipo del techo pesa el doble: el cliente lo confirmó"}]');
+  perform public.sustentar_insumos(pg_temp.id('rqk'), '[{"item": 2, "sustento": "Los tubos del techo van dobles por el peso del equipo"}]');
+end $$;
+reset role;
+
+select pg_temp.como('diseno');
+set local role authenticated;
+do $$
+declare v record;
+begin
+  perform public.autorizar_insumos(pg_temp.id('rqg'), '{2}', true, null);
+
+  select * into v from pg_temp.paso_rq('rqg', 'SUSTENTO', 'AHORA');
+  perform test.afirmar(v.dias = 5,
+    format('G: el rechazo ya resuelto del insumo 2 no reinicia los días del 1, que nunca se sustentó: 5 días (dice %s)', coalesce(v.dias::text, 'nada')));
+  select * into v from pg_temp.paso_rq('rqh', 'SUSTENTO', 'AHORA');
+  perform test.afirmar(v.dias = 5,
+    format('H: corregir la cantidad del insumo 1 no reinicia los días del 2: 5 días (dice %s)', coalesce(v.dias::text, 'nada')));
+  select * into v from pg_temp.paso_rq('rqk', 'VISTO_DISENO', 'AHORA');
+  perform test.afirmar(v.dias = 0,
+    format('K: el sustento que ya no espera nada (el insumo entró en el metrado) no suma días: Diseño tiene el 2 desde hoy (dice %s)', coalesce(v.dias::text, 'nada')));
+end $$;
+reset role;
+
 -- ============================================ 3. El recorrido de la cotización
 insert into storage.objects (bucket_id, name, owner_id, metadata)
 select 'cotizaciones-pdf', 'cot/' || current_setting('prueba.' || c) || '/' || v || '.pdf', current_setting('prueba.vendedor'),
