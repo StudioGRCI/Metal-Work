@@ -630,7 +630,7 @@ function LineaCierre({
     const falta = faltaParaCerrar(c, { esperaElMes, faltaOficina, faltaPlanilla })
     if (falta.length > 0) {
       return (
-        <div className="space-y-1 rounded-[var(--radius-base)] border border-borde p-3 text-xs text-texto-suave" data-cierre="incompleto">
+        <div id="cierre-del-costeo" className="scroll-mt-20 space-y-1 rounded-[var(--radius-base)] border border-borde p-3 text-xs text-texto-suave" data-cierre="incompleto">
           <p>El costeo se cierra al entregar la unidad, con todo completo. Hoy falta: {falta.join(', ')}.</p>
           {c.venta && c.venta.sin_igv > 0 && (
             <Link href={enlaceCodigo(codigo, 'documentos')} className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0">

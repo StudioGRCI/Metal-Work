@@ -8,8 +8,8 @@
  *      primero y con sus días. No hay ningún botón que apruebe: cada fila es un
  *      enlace a su pantalla, y el de la compra cae en su tarjeta.
  *   2. La pantalla está en «Por aprobar» de su menú, primera.
- *   3. Gerencia de Producción, que da el visto al reporte diario, entra y ve
- *      solo ese grupo. Almacén no entra (va a «Sin permiso»).
+ *   3. La pantalla es de la Gerencia General: Gerencia de Producción,
+ *      Administración y Almacén no entran (van a «Sin permiso»).
  *   4. En el teléfono (390) nada se sale de la pantalla. Capturas en 390 y 1440.
  *
  * Solo en el banco: deja un armazón con el prefijo PD- (dos cotizaciones por
@@ -49,6 +49,15 @@ const fallas = []
 function comprobar(cond, texto) {
   console.log(`${cond ? '  ok' : 'FALLA'} · ${texto}`)
   if (!cond) fallas.push(texto)
+}
+/** Si `cerrar_costeo_codigo`, con la sesión de Gerencia, deja cerrar el código (y se deshace), y si no, por qué. */
+async function laBaseDejaCerrar(codigo) {
+  try {
+    await comoCuenta('gerencia', 'select public.cerrar_costeo_codigo($1, $2)', [codigo, 'Entregada al cliente: prueba de la sonda, se deshace.'])
+    return { ok: true, motivo: '' }
+  } catch (e) {
+    return { ok: false, motivo: e.message }
+  }
 }
 const correoDe = (puesto) => `${puesto}.local@metalwork.test`
 const idDe = async (puesto) => (await consulta('select id from public.usuarios where correo = $1', [correoDe(puesto)]))[0]?.id
@@ -249,6 +258,8 @@ const grupos = (pagina) =>
     })),
   )
 
+// Desde aquí, pase lo que pase, la unidad prestada vuelve a su código al terminar.
+try {
 // ------------------------------------------------ 1 y 2: Gerencia, en el monitor
 {
   const { pagina, contexto } = await entrar('gerencia', 1440)
@@ -300,6 +311,12 @@ const grupos = (pagina) =>
     await ir(pagina, cierre.href)
     comprobar((await pagina.locator('#cierre-del-costeo[data-cierre="abierto"]').count()) === 1, 'Gerencia: el enlace del cierre cae en la línea del cierre, que ofrece cerrarlo')
   }
+  // La fila sale solo si la base lo deja cerrar: la regla de la pantalla y la de `cerrar_costeo_codigo` no se separan.
+  for (const f of de('cierres')?.filas ?? []) {
+    const codigo = f.que.replace('Cierre del costeo de ', '')
+    const { ok, motivo } = await laBaseDejaCerrar(codigo)
+    comprobar(ok, `Gerencia: la base deja cerrar ${codigo}, que sale como fila${ok ? '' : ` (${motivo})`}`)
+  }
   await contexto.close()
 }
 
@@ -323,9 +340,11 @@ const grupos = (pagina) =>
     await ir(pagina, '/por-decidir')
     comprobar((await pagina.locator(`[data-por-decidir="${CODIGO}"]`).count()) === 0, `Gerencia: con horas de este mes, ${CODIGO} no sale como «Cerrar el costeo»`)
     const nota = (await pagina.locator('[data-nota-del-grupo="cierres"]').textContent().catch(() => '')) ?? ''
-    comprobar(/espera algo de otra área/.test(nota), `Gerencia: la nota de Cierre de códigos lo cuenta aparte (${nota.slice(0, 60)}…)`)
+    comprobar(/espera algo de otra área/.test(nota) && nota.includes(CODIGO), `Gerencia: la nota de Cierre de códigos lo nombra aparte (${nota.slice(0, 60)}…)`)
+    const cierre = await laBaseDejaCerrar(CODIGO)
+    comprobar(!cierre.ok && /mes/.test(cierre.motivo), `y la base tampoco deja cerrar ${CODIGO}, por el mes (${cierre.motivo.slice(0, 70)}…)`)
     await ir(pagina, `/codigos-internos/detalle?codigo=${CODIGO}`)
-    comprobar((await pagina.locator('[data-cierre="incompleto"]').count()) === 1, 'y el detalle del código dice lo mismo: todavía no se cierra')
+    comprobar((await pagina.locator('#cierre-del-costeo[data-cierre="incompleto"]').count()) === 1, 'y el detalle del código dice lo mismo: todavía no se cierra')
     await contexto.close()
   } finally {
     await base.query('begin')
@@ -362,9 +381,17 @@ for (const puesto of ['gerencia.produccion', 'administracion']) {
   await contexto.close()
 }
 
-await navegador.close()
-if (unidadPrestada) await base.query('update public.unidades set codigo_interno = $1 where id = $2', [unidadPrestada.codigo, unidadPrestada.id])
-await base.end()
+} finally {
+  await navegador.close()
+  if (unidadPrestada) {
+    // Sin disparadores: devolverla no es un cambio de nadie y no va a la bitácora.
+    await base.query('begin')
+    await base.query('set local session_replication_role = replica')
+    await base.query('update public.unidades set codigo_interno = $1 where id = $2', [unidadPrestada.codigo, unidadPrestada.id])
+    await base.query('commit')
+  }
+  await base.end()
+}
 comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores.join(' | ')}` : ''}`)
 console.log(fallas.length ? `\n${fallas.length} falla(s).` : '\nTodo pasa.')
 process.exit(fallas.length ? 1 : 0)

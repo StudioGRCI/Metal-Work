@@ -1,5 +1,4 @@
 import type { Tono } from '@/components/ui/etiqueta-estado'
-import type { ResumenCodigo } from '@/lib/datos/codigos-internos'
 import { moneda, periodo } from '@/lib/format'
 import { horasCortas } from './rrhh'
 
@@ -313,7 +312,13 @@ export function enlaceGastoCodigo(codigo: string) {
  * código que espera a Logística, RR. HH. o Contabilidad no se le pide a Gerencia.
  */
 export function faltaParaCerrar(
-  c: Pick<ResumenCodigo, 'materiales_sin_precio' | 'horas_sin_costo' | 'lineas_sin_cambio' | 'venta'>,
+  // Estructural, como el resumen del código: el dominio no importa de `datos`, que es solo del servidor.
+  c: {
+    materiales_sin_precio: number
+    horas_sin_costo: number
+    lineas_sin_cambio: number
+    venta: { sin_igv: number; sin_cambio: number } | null
+  },
   espera: { esperaElMes: boolean; faltaOficina: string[]; faltaPlanilla: string[] },
 ): string[] {
   const { esperaElMes, faltaOficina, faltaPlanilla } = espera

@@ -70,6 +70,10 @@ const delDia = (dia: string | null) => (dia ? `${dia.slice(0, 10)}T12:00:00-05:0
 
 const divisa = (m: string | null): CodigoMoneda => (m === 'USD' ? 'USD' : 'PEN')
 
+/** Si la lectura llegó a su tope, lo dice: la cifra del grupo no puede pasar por el total. */
+const siLlegoAlTope = (leidas: number, tope: number) =>
+  leidas >= tope ? `Aquí van los ${tope} más antiguos y hay más: la lista completa está en su pantalla.` : null
+
 async function cotizacionesPorRevisar(): Promise<Leido> {
   const supabase = await createClient()
   const { data, error } = await supabase
@@ -79,7 +83,7 @@ async function cotizacionesPorRevisar(): Promise<Leido> {
     .order('creado_en')
     .limit(300)
   if (error) throw new Error(`No se pudieron leer las cotizaciones por revisar: ${error.message}`)
-  return { filas: (data ?? []).flatMap((c) =>
+  return { nota: siLlegoAlTope(data?.length ?? 0, 300), filas: (data ?? []).flatMap((c) =>
     c.id
       ? [
           {
@@ -120,12 +124,33 @@ async function comprasPorAprobar(): Promise<Leido> {
  */
 async function pagosDetenidos(): Promise<Leido> {
   const supabase = await createClient()
+  // Se parte de las OC que esperan a Gerencia: las facturas detenidas son las recientes,
+  // y un corte por las más viejas con saldo las dejaba fuera sin avisar.
+  const { data: ocs, error: errorOc } = await supabase
+    .from('ordenes_compra_materiales')
+    .select('id')
+    .eq('aprobacion', 'POR_APROBAR')
+    .is('anulada_en', null)
+  if (errorOc) throw new Error(`No se pudieron leer las compras por aprobar: ${errorOc.message}`)
+  const idsOc = (ocs ?? []).map((o) => o.id)
+  if (idsOc.length === 0) return { filas: [] }
+  const ligadas = new Set<string>()
+  for (let i = 0; i < idsOc.length; i += 150) {
+    const { data: tanda, error: errorTanda } = await supabase
+      .from('adquisiciones_ordenes_compra')
+      .select('adquisicion_id')
+      .is('quitada_en', null)
+      .in('orden_compra_id', idsOc.slice(i, i + 150))
+    if (errorTanda) throw new Error(`No se pudieron leer las facturas de las compras por aprobar: ${errorTanda.message}`)
+    for (const t of tanda ?? []) ligadas.add(t.adquisicion_id)
+  }
+  if (ligadas.size === 0) return { filas: [] }
   const { data, error } = await supabase
     .from('v_cuentas_pagar')
     .select('id, proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, saldo')
+    .in('id', [...ligadas])
     .gt('saldo', 0)
     .order('fecha_emision')
-    .limit(1000)
   if (error) throw new Error(`No se pudieron leer las facturas por pagar: ${error.message}`)
   const facturas = (data ?? []).filter((f): f is typeof f & { id: string } => Boolean(f.id))
   const control = await controlDeFacturas(facturas.map((f) => f.id))
@@ -178,19 +203,19 @@ async function reportesSinVisto(): Promise<Leido> {
       ruta: `/reportes-diarios/${r.id}`,
     }
   })
-  return { filas, ruta }
+  return { filas, ruta, nota: siLlegoAlTope(data?.length ?? 0, 500) }
 }
 
 async function trabajosSinOrden(): Promise<Leido> {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('v_flota_avance_diario')
-    .select('id, flota_id, fecha, trabajo, placa, unidad, area, registrado_por_nombre, creado_en')
+    .select('id, flota_id, fecha, trabajo, placa, unidad, area, registrado_por_nombre, creado_en, corregido_en')
     .eq('revision', 'PENDIENTE')
     .order('creado_en')
     .limit(300)
   if (error) throw new Error(`No se pudieron leer los reportes de los trabajos sin orden: ${error.message}`)
-  return { filas: (data ?? []).flatMap((t) =>
+  return { nota: siLlegoAlTope(data?.length ?? 0, 300), filas: (data ?? []).flatMap((t) =>
     t.id && t.flota_id
       ? [
           {
@@ -198,7 +223,8 @@ async function trabajosSinOrden(): Promise<Leido> {
             que: `Reporte del ${fecha(t.fecha)} · ${t.placa ?? t.unidad ?? 'trabajo sin orden'}`,
             detalle: t.trabajo,
             quien: [t.area, t.registrado_por_nombre].filter(Boolean).join(' · ') || null,
-            desde: t.creado_en,
+            // El observado y corregido espera desde que el supervisor lo corrigió, no desde que lo subió.
+            desde: t.corregido_en ?? t.creado_en,
             ruta: `/avance/trabajos/${t.flota_id}`,
           },
         ]
@@ -228,7 +254,9 @@ async function codigosPorCerrar(perfil: PerfilSesion): Promise<Leido> {
     const [faltaOficina, faltaPlanilla] = esperas[i]
     return faltaParaCerrar(c, { esperaElMes: conHorasEsteMes.has(c.codigo), faltaOficina, faltaPlanilla }).length === 0
   })
-  const esperan = entregados.length - listos.length
+  const listosSet = new Set(listos)
+  const esperan = entregados.filter((c) => !listosSet.has(c)).map((c) => c.codigo)
+  const cuales = esperan.length > 5 ? `${esperan.slice(0, 5).join(', ')} y ${esperan.length - 5} más` : esperan.join(', ')
   return {
     filas: listos.map((c) => ({
       id: c.codigo,
@@ -239,8 +267,8 @@ async function codigosPorCerrar(perfil: PerfilSesion): Promise<Leido> {
       ruta: `${enlaceCodigo(c.codigo)}#cierre-del-costeo`,
     })),
     nota:
-      esperan > 0
-        ? `${esperan === 1 ? 'Otro código entregado espera' : `Otros ${esperan} códigos entregados esperan`} algo de otra área antes de poder cerrarse (precios, horas, la planilla, los pagos de la oficina o que termine el mes): cada código dice qué le falta.`
+      esperan.length > 0
+        ? `${esperan.length === 1 ? `${listos.length > 0 ? 'Otro código entregado' : 'Un código entregado'}, ${cuales}, espera` : `${listos.length > 0 ? 'Otros' : ''} ${esperan.length} códigos entregados (${cuales}) esperan`.trim()} algo de otra área antes de poder cerrarse (precios, horas, la planilla, los pagos de la oficina o que termine el mes): cada código dice qué le falta.`
         : null,
   }
 }
