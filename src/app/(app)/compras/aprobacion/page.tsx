@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { DiasEnEspera } from '@/components/ui/dias-en-espera'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Pliegue } from '@/components/ui/seccion-desplegable'
@@ -12,6 +13,7 @@ import {
   type CompraAnulable,
   type CompraParaAprobar,
 } from '@/lib/datos/aprobacion-compras'
+import { diasEnEspera } from '@/lib/datos/dias-en-espera'
 import { resumenDetraccion } from '@/lib/dominio/detraccion'
 import { igvCompra } from '@/lib/dominio/compra-materiales'
 import { ORIGEN_COMPRA, situacionCompra } from '@/lib/dominio/logistica'
@@ -36,11 +38,21 @@ export default async function PaginaAprobacionCompras() {
   // Las mismas tres puertas que `documentos_por_aprobar` en la base.
   if (!aprueba && !configura && !puede(perfil, 'compras.ver')) redirect('/sin-permiso')
 
-  const [{ regla, compras, puestos, stockSinLeer }, anulables] = await Promise.all([
-    cargarAprobacionCompras({ puestos: configura }),
+  // La que más espera, arriba (plan 0): por la hora en que se pidió su aprobación.
+  const desde = (c: CompraParaAprobar) => (c.pedida_en ? Date.parse(c.pedida_en) : Number.POSITIVE_INFINITY)
+  const [{ regla, compras, puestos, stockSinLeer, pendientes, diasLeidos }, anulables] = await Promise.all([
+    cargarAprobacionCompras({ puestos: configura }).then(async (leido) => {
+      const pendientes = leido.compras.filter((c) => c.aprobacion === 'POR_APROBAR').sort((a, b) => desde(a) - desde(b))
+      // Los días los cuenta la base con la fecha de Lima. Sin ellos la lista sigue, sin la insignia y diciéndolo.
+      const diasLeidos = await diasEnEspera(pendientes.map((c) => c.pedida_en)).catch((e: unknown) => {
+        console.error('Aprobación de compras: no se pudieron contar los días en espera.', e)
+        return null
+      })
+      return { ...leido, pendientes, diasLeidos }
+    }),
     aprueba ? cargarComprasAnulables() : Promise.resolve([]),
   ])
-  const pendientes = compras.filter((c) => c.aprobacion === 'POR_APROBAR')
+  const dias = diasLeidos ?? pendientes.map(() => null)
   const decididas = compras.filter((c) => c.aprobacion !== 'POR_APROBAR')
 
   let resumen = 'Falta la regla de aprobación en la base.'
@@ -65,6 +77,12 @@ export default async function PaginaAprobacionCompras() {
           <h2 className="text-base font-semibold text-texto">
             Por aprobar <span className="tabular text-texto-suave">({pendientes.length})</span>
           </h2>
+          {diasLeidos === null && pendientes.length > 0 && (
+            <p className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-texto" role="status" data-dias-sin-leer>
+              No se pudieron contar los días que lleva esperando cada compra. Siguen de la más antigua a la más nueva; vuelve a cargar
+              la pantalla en un momento para ver los días.
+            </p>
+          )}
           {stockSinLeer && pendientes.some((c) => c.tipo !== 'OS') && (
             <p className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-texto" role="status">
               No se pudo leer cuánto hay en el almacén y cuánto ya viene en otras órdenes. Recarga la pantalla antes de aprobar una compra.
@@ -79,7 +97,7 @@ export default async function PaginaAprobacionCompras() {
               />
             </Tarjeta>
           ) : (
-            pendientes.map((c) => <CompraPorAprobar key={`${c.tipo}-${c.id}`} compra={c} aprueba={aprueba} />)
+            pendientes.map((c, i) => <CompraPorAprobar key={`${c.tipo}-${c.id}`} compra={c} aprueba={aprueba} dias={dias[i]} />)
           )}
         </section>
 
@@ -245,7 +263,7 @@ function destino(c: CompraParaAprobar) {
   return partes.length ? partes.join(' · ') : c.tipo === 'OS' ? 'Sin OT' : 'OT —'
 }
 
-function CompraPorAprobar({ compra: c, aprueba }: { compra: CompraParaAprobar; aprueba: boolean }) {
+function CompraPorAprobar({ compra: c, aprueba, dias }: { compra: CompraParaAprobar; aprueba: boolean; dias: number | null }) {
   const enDolares = c.moneda === 'USD'
   const deRq = c.requerimientos.length > 0
   const origen = ORIGEN_COMPRA[c.origen === 'DIRECTA' && deRq ? 'RQ' : c.origen]
@@ -266,6 +284,7 @@ function CompraPorAprobar({ compra: c, aprueba }: { compra: CompraParaAprobar; a
             <Insignia tono="neutro">{c.tipo === 'OS' ? 'Servicio' : 'Compra'}</Insignia>
             {c.tipo === 'OC' && origen && c.origen === 'DIRECTA' && <Insignia tono={origen.tono}>{origen.etiqueta}</Insignia>}
             <Insignia tono="aviso">Por aprobar</Insignia>
+            <DiasEnEspera dias={dias} desde={c.pedida_en} />
           </div>
         }
       />
