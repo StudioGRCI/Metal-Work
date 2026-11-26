@@ -97,7 +97,7 @@ export function Recorrido({
                   <p className="tabular text-xs text-texto-tenue">
                     {fechaHora(p.en)}
                     {/* Cuánto tardó desde el paso anterior, si la base lo da (hoy, la cotización). */}
-                    {p.dias !== null && <span data-recorrido-tardo> · {tardo(p.dias)}</span>}
+                    {p.dias !== null && <span data-recorrido-tardo className="text-texto-suave"> · {tardo(p.dias)}</span>}
                   </p>
                   {p.nota && <p className="text-xs break-words text-texto-suave">{p.nota}</p>}
                 </>

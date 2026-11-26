@@ -80,13 +80,23 @@ test('el recorrido de la cotización nombra la OT solo si la base la manda', () 
     paso(6, 'CODIGO_Y_OT', 'HECHO'),
     paso(7, 'FACTURA', 'AHORA', { puesto: 'Contabilidad', dias: 2, espera: 'FACTURA' }),
   ])
-  assert.deepEqual(pasos.map((p) => p.titulo), ['Enviada a Gerencia', 'Devuelta con observación', 'Corrección enviada', 'Aprobada', 'Con código interno y OT', 'Con código interno y OT', 'Factura'])
-  assert.equal(pasos[1].nota, null)
+  assert.deepEqual(pasos.map((p) => p.titulo), ['Enviada a Gerencia', 'Rechazada', 'Corrección subida', 'Aprobada', 'Con código interno y OT', 'Con código interno y OT', 'Factura'])
+  assert.equal(pasos[1].nota, 'Devuelta a Ventas con observación')
   assert.equal(pasos[2].nota, 'Pasó a la versión 2')
   assert.equal(pasos[3].nota, 'Liberada: ya la ven Contabilidad y Tesorería')
   assert.equal(pasos[4].nota, 'OT 9357-2026')
   assert.equal(pasos[5].nota, null)
   assert.equal(pasos[6].nota, 'Registra su factura.')
+})
+
+test('la anulada que estuvo aprobada ya no dice que la ven Contabilidad y Tesorería', () => {
+  const pasos = describirRecorridoDeLaCotizacion([
+    paso(1, 'SUBIDA', 'HECHO'),
+    paso(2, 'REVISION', 'HECHO', { detalle: 'APROBADA' }),
+    paso(3, 'ANULACION', 'HECHO'),
+  ])
+  assert.deepEqual(pasos.map((p) => p.titulo), ['Enviada a Gerencia', 'Aprobada', 'Anulada'])
+  assert.equal(pasos[1].nota, null)
 })
 
 test('un paso que este mapa no conoce se pinta en llano, no se esconde', () => {

@@ -7,12 +7,15 @@
  *      una aprobada con su código y su OT, y una anulada. Las fechas se corren
  *      hacia atrás con los disparadores apagados, solo en el banco.
  *   2. En la devuelta, la observación de Gerencia es lo primero de la tarjeta,
- *      antes que el cliente y el monto.
+ *      antes que el cliente y el monto; en la anulada, su motivo.
  *   3. El recorrido dice cada paso con las palabras de Ventas y cuánto tardó:
- *      «Devuelta con observación · a los 3 días», «Aprobada» con «Liberada…»,
+ *      «Rechazada · a los 3 días» con «Devuelta a Ventas con observación»,
+ *      «Aprobada» con «Liberada…»,
  *      «Con código interno y OT · a los 3 días»; y quién la tiene y hace cuánto.
  *   4. La campana trae la respuesta de Gerencia —aprobó, rechazó, anuló— y su
- *      toque lleva a la tarjeta de esa cotización (`#id`), también la anulada.
+ *      toque lleva a la tarjeta de esa cotización (`#id`), también la anulada:
+ *      la deja a la vista, marcada (`data-del-aviso`) y con el cursor. Abrir
+ *      otro aviso estando ya en la pantalla mueve la marca a la otra tarjeta.
  *   5. En el teléfono (390) nada se sale de la pantalla con el recorrido abierto.
  *
  * Deja capturas en CAPTURAS, en 390 y 1440. Variables: BANCO_CLAVE, BASE
@@ -170,7 +173,7 @@ const pasos = (recorrido) =>
     `cerrado dice que la tiene Ventas hace 1 día (${resumenDev})`)
   const pDev = await pasos(rDev)
   comprobar(/^Enviada a Gerencia/.test(pDev[0] ?? '') && !/ · (a los|al día|el mismo)/.test(pDev[0] ?? ''), `la subida no lleva días (${pDev[0]})`)
-  comprobar(/Devuelta con observación.*Gerencia.*a los 3 días/.test(pDev[1] ?? ''), `devuelta a los 3 días, con el puesto de Gerencia (${pDev[1]})`)
+  comprobar(/^Rechazada.*Gerencia.*a los 3 días.*Devuelta a Ventas con observación/.test(pDev[1] ?? ''), `rechazada y devuelta a los 3 días, con el puesto de Gerencia (${pDev[1]})`)
   await devuelta.scrollIntoViewIfNeeded()
   await devuelta.screenshot({ path: `${CAPTURAS}/9-1-ventas-1440-1-devuelta-con-recorrido.png` })
 
@@ -215,6 +218,25 @@ const pasos = (recorrido) =>
     }, cot.devuelta, { timeout: 10000 })
     .then(() => true, () => false)
   comprobar(visible, 'y la tarjeta queda a la vista')
+  const marcadas = () => pagina.evaluate(() => [...document.querySelectorAll('[data-del-aviso]')].map((e) => e.id))
+  const conCursor = () => pagina.evaluate(() => document.activeElement?.id ?? '')
+  comprobar(JSON.stringify(await marcadas()) === JSON.stringify([cot.devuelta]), `marcada como la del aviso (${await marcadas()})`)
+  comprobar((await conCursor()) === cot.devuelta, 'y con el cursor')
+
+  // Otro aviso, sin salir de la pantalla: la marca pasa a la otra tarjeta.
+  await pagina.locator('button[aria-label^="Avisos"]').first().click()
+  await panel.waitFor({ state: 'visible' })
+  await panel.locator('li', { hasText: numero.conOt }).filter({ hasText: 'aprobó' }).locator('button').click()
+  await pagina.waitForURL((u) => u.hash === `#${cot.conOt}`, { timeout: 15000 }).catch(() => {})
+  const pasoLaMarca = await pagina
+    .waitForFunction((id) => {
+      const m = [...document.querySelectorAll('[data-del-aviso]')]
+      const r = document.getElementById(id)?.getBoundingClientRect()
+      return m.length === 1 && m[0].id === id && document.activeElement?.id === id && r && r.top < window.innerHeight && r.bottom > 0
+    }, cot.conOt, { timeout: 10000 })
+    .then(() => true, () => false)
+  comprobar(pasoLaMarca, `en la misma pantalla, el aviso de la aprobada la marca a ella sola (${await marcadas()})`)
+  await pagina.screenshot({ path: `${CAPTURAS}/9-1-ventas-1440-4-marcada-por-el-aviso.png` })
 
   await ir(pagina, '/')
   await pagina.locator('button[aria-label^="Avisos"]').first().click()
@@ -225,6 +247,10 @@ const pasos = (recorrido) =>
     `el de la anulada lleva a su tarjeta, entre las anuladas (${pagina.url()})`)
   await conReact(pagina)
   comprobar(await tarjeta(pagina, cot.anulada).waitFor({ state: 'visible', timeout: 15000 }).then(() => true, () => false), 'y ahí está')
+  comprobar(JSON.stringify(await marcadas()) === JSON.stringify([cot.anulada]), `marcada como la del aviso (${await marcadas()})`)
+  const anulada = limpio(await tarjeta(pagina, cot.anulada).innerText())
+  comprobar(anulada.indexOf('Anulada:') > 0 && anulada.indexOf('Anulada:') < anulada.indexOf(cliente.razon_social),
+    `el motivo de la anulación va antes que el cliente («${anulada.slice(0, 140)}…»)`)
   await contexto.close()
 }
 

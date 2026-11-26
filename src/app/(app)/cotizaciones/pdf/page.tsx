@@ -305,8 +305,9 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
             const versionAnterior = c.versiones[0]
 
             return (
-              // Con `id`: el aviso de la campana aterriza en esta fila (`#id`).
-              <li key={c.id} id={c.id ?? undefined} className="scroll-mt-20 target:[&>div]:border-acento">
+              // Con `id`: el aviso de la campana aterriza en esta fila (`#id`), y
+              // `IrALaTarjetaDelAviso` la marca con `data-del-aviso`.
+              <li key={c.id} id={c.id ?? undefined} className="scroll-mt-20 outline-none data-del-aviso:[&>div]:border-acento data-del-aviso:[&>div]:ring-1 data-del-aviso:[&>div]:ring-acento">
                 <Tarjeta>
                   <TarjetaCuerpo className="space-y-2.5">
                     <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
@@ -322,8 +323,8 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                       </span>
                     </div>
 
-                    {/* La observación de Gerencia va arriba, antes que el cliente y el monto: es lo
-                        primero que el vendedor tiene que leer para corregirla (Plan 9.1). */}
+                    {/* La observación de Gerencia y el motivo de la anulación van arriba, antes que el
+                        cliente y el monto: es lo primero que el vendedor tiene que leer (Plan 9.1). */}
                     {c.estado === 'RECHAZADA' && c.observacion && (
                       <div className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-peligro-suave px-2.5 py-2 text-sm text-peligro">
                         <MessageSquareWarning aria-hidden className="mt-0.5 size-4 shrink-0" />
@@ -339,6 +340,12 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                       </div>
                     )}
 
+                    {c.estado === 'ANULADA' && (
+                      <p className="rounded-[var(--radius-base)] bg-peligro-suave px-2.5 py-2 text-sm text-peligro">
+                        Anulada: {c.observacion || 'Consulta el motivo con Gerencia.'} El número y el archivo se conservan en el historial.
+                      </p>
+                    )}
+
                     <p className="text-sm text-texto">
                       {c.cliente ?? 'Cliente reservado'}
                       {c.carroceria && <span className="text-texto-suave"> · {c.carroceria}</span>}
@@ -352,12 +359,6 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
 
                     {c.url ? <EnlaceArchivo url={c.url} mime={c.mime_type} nombre={c.nombre_archivo} descarga={`/cotizaciones/pdf/archivo/${c.id}`} /> : (
                       <p role="alert" className="text-sm text-aviso">No se pudo abrir el archivo de esta cotización. Recarga la página; si continúa, avisa al administrador.</p>
-                    )}
-
-                    {c.estado === 'ANULADA' && (
-                      <p className="rounded-[var(--radius-base)] bg-peligro-suave px-2.5 py-2 text-sm text-peligro">
-                        Anulada: {c.observacion || 'Consulta el motivo con Gerencia.'} El número y el archivo se conservan en el historial.
-                      </p>
                     )}
 
                     {c.estado === 'POR_REVISAR' && versionAnterior && (

@@ -120,16 +120,20 @@ const ESPERAS_DEL_REQUERIMIENTO: Record<string, (oc: string | null) => string> =
 }
 
 // Con las palabras que usa Ventas con su cliente (Plan 9.1): enviada, devuelta
-// con observación, aprobada, con OT.
+// con observación, aprobada, con OT. El título dice lo mismo que la insignia y
+// la campana («Rechazada»), y la nota, lo que eso quiere decir para Ventas.
 const PASOS_DE_LA_COTIZACION: Record<string, Frases> = {
   SUBIDA: { hecho: 'Enviada a Gerencia', falta: 'Envío a Gerencia' },
   REVISION: {
-    hecho: (d) => (d === 'RECHAZADA' ? 'Devuelta con observación' : d === 'APROBADA' ? 'Aprobada' : 'Revisada'),
+    hecho: (d) => (d === 'RECHAZADA' ? 'Rechazada' : d === 'APROBADA' ? 'Aprobada' : 'Revisada'),
     falta: 'Revisión de Gerencia',
-    // Nadie la libera a mano desde la migración 20261027200000: aprobada, ya la ven Contabilidad y Tesorería.
-    nota: (d) => (d === 'APROBADA' ? 'Liberada: ya la ven Contabilidad y Tesorería' : null),
+    // Nadie la libera a mano desde la migración 20261027200000: aprobada, ya la
+    // ven Contabilidad y Tesorería. Anulada después, ya no (`cotizacion_fue_aprobada`),
+    // y la nota se quita en `describirRecorridoDeLaCotizacion`.
+    nota: (d) =>
+      d === 'APROBADA' ? 'Liberada: ya la ven Contabilidad y Tesorería' : d === 'RECHAZADA' ? 'Devuelta a Ventas con observación' : null,
   },
-  CORRECCION: { hecho: 'Corrección enviada', falta: 'Corrección', nota: (version) => `Pasó a la ${version}` },
+  CORRECCION: { hecho: 'Corrección subida', falta: 'Corrección', nota: (version) => `Pasó a la ${version}` },
   // El número de la OT llega solo a quien lee las órdenes.
   CODIGO_Y_OT: { hecho: 'Con código interno y OT', falta: 'Código interno y OT', nota: (ot) => ot },
   FACTURA: { hecho: 'Facturada', falta: 'Factura' },
@@ -168,5 +172,10 @@ export const describirRecorridoDelRequerimiento = (pasos: readonly PasoDelRecorr
   describir(pasos, PASOS_DEL_REQUERIMIENTO, ESPERAS_DEL_REQUERIMIENTO)
 
 /** El recorrido de una cotización, en palabras. */
-export const describirRecorridoDeLaCotizacion = (pasos: readonly PasoDelRecorrido[]) =>
-  describir(pasos, PASOS_DE_LA_COTIZACION, ESPERAS_DE_LA_COTIZACION)
+export function describirRecorridoDeLaCotizacion(pasos: readonly PasoDelRecorrido[]): PasoDescrito[] {
+  const descritos = describir(pasos, PASOS_DE_LA_COTIZACION, ESPERAS_DE_LA_COTIZACION)
+  const anulada = pasos.some((p) => p.paso === 'ANULACION' && p.situacion === 'HECHO')
+  return anulada
+    ? descritos.map((p) => (p.paso === 'REVISION' && p.detalle === 'APROBADA' ? { ...p, nota: null } : p))
+    : descritos
+}
