@@ -10106,6 +10106,73 @@ export type Database = {
         }
         Relationships: []
       }
+      seguimiento_de_compras: {
+        Row: {
+          id: string
+          orden_compra_id: string | null
+          orden_servicio_id: string | null
+          tipo: string
+          motivo: string
+          nota: string | null
+          fecha_anterior: string | null
+          fecha_nueva: string | null
+          registrado_por: string | null
+          registrado_en: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_compra_id?: string | null
+          orden_servicio_id?: string | null
+          tipo: string
+          motivo: string
+          nota?: string | null
+          fecha_anterior?: string | null
+          fecha_nueva?: string | null
+          registrado_por?: string | null
+          registrado_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_compra_id?: string | null
+          orden_servicio_id?: string | null
+          tipo?: string
+          motivo?: string
+          nota?: string | null
+          fecha_anterior?: string | null
+          fecha_nueva?: string | null
+          registrado_por?: string | null
+          registrado_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "seguimiento_de_compras_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_compra_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "seguimiento_de_compras_orden_servicio_id_fkey"
+            columns: ["orden_servicio_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_servicio"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "seguimiento_de_compras_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       series_documentarias: {
         Row: {
           id: string
@@ -12003,6 +12070,16 @@ export type Database = {
         }
         Returns: string
       }
+      anotar_motivo_atraso: {
+        Args: {
+          p_id: string | null
+          p_tipo: string | null
+          p_documento: string | null
+          p_motivo: string | null
+          p_nota: string | null
+        }
+        Returns: string
+      }
       anotar_salidas_de_antes: {
         Args: Record<PropertyKey, never>
         Returns: number
@@ -13704,6 +13781,17 @@ export type Database = {
         }
         Returns: string
       }
+      corregir_fecha_esperada: {
+        Args: {
+          p_id: string | null
+          p_tipo: string | null
+          p_documento: string | null
+          p_fecha: string | null
+          p_motivo: string | null
+          p_nota: string | null
+        }
+        Returns: string
+      }
       corregir_orden_compra: {
         Args: {
           p_correccion: string | null
@@ -14533,6 +14621,13 @@ export type Database = {
       fecha_de_lima: {
         Args: {
           p_en: string | null
+        }
+        Returns: string
+      }
+      fecha_prometida_de_compra: {
+        Args: {
+          p_oc: string | null
+          p_os: string | null
         }
         Returns: string
       }
@@ -15971,6 +16066,38 @@ export type Database = {
         Returns: number
       }
       recorrido_de_cotizaciones: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          documento: string | null
+          orden: number | null
+          paso: string | null
+          situacion: string | null
+          puesto: string | null
+          en: string | null
+          dias: number | null
+          espera: string | null
+          detalle: string | null
+        }[]
+      }
+      recorrido_de_ordenes_compra: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          documento: string | null
+          orden: number | null
+          paso: string | null
+          situacion: string | null
+          puesto: string | null
+          en: string | null
+          dias: number | null
+          espera: string | null
+          detalle: string | null
+        }[]
+      }
+      recorrido_de_ordenes_servicio: {
         Args: {
           p_ids: string[] | null
         }

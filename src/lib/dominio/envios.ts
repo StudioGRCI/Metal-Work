@@ -36,6 +36,9 @@ export const CLAVES_DEL_ENVIO = [
   'tareo',
   'uso_saldo',
   'cuenta_caja',
+  // El seguimiento de cada compra (Plan 4.2, 20261126210000).
+  'motivo_atraso',
+  'fecha_prometida',
 ] as const
 
 export type ClaveDelEnvio = (typeof CLAVES_DEL_ENVIO)[number]

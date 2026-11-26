@@ -330,6 +330,25 @@ async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo:
           : dicho('El uso de las horas reservadas', 'Los usos de las horas reservadas', 'otro', detalle),
       }
     }
+    case 'motivo_atraso':
+    case 'fecha_prometida': {
+      const { data } = await supabase
+        .from('seguimiento_de_compras')
+        .select('tipo, fecha_nueva, registrado_por, ordenes_compra_materiales(numero, referencia), ordenes_servicio(numero)')
+        .eq('id', id)
+        .maybeSingle()
+      if (!data) return null
+      const de = data.ordenes_compra_materiales
+        ? (data.ordenes_compra_materiales.numero ?? data.ordenes_compra_materiales.referencia)
+        : (data.ordenes_servicio?.numero ?? null)
+      return {
+        por: data.registrado_por,
+        lo:
+          data.tipo === 'FECHA_ESPERADA'
+            ? dicho('La fecha corregida', 'Las fechas corregidas', 'otra', [de, data.fecha_nueva ? `al ${fecha(data.fecha_nueva)}` : null].filter(Boolean).join(' ') || null)
+            : dicho('El motivo del atraso', 'Los motivos del atraso', 'otro', de),
+      }
+    }
     case 'cuenta_caja': {
       const { data } = await supabase.from('cajas').select('nombre, creado_por').eq('id', id).maybeSingle()
       return data && { por: data.creado_por, lo: dicho('La cuenta', 'Las cuentas', 'otra', data.nombre) }
