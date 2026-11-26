@@ -10,6 +10,7 @@ import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabl
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
 import { catalogoDeAlmacen, type MaterialParaConteo } from '@/lib/datos/atencion-materiales'
+import { notasAbiertasParaAlmacen } from '@/lib/datos/conformidad'
 import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
 import { insumosPorSacarDelKardex, type InsumoPorSacar } from '@/lib/datos/kardex'
 import { metradoDeRequerimientos, type MetradoDelInsumo } from '@/lib/datos/metrado-rq'
@@ -25,6 +26,8 @@ import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { AvanceDelRequerimiento, CompraDelInsumo, EntregaDelInsumo, MaterialDelInsumo } from '../avance'
 import { ConAvisos } from './avisos'
+import { NotasDeLasEntregas } from './notas-de-entregas'
+import { AvisoDeLasNotas } from './responder-nota'
 import { EntregarConFaltante, PasoRequerimiento, RevisarStock, type StockDelSistema } from './controles'
 import { PorComprar, type GrupoPorComprar } from './por-comprar'
 
@@ -69,7 +72,7 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
   const vista = params.vista === 'todos' ? 'todos' : params.vista === 'comprar' && compra ? 'comprar' : 'abiertos'
   const preseleccion = typeof params.rq === 'string' ? params.rq : null
   // Logística genera la OC desde aquí: necesita el padrón y el catálogo de Almacén.
-  const [{ requerimientos, sinEntregado }, proveedores, materiales] = await Promise.all([
+  const [{ requerimientos, sinEntregado }, proveedores, materiales, notas] = await Promise.all([
     // Con lo entregado de cada insumo: Almacén ve qué falta entregar de cada RQ
     // (plan 2, entrega 2.1). Si eso no se pudo leer, la bandeja sigue sin las
     // cifras y lo dice, como el metrado y el recorrido.
@@ -82,6 +85,14 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
     ),
     compra ? proveedoresParaCompra() : Promise.resolve([]),
     compra ? catalogoDeAlmacen() : Promise.resolve([]),
+    // Las notas abiertas de las entregas: quien pidió dice que una salida no
+    // llegó o llegó incompleta (plan 2, entrega 2.2). Las ve Almacén arriba.
+    recibe || despacha
+      ? notasAbiertasParaAlmacen().catch((e: unknown) => {
+          console.error('Atención: no se pudieron leer las notas de las entregas.', e)
+          return null
+        })
+      : Promise.resolve([]),
   ])
   const paraComprar = compra ? { proveedores, materiales, puedeRegistrarProveedor: puede(perfil, 'proveedores.editar') } : null
   // Almacén asocia o da de alta el material nuevo al revisar el stock: el catálogo
@@ -129,7 +140,7 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
 
   // El que espera el sustento o el visto de Diseño todavía no le toca a Almacén:
   // no cuenta como suyo y va después de los que sí puede revisar.
-  const leToca = (r: RequerimientoListado) => leTocaAtender(r, { recibe, despacha, compraDe }) && !frenoDelRq(r, metrado)
+  const leToca = (r: RequerimientoListado) => leTocaAtender(r, { recibe, despacha, compraDe }, espera.get(r.id)?.puesto) && !frenoDelRq(r, metrado)
   const meToca = requerimientos.filter(leToca).length
   // En qué grupo va cada RQ de «Por atender», para leer el orden (`data-grupo`).
   const grupoDe = new Map<string, string>()
@@ -205,6 +216,16 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
           antigüedad y sin su recorrido. Vuelve a cargar la pantalla en un momento.
         </p>
       )}
+
+      {notas === null && (
+        <p role="status" className="mb-3 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-notas-sin-leer>
+          No se pudieron leer las notas de las entregas: si quien pidió anotó que algo no llegó, no se ve aquí. Vuelve a cargar la pantalla en
+          un momento.
+        </p>
+      )}
+
+      {(recibe || despacha) && <AvisoDeLasNotas />}
+      {vista !== 'comprar' && notas && <NotasDeLasEntregas notas={notas} />}
 
       {vista === 'comprar' && paraComprar ? (
         <PorComprar grupos={grupos} preseleccion={preseleccion} {...paraComprar} />

@@ -6,6 +6,7 @@ import { Vistas } from '@/components/estructura/vistas'
 import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { correccionesDe } from '@/lib/datos/correcciones'
+import { conformidadDeRequerimientos } from '@/lib/datos/conformidad'
 import { metradoDeRequerimientos } from '@/lib/datos/metrado-rq'
 import { recorridoDeRequerimientos } from '@/lib/datos/recorrido'
 import { esperaSuSustento } from '@/lib/dominio/metrado-rq'
@@ -18,7 +19,7 @@ import { exigirPermiso, puede } from '@/lib/sesion'
 import { esUuid } from '@/lib/utils'
 
 import { NuevoRequerimiento } from './formulario'
-import { ResumenDeRequerimientos, TarjetaRequerimiento } from './tarjeta'
+import { ResumenDeRequerimientos, TarjetaRequerimiento, tieneNotaAbierta } from './tarjeta'
 
 export const metadata = { title: 'Requerimientos' }
 
@@ -93,7 +94,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
   // cifra verde de arriba. Las cifras siguen contando todos.
   const soloRecoger = !soloUno && !plazo && params.ver === 'recoger'
   const recogen = enPlazo ?? (soloRecoger ? requerimientos.filter(tieneParaRecoger) : requerimientos)
-  const [correcciones, metrado, recorridos] = await Promise.all([
+  const [correcciones, metrado, recorridos, conformidad] = await Promise.all([
     correccionesDe('REQUERIMIENTO', recogen.map((r) => r.id)),
     // De todos, no solo de los mostrados: las cifras de arriba y «esperan tu sustento» los cuentan.
     // Sin el metrado, la tarjeta sigue: solo no dice qué insumo se pasa, y arriba se avisa.
@@ -104,6 +105,12 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
     // Sin el recorrido, la tarjeta sigue con todo lo demás y lo dice en su lugar.
     recorridoDeRequerimientos(recogen.map((r) => r.id)).catch((e: unknown) => {
       console.error('Requerimientos: no se pudo leer el recorrido.', e)
+      return null
+    }),
+    // Las salidas de cada insumo con su foto y lo que quien pidió anotó de ellas
+    // (plan 2, entrega 2.2). Sin ellas, la tarjeta sigue y lo dice en su lugar.
+    conformidadDeRequerimientos(recogen.map((r) => r.id)).catch((e: unknown) => {
+      console.error('Requerimientos: no se pudieron leer las salidas.', e)
       return null
     }),
   ])
@@ -274,7 +281,10 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
               rq={r}
               // Lo que va en camino se ve desplegado, para ver de un vistazo qué
               // se recoge y qué falta; lo entregado y lo anulado, al presionar.
-              insumosAbiertos={Boolean(soloUno) || (r.estado !== 'ENTREGADO' && r.estado !== 'ANULADO')}
+              // Lo entregado también, si una salida tiene una nota que Almacén no cerró.
+              insumosAbiertos={
+                Boolean(soloUno) || (r.estado !== 'ENTREGADO' && r.estado !== 'ANULADO') || Boolean(conformidad && tieneNotaAbierta(r, conformidad))
+              }
               enlaceCodigo={supervisaArea && !deSuArea ? '/requerimientos?area=todas&codigo=' : '/requerimientos?codigo='}
               // El colaborador de Diseño solo pide: corrige y anula los suyos (migración 20261106100000).
               anula={esSuyo(r)}
@@ -283,6 +293,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
               correcciones={correcciones.get(r.id)}
               metrado={metrado}
               recorrido={recorridos ? describirRecorridoDelRequerimiento(recorridos.get(r.id) ?? []) : null}
+              conformidad={conformidad}
             />
           ))}
         </div>
