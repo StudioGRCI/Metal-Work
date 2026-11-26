@@ -228,7 +228,7 @@ export function ActividadesDeOrden({
         const sinHoy = lista.filter((a) => !a.terminada && !reportadaHoy(a.id))
         const abiertas = lista.filter((a) => !a.terminada).length
         return (
-        <Tarjeta key={area.id} id={`area-${area.codigo}`} className="scroll-mt-20">
+        <Tarjeta key={area.id} id={`area-${area.codigo}`} className="scroll-mt-2">
           <TarjetaCabecera
             titulo={area.nombre}
             ayuda={
@@ -268,7 +268,7 @@ export function ActividadesDeOrden({
               {lista.map((act) => {
                 const deHoy = reportadaHoy(act.id)
                 return (
-                  <li key={act.id} id={`actividad-${act.id}`} className="scroll-mt-20 space-y-2 px-4 py-3">
+                  <li key={act.id} id={`actividad-${act.id}`} className="scroll-mt-2 space-y-2 px-4 py-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-texto">
@@ -328,7 +328,7 @@ export function ActividadesDeOrden({
                 {lista.map((act) => {
                   const deHoy = reportadaHoy(act.id)
                   return (
-                  <TR key={act.id} id={`actividad-${act.id}`} className="scroll-mt-20">
+                  <TR key={act.id} id={`actividad-${act.id}`} className="scroll-mt-2">
                     <TD className="text-xs text-texto-tenue">{act.orden_secuencia}</TD>
                     <TD>
                       <p className="text-sm font-medium text-texto">{act.nombre}</p>
@@ -402,7 +402,7 @@ export function ActividadesDeOrden({
                 const corrige = puedeCorregir.has(r.id)
                 const elimina = puedeEliminar.has(r.id)
                 return (
-                  <li key={r.id} id={r.id} className="scroll-mt-20 space-y-2 px-4 py-2.5">
+                  <li key={r.id} id={r.id} className="scroll-mt-2 space-y-2 px-4 py-2.5">
                     <div className="flex flex-wrap items-baseline gap-2">
                       <CalendarDays aria-hidden className="size-4 shrink-0 text-texto-tenue" />
                       <span className="tabular text-xs text-texto-suave">{fmtFecha(r.fecha)}</span>

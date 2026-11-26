@@ -5,6 +5,7 @@ import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion, NO_TOCO_NADA } from '@/lib/acciones'
 import { exigirSesion, puede } from '@/lib/sesion'
+import { CUENTA_YA_NO_ACTIVA } from '@/lib/dominio/areas'
 import { codigoDeCarroceria, nombreDeCarroceria } from '@/lib/dominio/medidas-carroceria'
 import { createClient } from '@/lib/supabase/server'
 
@@ -351,6 +352,74 @@ export async function guardarMedidasCarroceria(
   return {
     ok: true,
     mensaje: 'Medidas técnicas guardadas en el catálogo.',
+  }
+}
+
+/**
+ * La cuenta responsable de un área (`areas.jefe_id`), o ninguna. Solo el
+ * administrador del sistema: la política `editar_areas` pide lo mismo que
+ * `exigirEdicion` (`es_admin()` o `configuracion.editar`, que solo tiene el
+ * puesto ADMIN). Que la cuenta esté activa lo exige la base
+ * (`fn_area_responsable_activo`, migración 20261125205000).
+ */
+export async function asignarResponsableDeArea(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const problema = await exigirEdicion()
+  if (problema) return { ok: false, error: 'Asignar el responsable de un área es del administrador del sistema.' }
+
+  const analisis = z
+    .object({ area_id: z.guid(), jefe_id: z.union([z.literal(''), z.guid()]) })
+    .safeParse(Object.fromEntries(datos))
+  if (!analisis.success) return { ok: false, error: 'Elige una cuenta de la lista.' }
+  const v = analisis.data
+
+  const supabase = await createClient()
+  // Una cuenta dada de baja no se guarda, tampoco la que ya estaba: se mira
+  // antes de escribir. El disparador cubre la que se da de baja entretanto.
+  if (v.jefe_id) {
+    const { data: elegida, error: errorCuenta } = await supabase
+      .from('usuarios')
+      .select('activo')
+      .eq('id', v.jefe_id)
+      .maybeSingle()
+    if (errorCuenta) return { ok: false, error: mensajeDeError(errorCuenta) }
+    if (!elegida?.activo) {
+      revalidatePath('/configuracion')
+      return { ok: false, error: CUENTA_YA_NO_ACTIVA }
+    }
+  }
+  const { data, error } = await supabase
+    .from('areas')
+    .update({ jefe_id: v.jefe_id || null })
+    .eq('id', v.area_id)
+    // Una fila que el RLS esconde no es un error: sin esto diría «listo» sin
+    // haber guardado nada.
+    // La cuenta, para saber si sigue activa: el disparador no vuelve a juzgar
+    // la que no cambió, y «Guardar» con la dada de baja no es «listo».
+    .select('nombre, responsable:usuarios!areas_jefe_id_fkey(activo)')
+    .maybeSingle()
+
+  if (error) {
+    // La cuenta se dio de baja con la ventana abierta (el disparador de la
+    // migración 20261125205000): la lista se pone al día y deja de ofrecerla.
+    if (error.code === '23514') {
+      revalidatePath('/configuracion')
+      return { ok: false, error: CUENTA_YA_NO_ACTIVA }
+    }
+    return { ok: false, error: mensajeDeError(error) }
+  }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
+  const cuenta = data.responsable as unknown as { activo: boolean } | null
+  if (v.jefe_id && !cuenta?.activo) {
+    revalidatePath('/configuracion')
+    return { ok: false, error: CUENTA_YA_NO_ACTIVA }
+  }
+
+  revalidatePath('/configuracion')
+  return {
+    ok: true,
+    mensaje: v.jefe_id
+      ? `${data.nombre} ya tiene su cuenta responsable.`
+      : `${data.nombre} quedó sin cuenta responsable.`,
   }
 }
 

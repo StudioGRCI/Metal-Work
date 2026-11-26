@@ -2,6 +2,7 @@ import { ArrowUpFromLine, ShoppingCart } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Vistas } from '@/components/estructura/vistas'
+import { DiasEnEspera } from '@/components/ui/dias-en-espera'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
@@ -12,10 +13,12 @@ import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
 import { insumosPorSacarDelKardex, type InsumoPorSacar } from '@/lib/datos/kardex'
 import { metradoDeRequerimientos, type MetradoDelInsumo } from '@/lib/datos/metrado-rq'
 import { proveedoresParaCompra, type ProveedorParaCompra } from '@/lib/datos/proveedores'
+import { recorridoDeRequerimientos } from '@/lib/datos/recorrido'
 import { cargarRequerimientos, catalogoParaRequerimiento, type MaterialParaRequerimiento, type RequerimientoListado } from '@/lib/datos/requerimientos'
 import { stockEnAlmacen, type MaterialEnStock } from '@/lib/datos/stock-almacen'
 import { ESTADO_METRADO, FRENO_DEL_RQ, frenaElRq, frenoDelRq, listaDeItems, queFaltaDelFreno } from '@/lib/dominio/metrado-rq'
-import { estadoDelRequerimiento, leTocaAtender, quienAtiende, tipoDeRequerimiento, type CompraDe } from '@/lib/dominio/requerimientos'
+import { ESTADOS_RQ_ABIERTOS, estadoDelRequerimiento, leTocaAtender, quienAtiende, tipoDeRequerimiento, type CompraDe } from '@/lib/dominio/requerimientos'
+import type { PasoDelRecorrido } from '@/lib/dominio/recorrido'
 import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -84,7 +87,7 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
   // «Entregado» pide antes la salida del kardex de cada insumo: a quien despacha
   // se le dice cuántos faltan en cada RQ listo.
   const listos = despacha ? requerimientos.filter((r) => r.estado === 'LISTO_EN_ALMACEN').map((r) => r.id) : []
-  const [catalogo, correcciones, stock, porSacar, metradoLeido] = await Promise.all([
+  const [catalogo, correcciones, stock, porSacar, metradoLeido, recorridos] = await Promise.all([
     hayNuevos ? catalogoParaRequerimiento() : Promise.resolve<MaterialParaRequerimiento[]>([]),
     correccionesDe('REQUERIMIENTO', requerimientos.map((r) => r.id)),
     stockDelSistema(hayNuevos ? null : porRevisar),
@@ -95,7 +98,20 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
       console.error('Atención: no se pudo leer el metrado de Diseño.', e)
       return null
     }),
+    // Quién tiene cada RQ abierto y desde cuándo, con los días que cuenta la base
+    // (fecha de Lima). Sin eso la bandeja sigue: solo sin la insignia de días.
+    recorridoDeRequerimientos(requerimientos.filter(abierto).map((r) => r.id)).catch(
+      (e: unknown) => {
+        console.error('Atención: no se pudieron contar los días en espera.', e)
+        return null
+      },
+    ),
   ])
+  const espera = new Map<string, PasoDelRecorrido>()
+  for (const [id, pasos] of recorridos ?? []) {
+    const ahora = pasos.find((p) => p.situacion === 'AHORA')
+    if (ahora) espera.set(id, ahora)
+  }
   const metrado = metradoLeido ?? new Map<string, MetradoDelInsumo>()
   const stockDelCatalogo = stock === 'no_se_pudo' ? null : hayNuevos ? Object.fromEntries([...stock].map(([id, m]) => [id, sistemaDe(m)])) : {}
 
@@ -103,11 +119,31 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
   // no cuenta como suyo y va después de los que sí puede revisar.
   const leToca = (r: RequerimientoListado) => leTocaAtender(r, { recibe, despacha, compraDe }) && !frenoDelRq(r, metrado)
   const meToca = requerimientos.filter(leToca).length
+  // En qué grupo va cada RQ de «Por atender», para leer el orden (`data-grupo`).
+  const grupoDe = new Map<string, string>()
   if (vista === 'abiertos') {
     const orden = (r: RequerimientoListado) => (leToca(r) ? 0 : frenoDelRq(r, metrado) ? 2 : 1)
-    requerimientos.sort((a, b) => orden(a) - orden(b))
+    // Dentro de cada grupo, primero lo que hoy tiene el puesto de quien mira
+    // (Almacén, Logística o la administradora, según su recorrido) y después lo
+    // demás; en cada parte, el que más espera arriba (plan 0): desde que lo tiene
+    // quien lo tiene. Sin el recorrido queda el orden de antes.
+    const propios = new Set([
+      ...(recibe || despacha ? ['Almacén'] : []),
+      ...(compraDe.OPERACION ? ['Logística'] : []),
+      ...(compraDe.ADMINISTRACION ? ['Administración'] : []),
+    ])
+    const ajeno = (r: RequerimientoListado) => {
+      const quien = espera.get(r.id)?.puesto
+      return quien && propios.has(quien) ? 0 : 1
+    }
+    const desde = (r: RequerimientoListado) => {
+      const en = espera.get(r.id)?.en
+      return en ? Date.parse(en) : Number.POSITIVE_INFINITY
+    }
+    requerimientos.sort((a, b) => orden(a) - orden(b) || ajeno(a) - ajeno(b) || desde(a) - desde(b))
+    for (const r of requerimientos) grupoDe.set(r.id, `${orden(r)}${ajeno(r)}`)
   }
-  const grupos = compra ? insumosPorComprar(requerimientos, compraDe, metrado) : []
+  const grupos = compra ? insumosPorComprar(requerimientos, compraDe, metrado, espera) : []
   const porComprar = grupos.reduce((suma, g) => suma + g.insumos.length, 0)
   const cuenta = { abiertos: requerimientos.length, comprar: porComprar, todos: requerimientos.length }
 
@@ -141,6 +177,13 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
         <p role="status" className="mb-3 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-metrado-sin-leer>
           No se pudo leer el metrado de Diseño. Si un requerimiento se pasa del metrado, el sistema no deja revisarlo ni comprarlo y
           dice por qué. Vuelve a cargar la pantalla en un momento.
+        </p>
+      )}
+
+      {recorridos === null && requerimientos.some(abierto) && (
+        <p role="status" className="mb-3 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-dias-sin-leer>
+          No se pudieron contar los días que lleva esperando cada requerimiento: la lista sigue sin ellos y sin ordenarse por antigüedad.
+          Vuelve a cargar la pantalla en un momento.
         </p>
       )}
 
@@ -185,6 +228,8 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
                       porSacar={porSacar === null ? null : porSacar[r.id] ?? []}
                       correcciones={correcciones.get(r.id)}
                       metrado={metrado}
+                      espera={espera.get(r.id)}
+                      grupo={grupoDe.get(r.id)}
                     />
                   ))
                 )}
@@ -211,6 +256,9 @@ async function stockDelSistema(materiales: string[] | null): Promise<Map<string,
     return 'no_se_pudo'
   }
 }
+
+/** El RQ que todavía espera a alguien: el que lleva días en espera. */
+const abierto = (r: RequerimientoListado) => (ESTADOS_RQ_ABIERTOS as readonly string[]).includes(r.estado)
 
 function sistemaDe(m: MaterialEnStock): StockDelSistema {
   return {
@@ -247,7 +295,13 @@ function insumosPorComprar(
   requerimientos: RequerimientoListado[],
   compraDe: CompraDe,
   metrado: Map<string, MetradoDelInsumo>,
+  espera: Map<string, PasoDelRecorrido>,
 ): GrupoPorComprar[] {
+  // El que más espera, arriba (plan 0): desde que lo tiene quien compra.
+  const desde = (r: RequerimientoListado) => {
+    const en = espera.get(r.id)?.en
+    return en ? Date.parse(en) : Number.POSITIVE_INFINITY
+  }
   return (['OPERACION', 'ADMINISTRACION'] as const)
     .filter((tipo) => compraDe[tipo])
     .map((tipo) => ({
@@ -255,6 +309,7 @@ function insumosPorComprar(
       ...TITULO_POR_COMPRAR[tipo],
       insumos: requerimientos
         .filter((r) => tipoDeRequerimiento(r) === tipo && (r.estado === 'SIN_STOCK' || r.estado === 'EN_ATENCION'))
+        .sort((a, b) => desde(a) - desde(b))
         .flatMap((r) =>
           r.lineas
             // Lo que se pasa del metrado sin el visto de Diseño no va en una OC (la base lo rechaza).
@@ -272,6 +327,8 @@ function insumosPorComprar(
               material: l.material_nombre ?? l.descripcion,
               codigo_material: l.material_codigo,
               fecha_requerida: r.fecha_requerida,
+              dias: espera.get(r.id)?.dias ?? null,
+              desde: espera.get(r.id)?.en ?? null,
             })),
         ),
     }))
@@ -291,6 +348,8 @@ function Fila({
   porSacar,
   correcciones,
   metrado,
+  espera,
+  grupo,
 }: {
   rq: RequerimientoListado
   recibe: boolean
@@ -307,6 +366,10 @@ function Fila({
   porSacar: InsumoPorSacar[] | null
   correcciones: CorreccionVista[] | undefined
   metrado: Map<string, MetradoDelInsumo>
+  /** Quién lo tiene ahora, desde cuándo y hace cuántos días (del recorrido); nada si no se pudo leer o ya no lo tiene nadie. */
+  espera: PasoDelRecorrido | undefined
+  /** En «Por atender», su grupo en el orden: le toca / no / frenado, y si lo tiene el puesto de quien mira. */
+  grupo?: string
 }) {
   const estado = estadoDelRequerimiento(rq)
   // Los insumos que se pasan del metrado sin el visto de Diseño.
@@ -337,7 +400,7 @@ function Fila({
 
   return (
     // El ancla de la fila: la salida del kardex vuelve aquí para marcarlo entregado.
-    <TR id={`rq-${rq.id}`} className="block scroll-mt-20 sm:table-row">
+    <TR id={`rq-${rq.id}`} className="block scroll-mt-20 sm:table-row" data-grupo={grupo}>
       <TD className="block pt-3 pb-1 align-top sm:table-cell sm:py-2">
         <p className="tabular font-semibold text-texto">
           {rq.numero}
@@ -384,15 +447,19 @@ function Fila({
         </ul>
       </TD>
       <TD className="block pt-1 pb-3 align-top sm:table-cell sm:py-2">
-        {enEspera ? (
-          <Insignia tono={enEspera.tono} data-freno={freno?.freno}>
-            {enEspera.etiqueta}
-          </Insignia>
-        ) : estado ? (
-          <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
-        ) : (
-          rq.estado
-        )}
+        <span className="inline-flex flex-wrap items-center gap-1">
+          {enEspera ? (
+            <Insignia tono={enEspera.tono} data-freno={freno?.freno}>
+              {enEspera.etiqueta}
+            </Insignia>
+          ) : estado ? (
+            <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
+          ) : (
+            rq.estado
+          )}
+          {/* Aquí no todo lo tiene quien mira (la OC espera a Gerencia, el conductor salió): se ve de quién son los días. */}
+          <DiasEnEspera dias={espera?.dias} desde={espera?.en} quien={espera?.puesto} verQuien />
+        </span>
         <AvanceDelRequerimiento rq={rq} frenado={enEspera && { etiqueta: enEspera.etapa, tono: enEspera.tono }} />
         <ul className="mt-1 space-y-0.5 text-xs text-texto-suave">
           {pasos.map((p) =>

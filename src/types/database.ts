@@ -2681,6 +2681,198 @@ export type Database = {
         }
         Relationships: []
       }
+      equipo_bajas: {
+        Row: {
+          id: string
+          equipo_id: string
+          motivo: string
+          dado_de_baja_en: string
+          baja_por: string | null
+          reactivado_en: string | null
+          reactivado_por: string | null
+          reactivacion_motivo: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          equipo_id: string
+          motivo: string
+          dado_de_baja_en: string
+          baja_por?: string | null
+          reactivado_en?: string | null
+          reactivado_por?: string | null
+          reactivacion_motivo?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          equipo_id?: string
+          motivo?: string
+          dado_de_baja_en?: string
+          baja_por?: string | null
+          reactivado_en?: string | null
+          reactivado_por?: string | null
+          reactivacion_motivo?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipo_bajas_baja_por_fkey"
+            columns: ["baja_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipo_bajas_equipo_id_fkey"
+            columns: ["equipo_id"]
+            isOneToOne: false
+            referencedRelation: "equipos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipo_bajas_reactivado_por_fkey"
+            columns: ["reactivado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      equipo_categorias: {
+        Row: {
+          id: string
+          nombre: string
+          prefijo: string | null
+          orden: number
+          activo: boolean
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          nombre: string
+          prefijo?: string | null
+          orden?: number
+          activo?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          nombre?: string
+          prefijo?: string | null
+          orden?: number
+          activo?: boolean
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: []
+      }
+      equipos: {
+        Row: {
+          id: string
+          codigo: string
+          descripcion: string
+          categoria_id: string
+          marca: string | null
+          serie_maquina: string | null
+          serie_cabezal: string | null
+          area_id: string | null
+          ubicacion: string | null
+          a_cargo_de: string | null
+          estado: string
+          estado_nota: string | null
+          estado_desde: string
+          observaciones: string | null
+          activo: boolean
+          baja_motivo: string | null
+          dado_de_baja_en: string | null
+          baja_por: string | null
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          codigo: string
+          descripcion: string
+          categoria_id: string
+          marca?: string | null
+          serie_maquina?: string | null
+          serie_cabezal?: string | null
+          area_id?: string | null
+          ubicacion?: string | null
+          a_cargo_de?: string | null
+          estado?: string
+          estado_nota?: string | null
+          estado_desde?: string
+          observaciones?: string | null
+          activo?: boolean
+          baja_motivo?: string | null
+          dado_de_baja_en?: string | null
+          baja_por?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          codigo?: string
+          descripcion?: string
+          categoria_id?: string
+          marca?: string | null
+          serie_maquina?: string | null
+          serie_cabezal?: string | null
+          area_id?: string | null
+          ubicacion?: string | null
+          a_cargo_de?: string | null
+          estado?: string
+          estado_nota?: string | null
+          estado_desde?: string
+          observaciones?: string | null
+          activo?: boolean
+          baja_motivo?: string | null
+          dado_de_baja_en?: string | null
+          baja_por?: string | null
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipos_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipos_baja_por_fkey"
+            columns: ["baja_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipos_categoria_id_fkey"
+            columns: ["categoria_id"]
+            isOneToOne: false
+            referencedRelation: "equipo_categorias"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipos_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       etapas_catalogo: {
         Row: {
           id: string
@@ -8527,6 +8719,108 @@ export type Database = {
           }
         ]
       }
+      recojo_fotos: {
+        Row: {
+          id: string
+          orden_compra_id: string
+          orden: number
+          ruta: string
+          mime_type: string
+          tamano_bytes: number
+          subida_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_compra_id: string
+          orden: number
+          ruta: string
+          mime_type: string
+          tamano_bytes: number
+          subida_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_compra_id?: string
+          orden?: number
+          ruta?: string
+          mime_type?: string
+          tamano_bytes?: number
+          subida_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recojo_fotos_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_compra_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recojo_fotos_subida_por_fkey"
+            columns: ["subida_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      recojos_no_logrados: {
+        Row: {
+          id: string
+          orden_compra_id: string
+          motivo: string
+          salio_en: string | null
+          programado_en: string | null
+          registrado_por: string
+          registrado_en: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id: string
+          orden_compra_id: string
+          motivo: string
+          salio_en?: string | null
+          programado_en?: string | null
+          registrado_por?: string
+          registrado_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_compra_id?: string
+          motivo?: string
+          salio_en?: string | null
+          programado_en?: string | null
+          registrado_por?: string
+          registrado_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recojos_no_logrados_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_compra_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recojos_no_logrados_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       reembolsos_nota_credito: {
         Row: {
           id: string
@@ -13871,6 +14165,22 @@ export type Database = {
         }
         Returns: number
       }
+      dias_en_espera: {
+        Args: {
+          p_desde: string | null
+        }
+        Returns: number
+      }
+      dias_en_espera_de: {
+        Args: {
+          p_desde: string[] | null
+        }
+        Returns: {
+          posicion: number | null
+          desde: string | null
+          dias: number | null
+        }[]
+      }
       dias_habiles_entre: {
         Args: {
           p_desde: string | null
@@ -14127,6 +14437,36 @@ export type Database = {
         }
         Returns: string
       }
+      equipo_cambiar_a_cargo: {
+        Args: {
+          p_equipo: string | null
+          p_a_cargo: string | null
+        }
+        Returns: null
+      }
+      equipo_codigo_que_sigue: {
+        Args: {
+          p_categoria: string | null
+        }
+        Returns: string
+      }
+      equipo_reactivar: {
+        Args: {
+          p_equipo: string | null
+          p_motivo: string | null
+        }
+        Returns: {
+          codigo: string | null
+          ya_estaba: boolean | null
+        }[]
+      }
+      equipos_codigos_que_siguen: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          categoria_id: string | null
+          codigo: string | null
+        }[]
+      }
       es_admin: {
         Args: Record<PropertyKey, never>
         Returns: boolean
@@ -14376,6 +14716,12 @@ export type Database = {
           p_a: string | null
         }
         Returns: null
+      }
+      foto_de_recojo_anotada: {
+        Args: {
+          p_ruta: string | null
+        }
+        Returns: boolean
       }
       gastos_del_mes_oficina: {
         Args: {
@@ -14743,6 +15089,13 @@ export type Database = {
         }
         Returns: string
       }
+      marcar_compra_recogida_con_fotos: {
+        Args: {
+          p_compra: string | null
+          p_fotos: Json | null
+        }
+        Returns: string
+      }
       marcar_etapa_codigo: {
         Args: {
           p_id: string | null
@@ -14757,6 +15110,14 @@ export type Database = {
           p_id: string | null
           p_inicio: string | null
           p_fin: string | null
+        }
+        Returns: string
+      }
+      marcar_recojo_no_logrado: {
+        Args: {
+          p_id: string | null
+          p_compra: string | null
+          p_motivo: string | null
         }
         Returns: string
       }
@@ -15692,12 +16053,70 @@ export type Database = {
         }
         Returns: string
       }
+      recojo_anotar_fotos: {
+        Args: {
+          p_compra: string | null
+          p_fotos: Json | null
+        }
+        Returns: null
+      }
+      recojo_fotos_en_gestion: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          orden_compra_id: string | null
+          orden: number | null
+          ruta: string | null
+        }[]
+      }
+      recojos_no_logrados_en_gestion: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          orden_compra_id: string | null
+          motivo: string | null
+          registrado_en: string | null
+          salio_en: string | null
+          registrado_por_nombre: string | null
+        }[]
+      }
       recomprar_lo_devuelto: {
         Args: {
           p_detalle: string | null
           p_devolucion: string | null
         }
         Returns: number
+      }
+      recorrido_de_cotizaciones: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          documento: string | null
+          orden: number | null
+          paso: string | null
+          situacion: string | null
+          puesto: string | null
+          en: string | null
+          dias: number | null
+          espera: string | null
+          detalle: string | null
+        }[]
+      }
+      recorrido_de_requerimientos: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          documento: string | null
+          orden: number | null
+          paso: string | null
+          situacion: string | null
+          puesto: string | null
+          en: string | null
+          dias: number | null
+          espera: string | null
+          detalle: string | null
+        }[]
       }
       reemplazar_etapas_historicas: {
         Args: {
@@ -16326,6 +16745,12 @@ export type Database = {
           p_id: string | null
           p_estado: string | null
           p_respuesta: string | null
+        }
+        Returns: string
+      }
+      responsable_del_area: {
+        Args: {
+          p_codigo: string | null
         }
         Returns: string
       }

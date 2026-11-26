@@ -25,7 +25,7 @@ export function EquipoDiseno({ ordenId, abierta, puedeAsignar, catalogos }: {
   // anotar a la primera persona, con el formulario todavía en la mano.
   const [abiertaAlCargar] = useState(puedeAsignar && (equipo.length === 0 || catalogos.planos.some((plano) => !plano.integrante_diseno_id)))
   const alta = useEnvio(agregarPersonaDiseno)
-  return <SeccionDesplegable id="equipo-diseno" className="scroll-mt-20" abierta={abiertaAlCargar}
+  return <SeccionDesplegable id="equipo-diseno" className="scroll-mt-2" abierta={abiertaAlCargar}
     titulo="Personas que elaboran los planos"
     descripcion={`${responsable?.nombre ?? 'Sin responsable'} · ${colaboradores} ${colaboradores === 1 ? 'colaborador' : 'colaboradores'} · ${catalogos.planos.length} ${catalogos.planos.length === 1 ? 'plano' : 'planos'}`}>
     <div className="space-y-5">

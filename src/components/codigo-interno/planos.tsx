@@ -121,9 +121,8 @@ function FilaPlano({
         {p.cambios && <p className="text-xs text-texto">Cambió: {p.cambios}</p>}
         {p.observacion && <p className="text-xs text-texto-suave">{p.observacion}</p>}
         {anteriores && anteriores.length > 0 && (
-          <details className="text-xs">
-            <summary className="cursor-pointer text-texto-suave">Revisiones anteriores ({anteriores.length})</summary>
-            <ul className="mt-1 space-y-1">
+          <Pliegue titulo={`Revisiones anteriores (${anteriores.length})`} className="text-xs">
+            <ul className="space-y-1">
               {anteriores.map((r) => (
                 <li key={r.id}>
                   <a href={enlacePdfPlano(r.id)} target="_blank" rel="noopener" className="text-acento hover:underline">
@@ -137,7 +136,7 @@ function FilaPlano({
                 </li>
               ))}
             </ul>
-          </details>
+          </Pliegue>
         )}
       </div>
       {acciones && <div className="flex flex-wrap items-center gap-1">{acciones}</div>}

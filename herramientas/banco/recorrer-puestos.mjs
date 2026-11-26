@@ -37,7 +37,7 @@ if (!CLAVE) {
 mkdirSync(CAPTURAS, { recursive: true })
 
 const PUESTOS = [
-  'gerencia', 'administracion', 'almacen', 'logistica', 'conductor', 'contabilidad',
+  'gerencia', 'administracion', 'almacen', 'logistica', 'mantenimiento', 'conductor', 'contabilidad',
   'diseno', 'colaborador', 'porteria', 'rrhh', 'requerimientos',
   'sup.prd', 'sup.mtz', 'sup.acb', 'tesoreria', 'ventas',
 ]
@@ -53,7 +53,7 @@ const FIJAS = [
   '/compras/gestion', '/compras/ordenes', '/compras/servicios', '/compras/valorizacion',
   '/configuracion', '/contabilidad/facturacion', '/costos/gastos-generales', '/cotizaciones/pdf',
   '/diseno/codigo', '/diseno/etapas', '/diseno/evaluaciones', '/diseno/evaluaciones/nueva',
-  '/diseno/informe-semanal', '/diseno/materiales', '/diseno/planos', '/materiales',
+  '/diseno/informe-semanal', '/diseno/materiales', '/diseno/planos', '/equipos', '/materiales',
   '/materiales/atencion', '/ordenes', '/ordenes/nueva', '/personal', '/planilla-diaria', '/planos',
   '/proveedores', '/recojos', '/reportes-diarios', '/reportes-diarios/nuevo', '/requerimientos',
   '/requerimientos/atencion', '/requerimientos/gasto-por-codigo', '/rrhh', '/rrhh/asistencia',
