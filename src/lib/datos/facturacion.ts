@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { COLUMNAS_DETRACCION, cargarTiposDetraccion, detraccionDeFila, documentosDeServicios, type DocumentoDeServicio } from '@/lib/datos/logistica'
+import { cambioDeLosServicios, COLUMNAS_DETRACCION, cargarTiposDetraccion, detraccionDeFila, documentosDeServicios, type DocumentoDeServicio } from '@/lib/datos/logistica'
 import { bajarComo } from '@/lib/descarga'
 import type { DetraccionDeServicio, SaldoDeServicio } from '@/lib/dominio/detraccion'
 import { BUCKET_COBROS_VENTA, BUCKET_FACTURAS_VENTA, BUCKET_PAGOS_SERVICIO, comoVaLaFactura, totalConIgv, type ComoVaLaFactura } from '@/lib/dominio/finanzas'
@@ -420,12 +420,16 @@ export async function serviciosPorPagar(verCuentas: boolean): Promise<ServicioPo
   if (cuentas.error) throw new Error(`No se pudieron leer las cuentas de los proveedores: ${cuentas.error.message}`)
   if (detracciones.error) throw new Error(`No se pudo leer la detracción de los servicios: ${detracciones.error.message}`)
   const detraccionDe = new Map((detracciones.data ?? []).map((d) => [d.id, d]))
-  const urls = await enlaces(BUCKET_PAGOS_SERVICIO, (pagos.data ?? []).map((p) => p.archivo_ruta))
+  // Con qué cambio va de verdad cada OS, como lo dice la base: Tesorería deposita con esa cifra.
+  const [cambios, urls] = await Promise.all([
+    cambioDeLosServicios((detracciones.data ?? []).filter((d) => d.moneda !== 'PEN').map((d) => d.id)),
+    enlaces(BUCKET_PAGOS_SERVICIO, (pagos.data ?? []).map((p) => p.archivo_ruta)),
+  ])
   return filas.map((f) => ({
     ...f,
     pagos: (pagos.data ?? []).filter((p) => p.orden_servicio_id === f.id).map((p) => ({ ...p, url: urls.get(p.archivo_ruta) ?? null })),
     cuentas: (cuentas.data ?? []).filter((c) => c.proveedor_id === f.proveedor_id).map(({ id, banco, numero_cuenta, titular, moneda }) => ({ id, banco, numero_cuenta, titular, moneda })),
-    detraccion: detraccionDeFila(f.id ? detraccionDe.get(f.id) : undefined, tipos),
+    detraccion: detraccionDeFila(f.id ? detraccionDe.get(f.id) : undefined, tipos, f.id ? cambios.get(f.id) : undefined),
     documentos: (f.id && documentos.get(f.id)) || [],
     saldo: (f.id && saldos.get(f.id)) || SIN_SALDO,
   }))

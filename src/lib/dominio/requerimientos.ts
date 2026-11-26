@@ -47,13 +47,13 @@ export const ESTADO_REQUERIMIENTO_DEL_CODIGO: Record<string, Def> = { ...ESTADO_
 
 /**
  * Los dos requerimientos (migración 20261015162000). El de operación lo piden
- * Maestranza, Producción, Acabados y Almacén y su OC la hace Logística; el de
+ * Maestranza, Producción, Acabados, Almacén y (desde la 20261126996000) Mantenimiento, y su OC la hace Logística; el de
  * Administración es de oficina, lo lleva la administradora y ella hace su OC.
  * Los dos pasan primero por Almacén. Qué áreas van en cada uno lo dice
  * `areas.requerimiento`.
  */
 export const TIPO_REQUERIMIENTO: Record<string, Def> = {
-  OPERACION: { etiqueta: 'Operación', tono: 'neutro', descripcion: 'Maestranza, Producción, Acabados y Almacén. La OC la hace Logística.' },
+  OPERACION: { etiqueta: 'Operación', tono: 'neutro', descripcion: 'Maestranza, Producción, Acabados, Almacén y Mantenimiento. La OC la hace Logística.' },
   ADMINISTRACION: { etiqueta: 'Administración', tono: 'acento', descripcion: 'Lo de oficina. Lo lleva la administradora y ella hace su OC.' },
 }
 

@@ -3154,6 +3154,7 @@ export type Database = {
           motivo_anulacion: string | null
           creado_en: string
           actualizado_en: string
+          fecha_emision: string | null
         }
         Insert: {
           id?: string
@@ -3170,6 +3171,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          fecha_emision?: string | null
         }
         Update: {
           id?: string
@@ -3186,6 +3188,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          fecha_emision?: string | null
         }
         Relationships: [
           {
@@ -5642,6 +5645,7 @@ export type Database = {
           detraccion_motivo: string | null
           total_con_igv_pen: number | null
           detraccion_monto: number | null
+          fecha_cambio: string | null
         }
         Insert: {
           id?: string
@@ -5682,6 +5686,7 @@ export type Database = {
           detraccion_porcentaje?: number | null
           detraccion_minimo?: number | null
           detraccion_motivo?: string | null
+          fecha_cambio?: string | null
         }
         Update: {
           id?: string
@@ -5722,6 +5727,7 @@ export type Database = {
           detraccion_porcentaje?: number | null
           detraccion_minimo?: number | null
           detraccion_motivo?: string | null
+          fecha_cambio?: string | null
         }
         Relationships: [
           {
@@ -13792,6 +13798,7 @@ export type Database = {
           p_numero: string | null
           p_nombre: string | null
           p_ruta: string | null
+          p_fecha_emision: string | null
         }
         Returns: string
       }
@@ -14108,6 +14115,10 @@ export type Database = {
           p_area: string | null
         }
         Returns: boolean
+      }
+      area_de_mis_requerimientos: {
+        Args: Record<PropertyKey, never>
+        Returns: string
       }
       armar_ficha_ot: {
         Args: {
@@ -14791,6 +14802,25 @@ export type Database = {
           p_estado: string | null
         }
         Returns: string
+      }
+      cambio_de_la_factura_de_servicio: {
+        Args: {
+          p_orden_servicio: string | null
+        }
+        Returns: null
+      }
+      cambio_de_los_servicios: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          orden_servicio_id: string | null
+          origen: string | null
+          dia: string | null
+          registrado_el: string | null
+          se_espera: boolean | null
+          fijo: boolean | null
+        }[]
       }
       cambio_del_dia: {
         Args: {
@@ -17651,6 +17681,18 @@ export type Database = {
           extras_decididas: number | null
         }[]
       }
+      justificante_anotado: {
+        Args: {
+          p_ruta: string | null
+        }
+        Returns: boolean
+      }
+      leo_el_rq_de_la_linea: {
+        Args: {
+          p_linea: string | null
+        }
+        Returns: boolean
+      }
       levantar_observacion_ot: {
         Args: {
           p_orden: string | null
@@ -17733,6 +17775,29 @@ export type Database = {
           p_compra: string | null
         }
         Returns: string
+      }
+      mantenimiento_ots: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          orden: string | null
+          numero: string | null
+          codigo: string | null
+          estado: string | null
+          prioridad: string | null
+          cliente: string | null
+          placa: string | null
+          vehiculo: string | null
+          descripcion: string | null
+          entrega: string | null
+          motivo_pausa: string | null
+          en_planta: boolean | null
+          ingreso_en: string | null
+          salida_en: string | null
+          abierta: boolean | null
+          terminada_en: string | null
+          ultimo_reporte: string | null
+          reportes: number | null
+        }[]
       }
       marcar_asistencia: {
         Args: {
@@ -18777,6 +18842,10 @@ export type Database = {
         Returns: boolean
       }
       puede_ver_todas_las_averias: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      puede_ver_todos_los_requerimientos: {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
@@ -19889,6 +19958,12 @@ export type Database = {
         }
         Returns: string
       }
+      rq_que_leo: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: string[]
+      }
       rq_revisar_stock: {
         Args: {
           p_id: string | null
@@ -20446,6 +20521,12 @@ export type Database = {
           cantidad: number | null
         }[]
       }
+      servicio_con_el_cambio_fijo: {
+        Args: {
+          p_orden_servicio: string | null
+        }
+        Returns: boolean
+      }
       servicios_pendientes_de_pago: {
         Args: Record<PropertyKey, never>
         Returns: number
@@ -20527,6 +20608,10 @@ export type Database = {
           p_concepto: string | null
         }
         Returns: string
+      }
+      solo_leo_los_rq_de_mi_area: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
       }
       soltar_pago_de_la_boleta: {
         Args: {

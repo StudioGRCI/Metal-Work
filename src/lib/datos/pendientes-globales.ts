@@ -4,12 +4,14 @@ import { cache } from 'react'
 
 import type { Tono } from '@/components/ui/etiqueta-estado'
 import { codigosDeDiseno, planosDeCodigo } from '@/lib/datos/diseno-codigos'
+import { otsDeMantenimiento } from '@/lib/datos/mantenimiento'
 import { recorridoDeRequerimientos } from '@/lib/datos/recorrido'
 import { cargarRequerimientos } from '@/lib/datos/requerimientos'
 import { planillaAjusteDesde } from '@/lib/datos/rrhh'
 import { todasLasFilas } from '@/lib/datos/todas-las-filas'
 import { ESTADOS_ACTIVOS_OT } from '@/lib/dominio/estados'
 import { totalConIgv } from '@/lib/dominio/finanzas'
+import { PERMISO_OTS_DE_MANTENIMIENTO, tieneTrabajoHoy } from '@/lib/dominio/mantenimiento'
 import { devueltaEntera } from '@/lib/dominio/pago-de-boleta'
 import { estadoDePlanilla } from '@/lib/dominio/planilla-diaria'
 import { ESTADOS_RQ_ABIERTOS, leTocaAtender, loTieneQuienAtiende, quienAtiende, tieneParaRecoger, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
@@ -763,16 +765,23 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
           .eq('registrado_por', perfil.id).is('anulado_en', null).not('observado_en', 'is', null),
       ),
     })
+    // Mantenimiento no trabaja unidades todos los días: se le pide el reporte
+    // solo el día en que tiene el vehículo de una OT de mantenimiento en la
+    // planta, sin pausa (plan «Las demás áreas», A.3). Lleva a su lista de OT,
+    // donde cada tarjeta trae «Reportar el día» con su número ya puesto.
+    const porOt = puede(perfil, PERMISO_OTS_DE_MANTENIMIENTO)
     // El domingo no se trabaja: no se le pide reporte.
     if (new Date(`${hoy}T12:00:00Z`).getUTCDay() !== 0) tareas.push({
-      clave: 'reporte_de_hoy', ruta: '/reportes-diarios', tono: 'acento',
+      clave: 'reporte_de_hoy', ruta: porOt ? '/mantenimiento' : '/reportes-diarios', tono: 'acento',
       texto: () => 'Tu reporte diario de hoy todavía no está subido',
       contar: async () => {
         const n = await cabeza(
           supabase.from('reportes_diarios').select('id', { count: 'exact', head: true })
             .eq('registrado_por', perfil.id).eq('fecha', hoy).is('anulado_en', null),
         )
-        return n > 0 ? 0 : 1
+        if (n > 0) return 0
+        if (!porOt) return 1
+        return (await otsDeMantenimiento()).some(tieneTrabajoHoy) ? 1 : 0
       },
     })
   }

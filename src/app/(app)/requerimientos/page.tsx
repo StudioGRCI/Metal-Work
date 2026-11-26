@@ -9,6 +9,7 @@ import { correccionesDe } from '@/lib/datos/correcciones'
 import { conformidadDeRequerimientos } from '@/lib/datos/conformidad'
 import { metradoDeRequerimientos } from '@/lib/datos/metrado-rq'
 import { recorridoDeRequerimientos } from '@/lib/datos/recorrido'
+import { PERMISO_OTS_DE_MANTENIMIENTO } from '@/lib/dominio/mantenimiento'
 import { esperaSuSustento } from '@/lib/dominio/metrado-rq'
 import { esFiltroDePlazo, fechasDelFiltro, FILTROS_DE_PLAZO, type FiltroDePlazo } from '@/lib/dominio/plazo-rq'
 import { describirRecorridoDelRequerimiento } from '@/lib/dominio/recorrido'
@@ -43,6 +44,10 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
   // supervisor registra el de operación de su propia área (20261120300000).
   const soloSuArea = !puede(perfil, 'requerimientos.emitir') && puede(perfil, 'requerimientos.area')
   const pideSuArea = soloSuArea && perfil.area_id !== null
+  // Mantenimiento pide por el N.º de la OT de mantenimiento, no por unidad de
+  // fabricación (plan «Las demás áreas», A.3): su primera pestaña es su lista
+  // de OT, y aquí ve solo lo de su área.
+  const porOt = pideSuArea && puede(perfil, PERMISO_OTS_DE_MANTENIMIENTO)
   const tipos: TipoRequerimiento[] = [
     ...(puede(perfil, 'requerimientos.emitir') || pideSuArea ? (['OPERACION'] as const) : []),
     ...(puede(perfil, 'requerimientos.administracion') ? (['ADMINISTRACION'] as const) : []),
@@ -58,8 +63,9 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
   const codigo = typeof params.codigo === 'string' && params.codigo.trim().length >= 2 ? params.codigo.trim().slice(0, 60) : undefined
   // El supervisor de área ve primero los RQ de su área, como en su dashboard;
   // `?area=todas` muestra los de todas. Los de Administración no son de ningún taller.
-  const supervisaArea = perfil.rol.codigo === 'SUPERVISOR' && perfil.area_id !== null
-  const deSuArea = supervisaArea && params.area !== 'todas' ? (perfil.area_id ?? undefined) : undefined
+  // Mantenimiento, lo mismo, sin «Todas las áreas»: las demás no son lo suyo.
+  const supervisaArea = (perfil.rol.codigo === 'SUPERVISOR' || porOt) && perfil.area_id !== null
+  const deSuArea = supervisaArea && (porOt || params.area !== 'todas') ? (perfil.area_id ?? undefined) : undefined
   // `?plazo=` deja los RQ en camino que se necesitan de hoy al domingo, o los
   // vencidos (plan 3, entrega 3.1). Los pide a la base por su fecha, con los
   // demás filtros (tipo, área, código): con la lista de los 300 más nuevos los
@@ -140,7 +146,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
   filtros.set('ver', 'recoger')
   const conRecoger = `/requerimientos?${filtros}`
   const verTodos = supervisaArea && !deSuArea ? '/requerimientos?area=todas' : '/requerimientos'
-  const vacio = listaVacia({ plazo, soloRecoger, soloSustentar, codigo, deSuArea: Boolean(deSuArea), emite, pideSuArea, sinRecoger, verTodos })
+  const vacio = listaVacia({ plazo, soloRecoger, soloSustentar, codigo, deSuArea: Boolean(deSuArea), emite, pideSuArea, porOt, sinRecoger, verTodos })
   // Las pestañas y el «Ver todos» del código conservan la fecha elegida.
   const conPlazo = (href: string) => (plazo ? `${href}${href.includes('?') ? '&' : '?'}plazo=${plazo}` : href)
   // La pastilla de la fecha quita «para recoger» y «esperan tu sustento»: no se suman.
@@ -151,7 +157,9 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
       <EncabezadoPagina
         titulo="Requerimientos"
         ayuda={
-          pideSuArea
+          porOt
+            ? 'Lo que pidió tu área. Pide los materiales de cada OT de mantenimiento desde «Por OT», con su número ya puesto, o aquí con «Nuevo requerimiento». La barra de cada insumo dice cuánto ya puedes recoger en Almacén (verde), cuánto falta que traiga Logística y en qué va, y cuánto ya se entregó. Corriges y anulas solo los que registraste tú.'
+            : pideSuArea
             ? 'Lo que pidió tu área, y con «Todas las áreas» lo de las demás. Registra el requerimiento de cada unidad desde «Por unidad», o aquí con «Nuevo requerimiento». La materia prima y los accesorios de una unidad se comparan con el metrado de Diseño de su código, si Diseño ya lo cargó: lo que se pasa necesita tu sustento y el visto de Diseño antes de que Almacén lo revise. La barra de cada insumo dice cuánto ya puedes recoger en Almacén (verde), cuánto falta que traiga Logística y en qué va, y cuánto ya se entregó. Corriges, sustentas y anulas solo los que registraste tú.'
             : emite
             ? 'Lo que cada área necesita, con el código interno y su justificación. La materia prima y los accesorios de una unidad se comparan con el metrado de Diseño de su código, si Diseño ya lo cargó: lo que se pasa necesita tu sustento y el visto de Diseño antes de que Almacén lo revise. Almacén lo revisa insumo por insumo: lo que tiene lo separa y solo lo que falta se compra. La barra de cada insumo dice cuánto ya se puede recoger en Almacén (verde) y cuánto falta que llegue. El «Avance %» de cada RQ es el promedio de las etapas de sus insumos, no lo recibido.'
@@ -174,11 +182,15 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
         etiqueta="Requerimiento"
         vistas={(supervisaArea
           ? [
-              ...(pideSuArea
-                ? [{ clave: 'unidades', titulo: 'Por unidad', href: '/requerimientos/unidades', activa: false, descripcion: 'Las unidades de tu área, para pedir por cada una' }]
-                : []),
+              ...(porOt
+                ? [{ clave: 'unidades', titulo: 'Por OT', href: '/mantenimiento', activa: false, descripcion: 'Las OT de mantenimiento, para pedir por cada una' }]
+                : pideSuArea
+                  ? [{ clave: 'unidades', titulo: 'Por unidad', href: '/requerimientos/unidades', activa: false, descripcion: 'Las unidades de tu área, para pedir por cada una' }]
+                  : []),
               { clave: 'mia', titulo: 'De tu área', href: '/requerimientos', activa: Boolean(deSuArea), descripcion: undefined },
-              { clave: 'todas', titulo: 'Todas las áreas', href: '/requerimientos?area=todas', activa: !deSuArea, descripcion: undefined },
+              ...(porOt
+                ? []
+                : [{ clave: 'todas', titulo: 'Todas las áreas', href: '/requerimientos?area=todas', activa: !deSuArea, descripcion: undefined }]),
             ]
           : VISTAS.map((v) => ({
               clave: v.valor,
@@ -321,6 +333,7 @@ function listaVacia({
   deSuArea,
   emite,
   pideSuArea,
+  porOt,
   sinRecoger,
   verTodos,
 }: {
@@ -333,6 +346,8 @@ function listaVacia({
   emite: boolean
   /** El supervisor que pide para su área: lo invita a pedir por unidad. */
   pideSuArea: boolean
+  /** Mantenimiento: pide por el N.º de su OT, desde su lista de OT. */
+  porOt: boolean
   sinRecoger: string
   /** La lista sin el código: la del área, o la de todas si se miraban todas. */
   verTodos: string
@@ -372,6 +387,13 @@ function listaVacia({
       titulo: `Ningún requerimiento con el código ${codigo}`,
       descripcion: 'Revisa el código o mira todos los requerimientos.',
       accion: enlace(verTodos, 'Ver todos'),
+    }
+  }
+  if (deSuArea && porOt) {
+    return {
+      titulo: 'Tu área todavía no tiene requerimientos',
+      descripcion: 'Pide los materiales de cada OT de mantenimiento desde «Por OT», con su número ya puesto.',
+      accion: enlace('/mantenimiento', 'Pedir por OT'),
     }
   }
   if (deSuArea && pideSuArea) {
