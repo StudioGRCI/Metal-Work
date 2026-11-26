@@ -174,12 +174,10 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
   // Los códigos con una etapa del área que pide el reporte de hoy, y cuáles no
   // lo tienen. Las etapas, su semáforo y el último reporte del área los da la
   // base (`etapas_abiertas_de_mi_area`): ni el atraso ni el reporte se cuentan
-  // aquí otra vez. Los códigos ya entregados no entran, como en el tablero.
-  // El código con el costeo cerrado ya no se trabaja: no pide reporte.
-  const cerrados = new Set((codigosConocidos ?? []).filter((c) => c.cerrado).map((c) => c.codigo))
+  // aquí otra vez. Los códigos ya entregados o con el costeo cerrado no entran.
   const pidenHoy = new Map<string, EtapaAbiertaDelArea[]>()
   for (const e of abiertasDelArea ?? []) {
-    if (!pideReporteHoy(e, hoy) || cerrados.has(e.codigo)) continue
+    if (!pideReporteHoy(e, hoy)) continue
     pidenHoy.set(e.codigo, [...(pidenHoy.get(e.codigo) ?? []), e])
   }
   // El plazo de cada etapa abierta en su tarjeta, el mismo de la bandeja.

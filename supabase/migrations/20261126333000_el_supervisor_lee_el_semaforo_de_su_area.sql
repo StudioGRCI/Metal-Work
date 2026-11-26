@@ -11,7 +11,8 @@
 --
 -- Esta función le da solo lo suyo: las etapas sin terminar de SU área, de los
 -- códigos que siguen en el tablero (los ya entregados o facturados sin otra OT
--- abierta no entran, como en el tablero de RR. HH.), con su semáforo, sus días
+-- abierta no entran, como en el tablero de RR. HH.; tampoco los de costeo
+-- cerrado, que ya no se trabajan), con su semáforo, sus días
 -- hábiles y el último reporte de su área. Nada de otras áreas, ni planos,
 -- materiales o costos. La exige `reporte_diario.registrar`: es para quien
 -- reporta el día.
@@ -45,6 +46,8 @@ begin
      where e.area_id = v_area
        and e.fin_real is null
        and e.codigo in (select c.codigo from public.tiempos_de_entrega_codigos_calculado(null) c)
+       -- El código con el costeo cerrado ya no se trabaja: no pide reporte.
+       and not exists (select 1 from public.codigo_interno_cierres k where k.codigo = e.codigo and k.reabierto_en is null)
      order by e.codigo, e.orden, e.id;
 end;
 $$;

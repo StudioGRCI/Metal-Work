@@ -6,7 +6,8 @@
 --      tablero de RR. HH. (`tiempos_de_entrega_etapas_calculado`): no se
 --      calcula otro.
 --   2. Trae el último reporte del área de ese código: el de hoy se ve.
---   3. Solo su área: la etapa terminada no sale, la de Acabados no le sale al
+--   3. El código con el costeo cerrado no sale: ya no se trabaja.
+--   4. Solo su área: la etapa terminada no sale, la de Acabados no le sale al
 --      de Maestranza y sí al de Acabados. Diseño y Ventas no tienen
 --      `reporte_diario.registrar` y no entran.
 --
@@ -36,15 +37,19 @@ update public.usuarios u set area_id = a.id
 
 -- QA475-A: etapa de Maestranza empezada y vencida hace 3 días corridos, con reporte de hoy.
 -- QA475-B: etapa de Maestranza terminada. QA475-C: etapa de Acabados en marcha.
+-- QA475-D: de Maestranza, con el costeo cerrado: ya no se trabaja y no sale.
 insert into public.codigo_etapas (codigo_interno, orden, nombre, area_id, inicio_plan, fin_plan, inicio_real, fin_real, creado_por, de_area)
 select x.codigo, 1, x.nombre, a.id, current_date - 6, current_date + x.fin, current_date - 5, x.fin_real, current_setting('prueba.sup_mtz')::uuid, true
   from (values ('QA475-A', 'Armado (prueba 475)', 'MTZ', -3, null::date),
                ('QA475-B', 'Corte (prueba 475)', 'MTZ', -1, current_date - 1),
-               ('QA475-C', 'Pintura (prueba 475)', 'ACB', 2, null::date)) x(codigo, nombre, area, fin, fin_real)
+               ('QA475-C', 'Pintura (prueba 475)', 'ACB', 2, null::date),
+               ('QA475-D', 'Forrado (prueba 475)', 'MTZ', 4, null::date)) x(codigo, nombre, area, fin, fin_real)
   join public.areas a on a.codigo = x.area;
 insert into public.reportes_diarios (fecha, codigo_interno, asunto, descripcion, area_id, registrado_por)
 select (now() at time zone 'America/Lima')::date, 'QA475-A', 'Avance (prueba 475)', 'Se avanzó.', a.id, current_setting('prueba.sup_mtz')::uuid
   from public.areas a where a.codigo = 'MTZ';
+insert into public.codigo_interno_cierres (codigo, costo_pen, por_fuente, cerrado_por)
+values ('QA475-D', 0, '{}'::jsonb, current_setting('prueba.sup_mtz')::uuid);
 set local session_replication_role = origin;
 
 create or replace function pg_temp.como(p_clave text) returns void language sql as $$
@@ -59,7 +64,10 @@ create temp table esperado on commit drop as
 select e.codigo, e.semaforo, e.dias_habiles from public.tiempos_de_entrega_etapas_calculado(null) e where e.codigo like 'QA475-%';
 grant select on esperado to authenticated;
 
--- 1 y 2. Maestranza: solo su etapa abierta, con el semáforo del tablero y el reporte de hoy.
+-- El cerrado sí está en el tablero: lo que lo saca es el cierre.
+select test.afirmar(exists (select 1 from public.tiempos_de_entrega_etapas_calculado(null) where codigo = 'QA475-D'), 'QA475-D está en el tablero');
+
+-- 1 y 2. Maestranza: solo su etapa abierta (ni la terminada ni la de costeo cerrado), con el semáforo del tablero y el reporte de hoy.
 select pg_temp.como('sup_mtz');
 set local role authenticated;
 select test.afirmar(pg_temp.codigos() = 'QA475-A', 'sup_mtz ve solo su etapa abierta: ' || pg_temp.codigos());
