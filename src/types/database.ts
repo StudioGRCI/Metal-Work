@@ -14069,6 +14069,16 @@ export type Database = {
         }
         Returns: number
       }
+      dias_en_espera_de: {
+        Args: {
+          p_desde: string[] | null
+        }
+        Returns: {
+          posicion: number | null
+          desde: string | null
+          dias: number | null
+        }[]
+      }
       dias_habiles_entre: {
         Args: {
           p_desde: string | null
