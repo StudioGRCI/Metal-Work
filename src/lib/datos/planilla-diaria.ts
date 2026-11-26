@@ -162,7 +162,12 @@ export type PagoPlanilla = {
   enlace: string | null
 }
 
-export type PlanillaDetalle = Omit<PlanillaListada, 'gente'> & { gente: PersonaPlanilla[]; pagos: PagoPlanilla[] }
+export type PlanillaDetalle = Omit<PlanillaListada, 'gente'> & {
+  gente: PersonaPlanilla[]
+  pagos: PagoPlanilla[]
+  /** Se pidieron las cuentas y la base no las dio: no es «sin cuenta», es que no se sabe. */
+  cuentasSinLeer: boolean
+}
 
 /**
  * Una planilla con su gente, sus días, sus pagos y los enlaces para abrir los
@@ -209,6 +214,7 @@ export async function planillaDiaria(id: string, conCuentas: boolean): Promise<P
   return {
     ...fila,
     total: Number(fila.total),
+    cuentasSinLeer: cuentas === undefined,
     gente: [...(fila.gente ?? [])]
       .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
       .map((p) => ({
@@ -250,12 +256,19 @@ export async function planillaDiaria(id: string, conCuentas: boolean): Promise<P
   }
 }
 
-/** La cuenta de cada persona de la planilla, por su renglón. La base la da solo a Tesorería y RR. HH. */
-async function cuentasDePlanilla(id: string) {
+/**
+ * La cuenta de cada persona de la planilla, por su renglón. La base la da solo a
+ * quien paga o arma la planilla. Si no la da (un error, un permiso que cambió),
+ * devuelve `undefined`: la planilla igual se lee, pero la pantalla dice que no
+ * se pudo leer la cuenta, no «sin cuenta», que mandaría a pedirla a RR. HH.
+ */
+async function cuentasDePlanilla(id: string): Promise<Map<string, CuentaDePago> | undefined> {
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('planilla_diaria_cuentas', { p_planilla_id: id })
-  // Sin cuentas la planilla igual se lee; Tesorería verá «sin cuenta».
-  if (error || !data) return new Map<string, CuentaDePago>()
+  if (error || !data) {
+    console.error('[planilla diaria] no se pudieron leer las cuentas:', error?.message ?? 'sin datos')
+    return undefined
+  }
   return new Map(
     data.flatMap((c) =>
       c.persona_id ? [[c.persona_id, { banco: c.banco, tipo_cuenta: c.tipo_cuenta, numero_cuenta: c.numero_cuenta, cci: c.cci }] as const] : [],

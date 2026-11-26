@@ -201,6 +201,10 @@ begin
 
   select * into r from public.adquisiciones_control(array[current_setting('prueba.fac')::uuid]);
   perform test.afirmar(r.ordenes -> 0 ->> 'aprobacion' = 'POR_APROBAR', 'Cuentas por pagar sabe que la OC de la factura espera a Gerencia');
+  -- La lista de la pantalla dice la misma OC que el pago va a rechazar (migración 20261126560000).
+  select * into r from public.ocs_que_traban_las_facturas(array[current_setting('prueba.fac')::uuid]);
+  perform test.afirmar(r.orden_compra_id = current_setting('prueba.oc')::uuid and r.aprobacion = 'POR_APROBAR' and r.nombre like 'OC-%',
+    'ocs_que_traban_las_facturas dice a Tesorería la OC que espera');
   perform test.debe_fallar(format('select public.registrar_pago_factura(%L, %L, %L, 118, ''OP-450-1'', %L, %L, null)',
       current_setting('prueba.pago'), current_setting('prueba.fac'), current_setting('prueba.hoy'),
       current_setting('prueba.pago_ruta'), current_setting('prueba.caja')),
@@ -241,6 +245,8 @@ begin
       current_setting('prueba.pago'), current_setting('prueba.fac'), current_setting('prueba.hoy'),
       current_setting('prueba.pago_ruta'), current_setting('prueba.caja')),
     'Tesorería no paga la factura de una OC rechazada', 'que Gerencia rechazó: no se paga');
+  perform test.afirmar((select aprobacion from public.ocs_que_traban_las_facturas(array[current_setting('prueba.fac')::uuid])) = 'RECHAZADA',
+    'y la lista la da por rechazada');
   reset role;
 
   set local session_replication_role = replica;
@@ -275,10 +281,30 @@ begin
   set local role authenticated;
   select * into r from public.adquisiciones_control(array[current_setting('prueba.fac')::uuid]);
   perform test.afirmar(r.ordenes -> 0 ->> 'aprobacion' = 'APROBADA', 'aprobada, la factura ya no espera');
+  perform test.afirmar((select count(*) from public.ocs_que_traban_las_facturas(array[current_setting('prueba.fac')::uuid])) = 0,
+    'y la lista ya no dice ninguna OC que la trabe');
   v := public.registrar_pago_factura(current_setting('prueba.pago')::uuid, current_setting('prueba.fac')::uuid,
          current_setting('prueba.hoy')::date, 100, 'OP-450-1', current_setting('prueba.pago_ruta'), current_setting('prueba.caja')::uuid, null);
   perform test.afirmar((select saldo from public.v_cuentas_pagar where id = current_setting('prueba.fac')::uuid) = 0,
     'con la OC aprobada, Tesorería la paga');
+  reset role;
+end $$;
+
+-- ---------------------------------- 2b. quién pregunta qué OC traba cada factura
+do $$
+begin
+  -- Gerencia la lee (adquisiciones.ver); Supervisión general no tiene nada que ver aquí.
+  perform test.como_usuario(current_setting('prueba.gerente')::uuid);
+  set local role authenticated;
+  perform public.ocs_que_traban_las_facturas(array[current_setting('prueba.fac')::uuid]);
+  reset role;
+  perform test.como_usuario(current_setting('prueba.supgen')::uuid);
+  set local role authenticated;
+  perform test.debe_fallar(format('select * from public.ocs_que_traban_las_facturas(array[%L]::uuid[])', current_setting('prueba.fac')),
+    'quien no ve Cuentas por pagar no pregunta qué traba una factura', 'No tienes permiso para ver qué traba');
+  -- La regla de adentro no se llama suelta: solo la usan el disparador y la lista.
+  perform test.debe_fallar(format('select * from public.oc_que_traba_el_pago((select a from public.adquisiciones a where a.id = %L))', current_setting('prueba.fac')),
+    'oc_que_traba_el_pago es interna', 'permission denied');
   reset role;
 end $$;
 

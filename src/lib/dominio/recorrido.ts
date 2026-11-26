@@ -137,7 +137,12 @@ const PASOS_DE_LA_COTIZACION: Record<string, Frases> = {
   CORRECCION: { hecho: 'Corrección subida', falta: 'Corrección', nota: (version) => `Pasó a la ${version}` },
   // El número de la OT llega solo a quien lee las órdenes.
   CODIGO_Y_OT: { hecho: 'Con código interno y OT', falta: 'Código interno y OT', nota: (ot) => ot },
-  FACTURA: { hecho: 'Facturada', falta: 'Factura' },
+  // En parte, solo a quien lee las facturas (migración 20261126470000): «Facturada» con la mitad sin facturar confundía.
+  FACTURA: { hecho: (d) => (d === 'EN_PARTE' ? 'Facturada en parte' : 'Facturada'), falta: 'Factura' },
+  // Facturada en parte: la factura de lo que falta del total (migración 20261126470000). Solo espera, nunca se dice hecha.
+  FACTURA_RESTO: { hecho: 'Facturado lo que faltaba', falta: 'Factura de lo que falta' },
+  // El cobro lo ve quien lee los cobros; a Ventas la base no se lo da.
+  COBRO: { hecho: 'Cobrada', falta: 'Cobro' },
   ANULACION: { hecho: 'Anulada', falta: 'Anulación' },
 }
 
@@ -146,6 +151,8 @@ const ESPERAS_DE_LA_COTIZACION: Record<string, (detalle: string | null) => strin
   CORRECCION: () => 'Sube la corrección con el mismo número.',
   CODIGO_Y_OT: () => 'Le da el código interno de la unidad y sube la OT.',
   FACTURA: () => 'Registra su factura.',
+  FACTURA_RESTO: () => 'Registra la factura de lo que falta del total.',
+  COBRO: (detalle) => (detalle === 'EN_PARTE' ? 'Cobra lo que falta: ya cobró una parte.' : 'Cobra sus facturas.'),
 }
 
 const PASOS_DEL_INFORME_DISENO: Record<string, Frases> = {

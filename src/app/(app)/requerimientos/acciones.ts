@@ -259,8 +259,69 @@ export async function corregirRequerimiento(_previo: unknown, formulario: FormDa
   // Corregir no cambia el estado: el de ahora es el que eligió a quién avisar
   // (corregir_requerimiento: por revisar o listo, Almacén; si no, quien compra).
   // El RQA en compra avisa a la administradora, que es quien lo corrige: no se dice.
-  const { data: rq } = await supabase.from('requerimientos').select('estado, tipo').eq('id', id.data).maybeSingle()
+  const [{ data: rq }, { data: metrado }] = await Promise.all([
+    supabase.from('requerimientos').select('estado, tipo, codigo_interno').eq('id', id.data).maybeSingle(),
+    // Si pasó a otro código, el visto de Diseño era para el de antes
+    // (migración 20261126920000): lo que se pasa del metrado nuevo se sustenta otra vez.
+    supabase.rpc('metrado_de_requerimientos', { p_requerimientos: [id.data] }),
+  ])
   const aviso =
     rq?.estado === 'POR_ATENDER' || rq?.estado === 'LISTO_EN_ALMACEN' ? ' A Almacén le llegó el aviso.' : rq && rq.tipo !== 'ADMINISTRACION' ? ' A Logística le llegó el aviso.' : ''
+  const sePasan = (metrado ?? []).filter((m) => m.estado === 'SIN_SUSTENTO').map((m) => m.item)
+  if (sePasan.length > 0) {
+    const cuales = sePasan.length === 1 ? `El insumo ${sePasan[0]} se pasa` : `Los insumos ${sePasan.slice(0, -1).join(', ')} y ${sePasan.at(-1)} se pasan`
+    return {
+      ok: true,
+      mensaje: `Requerimiento corregido, con su justificante.${aviso} ${cuales} del metrado de Diseño para ${rq?.codigo_interno ?? 'su código'} y no ${sePasan.length === 1 ? 'tiene' : 'tienen'} su visto: escribe por qué en su tarjeta, con «Escribir el sustento». No sale del almacén hasta que Diseño lo autorice.`,
+    }
+  }
   return { ok: true, mensaje: `Requerimiento corregido, con su justificante.${aviso}` }
+}
+
+const CONFORMIDAD = z
+  .object({
+    id: z.guid('Vuelve a cargar la pantalla.'),
+    movimiento: z.guid('Vuelve a cargar la pantalla.'),
+    tipo: z.enum(['NO_LLEGO', 'LLEGO_INCOMPLETO'], { message: 'Elige si no llegó o si llegó incompleto.' }),
+    recibido: z.union([z.literal(''), z.coerce.number({ message: 'Indica cuánto llegó.' }).positive('Indica cuánto llegó: más que cero.')]),
+    nota: z.string().trim().min(10, 'Cuenta qué pasó en al menos 10 caracteres.').max(500, 'La nota pasa de 500 caracteres.'),
+  })
+  .refine((d) => d.tipo === 'NO_LLEGO' || d.recibido !== '', { message: 'Indica cuánto llegó.', path: ['recibido'] })
+
+/**
+ * Quien pidió el RQ anota que una salida no le llegó, o llegó incompleta
+ * (plan 2, entrega 2.2). La salida del kardex no se toca: la nota es una fila
+ * aparte. Quién puede, lo decide la base (`anotar_conformidad_salida`): quien
+ * registró el RQ, Requerimientos, el supervisor del área o Administración en lo
+ * suyo, nunca Almacén.
+ */
+export async function anotarConformidad(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, ['requerimientos.emitir', 'requerimientos.administracion', 'requerimientos.area'])) {
+    return { ok: false, error: 'La conformidad de una salida la anota quien pidió el requerimiento.' }
+  }
+  const analisis = CONFORMIDAD.safeParse({
+    id: formulario.get('id'),
+    movimiento: formulario.get('movimiento'),
+    tipo: formulario.get('tipo'),
+    recibido: dato(formulario, 'recibido').trim(),
+    nota: dato(formulario, 'nota'),
+  })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+  const d = analisis.data
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('anotar_conformidad_salida', {
+    p_id: d.id,
+    p_movimiento: d.movimiento,
+    p_tipo: d.tipo,
+    p_cantidad_recibida: d.tipo === 'LLEGO_INCOMPLETO' && d.recibido !== '' ? d.recibido : null,
+    p_nota: d.nota,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== d.id) return { ok: false, error: 'La nota no quedó anotada. Recarga la pantalla.' }
+
+  revalidatePath('/requerimientos')
+  revalidatePath('/requerimientos/atencion')
+  return { ok: true, mensaje: 'Anotado. Almacén recibió el aviso.' }
 }
