@@ -10543,6 +10543,266 @@ export type Database = {
           }
         ]
       }
+      ssoma_accion_eventos: {
+        Row: {
+          id: string
+          accion_id: string
+          tipo: string
+          responsable_id: string | null
+          fecha_limite: string | null
+          nota: string | null
+          hecho_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          accion_id: string
+          tipo: string
+          responsable_id?: string | null
+          fecha_limite?: string | null
+          nota?: string | null
+          hecho_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          accion_id?: string
+          tipo?: string
+          responsable_id?: string | null
+          fecha_limite?: string | null
+          nota?: string | null
+          hecho_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ssoma_accion_eventos_accion_id_fkey"
+            columns: ["accion_id"]
+            isOneToOne: false
+            referencedRelation: "ssoma_acciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_accion_eventos_hecho_por_fkey"
+            columns: ["hecho_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_accion_eventos_responsable_id_fkey"
+            columns: ["responsable_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ssoma_accion_fotos: {
+        Row: {
+          id: string
+          accion_id: string
+          evento_id: string
+          orden: number
+          ruta: string
+          mime_type: string
+          tamano_bytes: number
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          accion_id: string
+          evento_id: string
+          orden: number
+          ruta: string
+          mime_type: string
+          tamano_bytes: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          accion_id?: string
+          evento_id?: string
+          orden?: number
+          ruta?: string
+          mime_type?: string
+          tamano_bytes?: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ssoma_accion_fotos_accion_id_fkey"
+            columns: ["accion_id"]
+            isOneToOne: false
+            referencedRelation: "ssoma_acciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_accion_fotos_evento_id_fkey"
+            columns: ["evento_id"]
+            isOneToOne: false
+            referencedRelation: "ssoma_accion_eventos"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ssoma_acciones: {
+        Row: {
+          id: string
+          reporte_id: string
+          area_id: string
+          descripcion: string
+          responsable_id: string
+          fecha_limite: string
+          estado: string
+          creado_por: string
+          cerrado_por: string | null
+          cerrado_en: string | null
+          nota_cierre: string | null
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          reporte_id: string
+          area_id: string
+          descripcion: string
+          responsable_id: string
+          fecha_limite: string
+          estado?: string
+          creado_por?: string
+          cerrado_por?: string | null
+          cerrado_en?: string | null
+          nota_cierre?: string | null
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          reporte_id?: string
+          area_id?: string
+          descripcion?: string
+          responsable_id?: string
+          fecha_limite?: string
+          estado?: string
+          creado_por?: string
+          cerrado_por?: string | null
+          cerrado_en?: string | null
+          nota_cierre?: string | null
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ssoma_acciones_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_acciones_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_acciones_cerrado_por_fkey"
+            columns: ["cerrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_acciones_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_acciones_reporte_id_fkey"
+            columns: ["reporte_id"]
+            isOneToOne: false
+            referencedRelation: "ssoma_reportes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_acciones_responsable_id_fkey"
+            columns: ["responsable_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ssoma_clasificaciones: {
+        Row: {
+          id: string
+          reporte_id: string
+          clasificacion: string
+          hubo_atencion: boolean | null
+          dias_perdidos: number | null
+          causa: string
+          clasificado_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          reporte_id: string
+          clasificacion: string
+          hubo_atencion?: boolean | null
+          dias_perdidos?: number | null
+          causa: string
+          clasificado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          reporte_id?: string
+          clasificacion?: string
+          hubo_atencion?: boolean | null
+          dias_perdidos?: number | null
+          causa?: string
+          clasificado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ssoma_clasificaciones_clasificado_por_fkey"
+            columns: ["clasificado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_clasificaciones_reporte_id_fkey"
+            columns: ["reporte_id"]
+            isOneToOne: false
+            referencedRelation: "ssoma_reportes"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       ssoma_reporte_fotos: {
         Row: {
           id: string
@@ -10602,6 +10862,7 @@ export type Database = {
           motivo_anulacion: string | null
           creado_en: string
           actualizado_en: string
+          cerrado_en: string | null
         }
         Insert: {
           id?: string
@@ -10620,6 +10881,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          cerrado_en?: string | null
         }
         Update: {
           id?: string
@@ -10638,6 +10900,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          cerrado_en?: string | null
         }
         Relationships: [
           {
@@ -18245,6 +18508,44 @@ export type Database = {
         }
         Returns: string
       }
+      ssoma_acciones_visibles: {
+        Args: {
+          p_reporte: string | null
+          p_id: string | null
+        }
+        Returns: {
+          id: string | null
+          reporte_id: string | null
+          reporte_numero: string | null
+          reporte_tipo: string | null
+          area: string | null
+          descripcion: string | null
+          responsable_id: string | null
+          responsable: string | null
+          responsable_puesto: string | null
+          fecha_limite: string | null
+          estado: string | null
+          dias_para_vencer: number | null
+          creado_en: string | null
+          asigno: string | null
+          cerrado_en: string | null
+          cerro: string | null
+          nota_cierre: string | null
+          fotos: number | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          alcance: string | null
+          orden: number | null
+        }[]
+      }
+      ssoma_anotar_evidencia: {
+        Args: {
+          p_accion: string | null
+          p_evento: string | null
+          p_fotos: Json | null
+        }
+        Returns: null
+      }
       ssoma_anotar_fotos: {
         Args: {
           p_reporte: string | null
@@ -18252,10 +18553,72 @@ export type Database = {
         }
         Returns: null
       }
+      ssoma_anular_accion: {
+        Args: {
+          p_accion: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       ssoma_anular_reporte: {
         Args: {
           p_id: string | null
           p_motivo: string | null
+        }
+        Returns: string
+      }
+      ssoma_avisar_a: {
+        Args: {
+          p_usuario: string | null
+          p_titulo: string | null
+          p_cuerpo: string | null
+          p_ruta: string | null
+          p_tabla: string | null
+          p_id: string | null
+        }
+        Returns: null
+      }
+      ssoma_cerrar_accion: {
+        Args: {
+          p_accion: string | null
+          p_evento: string | null
+          p_nota: string | null
+          p_fotos: Json | null
+        }
+        Returns: string
+      }
+      ssoma_clasificar: {
+        Args: {
+          p_reporte: string | null
+          p_clasificacion: string | null
+          p_hubo_atencion: boolean | null
+          p_dias_perdidos: number | null
+          p_causa: string | null
+        }
+        Returns: string
+      }
+      ssoma_crear_accion: {
+        Args: {
+          p_id: string | null
+          p_reporte: string | null
+          p_descripcion: string | null
+          p_responsable: string | null
+          p_fecha_limite: string | null
+        }
+        Returns: string
+      }
+      ssoma_cuentas_para_asignar: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          nombre: string | null
+          puesto: string | null
+          area: string | null
+        }[]
+      }
+      ssoma_dia: {
+        Args: {
+          p_dia: string | null
         }
         Returns: string
       }
@@ -18265,6 +18628,36 @@ export type Database = {
         }
         Returns: boolean
       }
+      ssoma_hay_quien_reciba_el_cierre: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      ssoma_historia_de_accion: {
+        Args: {
+          p_accion: string | null
+        }
+        Returns: {
+          id: string | null
+          tipo: string | null
+          responsable: string | null
+          fecha_limite: string | null
+          nota: string | null
+          hizo: string | null
+          hizo_puesto: string | null
+          creado_en: string | null
+          fotos: number | null
+        }[]
+      }
+      ssoma_hoy: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      ssoma_nombre_de: {
+        Args: {
+          p_usuario: string | null
+        }
+        Returns: string
+      }
       ssoma_personal_para_elegir: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -18273,6 +18666,35 @@ export type Database = {
           cargo: string | null
           area: string | null
         }[]
+      }
+      ssoma_por_atender: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          por_clasificar: number | null
+          sin_accion: number | null
+        }[]
+      }
+      ssoma_reabrir_accion: {
+        Args: {
+          p_accion: string | null
+          p_motivo: string | null
+          p_fecha_limite: string | null
+        }
+        Returns: string
+      }
+      ssoma_reasignar_accion: {
+        Args: {
+          p_accion: string | null
+          p_responsable: string | null
+          p_fecha_limite: string | null
+        }
+        Returns: string
+      }
+      ssoma_recalcular_reporte: {
+        Args: {
+          p_reporte: string | null
+        }
+        Returns: boolean
       }
       ssoma_reportar: {
         Args: {
@@ -18319,6 +18741,25 @@ export type Database = {
           anulado_en: string | null
           anulo: string | null
           motivo_anulacion: string | null
+        }[]
+      }
+      ssoma_seguimiento_de_reportes: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          reporte: string | null
+          clasificacion: string | null
+          hubo_atencion: boolean | null
+          dias_perdidos: number | null
+          causa: string | null
+          clasifico: string | null
+          clasificado_en: string | null
+          cerrado_en: string | null
+          acciones: number | null
+          abiertas: number | null
+          vencidas: number | null
+          cerradas: number | null
         }[]
       }
       stock_al_aprobar_compras: {
