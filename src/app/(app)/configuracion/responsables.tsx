@@ -23,6 +23,10 @@ import { asignarResponsableDeArea } from './acciones'
  * y se cambia en una ventana por área. El nombre del organigrama no se toca
  * desde aquí: dice a quién hay que darle cuenta, y se conserva hasta que todas
  * las áreas tengan la suya.
+ *
+ * Un área puede ser llevada por otra (a Ingeniería la lleva Diseño: es un solo
+ * puesto, migración 20261126998500). Mientras no tenga cuenta propia, la base
+ * le anota la de esa, y la fila lo dice: no figura como «Sin cuenta».
  */
 export function ResponsablesDeArea({
   areas,
@@ -51,7 +55,7 @@ export function ResponsablesDeArea({
                 ? `Ninguna de las ${areas.length} áreas tiene cuenta responsable todavía.`
               : `${conCuenta} de ${areas.length} áreas tienen cuenta responsable. ${faltan === 1 ? 'Falta 1.' : `Faltan ${faltan}.`}`
         }
-        ayuda="La cuenta que responde por cada área. Lo que las próximas entregas le avisen a un área (Calidad, Garantías, Mantenimiento) irá a esta cuenta. Cada cuenta se nombra por su puesto. El nombre del organigrama se conserva al lado hasta que todas tengan su cuenta. Las cuentas se dan de alta en Personal."
+        ayuda="La cuenta que responde por cada área. Lo que las próximas entregas le avisen a un área (Calidad, Garantías, Mantenimiento) irá a esta cuenta. Cada cuenta se nombra por su puesto. El nombre del organigrama se conserva al lado hasta que todas tengan su cuenta. A Ingeniería la lleva Diseño, que es un solo puesto: mientras no tenga cuenta propia, responde la de Diseño. Las cuentas se dan de alta en Personal."
       />
       <TarjetaCuerpo>
         {areas.length === 0 ? (
@@ -67,6 +71,8 @@ export function ResponsablesDeArea({
     </Tarjeta>
   )
 }
+
+const LISTA = new Intl.ListFormat('es', { style: 'long', type: 'conjunction' })
 
 /** Un área: quién responde por ella y la ventana para asignarlo o cambiarlo. */
 function FilaDeArea({
@@ -92,22 +98,29 @@ function FilaDeArea({
 
   const responsable = area.responsable
   const deBaja = Boolean(responsable && !responsable.activo)
+  // El área que la lleva. Si la cuenta es `heredada`, es la de esa área y no
+  // una propia: en la ventana, el campo abre vacío («sin cuenta propia»).
+  const laLleva = area.llevadaPor
+  const heredada = Boolean(laLleva && area.heredada)
+  const propia = heredada ? null : responsable
   const idCampo = `responsable-${area.id}`
   // Las cuentas se nombran por su puesto, como en todo el sistema (migración
   // 109). Primero las de la misma área: entre diecisiete, la que se busca casi
   // siempre es una de esas.
   const deLaCasa = cuentas.filter((c) => c.area_id === area.id)
+  // Las del área que la lleva van antes que las demás: son las del puesto.
+  const deQuienLaLleva = laLleva ? cuentas.filter((c) => c.area_id === laLleva.id) : []
   // Si la lista cambia (tras el rechazo, la cuenta dada de baja sale de ella),
   // el campo se vuelve a montar con lo guardado: un select sin dueño caía en
   // la primera opción, «Sin cuenta responsable», y el siguiente «Guardar»
   // quitaba al responsable.
-  const claveDeLaLista = `${responsable?.id ?? ''}:${cuentas.map((c) => c.id).join(',')}`
+  const claveDeLaLista = `${propia?.id ?? ''}:${cuentas.map((c) => c.id).join(',')}`
   // El campo vuelto a montar es otro: el cursor que tenía el de antes se
   // perdía, y vuelve a él mientras siga el rechazo.
   useEffect(() => {
     if (errorDeLaCuenta) campo.current?.focus()
   }, [claveDeLaLista, errorDeLaCuenta])
-  const lasDemas = cuentas.filter((c) => c.area_id !== area.id)
+  const lasDemas = cuentas.filter((c) => c.area_id !== area.id && c.area_id !== laLleva?.id)
 
   return (
     <li className="grid grid-cols-[2.25rem_minmax(0,1fr)_auto] items-start gap-x-2 py-2.5">
@@ -117,6 +130,7 @@ function FilaDeArea({
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium text-texto">
           <span>{area.nombre}</span>
           {!responsable && <Insignia tono={tonoSinCuenta}>Sin cuenta</Insignia>}
+          {heredada && !deBaja && laLleva && <Insignia tono="neutro">Responde {laLleva.nombre}</Insignia>}
           {deBaja && <Insignia tono="peligro">Cuenta dada de baja</Insignia>}
         </p>
         {responsable && (
@@ -126,7 +140,28 @@ function FilaDeArea({
           </p>
         )}
         {deBaja && (
-          <p className="text-xs text-peligro">Esta cuenta está dada de baja: ya no responde por el área. Elige otra.</p>
+          <p className="text-xs text-peligro">
+            {heredada && laLleva
+              ? `Es la cuenta de ${laLleva.nombre}, y está dada de baja: cámbiala en ${laLleva.nombre} o ponle a esta área una propia.`
+              : laLleva
+                ? `Esta cuenta está dada de baja: ya no responde por el área. Elige otra, o quítala para que responda la de ${laLleva.nombre}.`
+                : 'Esta cuenta está dada de baja: ya no responde por el área. Elige otra.'}
+          </p>
+        )}
+        {laLleva && (
+          <p className="text-xs text-texto-suave">
+            {heredada
+              ? `La lleva ${laLleva.nombre}: responde su cuenta mientras esta área no tenga una propia.`
+              : responsable
+                ? `La lleva ${laLleva.nombre}, y tiene su propia cuenta responsable.`
+                : `La lleva ${laLleva.nombre}: va a responder su cuenta cuando ${laLleva.nombre} tenga una.`}
+          </p>
+        )}
+        {area.lleva.length > 0 && (
+          <p className="text-xs text-texto-suave">
+            Lleva también {LISTA.format(area.lleva)}: su cuenta responde por {area.lleva.length === 1 ? 'esa área' : 'esas áreas'} mientras no{' '}
+            {area.lleva.length === 1 ? 'tenga' : 'tengan'} una propia.
+          </p>
         )}
         {area.encargado && <p className="text-xs text-texto-suave">En el organigrama: {area.encargado}</p>}
         {/* Siempre montado: un aviso que nace ya con su texto no se anuncia. La
@@ -140,18 +175,22 @@ function FilaDeArea({
         type="button"
         variante={responsable ? 'fantasma' : 'secundario'}
         tamano="sm"
-        aria-label={`${responsable ? 'Cambiar' : 'Asignar'} la cuenta responsable de ${area.nombre}`}
+        aria-label={`${propia ? 'Cambiar' : 'Asignar'} la cuenta responsable de ${area.nombre}`}
         onClick={() => setAbierta(true)}
       >
-        {responsable ? <UserCheck aria-hidden className="size-3.5" /> : <UserPlus aria-hidden className="size-3.5" />}
-        {responsable ? 'Cambiar' : 'Asignar'}
+        {propia ? <UserCheck aria-hidden className="size-3.5" /> : <UserPlus aria-hidden className="size-3.5" />}
+        {propia ? 'Cambiar' : 'Asignar'}
       </Boton>
 
       <Ventana
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo={`Responsable de ${area.nombre}`}
-        descripcion="La cuenta que responde por el área. Las próximas entregas le avisarán a ella lo que vaya al área."
+        descripcion={
+          laLleva
+            ? `A ${area.nombre} la lleva ${laLleva.nombre}: sin cuenta propia, responde la de ${laLleva.nombre}. Elige una solo si debe responder otra.`
+            : 'La cuenta que responde por el área. Las próximas entregas le avisarán a ella lo que vaya al área.'
+        }
         ancho="sm"
       >
         <form onSubmit={envio.alEnviar} className="space-y-4">
@@ -163,22 +202,33 @@ function FilaDeArea({
             ayudaEnIcono={false}
             error={errorDeLaCuenta ?? undefined}
           >
-            <Seleccion key={claveDeLaLista} ref={campo} id={idCampo} name="jefe_id" defaultValue={responsable?.id ?? ''} className="w-full">
-              <option value="">Sin cuenta responsable</option>
+            <Seleccion key={claveDeLaLista} ref={campo} id={idCampo} name="jefe_id" defaultValue={propia?.id ?? ''} className="w-full">
+              <option value="">{laLleva ? `Sin cuenta propia: responde la de ${laLleva.nombre}` : 'Sin cuenta responsable'}</option>
               {/* La cuenta dada de baja no está entre las activas: se muestra
                   para que el campo diga lo que hay guardado. */}
-              {deBaja && responsable && (
-                <option value={responsable.id}>{responsable.etiqueta} (dada de baja)</option>
+              {deBaja && propia && (
+                <option value={propia.id}>{propia.etiqueta} (dada de baja)</option>
               )}
-              {deLaCasa.length > 0 ? (
+              {deLaCasa.length > 0 || deQuienLaLleva.length > 0 ? (
                 <>
-                  <optgroup label={`Cuentas de ${area.nombre}`}>
-                    {deLaCasa.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.etiqueta}
-                      </option>
-                    ))}
-                  </optgroup>
+                  {deLaCasa.length > 0 && (
+                    <optgroup label={`Cuentas de ${area.nombre}`}>
+                      {deLaCasa.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.etiqueta}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {laLleva && deQuienLaLleva.length > 0 && (
+                    <optgroup label={`Cuentas de ${laLleva.nombre}, que la lleva`}>
+                      {deQuienLaLleva.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.etiqueta}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                   <optgroup label="Las demás cuentas">
                     {lasDemas.map((c) => (
                       <option key={c.id} value={c.id}>

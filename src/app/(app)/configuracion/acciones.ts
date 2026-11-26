@@ -395,7 +395,7 @@ export async function asignarResponsableDeArea(_previo: unknown, datos: FormData
     // haber guardado nada.
     // La cuenta, para saber si sigue activa: el disparador no vuelve a juzgar
     // la que no cambió, y «Guardar» con la dada de baja no es «listo».
-    .select('nombre, responsable:usuarios!areas_jefe_id_fkey(activo)')
+    .select('nombre, jefe_heredado, responsable:usuarios!areas_jefe_id_fkey(activo)')
     .maybeSingle()
 
   if (error) {
@@ -419,7 +419,10 @@ export async function asignarResponsableDeArea(_previo: unknown, datos: FormData
     ok: true,
     mensaje: v.jefe_id
       ? `${data.nombre} ya tiene su cuenta responsable.`
-      : `${data.nombre} quedó sin cuenta responsable.`,
+      : // A la que otra área lleva, la base le anota la cuenta de esa (migración 20261126998500).
+        data.jefe_heredado
+        ? `${data.nombre} quedó sin cuenta propia: responde la del área que la lleva.`
+        : `${data.nombre} quedó sin cuenta responsable.`,
   }
 }
 

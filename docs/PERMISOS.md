@@ -488,6 +488,29 @@ La tabla `areas` la lee toda cuenta activa (`ver_areas`), como antes: quién
 responde por un área no es un dato reservado. Lo que no hace nadie más que el
 administrador es cambiarlo.
 
+### Ingeniería responde con la cuenta de Diseño
+
+Migración `20261126998500_ingenieria_responde_con_la_cuenta_de_diseno` (plan de
+las demás áreas, entrega A.4), comprobada con los roles reales en la base local
+(check 498) y con clic real en el banco
+(`herramientas/banco/probar-ingenieria-la-lleva-diseno.mjs`). El organigrama
+tiene Ingeniería (ING) y Diseño (DIS), y en el sistema es un solo puesto,
+«Diseño e ingeniería», con sus cuentas en el área Diseño: no se parte ni se
+crea otra cuenta. Un área puede decir qué otra área la lleva
+(`areas.llevada_por_id`); a Ingeniería la lleva Diseño.
+
+| Qué | Quién | Cómo lo exige la base |
+| --- | --- | --- |
+| Que Ingeniería tenga a quién avisarle sin asignarla aparte | Nadie lo hace a mano: al asignar o cambiar la cuenta de Diseño, la fila de Ingeniería la recibe sola | `trg_area_reparte_su_responsable` la anota en `areas.jefe_id` de las áreas que Diseño lleva y que no tienen una propia, con `areas.jefe_heredado` en verdadero. El cambio queda en la auditoría a nombre de quien cambió la de Diseño. Como va en la fila, la leen sin cambiar todas las funciones que ya leían el responsable: `responsable_del_area`, `calidad_es_del_area`, las de averías y las de garantías |
+| Ponerle a Ingeniería una cuenta propia, o quitársela | `configuracion.editar`: solo el administrador del sistema | La misma política `editar_areas` y la misma acción `asignarResponsableDeArea`. Con una propia deja de seguir a la de Diseño; al quitársela, `trg_area_llevada_por` le anota otra vez la de Diseño. La marca `jefe_heredado` no se escribe a mano: la deciden los disparadores |
+| Decir qué área lleva a otra | `configuracion.editar`: solo el administrador del sistema, y hoy sin pantalla (lo dejó la migración) | `trg_area_llevada_por`: un área no se lleva a sí misma, la que la lleva existe y está activa, y no hay cadenas (la que lleva a otra no puede ser llevada). Si deja de ser llevada, la cuenta heredada se va con eso; la propia se conserva |
+
+Lo que no cambia: qué ve cada cuenta por su área. Las listas «de tu área»
+(requerimientos, SSOMA) van por `usuarios.area_id`, que para Diseño e ingeniería
+es Diseño. Y si la cuenta propia de Ingeniería se da de baja, pasa lo que en
+cualquier área: nadie responde hasta que el administrador la cambie o la quite,
+y la pantalla lo marca. Una cuenta dada de baja no se hereda.
+
 ## El padrón de equipos de la planta
 
 Migración `20261125160000_el_padron_de_equipos`, comprobada con los roles reales

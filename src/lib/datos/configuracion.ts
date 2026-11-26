@@ -92,13 +92,23 @@ export type AreaConResponsable = {
   encargado: string | null
   /** La cuenta responsable, nombrada por su puesto (migración 109). */
   responsable: { id: string; etiqueta: string; activo: boolean } | null
+  /**
+   * La cuenta no es propia: es la del área que la lleva, que la base le anota
+   * sola (`areas.jefe_heredado`, migración 20261126998500).
+   */
+  heredada: boolean
+  /** El área cuyo puesto lleva también esta (a Ingeniería la lleva Diseño). */
+  llevadaPor: { id: string; nombre: string } | null
+  /** Las áreas que esta lleva: su cuenta responde también por ellas. */
+  lleva: string[]
 }
 
 /** Una cuenta activa que se puede asignar: `etiqueta` es su puesto (`etiquetasDePuesto`). */
 export type CuentaParaResponsable = { id: string; etiqueta: string; area_id: string | null }
 
 /**
- * Las áreas del organigrama con su cuenta responsable (`areas.jefe_id`) y las
+ * Las áreas del organigrama con su cuenta responsable (`areas.jefe_id`), el
+ * área que lleva a cada una si la hay (`areas.llevada_por_id`) y las
  * cuentas activas que se pueden asignar. Solo para el administrador del
  * sistema: la pantalla no lo pide para nadie más.
  */
@@ -109,7 +119,7 @@ export async function areasConResponsable() {
     supabase
       .from('areas')
       // Entre `areas` y `usuarios` hay dos llaves, una por lado: se nombra la del responsable.
-      .select('id, codigo, nombre, encargado, responsable:usuarios!areas_jefe_id_fkey(id, puesto, correo, activo)')
+      .select('id, codigo, nombre, encargado, jefe_heredado, llevada_por_id, responsable:usuarios!areas_jefe_id_fkey(id, puesto, correo, activo)')
       .eq('activo', true)
       .order('orden_secuencia'),
     // Por puesto (migración 109); el correo distingue dos cuentas con el mismo.
@@ -123,9 +133,14 @@ export async function areasConResponsable() {
   const activas = (cuentas.data ?? []) as unknown as Cuenta[]
   const etiquetas = etiquetasDePuesto(activas)
 
+  const filas = areas.data ?? []
+  // La que lleva a otra está en la misma lista: solo un área activa lleva a otra (`fn_area_llevada_por`).
+  const porId = new Map(filas.map((a) => [a.id as string, a]))
+
   return {
-    areas: (areas.data ?? []).map((a): AreaConResponsable => {
+    areas: filas.map((a): AreaConResponsable => {
       const r = a.responsable as unknown as (Omit<Cuenta, 'area_id'> & { activo: boolean }) | null
+      const laLleva = a.llevada_por_id ? porId.get(a.llevada_por_id as string) : undefined
       return {
         id: a.id as string,
         codigo: a.codigo as string,
@@ -133,6 +148,9 @@ export async function areasConResponsable() {
         encargado: (a.encargado as string | null)?.trim() || null,
         // La dada de baja no está entre las activas: se nombra por su puesto a secas.
         responsable: r && { id: r.id, etiqueta: etiquetas.get(r.id) ?? puesto(r), activo: r.activo },
+        heredada: Boolean(r && a.jefe_heredado),
+        llevadaPor: laLleva ? { id: laLleva.id as string, nombre: laLleva.nombre as string } : null,
+        lleva: filas.filter((b) => b.llevada_por_id === a.id).map((b) => b.nombre as string),
       }
     }),
     cuentas: activas
