@@ -22,7 +22,7 @@ import { costoDeOrdenes } from '@/lib/datos/costos-ot'
 import { dashboardDelPuesto, type Cifra, type CodigoEnCurso } from '@/lib/datos/dashboard'
 import { pendientesGlobales, type TareaPendiente } from '@/lib/datos/pendientes-globales'
 import { indicadoresTablero, ordenesAtrasadas, ordenesPorEntrega } from '@/lib/datos/ordenes'
-import { menuDe, type ItemNavegacion } from '@/lib/navegacion'
+import { modulosDelInicio, rutasDeTrabajo, type ItemNavegacion } from '@/lib/navegacion'
 import { exigirSesion, puede, type PerfilSesion } from '@/lib/sesion'
 import { cn } from '@/lib/utils'
 
@@ -46,9 +46,12 @@ export default async function PaginaDashboard() {
   const hoy = hoyLima()
   const esAdmin = perfil.rol.codigo === 'ADMIN'
   // La OT es desde el 2026-10-15 un documento de Diseño: su bloque sale solo a
-  // quien la tiene en su menú (Diseño, su colaborador y Administración).
-  const modulos = menuDe(perfil.permisos, esAdmin, perfil.rol.codigo).flatMap((g) => g.items)
-  const llevaOrdenes = modulos.some((i) => i.ruta === '/ordenes')
+  // quien la tiene en su menú (Diseño, su colaborador y Administración); no a
+  // Gerencia, que la consulta desde su barra pero no la trabaja.
+  const llevaOrdenes = rutasDeTrabajo(perfil.permisos, esAdmin, perfil.rol.codigo).has('/ordenes')
+  // «Te toca» nombra y ordena cada fila con los módulos de su trabajo, los
+  // mismos de «Tus módulos»: lo que solo consulta no le trae pendientes.
+  const modulos = modulosDelInicio(perfil.permisos, esAdmin, perfil.rol.codigo).flatMap((g) => g.items)
 
   const [area, pendientes] = await Promise.all([dashboardDelPuesto(perfil), pendientesGlobales(perfil)])
 
@@ -571,7 +574,7 @@ const TONO_TEXTO: Record<Tono, string> = {
  */
 function TusModulos({ perfil }: { perfil: PerfilSesion }) {
   const esAdmin = perfil.rol.codigo === 'ADMIN'
-  const modulos = menuDe(perfil.permisos, esAdmin, perfil.rol.codigo)
+  const modulos = modulosDelInicio(perfil.permisos, esAdmin, perfil.rol.codigo)
     .flatMap((g) => g.items)
     .filter((i) => i.ruta !== '/')
   if (modulos.length === 0) return null
