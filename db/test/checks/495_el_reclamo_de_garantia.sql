@@ -174,6 +174,22 @@ do $$ begin
     'Tesorería no ve reclamos, ni sus fotos, ni la lista');
 end $$;
 reset role;
+-- Como en producción: el área de Garantías sin responsable. «Responsable = yo»
+-- daba null, y la lista dejaba ver todo a cualquier cuenta (lo vio el banco).
+select test.como_usuario(:'admin_id');
+update public.areas set jefe_id = null where codigo = 'GRT';
+select test.como_usuario(:'tes_id');
+set local role authenticated;
+do $$ begin
+  perform test.afirmar(public.puede_ver_los_reclamos_de_garantia() is false
+                       and (select count(*) from public.garantias_reclamos_visibles(null)) = 0
+                       and (select count(*) from public.garantias_reclamos_visibles(pg_temp.id('rg1'))) = 0,
+    'con el área de Garantías sin responsable, Tesorería tampoco ve nada');
+end $$;
+reset role;
+select test.como_usuario(:'admin_id');
+update public.areas set jefe_id = :'jefe_id' where codigo = 'GRT';
+reset role;
 
 select test.como_usuario(:'grt_id');
 set local role authenticated;

@@ -216,15 +216,22 @@ create or replace trigger trg_garantia_reclamo_foto_guardia
 -- Ventas, Administración, Calidad y Gerencia, por su permiso; y el área de
 -- Garantías: sus cuentas activas y su responsable (`areas.jefe_id`), que puede
 -- ser de otra área.
+--
+-- Nunca devuelve null: `garantias_reclamos_visibles` corta con `if not …`, y un
+-- null ahí no corta. Con el área sin responsable, «responsable = yo» era null y
+-- cualquier cuenta veía todos los reclamos (lo encontró el banco, con Tesorería).
 create or replace function public.puede_ver_los_reclamos_de_garantia()
 returns boolean language sql stable security definer set search_path to 'public' as $$
-  select public.usuario_actual() is not null and public.es_usuario_activo()
+  select coalesce(
+    public.usuario_actual() is not null and public.es_usuario_activo()
      and (public.es_admin()
           or public.tiene_permiso('garantias.registrar') or public.tiene_permiso('garantias.atender')
           or public.tiene_permiso('garantias.causa') or public.tiene_permiso('garantias.ver')
-          or exists (select 1 from public.usuarios u join public.areas a on a.id = u.area_id
-                      where u.id = public.usuario_actual() and a.codigo = 'GRT')
-          or public.responsable_del_area('GRT') = public.usuario_actual());
+          or exists (select 1 from public.usuarios u
+                       join public.areas a on a.codigo = 'GRT'
+                      where u.id = public.usuario_actual() and u.activo
+                        and (u.area_id = a.id or a.jefe_id = u.id))),
+    false);
 $$;
 revoke all on function public.puede_ver_los_reclamos_de_garantia() from public, anon;
 grant execute on function public.puede_ver_los_reclamos_de_garantia() to authenticated;
@@ -709,7 +716,7 @@ declare
   v_causa    boolean;
   v_registra boolean;
 begin
-  if not public.puede_ver_los_reclamos_de_garantia() then
+  if not coalesce(public.puede_ver_los_reclamos_de_garantia(), false) then
     return;
   end if;
   v_atiende  := public.es_admin() or public.tiene_permiso('garantias.atender');
