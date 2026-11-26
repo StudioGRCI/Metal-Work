@@ -258,7 +258,8 @@ def partir_subtitulos(palabras: list[dict], maximo: int) -> list[dict]:
     """
     largo = lambda a, b: len(' '.join(x['t'] for x in palabras[a:b]))  # noqa: E731
     n = len(palabras)
-    trozos = max(1, -(-largo(0, n) // maximo))
+    # Nunca más trozos que palabras: con una palabra más larga que el renglón, la cuenta por letras pide de más.
+    trozos = min(n, max(1, -(-largo(0, n) // maximo)))
     while True:
         ideal = largo(0, n) / trozos
         # mejor[k][i]: el menor costo de repartir las primeras i palabras en k trozos.
@@ -268,7 +269,8 @@ def partir_subtitulos(palabras: list[dict], maximo: int) -> list[dict]:
             for i in range(k, n + 1):
                 for j in range(k - 1, i):
                     tramo = largo(j, i)
-                    if tramo > maximo or mejor[k - 1][j][0] == float('inf'):
+                    # Una palabra sola más larga que el renglón va igual, en su trozo: no hay cómo partirla.
+                    if (tramo > maximo and i - j > 1) or mejor[k - 1][j][0] == float('inf'):
                         continue
                     costo = (tramo - ideal) ** 2
                     if i < n and palabras[i - 1]['t'][-1] in ',;:.?!':
@@ -277,7 +279,7 @@ def partir_subtitulos(palabras: list[dict], maximo: int) -> list[dict]:
                         costo += ideal**2
                     if mejor[k - 1][j][0] + costo < mejor[k][i][0]:
                         mejor[k][i] = (mejor[k - 1][j][0] + costo, j)
-        if mejor[trozos][n][0] < float('inf'):
+        if mejor[trozos][n][0] < float('inf') or trozos >= n:
             break
         trozos += 1
     cortes = [n]
@@ -294,8 +296,41 @@ def partir_subtitulos(palabras: list[dict], maximo: int) -> list[dict]:
 # ------------------------------------------------------------------ el video
 
 
+VOCES = {'es-PE-CamilaNeural': ('+0%', '-5%')}
+
+
+def validar_guion(guion: dict) -> list[str]:
+    """Lo que el formato fija y un guion no puede cambiar. Devuelve lo que no cumple."""
+    faltas = []
+    partes = ','.join(e.get('tipo', '?') for e in guion.get('escenas', []))
+    if not re.fullmatch(r'gancho,portada,antes-despues(,paso)+,porque,cierre', partes):
+        faltas.append(f'las partes van en este orden: gancho, portada, antes-despues, uno o más pasos, porque y cierre (el guion trae: {partes})')
+    voz = guion.get('voz', {})
+    if voz.get('velocidad') not in VOCES.get(voz.get('nombre'), ()):
+        faltas.append(f"la voz es es-PE-CamilaNeural a velocidad normal (+0%) o -5% (el guion trae: {voz.get('nombre')} a {voz.get('velocidad')})")
+    for n, e in enumerate(guion.get('escenas', []), 1):
+        tipo = e.get('tipo')
+        if tipo != 'portada' and not e.get('frases'):
+            faltas.append(f'la escena {n} ({tipo}) no tiene voz: cada parte se explica')
+        if tipo == 'cierre' and len(e.get('puntos', [])) != 3:
+            faltas.append(f"el cierre resume en 3 puntos (el guion trae {len(e.get('puntos', []))})")
+        if tipo == 'paso' and (not e.get('rotulo') or not e.get('tomas')):
+            faltas.append(f'el paso de la escena {n} necesita su rótulo y al menos una toma')
+        if tipo == 'antes-despues' and (not e.get('antes') or not e.get('ahora', {}).get('captura')):
+            faltas.append('«antes y después» necesita cómo estaba y la captura de cómo se ve ahora')
+    if not guion.get('tarea') or not guion.get('puesto'):
+        faltas.append('faltan la tarea o el puesto: el título del video es la tarea')
+    return faltas
+
+
 def hacer(carpeta: Path, formato: str) -> bool:
     guion = json.loads((carpeta / 'guion.json').read_text())
+    faltas = validar_guion(guion)
+    if faltas:
+        print(f'{formato}:')
+        for f in faltas:
+            print(f'  FALLA: el guion no sigue el formato: {f}.')
+        return False
     ritmo = RITMO[formato]
     salida = carpeta / 'generado' / formato
     cache = carpeta / 'generado' / 'voz'

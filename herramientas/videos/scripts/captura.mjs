@@ -16,6 +16,7 @@
  * cada resalte, en píxeles de CSS. La plantilla hace el zoom y dibuja el
  * recuadro con esos números: no se mide nada a ojo.
  */
+import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -38,6 +39,9 @@ if (!CLAVE) {
   process.exit(2)
 }
 
+const ES_LOCAL = (u) => ['localhost', '127.0.0.1'].includes(u.hostname) || ['data:', 'blob:', 'about:'].includes(u.protocol)
+const cortados = new Set()
+
 /** El formato que se pidió por la línea de órdenes: `horizontal` o `vertical`. */
 export function formatoPedido() {
   const formato = process.argv[2]
@@ -50,7 +54,7 @@ export function formatoPedido() {
 
 let navegador
 async function elNavegador() {
-  navegador ??= await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
+  navegador ??= await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox', '--lang=es-PE'], env: { ...process.env, LANG: 'es_PE.UTF-8', LANGUAGE: 'es_PE:es' } })
   return navegador
 }
 
@@ -66,6 +70,14 @@ export async function entrar(cuenta, formato = 'horizontal') {
     timezoneId: 'America/Lima',
     colorScheme: 'light',
     reducedMotion: 'reduce',
+  })
+  // La segunda cerradura: aunque `BASE` sea local, nada que el navegador pida sale de esta máquina.
+  await contexto.route('**/*', (ruta) => {
+    const destino = new URL(ruta.request().url())
+    if (ES_LOCAL(destino)) return ruta.continue()
+    if (!cortados.has(destino.host)) console.warn(`  cortado: el navegador quiso ir a ${destino.host}; las capturas no salen del banco local.`)
+    cortados.add(destino.host)
+    return ruta.abort()
   })
   const pagina = await contexto.newPage()
   await pagina.goto(`${BASE}/ingresar`, { waitUntil: 'networkidle' })
@@ -110,9 +122,12 @@ export function pdfConTexto(lineas) {
  * Entra con la cuenta del puesto del video y devuelve `tomar` para sus capturas.
  *
  * `montosInventados`: los montos que este video inventó y escribió él mismo en
- * el banco (una cotización de prueba no se entiende sin su total). La revisión
- * automática deja pasar esos y ninguno más; un RUC, un DNI, un teléfono o una
- * clave no se pueden declarar: no salen en pantalla.
+ * el banco (una cotización de prueba no se entiende sin su total), cada uno
+ * con su moneda: `[{ moneda: 'USD', valor: 135000 }]`. La revisión automática
+ * deja pasar esos y ninguno más, admite pocos y falla si alguno no sale en el
+ * video. El `capturar.mjs` escribe sus textos con las mismas constantes que
+ * declara. Un RUC, un DNI, un teléfono o una clave no se pueden declarar: no
+ * salen en pantalla.
  */
 export async function abrir({ video, formato, cuenta, montosInventados = [] }) {
   const carpeta = join(dirname(fileURLToPath(video)), 'capturas', formato)
@@ -149,8 +164,10 @@ export async function abrir({ video, formato, cuenta, montosInventados = [] }) {
       }
       cajas[clave] = { x: Math.round(caja.x), y: Math.round(caja.y), ancho: Math.round(caja.width), alto: Math.round(caja.height) }
     }
-    await pagina.screenshot({ path: join(carpeta, `${nombre}.png`) })
-    tomadas[nombre] = { archivo: `${nombre}.png`, ancho: f.ancho, alto: f.alto, resaltes: cajas }
+    if (!ES_LOCAL(new URL(pagina.url()))) throw new Error(`«${nombre}»: la página está en ${pagina.url()}, fuera del banco local. No se toma.`)
+    const imagen = await pagina.screenshot({ path: join(carpeta, `${nombre}.png`) })
+    // La huella de la imagen: la revisión automática comprueba que el video se armó con esta y no con otra.
+    tomadas[nombre] = { archivo: `${nombre}.png`, ancho: f.ancho, alto: f.alto, resaltes: cajas, sha256: createHash('sha256').update(imagen).digest('hex') }
     writeFileSync(join(carpeta, 'capturas.json'), `${JSON.stringify(tomadas, null, 2)}\n`)
     console.log(`  ${formato} · ${nombre}${Object.keys(cajas).length ? ` (${Object.keys(cajas).join(', ')})` : ''}`)
   }

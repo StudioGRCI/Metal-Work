@@ -9,7 +9,7 @@ import '@fontsource/arimo/400.css'
 import '@fontsource/arimo/700.css'
 
 import React, { createContext, useContext, useEffect, useState } from 'react'
-import { AbsoluteFill, Easing, Img, continueRender, delayRender, interpolate, staticFile, useCurrentFrame } from 'remotion'
+import { AbsoluteFill, Easing, Img, cancelRender, continueRender, delayRender, interpolate, staticFile, useCurrentFrame } from 'remotion'
 
 import { COLOR, MEDIDAS, type Medidas } from './tema'
 import type { Formato } from './tipos'
@@ -31,7 +31,8 @@ export function EsperarLetras({ children }: { children: React.ReactNode }) {
     Promise.all(pesos.map((p) => document.fonts.load(p, 'áéíóúñ¿¡«»')))
       .then(() => document.fonts.ready)
       .then(() => continueRender(espera))
-      .catch(() => continueRender(espera))
+      // Sin las letras de la marca no hay video: mejor que se detenga a que salga con la letra del sistema.
+      .catch((e) => cancelRender(e instanceof Error ? e : new Error('No cargaron las letras de la marca (Jost y Arimo).')))
   }, [espera])
   return <>{children}</>
 }

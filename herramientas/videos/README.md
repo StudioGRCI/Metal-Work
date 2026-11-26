@@ -18,7 +18,9 @@ Es un proyecto aparte de la aplicación, con sus propias dependencias
 **Un video por tarea, no por puesto.** El título es la tarea («Cómo pedir un
 RQ»). Si un cambio toca a varios puestos, un video por puesto y por tarea.
 
-Todo video tiene estas seis partes, en este orden. La plantilla las arma sola:
+Todo video tiene estas seis partes, en este orden. La plantilla las arma, y
+`voz.py` y `revisar.py` no dejan pasar un guion al que le falte una, que las
+traiga en otro orden, que cierre con otra cantidad de puntos o que use otra voz:
 
 1. **Gancho** (primeros 5 s): qué gana quien lo ve.
 2. **Portada** (2 s): logo, tarea y puesto.
@@ -44,21 +46,22 @@ Subtítulos siempre visibles. Fundidos de 0,3 a 0,5 s, sin efectos.
 
 ```bash
 cd herramientas/videos
-npm install
+npm install        # Remotion y playwright-core (usa el Chromium que ya tenga la máquina)
 pip install edge-tts faster-whisper pillow numpy
 # y en la máquina: ffmpeg y tesseract-ocr con tesseract-ocr-spa
 ```
 
 ## Hacer un video
 
-Hay dos hechos, que sirven de ejemplo:
+Hay tres hechos, que sirven de ejemplo:
 
 | Video | Puesto | Muestra cómo |
 | --- | --- | --- |
 | `videos/como-subir-una-cotizacion-con-varias-unidades/` | Ventas | subir un documento inventado y declarar sus montos |
+| `videos/como-cargar-la-ot-de-cada-unidad/` | Administración | otros puestos preparan el caso fuera de cámara; una ventana con error a propósito |
 | `videos/como-pedir-un-rq/` | Supervisor de área | llenar un formulario y que otro puesto actúe fuera de cámara |
 
-Las órdenes de abajo usan el primero; con el otro son iguales.
+Las órdenes de abajo usan el primero; con los otros son iguales.
 
 **1. El guion.** `videos/<video>/guion.json`, empezando por el gancho. Cada
 frase es un subtítulo; el vertical puede decir una versión más corta
@@ -86,13 +89,17 @@ pantalla y **el lugar exacto de lo que se va a resaltar**. El zoom y el
 recuadro salen de esos números, no se miden a ojo. Un renglón que ocupa todo
 el ancho se resalta con `cenido(…)`, que toma solo lo escrito: así la cámara se
 acerca y la letra se lee. `scripts/captura.mjs` se
-niega a capturar fuera de `localhost`: nunca se graba metalworkperu.app.
+niega a capturar fuera de `localhost` y corta todo lo que el navegador pida a
+otra máquina: nunca se graba metalworkperu.app. Cada imagen queda con su huella
+(sha256) y la revisión comprueba que el video se armó con esas.
 
 Si la tarea pide subir un documento, se inventa ahí mismo con `pdfConTexto`
 (nunca se copia uno real) y **sin RUC ni DNI**: en un video no sale ninguno,
 tampoco de prueba. Una cotización no se entiende sin su total: los montos que
-el video inventa se declaran en `abrir({ montosInventados: [...] })` y la
-revisión deja pasar esos y ningún otro.
+el video inventa se declaran con su moneda en
+`abrir({ montosInventados: [{ moneda: 'USD', valor: 135000 }] })`, con las
+mismas constantes con que se escriben. La revisión deja pasar esos y ningún
+otro, admite hasta cuatro y falla si alguno declarado no sale en el video.
 
 **3. Todo lo demás, de una vez:**
 
@@ -126,11 +133,16 @@ propiedades que usa `hacer.mjs` (guion, `linea.json` y `capturas.json`).
 
 `scripts/revisar.py` mira el MP4 final y no deja pasar un video que falle:
 
-- **Formato**: tamaño, 30 fps, H.264 + AAC, duración, y el gancho en 5 s.
+- **Formato**: las seis partes y la voz del formato, tamaño, 30 fps, H.264 +
+  AAC, duración, y el gancho en 5 s.
 - **La voz contra el guion**: Whisper transcribe el video final y se compara
-  palabra por palabra. Nada cortado ni cambiado.
+  palabra por palabra. Nada cortado ni cambiado: falla si faltan dos palabras
+  seguidas en cualquier parte, o dos o más en una frase (una sola palabra mal
+  oída se tolera y se anota).
 - **Datos reales**: compara todos los cuadros y lee con OCR cada uno en que la
-  imagen cambia, y cada captura a su tamaño completo. No puede aparecer un RUC,
+  imagen cambia (y por lo menos uno por segundo), y cada captura a su tamaño
+  completo. Ante la duda, marca: toda serie de 8 u 11 cifras es un DNI o un
+  RUC, y toda cifra con dos decimales es un monto. No puede aparecer un RUC,
   un DNI, un teléfono, un correo que no sea de prueba ni una clave, ni más
   montos que los inventados que declaró la captura. Y las capturas tienen que
   venir del banco local con una cuenta de prueba.
@@ -139,13 +151,16 @@ propiedades que usa `hacer.mjs` (guion, `linea.json` y `capturas.json`).
   final (Whisper da la palabra y el volumen, el instante). El desfase no pasa
   de 0,3 s.
 
-Lo que marque como dato real puede ser un error de lectura: deja el cuadro en
-`generado/<formato>/revision/` como `DATO-…png` para mirarlo. No se da por bueno
-sin mirarlo. El OCR se equivoca con la letra chica y con dos pantallas
-encimadas a medio fundido: cada cuadro marcado se lee dos veces más, al doble y
-al triple de tamaño. Un dato que está de verdad en pantalla sale igual en dos
-lecturas; si no se repite queda como `dudoso-…png`, anotado en el informe, sin
-tumbar la revisión. Los dudosos también se miran.
+Las **capturas** se leen a su tamaño completo y ahí no se perdona nada: lo que
+se lea una vez tumba el video. Todo lo que el video muestra del sistema sale de
+ellas. En los **cuadros** del video la letra es chica y a medio fundido hay dos
+pantallas encimadas, y el OCR se equivoca («90012026» por «9001-2026»,
+«135,900.00» por «135,000.00»): cada cuadro marcado se lee dos veces más, al
+doble y al triple de tamaño. Lo que sale igual en otra lectura es un dato y
+queda como `DATO-…png` en `generado/<formato>/revision/`; lo que no se repite,
+el trozo de un monto inventado y lo que las capturas dicen con un guion o un
+espacio que el OCR se comió («1. 10 KG» leído «1.10»), queda como `dudoso-…png`, anotado y contado en
+el veredicto. Unos y otros se miran: nada se da por bueno sin mirarlo.
 
 La revisión se probó en rojo con tres videos estropeados a propósito —un RUC y
 un monto pintados un segundo, la voz corrida 0,6 s y una frase muda— y los

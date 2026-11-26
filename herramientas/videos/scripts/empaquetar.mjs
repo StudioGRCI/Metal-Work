@@ -27,7 +27,7 @@ const armado = join(mkdtempSync(join(tmpdir(), 'video-')), nombre)
 mkdirSync(armado, { recursive: true })
 
 for (const parte of ['README.md', 'package.json', 'package-lock.json', 'tsconfig.json', '.gitignore', 'src', 'scripts', 'public']) {
-  if (existsSync(join(RAIZ, parte))) cpSync(join(RAIZ, parte), join(armado, parte), { recursive: true })
+  if (existsSync(join(RAIZ, parte))) cpSync(join(RAIZ, parte), join(armado, parte), { recursive: true, filter: (origen) => !origen.includes('__pycache__') })
 }
 // La marca oficial vive en el repositorio; el paquete lleva su copia para no depender de él.
 const marca = [join(RAIZ, 'public/marca'), join(RAIZ, '../../public/marca')].find((r) => existsSync(join(r, 'logo-metal-work-claro.png')))

@@ -36,7 +36,8 @@ export type Linea = { video: string; formato: Formato; duracion: number; escenas
 
 /** `capturas/<formato>/capturas.json`, que escribe `scripts/captura.mjs`. En píxeles de CSS. */
 export type Caja = { x: number; y: number; ancho: number; alto: number }
-export type Captura = { archivo: string; ancho: number; alto: number; resaltes: Record<string, Caja> }
+/** `sha256`: la huella de la imagen al tomarla; la comprueba la revisión automática. */
+export type Captura = { archivo: string; ancho: number; alto: number; resaltes: Record<string, Caja>; sha256?: string }
 export type Capturas = Record<string, Captura>
 
 export type PropiedadesVideo = {

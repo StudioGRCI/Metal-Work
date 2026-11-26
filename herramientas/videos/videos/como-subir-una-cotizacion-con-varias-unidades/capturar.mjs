@@ -14,9 +14,10 @@
  * llegar. Cada formato sube la suya: para que los dos salgan con el mismo
  * número, rehacer el banco entre uno y otro.
  *
- * El documento no trae RUC: en el video no sale ninguno. Por eso el cliente se
- * elige a mano (con RUC, el sistema lo reconoce solo). Los montos son
- * inventados y se declaran abajo: la revisión automática deja pasar solo esos.
+ * El documento no trae RUC: en el video no sale ninguno. El sistema reconoce
+ * al cliente igual, por su razón social. Los montos son inventados y se
+ * declaran abajo, con las mismas constantes con que se escriben: la revisión
+ * automática deja pasar solo esos.
  */
 import { abrir, cenido, cerrar, entrar, formatoPedido, pdfConTexto } from '../../scripts/captura.mjs'
 
@@ -24,7 +25,9 @@ const formato = formatoPedido()
 const NUMERO = '9001-2026'
 const CLIENTE = 'TRANSPORTES ANDINOS S.A.C.' // de los datos de demostración del banco
 const UNIDADES = 3
-const TOTAL = '135,000.00'
+const MONEDA = 'USD'
+const TOTAL = 135000 // inventado: 45 000 por unidad
+const dinero = (n) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const OT = { numero: '9101-2026', codigo: 'CMB_SR_O3_4_26/901' }
 
 // Los dos documentos se arman aquí y se le dan al navegador en memoria: no hay archivo que guardar.
@@ -35,7 +38,7 @@ const archivoCotizacion = pdf(`Cotización ${NUMERO}.pdf`, [
   `Señores : ${CLIENTE}`,
   'SEMIRREMOLQUE CAMA BAJA 3 EJES - SUSPENSION MECANICA',
   `CANTIDAD : 0${UNIDADES} UNIDADES`,
-  `TOTAL US$ ${TOTAL}`,
+  `TOTAL US$ ${dinero(TOTAL)}`,
   'PRECIO NO INCLUYE IGV',
   'Documento de prueba del banco local de Metal Work.',
 ])
@@ -51,8 +54,11 @@ const { pagina, ir, tomar } = await abrir({
   video: import.meta.url,
   formato,
   cuenta: 'ventas',
-  // El total de la cotización inventada y su promedio por unidad (135 000 entre 3).
-  montosInventados: [135000, 45000],
+  // El total de la cotización inventada y su promedio por unidad, que la tarjeta calcula.
+  montosInventados: [
+    { moneda: MONEDA, valor: TOTAL },
+    { moneda: MONEDA, valor: TOTAL / UNIDADES },
+  ],
 })
 
 // 1. Por dónde se entra y el botón.
@@ -90,10 +96,10 @@ await campo('unidades').fill(String(UNIDADES))
 await campo('unidades').blur()
 
 // 4. El total, la moneda y el IGV; el cliente y qué se fabrica.
-if (!(await campo('moneda').inputValue())) await campo('moneda').selectOption('USD')
+if (!(await campo('moneda').inputValue())) await campo('moneda').selectOption(MONEDA)
 if (!(await campo('igv').inputValue())) await campo('igv').selectOption('no')
-if (!(await campo('monto').inputValue())) await campo('monto').fill('135000.00')
-await campo('cliente').selectOption({ label: CLIENTE })
+if (!(await campo('monto').inputValue())) await campo('monto').fill(TOTAL.toFixed(2))
+if (!(await campo('cliente').inputValue())) await campo('cliente').selectOption({ label: CLIENTE })
 if (!(await campo('carroceria').inputValue())) await campo('carroceria').selectOption({ label: 'Cama baja' })
 // En el teléfono los campos van uno debajo del otro: se sube el primero para que entren todos.
 await tomar('05-total', { total: conSuAyuda(campo('monto')), moneda: campo('moneda'), igv: campo('igv') }, { arriba: conSuAyuda(campo('monto')) })
