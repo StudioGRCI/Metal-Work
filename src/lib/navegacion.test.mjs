@@ -23,15 +23,16 @@ const GERENCIA = [
 
 const rutas = (grupos) => grupos.flatMap((g) => g.items.map((i) => i.ruta))
 
-test('Gerencia ve por área las 49 pantallas que su permiso le abre, cada una una vez', () => {
+test('Gerencia ve por área las 50 pantallas que su permiso le abre, cada una una vez', () => {
   const grupos = menuDe(GERENCIA, false, 'GERENTE')
   assert.deepEqual(grupos.map((g) => g.titulo), [
     'Principal', 'Por aprobar', 'Ventas', 'Diseño e Ingeniería', 'Requerimientos', 'Almacén', 'Mantenimiento', 'Logística', 'Administración',
     'Finanzas', 'Recursos Humanos', 'SSOMA',
   ])
   const todas = rutas(grupos)
-  assert.equal(todas.length, 49)
-  assert.equal(new Set(todas).size, 49)
+  // 49 en main el 2026-11-26 (con Averías), más Por decidir (plan 12, entrega 12.1).
+  assert.equal(todas.length, 50)
+  assert.equal(new Set(todas).size, 50)
   // Las averías y los reportes de seguridad, en lo que consulta: no se repiten en «Reportar», que va al final para todos.
   assert.deepEqual(rutas(grupos.filter((g) => g.titulo === 'Mantenimiento')), ['/averias'])
   assert.deepEqual(rutas(grupos.filter((g) => g.titulo === 'SSOMA')), ['/ssoma'])
@@ -62,18 +63,19 @@ test('Gerencia ve por área las 49 pantallas que su permiso le abre, cada una un
 test('lo que Gerencia consulta no es su trabajo; lo que ya tenía en su menú, sí', () => {
   const grupos = menuDe(GERENCIA, false, 'GERENTE')
   assert.deepEqual(grupos.filter((g) => !g.consulta).map((g) => g.titulo), ['Principal', 'Por aprobar'])
-  // Las mismas once rutas que su menú tiene en main: ni un pendiente ni una cifra de más o de menos.
+  // Las once rutas que su menú tenía en main, más «Por decidir» (plan 12.1), que no lleva
+  // pendiente propio: ni un pendiente ni una cifra de más o de menos.
   assert.deepEqual([...rutasDeTrabajo(GERENCIA, false, 'GERENTE')].sort(), [
     '/', '/adquisiciones', '/avance/trabajos', '/codigos-internos', '/compras/aprobacion', '/costos/gastos-generales',
-    '/cotizaciones/pdf', '/reportes-diarios', '/rrhh/tiempos-de-entrega', '/tesoreria/por-cobrar', '/tesoreria/por-pagar',
+    '/cotizaciones/pdf', '/por-decidir', '/reportes-diarios', '/rrhh/tiempos-de-entrega', '/tesoreria/por-cobrar', '/tesoreria/por-pagar',
   ])
   assert.ok(!rutasDeTrabajo(GERENCIA, false, 'GERENTE').has('/ordenes'))
   assert.deepEqual(rutas(modulosDelInicio(GERENCIA, false, 'GERENTE')), [
-    '/', '/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos',
+    '/', '/codigos-internos', '/por-decidir', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos',
     '/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales', '/rrhh/tiempos-de-entrega',
   ])
   assert.deepEqual(pestanasDe(GERENCIA, false, 'GERENTE').map((p) => p.ruta), [
-    '/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios',
+    '/codigos-internos', '/cotizaciones/pdf', '/por-decidir', '/reportes-diarios',
   ])
 })
 
