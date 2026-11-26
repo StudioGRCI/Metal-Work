@@ -122,6 +122,9 @@ do $$ begin
     'Gerencia la ve, sabe que quien la reportó ya no tiene cuenta, y no le toca confirmarla');
   perform test.debe_fallar(format('select * from public.averias_confirmar(%L, true, null)', current_setting('prueba.av2')),
     'Gerencia no la confirma', 'el responsable del área o Mantenimiento');
+  perform test.afirmar(public.averias_por_confirmar() = 0, 'y su menú no se la cuenta');
+  perform test.afirmar((select confirma = 'RESPONSABLE' from public.averias_visibles(pg_temp.id('av2'))),
+    'la confirma el responsable del área (o Mantenimiento)');
 end $$;
 reset role;
 select test.como_usuario(:'ajeno_id');
@@ -138,6 +141,7 @@ do $$
 declare v text;
 begin
   perform test.afirmar((select puede_confirmar from public.averias_visibles(pg_temp.id('av2'))), 'a Mantenimiento le toca');
+  perform test.afirmar(public.averias_por_confirmar() = 1, 'y su menú se la cuenta');
   select string_agg(paso || ':' || situacion || ':' || coalesce(puesto, '-') || ':' || coalesce(detalle, '-'), ' ' order by orden) into v
     from public.recorrido_de_averias(array[pg_temp.id('av2')]) where situacion = 'AHORA';
   perform test.afirmar(v = 'CONFIRMACION:AHORA:Responsable del área o Mantenimiento:SIN_CUENTA',
@@ -150,6 +154,7 @@ do $$
 declare r record; v text;
 begin
   perform test.afirmar((select puede_confirmar from public.averias_visibles(pg_temp.id('av2'))), 'y al responsable del área también');
+  perform test.afirmar(public.averias_por_confirmar() = 1, 'y su menú también');
   select * into r from public.averias_confirmar(pg_temp.id('av2'), true, 'Lo probé yo: arranca y no se apaga.');
   perform test.afirmar(r.estado = 'CONFIRMADA', 'el responsable del área la confirma');
   perform test.afirmar((select confirmo_en_lugar = 'Jaime Jefe' and not puede_confirmar from public.averias_visibles(pg_temp.id('av2'))),
@@ -157,6 +162,20 @@ begin
   select string_agg(paso || ':' || coalesce(detalle, '-'), ' ' order by orden) into v
     from public.recorrido_de_averias(array[pg_temp.id('av2')]) where paso = 'CONFIRMACION';
   perform test.afirmar(v = 'CONFIRMACION:EN_LUGAR', 'y el recorrido, que fue en su lugar: ' || coalesce(v, 'nada'));
+  perform test.afirmar(public.averias_por_confirmar() = 0, 'confirmada, ya no se la cuenta');
+  -- El mismo envío repetido contesta lo mismo a quien lo hizo.
+  select * into r from public.averias_confirmar(pg_temp.id('av2'), true, 'Lo probé yo: arranca y no se apaga.');
+  perform test.afirmar(r.estado = 'CONFIRMADA', 'el mismo envío otra vez contesta que quedó');
+end $$;
+reset role;
+select test.como_usuario(:'mnt_id');
+set local role authenticated;
+do $$ begin
+  -- Mantenimiento, con la pantalla de antes, no recibe «queda confirmado» de lo que hizo otro.
+  perform test.debe_fallar(format('select * from public.averias_confirmar(%L, true, null)', current_setting('prueba.av2')),
+    'a otra persona no le dice que la confirmó ella', 'ya lo confirmó Jaime Jefe');
+  perform test.debe_fallar(format('select * from public.averias_confirmar(%L, true, %L)', current_setting('prueba.av2'), 'Lo probé yo: arranca y no se apaga.'),
+    'ni con el mismo texto', 'ya lo confirmó Jaime Jefe');
 end $$;
 reset role;
 
@@ -172,6 +191,8 @@ begin
   perform test.afirmar(not r.avisada and r.confirma = 'RESPONSABLE', 'con responsable en el área, el cierre dice que lo confirma él');
   select * into r from pg_temp.atender_y_cerrar('av4', 1) as t(averia uuid, equipo_vuelve_a text, sigue_parado_por text, avisada boolean, equipo_estado text, confirma text);
   perform test.afirmar(not r.avisada and r.confirma = 'MANTENIMIENTO', 'sin responsable, que lo confirma Mantenimiento');
+  perform test.afirmar((select confirma = 'MANTENIMIENTO' from public.averias_visibles(pg_temp.id('av4'))),
+    'y la ficha dice lo mismo: no promete un aviso al responsable que no hay');
 end $$;
 select test.afirmar(
   exists (select 1 from public.notificaciones where origen_id = pg_temp.id('av3') and usuario_id = pg_temp.id('jefe')
@@ -235,6 +256,11 @@ begin
 
   perform test.afirmar((select count(*) from public.equipos_historia(null) where equipo_id in (pg_temp.id('e1'), pg_temp.id('e2'), pg_temp.id('e3'), pg_temp.id('e4'))) = 4,
     'sin equipo, trae todos los del padrón');
+  perform test.afirmar((select codigo from public.equipos_historia(pg_temp.id('e1'))) = (select codigo from public.equipos where id = pg_temp.id('e1')),
+    'con su código, para nombrarlo en la lectura');
+  -- Los reportes de un equipo se filtran adentro: los tres de e1, con la anulada.
+  perform test.afirmar((select count(*) = 3 and bool_and(equipo_id = pg_temp.id('e1')) from public.averias_visibles(null, pg_temp.id('e1'))),
+    'los reportes de un equipo, solo de ese equipo');
 end $$;
 reset role;
 -- Almacén ve el padrón: ve las mismas cifras, aunque no vea los reportes.

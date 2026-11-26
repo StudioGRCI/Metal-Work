@@ -8,7 +8,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { equiposParaReportar, listarAverias, MAXIMO_AVERIAS, type Averia } from '@/lib/datos/averias'
-import { ESTADO_AVERIA, ordenarBandeja, TIPO_AVERIA } from '@/lib/dominio/averias'
+import { ESTADO_AVERIA, ordenarBandeja, quienConfirma, TIPO_AVERIA } from '@/lib/dominio/averias'
 import { fechaHora } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
 
@@ -253,7 +253,7 @@ function FilaAveria({ averia: a, conAutor }: { averia: Averia; conAutor: boolean
           {tipo ? <Insignia tono={tipo.tono}>{tipo.etiqueta}</Insignia> : a.tipo}
           {/* En rojo solo mientras espera a Mantenimiento: cerrada, el equipo ya no está parado por ella. */}
           {a.espera_de === 'MANTENIMIENTO' && <Urgencia averia={a} />}
-          {a.repite_a && <Repite numero={a.repite_a} />}
+          {a.repite_a && a.estado !== 'ANULADA' && <Repite numero={a.repite_a} />}
         </div>
         <p className="mt-1 text-sm font-medium text-texto md:hidden">{equipo}</p>
         <p className="mt-1 line-clamp-2 max-w-xl text-sm text-texto">{a.descripcion}</p>
@@ -315,7 +315,7 @@ function Situacion({ averia: a }: { averia: Averia }) {
       <DiasEnEspera
         dias={a.dias_en_espera}
         desde={a.espera_desde}
-        quien={deQuienReporto ? (a.reporto_activo ? 'quien la reportó' : 'el responsable del área o Mantenimiento') : 'Mantenimiento'}
+        quien={deQuienReporto ? quienConfirma(a.confirma) : 'Mantenimiento'}
       />
       {a.veces_reabierta > 0 && a.estado === 'EN_ATENCION' && <Insignia tono="aviso">No quedó bien</Insignia>}
     </div>
@@ -342,10 +342,11 @@ function PorConfirmar({ averias, className }: { averias: Averia[]; className?: s
   const ajenas = averias.length - suyas
   const partes = [
     suyas > 0 ? (suyas === 1 ? 'una avería que reportaste' : `${suyas} averías que reportaste`) : null,
+    // «una de alguien…» solo se entiende detrás de «una avería que reportaste».
     ajenas > 0
       ? ajenas === 1
-        ? 'una de alguien que ya no tiene cuenta, y te toca a ti confirmarla'
-        : `${ajenas} de personas que ya no tienen cuenta, y te toca a ti confirmarlas`
+        ? `una ${suyas > 0 ? '' : 'avería '}de alguien que ya no tiene cuenta, y te toca a ti confirmarla`
+        : `${ajenas} ${suyas > 0 ? '' : 'averías '}de personas que ya no tienen cuenta, y te toca a ti confirmarlas`
       : null,
   ].filter(Boolean)
   return (

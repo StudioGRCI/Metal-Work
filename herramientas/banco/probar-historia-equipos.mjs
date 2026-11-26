@@ -266,6 +266,14 @@ try {
     comprobar(cifras.includes(`Averías ${h.averias}`), `[Almacén 1440] ve las mismas cifras («${cifras.slice(0, 80)}»)`)
     comprobar((await pagina.locator('tr[data-averia]').count()) === 0, '[Almacén 1440] pero no los reportes de Maestranza')
     await pagina.screenshot({ path: join(CAPTURAS, '16.4-historia-almacen-1440.png'), fullPage: true })
+    // El padrón y «Parados hoy» no le muestran lo que escribió Ventas: solo el número del reporte.
+    await pagina.goto(`${BASE}/equipos`, { waitUntil: 'networkidle' })
+    const html = await pagina.content()
+    comprobar(!html.includes(`hace un chasquido (${sello})`), '[Almacén 1440] el padrón no trae lo que escribió Ventas en su reporte, ni en la página ni en lo que va al navegador')
+    comprobar(
+      limpio(await pagina.locator(`[data-parados-hoy] [data-parado="${EQUIPO}"]`).innerText().catch(() => '')).includes(`Lo paró el reporte de avería ${numeroC}`),
+      '[Almacén 1440] «Parados hoy» dice solo el número del reporte',
+    )
     comprobar(errores.length === 0, `[Almacén 1440] sin errores en la consola${errores.length ? `: ${errores[0]}` : ''}`)
     await contexto.close()
   }

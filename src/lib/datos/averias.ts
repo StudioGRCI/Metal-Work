@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { BUCKET_FOTOS_AVERIAS, type AlcanceAveria } from '@/lib/dominio/averias'
+import { BUCKET_FOTOS_AVERIAS, type AlcanceAveria, type QuienConfirma } from '@/lib/dominio/averias'
 import { createClient } from '@/lib/supabase/server'
 
 /*
@@ -69,6 +69,12 @@ export type Averia = {
   puede_confirmar: boolean
   /** Si la cuenta de quien la reportó sigue activa. */
   reporto_activo: boolean
+  /**
+   * Quién dice si quedó bien, con la regla de `averias_cerrar`: quien la
+   * reportó; sin su cuenta, el responsable del área (o Mantenimiento); y si el
+   * área tampoco tiene responsable, Mantenimiento.
+   */
+  confirma: QuienConfirma
   /** Quién la confirmó, si no fue quien la reportó (ya no tenía cuenta). */
   confirmo_en_lugar: string | null
   /** Quién dijo la última vez que no quedó bien, si no fue quien la reportó. */
@@ -127,6 +133,12 @@ function aAveria(f: Fila): Averia | null {
     puede_confirmar: f.puede_confirmar === true,
     // Sin el dato (una base de antes de la 16.4), se da por activa: es lo que pasaba antes.
     reporto_activo: f.reporto_activo !== false,
+    confirma:
+      f.confirma === 'RESPONSABLE' || f.confirma === 'MANTENIMIENTO'
+        ? f.confirma
+        : f.reporto_activo === false
+          ? 'RESPONSABLE'
+          : 'QUIEN_REPORTO',
     confirmo_en_lugar: f.confirmo_en_lugar,
     devolvio_en_lugar: f.devolvio_en_lugar,
     repite_a: f.repite_a,
@@ -168,8 +180,8 @@ export async function listarAverias(): Promise<{ averias: Averia[]; alTope: bool
 export async function averiasDelEquipo(equipo: string): Promise<Averia[]> {
   const supabase = await createClient()
   const { data, error } = await supabase
-    .rpc('averias_visibles', { p_id: null })
-    .eq('equipo_id', equipo)
+    // Filtra por equipo adentro de la base, no después de calcularlas todas.
+    .rpc('averias_visibles', { p_id: null, p_equipo: equipo })
     .order('creado_en', { ascending: false })
     .order('numero', { ascending: false })
   if (error) throw new Error(`No se pudieron leer los reportes del equipo: ${error.message}`)

@@ -187,6 +187,9 @@ export type HistoriaDeEquipo = {
   paradoPor: string | null
   paradoDesde: string | null
   ultimaEn: string | null
+  /** Para nombrarlo en la lectura de Gerencia sin otra consulta. */
+  codigo: string | null
+  descripcion: string | null
 }
 
 type FilaHistoria = {
@@ -202,6 +205,8 @@ type FilaHistoria = {
   parado_por: string | null
   parado_desde: string | null
   ultima_en: string | null
+  codigo: string | null
+  descripcion: string | null
 }
 
 function aHistoria(f: FilaHistoria): HistoriaDeEquipo {
@@ -217,6 +222,8 @@ function aHistoria(f: FilaHistoria): HistoriaDeEquipo {
     paradoPor: f.parado_por,
     paradoDesde: f.parado_desde,
     ultimaEn: f.ultima_en,
+    codigo: f.codigo,
+    descripcion: f.descripcion,
   }
 }
 
@@ -224,6 +231,9 @@ function aHistoria(f: FilaHistoria): HistoriaDeEquipo {
 export async function historiaDeEquipos(): Promise<Map<string, HistoriaDeEquipo>> {
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('equipos_historia', { p_equipo: null })
+  // Si el código llega antes que la migración 20261126995000, el padrón sale sin
+  // la lectura de arriba en vez de caerse entero.
+  if (error?.code === 'PGRST202') return new Map()
   if (error) throw new Error(`No se pudo leer la historia de los equipos: ${error.message}`)
   return new Map(((data ?? []) as FilaHistoria[]).flatMap((f) => (f.equipo_id ? [[f.equipo_id, aHistoria(f)] as const] : [])))
 }
@@ -245,11 +255,3 @@ export async function cargarEquipo(id: string): Promise<Equipo | null> {
   return (data as Equipo | null) ?? null
 }
 
-/** Código y nombre de unos equipos, para nombrarlos en la lectura de Gerencia. */
-export async function nombresDeEquipos(ids: string[]): Promise<Map<string, { codigo: string; descripcion: string }>> {
-  if (ids.length === 0) return new Map()
-  const supabase = await createClient()
-  const { data, error } = await supabase.from('equipos').select('id, codigo, descripcion').in('id', ids)
-  if (error) throw new Error(`No se pudieron leer los equipos: ${error.message}`)
-  return new Map((data ?? []).map((e) => [e.id, { codigo: e.codigo, descripcion: e.descripcion }]))
-}

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { horas, horasParadoSugeridas, losQueMasFallan, ordenarBandeja, tiempoParado } from './averias.ts'
+import { horas, horasParadoSugeridas, losQueMasFallan, notaDelParo, ordenarBandeja, quienConfirma, tiempoParado } from './averias.ts'
 
 test('la bandeja va por gravedad y, en la misma gravedad, por días en espera', () => {
   const bandeja = ordenarBandeja([
@@ -54,4 +54,18 @@ test('los que más fallan: más averías, después más horas parado, después m
     3,
   )
   assert.deepEqual(lista.map((e) => e.codigo), ['B', 'C', 'E'])
+})
+
+test('la nota del paro: quien no ve todas las averías lee solo el número del reporte', () => {
+  const nota = 'Avería AV-0008-2026: No arranca: hace un chasquido.'
+  assert.equal(notaDelParo(nota, true), nota)
+  assert.equal(notaDelParo(nota, false), 'Lo paró el reporte de avería AV-0008-2026.')
+  assert.equal(notaDelParo('Se quemó el motor.', false), 'Se quemó el motor.')
+  assert.equal(notaDelParo(null, false), null)
+})
+
+test('quién confirma, en palabras', () => {
+  assert.equal(quienConfirma('QUIEN_REPORTO'), 'quien la reportó')
+  assert.equal(quienConfirma('RESPONSABLE'), 'el responsable del área o Mantenimiento')
+  assert.equal(quienConfirma('MANTENIMIENTO'), 'Mantenimiento')
 })

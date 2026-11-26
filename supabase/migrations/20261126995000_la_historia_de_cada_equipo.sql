@@ -283,7 +283,22 @@ begin
     raise exception 'Si quedó bien lo confirma quien reportó la avería; si ya no tiene cuenta, el responsable del área o Mantenimiento.'
       using errcode = 'insufficient_privilege';
   end if;
-  -- El mismo pedido otra vez (se perdió la respuesta): ya quedó.
+  -- El mismo pedido otra vez (se perdió la respuesta): ya quedó. Solo si lo
+  -- hizo la misma persona: ahora pueden confirmar varias (quien reportó, el
+  -- responsable del área o Mantenimiento), y a la segunda no se le dice
+  -- «queda confirmado» de lo que hizo otra.
+  if v_av.estado in ('CONFIRMADA', 'EN_ATENCION')
+     and (select s.hecho_por from public.averia_pasos s
+           where s.averia_id = p_id and s.paso in ('CONFIRMACION', 'REAPERTURA')
+           order by s.hecho_en desc limit 1) <> v_yo then
+    raise exception 'El reporte % ya lo % %.', v_av.numero,
+      case when v_av.estado = 'CONFIRMADA' then 'confirmó' else 'devolvió a Mantenimiento' end,
+      (select coalesce(nullif(btrim(concat_ws(' ', u.nombres, u.apellidos)), ''), 'otra persona')
+         from public.averia_pasos s join public.usuarios u on u.id = s.hecho_por
+        where s.averia_id = p_id and s.paso in ('CONFIRMACION', 'REAPERTURA')
+        order by s.hecho_en desc limit 1)
+      using errcode = 'check_violation';
+  end if;
   if p_quedo_bien and v_av.estado = 'CONFIRMADA' and v_av.nota_de_quien_reporto is not distinct from v_nota then
     return query select p_id, v_av.estado, false, null::text;
     return;
@@ -362,7 +377,9 @@ grant execute on function public.averias_confirmar(uuid, boolean, text) to authe
 
 -- 6. Lo que cada quien lee: a quién le toca confirmar y si repite ---------------------------
 drop function if exists public.averias_visibles(uuid);
-create or replace function public.averias_visibles(p_id uuid)
+drop function if exists public.averias_visibles(uuid, uuid);
+-- `p_equipo` filtra adentro: la historia de un equipo no calcula todas las averías.
+create or replace function public.averias_visibles(p_id uuid, p_equipo uuid default null)
 returns table (
   id uuid, numero text, tipo text, detiene_trabajo boolean, riesgo_personas boolean, descripcion text,
   estado text, creado_en timestamptz, dias_en_espera integer, alcance text,
@@ -377,7 +394,7 @@ returns table (
   paro_al_reportar boolean, equipo_parado_desde timestamptz, rq_enlazados integer,
   diagnostico_de text, diagnostico_en timestamptz,
   puede_confirmar boolean, reporto_activo boolean, confirmo_en_lugar text, devolvio_en_lugar text,
-  repite_a text)
+  repite_a text, confirma text)
 language sql stable security definer set search_path to 'public' rows 200 as $$
   with yo as (
     select u.id, public.averias_areas_de_la_cuenta() as areas, public.puede_ver_todas_las_averias() as todo,
@@ -395,6 +412,7 @@ language sql stable security definer set search_path to 'public' rows 200 as $$
       from public.averias v
       cross join yo
      where (p_id is null or v.id = p_id)
+       and (p_equipo is null or v.equipo_id = p_equipo)
        -- La política `ver_averias`, tal cual.
        and (yo.todo or v.registrado_por = yo.id or v.area_id = any(yo.areas) or (v.riesgo_personas and yo.riesgo))
   )
@@ -439,7 +457,13 @@ language sql stable security definer set search_path to 'public' rows 200 as $$
              and s.hecho_en >= v.reabierta_en
            order by s.hecho_en desc limit 1),
          -- La avería que esta repite: otra del mismo equipo cerrada en los 30 días antes.
-         (select r.numero from public.averias r where r.id = public.averia_que_repite(v.equipo_id, v.id, v.creado_en))
+         (select r.numero from public.averias r where r.id = public.averia_que_repite(v.equipo_id, v.id, v.creado_en)),
+         -- Quién dice si quedó bien, con la regla de `averias_cerrar`: la pantalla
+         -- no promete un aviso al responsable de un área que no lo tiene.
+         case when u.activo then 'QUIEN_REPORTO'
+              when exists (select 1 from public.areas a2 join public.usuarios j on j.id = a2.jefe_id and j.activo
+                            where a2.id = v.area_id and a2.activo) then 'RESPONSABLE'
+              else 'MANTENIMIENTO' end
     from visibles v
     join public.equipos e on e.id = v.equipo_id
     left join public.areas a on a.id = v.area_id
@@ -451,10 +475,28 @@ language sql stable security definer set search_path to 'public' rows 200 as $$
     left join public.usuarios dg on dg.id = v.diagnostico_por
    order by v.creado_en desc;
 $$;
-comment on function public.averias_visibles(uuid) is
-  'Los reportes de avería que ve quien pregunta (uno, o todos con p_id vacío), con su equipo y su atención: todos (Mantenimiento, Gerencia), los suyos, los del área donde trabaja o que tiene a cargo, y SSOMA los que son un riesgo. gravedad 1 (detiene y es un riesgo) a 5 (posible avería); dias_en_espera con la fecha de Lima, de quien la tiene ahora (espera_de). puede_confirmar: si quien pregunta dice si quedó bien (averias_puede_confirmar); repite_a: el número de la avería del mismo equipo cerrada en los 30 días antes de esta.';
-revoke all on function public.averias_visibles(uuid) from public, anon;
-grant execute on function public.averias_visibles(uuid) to authenticated;
+comment on function public.averias_visibles(uuid, uuid) is
+  'Los reportes de avería que ve quien pregunta (uno, o todos con p_id vacío), con su equipo y su atención: todos (Mantenimiento, Gerencia), los suyos, los del área donde trabaja o que tiene a cargo, y SSOMA los que son un riesgo. gravedad 1 (detiene y es un riesgo) a 5 (posible avería); dias_en_espera con la fecha de Lima, de quien la tiene ahora (espera_de). puede_confirmar: si quien pregunta dice si quedó bien (averias_puede_confirmar); repite_a: el número de la avería del mismo equipo cerrada en los 30 días antes de esta; confirma: quién dice si quedó bien (QUIEN_REPORTO, RESPONSABLE del área si quien la reportó ya no tiene cuenta, o MANTENIMIENTO si además el área no tiene responsable).';
+revoke all on function public.averias_visibles(uuid, uuid) from public, anon;
+grant execute on function public.averias_visibles(uuid, uuid) to authenticated;
+
+-- Cuántas averías cerradas esperan que quien pregunta diga si quedaron bien.
+-- La cuenta va en el menú de toda pantalla: filtra las cerradas antes de mirar
+-- quién confirma, en vez de calcular todas las visibles (`averias_visibles`).
+-- Quien puede confirmar una ya la ve (la reportó, es de su área o es de
+-- Mantenimiento), así que no cuenta nada que su lista no traiga.
+create or replace function public.averias_por_confirmar()
+returns integer language sql stable security definer set search_path to 'public' as $$
+  select count(*)::integer
+    from public.averias v
+   where v.estado = 'CERRADA'
+     and public.usuario_actual() is not null
+     and public.averias_puede_confirmar(v.registrado_por, v.area_id);
+$$;
+comment on function public.averias_por_confirmar() is
+  'Cuántas averías cerradas esperan que quien pregunta confirme si quedaron bien: las que reportó y, si quien las reportó ya no tiene cuenta, las de su área como responsable o todas si es de Mantenimiento.';
+revoke all on function public.averias_por_confirmar() from public, anon;
+grant execute on function public.averias_por_confirmar() to authenticated;
 
 -- 7. El recorrido: la confirmación en lugar de quien la reportó --------------------------------
 create or replace function public.recorrido_de_averias(p_ids uuid[])
@@ -570,6 +612,7 @@ grant execute on function public.recorrido_de_averias(uuid[]) to authenticated;
 -- Las cifras de cada equipo, para quien ve el padrón. Corre por encima del RLS
 -- de las averías porque cuenta todos los reportes del equipo, también los de
 -- otras áreas; no devuelve qué dice ninguno ni quién lo hizo.
+drop function if exists public.equipos_historia(uuid);
 create or replace function public.equipos_historia(p_equipo uuid)
 returns table (
   equipo_id         uuid,
@@ -583,7 +626,9 @@ returns table (
   abiertas          integer,
   parado_por        text,
   parado_desde      timestamptz,
-  ultima_en         timestamptz)
+  ultima_en         timestamptz,
+  codigo            text,
+  descripcion       text)
 language plpgsql stable security definer set search_path to 'public' rows 100 as $$
 #variable_conflict use_column
 declare
@@ -629,7 +674,9 @@ begin
          (count(a.id) filter (where a.estado in ('REPORTADA', 'EN_ATENCION', 'CERRADA')))::integer,
          max(p.numero),
          max(p.equipo_parado_desde),
-         max(a.creado_en)
+         max(a.creado_en),
+         e.codigo,
+         e.descripcion
     from public.equipos e
     left join av a on a.equipo_id = e.id
     left join horas h on h.equipo_id = e.id

@@ -127,7 +127,7 @@ test('el recorrido de la avería dice las horas parado del cierre y que no qued�
       ['Mantenimiento la cerró', 'Parado: 26.5 horas. Se cambiaron los carbones.'],
       ['No quedó bien: volvió a Mantenimiento', '«Se volvió a apagar.»'],
       ['Cierre: el equipo vuelve a operativo', 'La arregla y la cierra con el trabajo hecho y las horas parado.'],
-      ['Quien la reportó confirma que quedó bien', null],
+      ['Confirmar que quedó bien', null],
     ],
   )
 })

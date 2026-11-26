@@ -216,7 +216,8 @@ const PASOS_DE_LA_AVERIA: Record<string, Frases> = {
   CONFIRMACION: {
     // Si quien la reportó ya no tenía cuenta, la confirmó otra persona (DKS, 2026-11-26): el puesto dice quién.
     hecho: (d) => (d === 'EN_LUGAR' ? 'Confirmó que quedó bien, en lugar de quien la reportó' : 'Quien la reportó confirmó que quedó bien'),
-    falta: 'Quien la reportó confirma que quedó bien',
+    // Sin decir quién: si quien la reportó ya no tiene cuenta, confirma otra persona.
+    falta: 'Confirmar que quedó bien',
     nota: (d) => (d === 'EN_LUGAR' ? 'Quien la reportó ya no tenía cuenta activa.' : null),
   },
   ANULACION: { hecho: 'Anulada por Mantenimiento', falta: 'Anulación' },

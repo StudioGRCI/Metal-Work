@@ -15,9 +15,8 @@ import {
   EQUIPOS_POR_PAGINA,
   historiaDeEquipos,
   listarEquipos,
-  nombresDeEquipos,
 } from '@/lib/datos/equipos'
-import { losQueMasFallan } from '@/lib/dominio/averias'
+import { notaDelParo } from '@/lib/dominio/averias'
 import { palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { cuantosEquipos, ESTADO_EQUIPO, FILTRO_DE_ESTADO } from '@/lib/dominio/equipos'
 import { paginaPedida } from '@/lib/dominio/paginas'
@@ -48,7 +47,13 @@ export default async function PaginaEquipos({ searchParams }: PageProps<'/equipo
   const pedida = uno(params.categoria)
   const categoria = pedida && FORMA_DE_ID.test(pedida) ? pedida : undefined
 
-  const [categorias, areas, cuenta, siguientes, lista] = await Promise.all([
+  const conFiltro = Boolean(busqueda || (!deBaja && (estado || categoria)))
+  // La lectura de Gerencia (Plan 16.4), arriba del padrón sin filtros: los
+  // parados hoy y los que más fallan. La historia la cuenta la base. Se pide
+  // junto con lo demás, sin esperar a la cuenta.
+  const pideLectura = !deBaja && !conFiltro
+
+  const [categorias, areas, cuenta, siguientes, lista, historia, parados] = await Promise.all([
     categoriasDeEquipo(),
     areasDeEquipo(),
     contarEquipos(),
@@ -60,20 +65,17 @@ export default async function PaginaEquipos({ searchParams }: PageProps<'/equipo
       deBaja,
       pagina: paginaPedida(params.pagina),
     }),
+    pideLectura ? historiaDeEquipos() : null,
+    pideLectura ? listarEquipos({ estado: 'PARADO' }) : null,
   ])
-  const { equipos, total, pagina, paginas } = lista
-
-  const conFiltro = Boolean(busqueda || (!deBaja && (estado || categoria)))
-
-  // La lectura de Gerencia (Plan 16.4), arriba del padrón sin filtros: los
-  // parados hoy y los que más fallan. La historia la cuenta la base.
-  const conLectura = !deBaja && !conFiltro && cuenta.enUso > 0
-  const [historia, parados] = conLectura
-    ? await Promise.all([historiaDeEquipos(), cuenta.porEstado.PARADO > 0 ? listarEquipos({ estado: 'PARADO' }) : null])
-    : [null, null]
-  const nombres = historia
-    ? await nombresDeEquipos(losQueMasFallan([...historia.entries()].map(([id, h]) => ({ id, ...h }))).map((f) => f.id))
-    : null
+  // Quien no ve todas las averías (Almacén) no lee en la nota del paro lo que
+  // escribió quien la reportó: solo su número. Se limpia antes de pintar, y
+  // también lo que va al navegador con «Acciones».
+  const veTodasLasAverias = puede(perfil, 'averias.atender') || puede(perfil, 'averias.ver')
+  const sinTextoAjeno = <T extends { estado_nota: string | null }>(e: T): T => ({ ...e, estado_nota: notaDelParo(e.estado_nota, veTodasLasAverias) })
+  const { total, pagina, paginas } = lista
+  const equipos = lista.equipos.map(sinTextoAjeno)
+  const conLectura = pideLectura && cuenta.enUso > 0 && historia !== null && historia.size > 0
 
   const resumen = deBaja
     ? `${cuantosEquipos(cuenta.deBaja)} ${cuenta.deBaja === 1 ? 'dado' : 'dados'} de baja`
@@ -105,8 +107,8 @@ export default async function PaginaEquipos({ searchParams }: PageProps<'/equipo
       />
 
       {(gestiona || asigna) && <AvisoDelPadron />}
-      {historia && nombres && (
-        <LecturaDeEquipos parados={parados?.equipos ?? []} totalParados={parados?.total ?? 0} historia={historia} nombres={nombres} />
+      {conLectura && historia && (
+        <LecturaDeEquipos parados={(parados?.equipos ?? []).map(sinTextoAjeno)} totalParados={parados?.total ?? 0} historia={historia} />
       )}
       <div className="space-y-3">
         <BuscadorSimple ruta="/equipos" etiqueta="Buscar equipos" marcador="Código, nombre, marca o serie" />

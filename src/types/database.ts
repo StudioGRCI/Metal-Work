@@ -13817,6 +13817,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      averias_por_confirmar: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
       averias_puede_confirmar: {
         Args: {
           p_registrado_por: string | null
@@ -13899,6 +13903,7 @@ export type Database = {
       averias_visibles: {
         Args: {
           p_id: string | null
+          p_equipo?: string | null
         }
         Returns: {
           id: string | null
@@ -13949,6 +13954,7 @@ export type Database = {
           confirmo_en_lugar: string | null
           devolvio_en_lugar: string | null
           repite_a: string | null
+          confirma: string | null
         }[]
       }
       avisar_a_diseno: {
@@ -16285,6 +16291,8 @@ export type Database = {
           parado_por: string | null
           parado_desde: string | null
           ultima_en: string | null
+          codigo: string | null
+          descripcion: string | null
         }[]
       }
       es_admin: {

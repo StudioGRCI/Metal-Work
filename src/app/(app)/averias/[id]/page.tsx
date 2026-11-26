@@ -9,7 +9,7 @@ import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cargarAveria, rqParaEnlazar, type DetalleAveria } from '@/lib/datos/averias'
 import { recorridoDeAverias } from '@/lib/datos/recorrido'
-import { ESTADO_AVERIA, horas, horasParadoSugeridas, TIPO_AVERIA } from '@/lib/dominio/averias'
+import { ESTADO_AVERIA, horas, horasParadoSugeridas, quienConfirma, TIPO_AVERIA } from '@/lib/dominio/averias'
 import { ESTADO_EQUIPO, type EstadoEquipo } from '@/lib/dominio/equipos'
 import { describirRecorridoDeLaAveria } from '@/lib/dominio/recorrido'
 import { ESTADO_REQUERIMIENTO_DEL_CODIGO } from '@/lib/dominio/requerimientos'
@@ -78,7 +78,7 @@ export default async function PaginaAveria({ params }: PageProps<'/averias/[id]'
           numero={a.numero}
           horasSugeridas={horasParadoSugeridas(a.equipo_parado_desde)}
           dejaOperativo={a.equipo_parado_desde != null}
-          confirmaQuien={a.es_mia ? 'YO' : a.reporto_activo ? 'QUIEN_REPORTO' : 'OTRO'}
+          confirmaQuien={a.es_mia ? 'YO' : a.confirma}
         />
       )}
       {atiende && vigenteParaMantenimiento && <AtenderAveria id={a.id} numero={a.numero} diagnostico={a.diagnostico} />}
@@ -219,9 +219,11 @@ function QuienLaTiene({ averia: a, atiende }: { averia: DetalleAveria; atiende: 
       ? 'Mantenimiento la cerró. Prueba el equipo y toca «¿Quedó bien?».'
       : a.puede_confirmar
         ? 'Mantenimiento la cerró y quien la reportó ya no tiene cuenta: te toca a ti. Prueba el equipo y toca «¿Quedó bien?».'
-        : a.reporto_activo
+        : a.confirma === 'QUIEN_REPORTO'
           ? 'Mantenimiento la cerró: espera que quien la reportó confirme si quedó bien.'
-          : 'Mantenimiento la cerró y quien la reportó ya no tiene cuenta: la confirma el responsable del área o Mantenimiento.'
+          : a.confirma === 'RESPONSABLE'
+            ? 'Mantenimiento la cerró y quien la reportó ya no tiene cuenta: la confirma el responsable del área o Mantenimiento.'
+            : 'Mantenimiento la cerró y quien la reportó ya no tiene cuenta: la confirma Mantenimiento, porque el área no tiene responsable.'
   }
   if (!texto) return null
   return (
@@ -233,7 +235,7 @@ function QuienLaTiene({ averia: a, atiende }: { averia: DetalleAveria; atiende: 
       <DiasEnEspera
         dias={a.dias_en_espera}
         desde={a.espera_desde}
-        quien={a.espera_de === 'QUIEN_REPORTO' ? (a.reporto_activo ? 'quien la reportó' : 'el responsable del área o Mantenimiento') : 'Mantenimiento'}
+        quien={a.espera_de === 'QUIEN_REPORTO' ? quienConfirma(a.confirma) : 'Mantenimiento'}
       />
     </div>
   )

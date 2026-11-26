@@ -1108,10 +1108,12 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
   tareas.push({
     clave: 'averias_por_confirmar', ruta: '/averias', tono: 'aviso',
     texto: n => plural(n, 'avería cerrada espera que digas si quedó bien', 'averías cerradas esperan que digas si quedaron bien'),
+    // Va en el menú de toda pantalla: la base cuenta solo las cerradas
+    // (`averias_por_confirmar`), sin calcular todas las averías visibles.
     contar: async () => {
-      const { data, error } = await supabase.rpc('averias_visibles', { p_id: null }).select('id').eq('estado', 'CERRADA').eq('puede_confirmar', true)
+      const { data, error } = await supabase.rpc('averias_por_confirmar')
       if (error) throw new Error('No se pudo consultar el pendiente.')
-      return (data ?? []).length
+      return typeof data === 'number' ? data : 0
     },
   })
 

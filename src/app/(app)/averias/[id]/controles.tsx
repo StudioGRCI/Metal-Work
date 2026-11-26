@@ -10,6 +10,7 @@ import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import type { RqParaEnlazar } from '@/lib/datos/averias'
+import type { QuienConfirma } from '@/lib/dominio/averias'
 import { ESTADO_REQUERIMIENTO_DEL_CODIGO } from '@/lib/dominio/requerimientos'
 import { useEnvio } from '@/lib/envio'
 import { useEstadoCompartido } from '@/lib/estado-compartido'
@@ -244,7 +245,7 @@ export function CerrarAveria({
    * Quién dice después si quedó bien: quien la cierra (la reportó), quien la
    * reportó (se le avisa) u otra persona, porque quien la reportó ya no tiene cuenta.
    */
-  confirmaQuien: 'YO' | 'QUIEN_REPORTO' | 'OTRO'
+  confirmaQuien: 'YO' | QuienConfirma
 }) {
   const v = useVentanaDeLaFicha(id, cerrarAveria)
   return (
@@ -263,7 +264,9 @@ export function CerrarAveria({
             ? 'Le avisamos a quien la reportó para que confirme si quedó bien.'
             : confirmaQuien === 'YO'
               ? 'La reportaste tú: después confirmas si quedó bien.'
-              : 'Quien la reportó ya no tiene cuenta: la confirma el responsable del área, al que le avisamos, o Mantenimiento si el área no tiene responsable.',
+              : confirmaQuien === 'RESPONSABLE'
+                ? 'Quien la reportó ya no tiene cuenta: la confirma el responsable del área, al que le avisamos, o Mantenimiento.'
+                : 'Quien la reportó ya no tiene cuenta y el área no tiene responsable: la confirma Mantenimiento, desde «¿Quedaron bien?».',
         ]
           .filter(Boolean)
           .join(' ')}

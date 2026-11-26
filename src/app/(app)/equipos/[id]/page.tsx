@@ -10,10 +10,10 @@ import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabl
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { averiasDelEquipo, type Averia } from '@/lib/datos/averias'
 import { cargarEquipo, historiaDeEquipo } from '@/lib/datos/equipos'
-import { ESTADO_AVERIA, horas, horasParadoSugeridas, TIPO_AVERIA, tiempoParado } from '@/lib/dominio/averias'
+import { ESTADO_AVERIA, horas, horasParadoSugeridas, notaDelParo, TIPO_AVERIA, tiempoParado } from '@/lib/dominio/averias'
 import { ESTADO_EQUIPO, type EstadoEquipo } from '@/lib/dominio/equipos'
 import { fecha, fechaHora } from '@/lib/format'
-import { exigirPermiso } from '@/lib/sesion'
+import { exigirPermiso, puede } from '@/lib/sesion'
 
 export const metadata = { title: 'Historia del equipo' }
 
@@ -27,7 +27,7 @@ const FORMA_DE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
  */
 export default async function PaginaEquipo({ params }: PageProps<'/equipos/[id]'>) {
   // Los mismos permisos que el padrón y la política `ver_equipos`.
-  await exigirPermiso(['equipos.ver', 'equipos.gestionar', 'equipos.asignar'])
+  const perfil = await exigirPermiso(['equipos.ver', 'equipos.gestionar', 'equipos.asignar'])
   const { id } = await params
   if (!FORMA_DE_ID.test(id)) notFound()
   const [equipo, historia, averias] = await Promise.all([cargarEquipo(id), historiaDeEquipo(id), averiasDelEquipo(id)])
@@ -51,8 +51,10 @@ export default async function PaginaEquipo({ params }: PageProps<'/equipos/[id]'
     paradoDesde: null,
     ultimaEn: null,
   }
-  // Las anuladas se ven en la lista (son un dato), pero no cuentan como averías.
-  const vistas = averias.filter((a) => a.estado !== 'ANULADA').length
+  // Las anuladas se ven en la lista (son un dato), al final, pero no cuentan como averías.
+  const vigentes = averias.filter((a) => a.estado !== 'ANULADA')
+  const anuladas = averias.filter((a) => a.estado === 'ANULADA')
+  const vistas = vigentes.length
   const paradoPorVisible = h.paradoPor ? averias.find((a) => a.numero === h.paradoPor) : undefined
   const llevaParado = h.paradoDesde ? horasParadoSugeridas(h.paradoDesde) : null
 
@@ -92,7 +94,8 @@ export default async function PaginaEquipo({ params }: PageProps<'/equipos/[id]'
               )}
               {equipo.activo && equipo.estado !== 'OPERATIVO' && (
                 <span className="mt-1 block max-w-md text-xs text-texto">
-                  {equipo.estado_nota}
+                  {/* Si lo paró un reporte, la nota repite su número: va al lado, en «Lo tiene parado». */}
+                  {!h.paradoPor && notaDelParo(equipo.estado_nota, puede(perfil, 'averias.atender') || puede(perfil, 'averias.ver'))}
                   <span className="block text-texto-suave">Desde el {fecha(equipo.estado_desde)}</span>
                 </span>
               )}
@@ -156,11 +159,16 @@ export default async function PaginaEquipo({ params }: PageProps<'/equipos/[id]'
           <TarjetaCabecera
             titulo="Sus averías"
             descripcion={
-              vistas < h.averias
-                ? `Ves ${vistas} de los ${h.averias} reportes: los demás son de otras áreas.`
-                : averias.length > 0
-                  ? `${averias.length} ${averias.length === 1 ? 'reporte' : 'reportes'}, del más reciente al más antiguo`
-                  : undefined
+              averias.length === 0
+                ? undefined
+                : [
+                    vistas < h.averias
+                      ? `Ves ${vistas} de las ${h.averias} averías: las demás son de otras áreas`
+                      : `${vistas} ${vistas === 1 ? 'avería' : 'averías'}, de la más reciente a la más antigua`,
+                    anuladas.length > 0 ? `y ${anuladas.length} ${anuladas.length === 1 ? 'reporte anulado' : 'reportes anulados'}, al final` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' ')
             }
           />
           <Tabla>
@@ -183,7 +191,7 @@ export default async function PaginaEquipo({ params }: PageProps<'/equipos/[id]'
                   }
                 />
               ) : (
-                averias.map((a) => <FilaDeLaHistoria key={a.id} averia={a} />)
+                [...vigentes, ...anuladas].map((a) => <FilaDeLaHistoria key={a.id} averia={a} />)
               )}
             </tbody>
           </Tabla>
@@ -198,6 +206,13 @@ function FilaDeLaHistoria({ averia: a }: { averia: Averia }) {
   const estado = ESTADO_AVERIA[a.estado]
   const anulada = a.estado === 'ANULADA'
   const hecho = a.trabajo_hecho ?? a.diagnostico
+  // Las horas parado van en la columna de Mantenimiento; en el teléfono y la tableta, debajo del reporte.
+  const parado =
+    a.horas_parado != null ? (
+      <p className="mt-1 text-xs text-texto-suave">
+        Parado: <span className="tabular">{horas(a.horas_parado)}</span>
+      </p>
+    ) : null
   const comoQuedo = (
     <div className="flex flex-wrap items-center gap-1.5">
       {estado ? <Insignia tono={anulada ? 'neutro' : estado.tono}>{estado.etiqueta}</Insignia> : a.estado}
@@ -223,20 +238,18 @@ function FilaDeLaHistoria({ averia: a }: { averia: Averia }) {
         <div className="mt-1 space-y-1 sm:hidden">
           <p className="tabular text-xs text-texto-suave">{fechaHora(a.creado_en)}</p>
           {hecho && <p className="line-clamp-2 text-xs text-texto-suave md:hidden">{hecho}</p>}
+          {parado}
           {comoQuedo}
         </div>
         {hecho && <p className="mt-1 line-clamp-2 hidden text-xs text-texto-suave sm:block md:hidden">{hecho}</p>}
+        <div className="hidden sm:block md:hidden">{parado}</div>
       </TD>
       <TD className="hidden align-top sm:table-cell">
         <p className="tabular text-xs whitespace-nowrap text-texto">{fechaHora(a.creado_en)}</p>
       </TD>
       <TD className="hidden align-top md:table-cell">
         {hecho ? <p className="line-clamp-3 max-w-md text-sm text-texto">{hecho}</p> : <p className="text-sm text-texto-suave">Todavía nada</p>}
-        {a.horas_parado != null && (
-          <p className="mt-1 text-xs text-texto-suave">
-            Parado: <span className="tabular">{horas(a.horas_parado)}</span>
-          </p>
-        )}
+        {parado}
       </TD>
       <TD className="hidden align-top sm:table-cell">{comoQuedo}</TD>
     </TR>
