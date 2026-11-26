@@ -91,7 +91,7 @@ recorrido de pantallas). **Falta aplicarlas y comprobarlas en producción.**
 | Entregar el RQ al área, anotando quién lo recogió | `almacen.despachar`: Almacén | `rq_marcar_entregado`; cierra el RQ y lo congela. Desde la migración `20261020196000` no pasa mientras falte registrar en el kardex la salida de algún insumo (lo pedido menos cada salida, menos lo devuelto) y dice cuál; en «Atención» el RQ listo dice «Falta la salida de N insumos» y lleva a la salida del kardex con su ítem elegido (check 416, `herramientas/banco/probar-circuito-rq.mjs`). Un RQ anulado responde que se anuló |
 | Entregar el RQ con faltante, cuando lo que falta ya no va a salir del kardex | `almacen.despachar`: Almacén | `rq_entregar_con_faltante` (migración `20261020196000`): pide quién lo recogió y por qué lo que falta ya no sale (de 10 a 500 caracteres). Anota en el RQ qué no salió (`faltante_al_entregar`) y el motivo (`motivo_del_faltante`), que Requerimientos ve en su lista, y le avisa a quien lo pidió. Si ya salió todo, entrega sin faltante. Requerimientos no lo puede usar (check 416) |
 | Anotar que una salida de un RQ **no llegó** o **llegó incompleta** (plan 2, entrega 2.2) | Quien registró el RQ; en uno de operación, `requerimientos.emitir` (Requerimientos; el colaborador de Diseño solo en los suyos) y `requerimientos.area` del área que lo pidió (su supervisor); en uno de Administración, `requerimientos.administracion`. Nunca quien tiene `almacen.despachar` (Almacén) | `anotar_conformidad_salida` (migración `20261126521000`), por `puede_anotar_conformidad`. La nota es una fila aparte (`conformidad_salidas`): la salida del kardex no cambia. Una abierta por salida; «llegó incompleto» pide cuánto llegó, más de 0 y menos de lo que salió; la nota no se corrige ni se borra. Le avisa a Almacén (`almacen.recibir`). Quien pidió ve en la tarjeta del RQ cada salida del insumo con cuánto, cuándo, quién la recibió y su foto (`salidas_de_requerimientos`, sin precio; la foto por `foto_de_salida_de_requerimiento` y la política de Storage `leer_foto_de_salida_de_requerimiento`, con `puede_ver_requerimientos()`). Check 473 y `herramientas/banco/probar-conformidad-de-la-entrega.mjs` |
-| Cerrar la nota de una salida, escribiendo qué hizo Almacén | `almacen.despachar`: Almacén | `atender_conformidad_salida` (migración `20261126521000`): queda quién y cuándo, lo respondido no se cambia y a quien la anotó le llega el aviso. Las abiertas se ven arriba de «Atención de requerimiento» con los días que esperan. La tabla se lee con `almacen.ver` o `puede_ver_requerimientos()` y no tiene políticas de escritura. Check 473 |
+| Cerrar la nota de una salida, escribiendo qué hizo Almacén | `almacen.despachar`: Almacén | `atender_conformidad_salida` (migración `20261126521000`): queda quién y cuándo, lo respondido no se cambia y a quien la anotó le llega el aviso. Las abiertas se ven arriba de «Atención de requerimiento» con los días que esperan. La tabla se lee con `almacen.ver` o con la lectura del RQ (todos, o los de su área con `requerimientos.area`, desde la `20261126996000`) y no tiene políticas de escritura. Check 473 |
 | Marcar que se está comprando un RQ con faltantes | `compras.crear` y, por el tipo del RQ, Logística (el de operación) o la administradora (`requerimientos.administracion`, el de Administración) | `rq_marcar_en_atencion` con `rq_exigir`; solo desde SIN_STOCK |
 | Generar la OC desde el RQ (`/requerimientos/atencion`, botón «Generar OC»): elegir qué insumos cubre; la OC lleva el código interno y el motivo del RQ y sigue el circuito de la directa. Solo se ofrecen los insumos que Almacén no tenía completos; los que tenía completos la base los rechaza | `compras.crear` y, como el paso anterior, Logística para el RQ de operación y la administradora para el de Administración | `emitir_compra_del_requerimiento`; solo desde SIN_STOCK o EN_ATENCION, pasa el RQ a EN_ATENCION con `rq_marcar_en_atencion`. Cada insumo guarda su OC (`requerimiento_lineas.orden_compra_id`); una OC rechazada por Gerencia libera el insumo. Órdenes de compra dice qué RQ atiende cada OC (migración `20261013120000`, check 332, `herramientas/banco/probar-oc-del-rq.mjs`) |
 | Cargar el conteo inicial del almacén (formato en Excel desde el kardex) | `almacen.recibir`: Almacén. Sin saldo entra como saldo inicial con su precio; con saldo, como ajuste. Cargar el mismo archivo otra vez no duplica | `registrar_ingreso_almacen` y `registrar_conteo_almacen`, los mismos de siempre |
@@ -597,8 +597,9 @@ administrador; se anula con motivo, quién y cuándo, y queda congelado.
 
 ## Mantenimiento de unidades: las OT del puesto
 
-Plan aparte de las demás áreas, entrega A.3. Migración
-`20261126996000_mantenimiento_de_unidades`, comprobada con los roles reales en
+Plan aparte de las demás áreas, entrega A.3. Migraciones
+`20261126996000_mantenimiento_de_unidades` y
+`20261126996500_las_funciones_del_rq_miran_el_area`, comprobadas con los roles reales en
 la base local (check 497) y con clic real en el banco
 (`herramientas/banco/probar-mantenimiento-unidades.mjs`). No hay formato ni
 numeración nuevos: el mantenimiento de la unidad de un cliente ya se seguía por
@@ -626,15 +627,24 @@ puesto de Mantenimiento, que es uno solo (el de Equipos y Averías).
   dice «Ese requerimiento no está o no lo puedes ver». Una cuenta sin área no
   lee ninguno. Las notas de las salidas (`notas_de_conformidad`), la única
   función de los RQ que lista sin que le pasen ids, también quedan por área.
-  **Lo que queda abierto:** las funciones que dan el avance, lo
-  entregado, el metrado, el recorrido y las salidas de los RQ **que se les
-  pasan por su id** (`avance_de_requerimientos` y las demás, con
-  `puede_ver_requerimientos()`) siguen contestando a quien trabaja con RQ: no
-  listan nada, pero no miran el área. Mantenimiento recibe el id de un RQ de
-  otra área cuando lo elige para enlazarlo a una avería
-  (`averias_rq_para_enlazar`), y con ese id esas funciones le contestarían por
-  la API, aunque ninguna pantalla se lo ofrezca. Cerrarlo es reescribir seis
-  funciones y queda anotado para hacerlo aparte.
+  Y las funciones que reciben ids (`avance_de_requerimientos`,
+  `entregado_…`, `metrado_…`, `recorrido_…`, `salidas_…`) y las dos de la foto
+  de una salida filtran con `rq_que_leo()` y `leo_el_rq_de_la_linea()`
+  (migración `20261126996500`): con el id de un RQ de otra área no contestan
+  nada, ni la ruta de la foto. A quien lee todos los RQ no le cambia nada.
+- **Lo que queda abierto, a propósito:** la ventana «Enlazar RQ» de una avería
+  (`averias_rq_para_enlazar`, migración `20261126950000`, del plan de
+  Mantenimiento de equipos) le sigue mostrando a Mantenimiento hasta 300 RQ
+  vivos de **todas las áreas y de los dos tipos**, con su número, su área, su
+  código, su estado y el comienzo de la justificación. Es para enlazar el RQ
+  con que otra área pidió el repuesto, pero es más de lo que lee de la tabla.
+  Con esos ids ya no llega a nada más. Si la lista debe dar solo los RQ de su
+  área es una decisión de DKS y queda anotada en el PR.
+- **El justificante de una corrección** se quita de Storage solo si ninguna
+  corrección lo nombra, y eso se pregunta por encima del RLS
+  (`justificante_anotado`): con la lectura por área, a una cuenta que cambia de
+  área se le habría escondido su corrección y habría podido quitar un
+  justificante ya anotado.
 - **El último reporte** de cada OT es el del área de quien mira: si Producción
   reporta un apoyo en la misma OT, a Mantenimiento no se le cuenta como suyo.
 - **El reporte de hoy** se le pide solo el día en que una OT de mantenimiento

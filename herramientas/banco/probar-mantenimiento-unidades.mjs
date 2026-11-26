@@ -326,10 +326,16 @@ async function elegir(pagina, etiqueta, texto) {
   const [lee] = await consulta(
     `select (select count(*) from public.requerimientos)::int as rq,
             (select count(*) from public.requerimientos r join public.areas a on a.id = r.area_id where a.codigo <> 'MNT')::int as ajenos,
-            (select count(*) from public.requerimiento_lineas l where l.requerimiento_id = $1)::int as lineas_ajenas`, [ajeno?.id])
+            (select count(*) from public.requerimiento_lineas l where l.requerimiento_id = $1)::int as lineas_ajenas,
+            (select count(*) from public.avance_de_requerimientos(array[$1::uuid]))::int as avance,
+            (select count(*) from public.recorrido_de_requerimientos(array[$1::uuid]))::int as recorrido,
+            (select count(*) from public.salidas_de_requerimientos(array[$1::uuid]))::int as salidas,
+            (select count(*) from public.avance_de_requerimientos(array(select id from public.requerimientos)))::int as avance_propio`, [ajeno?.id])
   await consulta('rollback')
   comprobar(lee.rq > 0 && lee.ajenos === 0 && lee.lineas_ajenas === 0,
     `en la base, con su cuenta: lee ${lee.rq} RQ, ${lee.ajenos} de otra área y ${lee.lineas_ajenas} insumos del ${ajeno?.numero}`)
+  comprobar(lee.avance === 0 && lee.recorrido === 0 && lee.salidas === 0 && lee.avance_propio > 0,
+    `y con el id del ${ajeno?.numero} las funciones del RQ no le contestan (avance ${lee.avance}, recorrido ${lee.recorrido}, salidas ${lee.salidas}); con los suyos, sí (${lee.avance_propio})`)
   await pagina.screenshot({ path: join(carpeta, '5-requerimientos-1440.png'), fullPage: true })
   await ir(pagina, `${BASE}/requerimientos/unidades`)
   comprobar(new URL(pagina.url()).pathname === '/mantenimiento', `«RQ por unidad» lo devuelve a su lista de OT (${new URL(pagina.url()).pathname})`)

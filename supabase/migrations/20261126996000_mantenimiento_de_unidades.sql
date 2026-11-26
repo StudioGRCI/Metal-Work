@@ -51,7 +51,7 @@
 -- =============================================================================
 
 -- 0. Lo que esta migración reescribe es lo que el repositorio conoce ------------------------
--- Cuatro funciones y cinco políticas que ya existen. Valen la huella de la
+-- Cuatro funciones y seis políticas que ya existen, y la función de la que se copia una lista. Valen la huella de la
 -- migración que las dejó y la de esta (volver a correrla). Si alguien las
 -- cambió a mano, se detiene sin tocar nada.
 do $$
@@ -64,7 +64,11 @@ begin
         ('public.reporte_diario_personal_disponible()',      array['cb9d7c1c218e463141b53bbbafb300bd', '137769e860c1b9875485388cd4c60a0e']),
         ('public.fn_reporte_diario_solo_gente_del_taller()', array['ae593b8c0f900c62d376a02c49a966bd', '0ad87bd0ea8e5d065f3ab4febf4cb9b1']),
         ('public.averias_rq_enlazados(uuid[])',              array['bcdbf9dfcddba96dc6727970a29f2cb4', '2d4e50050d685587e40a9fec53a723d9']),
-        ('public.notas_de_conformidad(uuid[], boolean)',     array['d4e20147ccc04c27c47a02a2e2c7fba3', 'bdf5083931ef285d42376514b5287a1b'])
+        ('public.notas_de_conformidad(uuid[], boolean)',     array['d4e20147ccc04c27c47a02a2e2c7fba3', 'bdf5083931ef285d42376514b5287a1b']),
+        -- Esta no se reescribe: `puede_ver_todos_los_requerimientos()` es su lista sin
+        -- requerimientos.area. Si en esta base le sumaron un permiso a mano, copiarla
+        -- de memoria dejaría a ese puesto sin leer ningún RQ, y sin ningún error.
+        ('public.puede_ver_requerimientos()',                array['31388a8d544d0bea148b40e253d7ed02'])
       ) as f(firma, huellas)
       left join pg_proc p on p.oid = to_regprocedure(f.firma)
   loop
@@ -77,22 +81,26 @@ begin
   end loop;
 
   -- Las políticas: la expresión de antes (la misma huella en Postgres 16 y 17) o
-  -- la de esta migración, que se reconoce por la función nueva.
+  -- la de esta migración, que se reconoce por la función nueva que nombra. No por
+  -- su huella: Postgres guarda la expresión ya analizada y la devuelve escrita a
+  -- su manera, que entre el 16 local y el 17 de producción no se pudo comparar
+  -- antes de aplicarla.
   for v in
-    select f.tabla, f.politica, f.huella as conocida, md5(p.qual) as huella, p.qual
+    select f.tabla, f.politica, f.huella as conocida, f.nueva, md5(p.qual) as huella, p.qual
       from (values
-        ('requerimientos',          'ver_requerimientos',          'db2103859eccc1e43a5cb2351176529e'),
-        ('requerimiento_lineas',    'ver_requerimiento_lineas',    'db2103859eccc1e43a5cb2351176529e'),
-        ('requerimiento_sustentos', 'ver_requerimiento_sustentos', '35da350cfd4fec826785d03832ac3adf'),
-        ('correcciones',            'ver_correcciones',            'ff933c85524746d00c9897a15ff3ca7e'),
-        ('conformidad_salidas',     'ver_conformidad_salidas',     '9d8229738fc52cc8b2fb2cb9305e9714')
-      ) as f(tabla, politica, huella)
-      left join pg_policies p on p.schemaname = 'public' and p.tablename = f.tabla and p.policyname = f.politica
+        ('public',  'requerimientos',          'ver_requerimientos',          'db2103859eccc1e43a5cb2351176529e', 'puede_ver_todos_los_requerimientos'),
+        ('public',  'requerimiento_lineas',    'ver_requerimiento_lineas',    'db2103859eccc1e43a5cb2351176529e', 'puede_ver_todos_los_requerimientos'),
+        ('public',  'requerimiento_sustentos', 'ver_requerimiento_sustentos', '35da350cfd4fec826785d03832ac3adf', 'puede_ver_todos_los_requerimientos'),
+        ('public',  'correcciones',            'ver_correcciones',            'ff933c85524746d00c9897a15ff3ca7e', 'puede_ver_todos_los_requerimientos'),
+        ('public',  'conformidad_salidas',     'ver_conformidad_salidas',     '9d8229738fc52cc8b2fb2cb9305e9714', 'puede_ver_todos_los_requerimientos'),
+        ('storage', 'objects',                 'justificantes_quitar_suelto', 'c26be4b56ec9f6005cd6665b9a0d59ec', 'justificante_anotado')
+      ) as f(esquema, tabla, politica, huella, nueva)
+      left join pg_policies p on p.schemaname = f.esquema and p.tablename = f.tabla and p.policyname = f.politica
   loop
     if v.huella is null then
       raise exception 'Falta la política % de %: no hay qué acotar.', v.politica, v.tabla;
     end if;
-    if v.huella <> v.conocida and position('puede_ver_todos_los_requerimientos' in v.qual) = 0 then
+    if v.huella <> v.conocida and position(v.nueva in v.qual) = 0 then
       raise exception 'La política % de % no es la que conoce el repositorio (huella %): no se cambia. Avisa antes de seguir.',
         v.politica, v.tabla, v.huella;
     end if;
@@ -215,6 +223,28 @@ alter policy ver_conformidad_salidas on public.conformidad_salidas using (
   or exists (select 1 from public.requerimientos r
               where r.id = conformidad_salidas.requerimiento_id
                 and r.area_id = (select public.area_de_mis_requerimientos()))
+);
+
+-- El justificante de una corrección se quita de Storage solo si ninguna
+-- corrección lo nombra, y la política lo preguntaba leyendo `correcciones` CON
+-- EL RLS de quien pregunta. Ahora que esa lectura depende del área, a una
+-- cuenta que cambia de área se le escondería su corrección y podría quitar un
+-- justificante ya anotado. «Ninguna fila lo nombra» se pregunta por encima del
+-- RLS, con una función propia (como `archivo_plano_vinculado`). Quién puede
+-- VERLO no cambia: sigue pidiendo leer la corrección.
+create or replace function public.justificante_anotado(p_ruta text)
+returns boolean language sql stable security definer set search_path to 'public' as $$
+  select exists (select 1 from public.correcciones c where c.justificante_ruta = p_ruta);
+$$;
+revoke all on function public.justificante_anotado(text) from public, anon;
+grant execute on function public.justificante_anotado(text) to authenticated;
+comment on function public.justificante_anotado(text) is
+  'Si alguna corrección nombra ese justificante de Storage, la vea o no quien pregunta: lo usa la política que deja quitar solo el archivo suelto.';
+
+alter policy justificantes_quitar_suelto on storage.objects using (
+  bucket_id = 'justificantes-correccion'
+  and owner_id = (select auth.uid())::text
+  and not public.justificante_anotado(name)
 );
 
 -- El RQ enlazado a una avería se abre si quien mira puede leer ESE RQ: antes

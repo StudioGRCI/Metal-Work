@@ -1,6 +1,6 @@
 -- Mantenimiento de unidades (plan «Las demás áreas», entrega A.3, migración
--- 20261126996000): el puesto de Mantenimiento ve sus OT, pide su RQ por el N.º
--- de su OT y sube su reporte diario.
+-- 20261126996000 y 20261126996500): el puesto de Mantenimiento ve sus OT, pide
+-- su RQ por el N.º de su OT y sube su reporte diario.
 --
 --   1. El puesto tiene los tres permisos y su área pide por el RQ de operación.
 --   2. Ve las OT de mantenimiento aprobadas: no la borrador, la anulada, la de
@@ -16,8 +16,9 @@
 --   7. Quien no tiene el permiso (Tesorería, la supervisión de Producción) no
 --      ve la lista.
 --   8. Lee los RQ de su área y ninguno de otra (el RQ, sus insumos, su
---      sustento y sus correcciones); el supervisor, Requerimientos y Almacén
---      siguen leyendo todos; sin área en la cuenta, ninguno.
+--      sustento, sus correcciones y las notas de sus salidas); el supervisor,
+--      Requerimientos, Almacén y Tesorería siguen leyendo todos; sin área en
+--      la cuenta, ninguno, y aun así no quita un justificante ya anotado.
 --
 -- Cada paso con el puesto que lo hace —nunca ADMIN— y `set local role
 -- authenticated`. El armazón lo pone el administrador. Termina en rollback.
@@ -38,6 +39,7 @@ select test.crear_usuario('Alma', 'Administración', 'adm497@demo.pe', 'ADMINIST
 select test.crear_usuario('Teo', 'Tesorería', 'tes497@demo.pe', 'TESORERIA', :'sede_id') as tes_id \gset
 select test.crear_usuario('Sam', 'Supervisión', 'sup497@demo.pe', 'SUPERVISOR', :'sede_id') as sup_id \gset
 select test.crear_usuario('Rosa', 'Humanos', 'rrhh497@demo.pe', 'RECURSOS_HUMANOS', :'sede_id') as rrhh_id \gset
+select test.crear_usuario('Aldo', 'Almacén', 'alm497@demo.pe', 'ALMACENERO', :'sede_id') as alm_id \gset
 
 -- Armazón: las áreas de las cuentas, un cliente, una unidad con placa y sus OT.
 select test.como_usuario(:'admin_id');
@@ -85,6 +87,7 @@ select set_config('prueba.adm', :'adm_id', true);
 select set_config('prueba.tes', :'tes_id', true);
 select set_config('prueba.sup', :'sup_id', true);
 select set_config('prueba.rrhh', :'rrhh_id', true);
+select set_config('prueba.alm', :'alm_id', true);
 select set_config('prueba.mant', :'mant', true);
 select set_config('prueba.mant_sin', :'mant_sin', true);
 select set_config('prueba.material', :'material', true);
@@ -362,9 +365,10 @@ begin
     from public.requerimientos r where r.id in (pg_temp.id('rq1'), pg_temp.id('rq5'));
   -- Y una salida de cada uno que «no llegó», con su nota.
   insert into public.movimientos_materiales (id, tipo, origen, cantidad, material_id, registrado_por,
-                                             documento_referencia, recibido_por_nombre, codigo_unidad)
+                                             documento_referencia, recibido_por_nombre, codigo_unidad,
+                                             requerimiento_linea_id, foto_ruta)
   select md5('mov497' || l.requerimiento_id::text)::uuid, 'SALIDA', 'SALIDA_GENERAL', 1, l.material_id, pg_temp.id('req'),
-         'PRUEBA-497', 'Juan Mecánico', 'OT 9497-2026'
+         'PRUEBA-497', 'Juan Mecánico', 'OT 9497-2026', l.id, 'prueba/497/salida-' || l.requerimiento_id || '.jpg'
     from public.requerimiento_lineas l where l.requerimiento_id in (pg_temp.id('rq1'), pg_temp.id('rq5'));
   insert into public.conformidad_salidas (movimiento_id, requerimiento_id, requerimiento_linea_id, tipo, nota, registrado_por)
   select md5('mov497' || l.requerimiento_id::text)::uuid, l.requerimiento_id, l.id, 'NO_LLEGO', 'Prueba 497: la salida no llegó', pg_temp.id('req')
@@ -394,6 +398,27 @@ select test.afirmar(
   and (select count(*) = 0 from public.notas_de_conformidad(array[pg_temp.id('rq5')]))
   and (select count(*) = 1 from public.notas_de_conformidad(null, true)),
   '8. ni las notas de sus salidas: la tabla y la lista de notas le dan la de su RQ, también pidiendo las abiertas o la del RQ ajeno por su id');
+-- Las funciones que reciben ids (20261126996500): con el id del RQ de Producción
+-- no contestan nada; con el suyo, sí. Y juntos, solo el suyo.
+select test.afirmar(
+  (select count(*) = 0 from public.avance_de_requerimientos(array[pg_temp.id('rq5')]))
+  and (select count(*) = 0 from public.entregado_de_requerimientos(array[pg_temp.id('rq5')]))
+  and (select count(*) = 0 from public.metrado_de_requerimientos(array[pg_temp.id('rq5')]))
+  and (select count(*) = 0 from public.recorrido_de_requerimientos(array[pg_temp.id('rq5')]))
+  and (select count(*) = 0 from public.salidas_de_requerimientos(array[pg_temp.id('rq5')])),
+  '8. con el id del RQ de Producción, el avance, lo entregado, el metrado, el recorrido y las salidas no le contestan nada');
+select test.afirmar(
+  (select count(*) = 1 and bool_and(requerimiento_id = pg_temp.id('rq1')) from public.avance_de_requerimientos(array[pg_temp.id('rq1'), pg_temp.id('rq5')]))
+  and (select count(*) >= 1 and bool_and(requerimiento_id = pg_temp.id('rq1')) from public.entregado_de_requerimientos(array[pg_temp.id('rq1'), pg_temp.id('rq5')]))
+  and (select count(*) >= 1 and bool_and(documento = pg_temp.id('rq1')) from public.recorrido_de_requerimientos(array[pg_temp.id('rq1'), pg_temp.id('rq5')]))
+  and (select count(*) = 1 and bool_and(requerimiento_id = pg_temp.id('rq1')) from public.salidas_de_requerimientos(array[pg_temp.id('rq1'), pg_temp.id('rq5')])),
+  '8. y con los dos ids, solo lo del suyo');
+select test.afirmar(
+  public.foto_de_salida_de_requerimiento(md5('mov497' || pg_temp.txt('rq5'))::uuid) is null
+  and not public.es_foto_de_salida_de_requerimiento('prueba/497/salida-' || pg_temp.txt('rq5') || '.jpg')
+  and public.foto_de_salida_de_requerimiento(md5('mov497' || pg_temp.txt('rq1'))::uuid) = 'prueba/497/salida-' || pg_temp.txt('rq1') || '.jpg'
+  and public.es_foto_de_salida_de_requerimiento('prueba/497/salida-' || pg_temp.txt('rq1') || '.jpg'),
+  '8. ni la foto de la salida del RQ de Producción; la de la suya, sí');
 reset role;
 
 select pg_temp.como('sup');
@@ -405,6 +430,13 @@ select test.afirmar(
   '8. el supervisor de Producción sigue leyendo los RQ de todas las áreas (requerimientos.ver), como antes');
 select test.afirmar((select count(*) = 2 from public.notas_de_conformidad(array[pg_temp.id('rq1'), pg_temp.id('rq5')])),
   '8. y las notas de sus salidas');
+select test.afirmar(
+  (select count(*) = 2 from public.avance_de_requerimientos(array[pg_temp.id('rq1'), pg_temp.id('rq5')]))
+  and (select count(distinct documento) = 2 from public.recorrido_de_requerimientos(array[pg_temp.id('rq1'), pg_temp.id('rq5')]))
+  and (select count(*) = 2 from public.salidas_de_requerimientos(array[pg_temp.id('rq1'), pg_temp.id('rq5')]))
+  and public.foto_de_salida_de_requerimiento(md5('mov497' || pg_temp.txt('rq1'))::uuid) is not null
+  and public.es_foto_de_salida_de_requerimiento('prueba/497/salida-' || pg_temp.txt('rq5') || '.jpg'),
+  '8. y el avance, el recorrido, las salidas y la foto de los dos, por su id');
 reset role;
 select pg_temp.como('req');
 set local role authenticated;
@@ -419,16 +451,42 @@ set local role authenticated;
 select test.afirmar((select count(*) = 2 from public.requerimientos where id in (pg_temp.id('rq1'), pg_temp.id('rq5'))),
   '8. y quien los consulta (requerimientos.ver)');
 reset role;
+select pg_temp.como('alm');
+set local role authenticated;
+select test.afirmar(
+  (select count(*) = 2 from public.requerimientos where id in (pg_temp.id('rq1'), pg_temp.id('rq5')))
+  and (select count(*) = 2 from public.requerimiento_lineas where requerimiento_id in (pg_temp.id('rq1'), pg_temp.id('rq5')))
+  and (select count(*) = 2 from public.conformidad_salidas where requerimiento_id in (pg_temp.id('rq1'), pg_temp.id('rq5')))
+  and (select count(*) = 2 from public.notas_de_conformidad(array[pg_temp.id('rq1'), pg_temp.id('rq5')])),
+  '8. y Almacén, que los atiende: los RQ, sus insumos y las notas de sus salidas');
+reset role;
 
 -- Sin área en la cuenta no hay «los de su área»: no lee ninguno.
 select test.como_usuario(:'admin_id');
 update public.usuarios set area_id = null where id = :'mnt_id';
+-- El justificante de la corrección de su RQ, que subió su cuenta: ya está anotado.
+insert into storage.objects (bucket_id, name, owner_id, metadata)
+values ('justificantes-correccion', 'prueba/497/' || pg_temp.txt('rq1') || '.pdf', :'mnt_id', '{"mimetype": "application/pdf", "size": 1000}');
+insert into storage.objects (bucket_id, name, owner_id, metadata)
+values ('justificantes-correccion', 'prueba/497/suelto.pdf', :'mnt_id', '{"mimetype": "application/pdf", "size": 1000}');
 select pg_temp.como('mnt');
 set local role authenticated;
 select test.afirmar((select count(*) = 0 from public.requerimientos) and (select count(*) = 0 from public.requerimiento_lineas)
                     and (select count(*) = 0 from public.correcciones),
   '8. una cuenta sin área, con requerimientos.area, no lee ningún RQ');
+select test.afirmar(
+  (select count(*) = 0 from public.avance_de_requerimientos(array[pg_temp.id('rq1'), pg_temp.id('rq5')]))
+  and (select count(*) = 0 from public.salidas_de_requerimientos(array[pg_temp.id('rq1'), pg_temp.id('rq5')]))
+  and public.foto_de_salida_de_requerimiento(md5('mov497' || pg_temp.txt('rq1'))::uuid) is null,
+  '8. ni por las funciones que reciben ids');
+-- Ya no ve la corrección, y aun así no puede quitar su justificante: «ninguna
+-- fila lo nombra» se pregunta por encima del RLS. El suelto sí lo quita.
+delete from storage.objects where bucket_id = 'justificantes-correccion' and name like 'prueba/497/%';
 reset role;
+select test.afirmar(
+  exists (select 1 from storage.objects where bucket_id = 'justificantes-correccion' and name = 'prueba/497/' || pg_temp.txt('rq1') || '.pdf')
+  and not exists (select 1 from storage.objects where bucket_id = 'justificantes-correccion' and name = 'prueba/497/suelto.pdf'),
+  '8. y no quita de Storage el justificante de una corrección que ya no ve; el que ninguna corrección nombra, sí');
 
 -- Las dos listas dicen lo mismo salvo requerimientos.area: si una cambia, cambia la otra.
 select test.afirmar(

@@ -17441,6 +17441,18 @@ export type Database = {
           extras_decididas: number | null
         }[]
       }
+      justificante_anotado: {
+        Args: {
+          p_ruta: string | null
+        }
+        Returns: boolean
+      }
+      leo_el_rq_de_la_linea: {
+        Args: {
+          p_linea: string | null
+        }
+        Returns: boolean
+      }
       levantar_observacion_ot: {
         Args: {
           p_orden: string | null
@@ -19665,6 +19677,12 @@ export type Database = {
         }
         Returns: string
       }
+      rq_que_leo: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: string[]
+      }
       rq_revisar_stock: {
         Args: {
           p_id: string | null
@@ -20293,6 +20311,10 @@ export type Database = {
           p_concepto: string | null
         }
         Returns: string
+      }
+      solo_leo_los_rq_de_mi_area: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
       }
       soltar_pago_de_la_boleta: {
         Args: {
