@@ -87,7 +87,7 @@ export default async function PaginaAveria({ params }: PageProps<'/averias/[id]'
         descripcion={`${tipo?.etiqueta ?? a.tipo} · ${a.equipo_codigo} · ${a.equipo_descripcion}`}
         migas={[{ titulo: veTodo ? 'Averías de equipos' : 'Reportar avería', ruta: '/averias' }, { titulo: a.numero }]}
         acciones={acciones}
-        estado={<AvisoDeLaFicha />}
+        estado={<AvisoDeLaFicha averia={a.id} />}
       />
 
       <div className="space-y-5">
@@ -99,10 +99,23 @@ export default async function PaginaAveria({ params }: PageProps<'/averias/[id]'
               <Dato titulo="Tipo">
                 <span className="flex flex-wrap gap-1.5">
                   {tipo ? <Insignia tono={tipo.tono}>{tipo.etiqueta}</Insignia> : a.tipo}
-                  {/* Anulado, lo urgente ya no se pinta en rojo, como en la lista: se lee en texto. */}
-                  {a.detiene_trabajo && (anulada ? <Insignia>Decía que detiene el trabajo</Insignia> : <Insignia tono="peligro">Detiene el trabajo</Insignia>)}
+                  {/* Lo urgente se pinta en rojo solo mientras espera a Mantenimiento, como en la lista; después se lee en texto. */}
+                  {a.detiene_trabajo &&
+                    (anulada ? (
+                      <Insignia>Decía que detiene el trabajo</Insignia>
+                    ) : vigenteParaMantenimiento ? (
+                      <Insignia tono="peligro">Detiene el trabajo</Insignia>
+                    ) : (
+                      <Insignia>Detenía el trabajo</Insignia>
+                    ))}
                   {a.riesgo_personas &&
-                    (anulada ? <Insignia>Decía que es un riesgo para las personas</Insignia> : <Insignia tono="peligro">Riesgo para las personas</Insignia>)}
+                    (anulada ? (
+                      <Insignia>Decía que es un riesgo para las personas</Insignia>
+                    ) : vigenteParaMantenimiento ? (
+                      <Insignia tono="peligro">Riesgo para las personas</Insignia>
+                    ) : (
+                      <Insignia>Era un riesgo para las personas</Insignia>
+                    ))}
                 </span>
               </Dato>
               <Dato titulo="Cómo va">{estado ? <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia> : a.estado}</Dato>
@@ -268,7 +281,7 @@ function Atencion({
                       )}
                       {est ? <Insignia tono={est.tono}>{est.etiqueta}</Insignia> : r.estado}
                       <span className="min-w-[12rem] flex-1 text-texto">{r.nota}</span>
-                      {enlaza && <QuitarRequerimiento enlace={r.enlace} numero={r.numero} />}
+                      {enlaza && <QuitarRequerimiento averia={a.id} enlace={r.enlace} numero={r.numero} />}
                     </li>
                   )
                 })}

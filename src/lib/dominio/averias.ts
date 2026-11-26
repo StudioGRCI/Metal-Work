@@ -75,9 +75,9 @@ export function horasParadoSugeridas(paradoDesde: string | null, ahora: Date = n
   return Math.round((ms / 3_600_000) * 2) / 2
 }
 
-/** «1 hora», «26,5 horas», «0 horas». */
+/** «1 hora», «26.5 horas», «0 horas»: con el punto decimal de `cantidad()` (es-PE), como el resto de la aplicación. */
 export function horas(valor: number): string {
-  const texto = Number.isInteger(valor) ? String(valor) : valor.toFixed(1).replace('.', ',')
+  const texto = Number.isInteger(valor) ? String(valor) : valor.toFixed(1)
   return `${texto} ${valor === 1 ? 'hora' : 'horas'}`
 }
 

@@ -16,11 +16,16 @@ import { useEstadoCompartido } from '@/lib/estado-compartido'
 
 import { anularAveria, atenderAveria, cerrarAveria, confirmarAveria, enlazarRequerimiento, quitarRequerimiento } from '../acciones'
 
-/** Lo que dijo la última acción de la ficha: va en el renglón de estado del encabezado, fuera de la ventana. */
-const CLAVE_AVISO = 'averias:ficha:aviso'
+/**
+ * Lo que dijo la última acción de la ficha: va en el renglón de estado del
+ * encabezado, fuera de la ventana. Es de esta avería: Next no vuelve a montar la
+ * ficha al ir a otra (un aviso de la campana), y con una clave fija «Avería
+ * cerrada» salía en la ficha de otra que seguía por atender.
+ */
+const claveDelAviso = (averia: string) => `averias:ficha:aviso:${averia}`
 
-export function AvisoDeLaFicha() {
-  const [aviso] = useEstadoCompartido<string | null>(CLAVE_AVISO, null)
+export function AvisoDeLaFicha({ averia }: { averia: string }) {
+  const [aviso] = useEstadoCompartido<string | null>(claveDelAviso(averia), null)
   // Montada siempre: el verde que nace con su texto no lo oye el lector.
   return (
     <p role="status" className={aviso ? 'text-sm text-exito' : 'sr-only'}>
@@ -31,16 +36,25 @@ export function AvisoDeLaFicha() {
 
 /** Una ventana con su formulario: el botón que la abre, el envío y el verde que queda arriba al terminar. */
 function useVentanaDeLaFicha<T = never>(
+  averia: string,
   accion: (previo: unknown, datos: FormData) => Promise<ResultadoAccion<T>>,
   alEntrar?: () => void,
 ) {
   const [abierta, setAbierta] = useState(false)
-  const [, setAviso] = useEstadoCompartido<string | null>(CLAVE_AVISO, null)
-  const envio = useEnvio<T>(accion, (r) => {
-    setAbierta(false)
-    setAviso(r.mensaje ?? 'Listo.')
-    alEntrar?.()
-  })
+  const [, setAviso] = useEstadoCompartido<string | null>(claveDelAviso(averia), null)
+  // `corrige`: la ventana se cierra y el verde sale cuando la ficha ya está al
+  // día. Cerrada al contestar, la ficha seguía un momento «En atención» junto a
+  // «Avería cerrada», y «Corregir diagnóstico» abierto en ese rato traía el de
+  // antes y lo volvía a guardar.
+  const envio = useEnvio<T>(
+    accion,
+    (r) => {
+      setAbierta(false)
+      setAviso(r.mensaje ?? 'Listo.')
+      alEntrar?.()
+    },
+    { corrige: true, documento: averia },
+  )
   return {
     ...envio,
     abierta,
@@ -59,7 +73,7 @@ function useVentanaDeLaFicha<T = never>(
  */
 export function AtenderAveria({ id, numero, diagnostico }: { id: string; numero: string; diagnostico: string | null }) {
   const primera = diagnostico == null
-  const v = useVentanaDeLaFicha(atenderAveria)
+  const v = useVentanaDeLaFicha(id, atenderAveria)
   return (
     <>
       <Boton type="button" variante={primera ? 'primario' : 'secundario'} data-atender-averia onClick={v.abrir}>
@@ -109,7 +123,7 @@ export function AtenderAveria({ id, numero, diagnostico }: { id: string; numero:
 export function EnlazarRequerimiento({ averia, opciones }: { averia: string; opciones: RqParaEnlazar[] }) {
   const [enlace, setEnlace] = useState(() => crypto.randomUUID())
   const [requerimiento, setRequerimiento] = useState('')
-  const v = useVentanaDeLaFicha(enlazarRequerimiento, () => {
+  const v = useVentanaDeLaFicha(averia, enlazarRequerimiento, () => {
     setEnlace(crypto.randomUUID())
     setRequerimiento('')
   })
@@ -175,8 +189,8 @@ export function EnlazarRequerimiento({ averia, opciones }: { averia: string; opc
 }
 
 /** Quitar un RQ enlazado por error. No se borra: queda quién y cuándo. */
-export function QuitarRequerimiento({ enlace, numero }: { enlace: string; numero: string }) {
-  const v = useVentanaDeLaFicha(quitarRequerimiento)
+export function QuitarRequerimiento({ averia, enlace, numero }: { averia: string; enlace: string; numero: string }) {
+  const v = useVentanaDeLaFicha(averia, quitarRequerimiento)
   return (
     <>
       <Boton type="button" variante="fantasma" tamano="sm" aria-label={`Quitar el ${numero} de este reporte`} data-quitar-rq={numero} onClick={v.abrir}>
@@ -212,12 +226,12 @@ export function CerrarAveria({
   /** Si el equipo sigue parado por este reporte: al cerrar vuelve a operativo. */
   dejaOperativo: boolean
 }) {
-  const v = useVentanaDeLaFicha(cerrarAveria)
+  const v = useVentanaDeLaFicha(id, cerrarAveria)
   return (
     <>
       <Boton type="button" data-cerrar-averia onClick={v.abrir}>
         <Wrench aria-hidden className="size-4" />
-        Cerrar
+        Cerrar la avería
       </Boton>
       <Ventana
         abierta={v.abierta}
@@ -260,8 +274,8 @@ export function CerrarAveria({
                 required
                 inputMode="decimal"
                 pattern="[0-9]+([.,][0-9])?"
-                title="Un número de horas, con un decimal como mucho: 3 o 2,5."
-                defaultValue={horasSugeridas != null ? String(horasSugeridas).replace('.', ',') : ''}
+                title="Un número de horas, con un decimal como mucho: 3 o 2.5."
+                defaultValue={horasSugeridas != null ? String(horasSugeridas) : ''}
                 className="tabular max-w-32"
               />
             </Campo>
@@ -280,7 +294,7 @@ const RADIO = 'size-4 shrink-0 accent-[var(--acento)]'
 /** Quien la reportó dice si quedó bien. Si no, cuenta qué sigue fallando y vuelve a Mantenimiento. */
 export function ConfirmarAveria({ id, numero, detieneElTrabajo }: { id: string; numero: string; detieneElTrabajo: boolean }) {
   const [quedo, setQuedo] = useState('')
-  const v = useVentanaDeLaFicha(confirmarAveria)
+  const v = useVentanaDeLaFicha(id, confirmarAveria)
   return (
     <>
       <Boton
@@ -349,7 +363,7 @@ export function ConfirmarAveria({ id, numero, detieneElTrabajo }: { id: string; 
  * con quién, cuándo y por qué; si el equipo sigue parado por él, vuelve a como estaba.
  */
 export function AnularAveria({ id, numero, paroElEquipo }: { id: string; numero: string; paroElEquipo: boolean }) {
-  const v = useVentanaDeLaFicha(anularAveria)
+  const v = useVentanaDeLaFicha(id, anularAveria)
   return (
     <>
       <Boton type="button" variante="contornoPeligro" data-anular-averia onClick={v.abrir}>

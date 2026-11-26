@@ -28,6 +28,6 @@ test('las horas parado se proponen desde que quedó parado, a la media hora', ()
 
 test('las horas se dicen con coma y en singular cuando es una', () => {
   assert.equal(horas(1), '1 hora')
-  assert.equal(horas(26.5), '26,5 horas')
+  assert.equal(horas(26.5), '26.5 horas')
   assert.equal(horas(0), '0 horas')
 })

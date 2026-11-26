@@ -84,6 +84,8 @@ export default async function PaginaAverias({ searchParams }: PageProps<'/averia
           estado={<EstadoDelReporteDeAveria />}
         />
         {sinPadron}
+        {/* Mantenimiento o Gerencia también reportan: las suyas por confirmar, arriba, como a los demás. */}
+        <PorConfirmar averias={averias.filter((a) => a.es_mia && a.estado === 'CERRADA')} className="mb-4" />
         <Vistas
           etiqueta="Vista"
           className="mb-4"
@@ -104,7 +106,8 @@ export default async function PaginaAverias({ searchParams }: PageProps<'/averia
   }
 
   const mias = averias.filter((a) => a.alcance === 'PROPIA')
-  // Lo que Mantenimiento cerró y espera que la persona diga si quedó bien: va primero.
+  // Lo que Mantenimiento cerró y espera que la persona diga si quedó bien: va
+  // primero, y no se repite en «Tus reportes».
   const porConfirmar = mias.filter((a) => a.estado === 'CERRADA')
   // Lo del área y lo de riesgo: lo que todavía espera a alguien.
   const delArea = averias.filter((a) => a.alcance === 'AREA' && a.espera_de != null)
@@ -121,19 +124,11 @@ export default async function PaginaAverias({ searchParams }: PageProps<'/averia
       />
       {sinPadron}
       <div className="space-y-5">
-        {porConfirmar.length > 0 && (
-          <Tarjeta className="overflow-hidden" data-por-confirmar>
-            <TarjetaCabecera
-              titulo="¿Quedaron bien?"
-              descripcion={`Mantenimiento cerró ${porConfirmar.length === 1 ? 'una avería que reportaste' : `${porConfirmar.length} averías que reportaste`}: ábrela, prueba el equipo y dinos si quedó bien.`}
-            />
-            <TablaDeAverias averias={porConfirmar} vacio={{ titulo: '', descripcion: '' }} />
-          </Tarjeta>
-        )}
+        <PorConfirmar averias={porConfirmar} />
         <Tarjeta className="overflow-hidden">
           <TarjetaCabecera titulo="Tus reportes" descripcion={mias.length > 0 ? `${mias.length} ${mias.length === 1 ? 'reporte' : 'reportes'}` : undefined} />
           <TablaDeAverias
-            averias={mias}
+            averias={mias.filter((a) => a.estado !== 'CERRADA')}
             vacio={{
               titulo: 'Todavía no has reportado nada',
               descripcion: 'Si una máquina falla o hace algo raro, toca «Reportar avería». Toma un minuto.',
@@ -319,5 +314,19 @@ function Situacion({ averia: a }: { averia: Averia }) {
       />
       {a.veces_reabierta > 0 && a.estado === 'EN_ATENCION' && <Insignia tono="aviso">No quedó bien</Insignia>}
     </div>
+  )
+}
+
+/** Las averías que reportó quien mira, cerradas por Mantenimiento, esperando que diga si quedaron bien. */
+function PorConfirmar({ averias, className }: { averias: Averia[]; className?: string }) {
+  if (averias.length === 0) return null
+  return (
+    <Tarjeta className={`overflow-hidden ${className ?? ''}`} data-por-confirmar>
+      <TarjetaCabecera
+        titulo="¿Quedaron bien?"
+        descripcion={`Mantenimiento cerró ${averias.length === 1 ? 'una avería que reportaste' : `${averias.length} averías que reportaste`}: ábrela, prueba el equipo y dinos si quedó bien.`}
+      />
+      <TablaDeAverias averias={averias} vacio={{ titulo: '', descripcion: '' }} />
+    </Tarjeta>
   )
 }

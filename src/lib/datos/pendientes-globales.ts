@@ -1037,6 +1037,24 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
     break
   }
 
+  // Averías (Plan 16.3): a Mantenimiento, las que esperan su atención; a quien
+  // reportó, las que Mantenimiento cerró y esperan que diga si quedaron bien.
+  // Sin esto, el circuito dependía de que la persona viera la campana.
+  if (puede(perfil, 'averias.atender')) tareas.push({
+    clave: 'averias_por_atender', ruta: '/averias', tono: 'peligro',
+    texto: n => plural(n, 'avería por atender', 'averías por atender'),
+    contar: () =>
+      cabeza(supabase.from('averias').select('id', { count: 'exact', head: true }).in('estado', ['REPORTADA', 'EN_ATENCION'])),
+  })
+  tareas.push({
+    clave: 'averias_por_confirmar', ruta: '/averias', tono: 'aviso',
+    texto: n => plural(n, 'avería que reportaste espera que digas si quedó bien', 'averías que reportaste esperan que digas si quedaron bien'),
+    contar: () =>
+      cabeza(
+        supabase.from('averias').select('id', { count: 'exact', head: true }).eq('estado', 'CERRADA').eq('registrado_por', perfil.id),
+      ),
+  })
+
   // Un pendiente se cuenta solo si su pantalla está en el menú del puesto: lo
   // que se resuelve donde el puesto ya no entra no es suyo. Así Supervisión,
   // Almacén y Requerimientos dejaron de ver lo que se resolvía en la OT (desde

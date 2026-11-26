@@ -243,7 +243,7 @@ export async function cerrarAveria(_previo: unknown, formulario: FormData): Prom
     .safeParse({
       id: formulario.get('id'),
       trabajo: dato(formulario, 'trabajo'),
-      // «2,5» se lee como 2.5; un campo vacío no es «0».
+      // «2,5» también se lee como 2.5; un campo vacío no es «0».
       horas: dato(formulario, 'horas').replace(',', '.') || undefined,
     })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
@@ -294,7 +294,7 @@ export async function confirmarAveria(_previo: unknown, formulario: FormData): P
   if (data?.averia !== d.id) return { ok: false, error: 'No quedó tu respuesta. Recarga la pantalla.' }
 
   revalidatePath('/averias', 'layout')
-  if (data.estado === 'CONFIRMADA') return { ok: true, mensaje: 'Gracias: la avería queda cerrada.' }
+  if (data.estado === 'CONFIRMADA') return { ok: true, mensaje: 'Gracias: queda confirmado que la avería quedó bien.' }
   revalidatePath('/equipos')
   return {
     ok: true,

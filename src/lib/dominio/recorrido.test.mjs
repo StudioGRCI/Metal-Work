@@ -124,7 +124,7 @@ test('el recorrido de la avería dice las horas parado del cierre y que no qued�
     [
       ['Reportada: el equipo quedó parado', null],
       ['Mantenimiento anotó su diagnóstico', null],
-      ['Mantenimiento la cerró', 'Parado: 26,5 horas'],
+      ['Mantenimiento la cerró', 'Parado: 26.5 horas'],
       ['No quedó bien: volvió a Mantenimiento', null],
       ['Cierre: el equipo vuelve a operativo', 'La arregla y la cierra con el trabajo hecho y las horas parado.'],
       ['Quien la reportó confirma que quedó bien', null],

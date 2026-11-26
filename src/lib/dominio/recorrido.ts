@@ -147,9 +147,9 @@ const ESPERAS_DE_LA_COTIZACION: Record<string, (detalle: string | null) => strin
   FACTURA: () => 'Registra su factura.',
 }
 
-/** «1 hora», «26,5 horas», como `horas` de averias.ts (aquí sin importarla: el test corre sin el alias). */
+/** «1 hora», «26.5 horas», como `horas` de averias.ts (aquí sin importarla: el test corre sin el alias). */
 function horasParado(valor: number): string {
-  const texto = Number.isInteger(valor) ? String(valor) : valor.toFixed(1).replace('.', ',')
+  const texto = Number.isInteger(valor) ? String(valor) : valor.toFixed(1)
   return `${texto} ${valor === 1 ? 'hora' : 'horas'}`
 }
 
