@@ -320,7 +320,7 @@ function listaVacia({
   verTodos: string
 }): { titulo: string; descripcion: string; accion?: React.ReactNode } {
   const enlace = (href: string, texto: string) => (
-    <Link href={href} className="text-sm font-medium text-acento hover:underline">
+    <Link href={href} className="inline-flex min-h-11 items-center text-sm font-medium text-acento hover:underline sm:min-h-0">
       {texto}
     </Link>
   )
@@ -330,8 +330,8 @@ function listaVacia({
       titulo: plazo === 'vencidos' ? 'Ninguno vencido sin atender' : 'Ninguno se necesita esta semana',
       descripcion:
         plazo === 'vencidos'
-          ? 'Ningún requerimiento en camino tiene su fecha vencida.'
-          : 'Ningún requerimiento en camino se necesita entre hoy y el domingo.',
+          ? `Ningún requerimiento en camino${deSuArea ? ' de tu área' : ''} tiene su fecha vencida.`
+          : `Ningún requerimiento en camino${deSuArea ? ' de tu área' : ''} se necesita entre hoy y el domingo.`,
       accion: enlace(sinRecoger, 'Ver de cualquier fecha'),
     }
   }

@@ -377,10 +377,10 @@ function LoQueLoTieneVencido({ rq, freno }: { rq: RequerimientoListado; freno: R
       <span className="font-medium text-peligro">Se necesitaba el {fecha(rq.fecha_requerida)}.</span>{' '}
       {/* Frenado por el metrado, Almacén no lo puede revisar: decir «por revisar en Almacén» lo culpaba. */}
       {freno
-        ? `Lo detiene el metrado de Diseño: ${queFaltaDelFreno(freno).replace(/^./, (c) => c.toLowerCase())}.`
+        ? `Lo detiene el metrado de Diseño. ${queFaltaDelFreno(freno)}.`
         : falta.length > 0
           ? `Lo que falta: ${falta.join('; ')}.`
-          : 'Ya salió todo de Almacén: falta que lo dé por entregado.'}
+          : 'Ya salió todo de Almacén: falta que Almacén lo dé por entregado.'}
     </p>
   )
 }

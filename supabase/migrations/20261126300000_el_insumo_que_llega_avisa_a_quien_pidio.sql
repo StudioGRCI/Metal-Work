@@ -58,6 +58,7 @@ declare
   v_previo public.notificaciones%rowtype;
   v_cuerpo text;
   v_fin    text;
+  v_ini    text;
 begin
   if new.tipo <> 'INGRESO' or new.orden_compra_detalle_id is null or new.devolucion_de is not null
      or coalesce(new.cantidad, 0) <= 0 then
@@ -111,10 +112,13 @@ begin
       continue;
     end if;
 
+    -- Si no cabe en 500, se recortan los insumos, no la OC ni la invitación a mirar el RQ.
+    v_ini := 'Entró al almacén' || coalesce(', para ' || v_rq.codigo_interno, '') || ': ';
+    v_fin := coalesce(' (' || v_oc || ')', '') || v_cola;
+    v_cuerpo := case when char_length(v_ini || v_rq.piezas || v_fin) <= 500 then v_rq.piezas
+                     else left(v_rq.piezas, 499 - char_length(v_ini) - char_length(v_fin)) || '…' end;
     insert into public.notificaciones (usuario_id, titulo, cuerpo, ruta, origen_tabla, origen_id)
-    values (v_rq.creado_por, v_titulo,
-            left('Entró al almacén' || coalesce(', para ' || v_rq.codigo_interno, '') || ': '
-                 || v_rq.piezas || coalesce(' (' || v_oc || ')', '') || v_cola, 500),
+    values (v_rq.creado_por, v_titulo, v_ini || v_cuerpo || v_fin,
             '/requerimientos?rq=' || v_rq.id, 'requerimientos', v_rq.id);
   end loop;
   return null;
