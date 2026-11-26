@@ -39,9 +39,13 @@ export default async function PaginaPorCobrar() {
   const responde = puede(perfil, 'tesoreria.liberar')
   // El aviso de cada factura y de cada salida por revisar va a quien cobra (tesoreria.registrar_cobros), no a quien solo mira.
   const avisado = puede(perfil, 'tesoreria.registrar_cobros')
+  // Las cotizaciones aprobadas las lee quien factura o las ve (`cotizaciones_para_facturar`). Costos entra con
+  // `tesoreria.ver_documentos` y responde salidas con `tesoreria.liberar`, pero sin esto la función le
+  // respondía «sin permiso» y se caía la pantalla entera.
+  const veCotizaciones = puede(perfil, ['cotizaciones.ver_aprobadas', 'contabilidad.facturar'])
   const [facturas, cotizaciones, solicitudes, salidas, cuentasCaja] = await Promise.all([
     facturasDeVenta(),
-    cotizacionesAprobadas(),
+    veCotizaciones ? cotizacionesAprobadas() : Promise.resolve([]),
     responde ? solicitudesPendientesTesoreria() : Promise.resolve([]),
     responde ? revisionesDeSalidaPendientes() : Promise.resolve([]),
     // La cuenta a la que entra cada cobro: la caja diaria se mueve sola (20261019100000).
@@ -88,7 +92,7 @@ export default async function PaginaPorCobrar() {
         }`}
       />
 
-      {salidas.length > 0 && <RevisionesDeSalida revisiones={salidas} paraTi={avisado} cobros={cobrosPorCodigo} abreVehiculos={abreVehiculos} />}
+      {salidas.length > 0 && <RevisionesDeSalida revisiones={salidas} paraTi={avisado} cobros={veCotizaciones ? cobrosPorCodigo : null} abreVehiculos={abreVehiculos} />}
       {solicitudes.length > 0 && <SolicitudesOT solicitudes={solicitudes} />}
 
       <Tarjeta>

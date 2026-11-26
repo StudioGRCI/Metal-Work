@@ -37,8 +37,8 @@ export function RevisionesDeSalida({
 }: {
   revisiones: RevisionPendiente[]
   paraTi: boolean
-  /** Por código interno: lo facturado y lo cobrado de su cotización. */
-  cobros: Record<string, CobroDelCodigo>
+  /** Por código interno: lo facturado y lo cobrado de su cotización. Null para quien no lee las cotizaciones aprobadas. */
+  cobros: Record<string, CobroDelCodigo> | null
   /** Si quien mira puede abrir la ficha del vehículo; si no, el enlace terminaba en «No tienes acceso». */
   abreVehiculos: boolean
 }) {
@@ -54,14 +54,31 @@ export function RevisionesDeSalida({
       />
       <TarjetaCuerpo className="space-y-3">
         {revisiones.map((v) => (
-          <RevisionPorResponder key={v.id} revision={v} cobro={v.codigo_interno ? cobros[v.codigo_interno] : undefined} abreVehiculos={abreVehiculos} />
+          <RevisionPorResponder
+            key={v.id}
+            revision={v}
+            cobro={v.codigo_interno && cobros ? cobros[v.codigo_interno] : undefined}
+            veCobros={cobros !== null}
+            abreVehiculos={abreVehiculos}
+          />
         ))}
       </TarjetaCuerpo>
     </Tarjeta>
   )
 }
 
-function RevisionPorResponder({ revision: v, cobro, abreVehiculos }: { revision: RevisionPendiente; cobro?: CobroDelCodigo; abreVehiculos: boolean }) {
+function RevisionPorResponder({
+  revision: v,
+  cobro,
+  veCobros,
+  abreVehiculos,
+}: {
+  revision: RevisionPendiente
+  cobro?: CobroDelCodigo
+  /** Si quien mira lee lo cobrado de los códigos; si no, no se le dice que el código no tiene cotización. */
+  veCobros: boolean
+  abreVehiculos: boolean
+}) {
   const { alEnviar, enviando, error, resultado } = useEnvio(responderRevisionSalida, undefined, { documento: v.id })
   const porCobrar = cobro?.total === null || cobro === undefined ? null : Math.max(0, cobro.total - cobro.cobrado)
   return (
@@ -119,7 +136,7 @@ function RevisionPorResponder({ revision: v, cobro, abreVehiculos }: { revision:
           )}
         </p>
       )}
-      {!cobro && v.codigo_interno && (
+      {!cobro && veCobros && v.codigo_interno && (
         <p className="mt-1 text-xs text-texto-suave" data-cobro-del-codigo>
           Este código no tiene cotización aprobada: no hay cobro que revisar aquí.
         </p>
