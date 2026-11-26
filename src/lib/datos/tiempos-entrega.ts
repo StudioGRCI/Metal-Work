@@ -111,10 +111,11 @@ export type EtapaConTiempos = {
   dias_habiles: number | null
 }
 
-export async function etapasConTiempos(codigo: string): Promise<EtapaConTiempos[]> {
+/** Las etapas de un código, o las de todos con `null`. */
+export async function etapasConTiempos(codigo: string | null): Promise<EtapaConTiempos[]> {
   const supabase = await createClient()
   const { data, error } = await todasLasFilas(
-    () => supabase.rpc('tiempos_de_entrega_etapas', { p_codigo: normalizarCodigo(codigo) }),
+    () => supabase.rpc('tiempos_de_entrega_etapas', codigo ? { p_codigo: normalizarCodigo(codigo) } : {}),
     ['codigo', 'orden', 'id'],
   )
   if (error) throw new Error(`No se pudieron leer las etapas: ${error.message}`)
@@ -174,4 +175,109 @@ export async function actividadesConAvance(codigo: string): Promise<ActividadCon
         a.descripcion.localeCompare(b.descripcion) ||
         a.clave.localeCompare(b.clave),
     )
+}
+
+/** Quién lleva una etapa (migración 20261125310000). */
+export type ResponsableDeEtapa = { etapa_id: string; trabajador_id: string; nombre: string; area: string | null }
+
+/**
+ * Quién lleva cada etapa vigente, de un código o de todos, por etapa. La leen
+ * RR. HH., Gerencia, Diseño y los supervisores: quien ya ve las etapas.
+ */
+export async function responsablesDeEtapas(codigo: string | null): Promise<Map<string, ResponsableDeEtapa>> {
+  const supabase = await createClient()
+  const { data, error } = await todasLasFilas(
+    () => supabase.rpc('responsables_de_etapas', codigo ? { p_codigo: normalizarCodigo(codigo) } : {}),
+    ['codigo', 'etapa_id'],
+  )
+  if (error) throw new Error(`No se pudo leer quién lleva cada etapa: ${error.message}`)
+  return new Map(
+    (data ?? []).flatMap((r): [string, ResponsableDeEtapa][] =>
+      r.etapa_id && r.trabajador_id ? [[r.etapa_id, { etapa_id: r.etapa_id, trabajador_id: r.trabajador_id, nombre: r.nombre ?? '', area: r.area }]] : [],
+    ),
+  )
+}
+
+/** Una etapa sin terminar que lleva una persona, con su semáforo. */
+export type EtapaDePersona = {
+  etapa_id: string
+  codigo: string
+  etapa: string
+  area_etapa: string | null
+  fin_plan: string | null
+  inicio_real: string | null
+  semaforo: Semaforo
+  dias_habiles: number | null
+}
+
+/** Lo que lleva cada persona, lo vencido primero. */
+export type PersonaConEtapas = {
+  trabajador_id: string
+  nombre: string
+  area: string | null
+  etapas: EtapaDePersona[]
+  semaforo: Semaforo
+}
+
+export async function etapasPorPersona(): Promise<PersonaConEtapas[]> {
+  const supabase = await createClient()
+  const { data, error } = await todasLasFilas(() => supabase.rpc('tiempos_de_entrega_por_persona'), ['trabajador_id', 'etapa_id'])
+  if (error) throw new Error(`No se pudo leer lo que lleva cada persona: ${error.message}`)
+  const porPersona = new Map<string, PersonaConEtapas>()
+  for (const f of data ?? []) {
+    if (!f.trabajador_id || !f.etapa_id || !f.codigo) continue
+    const persona =
+      porPersona.get(f.trabajador_id) ??
+      porPersona.set(f.trabajador_id, { trabajador_id: f.trabajador_id, nombre: f.nombre ?? '', area: f.area, etapas: [], semaforo: 'SIN_FECHA' }).get(f.trabajador_id)!
+    persona.etapas.push({
+      etapa_id: f.etapa_id,
+      codigo: f.codigo,
+      etapa: f.etapa ?? '',
+      area_etapa: f.area_etapa,
+      fin_plan: f.fin_plan,
+      inicio_real: f.inicio_real,
+      semaforo: semaforoValido(f.semaforo),
+      dias_habiles: f.dias_habiles,
+    })
+  }
+  const personas = [...porPersona.values()]
+  for (const p of personas) {
+    p.etapas.sort((a, b) => pesoDeSemaforo(a.semaforo) - pesoDeSemaforo(b.semaforo) || (a.fin_plan ?? '9999').localeCompare(b.fin_plan ?? '9999'))
+    p.semaforo = p.etapas[0]?.semaforo ?? 'SIN_FECHA'
+  }
+  return personas.sort((a, b) => pesoDeSemaforo(a.semaforo) - pesoDeSemaforo(b.semaforo) || a.nombre.localeCompare(b.nombre))
+}
+
+/** El personal activo, para elegir quién lleva una etapa. Sin DNI ni pagos. */
+export async function personasParaAsignar(): Promise<{ id: string; nombre: string; detalle: string | null }[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('trabajadores')
+    .select('id, nombres, apellidos, cargo, area:areas(nombre)')
+    .eq('activo', true)
+    .order('apellidos')
+    .order('nombres')
+  if (error) throw new Error(`No se pudo leer el personal: ${error.message}`)
+  return (data ?? []).map((t) => {
+    const area = Array.isArray(t.area) ? t.area[0] : t.area
+    return { id: t.id, nombre: `${t.apellidos}, ${t.nombres}`, detalle: [area?.nombre, t.cargo].filter(Boolean).join(' · ') || null }
+  })
+}
+
+/**
+ * La última revisión diaria de avisos (migración 20261126315000): el día que
+ * corrió y a qué hora terminó. Vacía si todavía no corrió nunca. Así el
+ * tablero no promete avisos que no salen.
+ */
+export async function ultimaRevisionDeAvisos(): Promise<{ fecha: string; hora: string } | null> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('tiempos_entrega_avisos')
+    .select('fecha, actualizado_en')
+    .eq('tipo', 'REVISION')
+    .order('fecha', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw new Error(`No se pudo leer la última revisión de avisos: ${error.message}`)
+  return data ? { fecha: data.fecha, hora: data.actualizado_en } : null
 }

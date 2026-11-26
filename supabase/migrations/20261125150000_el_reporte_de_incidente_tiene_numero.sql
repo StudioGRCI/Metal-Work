@@ -1,0 +1,17 @@
+-- =============================================================================
+-- EL REPORTE DE INCIDENTE TIENE NÚMERO
+-- -----------------------------------------------------------------------------
+-- DKS pidió el 2026-11-25 el área de SSOMA (Plan 15): que cualquier persona
+-- reporte desde su teléfono un accidente, un incidente o una condición
+-- insegura, y que SSOMA lo lleve hasta el cierre. La carpeta «18) SSOMA (SST)»
+-- del SIG está vacía (docs/ANALISIS-ONEDRIVE.md, sección 11): la empresa no
+-- tiene formato propio, así que el reporte sigue el registro de accidentes de
+-- trabajo, incidentes peligrosos y otros incidentes de la R.M. 050-2013-TR
+-- (Ley 29783), con número de la casa: RI-0001-2026.
+--
+-- Es un documento numerado: no se borra nunca, se anula con su motivo.
+--
+-- Va sola porque Postgres no deja usar en la misma transacción un valor de
+-- enum recién agregado: la migración 20261125150100 crea la serie con él.
+-- =============================================================================
+alter type public.tipo_correlativo add value if not exists 'REPORTE_INCIDENTE';

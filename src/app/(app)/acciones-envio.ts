@@ -330,9 +330,17 @@ async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo:
           : dicho('El uso de las horas reservadas', 'Los usos de las horas reservadas', 'otro', detalle),
       }
     }
+    case 'reporte_averia': {
+      const { data } = await supabase.from('averias').select('numero, registrado_por').eq('id', id).maybeSingle()
+      return data && { por: data.registrado_por, lo: dicho('El reporte', 'Los reportes', 'otro', data.numero) }
+    }
     case 'cuenta_caja': {
       const { data } = await supabase.from('cajas').select('nombre, creado_por').eq('id', id).maybeSingle()
       return data && { por: data.creado_por, lo: dicho('La cuenta', 'Las cuentas', 'otra', data.nombre) }
+    }
+    case 'reporte_ssoma': {
+      const { data } = await supabase.from('ssoma_reportes').select('numero, registrado_por').eq('id', id).maybeSingle()
+      return data && { por: data.registrado_por, lo: dicho('El reporte', 'Los reportes', 'otro', data.numero) }
     }
     case 'transferencia_caja': {
       const { data } = await supabase
