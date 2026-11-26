@@ -142,6 +142,8 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
   // no cuenta como suyo y va después de los que sí puede revisar.
   const leToca = (r: RequerimientoListado) => leTocaAtender(r, { recibe, despacha, compraDe }, espera.get(r.id)?.puesto) && !frenoDelRq(r, metrado)
   const meToca = requerimientos.filter(leToca).length
+  // Las notas que quien mira puede cerrar suman en «Te toca», como en el globo (`notas_por_responder`).
+  const porResponder = (notas ?? []).filter((n) => n.puedeAtender).length
   // En qué grupo va cada RQ de «Por atender», para leer el orden (`data-grupo`).
   const grupoDe = new Map<string, string>()
   if (vista === 'abiertos') {
@@ -189,9 +191,9 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
           cuenta: vista === v.valor || v.valor === 'comprar' ? cuenta[v.valor] : undefined,
         }))}
       >
-        {vista === 'abiertos' && requerimientos.length > 0 && (recibe || despacha || compra) && (
-          <p className="text-sm text-texto-suave sm:ml-auto">
-            {meToca === 0 ? 'Ninguno espera por ti.' : `${meToca} ${meToca === 1 ? 'espera' : 'esperan'} por ti.`}
+        {vista === 'abiertos' && (requerimientos.length > 0 || porResponder > 0) && (recibe || despacha || compra) && (
+          <p className="text-sm text-texto-suave sm:ml-auto" data-esperan-por-ti={meToca + porResponder}>
+            {loQueTeToca(meToca, porResponder)}
           </p>
         )}
       </Vistas>
@@ -296,6 +298,14 @@ async function stockDelSistema(materiales: string[] | null): Promise<Map<string,
     console.error('Revisar stock: no se pudo leer el stock de Almacén.', error)
     return 'no_se_pudo'
   }
+}
+
+/** «Te toca» de la bandeja: los RQ que esperan a quien mira y las notas de las entregas que puede cerrar. */
+function loQueTeToca(rq: number, notas: number) {
+  const deRq = `${rq} ${rq === 1 ? 'espera' : 'esperan'} por ti`
+  const deNotas = `${notas} ${notas === 1 ? 'nota de entrega' : 'notas de entrega'} por responder`
+  if (notas === 0) return rq === 0 ? 'Ninguno espera por ti.' : `${deRq}.`
+  return rq === 0 ? `${deNotas[0].toUpperCase()}${deNotas.slice(1)}.` : `${deRq} y ${deNotas}.`
 }
 
 function sistemaDe(m: MaterialEnStock): StockDelSistema {

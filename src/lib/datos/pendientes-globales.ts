@@ -852,6 +852,14 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
     texto: n => plural(n, 'requerimiento listo por entregar al área', 'requerimientos listos por entregar al área'),
     contar: rqQueTeTocan('LISTO_EN_ALMACEN'),
   })
+  // Las notas de las entregas que Almacén todavía no responde (plan 2, entrega
+  // 2.2): las cierra quien despacha (`atender_conformidad_salida`), y DKS
+  // decidió que sumen en su globo, no solo en la campana.
+  if (atiende.despacha) tareas.push({
+    clave: 'notas_por_responder', ruta: '/requerimientos/atencion', tono: 'peligro',
+    texto: n => plural(n, 'nota de entrega por responder', 'notas de entrega por responder'),
+    contar: () => cabeza(supabase.from('conformidad_salidas').select('id', { count: 'exact', head: true }).is('atendido_en', null)),
+  })
   // El supervisor recoge de Almacén lo que su área pidió. Cuenta lo mismo que
   // la lista a la que lleva (`?ver=recoger`): los RQ con algún insumo que ya
   // se puede recoger, aunque el resto siga en compra, no solo los que están

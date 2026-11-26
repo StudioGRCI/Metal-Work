@@ -254,7 +254,21 @@ const ventana = (pagina) => pagina.getByRole('dialog')
   comprobar((await texto(fila)).includes('Producción') && (await texto(fila)).includes(codigo) && (await texto(fila)).includes('recibió Soldador de Producción'),
     `con el área, el código y quién recibió: «${await texto(fila)}»`)
   comprobar((await fila.locator('[data-dias-en-espera]').count()) === 1, 'cada una con los días que espera a Almacén')
+  // Las abiertas suman en «Te toca» (decisión de DKS del 26/11): en la bandeja y en el inicio, lo mismo que la base.
+  const [{ n: abiertas }] = await consulta('select count(*)::int as n from public.conformidad_salidas where atendido_en is null')
+  const deLaNota = `${abiertas} ${abiertas === 1 ? 'nota de entrega' : 'notas de entrega'} por responder`
+  const esperan = await texto(pagina.locator('[data-esperan-por-ti]')).catch(() => '')
+  comprobar(esperan.includes(deLaNota), `la bandeja las suma a lo que espera: «${esperan}»`)
   await pagina.screenshot({ path: join(CAPTURAS, '2-2-almacen-1440-notas.png') })
+  {
+    const inicio = await contexto.newPage()
+    await inicio.goto(`${BASE}/`, { waitUntil: 'networkidle' })
+    const filaNotas = inicio.locator('[data-te-toca] li a', { hasText: 'por responder' })
+    const cuenta = Number((await filaNotas.getAttribute('data-cantidad').catch(() => null)) ?? NaN)
+    comprobar(cuenta === abiertas && (await filaNotas.getAttribute('href')) === '/requerimientos/atencion',
+      `«Te toca» del inicio las cuenta y lleva a Atención: «${await texto(filaNotas).catch(() => '')}» (${cuenta} de ${abiertas})`)
+    await inicio.close()
+  }
   await fila.getByRole('button', { name: 'Responder' }).click()
   await ventana(pagina).getByLabel('Qué hiciste').fill('Repuse el disco que faltó con otra salida del vale')
   await ventana(pagina).getByRole('button', { name: 'Cerrar la nota' }).click()
