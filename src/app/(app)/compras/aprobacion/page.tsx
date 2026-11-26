@@ -40,7 +40,7 @@ export default async function PaginaAprobacionCompras() {
 
   // La que más espera, arriba (plan 0): por la hora en que se pidió su aprobación.
   const desde = (c: CompraParaAprobar) => (c.pedida_en ? Date.parse(c.pedida_en) : Number.POSITIVE_INFINITY)
-  const [{ regla, compras, puestos, stockSinLeer, pendientes, diasLeidos }, anulables] = await Promise.all([
+  const [{ regla, compras, puestos, stockSinLeer, fechaSinLeer, pendientes, diasLeidos }, anulables] = await Promise.all([
     cargarAprobacionCompras({ puestos: configura }).then(async (leido) => {
       const pendientes = leido.compras.filter((c) => c.aprobacion === 'POR_APROBAR').sort((a, b) => desde(a) - desde(b))
       // Los días los cuenta la base con la fecha de Lima. Sin ellos la lista sigue, sin la insignia y diciéndolo.
@@ -86,6 +86,12 @@ export default async function PaginaAprobacionCompras() {
           {stockSinLeer && pendientes.some((c) => c.tipo !== 'OS') && (
             <p className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-texto" role="status">
               No se pudo leer cuánto hay en el almacén y cuánto ya viene en otras órdenes. Recarga la pantalla antes de aprobar una compra.
+            </p>
+          )}
+          {fechaSinLeer && pendientes.length > 0 && (
+            <p className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-texto" role="status" data-fecha-sin-leer>
+              No se pudo leer si Logística corrigió la fecha de entrega: la que ves es la que vale, pero no se sabe si el documento
+              decía otra. Recarga la pantalla en un momento.
             </p>
           )}
           {pendientes.length === 0 ? (

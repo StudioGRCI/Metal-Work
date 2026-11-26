@@ -175,10 +175,10 @@ export async function cargarAprobacionCompras(opciones: { puestos: boolean }) {
     idsOc.length ? supabase.from('ordenes_compra_materiales').select('id, con_factura').in('id', idsOc) : Promise.resolve({ data: [], error: null }),
     idsOc.length ? supabase.rpc('stock_al_aprobar_compras', { p_compras: idsOc }) : Promise.resolve({ data: [], error: null }),
     // Si se corrigió, Gerencia ve también la del documento: la compra puede nacer ya atrasada.
-    // Sin leerlo, se aprueba igual: solo no lo dice.
+    // Sin leerlo, se aprueba igual, y la pantalla dice que no se pudo leer.
     fechasCorregidas(supabase, { oc: idsOc, os: servicios }).catch((e: unknown) => {
       console.error('Aprobación de compras: no se pudo leer si se corrigió la fecha.', e instanceof Error ? e.message : e)
-      return new Map<string, { fecha: string; antes: string | null }>()
+      return null
     }),
   ])
   if (comprobante.error) throw new Error(`No se pudo leer si las compras van con factura: ${comprobante.error.message}`)
@@ -201,6 +201,8 @@ export async function cargarAprobacionCompras(opciones: { puestos: boolean }) {
   return {
     /** No se pudo leer cuánto hay y cuánto viene: la pantalla lo dice en vez de callarlo. */
     stockSinLeer: Boolean(stock.error) && idsOc.length > 0,
+    /** No se pudo leer si Logística corrigió la fecha: la pantalla lo dice. */
+    fechaSinLeer: corregidas === null,
     regla: regla.data
       ? ({
           activa: regla.data.activa,
@@ -228,7 +230,7 @@ export async function cargarAprobacionCompras(opciones: { puestos: boolean }) {
         condicion_pago: c.condicion_pago ?? 'CONTADO',
         dias_credito: c.dias_credito ?? 0,
         fecha_estimada: c.fecha_estimada,
-        fecha_del_documento: corregidas.get(c.id ?? '')?.antes ?? null,
+        fecha_del_documento: corregidas?.get(c.id ?? '')?.antes ?? null,
         aprobacion: c.aprobacion ?? 'POR_APROBAR',
         pedida_en: c.pedida_en,
         emitida_por: c.emitida_por,

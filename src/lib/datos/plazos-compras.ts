@@ -42,6 +42,8 @@ async function aceptanMotivo(supabase: Awaited<ReturnType<typeof createClient>>,
   const aceptan = new Set<string>()
   const respuestas = await Promise.all(tandas(ids).map((t) => supabase.rpc('compras_que_aceptan_motivo', { p_tipo: tipo, p_ids: t })))
   for (const { data, error } of respuestas) {
+    // Antes de que llegue la migración 20261126945000 la función no existe: ninguna acepta, como antes.
+    if (error && (error.code === 'PGRST202' || error.code === '42883')) continue
     if (error) throw new Error(`No se pudo leer qué compras aceptan el motivo del atraso: ${error.message}`)
     for (const f of data ?? []) if (f.documento) aceptan.add(f.documento)
   }

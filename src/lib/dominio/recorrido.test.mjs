@@ -150,8 +150,16 @@ test('la OC cerrada dice en qué terminó, no la anotación del atraso (DKS, 202
   ])
   assert.equal(pasos[2].alMargen, true)
   assert.equal(pasos[1].alMargen, undefined)
-  const enQueTermino = pasos.filter((p) => p.situacion === 'HECHO' && !p.alMargen).at(-1)
-  assert.equal(enQueTermino?.titulo, 'Completa: llegó todo lo pedido')
+  assert.equal(enQueTermino(pasos)?.titulo, 'Completa: llegó todo lo pedido')
+})
+
+test('sin paso que cierre, el resumen salta la anotación al margen', () => {
+  const pasos = describirRecorridoDeLaOrdenDeCompra([
+    paso(1, 'EMISION', 'HECHO'),
+    paso(2, 'DEJADA', 'HECHO'),
+    paso(3, 'MOTIVO_ATRASO', 'HECHO', { detalle: 'PROVEEDOR|' }),
+  ])
+  assert.equal(enQueTermino(pasos)?.paso, 'DEJADA')
 })
 
 test('la X roja la llevan solo la OC y la OS que terminaron cortadas, no la cotización anulada', () => {
