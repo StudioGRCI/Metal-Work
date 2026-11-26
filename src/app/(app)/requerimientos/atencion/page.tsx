@@ -6,7 +6,7 @@ import { DiasEnEspera } from '@/components/ui/dias-en-espera'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Recorrido } from '@/components/ui/recorrido'
-import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
+import { AccionesDeFila, SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
 import { catalogoDeAlmacen, type MaterialParaConteo } from '@/lib/datos/atencion-materiales'
@@ -19,7 +19,7 @@ import { recorridoDeRequerimientos } from '@/lib/datos/recorrido'
 import { cargarRequerimientos, catalogoParaRequerimiento, type MaterialParaRequerimiento, type RequerimientoListado } from '@/lib/datos/requerimientos'
 import { stockEnAlmacen, type MaterialEnStock } from '@/lib/datos/stock-almacen'
 import { ESTADO_METRADO, FRENO_DEL_RQ, frenaElRq, frenoDelRq, listaDeItems, queFaltaDelFreno } from '@/lib/dominio/metrado-rq'
-import { estadoDelRequerimiento, leTocaAtender, quienAtiende, tipoDeRequerimiento, type CompraDe } from '@/lib/dominio/requerimientos'
+import { estadoDelRequerimiento, leTocaAtender, loTieneQuienAtiende, quienAtiende, tipoDeRequerimiento, type CompraDe } from '@/lib/dominio/requerimientos'
 import { describirRecorridoDelRequerimiento, type PasoDelRecorrido, type PasoDescrito } from '@/lib/dominio/recorrido'
 import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -138,9 +138,13 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
   const metrado = metradoLeido ?? new Map<string, MetradoDelInsumo>()
   const stockDelCatalogo = stock === 'no_se_pudo' ? null : hayNuevos ? Object.fromEntries([...stock].map(([id, m]) => [id, sistemaDe(m)])) : {}
 
-  // El que espera el sustento o el visto de Diseño todavía no le toca a Almacén:
-  // no cuenta como suyo y va después de los que sí puede revisar.
-  const leToca = (r: RequerimientoListado) => leTocaAtender(r, { recibe, despacha, compraDe }, espera.get(r.id)?.puesto) && !frenoDelRq(r, metrado)
+  // Le toca lo que hoy tiene su puesto según el recorrido del RQ (DKS,
+  // 2026-11-26), por la clave de su espera: lo que espera a Gerencia, al
+  // conductor o al área no cuenta como suyo aunque después pase por él. Sin el recorrido, la regla de antes: el que
+  // espera el sustento o el visto de Diseño todavía no le toca a Almacén.
+  const suyo = (r: RequerimientoListado) => loTieneQuienAtiende(espera.get(r.id)?.espera, r, { recibe, despacha, compraDe }, perfil.area_id ?? null)
+  const leToca = (r: RequerimientoListado) =>
+    recorridos === null ? leTocaAtender(r, { recibe, despacha, compraDe }) && !frenoDelRq(r, metrado) : suyo(r)
   const meToca = requerimientos.filter(leToca).length
   // Las notas que quien mira puede cerrar suman en «Te toca», como en el globo (`notas_por_responder`).
   const porResponder = (notas ?? []).filter((n) => n.puedeAtender).length
@@ -148,25 +152,16 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
   const grupoDe = new Map<string, string>()
   if (vista === 'abiertos') {
     const orden = (r: RequerimientoListado) => (leToca(r) ? 0 : frenoDelRq(r, metrado) ? 2 : 1)
-    // Dentro de cada grupo, primero lo que hoy tiene el puesto de quien mira
-    // (Almacén, Logística o la administradora, según su recorrido) y después lo
-    // demás; en cada parte, el que más espera arriba (plan 0): desde que lo tiene
-    // quien lo tiene. Sin el recorrido queda el orden de antes.
-    const propios = new Set([
-      ...(recibe || despacha ? ['Almacén'] : []),
-      ...(compraDe.OPERACION ? ['Logística'] : []),
-      ...(compraDe.ADMINISTRACION ? ['Administración'] : []),
-    ])
-    const ajeno = (r: RequerimientoListado) => {
-      const quien = espera.get(r.id)?.puesto
-      return quien && propios.has(quien) ? 0 : 1
-    }
+    // Arriba lo que hoy tiene el puesto de quien mira (Almacén, Logística o la
+    // administradora, según su recorrido), después lo demás y al final lo frenado
+    // por el metrado; en cada grupo, el que más espera arriba (plan 0): desde que
+    // lo tiene quien lo tiene. Sin el recorrido queda el orden de antes.
     const desde = (r: RequerimientoListado) => {
       const en = espera.get(r.id)?.en
       return en ? Date.parse(en) : Number.POSITIVE_INFINITY
     }
-    requerimientos.sort((a, b) => orden(a) - orden(b) || ajeno(a) - ajeno(b) || desde(a) - desde(b))
-    for (const r of requerimientos) grupoDe.set(r.id, `${orden(r)}${ajeno(r)}`)
+    requerimientos.sort((a, b) => orden(a) - orden(b) || desde(a) - desde(b))
+    for (const r of requerimientos) grupoDe.set(r.id, String(orden(r)))
   }
   const grupos = compra ? insumosPorComprar(requerimientos, compraDe, metrado, espera) : []
   const porComprar = grupos.reduce((suma, g) => suma + g.insumos.length, 0)
@@ -180,9 +175,10 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
         migas={[{ titulo: 'Requerimientos', ruta: '/requerimientos' }, { titulo: 'Atención' }]}
       />
 
+      {/* 20 px entre bloques, como dice la escala de la skill diseno (iban a 12). */}
+      <div className="space-y-5">
       <Vistas
         etiqueta="Vista"
-        className="mb-3"
         vistas={VISTAS.filter((v) => v.valor !== 'comprar' || compra).map((v) => ({
           clave: v.valor,
           titulo: v.titulo,
@@ -192,35 +188,35 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
         }))}
       >
         {vista === 'abiertos' && (requerimientos.length > 0 || porResponder > 0) && (recibe || despacha || compra) && (
-          <p className="text-sm text-texto-suave sm:ml-auto" data-esperan-por-ti={meToca + porResponder}>
-            {loQueTeToca(meToca, porResponder)}
+          <p className="text-sm text-texto-suave sm:ml-auto" data-esperan-por-ti={recorridos === null ? undefined : meToca + porResponder}>
+            {recorridos === null ? 'No se pudo contar cuántos esperan por ti.' : loQueTeToca(meToca, porResponder)}
           </p>
         )}
       </Vistas>
 
       {metradoLeido === null && requerimientos.length > 0 && (
-        <p role="status" className="mb-3 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-metrado-sin-leer>
+        <p role="status" className="rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-metrado-sin-leer>
           No se pudo leer el metrado de Diseño. Si un requerimiento se pasa del metrado, el sistema no deja revisarlo ni comprarlo y
           dice por qué. Vuelve a cargar la pantalla en un momento.
         </p>
       )}
 
       {sinEntregado && requerimientos.length > 0 && (
-        <p role="status" className="mb-3 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-entregado-sin-leer>
+        <p role="status" className="rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-entregado-sin-leer>
           No se pudo leer lo entregado de cada insumo: la lista sigue sin las cifras de lo entregado, lo separado y lo que falta. Vuelve a
           cargar la pantalla en un momento.
         </p>
       )}
 
       {recorridos === null && requerimientos.length > 0 && (
-        <p role="status" className="mb-3 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-dias-sin-leer>
+        <p role="status" className="rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-dias-sin-leer>
           No se pudo leer el recorrido de los requerimientos: la lista sigue sin los días que lleva esperando cada uno, sin ordenarse por
           antigüedad y sin su recorrido. Vuelve a cargar la pantalla en un momento.
         </p>
       )}
 
       {notas === null && (
-        <p role="status" className="mb-3 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-notas-sin-leer>
+        <p role="status" className="rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-notas-sin-leer>
           No se pudieron leer las notas de las entregas: si quien pidió anotó que algo no llegó, no se ve aquí. Vuelve a cargar la pantalla en
           un momento.
         </p>
@@ -234,17 +230,19 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
       ) : (
         <ConAvisos>
           <Tarjeta className="overflow-hidden">
-            {/* En el teléfono cada RQ va apilado, una celda debajo de otra: la
+            {/* En el teléfono cada RQ es una ficha, una celda debajo de otra: la
                 tabla medía 681 px en una tarjeta de 356 y las acciones (revisar,
                 la salida del kardex, «Entregado») quedaban fuera de la pantalla
-                sin que nada lo dijera. */}
-            <Tabla>
-              <TablaCabecera className="hidden sm:table-header-group">
+                sin que nada lo dijera. Desde la entrega 4 del plan de orden y
+                diseño es la lista común (`apilada`) y no una a mano. */}
+            <Tabla apilada>
+              <TablaCabecera>
                 <tr>
                   <TH>Requerimiento</TH>
                   <TH>Insumos</TH>
                   <TH>En qué va</TH>
-                  <TH className="text-right">
+                  {/* El ancho, solo para quien atiende: a quien consulta le dejaba una columna vacía. */}
+                  <TH className={`text-right md:pl-0 xl:pl-3 ${recibe || despacha || compra ? 'md:w-64 xl:w-96' : ''}`}>
                     <span className="sr-only">Acciones</span>
                   </TH>
                 </tr>
@@ -281,6 +279,7 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
           </Tarjeta>
         </ConAvisos>
       )}
+      </div>
     </>
   )
 }
@@ -451,8 +450,8 @@ function Fila({
 
   return (
     // El ancla de la fila: la salida del kardex vuelve aquí para marcarlo entregado.
-    <TR id={`rq-${rq.id}`} className="block scroll-mt-20 sm:table-row" data-grupo={grupo}>
-      <TD className="block pt-3 pb-1 align-top sm:table-cell sm:py-2">
+    <TR id={`rq-${rq.id}`} className="scroll-mt-20" data-grupo={grupo}>
+      <TD className="align-top">
         <p className="tabular font-semibold text-texto">
           {rq.numero}
           {administracion && (
@@ -467,7 +466,7 @@ function Fila({
         <p className="mt-1 max-w-sm text-xs text-texto-suave">{rq.justificacion}</p>
         <HistorialDeCorrecciones correcciones={correcciones} />
       </TD>
-      <TD className="block py-1 align-top sm:table-cell sm:py-2">
+      <TD className="align-top" data-rotulo="Insumos">
         <ul className="space-y-1 text-xs">
           {rq.lineas.map((l) => (
             <li key={l.item}>
@@ -498,7 +497,7 @@ function Fila({
           ))}
         </ul>
       </TD>
-      <TD className="block pt-1 pb-3 align-top sm:table-cell sm:py-2">
+      <TD className="align-top" data-rotulo="En qué va">
         <span className="inline-flex flex-wrap items-center gap-1">
           {enEspera ? (
             <Insignia tono={enEspera.tono} data-freno={freno?.freno}>
@@ -527,11 +526,14 @@ function Fila({
         {/* Plegado; quién lo tiene y hace cuánto ya lo dice la insignia de arriba. */}
         <Recorrido pasos={recorrido} className="mt-2 max-w-sm rounded-[var(--radius-base)] border border-borde" relleno="px-2" sinQuienEnElResumen />
       </TD>
-      {/* Sin acciones, la celda no deja un hueco en el teléfono. */}
-      <TD className="block p-0 align-top sm:table-cell sm:px-3 sm:py-2 sm:text-right">
-        <div className="flex flex-col items-start gap-2 px-3 pb-3 empty:hidden sm:items-end sm:p-0">
+      {/* Los botones en un renglón y lo que se espera a todo el ancho; sin
+          acciones, la celda no deja un hueco en la ficha (`globals.css`). */}
+      {/* Sin aire a la izquierda hasta 1280 px: la celda de al lado ya deja
+          12 px, y a 1024 la tabla se salía 10 px de su tarjeta. */}
+      <TD className="align-top md:pl-0 xl:pl-3">
+        <AccionesDeFila>
           {recibe && freno && (
-            <p className="max-w-xs text-xs text-texto-suave sm:text-right" data-espera-metrado>
+            <p className="max-w-xs basis-full text-xs text-texto-suave md:text-right" data-espera-metrado>
               <span className={`font-medium ${freno.freno === 'DISENO' ? 'text-aviso' : 'text-peligro'}`}>
                 {freno.freno === 'DISENO' ? 'Espera el visto de Diseño.' : 'Espera el sustento de quien pidió.'}
               </span>{' '}
@@ -566,7 +568,10 @@ function Fila({
               Generar OC
             </EnlaceBoton>
           )}
-          {compra && rq.estado === 'SIN_STOCK' && <PasoRequerimiento id={rq.id} numero={rq.numero} paso="en_atencion" />}
+          {/* Un solo primario: con «Generar OC» al lado, «Lo estoy comprando» va con borde. */}
+          {compra && rq.estado === 'SIN_STOCK' && (
+            <PasoRequerimiento id={rq.id} numero={rq.numero} paso="en_atencion" variante={generaOc ? 'contorno' : undefined} />
+          )}
           {recibe && (rq.estado === 'SIN_STOCK' || rq.estado === 'EN_ATENCION') && (
             <PasoRequerimiento id={rq.id} numero={rq.numero} paso="listo" />
           )}
@@ -580,21 +585,21 @@ function Fila({
                 <ArrowUpFromLine aria-hidden className="size-4" />
                 Registrar la salida en el kardex
               </EnlaceBoton>
-              {porSacar === null ? (
-                <PasoRequerimiento id={rq.id} numero={rq.numero} paso="entregado" />
-              ) : (
-                <p className="text-xs text-texto-suave" data-por-sacar={porSacar.length}>
-                  {porSacar.length === 1 ? 'Falta la salida de 1 insumo' : `Falta la salida de ${porSacar.length} insumos`}; después se
-                  marca entregado. Si ya no va a salir, se entrega con faltante.
-                </p>
-              )}
+              {porSacar === null && <PasoRequerimiento id={rq.id} numero={rq.numero} paso="entregado" />}
               {/* Para lo que ya no va a salir: sin esto el RQ quedaba listo para
                   siempre. También cuando no se pudo leer lo que falta, porque la
                   base igual rechaza «Entregado» y pide entregarlo con faltante. */}
               <EntregarConFaltante id={rq.id} numero={rq.numero} faltan={porSacar} />
+              {/* Debajo de los dos botones: entre ellos los partía en dos renglones. */}
+              {porSacar !== null && (
+                <p className="basis-full text-xs text-texto-suave md:text-right" data-por-sacar={porSacar.length}>
+                  {porSacar.length === 1 ? 'Falta la salida de 1 insumo' : `Falta la salida de ${porSacar.length} insumos`}; después se
+                  marca entregado. Si ya no va a salir, se entrega con faltante.
+                </p>
+              )}
             </>
           ))}
-        </div>
+        </AccionesDeFila>
       </TD>
     </TR>
   )

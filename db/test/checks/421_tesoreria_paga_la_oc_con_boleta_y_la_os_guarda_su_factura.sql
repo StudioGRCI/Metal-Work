@@ -2838,7 +2838,8 @@ set local role authenticated;
 select pg_temp.pagar('q11j', 'o11j', 361.50, true, pg_temp.subir('pagos-compras', 'o11j'), current_setting('prueba.hoy')::date - 2);
 select public.registrar_devolucion_compra(pg_temp.id('v11j'), pg_temp.id('o11j'), current_setting('prueba.hoy')::date - 1, 50, null,
          pg_temp.subir('pagos-compras', 'o11j'), current_setting('prueba.c11')::uuid, null, false);
-select public.cerrar_dia_caja(gen_random_uuid(), current_setting('prueba.c11')::uuid, current_setting('prueba.hoy')::date - 1, 50, null);
+select public.cerrar_dia_caja(gen_random_uuid(), current_setting('prueba.c11')::uuid, current_setting('prueba.hoy')::date - 1, 50, null,
+                              test.captura_de_cierre(current_setting('prueba.c11')::uuid));
 select public.anular_devolucion_compra(pg_temp.id('v11j'), 'La devolución era de otra OC del proveedor');
 reset role;
 select test.afirmar((select count(*) = 2

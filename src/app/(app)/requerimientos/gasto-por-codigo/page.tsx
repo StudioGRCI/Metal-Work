@@ -53,7 +53,7 @@ export default async function PaginaGastoPorCodigo({ searchParams }: PageProps<'
         migas={[{ titulo: 'Requerimientos', ruta: '/requerimientos' }, { titulo: 'Gasto por código' }]}
       />
 
-      <div className="mb-3 space-y-3">
+      <div className="mb-5 space-y-3">
         <BuscadorSimple ruta="/requerimientos/gasto-por-codigo" etiqueta="Buscar código interno" marcador="Código interno, por ejemplo SR_04" />
         <PastillaFiltro
           ruta="/requerimientos/gasto-por-codigo"

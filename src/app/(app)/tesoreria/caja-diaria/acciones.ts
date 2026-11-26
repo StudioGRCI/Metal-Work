@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
-import { MONTO, normalizarMonto, SALDO } from '@/lib/dominio/caja'
+import { MONTO, normalizarMonto, RUTA_CAPTURA_SALDO, SALDO } from '@/lib/dominio/caja'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -220,7 +220,10 @@ export async function anularMovimiento(_previo: unknown, formulario: FormData): 
   return { ok: true, mensaje: 'Movimiento anulado: queda con su motivo.' }
 }
 
-/** Cierra el día de una cuenta contra su estado de cuenta. Mismo permiso que `cerrar_dia_caja`. */
+/**
+ * Cierra el día de una cuenta contra su estado de cuenta, con la captura de ese
+ * día ya subida (migración 20261126550000). Mismo permiso que `cerrar_dia_caja`.
+ */
 export async function cerrarDia(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   if (!(await permitido())) return { ok: false, error: NO_LLEVA }
   const analisis = z
@@ -230,6 +233,7 @@ export async function cerrarDia(_previo: unknown, formulario: FormData): Promise
       fecha: z.iso.date('Vuelve a cargar el día.'),
       saldo_banco: z.string().regex(SALDO, 'Escribe el saldo del estado de cuenta con números, como 18500.00.'),
       observaciones: z.string().max(500, 'Las observaciones pasan de 500 caracteres.'),
+      captura_ruta: z.union([z.literal(''), z.string().regex(RUTA_CAPTURA_SALDO, 'Vuelve a adjuntar la captura.')]),
     })
     .safeParse({
       id: dato(formulario, 'id'),
@@ -237,6 +241,7 @@ export async function cerrarDia(_previo: unknown, formulario: FormData): Promise
       fecha: dato(formulario, 'fecha'),
       saldo_banco: montoEscrito(formulario, 'saldo_banco'),
       observaciones: dato(formulario, 'observaciones'),
+      captura_ruta: dato(formulario, 'captura_ruta'),
     })
   if (!analisis.success) return { ok: false, error: primerError(analisis.error, 'Revisa el cierre.') }
   const d = analisis.data
@@ -248,6 +253,7 @@ export async function cerrarDia(_previo: unknown, formulario: FormData): Promise
     p_fecha: d.fecha,
     p_saldo_banco: Number(d.saldo_banco),
     p_observaciones: d.observaciones || null,
+    p_captura_ruta: d.captura_ruta || null,
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.id) return { ok: false, error: 'El día no quedó cerrado. Recarga la pantalla.' }

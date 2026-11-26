@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Vistas } from '@/components/estructura/vistas'
 import { Insignia } from '@/components/ui/etiqueta-estado'
-import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
+import { AccionesDeFila, SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { diasEnEspera } from '@/lib/datos/dias-en-espera'
 import {
@@ -63,9 +63,10 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
         acciones={registra && <NuevoIngresoVehiculo cuentaId={perfil.id} codigos={codigos} ots={ots} />}
       />
 
+      {/* 20 px entre las vistas y la lista, como entre bloques (la escala de la skill diseno). */}
+      <div className="space-y-5">
       <Vistas
         etiqueta="Vista"
-        className="mb-3"
         vistas={VISTAS.map((v) => ({
           clave: v.valor,
           titulo: v.titulo,
@@ -76,21 +77,28 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
       />
 
       {dias === null && vista === 'en_planta' && enPlanta.length > 0 && (
-        <p className="mb-3 rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-texto" role="status" data-dias-sin-leer>
+        <p className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-texto" role="status" data-dias-sin-leer>
           No se pudieron contar los días que lleva cada vehículo en la planta. Siguen del que entró primero al último; vuelve a cargar la
           pantalla en un momento para ver los días.
         </p>
       )}
 
+      {/* En el teléfono cada vehículo es una ficha con sus botones en un
+          renglón (entrega 4 del plan de orden y diseño): iban uno debajo del
+          otro en su columna. */}
       <Tarjeta className="overflow-hidden">
-        <Tabla>
+        <Tabla apilada>
           <TablaCabecera>
             <tr>
               <TH>Vehículo</TH>
               <TH className="hidden md:table-cell">Motivo</TH>
-              <TH className="hidden sm:table-cell">Ingreso</TH>
-              <TH className="hidden sm:table-cell">Salida</TH>
-              <TH className="text-right">
+              {/* Ingreso y salida desde 1280 px: entre 768 y 1279 (una laptop con el
+                  zoom de Windows) los botones iban uno por renglón. Hasta ahí,
+                  bajan a la celda del vehículo. */}
+              <TH className="hidden xl:table-cell">Ingreso</TH>
+              <TH className="hidden xl:table-cell">Salida</TH>
+              {/* El ancho, solo para quien registra: a quien consulta le dejaba una columna vacía. */}
+              <TH className={`text-right ${registra ? 'md:w-96' : ''}`}>
                 <span className="sr-only">Acciones</span>
               </TH>
             </tr>
@@ -109,6 +117,7 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
           </tbody>
         </Tabla>
       </Tarjeta>
+      </div>
     </>
   )
 }
@@ -154,14 +163,17 @@ function FilaVehiculo({
           </Link>
         )}
         {r.motivo_anulacion && <p className="mt-1 text-xs text-peligro">Anulado: {r.motivo_anulacion}</p>}
-        {/* En el teléfono, el ingreso y la salida van aquí: la tabla no se desliza de costado. */}
-        <div className="mt-1 space-y-1 sm:hidden">
+        {/* En el teléfono y hasta 1279 px, el ingreso y la salida van aquí: la
+            tabla no se desliza de costado. Lo mismo que sus columnas. */}
+        <div className="mt-1 space-y-1 xl:hidden">
           <p className="tabular text-xs text-texto-suave">
             Entró {fechaHora(r.ingreso_en)}
             {r.ingreso_puesto && ` · lo registró ${r.ingreso_puesto}`}
           </p>
+          {r.observacion_ingreso && <p className="text-xs text-texto-suave">{r.observacion_ingreso}</p>}
           <Situacion registro={r} estado={estado} dias={dias} />
           {r.salida_en && r.salida_puesto && <p className="text-xs text-texto-suave">Su salida la registró {r.salida_puesto}</p>}
+          {r.salida_en && r.observacion_salida && <p className="text-xs text-texto-suave">{r.observacion_salida}</p>}
           {estado?.falta_para_salir && (
             <p className="max-w-sm text-xs text-texto-suave" data-bloqueo-salida>
               {estado.falta_para_salir}
@@ -172,12 +184,12 @@ function FilaVehiculo({
       <TD className="hidden align-top md:table-cell">
         {motivo ? <Insignia tono={motivo.tono}>{motivo.etiqueta}</Insignia> : r.motivo}
       </TD>
-      <TD className="hidden align-top sm:table-cell">
+      <TD className="hidden align-top xl:table-cell">
         <p className="tabular text-xs text-texto whitespace-nowrap">{fechaHora(r.ingreso_en)}</p>
         {r.ingreso_puesto && <p className="text-xs whitespace-nowrap text-texto-suave" data-registro-ingreso>Lo registró {r.ingreso_puesto}</p>}
         {r.observacion_ingreso && <p className="mt-1 max-w-xs text-xs text-texto-suave">{r.observacion_ingreso}</p>}
       </TD>
-      <TD className="hidden align-top sm:table-cell">
+      <TD className="hidden align-top xl:table-cell">
         {r.salida_en ? (
           <>
             <p className="tabular text-xs text-texto whitespace-nowrap">{fechaHora(r.salida_en)}</p>
@@ -197,17 +209,19 @@ function FilaVehiculo({
           </>
         )}
       </TD>
-      <TD className="text-right align-top">
+      <TD className="align-top">
         {registra && !r.salida_en && !anulado && (
-          <ControlesVehiculo
-            id={r.id}
-            nombre={nombre}
-            cuentaId={cuentaId}
-            bloqueoSalida={estado?.falta_para_salir ?? null}
-            // Al arenado sale solo el de una unidad del padrón: la base lo exige (20261020168000).
-            alArenado={Boolean(estado?.exige) && r.unidad_id !== null}
-            vuelveDelArenado={conQueVuelveDelArenado(r.motivo, r.codigo_interno)}
-          />
+          <AccionesDeFila>
+            <ControlesVehiculo
+              id={r.id}
+              nombre={nombre}
+              cuentaId={cuentaId}
+              bloqueoSalida={estado?.falta_para_salir ?? null}
+              // Al arenado sale solo el de una unidad del padrón: la base lo exige (20261020168000).
+              alArenado={Boolean(estado?.exige) && r.unidad_id !== null}
+              vuelveDelArenado={conQueVuelveDelArenado(r.motivo, r.codigo_interno)}
+            />
+          </AccionesDeFila>
         )}
       </TD>
     </TR>
@@ -227,8 +241,8 @@ function Situacion({ registro: r, estado, dias }: { registro: RegistroVehiculo; 
         <Insignia tono="neutro">
           {r.sale_al_arenado ? 'Salió al arenado' : 'Salió'} {fechaHora(r.salida_en)}
         </Insignia>
-        {/* En el teléfono no hay columna de salida: aquí va cuánto estuvo. */}
-        <span className="text-xs text-texto-suave sm:hidden">{textoEstuvo(diasEntre(diaLima(r.ingreso_en), diaLima(r.salida_en)))}</span>
+        {/* Hasta 1279 px no hay columna de salida: aquí va cuánto estuvo. */}
+        <span className="text-xs text-texto-suave xl:hidden">{textoEstuvo(diasEntre(diaLima(r.ingreso_en), diaLima(r.salida_en)))}</span>
       </div>
     )
   return (

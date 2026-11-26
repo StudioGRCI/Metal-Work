@@ -15,6 +15,7 @@ import { yaEntroLaPrimeraVez, type ResultadoAccion } from '@/lib/acciones'
 import {
   ACEPTA_CAPTURA_SALDO,
   BUCKET_APERTURA_CAJA,
+  BUCKET_CIERRE_CAJA,
   DESCRIPCIONES_FRECUENTES,
   enlaceCaptura,
   MAXIMO_MB_CAPTURA_SALDO,
@@ -372,7 +373,7 @@ export function CerrarDia({ cuenta, dia, saldoFinal }: { cuenta: CuentaElegible;
         abierta={v.abierta}
         alCerrar={v.cerrar}
         titulo={`Cerrar el ${fecha(dia)} de ${cuenta.nombre}`}
-        descripcion={`La caja dice ${moneda(saldoFinal, monedaDeCuenta(cuenta.moneda))}. Escribe lo que dice el estado de cuenta; cerrado, el día ya no cambia.`}
+        descripcion={`La caja dice ${moneda(saldoFinal, monedaDeCuenta(cuenta.moneda))}. ${cuenta.tipo === 'EFECTIVO' ? 'Escribe lo que contaste' : 'Escribe lo que dice el estado de cuenta y adjunta su captura'}; cerrado, el día ya no cambia.`}
         ancho="sm"
       >
         {envio.id && <FormularioCierre key={v.vez} envio={envio} cuenta={cuenta} dia={dia} saldoFinal={saldoFinal} alTerminar={v.cerrar} />}
@@ -390,10 +391,28 @@ function FormularioCierre({ envio, cuenta, dia, saldoFinal, alTerminar }: {
 }) {
   const id = envio.id ?? ''
   const [banco, setBanco] = useState('')
+  // Un banco se cierra con la captura de su aplicativo; la caja chica, con la foto del conteo si la hay.
+  const pideCaptura = cuenta.tipo !== 'EFECTIVO'
   const { alEnviar, enviando, error } = useEnvio(
-    (previo: unknown, datos: FormData) => {
+    async (previo: unknown, datos: FormData): Promise<ResultadoAccion> => {
       envio.salio()
-      return cerrarDia(previo, datos)
+      // La captura del día sube primero a Storage y el cierre la anota (`subirArchivoPrivado`):
+      // si la base no acepta el cierre, la captura se retira. Su nombre es el id del cierre,
+      // que se conserva al reintentar: sube al mismo sitio y no la duplica (20261126550000).
+      const archivo = datos.get('captura')
+      datos.delete('captura')
+      if (archivo instanceof File && archivo.name !== '' && archivo.size === 0) {
+        return { ok: false, error: `${pideCaptura ? 'La captura' : 'La foto del conteo'} está vacía: elige otra.` }
+      }
+      if (!(archivo instanceof File) || archivo.size === 0) {
+        if (pideCaptura) return { ok: false, error: `Adjunta la captura del aplicativo del banco con el saldo del ${fecha(dia)}.` }
+        return cerrarDia(previo, datos)
+      }
+      const problema = problemaDeLaCaptura(archivo)
+      const ruta = rutaDeCapturaDeSaldo(cuenta.id, id, archivo.type)
+      if (problema || !ruta) return { ok: false, error: problema ?? 'La captura va en foto (JPG, PNG o WEBP) o en PDF.' }
+      datos.set('captura_ruta', ruta)
+      return subirArchivoPrivado({ bucket: BUCKET_CIERRE_CAJA, ruta, archivo, contentType: archivo.type, registrar: () => cerrarDia(previo, datos) })
     },
     () => {
       envio.otro()
@@ -433,11 +452,26 @@ function FormularioCierre({ envio, cuenta, dia, saldoFinal, alTerminar }: {
       {/* Con «ya quedó», lo escrito no se guardó: no se pide explicar su diferencia. */}
       {diferencia !== null && !yaEntroLaPrimeraVez(error) && (
         <p role="status" className={diferencia === 0 ? 'text-sm text-exito' : 'text-sm text-aviso'}>
-          {diferencia === 0 ? 'Cuadra con la caja.' : `Diferencia de ${moneda(diferencia, m)}: cuenta en las observaciones por qué, en 10 caracteres como mínimo.`}
+          {diferencia === 0
+            ? 'Cuadra con la caja.'
+            : `${diferencia < 0 ? 'Falta' : 'Sobra'} ${moneda(Math.abs(diferencia), m)} contra la caja: cuenta en las observaciones por qué, en 10 caracteres como mínimo.`}
         </p>
       )}
       <Campo etiqueta="Observaciones" htmlFor={`${p}-obs`} requerido={conObservaciones}>
         <AreaTexto id={`${p}-obs`} name="observaciones" required={conObservaciones} minLength={conObservaciones ? 10 : undefined} maxLength={500} />
+      </Campo>
+      <Campo
+        etiqueta={pideCaptura ? 'Captura del saldo en el aplicativo' : 'Foto del conteo'}
+        htmlFor={`${p}-captura`}
+        requerido={pideCaptura}
+        ayudaEnIcono={false}
+        ayuda={
+          pideCaptura
+            ? `La pantalla del aplicativo con el saldo del ${fecha(dia)}: queda como respaldo del cierre.`
+            : 'Si la tienes: el conteo de la caja chica de ese día.'
+        }
+      >
+        <ElegirArchivo id={`${p}-captura`} name="captura" accept={ACEPTA_CAPTURA_SALDO} hastaMb={MAXIMO_MB_CAPTURA_SALDO} required={pideCaptura} />
       </Campo>
       <PieDeVentana error={error} enviando={enviando} alCancelar={alTerminar} texto="Cerrar el día" />
     </form>

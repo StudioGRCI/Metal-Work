@@ -41,12 +41,17 @@ export const CLAVES_DEL_ENVIO = [
   // SSOMA 15.2: la acción correctiva (no se encarga dos veces) y su cierre con evidencia.
   'accion_ssoma',
   'cierre_accion_ssoma',
+  // SSOMA 15.3: la charla o inducción no se registra dos veces tras «No llegó la respuesta».
+  'charla_ssoma',
   // El reporte de avería (Plan 16.2): reabrir tras «No llegó la respuesta» no da otro número AV a la misma falla.
   'reporte_averia',
   // Calidad (A.1): reabrir tras «No llegó la respuesta» no registra dos veces la
   // misma inspección ni el mismo paso de su observación.
   'inspeccion_calidad',
   'paso_calidad',
+  // El seguimiento de cada compra (Plan 4.2, 20261126462000).
+  'motivo_atraso',
+  'fecha_prometida',
   // El reclamo de garantía (A.2): reabrir tras «No llegó la respuesta» no da otro número RG al mismo reclamo.
   'reclamo_garantia',
 ] as const
