@@ -15,22 +15,32 @@ import { AnularTareo, CargarHoras } from './formulario'
 
 export const metadata = { title: 'Costeo por código interno' }
 
-type PorPersona = { nombre: string; cargo: string | null; horas: number; costo: number; labores: Set<string> }
-type PorCodigo = { codigo: string; horas: number; costo: number; personas: Map<string, PorPersona> }
+type PorPersona = { id: string; nombre: string; cargo: string | null; horas: number; costo: number; labores: Set<string>; reportes: Set<string> }
+type PorCodigo = { codigo: string; horas: number; costo: number; cargas: number; personas: Map<string, PorPersona> }
 
 /** Suma lo vigente del mes por código interno y, dentro, por persona. */
 function agrupar(tareos: Tareo[]): PorCodigo[] {
   const codigos = new Map<string, PorCodigo>()
   for (const t of tareos) {
     if (t.anulado_en) continue
-    const c = codigos.get(t.codigo_interno) ?? { codigo: t.codigo_interno, horas: 0, costo: 0, personas: new Map() }
+    const c = codigos.get(t.codigo_interno) ?? { codigo: t.codigo_interno, horas: 0, costo: 0, cargas: 0, personas: new Map() }
     c.horas += t.horas
+    c.cargas += 1
     c.costo += t.costo
     const nombre = t.trabajador ? `${t.trabajador.apellidos}, ${t.trabajador.nombres}` : 'Persona sin ficha'
-    const p = c.personas.get(t.trabajador_id) ?? { nombre, cargo: t.trabajador?.cargo ?? null, horas: 0, costo: 0, labores: new Set() }
+    const p = c.personas.get(t.trabajador_id) ?? {
+      id: t.trabajador_id,
+      nombre,
+      cargo: t.trabajador?.cargo ?? null,
+      horas: 0,
+      costo: 0,
+      labores: new Set(),
+      reportes: new Set(),
+    }
     p.horas += t.horas
     p.costo += t.costo
     if (t.labor) p.labores.add(t.labor)
+    if (t.reporte) p.reportes.add(t.reporte.id)
     c.personas.set(t.trabajador_id, p)
     codigos.set(t.codigo_interno, c)
   }
@@ -74,12 +84,24 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
   // El recargo de cada código, para sumarlo a su mano de obra (la ayuda decía «se suma aparte» y nadie lo sumaba).
   const recargoDe = new Map(recargos.map((r) => [r.codigo, r.monto]))
   const manoDeObraDe = new Map(grupos.map((g) => [g.codigo, g.costo]))
+  // Cada importe abre las cargas que lo formaron (plan 13, entrega 13.2): las de un
+  // código en el mes y, si se eligió, solo las de una persona, con su reporte diario.
+  const delCodigo = typeof params.codigo === 'string' ? grupos.find((g) => g.codigo === params.codigo) : undefined
+  const dePersona = delCodigo && typeof params.persona === 'string' ? delCodigo.personas.get(params.persona) : undefined
+  const enlaceImporte = (codigo: string, persona?: string) =>
+    `/rrhh/costeo?mes=${mes}&codigo=${encodeURIComponent(codigo)}${persona ? `&persona=${persona}` : ''}#dia`
   // El detalle va por día, como llega el parte: por defecto, el último día con horas cargadas.
   const dias = [...new Set(tareos.map((t) => t.fecha))].sort()
   const dia = fechaValida(params.dia) && dias.includes(params.dia) ? params.dia : dias.at(-1)
-  const delDia = tareos.filter((t) => t.fecha === dia)
+  const delDia = delCodigo
+    ? tareos
+        .filter((t) => t.codigo_interno === delCodigo.codigo && (!dePersona || t.trabajador_id === dePersona.id))
+        .sort((a, b) => a.fecha.localeCompare(b.fecha))
+    : tareos.filter((t) => t.fecha === dia)
   const horasDelDia = delDia.filter((t) => !t.anulado_en).reduce((n, t) => n + t.horas, 0)
+  const costoDelDia = delDia.filter((t) => !t.anulado_en).reduce((n, t) => n + t.costo, 0)
   const cargasDelDia = delDia.filter((t) => !t.anulado_en).length
+  const reportesDelDia = new Set(delDia.flatMap((t) => (!t.anulado_en && t.reporte ? [t.reporte.id] : []))).size
   const horas = grupos.reduce((n, g) => n + g.horas, 0)
   const costo = grupos.reduce((n, g) => n + g.costo, 0)
 
@@ -208,7 +230,7 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
                         {[...g.personas.values()]
                           .sort((a, b) => b.costo - a.costo)
                           .map((p) => (
-                            <TR key={p.nombre}>
+                            <TR key={p.id}>
                               <TD>
                                 <p className="font-medium text-texto">{p.nombre}</p>
                                 <p className="text-xs text-texto-suave">
@@ -217,11 +239,28 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
                                 </p>
                               </TD>
                               <TD className="tabular text-right">{horasCortas(p.horas)}</TD>
-                              <TD className="tabular text-right">{moneda(p.costo)}</TD>
+                              <TD className="tabular text-right">
+                                <Link
+                                  href={enlaceImporte(g.codigo, p.id)}
+                                  className="inline-flex min-h-11 items-center justify-end font-medium whitespace-nowrap text-acento hover:underline sm:min-h-0"
+                                  aria-label={`De dónde salen los ${moneda(p.costo)} de ${p.nombre} en ${g.codigo}`}
+                                  data-importe-persona={p.id}
+                                >
+                                  {moneda(p.costo)}
+                                </Link>
+                                <p className="text-xs whitespace-nowrap text-texto-suave">
+                                  {p.reportes.size > 0 ? `${p.reportes.size} ${p.reportes.size === 1 ? 'reporte' : 'reportes'}` : 'a mano'}
+                                </p>
+                              </TD>
                             </TR>
                           ))}
                       </tbody>
                     </Tabla>
+                    <div className="border-t border-borde px-4 py-3">
+                      <Link href={enlaceImporte(g.codigo)} className="text-sm font-medium text-acento hover:underline" data-importe-codigo={g.codigo}>
+                        Ver las {g.cargas} {g.cargas === 1 ? 'carga' : 'cargas'} que suman <span className="tabular whitespace-nowrap">{moneda(g.costo)}</span>
+                      </Link>
+                    </div>
                   </div>
                 </details>
               ))
@@ -289,15 +328,34 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
 
         <Tarjeta className="overflow-hidden" id="dia">
           <TarjetaCabecera
-            titulo={dia ? `Horas cargadas el ${fechaLarga(dia)}` : 'Horas cargadas'}
-            ayuda="Cada carga con su costo. Una mal cargada se anula con su motivo: queda tachada y deja de sumar."
+            titulo={
+              delCodigo
+                ? `De dónde sale la mano de obra de ${delCodigo.codigo}${dePersona ? ` · ${dePersona.nombre}` : ''}`
+                : dia
+                  ? `Horas cargadas el ${fechaLarga(dia)}`
+                  : 'Horas cargadas'
+            }
+            ayuda={
+              delCodigo
+                ? 'Cada carga del mes que suma a ese importe: el día, las horas, lo que valía la hora al cargarlas y el reporte diario del que vinieron. Las que cargó RR. HH. a mano no tienen reporte. Lo anulado queda tachado y no suma.'
+                : 'Cada carga con su costo. Una mal cargada se anula con su motivo: queda tachada y deja de sumar.'
+            }
             descripcion={
-              dia
-                ? `${horasCortas(horasDelDia)} en ${cargasDelDia} ${cargasDelDia === 1 ? 'carga' : 'cargas'}`
-                : undefined
+              delCodigo
+                ? `${moneda(costoDelDia)} · ${horasCortas(horasDelDia)} en ${cargasDelDia} ${cargasDelDia === 1 ? 'carga' : 'cargas'} · ${reportesDelDia} ${reportesDelDia === 1 ? 'reporte diario' : 'reportes diarios'}`
+                : dia
+                  ? `${horasCortas(horasDelDia)} en ${cargasDelDia} ${cargasDelDia === 1 ? 'carga' : 'cargas'}`
+                  : undefined
+            }
+            acciones={
+              delCodigo && (
+                <Link href={`/rrhh/costeo?mes=${mes}#dia`} className="text-sm font-medium text-acento hover:underline" data-quitar-importe>
+                  Volver a los días
+                </Link>
+              )
             }
           />
-          {dias.length > 1 && (
+          {!delCodigo && dias.length > 1 && (
             <nav aria-label="Días con horas cargadas" className="flex flex-wrap gap-1.5 px-4 pb-3">
               {dias.map((d) => (
                 <Link
@@ -327,7 +385,7 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
             </TablaCabecera>
             <tbody>
               {delDia.length === 0 ? (
-                <SinDatos titulo="Sin horas este mes" descripcion="Carga las horas del parte con el botón de arriba." />
+                <SinDatos titulo="Sin horas este mes" descripcion={edita ? 'Carga las horas del parte con el botón de arriba.' : 'Recursos Humanos carga las horas del parte.'} />
               ) : (
                 delDia.map((t) => {
                   const nombre = t.trabajador ? `${t.trabajador.nombres} ${t.trabajador.apellidos}` : 'Persona sin ficha'
@@ -335,13 +393,16 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
                   return (
                     <TR key={t.id} className={anulado ? 'opacity-60' : undefined}>
                       <TD className="align-top">
+                        {delCodigo && <p className="tabular text-xs text-texto-suave first-letter:uppercase">{fechaLarga(t.fecha)}</p>}
                         <p className={`font-medium text-texto ${anulado ? 'line-through' : ''}`}>{nombre}</p>
                         <p className="font-mono text-xs text-texto-suave md:hidden">{t.codigo_interno}</p>
                         {t.labor && <p className="text-xs text-texto-suave">{t.labor}</p>}
-                        {t.reporte && (
-                          <Link href={`/reportes-diarios/${t.reporte.id}`} className="text-xs text-acento hover:underline">
+                        {t.reporte ? (
+                          <Link href={`/reportes-diarios/${t.reporte.id}`} className="text-xs text-acento hover:underline" data-reporte-de-la-carga={t.reporte.id}>
                             Del reporte diario{t.reporte.area ? ` de ${t.reporte.area}` : ''}: {t.reporte.asunto}
                           </Link>
+                        ) : (
+                          delCodigo && <p className="text-xs text-texto-suave">Cargada a mano por RR. HH.</p>
                         )}
                         {anulado && <p className="text-xs text-texto-suave">Anulado: {t.motivo_anulacion}</p>}
                       </TD>
