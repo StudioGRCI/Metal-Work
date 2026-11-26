@@ -113,6 +113,7 @@ begin
     ('sup.mtz.local@metalwork.test',        'SUPERVISOR',         'MTZ', 'Supervisión de Maestranza'),
     ('sup.acb.local@metalwork.test',        'SUPERVISOR',         'ACB', 'Supervisión de Acabados'),
     ('ssoma.local@metalwork.test',          'SSOMA',              'SST', 'SSOMA'),
+    ('calidad.local@metalwork.test',        'CALIDAD',            'CAL', 'Control de calidad'),
     ('tesoreria.local@metalwork.test',      'TESORERIA',          null,  'Tesorería'),
     ('ventas.local@metalwork.test',         'VENDEDOR',           'GCO', 'Ventas')
   ) as t(correo, rol, area, nombre)

@@ -103,8 +103,14 @@ function aprobadaEsteMes(c: { estado: string | null; revisado_en: string | null 
   return c.estado === 'APROBADA' && !!c.revisado_en && diaLima(c.revisado_en).slice(0, 7) === mes
 }
 
+// Le falta alguna OT: la aprobada a la que Administración todavía no le cargó
+// todas sus unidades (una OT por unidad, migración 20261126760000).
+function faltaSuOt(c: { estado: string | null; ordenes_faltantes: number | null }) {
+  return c.estado === 'APROBADA' && (c.ordenes_faltantes ?? 0) > 0
+}
+
 function enFiltro(
-  c: { estado: string | null; orden_id: string | null; revisado_en: string | null },
+  c: { estado: string | null; ordenes: unknown[]; ordenes_faltantes: number | null; revisado_en: string | null },
   filtro: FiltroEstado | null,
   mes: string,
 ) {
@@ -114,11 +120,12 @@ function enFiltro(
     case 'APROBADA_MES':
       return aprobadaEsteMes(c, mes)
     case 'APROBADA_SIN_OT':
-      return c.estado === 'APROBADA' && !c.orden_id
+      return faltaSuOt(c)
     case 'RECHAZADA':
       return c.estado === 'RECHAZADA'
     case 'CON_OT':
-      return Boolean(c.orden_id)
+      // Con todas sus OT: la que está a medio cargar sigue en las que esperan.
+      return c.ordenes.length > 0 && (c.ordenes_faltantes ?? 0) === 0
     case 'ANULADA':
       return c.estado === 'ANULADA'
     default:
@@ -151,9 +158,9 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
   const mes = hoyLima().slice(0, 7)
   const porRevisar = cotizaciones.filter((c) => c.estado === 'POR_REVISAR').length
   const delMes = cotizaciones.filter((c) => aprobadaEsteMes(c, mes)).length
-  const sinOrden = cotizaciones.filter((c) => c.estado === 'APROBADA' && !c.orden_id).length
+  const sinOrden = cotizaciones.filter(faltaSuOt).length
   const rechazadas = cotizaciones.filter((c) => c.estado === 'RECHAZADA').length
-  const conOrden = cotizaciones.filter((c) => Boolean(c.orden_id)).length
+  const conOrden = cotizaciones.filter((c) => enFiltro(c, 'CON_OT', mes)).length
   const anuladas = cotizaciones.filter((c) => c.estado === 'ANULADA').length
 
   // Los filtros y la búsqueda se resuelven en memoria: la lista ya viene entera
@@ -162,11 +169,11 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
     ? (params.estado as FiltroEstado)
     : null
   const palabras = palabrasDeBusqueda(typeof params.q === 'string' ? params.q : '')
-  const buscada = (c: (typeof cotizaciones)[number]) => coincide(palabras, [c.numero, c.cliente, c.carroceria, c.codigo_interno])
+  const buscada = (c: (typeof cotizaciones)[number]) => coincide(palabras, [c.numero, c.cliente, c.carroceria, c.codigo_interno, ...c.ordenes.map((o) => o.codigo_interno)])
   // Sin filtro, primero lo que quien mira puede mover: Gerencia ve arriba las
   // que esperan su visto; Administración, las aprobadas que esperan su código y
   // su OT; Ventas, las suyas rechazadas. El orden por fecha se conserva dentro de cada grupo.
-  const sinCodigo = (c: (typeof cotizaciones)[number]) => c.estado === 'APROBADA' && !c.orden_id
+  const sinCodigo = faltaSuOt
   const meToca = (c: (typeof cotizaciones)[number]) =>
     (revisa && c.estado === 'POR_REVISAR') ||
     (cargaOt && sinCodigo(c)) ||
@@ -193,7 +200,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
     { valor: null, etiqueta: `Vigentes (${cotizaciones.length - anuladas})` },
     { valor: 'POR_REVISAR', etiqueta: `Por revisar (${porRevisar})` },
     { valor: 'APROBADA_MES', etiqueta: `Aprobadas del mes (${delMes})` },
-    { valor: 'APROBADA_SIN_OT', etiqueta: `Aprobadas sin código (${sinOrden})` },
+    { valor: 'APROBADA_SIN_OT', etiqueta: `Aprobadas que esperan OT (${sinOrden})` },
     { valor: 'RECHAZADA', etiqueta: `Rechazadas (${rechazadas})` },
     { valor: 'CON_OT', etiqueta: `Con código y OT (${conOrden})` },
     { valor: 'ANULADA', etiqueta: `Anuladas (${anuladas})` },
@@ -303,6 +310,13 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
             const corrige = corregiria && !c.facturada
             const version = c.version ?? 1
             const versionAnterior = c.versiones[0]
+            // Una cotización de varias unidades lleva una OT por cada una (migración 20261126760000).
+            const unidades = c.cantidad_unidades ?? 1
+            const varias = unidades > 1
+            const faltan = c.ordenes_faltantes ?? 0
+            // La unidad que sigue: la primera sin OT vigente (si se anuló la 2, la 2).
+            const tomadas = new Set(c.ordenes.map((o, i) => o.unidad ?? i + 1))
+            const siguiente = Array.from({ length: unidades }, (_, i) => i + 1).find((k) => !tomadas.has(k)) ?? c.ordenes.length + 1
 
             return (
               // Con `id`: el aviso de la campana aterriza en esta fila (`#id`), y
@@ -349,12 +363,18 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                     <p className="text-sm text-texto">
                       {c.cliente ?? 'Cliente reservado'}
                       {c.carroceria && <span className="text-texto-suave"> · {c.carroceria}</span>}
+                      {varias && <span className="font-medium text-texto"> · {unidades} unidades</span>}
                     </p>
 
                     <p className="text-sm font-semibold tabular text-texto">
                       {c.monto_venta !== null && c.monto_venta !== undefined
                         ? `Total de venta: ${formatoMoneda(c.monto_venta, c.moneda ?? 'PEN')}`
                         : 'Monto total pendiente de confirmar'}
+                      {varias && c.monto_venta !== null && c.monto_venta !== undefined && (
+                        <span className="font-normal text-texto-suave">
+                          {' '}· {formatoMoneda(Math.round((c.monto_venta / unidades) * 100) / 100, c.moneda ?? 'PEN')} en promedio por unidad
+                        </span>
+                      )}
                     </p>
 
                     {c.url ? <EnlaceArchivo url={c.url} mime={c.mime_type} nombre={c.nombre_archivo} descarga={`/cotizaciones/pdf/archivo/${c.id}`} /> : (
@@ -422,40 +442,52 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                       <p className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-aviso-suave px-2.5 py-1.5 text-xs text-aviso">
                         <Hourglass aria-hidden className="mt-0.5 size-3.5 shrink-0" />
                         <span>
-                          <span className="font-medium">Falta que Administración le dé su código interno y suba la OT.</span>{' '}
+                          <span className="font-medium">
+                            {!varias
+                              ? 'Falta que Administración le dé su código interno y suba la OT.'
+                              : faltan === unidades
+                                ? `Falta que Administración le dé a cada una de las ${unidades} unidades su código interno y suba su OT.`
+                                : `${faltan === 1 ? 'Falta 1 OT' : `Faltan ${faltan} OT`} de ${unidades}: Administración le da a cada unidad su código y sube su OT.`}
+                          </span>{' '}
                           Sin código no se factura ni Diseño empieza.
                         </span>
                       </p>
                     )}
 
-                    {c.orden_id && (
-                      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-                        <Hash aria-hidden className="size-4 text-texto-suave" />
-                        {c.codigo_interno ? (
-                          veCodigos ? (
-                            <Link
-                              href={`/codigos-internos/detalle?codigo=${encodeURIComponent(c.codigo_interno)}`}
-                              className="font-mono font-medium break-all text-acento hover:underline"
-                            >
-                              {c.codigo_interno}
-                            </Link>
-                          ) : (
-                            <span className="font-mono font-medium break-all text-texto">{c.codigo_interno}</span>
-                          )
-                        ) : (
-                          <span className="text-texto-suave">Sin código interno</span>
-                        )}
-                        {veOt ? (
-                          <Link href={`/ordenes/${c.orden_id}`} className="font-medium text-acento hover:underline">
-                            · OT {c.orden_numero}
-                          </Link>
-                        ) : (
-                          <span className="text-texto-suave">· OT {c.orden_numero}</span>
-                        )}
-                        <Insignia tono={definir(ESTADO_OT, c.orden_estado).tono}>
-                          {definir(ESTADO_OT, c.orden_estado).etiqueta}
-                        </Insignia>
-                      </p>
+                    {c.ordenes.length > 0 && (
+                      <ul className="space-y-1" aria-label={varias ? `OT de las ${unidades} unidades` : undefined}>
+                        {c.ordenes.map((o, i) => (
+                          <li key={o.id ?? `${o.codigo_interno ?? 'sin-codigo'}-${i}`} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                            <Hash aria-hidden className="size-4 text-texto-suave" />
+                            {varias && <span className="text-xs font-medium text-texto-suave">Unidad {o.unidad ?? i + 1}</span>}
+                            {o.codigo_interno ? (
+                              veCodigos ? (
+                                <Link
+                                  href={`/codigos-internos/detalle?codigo=${encodeURIComponent(o.codigo_interno)}`}
+                                  className="font-mono font-medium break-all text-acento hover:underline pointer-coarse:inline-flex pointer-coarse:min-h-11 pointer-coarse:items-center"
+                                >
+                                  {o.codigo_interno}
+                                </Link>
+                              ) : (
+                                <span className="font-mono font-medium break-all text-texto">{o.codigo_interno}</span>
+                              )
+                            ) : (
+                              <span className="text-texto-suave">Sin código interno</span>
+                            )}
+                            {o.numero &&
+                              (veOt && o.id ? (
+                                <Link href={`/ordenes/${o.id}`} className="font-medium text-acento hover:underline pointer-coarse:inline-flex pointer-coarse:min-h-11 pointer-coarse:items-center">
+                                  · OT {o.numero}
+                                </Link>
+                              ) : (
+                                <span className="text-texto-suave">· OT {o.numero}</span>
+                              ))}
+                            {o.estado && (
+                              <Insignia tono={definir(ESTADO_OT, o.estado).tono}>{definir(ESTADO_OT, o.estado).etiqueta}</Insignia>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
                     )}
                     {corregiria && c.facturada && (
                       <p className="text-xs text-texto-suave">
@@ -473,15 +505,26 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                     {(revisa && c.estado === 'POR_REVISAR' || cargaOt && sinCodigo(c) || corrige || quitable) && (
                       <div className="flex flex-wrap items-center gap-2">
                         {revisa && c.estado === 'POR_REVISAR' && c.id && (
-                          <RevisarCotizacion id={c.id} conOrden={Boolean(c.orden_id)} />
+                          <RevisarCotizacion id={c.id} conOrden={c.ordenes.length > 0} />
                         )}
                         {cargaOt && sinCodigo(c) && c.id && (
-                          <CargarCodigoYOt cotizacionId={c.id} numero={c.numero ?? 'cotización'} tipoUnidad={c.tipo_unidad} />
+                          <CargarCodigoYOt
+                            cotizacionId={c.id}
+                            numero={c.numero ?? 'cotización'}
+                            tipoUnidad={c.tipo_unidad}
+                            unidad={{
+                              cual: siguiente,
+                              de: unidades,
+                              otras: c.ordenes.flatMap((o, i) => (o.codigo_interno ? [{ unidad: o.unidad ?? i + 1, codigo: o.codigo_interno }] : [])),
+                            }}
+                          />
                         )}
                         {corrige && c.id && (
                           <CorregirCotizacion id={c.id} numero={c.numero ?? ''} observacion={c.observacion}
                             rechazada={c.estado === 'RECHAZADA'} aprobada={c.estado === 'APROBADA'}
                             version={c.version ?? 1} clienteId={c.cliente_id ?? ''} carroceriaId={c.tipo_carroceria_id ?? ''}
+                            unidades={unidades} conOrdenes={c.ordenes.length}
+                            unidadMayor={Math.max(0, ...c.ordenes.map((o) => o.unidad ?? 1))}
                             clientes={catalogos.clientes} carrocerias={catalogos.carrocerias} />
                         )}
                         {!c.orden_id && quitable && c.id && <QuitarCotizacion id={c.id} numero={c.numero ?? ''} />}

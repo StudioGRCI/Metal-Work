@@ -710,6 +710,40 @@ export async function documentosDelCodigo(codigo: string): Promise<DocumentoDelC
   }))
 }
 
+/**
+ * La cotización y la OT que cuentan la historia del código, elegidas por la base
+ * con la regla del costeo (`codigo_interno_recorrido`, migración 20261126640000):
+ * la garantía que llega después de entregar no pasa por «la OT» del código, ni la
+ * cotización de una OT anulada por «la cotización». La entrega es el acta de esa OT.
+ */
+export type RecorridoDelCodigoBase = {
+  cotizacion: { id: string; numero: string; estado: string; fecha: string | null } | null
+  /** Las cotizaciones vigentes del código, contando la elegida. */
+  cotizaciones: number
+  orden: { id: string; numero: string; estado: string; tipo: string | null; delTaller: boolean; entregadaEl: string | null } | null
+  /** Las OT no anuladas del código, contando la elegida. */
+  ordenes: number
+}
+
+export async function recorridoDelCodigo(codigo: string): Promise<RecorridoDelCodigoBase> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('codigo_interno_recorrido', { p_codigo: codigo })
+  if (error) throw new Error(`No se pudo leer la cotización y la OT del código: ${error.message}`)
+  const f = data?.[0]
+  return {
+    cotizacion:
+      f?.cotizacion_id && f.cotizacion_numero
+        ? { id: f.cotizacion_id, numero: f.cotizacion_numero, estado: f.cotizacion_estado ?? '', fecha: f.cotizacion_fecha }
+        : null,
+    cotizaciones: f?.cotizaciones ?? 0,
+    orden:
+      f?.ot_id && f.ot_numero
+        ? { id: f.ot_id, numero: f.ot_numero, estado: f.ot_estado ?? '', tipo: f.ot_tipo, delTaller: Boolean(f.ot_del_taller), entregadaEl: f.ot_entregada_el }
+        : null,
+    ordenes: f?.ordenes ?? 0,
+  }
+}
+
 /** Un código que el resumen no trae: todo en cero, salvo el costo completo que tenga. */
 function resumenVacio(codigo: string, ultima: string | null, completo: CostoCompleto = SIN_COSTO_COMPLETO): ResumenCodigo {
   return {
