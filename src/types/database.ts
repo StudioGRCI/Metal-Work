@@ -17709,6 +17709,17 @@ export type Database = {
           pago: string | null
         }[]
       }
+      unidades_del_cliente_con_su_entrega: {
+        Args: {
+          p_cliente: string | null
+        }
+        Returns: {
+          unidad_id: string | null
+          ot_numero: string | null
+          estado: string | null
+          fecha_entrega: string | null
+        }[]
+      }
       unidades_para_salida_almacen: {
         Args: Record<PropertyKey, never>
         Returns: {

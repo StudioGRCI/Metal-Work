@@ -8,16 +8,21 @@ import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { ESTADO_OT, definir } from '@/lib/dominio/estados'
+import { ESTADO_COTIZACION, ESTADO_DE_LA_UNIDAD, ESTADO_OT, definir } from '@/lib/dominio/estados'
+import { haceDias } from '@/lib/dominio/recorrido'
 import { nombreDeUnidad, tipoDeVehiculo, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { fecha, puesto } from '@/lib/format'
 import type { UnidadNombrable } from '@/lib/dominio/unidades'
+import type { EntregaDeUnidad } from '@/lib/datos/comercial'
 import {
   contactosDeCliente,
+  cotizacionesDelCliente,
+  entregasDeUnidadesDelCliente,
   listarUnidades,
   obtenerCliente,
   ordenesDeCliente,
 } from '@/lib/datos/comercial'
+import { recorridoDeCotizaciones } from '@/lib/datos/recorrido'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { NuevoContacto } from '@/components/comercial/nuevo-contacto'
 import { AccionesCatalogo } from '@/app/(app)/catalogos/acciones-catalogo'
@@ -40,11 +45,28 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
   const cliente = await obtenerCliente(id)
   if (!cliente) notFound()
 
-  const [unidades, contactos, { ordenes, total: totalOrdenes }] = await Promise.all([
+  // Las cotizaciones del cliente, para quien ve Cotización (Ventas, Gerencia,
+  // Administración): cómo va cada una sin abrir esa pantalla (Plan 9.2).
+  const veCotizaciones = puede(perfil, 'cotizaciones.ver_pdf_comercial')
+
+  const [unidades, contactos, { ordenes, total: totalOrdenes }, entregas, delCliente] = await Promise.all([
     listarUnidades({ clienteId: id }),
     contactosDeCliente(id),
     ordenesDeCliente(id),
+    // Cómo va cada unidad y para cuándo se prometió. Sin ella, la ficha sigue con todo lo demás y lo dice.
+    entregasDeUnidadesDelCliente(id).catch((e: unknown) => {
+      console.error('Ficha del cliente: no se pudo leer cómo va cada unidad.', e)
+      return null
+    }),
+    veCotizaciones ? cotizacionesDelCliente(id) : Promise.resolve(null),
   ])
+  // Quién tiene cada cotización y hace cuántos días: el paso que espera de su recorrido.
+  const recorridos = delCliente && delCliente.cotizaciones.length > 0
+    ? await recorridoDeCotizaciones(delCliente.cotizaciones.flatMap((c) => (c.id ? [c.id] : []))).catch((e: unknown) => {
+        console.error('Ficha del cliente: no se pudo leer el recorrido de sus cotizaciones.', e)
+        return null
+      })
+    : null
 
   const vendedor = cliente.vendedor as unknown as { puesto: string | null } | null
 
@@ -107,10 +129,16 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
         <Tarjeta className="lg:col-span-2">
           <TarjetaCabecera
             titulo="Unidades"
+            ayuda="De cada unidad con OT: en qué va, en una palabra, y la fecha de entrega que se le prometió al cliente."
             descripcion={`${unidades.length} ${unidades.length === 1 ? 'vehículo registrado' : 'vehículos registrados'}`}
             acciones={registraUnidades && <NuevaUnidad clienteId={id} />}
           />
           <TarjetaCuerpo className="p-0">
+            {entregas === null && unidades.length > 0 && (
+              <p role="status" className="border-b border-borde px-4 py-2 text-xs text-aviso">
+                No se pudo leer en qué va cada unidad. Recarga la página; si continúa, avisa al administrador.
+              </p>
+            )}
             {unidades.length === 0 ? (
               // El estado vacío trae el mismo botón de la cabecera: en el teléfono
               // la cabecera de la tarjeta queda arriba, fuera del pulgar, y sin
@@ -142,6 +170,7 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
                         {u.numero_chasis ? ` · chasis ${u.numero_chasis}` : ''}
                         {u.capacidad_m3 ? ` · ${u.capacidad_m3} m³` : ''}
                       </p>
+                      <EntregaDeLaUnidad entrega={entregas?.get(u.id)} />
                     </div>
                     {puede(perfil, 'clientes.editar') && (
                       <div className="flex flex-wrap gap-2">
@@ -155,6 +184,68 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
             )}
           </TarjetaCuerpo>
         </Tarjeta>
+
+        {delCliente && (
+          <Tarjeta className="lg:col-span-3">
+            <TarjetaCabecera
+              titulo="Cotizaciones"
+              ayuda="Cómo va cada cotización de este cliente: quién la tiene ahora y desde hace cuántos días. Ábrela para ver su recorrido completo."
+              descripcion={
+                delCliente.total > delCliente.cotizaciones.length
+                  ? `Las ${delCliente.cotizaciones.length} más recientes de ${delCliente.total}`
+                  : `${delCliente.total} ${delCliente.total === 1 ? 'cotización' : 'cotizaciones'}`
+              }
+            />
+            <TarjetaCuerpo className="p-0">
+              {delCliente.cotizaciones.length === 0 ? (
+                <div className="px-4 py-8 text-center">
+                  <p className="text-sm text-texto-suave">Este cliente todavía no tiene cotizaciones.</p>
+                  <p className="mt-1 text-xs text-texto-tenue">Se suben en Cotización, con «Subir cotización».</p>
+                </div>
+              ) : (
+                <>
+                  {recorridos === null && (
+                    <p role="status" className="border-b border-borde px-4 py-2 text-xs text-aviso">
+                      No se pudo leer quién tiene cada cotización. Recarga la página; si continúa, avisa al administrador.
+                    </p>
+                  )}
+                  <ul className="divide-y divide-[var(--borde)]" data-cotizaciones-del-cliente>
+                    {delCliente.cotizaciones.map((c) => {
+                      const estado = definir(ESTADO_COTIZACION, c.estado)
+                      const ahora = (c.id && recorridos?.get(c.id)?.find((p) => p.situacion === 'AHORA')) || null
+                      // La anulada no está entre las vigentes: su tarjeta, en el filtro de anuladas.
+                      const enlace = `/cotizaciones/pdf${c.estado === 'ANULADA' ? '?estado=ANULADA' : ''}#${c.id}`
+                      return (
+                        <li key={c.id}>
+                          <Link href={enlace} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 hover:bg-superficie-2">
+                            <span className="text-sm font-medium text-acento">{c.numero}</span>
+                            <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
+                            <div className="min-w-40 flex-1">
+                              <p className="truncate text-sm text-texto">
+                                {c.carroceria ?? 'Sin carrocería'}
+                                {c.codigo_interno ? <span className="text-texto-suave"> · {c.codigo_interno}</span> : null}
+                                {c.orden_numero ? <span className="text-texto-suave"> · OT {c.orden_numero}</span> : null}
+                              </p>
+                              <p className="text-xs text-texto-suave">Subida el {fecha(c.creado_en)}</p>
+                            </div>
+                            {ahora && (
+                              <span className="flex flex-wrap items-center gap-2 text-xs text-texto-suave" data-cotizacion-ahora>
+                                <span>
+                                  La tiene <span className="font-medium text-texto">{ahora.puesto ?? 'alguien'}</span>
+                                </span>
+                                {ahora.dias !== null && <Insignia>{haceDias(ahora.dias)}</Insignia>}
+                              </span>
+                            )}
+                          </Link>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </>
+              )}
+            </TarjetaCuerpo>
+          </Tarjeta>
+        )}
 
         <Tarjeta>
           <TarjetaCabecera
@@ -255,6 +346,25 @@ function NombreUnidad({ unidad }: { unidad: UnidadNombrable }) {
         <span className="ml-1 text-xs font-normal text-texto-tenue">sin placa</span>
       )}
     </span>
+  )
+}
+
+/**
+ * En qué va la unidad, en una palabra, su OT y la fecha de entrega que se le
+ * prometió al cliente (Plan 9.2). La unidad sin OT vigente no lleva nada.
+ */
+function EntregaDeLaUnidad({ entrega }: { entrega: EntregaDeUnidad | undefined }) {
+  if (!entrega) return null
+  const estado = definir(ESTADO_DE_LA_UNIDAD, entrega.estado)
+  return (
+    <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-texto-suave" data-entrega-unidad>
+      <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
+      {entrega.ot && <span className="tabular">OT {entrega.ot}</span>}
+      <span>
+        {entrega.estado === 'ENTREGADA' ? 'Se prometió para el ' : 'Entrega comprometida: '}
+        <span className="tabular font-medium text-texto">{entrega.fecha ? fecha(entrega.fecha) : 'sin fecha'}</span>
+      </span>
+    </p>
   )
 }
 
