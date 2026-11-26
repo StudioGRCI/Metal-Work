@@ -15371,6 +15371,22 @@ export type Database = {
           por_reponer: number | null
         }[]
       }
+      cumplimiento_de_proveedores: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          proveedor: string | null
+          compras: number | null
+          llegaron: number | null
+          medidas: number | null
+          a_tiempo: number | null
+          devueltas: number | null
+          atrasadas: number | null
+          sin_fecha: number | null
+          nuestras: number | null
+        }[]
+      }
       dar_por_terminada_la_garantia: {
         Args: {
           p_orden: string | null
@@ -17321,6 +17337,22 @@ export type Database = {
           completa_en: string | null
           dias_atraso: number | null
           atrasada: boolean | null
+          por_llegar: Json | null
+          por_validar: boolean | null
+        }[]
+      }
+      plazos_de_compras_calculados: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          documento: string | null
+          original: string | null
+          esperada: string | null
+          vigente: boolean | null
+          llego_en: string | null
+          llego_todo_en: string | null
+          completa_en: string | null
           por_llegar: Json | null
           por_validar: boolean | null
         }[]
