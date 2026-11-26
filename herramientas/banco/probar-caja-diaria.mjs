@@ -207,6 +207,8 @@ async function cerrar(pagina, cuenta, saldoBanco, observaciones) {
   await v.locator('input[name="saldo_banco"]').fill(saldoBanco)
   const aviso = limpio(await v.locator('[role="status"]').textContent().catch(() => ''))
   if (observaciones) await v.locator('textarea[name="observaciones"]').fill(observaciones)
+  // Un banco se cierra con la captura del día (migración 20261126550000); la caja chica, sin ella si no la hay.
+  if ((await v.locator('input[name="captura"][required]').count()) > 0) await v.locator('input[name="captura"]').setInputFiles(CAPTURA_SALDO)
   await v.getByRole('button', { name: 'Cerrar el día' }).click()
   return { aviso, error: await esperarVentana(pagina) }
 }
@@ -332,6 +334,12 @@ const movimientos = (caja, fecha) =>
   // Con coma decimal, como lo copian del estado de cuenta: la vista previa y la base leen lo mismo.
   let r = await cerrar(pagina, BCP, '9704,50')
   comprobar(r.aviso === 'Cuadra con la caja.' && !r.error, `con coma decimal, el banco cuadra y cierra (${r.aviso}${r.error ? `: ${r.error}` : ''})`)
+  {
+    const [k] = await consulta(`select k.captura_ruta, o.owner_id from cierres_caja k join cajas c on c.id = k.caja_id
+                                  left join storage.objects o on o.bucket_id = 'cierre-caja' and o.name = k.captura_ruta
+                                 where c.nombre = $1 and k.fecha = $2 and k.anulado_en is null`, [BCP, ayer])
+    comprobar(Boolean(k?.captura_ruta && k.owner_id), `el cierre del banco guardó la captura del día, subida a cierre-caja (${k?.captura_ruta})`)
+  }
   // Sin observaciones, o muy cortas, el navegador no deja enviar: la ventana sigue abierta.
   await pagina.locator(`[data-cerrar-dia="${CHICA}"]`).click()
   const v = pagina.locator(VENTANA)
@@ -339,7 +347,7 @@ const movimientos = (caja, fecha) =>
   const aviso = limpio(await v.locator('[role="status"]').textContent())
   const obs = v.locator('textarea[name="observaciones"]')
   await v.getByRole('button', { name: 'Cerrar el día' }).click()
-  comprobar(aviso.includes('Diferencia de S/ -10.00') && aviso.includes('10 caracteres') && (await obs.evaluate((e) => e.validity.valueMissing)) && (await v.isVisible()),
+  comprobar(aviso.includes('Falta S/ 10.00 contra la caja') && aviso.includes('10 caracteres') && (await obs.evaluate((e) => e.validity.valueMissing)) && (await v.isVisible()),
     `con S/ 10 de menos y sin observaciones no cierra (${aviso})`)
   await obs.fill('vale')
   await v.getByRole('button', { name: 'Cerrar el día' }).click()

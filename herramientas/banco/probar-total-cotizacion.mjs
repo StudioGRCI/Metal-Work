@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 
-import { leerTextoDeCotizacion, leerTotalDeCotizacion } from '../../src/lib/cotizacion-pdf.ts'
+import { leerCantidadDeCotizacion, leerTextoDeCotizacion, leerTotalDeCotizacion } from '../../src/lib/cotizacion-pdf.ts'
 
 assert.deepEqual(leerTotalDeCotizacion('IGV S/ 4,200.00\nTOTAL A PAGAR S/ 29,880.00'), {
   monto: '29880.00',
@@ -38,8 +38,8 @@ RIELES ALUMINIO - SUSPENSION NEUMÁTICA
 ESPECIFICACIÓNES TÉCNICAS
 COTIZACIÓN N° 3588 (02) - 2026
 Fecha : 23/02/2026
-Señor : MAT CENTER S.A.C.
-RUC : 20501416917
+Señor : TRANSPORTES DE PRUEBA S.A.C.
+RUC : 20000000001
 18 puertas laterales abatibles
 PROPUESTA ECONÓMICA:
 CANTIDAD DESCRIPCIÓN PRECIO
@@ -55,4 +55,19 @@ assert.equal(leerTextoDeCotizacion(cotizacionEnColumnas).producto,
   'FURGÓN SEMIRREMOLQUE CUELLO GANSO DOBLE NIVEL CRUCERO RIELES ALUMINIO - SUSPENSION NEUMÁTICA')
 assert.deepEqual(leerTotalDeCotizacion(cotizacionEnColumnas), { monto: '68000.00', moneda: 'USD' })
 
-console.log('Lectura de cotización: 9 casos correctos.')
+// Cuántas unidades cotiza (migración 20261126760000): la COT 3588 son dos furgones.
+assert.equal(leerCantidadDeCotizacion(cotizacionEnColumnas), 2)
+assert.equal(leerCantidadDeCotizacion('CANTIDAD : 03 UNIDADES\nTOTAL US$ 135,000.00'), 3)
+assert.equal(leerCantidadDeCotizacion('CANTIDAD DESCRIPCIÓN PRECIO TOTAL\n01 CAMA BAJA 3 EJES\n$ 45,000.00'), 1)
+// Sin la columna, o con un importe donde iría la cifra, no se adivina.
+assert.equal(leerCantidadDeCotizacion('TOTAL US$ 45,000.00'), null)
+assert.equal(leerCantidadDeCotizacion('CANTIDAD DESCRIPCIÓN\n$ 45,000.00'), null)
+assert.equal(leerCantidadDeCotizacion('CANTIDAD\n2.5 TONELADAS'), null)
+assert.equal(leerCantidadDeCotizacion('CANTIDAD : 0'), null)
+// «CANTIDAD DE …» en las especificaciones es de una pieza, no de unidades: se
+// salta, y la propuesta económica manda.
+assert.equal(leerCantidadDeCotizacion('CANTIDAD DE LLANTAS\n12 LLANTAS 11R22.5\nPROPUESTA ECONÓMICA:\nCANTIDAD DESCRIPCIÓN\n03 CAMA BAJA'), 3)
+assert.equal(leerCantidadDeCotizacion('CANTIDAD DE EJES : 3\nPROPUESTA ECONÓMICA:\nCANTIDAD DESCRIPCIÓN PRECIO\n02 FURGÓN'), 2)
+assert.equal(leerCantidadDeCotizacion('CANTIDAD DE LLANTAS\n12 LLANTAS 11R22.5'), null)
+
+console.log('Lectura de cotización: 19 casos correctos.')
