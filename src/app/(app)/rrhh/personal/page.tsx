@@ -38,7 +38,7 @@ export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/r
     <>
       <EncabezadoPagina
         titulo="Personal"
-        ayuda="La ficha de cada persona de planta y oficina: sus datos, la cuenta donde se le paga, su horario y lo que gana y lo que cuesta al mes. Con el horario, la marca del portero sabe si llegó tarde; con la remuneración se le paga en la planilla diaria; con el costo, sus horas se cargan a cada código interno."
+        ayuda={`La ficha de cada persona de planta y oficina: sus datos, ${gestiona ? 'la cuenta donde se le paga, ' : ''}su horario${ve ? ' y lo que gana y lo que cuesta al mes' : ''}. Con el horario, la marca del portero sabe si llegó tarde${ve ? '; con la remuneración se le paga en la planilla diaria; con el costo, sus horas se cargan a cada código interno' : ''}.`}
         migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'Personal' }]}
         acciones={gestiona && <NuevoTrabajador areas={areas} />}
       />
@@ -61,7 +61,8 @@ export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/r
             <tr>
               <TH>Persona</TH>
               <TH className="hidden md:table-cell">Horario</TH>
-              {ve && <TH className="hidden lg:table-cell">Cuenta</TH>}
+              {/* La cuenta bancaria la lee solo RR. HH. (migración 20261126620000); el administrador ve el sueldo. */}
+              {ve && <TH className="hidden lg:table-cell">{gestiona ? 'Cuenta' : 'Sueldo y costo'}</TH>}
               <TH>Estado</TH>
               {gestiona && (
                 <TH className="text-right">
@@ -105,7 +106,7 @@ function FilaTrabajador({
 }: {
   trabajador: Trabajador
   areas: { id: string; codigo: string; nombre: string }[]
-  /** Ve la cuenta bancaria: RR. HH. y el administrador. */
+  /** Ve el sueldo y el costo: RR. HH. y el administrador. La cuenta, solo quien `gestiona`. */
   ve: boolean
   /** Corrige la ficha: solo RR. HH. */
   gestiona: boolean
@@ -151,7 +152,7 @@ function FilaTrabajador({
       </TD>
       {ve && (
         <TD className="hidden align-top lg:table-cell">
-          {t.cuenta ? (
+          {!gestiona ? null : t.cuenta ? (
             <>
               <p className="text-sm text-texto">
                 {t.cuenta.banco} · {TIPO_CUENTA[t.cuenta.tipo_cuenta]?.etiqueta ?? t.cuenta.tipo_cuenta}

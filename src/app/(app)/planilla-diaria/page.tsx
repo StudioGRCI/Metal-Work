@@ -51,6 +51,8 @@ export default async function PaginaPlanillaDiaria() {
   // La manda solo RR. HH.; el administrador la ve (migración 20261020167000).
   const envia = editaComoRrhh(perfil, 'planilla_diaria.preparar')
   const paga = puede(perfil, 'planilla_diaria.pagar')
+  // «Paga a cada una a su cuenta» solo a quien la ve: el administrador no (migración 20261126620000).
+  const veCuentas = editaComoRrhh(perfil, 'planilla_diaria.pagar')
 
   const [planillas, porEnviar, porDecidir, regla, descuentos] = await Promise.all([
     listarPlanillasDiarias(),
@@ -82,7 +84,7 @@ export default async function PaginaPlanillaDiaria() {
         ayuda={
           envia
             ? 'Lo que se le paga a la gente por sus horas de los reportes diarios que validaron Gerencia y Recursos Humanos: hasta 8 horas por día son ordinarias; las extras, las que decidiste pagar. La armas y la mandas a Tesorería, que paga y adjunta comprobante y boleta; tú entregas las boletas.'
-            : paga
+            : paga && veCuentas
               ? 'Las planillas que manda Recursos Humanos con las horas validadas de cada persona. Paga a cada una a su cuenta, adjunta el comprobante y su boleta de pago.'
               : 'Las planillas diarias que Recursos Humanos manda a Tesorería, con lo que se le paga a cada persona por sus horas validadas.'
         }

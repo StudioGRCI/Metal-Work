@@ -14180,6 +14180,12 @@ export type Database = {
         }
         Returns: string
       }
+      codigo_interno_de_cotizacion_desde: {
+        Args: {
+          p_cotizacion: string | null
+        }
+        Returns: string
+      }
       codigo_interno_documentos: {
         Args: {
           p_codigo?: string | null
@@ -15510,6 +15516,18 @@ export type Database = {
           vinculos_ot: Json | null
         }[]
       }
+      documentos_de_las_compras: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          tipo: string | null
+          compra: string | null
+          documento: string | null
+          situacion: string | null
+          desde: string | null
+          dias: number | null
+          numeros: string | null
+        }[]
+      }
       documentos_por_aprobar: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -15882,6 +15900,16 @@ export type Database = {
           saldo: number | null
           moneda: string | null
           alcanza: boolean | null
+        }[]
+      }
+      facturacion_en_espera: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          cotizacion: string | null
+          desde: string | null
+          dias: number | null
         }[]
       }
       facturacion_pendientes: {
@@ -16381,6 +16409,33 @@ export type Database = {
           llegado: number | null
         }[]
       }
+      lo_que_debe_diseno: {
+        Args: {
+          p_codigos: string[] | null
+        }
+        Returns: {
+          codigo: string | null
+          tiene_ot: boolean | null
+          ficha_en: string | null
+          planos: number | null
+          planos_en: string | null
+          materiales: number | null
+          materiales_en: string | null
+          etapas: number | null
+          etapas_en: string | null
+          dxf: number | null
+          dxf_en: string | null
+          area: string | null
+          area_nombre: string | null
+          tiene_etapa: boolean | null
+          etapa: string | null
+          comprometido: string | null
+          entregado_en: string | null
+          situacion: string | null
+          dias: number | null
+          por_vencer: boolean | null
+        }[]
+      }
       lote_de_prueba: {
         Args: Record<PropertyKey, never>
         Returns: string
@@ -16745,6 +16800,30 @@ export type Database = {
           p_orden_compra: string | null
         }
         Returns: boolean
+      }
+      oc_que_traba_el_pago: {
+        Args: {
+          p_factura: string | null
+        }
+        Returns: {
+          orden_compra_id: string | null
+          numero: string | null
+          referencia: string | null
+          aprobacion: string | null
+          pedida_en: string | null
+        }[]
+      }
+      ocs_que_traban_las_facturas: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          adquisicion_id: string | null
+          orden_compra_id: string | null
+          nombre: string | null
+          aprobacion: string | null
+          pedida_en: string | null
+        }[]
       }
       orden_compra_de_ruta: {
         Args: {
@@ -17362,6 +17441,23 @@ export type Database = {
           p_usuario: string | null
         }
         Returns: string
+      }
+      quien_subio_y_quien_leyo: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          tipo: string | null
+          clave: string | null
+          subido_por: string | null
+          subido_en: string | null
+          area: string | null
+          area_nombre: string | null
+          destinatarios: number | null
+          leidos: number | null
+          primera_lectura: string | null
+          ultima_lectura: string | null
+        }[]
       }
       quitar_descuento_nota_credito: {
         Args: {

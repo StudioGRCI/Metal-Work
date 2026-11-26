@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { Paginacion } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
+import { DiasEnEspera } from '@/components/ui/dias-en-espera'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
@@ -13,6 +14,7 @@ import {
   bucketDelPago,
   claveDeArchivo,
   devolucionesDeCompras,
+  documentosDeLasCompras,
   enlacesDeCompras,
   trazabilidadDeCompras,
   type CompraTrazada,
@@ -25,8 +27,12 @@ import {
   TIPO_DOCUMENTO_SERVICIO,
   anexoPorRevisarAlAnular,
   bloqueoDelAnexo,
+  documentosQueFaltan,
   enSituacion,
   guiaPorCargar,
+  textoDelDocumento,
+  type DocumentoDeLaCompra,
+  FILTROS_QUE_VUELVEN,
 } from '@/lib/dominio/adquisiciones'
 import { controlDeFacturas, type ControlDeFactura } from '@/lib/datos/adquisiciones'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
@@ -39,6 +45,7 @@ import { puede, type PerfilSesion } from '@/lib/sesion'
 import { PasarCompraATesoreria } from '@/app/(app)/tesoreria/formularios'
 
 import { AnularAnexo } from './anular-anexo'
+import { ExcelDelMes } from './excel-del-mes'
 import { AnularGuia, CargarGuia } from './guia-remision'
 
 const POR_PAGINA = 50
@@ -51,8 +58,11 @@ const codigo = (m: string | null) => (m === 'USD' ? 'USD' : 'PEN')
 
 type Params = Record<string, string | string[] | undefined>
 
-/** La fila con lo que el proveedor devolvió de lo pagado por la boleta, que se lee aparte (undécima vuelta). */
-type Fila = CompraTrazada & { devoluciones: DevolucionDeCompra[] }
+/**
+ * La fila con lo que el proveedor devolvió de lo pagado por la boleta, que se lee aparte (undécima vuelta),
+ * y qué documento lleva, cuál falta y desde cuándo (`documentos_de_las_compras`, Plan 10).
+ */
+type Fila = CompraTrazada & { devoluciones: DevolucionDeCompra[]; papeles: DocumentoDeLaCompra[] }
 
 /** A qué puede ir quien mira: cada enlace solo sale si su pantalla o su archivo lo deja entrar. */
 type Acceso = {
@@ -128,14 +138,27 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
   const busqueda = texto(params.q)
   const palabras = palabrasDeBusqueda(busqueda)
   const tipo = params.tipo === 'oc' ? 'OC' : params.tipo === 'os' ? 'OS' : null
-  // «Guía por cargar» es el trabajo de Contabilidad: para ella va primera, porque
-  // el conductor la espera; a los demás no les dice nada.
+  // «Incompletas» y «Guía por cargar» son el trabajo de Contabilidad: para ella
+  // van primero, porque el conductor espera la guía; a los demás la guía no les
+  // dice nada.
   const situaciones = acceso.cargaGuia
-    ? [...SITUACIONES.filter((s) => s.valor === 'guia'), ...SITUACIONES.filter((s) => s.valor !== 'guia')]
+    ? [...SITUACIONES.filter((s) => s.valor === 'incompletas' || s.valor === 'guia'), ...SITUACIONES.filter((s) => s.valor !== 'incompletas' && s.valor !== 'guia')]
     : SITUACIONES.filter((s) => s.valor !== 'guia')
   const situacion = situaciones.find((s) => s.valor === params.situacion)?.valor ?? null
 
-  const todas = await trazabilidadDeCompras()
+  // Qué documento falta en cada una (Plan 10). Si no se puede leer, la tabla sale
+  // igual y arriba se dice: «Incompletas» contaría cero sin que nadie lo supiera.
+  const [trazadas, papeles] = await Promise.all([
+    trazabilidadDeCompras(),
+    documentosDeLasCompras().catch((e: unknown) => {
+      console.error(e)
+      return null
+    }),
+  ])
+  const todas = trazadas.map((f) => {
+    const deEsta = papeles?.get(f.id) ?? []
+    return { ...f, papeles: deEsta, incompletos: documentosQueFaltan(deEsta).length }
+  })
   const guiasPorCargar = acceso.cargaGuia ? todas.filter(guiaPorCargar).length : 0
   const buscadas = todas.filter((f) => coincide(palabras, camposDeBusqueda(f)))
   const delTipo = buscadas.filter((f) => !tipo || f.tipo === tipo)
@@ -148,18 +171,27 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
   // Las devoluciones del proveedor, solo de las OC con boleta de la página.
   const devoluciones = await devolucionesDeCompras(deLaPagina.flatMap((f) => (f.tipo === 'OC' && f.con_factura === false ? [f.id] : [])))
   const visibles: Fila[] = deLaPagina.map((f) => ({ ...f, devoluciones: devoluciones.filter((d) => d.orden_compra_id === f.id) }))
+  const mes = acceso.hoy.slice(0, 7)
   const { urls, sinFirmar } = await enlacesDeCompras(visibles, devoluciones)
   // Las OC de cada factura registrada de la página: una factura puede llevar
   // varias OC (decisión 16), y el aviso de que pasa su OC se mide contra todas.
   const control = await controlDeFacturas([...new Set(visibles.flatMap((f) => f.facturas.filter((x) => x.estado === 'REGISTRADA').map((x) => x.id)))])
   const hayFiltros = Boolean(busqueda || tipo || situacion)
+  // El aviso del Excel (`?excel=`) es de una sola vuelta: los filtros y la paginación no lo arrastran.
+  const { excel: avisoDelExcel, ...filtrosDeLaLista } = params
+  const filtrosDelExcel = Object.fromEntries(FILTROS_QUE_VUELVEN.flatMap((clave) => (texto(params[clave]) ? [[clave, texto(params[clave])]] : [])))
   const vacio =
     todas.length === 0
       ? {
           titulo: 'Todavía no hay órdenes de compra ni de servicio',
           descripcion: 'Cuando Logística emita la primera, sale aquí con su RQ, su aprobación, su factura y su pago.',
         }
-      : situacion === 'guia' && !busqueda && !tipo
+      : situacion === 'incompletas' && !busqueda && !tipo
+        ? {
+            titulo: 'Ninguna orden incompleta',
+            descripcion: 'Cada OC y OS en pie tiene su factura o comprobante, su guía, su detracción y su nota de crédito, si las lleva.',
+          }
+        : situacion === 'guia' && !busqueda && !tipo
         ? {
             titulo: 'No hay guías de remisión por cargar',
             descripcion: 'Cuando Logística ponga una OC en la lista del conductor, sale aquí con su peso para que cargues su guía.',
@@ -169,6 +201,11 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
   return (
     <>
       <div className="mb-4 space-y-3">
+        {papeles === null && (
+          <p role="alert" className="text-sm text-peligro">
+            No se pudo leer qué documento falta en cada orden: «Incompletas» y los días de espera no salen. Recarga la página para volver a intentar.
+          </p>
+        )}
         {sinFirmar && (
           <p role="alert" className="text-sm text-peligro">
             No se pudieron preparar los enlaces de algunos documentos: salen sin enlace. Recarga la página para volver a intentar.
@@ -186,7 +223,7 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
         <PastillaFiltro
           ruta={RUTA}
           clave="tipo"
-          params={params}
+          params={filtrosDeLaLista}
           activo={texto(params.tipo) || null}
           etiqueta="Qué órdenes mostrar"
           opciones={[
@@ -198,13 +235,19 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
         <PastillaFiltro
           ruta={RUTA}
           clave="situacion"
-          params={params}
+          params={filtrosDeLaLista}
           activo={situacion}
           etiqueta="En qué van"
           opciones={[
             { valor: null, etiqueta: `Todas (${delTipo.length})` },
             ...situaciones.map((s) => ({ valor: s.valor, etiqueta: `${s.etiqueta} (${delTipo.filter((f) => enSituacion(f, s.valor)).length})` })),
           ]}
+        />
+        <ExcelDelMes
+          key={texto(avisoDelExcel) || 'sin-aviso'}
+          mes={mes}
+          aviso={avisoDelExcel === 'mes' ? 'mes' : avisoDelExcel === 'fallo' ? 'fallo' : null}
+          filtros={filtrosDelExcel}
         />
       </div>
 
@@ -291,7 +334,7 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
       </Tarjeta>
 
       <div className="mt-4">
-        <Paginacion ruta={RUTA} pagina={pagina} paginas={paginas} total={filas.length} porPagina={POR_PAGINA} params={params} />
+        <Paginacion ruta={RUTA} pagina={pagina} paginas={paginas} total={filas.length} porPagina={POR_PAGINA} params={filtrosDeLaLista} />
       </div>
       {hayFiltros && filas.length > 0 && (
         <p className="mt-2 text-xs text-texto-suave">
@@ -505,11 +548,41 @@ function Documentos({ f, urls, acceso }: { f: Fila; urls: Map<string, string>; a
     f.tipo === 'OS' ? f.pagos.flatMap((p) => (p.comprobante && !adjuntados.has(p.comprobante) ? [p.comprobante] : [])) : []
   const tipos = f.tipo === 'OS' ? TIPO_DOCUMENTO_SERVICIO : TIPO_DOCUMENTO_COMPRA
   const porCargar = guiaPorCargar(f)
+  // Qué documento falta y desde cuándo (Plan 10): la espera va junto a la línea que
+  // ya lo decía (falta facturar, falta la boleta, la guía por cargar); lo que no
+  // tenía línea, la suya. Y la detracción y la nota que ya están, que no salían.
+  const falta = (documento: string) => f.papeles.find((p) => p.documento === documento && p.situacion !== 'ESTA')
+  const yaDicho = (d: DocumentoDeLaCompra) =>
+    (d.documento === 'FACTURA' && d.situacion === 'EN_PARTE' && faltaFacturar) ||
+    (d.documento === 'BOLETA' && sinComprobante) ||
+    (d.documento === 'GUIA' && porCargar && f.peso_kg !== null)
+  const otrasFaltas = documentosQueFaltan(f.papeles).filter((d) => !yaDicho(d))
+  const yaEstan = f.papeles.filter((d) => d.situacion === 'ESTA' && (d.documento === 'DETRACCION' || d.documento === 'NOTA_CREDITO'))
   const vacio =
-    f.facturas.length === 0 && adjuntos.length === 0 && !f.guia && !porCargar && comprobantesOs.length === 0 && !sinComprobante && !faltaFacturar
+    f.facturas.length === 0 && adjuntos.length === 0 && !f.guia && !porCargar && comprobantesOs.length === 0 && !sinComprobante && !faltaFacturar &&
+    otrasFaltas.length === 0 && yaEstan.length === 0
 
   return (
     <ul className="space-y-1 text-xs">
+      {otrasFaltas.map((d) => (
+        <li key={d.documento} className="space-y-1" data-falta={d.documento}>
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-aviso">
+            <span>{textoDelDocumento(d)}</span>
+            <DiasEnEspera dias={d.dias} desde={d.desde} />
+          </p>
+          {/* La OC que el conductor ya dejó sin guía: se carga igual (Plan 10, auditoría). */}
+          {d.documento === 'GUIA' && acceso.cargaGuia && !f.guia && f.peso_kg !== null && (
+            <CargarGuia
+              ordenCompraId={f.id}
+              solicitudId={crypto.randomUUID()}
+              numero={nombreDe(f)}
+              peso={f.peso_kg}
+              hoy={acceso.hoy}
+              dejada={f.recojo === 'DEJADO'}
+            />
+          )}
+        </li>
+      ))}
       {f.facturas.map((x) => {
         const anexo = anexoDe.get(x.id)
         return (
@@ -533,7 +606,10 @@ function Documentos({ f, urls, acceso }: { f: Fila; urls: Map<string, string>; a
         )
       })}
       {faltaFacturar && f.total !== null && (
-        <li className="text-aviso">Falta facturar {moneda(Math.max(f.total - (f.facturado ?? 0), 0), codigo(f.moneda))}</li>
+        <li className="flex flex-wrap items-center gap-x-2 gap-y-1 text-aviso" data-falta="FACTURA">
+          <span>Falta facturar {moneda(Math.max(f.total - (f.facturado ?? 0), 0), codigo(f.moneda))}</span>
+          <DiasEnEspera dias={falta('FACTURA')?.dias} desde={falta('FACTURA')?.desde} />
+        </li>
       )}
       {adjuntos
         .filter((d) => !d.anulado_en)
@@ -550,8 +626,13 @@ function Documentos({ f, urls, acceso }: { f: Fila; urls: Map<string, string>; a
             <AnulaElAnexo f={f} d={d} acceso={acceso} />
           </li>
         ))}
-      {sinComprobante && <li className="text-aviso">Falta la boleta, nota de venta o recibo</li>}
-      {comprobantesOs.map((c, i) => (
+      {sinComprobante && (
+        <li className="flex flex-wrap items-center gap-x-2 gap-y-1 text-aviso" data-falta="BOLETA">
+          <span>Falta la boleta, nota de venta o recibo</span>
+          <DiasEnEspera dias={falta('BOLETA')?.dias} desde={falta('BOLETA')?.desde} />
+        </li>
+      )}
+      {(f.papeles.some((d) => d.documento === 'COMPROBANTE' && d.situacion === 'POR_REGISTRAR') ? [] : comprobantesOs).map((c, i) => (
         <li key={`${c}-${i}`} className="text-texto">
           Comprobante <span className="tabular">{c}</span> <span className="text-texto-suave">(anotado al pagar)</span>
         </li>
@@ -563,13 +644,17 @@ function Documentos({ f, urls, acceso }: { f: Fila; urls: Map<string, string>; a
               Guía de remisión <span className="tabular">{f.guia.numero}</span>
             </span>
           </a>
-          {acceso.cargaGuia && f.recojo !== 'DEJADO' && <AnularGuia id={f.guia.id} numero={f.guia.numero} />}
+          {/* También la de una OC ya dejada: desde que se carga después (Plan 10), un número mal escrito no tendría corrección. */}
+          {acceso.cargaGuia && <AnularGuia id={f.guia.id} numero={f.guia.numero} dejada={f.recojo === 'DEJADO'} />}
         </li>
       )}
       {porCargar && f.peso_kg !== null && (
         <li className="space-y-1">
-          <p className="text-aviso">
-            Guía de remisión por cargar · <span className="tabular">{cantidad(f.peso_kg)} kg</span>
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-aviso" data-falta="GUIA">
+            <span>
+              Guía de remisión por cargar · <span className="tabular">{cantidad(f.peso_kg)} kg</span>
+            </span>
+            <DiasEnEspera dias={falta('GUIA')?.dias} desde={falta('GUIA')?.desde} />
           </p>
           {acceso.cargaGuia && (
             <CargarGuia ordenCompraId={f.id} solicitudId={crypto.randomUUID()} numero={nombreDe(f)} peso={f.peso_kg} hoy={acceso.hoy} />
@@ -590,6 +675,11 @@ function Documentos({ f, urls, acceso }: { f: Fila; urls: Map<string, string>; a
             {d.motivo_anulacion && <span>: {d.motivo_anulacion}</span>}
           </li>
         ))}
+      {yaEstan.map((d) => (
+        <li key={d.documento} className="text-texto" data-esta={d.documento}>
+          {textoDelDocumento(d)}
+        </li>
+      ))}
       {f.guias_anuladas > 0 && (
         <li className="text-texto-tenue">
           {f.guias_anuladas === 1 ? 'Una guía anulada' : `${f.guias_anuladas} guías anuladas`}
