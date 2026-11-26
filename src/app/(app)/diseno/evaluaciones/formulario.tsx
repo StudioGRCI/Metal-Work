@@ -105,7 +105,7 @@ export function FormularioEvaluacion({ inicial, hoy, cargo, nombres }: {
             {ESCALA_DISENO.map((e) => (
               <li key={e.valor} className="rounded-[var(--radius-base)] bg-superficie-2 px-2 py-1.5">
                 <span className="tabular font-semibold text-texto">{e.valor}</span> {e.nivel}
-                <span className="block text-[11px] text-texto-tenue">{e.rendimiento}</span>
+                <span className="block text-xs text-texto-tenue">{e.rendimiento}</span>
               </li>
             ))}
           </ul>

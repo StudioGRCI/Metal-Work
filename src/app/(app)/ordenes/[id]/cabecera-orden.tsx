@@ -22,11 +22,11 @@ import { Pestanas } from './pestanas'
 export const ESTADOS_CERRADOS: string[] = ['ENTREGADA', 'FACTURADA', 'ANULADA']
 
 /**
- * En la OT solo Gerencia, Administración y Tesorería consultan el documento
+ * En la OT solo Gerencia (la General y la Comercial), Administración y Tesorería consultan el documento
  * comercial. Ventas conserva su propia pantalla de cotizaciones.
  */
 export function veCotizacionEnOt(perfil: PerfilSesion) {
-  return ['GERENTE', 'ADMINISTRACION', 'TESORERIA', 'ADMIN'].includes(perfil.rol.codigo)
+  return ['GERENTE', 'GERENTE_COMERCIAL', 'ADMINISTRACION', 'TESORERIA', 'ADMIN'].includes(perfil.rol.codigo)
 }
 
 /** Lo que se dice bajo la fecha prometida: cuánto falta, o hace cuánto venció. */

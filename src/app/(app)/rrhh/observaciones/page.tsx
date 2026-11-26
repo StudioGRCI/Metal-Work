@@ -143,7 +143,7 @@ export default async function PaginaObservaciones({ searchParams }: PageProps<'/
                         </Link>
                         <p className="text-xs text-texto-suave">{r.cargo ?? 'Sin cargo'}</p>
                         {/* La columna de las verbales no cabe en el teléfono, pero la verbal es el paso antes de la escrita. */}
-                        <p className="tabular text-[11px] text-texto-suave sm:hidden">
+                        <p className="tabular text-xs text-texto-suave sm:hidden">
                           {r.porTipo.AMONESTACION_VERBAL ?? 0} {(r.porTipo.AMONESTACION_VERBAL ?? 0) === 1 ? 'verbal' : 'verbales'}
                         </p>
                       </TD>
@@ -154,7 +154,7 @@ export default async function PaginaObservaciones({ searchParams }: PageProps<'/
                       </TD>
                       <TD className={`tabular text-right ${r.porTipo.SUSPENSION ? 'font-semibold text-peligro' : ''}`}>
                         {r.porTipo.SUSPENSION ?? 0}
-                        {r.dias > 0 && <span className="block text-[11px] font-normal text-texto-suave">{r.dias} {r.dias === 1 ? 'día' : 'días'}</span>}
+                        {r.dias > 0 && <span className="block text-xs font-normal text-texto-suave">{r.dias} {r.dias === 1 ? 'día' : 'días'}</span>}
                       </TD>
                     </TR>
                   ))

@@ -141,14 +141,14 @@ export function MaterialesDeOrden({
                     </TD>
                     <TD>
                       <p className="text-sm font-medium text-texto">{m.material}</p>
-                      <p className="text-[11px] text-texto-suave">
+                      <p className="text-xs text-texto-suave">
                         {m.material_codigo}
                         {m.observacion ? ` · ${m.observacion}` : ''}
                       </p>
                     </TD>
                     <TD className="text-xs text-texto-suave">
                       <span className="font-medium text-texto">{AREAS[m.area_destino]}</span>
-                      {m.etapa && <p className="mt-0.5 text-[11px] text-texto-suave">Etapa: {m.etapa}</p>}
+                      {m.etapa && <p className="mt-0.5 text-xs text-texto-suave">Etapa: {m.etapa}</p>}
                     </TD>
                     <TD className="text-right tabular text-sm">
                       {fmtCantidad(m.cantidad)} {m.unidad}
@@ -318,7 +318,7 @@ function Dato({ titulo, valor, pie }: { titulo: string; valor: string; pie: stri
     <div>
       <p className="text-xs text-texto-suave">{titulo}</p>
       <p className="text-2xl font-semibold tabular text-texto">{valor}</p>
-      <p className="text-[11px] text-texto-suave">{pie}</p>
+      <p className="text-xs text-texto-suave">{pie}</p>
     </div>
   )
 }
