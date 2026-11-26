@@ -4,6 +4,7 @@ import { cache } from 'react'
 
 import type { Tono } from '@/components/ui/etiqueta-estado'
 import { codigosDeDiseno, planosDeCodigo } from '@/lib/datos/diseno-codigos'
+import { recorridoDeRequerimientos } from '@/lib/datos/recorrido'
 import { cargarRequerimientos } from '@/lib/datos/requerimientos'
 import { planillaAjusteDesde } from '@/lib/datos/rrhh'
 import { todasLasFilas } from '@/lib/datos/todas-las-filas'
@@ -11,7 +12,7 @@ import { ESTADOS_ACTIVOS_OT } from '@/lib/dominio/estados'
 import { totalConIgv } from '@/lib/dominio/finanzas'
 import { devueltaEntera } from '@/lib/dominio/pago-de-boleta'
 import { estadoDePlanilla } from '@/lib/dominio/planilla-diaria'
-import { ESTADOS_RQ_ABIERTOS, leTocaAtender, quienAtiende, tieneParaRecoger, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
+import { ESTADOS_RQ_ABIERTOS, leTocaAtender, PUESTO_ALMACEN, quienAtiende, RQ_EN_COMPRA, tieneParaRecoger, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
 import { hoyLima } from '@/lib/format'
 import { rutasDeTrabajo } from '@/lib/navegacion'
 import { apruebaSinOrden, puede, type PerfilSesion } from '@/lib/sesion'
@@ -825,6 +826,19 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       const { data, error } = await supabase.rpc('requerimientos_por_autorizar')
       if (error) throw new Error('No se pudo consultar el pendiente.')
       return (data ?? []).length
+    },
+  })
+  // En compra, a Almacén le toca cuando lo comprado ya llegó y falta dejarlo
+  // listo: lo dice el recorrido, como en la bandeja de atención (leTocaAtender).
+  if (atiende.recibe) tareas.push({
+    clave: 'rq_por_dejar_listo', ruta: '/requerimientos/atencion', tono: 'aviso',
+    texto: n => plural(n, 'requerimiento con lo comprado en almacén por dejar listo', 'requerimientos con lo comprado en almacén por dejar listos'),
+    contar: async () => {
+      const enCompra = (await rqAbiertos()).filter((r) => (RQ_EN_COMPRA as readonly string[]).includes(r.estado))
+      if (enCompra.length === 0) return 0
+      const recorridos = await recorridoDeRequerimientos(enCompra.map((r) => r.id))
+      const loTiene = (id: string) => recorridos.get(id)?.find((p) => p.situacion === 'AHORA')?.puesto
+      return enCompra.filter((r) => loTiene(r.id) === PUESTO_ALMACEN && leTocaAtender(r, atiende, PUESTO_ALMACEN)).length
     },
   })
   if (atiende.compraDe.OPERACION || atiende.compraDe.ADMINISTRACION) tareas.push({
