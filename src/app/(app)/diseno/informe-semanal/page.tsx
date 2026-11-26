@@ -72,6 +72,19 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
   ])
   if (equipo.error || pendientes.error) throw new Error('No se pudieron cargar el equipo o los informes pendientes de Diseño.')
 
+  const informe = datos.informe
+  // El recorrido de la semana: por dónde pasó, quién lo tiene y hace cuántos
+  // días. Sale a la par con las OT del equipo. Sin él, la tarjeta sigue con
+  // todo lo demás y lo dice en su lugar.
+  const leyendoRecorrido = informe
+    ? recorridoDeInformesDiseno([informe.id])
+        .then((r) => describirRecorridoDelInformeDiseno(r.get(informe.id) ?? []))
+        .catch((e: unknown) => {
+          console.error('Informe semanal: no se pudo leer el recorrido.', e)
+          return null
+        })
+    : Promise.resolve([])
+
   // Las OT que el colaborador puede elegir: las que tienen colaboradores de
   // Diseño en su equipo, nombradas como en el formato («código/OT · CM»).
   const idsConEquipo = [...new Set((equipo.data ?? []).map((p) => p.orden_id))]
@@ -89,19 +102,14 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
     return { id: o.id, etiqueta: `${codigoInternoOt(i?.codigo_interno, o.numero)} · ${siglaCarroceria(i?.tipo_unidad)}` }
   })
 
-  const informe = datos.informe
-  // El recorrido de la semana: por dónde pasó, quién lo tiene y hace cuántos
-  // días. Sin él, la tarjeta sigue con todo lo demás y lo dice en su lugar.
-  const recorrido = informe
-    ? await recorridoDeInformesDiseno([informe.id])
-        .then((r) => describirRecorridoDelInformeDiseno(r.get(informe.id) ?? []))
-        .catch((e: unknown) => {
-          console.error('Informe semanal: no se pudo leer el recorrido.', e)
-          return null
-        })
-    : []
+  const recorrido = await leyendoRecorrido
   // La última devolución: quién y cuándo, para el aviso de arriba.
   const devolucion = informe?.estado === 'OBSERVADO' ? recorrido?.filter((p) => p.paso === 'DEVOLUCION').at(-1) : undefined
+  // Lo que espera al colaborador en otras semanas: las devueltas y los
+  // borradores de semanas que ya pasaron. La que está viendo ya lo dice arriba.
+  const semanaDeHoy = inicioSemanaDiseno(hoyLima())
+  const porTerminar = (semanas ?? []).filter((s) => s.semana_inicio !== inicio
+    && (s.estado === 'OBSERVADO' || (s.estado === 'BORRADOR' && (s.semana_inicio ?? '') < semanaDeHoy)))
   const abierta = !datos.enviado
   const escribe = puedeEscribir && abierta
   const disenadores = [...new Set([...datos.tareas.map((t) => t.responsable), ...datos.entregas.map((e) => e.responsable)])].sort()
@@ -126,14 +134,30 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
         <p className="font-semibold text-aviso">
           {puedeEscribir ? 'Diseño te devolvió este informe para corregir' : 'Devuelto al colaborador para corregir'}
         </p>
-        <p className="mt-1 whitespace-pre-wrap break-words text-texto">
+        <p className="mt-1 max-w-prose whitespace-pre-wrap break-words text-texto">
           {informe.observacion_revision?.trim() || 'Diseño no dejó escrito el motivo.'}
         </p>
         <p className="tabular mt-2 text-xs text-texto-suave">
           {devolucion?.puesto ?? 'Diseño'}{(devolucion?.en ?? informe.revisado_en) ? ` · ${fechaHora((devolucion?.en ?? informe.revisado_en)!)}` : ''}
         </p>
-        {puedeEscribir && <p className="mt-2 text-texto">Corrige lo que pide en las tablas o en el contenido de abajo y vuelve a enviarlo con «Enviar a Diseño».</p>}
+        {puedeEscribir && <p className="mt-2 max-w-prose text-texto">
+          Corrige lo que pide en <a href="#actividades-diarias" className="font-medium text-acento underline-offset-2 hover:underline">Actividades diarias</a> o
+          en <a href="#contenido-del-informe" className="font-medium text-acento underline-offset-2 hover:underline">Contenido del informe</a>,
+          guárdalo con «Guardar informe» y vuelve a enviarlo con «Enviar a Diseño».
+        </p>}
       </div>}
+
+      {porTerminar.length > 0 && <Tarjeta data-por-terminar>
+        <TarjetaCabecera titulo="Tus informes por terminar"
+          descripcion={`${porTerminar.length} ${porTerminar.length === 1 ? 'semana' : 'semanas'}`}
+          ayuda="Los que Diseño te devolvió para corregir y los borradores de semanas que ya pasaron sin enviarse." />
+        <TarjetaCuerpo className="flex flex-wrap gap-3">{porTerminar.map((s) =>
+          <Link key={s.id} href={`/diseno/informe-semanal?semana=${s.semana_inicio}`}
+            className="inline-flex min-h-11 flex-wrap items-center gap-2 rounded-[var(--radius-base)] border border-borde px-4 py-3 text-sm font-medium text-acento hover:bg-acento-suave">
+            <span className="tabular">Informe N.º {numeroInforme(s.numero)} · semana del {fecha(s.semana_inicio)}</span>
+            <Insignia tono={s.estado === 'OBSERVADO' ? 'aviso' : 'neutro'}>{s.estado === 'OBSERVADO' ? 'Devuelto' : 'Sin enviar'}</Insignia>
+          </Link>)}</TarjetaCuerpo>
+      </Tarjeta>}
 
       {(pendientes.data ?? []).length > 0 && <Tarjeta>
         <TarjetaCabecera titulo={puede(perfil, 'diseno.revisar_informe') ? 'Informes por revisar' : 'Informes aprobados por recibir'} ayuda="Abre la semana correspondiente para completar tu revisión." />
@@ -176,7 +200,7 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
         </TarjetaCuerpo>
       </Tarjeta>
 
-      <Tarjeta>
+      <Tarjeta id="actividades-diarias">
         <TarjetaCabecera titulo="Actividades diarias"
           ayuda="Lo que se hizo cada día, según el requerimiento del día y la urgencia: sin planificar y sin atarlo a los planos. Todas las unidades tienen código interno; las de garantía o mantenimiento, su OT." />
         <TarjetaCuerpo className="space-y-4">
@@ -274,7 +298,7 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
         </TarjetaCuerpo>
       </Tarjeta>}
 
-      <Tarjeta>
+      <Tarjeta id="contenido-del-informe">
         <TarjetaCabecera titulo="Contenido del informe" ayuda="Las secciones del formato, en su orden. Las tablas de arriba entran solas al Word." />
         <TarjetaCuerpo className="space-y-4">
           {escribe && (!informe || ['BORRADOR', 'OBSERVADO'].includes(informe.estado))
@@ -295,13 +319,13 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
       {/* Para consultar, al final: las semanas del colaborador, cada una como quedó. */}
       {puedeEscribir && <Tarjeta data-tus-semanas>
         <TarjetaCabecera titulo="Tus semanas"
-          ayuda="Las semanas que empezaste o en las que anotaste una actividad, de la más reciente a la más antigua. Cada una se abre como quedó: enviada o aprobada, solo para leer." />
+          ayuda="Las semanas con informe guardado que empezaste o en las que anotaste una actividad, de la más reciente a la más antigua. Las enviadas y las aprobadas se abren solo para leer; las devueltas y los borradores, para seguir con ellos." />
         <TarjetaCuerpo>
           {semanas === null
             ? <p role="status" className="text-sm text-aviso">No se pudieron leer tus semanas. Recarga la página; si continúa, avisa al administrador.</p>
             : semanas.length === 0
               ? <SinDatos compacto titulo="Todavía no tienes semanas"
-                  descripcion="Cuando guardes el contenido de tu primer informe o anotes una actividad, la semana aparecerá aquí." />
+                  descripcion="Cuando guardes tu primer informe con «Guardar informe», su semana aparecerá aquí." />
               : <ul className="-mx-2 divide-y divide-borde">{semanas.map((s) => {
                   const actual = s.semana_inicio === inicio
                   const insignia = INSIGNIA_ESTADO[s.estado ?? ''] ?? { etiqueta: s.estado ?? 'Sin estado', tono: 'neutro' as const }
@@ -312,7 +336,7 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
                       <span className="min-w-0">
                         <span className="tabular font-semibold text-acento">N.º {numeroInforme(s.numero)}</span>
                         <span className="tabular text-texto"> · semana del {fecha(s.semana_inicio)}</span>
-                        {actual && <span className="block text-xs text-texto-suave sm:inline"> · la que estás viendo</span>}
+                        {actual && <span className="block text-xs text-texto-suave sm:inline"><span className="hidden sm:inline"> · </span>la que estás viendo</span>}
                       </span>
                       <Insignia tono={insignia.tono}>{insignia.etiqueta}</Insignia>
                     </Link>

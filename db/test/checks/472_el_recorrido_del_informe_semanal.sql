@@ -1,4 +1,5 @@
--- El recorrido del informe semanal de Diseño (migración 20261126300000).
+-- El recorrido del informe semanal de Diseño (migraciones 20261126300000 y
+-- 20261126311000).
 --
 --   1. El colaborador empieza el informe: lo tiene él y falta la revisión.
 --   2. Lo envía: lo tiene Diseño.
@@ -8,7 +9,11 @@
 --      en el recorrido aunque la columna ya se vació (sale de la bitácora).
 --   5. Diseño lo aprueba: dos envíos, una devolución y la aprobación, en orden,
 --      con el puesto de cada uno y sin nombres; ya no espera a nadie.
---   6. Lo lee quien ve el informe; Recursos Humanos no.
+--   6. Lo lee quien ve el informe (el colaborador, Diseño, el Supervisor
+--      General); Recursos Humanos no. El aviso de la devolución le llega a quien
+--      hizo el informe, no a otro colaborador que no tuvo nada que ver.
+--   6b. Un informe sin bitácora (anterior a la auditoría de la tabla) no pierde
+--      su última vuelta: sale de sus columnas.
 --   7. «Tus semanas» trae la del colaborador y no la ajena: otro colaborador,
 --      que no la empezó ni anotó nada en ella, no la ve en la suya.
 --
@@ -22,6 +27,12 @@ select test.crear_usuario('QA472','Colaborador','qa-472-colab@demo.pe','DISENO_C
 select test.crear_usuario('QA472','Otro colaborador','qa-472-colab2@demo.pe','DISENO_COLABORADOR', :'sede_id') as colab2_id \gset
 select test.crear_usuario('QA472','Diseño','qa-472-diseno@demo.pe','DISENO', :'sede_id') as diseno_id \gset
 select test.crear_usuario('QA472','Personal','qa-472-rrhh@demo.pe','RECURSOS_HUMANOS', :'sede_id') as rrhh_id \gset
+select test.crear_usuario('QA472','Supervisor','qa-472-super@demo.pe','SUPERVISOR_GENERAL', :'sede_id') as super_id \gset
+-- Cómo nombra el recorrido a quien revisa: el puesto de la cuenta activa de
+-- Diseño, como en los pasos hechos.
+select coalesce((select public.puesto(u) from public.usuarios u join public.roles r on r.id = u.rol_id
+                  where r.codigo = 'DISENO' and u.activo order by u.creado_en limit 1),
+                (select nombre from public.roles where codigo = 'DISENO')) as puesto_diseno \gset
 
 select set_config('prueba.r.orden', gen_random_uuid()::text, true);
 select set_config('prueba.r.persona', gen_random_uuid()::text, true);
@@ -80,7 +91,7 @@ select test.afirmar(
   = 'REGISTRO:HECHO > ENVIO:HECHO > REVISION:AHORA',
   'enviado: lo tiene Diseño');
 select test.afirmar(
-  (select puesto = (select nombre from public.roles where codigo = 'DISENO') and espera = 'REVISION'
+  (select puesto = :'puesto_diseno' and espera = 'REVISION'
      from public.recorrido_de_informes_diseno(array[current_setting('prueba.r.informe')::uuid]) where situacion = 'AHORA'),
   'enviado, lo tiene el puesto que lo revisa');
 
@@ -97,6 +108,12 @@ select test.afirmar(
                    || ' · semana del 02/02/2099. Motivo: Falta registrar el ploteo del miércoles y el plano de corte.'
       and ruta = '/diseno/informe-semanal?semana=2099-02-02'),
   'la campana le avisa al colaborador que se lo devolvieron, con el motivo y el número de tres cifras');
+select test.como_usuario(:'colab2_id');
+select test.afirmar(
+  (select count(*) = 0 from public.notificaciones
+    where usuario_id = public.usuario_actual() and origen_id = current_setting('prueba.r.informe')::uuid),
+  'al otro colaborador, que no hizo el informe, no le llega el aviso');
+select test.como_usuario(:'colab_id');
 select test.afirmar(
   (select string_agg(paso || ':' || situacion, ' > ' order by orden)
      from public.recorrido_de_informes_diseno(array[current_setting('prueba.r.informe')::uuid]))
@@ -137,10 +154,36 @@ select test.afirmar(
      from public.recorrido_de_informes_diseno(array[current_setting('prueba.r.informe')::uuid])),
   'ningún paso dice el nombre de la persona: solo su puesto');
 
--- 6. Recursos Humanos no lee el informe ni su recorrido.
+-- 6. Lo lee quien ve el informe; Recursos Humanos no.
+select test.como_usuario(:'diseno_id');
+select test.afirmar(
+  (select count(*) = 5 from public.recorrido_de_informes_diseno(array[current_setting('prueba.r.informe')::uuid])),
+  'Diseño lee el recorrido entero');
+select test.como_usuario(:'super_id');
+select test.afirmar(
+  (select count(*) = 5 from public.recorrido_de_informes_diseno(array[current_setting('prueba.r.informe')::uuid])),
+  'el Supervisor General también: ve el informe');
 select test.como_usuario(:'rrhh_id');
 select test.debe_fallar($$select * from public.recorrido_de_informes_diseno(array[current_setting('prueba.r.informe')::uuid])$$,
   'Recursos Humanos no lee el recorrido del informe', 'No tienes permiso');
+
+-- 6b. Sin bitácora, la última vuelta sale de sus columnas.
+reset role;
+create temp table qa472_bitacora on commit drop as
+  select * from public.audit_log where tabla = 'diseno_informes' and registro_id = current_setting('prueba.r.informe')::uuid;
+delete from public.audit_log where tabla = 'diseno_informes' and registro_id = current_setting('prueba.r.informe')::uuid;
+set local role authenticated;
+select test.como_usuario(:'colab_id');
+select test.afirmar(
+  (select string_agg(paso || ':' || situacion || ':' || coalesce(puesto, '-'), ' > ' order by orden)
+     from public.recorrido_de_informes_diseno(array[current_setting('prueba.r.informe')::uuid]))
+  = 'REGISTRO:HECHO:' || public.puesto_de(:'colab_id'::uuid)
+    || ' > ENVIO:HECHO:' || public.puesto_de(:'colab_id'::uuid)
+    || ' > APROBACION:HECHO:' || (select nombre from public.roles where codigo = 'DISENO'),
+  'sin bitácora quedan el envío y la aprobación de sus columnas, con el puesto de cada uno');
+reset role;
+insert into public.audit_log select * from qa472_bitacora;
+set local role authenticated;
 
 -- 7. Las semanas del colaborador.
 select test.como_usuario(:'colab_id');

@@ -1,5 +1,5 @@
 /**
- * Clic real sobre la migración 20261126300000: el recorrido del informe
+ * Clic real sobre las migraciones 20261126300000 y 20261126311000: el recorrido del informe
  * semanal de Diseño (Plan 7, entrega 7.1). Con la cuenta de cada puesto, nunca
  * ADMIN:
  *
@@ -13,6 +13,9 @@
  *   4. Lo vuelve a enviar y Diseño lo aprueba: ya no hay aviso de devolución,
  *      el recorrido termina en «Aprobado por Diseño» y conserva el motivo de la
  *      devolución, que la columna ya no tiene; la campana le avisa.
+ *   4b. El aviso de la devolución no le llega a otro colaborador, que no hizo
+ *      el informe; en otra semana, el colaborador lo tiene en «Tus informes
+ *      por terminar» y el otro colaborador no.
  *   5. Recursos Humanos no entra a la pantalla y la base le niega el recorrido.
  *   6. En el teléfono (390) nada se sale de la pantalla.
  *
@@ -136,8 +139,9 @@ const ruta = `/diseno/informe-semanal?semana=${semana}`
 // El puesto de cada cuenta como lo dice la base (su cargo o, sin él, su rol).
 const puestoDe = async (p) => (await uno('select public.puesto(u) as p from public.usuarios u where correo = $1', [correoDe(p)])).p
 const PUESTO_COLAB = await puestoDe('colaborador')
-const PUESTO_DISENO = (await uno(`select nombre from public.roles where codigo = 'DISENO'`)).nombre
+// «Lo tiene …» nombra a Diseño por el puesto de su cuenta, como los pasos hechos.
 const PUESTO_DISENO_CUENTA = await puestoDe('diseno')
+const PUESTO_DISENO = PUESTO_DISENO_CUENTA
 const MOTIVO = 'Falta anotar el ploteo del martes y el plano de corte de la tolva.'
 
 // 0. El armazón: una OT con un colaborador de Diseño en su equipo, como lo
@@ -223,11 +227,33 @@ for (const ancho of [390, 1440]) {
   for (const t of ['Semana del informe', 'Actividades diarias', 'Contenido del informe', 'Descargar Word', 'Enviar a Diseño', 'Ploteo de la tolva granelera']) {
     comprobar(await c.pagina.getByText(t, { exact: false }).count() > 0, `${ancho}: la pantalla conserva «${t}»`)
   }
+  for (const ancla of ['actividades-diarias', 'contenido-del-informe']) {
+    comprobar(await aviso.locator(`a[href="#${ancla}"]`).count() === 1 && await c.pagina.locator(`#${ancla}`).count() === 1,
+      `${ancho}: el aviso lleva a «${ancla}» y la tarjeta está`)
+  }
+  comprobar(texto.includes('«Guardar informe»') && texto.includes('«Enviar a Diseño»'), `${ancho}: el aviso dice con qué botones se corrige`)
   const sobra = await c.pagina.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   comprobar(sobra <= 0, `${ancho}: nada se sale de la pantalla (sobran ${sobra} px)`)
   await c.pagina.screenshot({ path: `${CAPTURAS}/7-1-colaborador-${ancho}-1-devuelto.png`, fullPage: true })
   if (ancho === 390) await c.contexto.close()
 }
+// 4b. Lo ajeno: el otro colaborador no recibe el aviso ni lo tiene por terminar.
+const ajeno = await comoCuenta('colaborador2',
+  'select count(*)::int as n from public.notificaciones where usuario_id = public.usuario_actual() and origen_id = $1', [informe.id])
+comprobar(!ajeno.error && ajeno.filas[0]?.n === 0, `al otro colaborador no le llega el aviso de la devolución (${ajeno.error ?? ajeno.filas[0]?.n})`)
+const semanaAnterior = (await uno(`select to_char($1::date - 7, 'YYYY-MM-DD') as s`, [semana])).s
+await ir(colab.pagina, `/diseno/informe-semanal?semana=${semanaAnterior}`)
+const porTerminar = limpio(await colab.pagina.locator('[data-por-terminar]').innerText().catch(() => ''))
+comprobar(porTerminar.includes(`semana del ${semana.split('-').reverse().join('/')}`) && porTerminar.includes('Devuelto'),
+  `en otra semana, el colaborador tiene la devuelta en «Tus informes por terminar» («${porTerminar.slice(0, 90)}»)`)
+await colab.pagina.screenshot({ path: `${CAPTURAS}/7-1-colaborador-1440-1b-por-terminar.png`, fullPage: false })
+const otro = await entrar('colaborador2', 390)
+await ir(otro.pagina, `/diseno/informe-semanal?semana=${semanaAnterior}`)
+comprobar(await otro.pagina.locator('[data-por-terminar]').count() === 0, 'el otro colaborador no la tiene por terminar')
+await ir(otro.pagina, '/avisos')
+comprobar(!(await otro.pagina.locator('body').innerText()).includes(MOTIVO), 'ni la ve en sus avisos')
+await otro.contexto.close()
+
 const avisoCampana = await comoCuenta('colaborador',
   `select titulo, cuerpo, ruta from public.notificaciones where usuario_id = public.usuario_actual() and origen_id = $1 order by creado_en desc limit 1`,
   [informe.id])
