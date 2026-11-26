@@ -115,7 +115,10 @@ export function CompraDelInsumo({ linea: l, estadoRq }: { linea: LineaRequerimie
 export function EntregaDelInsumo({ linea: l, estadoRq }: { linea: LineaRequerimiento; estadoRq: string }) {
   const partes = partesDelInsumo(l, estadoRq)
   if (!partes) return null
-  const compraViva = Boolean(l.orden_compra) && !l.compra_rechazada && !laCompraQuedoCorta(l, partes)
+  // La OC que ya entró entera y compró menos: lo que falta no lo compra nadie
+  // desde Atención (no sale en «Por comprar»), se pide en un RQ nuevo.
+  const corta = laCompraQuedoCorta(l, partes)
+  const compraViva = Boolean(l.orden_compra) && !l.compra_rechazada && !corta
   const c = cuentaDelInsumo(l.cantidad, partes, compraViva)
   const como = comoVaLaEntrega(c)
   // Entregado el RQ, lo que no salió ya lo dice «No salió del kardex» junto al insumo.
@@ -134,7 +137,10 @@ export function EntregaDelInsumo({ linea: l, estadoRq }: { linea: LineaRequerimi
       texto: `Por llegar ${cantidad(c.porLlegar)}${l.fecha_esperada ? ` (${vencida ? 'se esperaba' : 'se espera'} el ${fecha(l.fecha_esperada)})` : ''}`,
       clase: 'text-info',
     },
-    c.porComprar > 0 && { clave: 'por-comprar', texto: `Por comprar ${cantidad(c.porComprar)}`, clase: 'text-aviso' },
+    c.porComprar > 0 &&
+      (corta
+        ? { clave: 'compra-corta', texto: `Sin compra ${cantidad(c.porComprar)}: pide el resto en un RQ nuevo`, clase: 'text-aviso' }
+        : { clave: 'por-comprar', texto: `Por comprar ${cantidad(c.porComprar)}`, clase: 'text-aviso' }),
     c.porRevisar > 0 && { clave: 'por-revisar', texto: `Por revisar ${cantidad(c.porRevisar)}`, clase: 'text-texto-suave' },
   ].filter((p): p is { clave: string; texto: string; clase: string } => Boolean(p))
   // Nada entregado y todo lo que falta por comprar: «faltan 6» basta junto a la
