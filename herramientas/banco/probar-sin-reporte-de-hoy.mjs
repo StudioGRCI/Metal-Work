@@ -8,13 +8,14 @@
  *   1. Arma en el banco unidades con etapas: de Maestranza, una vencida y
  *      sin reporte, una ya reportada hoy, una que empieza en tres días, una
  *      con solo la fecha comprometida (vencida, sin «Empezó») y una que
- *      empieza hoy, sin reporte, que se reporta a media prueba; y una de
- *      Acabados en marcha.
+ *      empieza hoy, sin reporte, que se reporta a media prueba, y una en
+ *      marcha cuya única OT está pausada; y una de Acabados en marcha.
  *   2. sup.mtz ve en la bandeja la vencida, la de solo fecha comprometida y la
  *      que empieza hoy, la más atrasada arriba, con el plazo del tablero de
  *      tiempos de entrega en días hábiles (el que da la base); no la
- *      reportada, ni la que no empieza, ni la de Acabados. El código lleva a
- *      su tarjeta.
+ *      reportada, ni la que no empieza, ni la pausada (DKS, 2026-11-26), ni la
+ *      de Acabados. El código lleva a su tarjeta, y la tarjeta (también la de
+ *      la pausada) dice el plazo del tablero.
  *   3. «Subir el reporte» abre /reportes-diarios/nuevo con el código puesto.
  *   4. Reportada la quinta, sale de la bandeja; con búsqueda o en otra pestaña
  *      la bandeja no está.
@@ -267,9 +268,10 @@ for (const ancho of [390, 1440]) {
   const vencida = pagina.locator('[data-codigo-sin-reporte="QA-ETAPA-VENCIDA"]')
   const plazo = (await vencida.textContent()) ?? ''
   comprobar(plazo.includes(plazoDe('QA-ETAPA-VENCIDA')), `${ancho}: la vencida dice el plazo del tablero: «${plazoDe('QA-ETAPA-VENCIDA')}»`)
-  for (const c of ['QA-ETAPA-VENCIDA', 'QA-ETAPA-SOLOFIN', 'QA-ETAPA-LUEGO']) {
+  // La pausada no pide reporte, pero su tarjeta sigue con el plazo del tablero.
+  for (const c of ['QA-ETAPA-VENCIDA', 'QA-ETAPA-SOLOFIN', 'QA-ETAPA-LUEGO', 'QA-ETAPA-PAUSADA']) {
     const enLaTarjeta = (await pagina.locator(`[data-etapa="${de(c).etapa}"]`).first().textContent()) ?? ''
-    comprobar(enLaTarjeta.includes(plazoDe(c)), `${ancho}: la tarjeta de ${c} dice el mismo plazo que la bandeja: «${plazoDe(c)}»`)
+    comprobar(enLaTarjeta.includes(plazoDe(c)), `${ancho}: la tarjeta de ${c} dice el plazo del tablero: «${plazoDe(c)}» (dice «${enLaTarjeta.replace(/\s+/g, ' ').slice(0, 160)}»)`)
   }
   comprobar(plazo.includes(`Etapa: ${de('QA-ETAPA-VENCIDA').etapa}`) && !plazo.includes('sin marcar'), `${ancho}: dice qué etapa está en marcha`)
   comprobar((await vencida.locator('a[href="/planos?q=QA-ETAPA-VENCIDA"]').count()) === 1, `${ancho}: el código lleva a su tarjeta, con las fechas de sus etapas`)
