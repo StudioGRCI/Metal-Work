@@ -186,7 +186,8 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
           titulo="Cuentas de Tesorería"
           // Lo que cambia, a la vista; que una cuenta no se borra sino que se desactiva lo dice su ventana.
           // Un banco sin la captura de su saldo pide atención: la sección se abre sola y muestra su aviso.
-          abierta={bancosSinCaptura > 0}
+          // Solo a quien la puede adjuntar: a Gerencia, que consulta, no le pide nada.
+          abierta={lleva && bancosSinCaptura > 0}
           descripcion={[
             cuantas(caja.cuentas.filter((c) => c.activa).length, 'activa', 'activas'),
             cuantas(caja.cuentas.filter((c) => !c.activa).length, 'desactivada', 'desactivadas'),
@@ -218,7 +219,7 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
                     </a>
                   ) : c.tipo === 'BANCO' ? (
                     <span className="block text-xs text-aviso" data-sin-captura={c.nombre}>
-                      {lleva ? 'Sin la captura del saldo: adjúntala con «Corregir».' : 'Sin la captura del saldo.'}
+                      {lleva ? 'Sin la captura del saldo: adjúntala con «Corregir».' : 'Sin la captura del saldo: la adjunta Tesorería.'}
                     </span>
                   ) : null}
                 </span>
@@ -442,7 +443,7 @@ function BloqueDeCuenta({ cuenta: c, dia, hoy, movimientos, reabiertos, abiertas
           </TablaCabecera>
           <tbody>
             {movimientos.map((mov) => (
-              <FilaDeMovimiento key={mov.id} movimiento={mov} moneda={m} cuenta={c.nombre} abierta={abierta} />
+              <FilaDeMovimiento key={mov.id} movimiento={mov} moneda={m} cuenta={c.nombre} abierta={abierta} lleva={lleva} />
             ))}
             <tr className="hidden border-t border-borde bg-superficie-2 font-semibold sm:table-row">
               <td colSpan={3} className="px-3 py-2 text-right text-xs text-texto-suave uppercase">
@@ -515,11 +516,13 @@ function BloqueDeCuenta({ cuenta: c, dia, hoy, movimientos, reabiertos, abiertas
   )
 }
 
-function FilaDeMovimiento({ movimiento: mov, moneda: m, cuenta, abierta }: {
+function FilaDeMovimiento({ movimiento: mov, moneda: m, cuenta, abierta, lleva }: {
   movimiento: MovimientoDelDia
   moneda: 'PEN' | 'USD'
   cuenta: string
   abierta: boolean
+  /** Quien solo consulta (Gerencia) no anula: se le dice de dónde viene. */
+  lleva: boolean
 }) {
   const anulado = !!mov.anulado_en
   const transferencia = mov.origen === 'TRANSFERENCIA'
@@ -545,7 +548,7 @@ function FilaDeMovimiento({ movimiento: mov, moneda: m, cuenta, abierta }: {
               PANTALLA_DEL_ORIGEN[mov.origen] && (
                 // En su propio renglón: con 44 px para tocarlo, metido en la frase la partía en renglones altos.
                 <span className="flex min-h-11 items-center sm:block sm:min-h-0">
-                  Se anula en:&nbsp;
+                  {lleva ? 'Se anula en:' : 'Viene de:'}&nbsp;
                   <Link
                     href={mov.planilla_id ? `/planilla-diaria/${mov.planilla_id}` : PANTALLA_DEL_ORIGEN[mov.origen].ruta}
                     className="text-acento underline underline-offset-2"

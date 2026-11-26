@@ -188,6 +188,13 @@ export async function ListaDeCodigosDeDiseno({
                       <ListaDxf archivos={archivosDe(c.codigo)} />
                     </div>
                   )}
+                  {/* La ficha de Diseño no es suya: lo del código lo consulta en Seguimiento. */}
+                  <Link
+                    href={enlaceSeguimientoCodigo(c.codigo)}
+                    className="mt-2 inline-flex min-h-11 items-center text-sm font-medium text-acento hover:underline sm:min-h-0"
+                  >
+                    Ver el seguimiento de {c.codigo}
+                  </Link>
                 </div>
               ) : (
               <Link

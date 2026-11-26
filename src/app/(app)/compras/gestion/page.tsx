@@ -72,7 +72,11 @@ export default async function PaginaGestionCompras() {
               <SinDatos
                 enTabla={false}
                 titulo="Nada por programar"
-                descripcion="Cuando Gerencia apruebe una orden de compra que va con el conductor, aparece aquí para ponerle su peso y su lugar en la lista."
+                descripcion={
+                  quien.programa || conduce
+                    ? 'Cuando Gerencia apruebe una orden de compra que va con el conductor, aparece aquí para ponerle su peso y su lugar en la lista.'
+                    : 'Cuando apruebes una orden de compra que va con el conductor, aparece aquí hasta que Logística le ponga su peso y su lugar en la lista.'
+                }
               />
             </Tarjeta>
           ) : (

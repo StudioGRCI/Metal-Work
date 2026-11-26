@@ -8,7 +8,7 @@ import { Tarjeta } from '@/components/ui/tarjeta'
 import { metradoDeRequerimientos, requerimientosPorAutorizar, type MetradoDelInsumo } from '@/lib/datos/metrado-rq'
 import { cargarRequerimientos, type RequerimientoListado } from '@/lib/datos/requerimientos'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
-import { enlaceDisenoCodigo } from '@/lib/dominio/diseno-codigos'
+import { enlaceDisenoCodigo, enlaceSeguimientoCodigo } from '@/lib/dominio/diseno-codigos'
 import { cuentaDelMetrado, ESTADO_METRADO } from '@/lib/dominio/metrado-rq'
 import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -35,6 +35,8 @@ export default async function PaginaPorAutorizar({ searchParams }: PageProps<'/r
   const q = typeof params.codigo === 'string' ? params.codigo.trim().slice(0, 80) : ''
   const palabras = palabrasDeBusqueda(q)
   const cargaMetrado = puede(perfil, 'diseno.codigos')
+  // Quien consulta (Gerencia) ve el metrado en Seguimiento por código, sin ampliarlo.
+  const veMetrado = puede(perfil, 'codigos_internos.seguimiento')
   // Los 300 abiertos más recientes, y además los que esperan el visto aunque sean
   // más antiguos: el globo los cuenta todos, y la bandeja no puede dejar uno fuera.
   const [recientes, esperan] = await Promise.all([cargarRequerimientos({ soloAbiertos: true }), requerimientosPorAutorizar()])
@@ -106,7 +108,7 @@ export default async function PaginaPorAutorizar({ searchParams }: PageProps<'/r
           ) : (
             porAutorizar.map((r) => (
               <Tarjeta key={r.id} className="overflow-hidden" data-rq={r.numero}>
-                <CabeceraDelRq rq={r} cargaMetrado={cargaMetrado} />
+                <CabeceraDelRq rq={r} cargaMetrado={cargaMetrado} veMetrado={veMetrado} />
                 <OtrosQueFrenan rq={r} items={de(r, ['SIN_SUSTENTO', 'RECHAZADO']).map((l) => l.item)} autoriza={autoriza} />
                 {(() => {
                   const insumos = de(r, ['POR_AUTORIZAR']).map((l) => {
@@ -141,7 +143,7 @@ export default async function PaginaPorAutorizar({ searchParams }: PageProps<'/r
           </div>
           {sinSustento.map((r) => (
             <Tarjeta key={r.id} className="overflow-hidden" data-rq={r.numero}>
-              <CabeceraDelRq rq={r} cargaMetrado={cargaMetrado} />
+              <CabeceraDelRq rq={r} cargaMetrado={cargaMetrado} veMetrado={veMetrado} />
               <ul className="divide-y divide-borde border-t border-borde">
                 {de(r, ['SIN_SUSTENTO', 'RECHAZADO']).map((l) => {
                   const m = metrado.get(l.id)!
@@ -208,7 +210,7 @@ function InsumosEnConsulta({ insumos }: { insumos: InsumoPorAutorizar[] }) {
 }
 
 /** Qué RQ es, de qué área y unidad, y para qué; con el enlace al metrado del código. */
-function CabeceraDelRq({ rq, cargaMetrado }: { rq: RequerimientoListado; cargaMetrado: boolean }) {
+function CabeceraDelRq({ rq, cargaMetrado, veMetrado }: { rq: RequerimientoListado; cargaMetrado: boolean; veMetrado: boolean }) {
   return (
     <div className="space-y-1 px-4 pt-4 pb-3">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -227,6 +229,14 @@ function CabeceraDelRq({ rq, cargaMetrado }: { rq: RequerimientoListado; cargaMe
           className="inline-flex min-h-11 items-center text-sm font-medium text-acento hover:underline sm:min-h-0"
         >
           Ver o ampliar el metrado de {rq.codigo_interno}
+        </Link>
+      )}
+      {!cargaMetrado && veMetrado && (
+        <Link
+          href={enlaceSeguimientoCodigo(rq.codigo_interno, 'materiales')}
+          className="inline-flex min-h-11 items-center text-sm font-medium text-acento hover:underline sm:min-h-0"
+        >
+          Ver el metrado de {rq.codigo_interno}
         </Link>
       )}
     </div>

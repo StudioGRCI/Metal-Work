@@ -34,6 +34,14 @@ export default async function PaginaTipoDeCambio() {
     <>
       <EncabezadoPagina
         titulo="Tipo de cambio"
+        // Quien consulta no tiene el formulario: el cambio de hoy, o que falta, va arriba.
+        descripcion={
+          registra
+            ? undefined
+            : deHoy
+              ? `Hoy: compra ${numero(deHoy.compra, 3)} · venta ${numero(deHoy.venta, 3)}.`
+              : 'Falta el cambio de hoy: lo registran Contabilidad o Administración.'
+        }
         ayuda="El cambio del dólar de cada día, que registran Contabilidad o Administración. El costo de cada OT pasa a soles lo comprado en dólares con el cambio de su fecha, y la caja diaria de Tesorería suma con él sus cuentas en dólares."
       />
 
@@ -52,20 +60,14 @@ export default async function PaginaTipoDeCambio() {
           <FormularioTipoDeCambio hoy={hoy} />
         </TarjetaCuerpo>
       </Tarjeta>
-      ) : (
-        <p role="status" className="mb-5 text-sm text-texto-suave">
-          {deHoy
-            ? `Hoy: compra ${numero(deHoy.compra, 3)} · venta ${numero(deHoy.venta, 3)}.`
-            : 'Todavía no se registró el cambio de hoy: lo registran Contabilidad o Administración.'}
-        </p>
-      )}
+      ) : null}
 
       <Tarjeta>
         <TarjetaCabecera titulo="Últimos 60 días" />
         {cambios.length === 0 ? (
           <TarjetaCuerpo>
             <p className="text-sm text-texto-suave">
-              {registra ? 'Todavía no hay ningún cambio registrado. Registra el de hoy con el formulario de arriba.' : 'Todavía no hay ningún cambio registrado.'}
+              {registra ? 'Todavía no hay ningún cambio registrado. Registra el de hoy con el formulario de arriba.' : 'Todavía no hay ningún cambio registrado. Lo registran Contabilidad o Administración.'}
             </p>
           </TarjetaCuerpo>
         ) : (
