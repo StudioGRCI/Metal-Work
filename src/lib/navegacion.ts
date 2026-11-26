@@ -56,6 +56,13 @@ import {
   Wrench,
 } from 'lucide-react'
 
+/**
+ * Quién entra a «Por decidir» (plan 12): la Gerencia General, que revisa las
+ * cotizaciones y cierra el costeo de los códigos. El menú y la puerta de la
+ * pantalla piden lo mismo; los grupos de adentro, cada uno el suyo.
+ */
+export const PERMISOS_POR_DECIDIR = ['cotizaciones.revisar', 'codigos_internos.cerrar']
+
 export type ItemNavegacion = {
   titulo: string
   ruta: string
@@ -144,7 +151,7 @@ export const NAVEGACION = [
         titulo: 'Por decidir',
         ruta: '/por-decidir',
         icono: Inbox,
-        permiso: ['cotizaciones.revisar', 'codigos_internos.cerrar'],
+        permiso: PERMISOS_POR_DECIDIR,
         descripcion: 'Lo que espera tu decisión en cada pantalla, lo más antiguo primero',
         disponible: true,
       },
@@ -1226,7 +1233,6 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/recojos', corto: 'Recojos' },
   { ruta: '/compras/ordenes', corto: 'OC' },
   { ruta: '/compras/aprobacion', corto: 'Aprobar' },
-  { ruta: '/por-decidir', corto: 'Decidir' },
   { ruta: '/compras/gestion', corto: 'Gestión' },
   { ruta: '/compras/servicios', corto: 'OS' },
   { ruta: '/requerimientos', corto: 'RQ' },

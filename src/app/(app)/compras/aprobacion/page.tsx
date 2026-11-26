@@ -16,7 +16,7 @@ import {
 import { diasEnEspera } from '@/lib/datos/dias-en-espera'
 import { resumenDetraccion } from '@/lib/dominio/detraccion'
 import { igvCompra } from '@/lib/dominio/compra-materiales'
-import { ORIGEN_COMPRA, situacionCompra } from '@/lib/dominio/logistica'
+import { ORIGEN_COMPRA, destinoDeCompra, situacionCompra } from '@/lib/dominio/logistica'
 import { APROBACION_COMPRA, condicionDePago } from '@/lib/dominio/proveedores'
 import { cantidad, fecha, fechaHora, moneda } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
@@ -123,7 +123,7 @@ export default async function PaginaAprobacionCompras() {
                       <TR key={`${c.tipo}-${c.id}`}>
                         <TD>
                           <NombreDeLaOrden numero={c.sin_numero ? null : c.numero} referencia={c.referencia} proveedor={c.proveedor} />
-                          <p className="text-xs text-texto-suave">{destino(c)}</p>
+                          <p className="text-xs text-texto-suave">{destinoDeCompra(c)}</p>
                           {c.motivo_rechazo && <p className="mt-1 text-xs text-texto-suave">Motivo: {c.motivo_rechazo}</p>}
                         </TD>
                         <TD className="tabular text-right whitespace-nowrap">{moneda(c.monto, divisa(c.moneda))}</TD>
@@ -254,15 +254,6 @@ function NombreDeLaOrden({ numero, referencia, proveedor }: { numero: string | n
   )
 }
 
-/** Para qué es: la OT y su unidad, o el almacén en la compra directa. */
-function destino(c: CompraParaAprobar) {
-  // La que compra insumos de RQ va al código interno de cada uno.
-  if (c.requerimientos.length > 0) return [c.codigos.join(', '), c.requerimientos.join(', ')].filter(Boolean).join(' · ')
-  if (c.origen === 'DIRECTA') return 'Para el almacén'
-  const partes = [c.codigo_interno, c.ordenes.length ? `OT ${c.ordenes.join(', ')}` : null, ...c.unidades].filter(Boolean)
-  return partes.length ? partes.join(' · ') : c.tipo === 'OS' ? 'Sin OT' : 'OT —'
-}
-
 function CompraPorAprobar({ compra: c, aprueba, dias }: { compra: CompraParaAprobar; aprueba: boolean; dias: number | null }) {
   const enDolares = c.moneda === 'USD'
   const deRq = c.requerimientos.length > 0
@@ -318,7 +309,7 @@ function CompraPorAprobar({ compra: c, aprueba, dias }: { compra: CompraParaApro
           </div>
           <div>
             <dt className="text-xs text-texto-suave">Para</dt>
-            <dd className="text-texto">{destino(c)}</dd>
+            <dd className="text-texto">{destinoDeCompra(c)}</dd>
           </div>
         </dl>
         {c.detraccion && <LineaDetraccion detraccion={c.detraccion} />}

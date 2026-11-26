@@ -70,6 +70,8 @@ async function comoCuenta(puesto, sql, valores = []) {
 
 // ------------------------------------------------ armazón
 const CODIGO = 'MW-PD-001'
+/** La unidad de la demo que presta su acta al código: al terminar vuelve a su código de antes. */
+let unidadPrestada = null
 {
   const ventas = await idDe('ventas')
   const logistica = await idDe('logistica')
@@ -109,9 +111,9 @@ const CODIGO = 'MW-PD-001'
     )
     await base.query(
       `insert into public.proveedores (tipo_documento, numero_documento, razon_social, condicion_pago, dias_credito)
-       values ('RUC', '20100047218', 'SERVICIOS PD SAC', 'CONTADO', 0) on conflict (tipo_documento, numero_documento) do nothing`,
+       values ('RUC', '20999000470', 'SERVICIOS PD SAC', 'CONTADO', 0) on conflict (tipo_documento, numero_documento) do nothing`,
     )
-    const [proveedor] = await consulta(`select id, razon_social from public.proveedores where numero_documento = '20100047218'`)
+    const [proveedor] = await consulta(`select id, razon_social from public.proveedores where numero_documento = '20999000470'`)
     const gerencia = await idDe('gerencia')
     {
       // Una OS ya aprobada con el código: le da costo, sin costo no hay qué cerrar.
@@ -153,7 +155,13 @@ const CODIGO = 'MW-PD-001'
       [flota.id, prd.id, supPrd],
     )
     // El código: la unidad de la OT entregada lleva el código y su acta (la de la demo, o una de hace 8 días).
-    const [ot] = await consulta(`select id, unidad_id from public.ordenes_trabajo where estado = 'ENTREGADA' order by numero limit 1`)
+    const [ot] = await consulta(
+      `select o.id, o.unidad_id, u.codigo_interno from public.ordenes_trabajo o join public.unidades u on u.id = o.unidad_id
+        where o.estado = 'ENTREGADA' order by o.numero limit 1`,
+    )
+    // El código de la unidad se devuelve al terminar: el banco lo comparten otras pruebas. Si ya
+    // llevaba el de la prueba, es de una corrida anterior: la demo la deja sin código.
+    unidadPrestada = { id: ot.unidad_id, codigo: ot.codigo_interno === CODIGO ? null : ot.codigo_interno }
     await base.query('update public.unidades set codigo_interno = $1 where id = $2', [CODIGO, ot.unidad_id])
     await base.query(
       `insert into public.ot_entregas (numero, orden_id, fecha_entrega, recibe_nombre, conforme) values ('PD-ACTA-1', $1, (now() at time zone 'America/Lima')::date - 8, 'Cliente PD', true)
@@ -257,7 +265,9 @@ const grupos = (pagina) =>
   for (const g of leidos) {
     const fechas = g.filas.map((f) => f.desde).filter(Boolean)
     comprobar(fechas.every((x, i) => i === 0 || Date.parse(fechas[i - 1]) <= Date.parse(x)), `Gerencia: ${g.clave}, lo más antiguo primero`)
-    comprobar(g.filas.every((f) => f.dias !== null), `Gerencia: ${g.clave}, cada fila con sus días`)
+    // La factura detenida no espera a Gerencia desde su emisión: va con su fecha, sin días.
+    if (g.clave === 'pagos') comprobar(g.filas.every((f) => f.dias === null), 'Gerencia: pagos, la factura con su fecha de emisión y sin días a nombre de Gerencia')
+    else comprobar(g.filas.every((f) => f.dias !== null), `Gerencia: ${g.clave}, cada fila con sus días`)
   }
   // Los días son los de la base, con su sesión.
   const cot = de('cotizaciones')?.filas.find((f) => f.que.includes('PD-0101-2026'))
@@ -266,6 +276,13 @@ const grupos = (pagina) =>
     comprobar(cot.dias === Number(dias) && cot.dias === 6, `Gerencia: la PD-0101-2026 espera ${cot.dias} días, la base dice ${dias}`)
   }
   comprobar((await pagina.locator('main form, main button[type="submit"]').count()) === 0, 'Gerencia: no hay nada que apruebe desde aquí')
+  // El total de arriba cuenta decisiones: la factura detenida espera a su OC, que ya cuenta.
+  const total = leidos.filter((g) => g.clave !== 'pagos').reduce((n, g) => n + g.cantidad, 0)
+  const descripcion = await pagina.locator('main').textContent()
+  comprobar(new RegExp(`${total} decisiones te esperan`).test(descripcion ?? ''), `Gerencia: arriba dice ${total} decisiones, sin contar la factura detenida`)
+  comprobar(/1 factura espera una de esas compras/.test(descripcion ?? ''), 'Gerencia: la factura detenida se dice aparte')
+  const listaReportes = await pagina.locator('[data-grupo-por-decidir="reportes"] a', { hasText: 'Ver la lista' }).getAttribute('href')
+  comprobar(/estado=falta-gerencia/.test(listaReportes ?? '') && /mes=\d{4}-\d{2}/.test(listaReportes ?? ''), `Gerencia: la lista de reportes abre lo que falta de Gerencia en el mes del más antiguo (${listaReportes})`)
   // El menú: primera en «Por aprobar».
   const primera = await pagina.locator('nav a[href="/por-decidir"]').first()
   comprobar((await primera.count()) === 1, 'Gerencia: «Por decidir» está en su menú')
@@ -277,7 +294,45 @@ const grupos = (pagina) =>
     const destino = compra.href.split('#')[1]
     comprobar((await pagina.locator(`[id="${destino}"]`).count()) === 1, 'Gerencia: el enlace de la OC cae en su tarjeta de Aprobación de compras')
   }
+  // El salto del cierre cae en la línea del cierre, con su botón.
+  const cierre = de('cierres')?.filas.find((f) => f.que.includes(CODIGO))
+  if (cierre?.href) {
+    await ir(pagina, cierre.href)
+    comprobar((await pagina.locator('#cierre-del-costeo[data-cierre="abierto"]').count()) === 1, 'Gerencia: el enlace del cierre cae en la línea del cierre, que ofrece cerrarlo')
+  }
   await contexto.close()
+}
+
+// ------------------------------------------------ 2b: el código que la base todavía no deja cerrar
+// Con horas del mes en curso, `cerrar_costeo_codigo` espera a que termine el mes: no es una
+// decisión de Gerencia y no va como fila; la nota del grupo lo cuenta. El tareo se quita al terminar.
+{
+  // Sin trabajadores en el banco, uno inventado: sin disparadores, la llave no se mira.
+  const [trab] = await consulta('select coalesce((select id from public.trabajadores order by creado_en limit 1), gen_random_uuid()) as id')
+  const gerencia = await idDe('gerencia')
+  await base.query('begin')
+  await base.query('set local session_replication_role = replica')
+  const [tareo] = await consulta(
+    `insert into public.tareos (trabajador_id, fecha, codigo_interno, horas, labor, costo_hora, costo, registrado_por)
+     values ($1, (now() at time zone 'America/Lima')::date, $2, 2, 'PD tareo temporal', 10, 20, $3) returning id`,
+    [trab.id, CODIGO, gerencia],
+  )
+  await base.query('commit')
+  try {
+    const { pagina, contexto } = await entrar('gerencia', 1440)
+    await ir(pagina, '/por-decidir')
+    comprobar((await pagina.locator(`[data-por-decidir="${CODIGO}"]`).count()) === 0, `Gerencia: con horas de este mes, ${CODIGO} no sale como «Cerrar el costeo»`)
+    const nota = (await pagina.locator('[data-nota-del-grupo="cierres"]').textContent().catch(() => '')) ?? ''
+    comprobar(/espera algo de otra área/.test(nota), `Gerencia: la nota de Cierre de códigos lo cuenta aparte (${nota.slice(0, 60)}…)`)
+    await ir(pagina, `/codigos-internos/detalle?codigo=${CODIGO}`)
+    comprobar((await pagina.locator('[data-cierre="incompleto"]').count()) === 1, 'y el detalle del código dice lo mismo: todavía no se cierra')
+    await contexto.close()
+  } finally {
+    await base.query('begin')
+    await base.query('set local session_replication_role = replica')
+    await base.query('delete from public.tareos where id = $1', [tareo.id])
+    await base.query('commit')
+  }
 }
 
 // ------------------------------------------------ 4: Gerencia, en el teléfono
@@ -285,17 +340,19 @@ const grupos = (pagina) =>
   const { pagina, contexto } = await entrar('gerencia', 390)
   await ir(pagina, '/por-decidir')
   await sinDesborde(pagina, 'Gerencia en 390')
+  // Lo que espera se ve al entrar: las cifras no empujan la primera fila fuera de la pantalla.
+  const arriba = await pagina.locator('[data-por-decidir]').first().evaluate((f) => f.getBoundingClientRect().top)
+  comprobar(arriba < 844, `Gerencia en 390: la primera fila empieza a ${Math.round(arriba)} px, dentro de la pantalla`)
   await capturar(pagina, 'por-decidir-gerencia-390.png')
   await contexto.close()
 }
 
-// ------------------------------------------------ 3: Gerencia de Producción y Almacén
-{
-  const { pagina, contexto } = await entrar('gerencia.produccion', 1440)
-  await ir(pagina, '/por-decidir')
-  const leidos = await grupos(pagina)
-  const claves = (await pagina.locator('nav[aria-label="Grupos por decidir"] a').evaluateAll((as) => as.length))
-  comprobar(claves === 1 && leidos.every((g) => g.clave === 'reportes'), `Gerencia de Producción: ve solo los reportes diarios (${claves} grupo(s))`)
+// ------------------------------------------------ 3: Gerencia de Producción, Administración y Almacén
+// La pantalla es de la Gerencia General: quien no la tiene en su menú tampoco entra por la dirección.
+for (const puesto of ['gerencia.produccion', 'administracion']) {
+  const { pagina, contexto } = await entrar(puesto, 1440)
+  await pagina.goto(`${BASE}/por-decidir`, { waitUntil: 'networkidle' })
+  comprobar(new URL(pagina.url()).pathname === '/sin-permiso', `${puesto}: no entra (${new URL(pagina.url()).pathname})`)
   await contexto.close()
 }
 {
@@ -306,6 +363,7 @@ const grupos = (pagina) =>
 }
 
 await navegador.close()
+if (unidadPrestada) await base.query('update public.unidades set codigo_interno = $1 where id = $2', [unidadPrestada.codigo, unidadPrestada.id])
 await base.end()
 comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores.join(' | ')}` : ''}`)
 console.log(fallas.length ? `\n${fallas.length} falla(s).` : '\nTodo pasa.')

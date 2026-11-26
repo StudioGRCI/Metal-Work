@@ -47,6 +47,7 @@ import {
   dondeAparece,
   enlaceCodigo,
   faltaElPrecio,
+  faltaParaCerrar,
   montoMixto,
   noEsUnidad,
   normalizarCodigo,
@@ -626,20 +627,7 @@ function LineaCierre({
   const z = c.cierre
   if (!z) {
     if (!cierra) return null
-    const falta = [
-      c.materiales_sin_precio > 0 && `${c.materiales_sin_precio} ${c.materiales_sin_precio === 1 ? 'salida' : 'salidas'} del almacén sin precio`,
-      c.horas_sin_costo > 0 && `${horasCortas(c.horas_sin_costo)} de personal sin costo`,
-      c.lineas_sin_cambio > 0 && `${c.lineas_sin_cambio} ${c.lineas_sin_cambio === 1 ? 'línea' : 'líneas'} en dólares sin tipo de cambio`,
-      // Con cotización, el cierre congela el margen: sin el IGV o el cambio de la venta saldría sin él.
-      c.venta && c.venta.sin_igv > 0 &&
-        `${c.venta.sin_igv === 1 ? 'confirmar si la cotización incluye IGV' : `confirmar si ${c.venta.sin_igv} cotizaciones incluyen IGV`} (Gerencia o Administración en el expediente de la OT, o Ventas al corregir la cotización)`,
-      c.venta && c.venta.sin_cambio > 0 && 'el tipo de cambio del día en que se aprobó la cotización en dólares (lo registran Contabilidad o Administración)',
-      esperaElMes && 'que termine el mes: los gastos del mes y el sueldo de la oficina se reparten por las horas del mes entero',
-      faltaOficina.length > 0 &&
-        `registrar los pagos de la oficina de ${faltaOficina.map((m) => periodo(m)).join(', ')} (RR. HH.: los pagos, o la fecha de ingreso de quien entró después)`,
-      faltaPlanilla.length > 0 &&
-        `cerrar la planilla de taller de ${faltaPlanilla.map((m) => periodo(m)).join(', ')} (RR. HH., en Planillas: al cerrarla entra el ajuste de la mano de obra)`,
-    ].filter(Boolean)
+    const falta = faltaParaCerrar(c, { esperaElMes, faltaOficina, faltaPlanilla })
     if (falta.length > 0) {
       return (
         <div className="space-y-1 rounded-[var(--radius-base)] border border-borde p-3 text-xs text-texto-suave" data-cierre="incompleto">
@@ -661,7 +649,7 @@ function LineaCierre({
     }
     const precio = verPrecio && c.venta?.margen_pct !== null && c.venta?.margen_pct !== undefined
     return (
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-base)] border border-borde p-3 text-xs text-texto-suave" data-cierre="abierto">
+      <div id="cierre-del-costeo" className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-base)] border border-borde p-3 text-xs text-texto-suave" data-cierre="abierto">
         <div className="space-y-1">
           <p>
             {c.entregada_el
