@@ -44,7 +44,7 @@ create table if not exists public.tiempos_entrega_avisos (
   constraint ck_tiempos_entrega_aviso_etapa check ((tipo in ('RESUMEN_SEMANAL', 'REVISION')) = (etapa_id is null))
 );
 comment on table public.tiempos_entrega_avisos is
-  'Cada aviso de tiempos de entrega que salió: de qué etapa, de qué tipo, por qué fecha comprometida y a cuántas cuentas. Y cada revisión diaria que corrió (REVISION), para que el tablero diga cuándo fue la última y no prometa avisos que no salen. Lo escribe solo la revisión diaria. Migración 20261126310000.';
+  'Cada aviso de tiempos de entrega que salió: de qué etapa o subetapa (un aviso por etapa de arriba anota cada una de las que cubre), de qué tipo, por qué fecha comprometida y a cuántas cuentas (en el recordatorio, las del aviso agrupado del día). Y cada revisión diaria que corrió (REVISION), para que el tablero diga cuándo fue la última y no prometa avisos que no salen. Lo escribe solo la revisión diaria. Migración 20261126310000.';
 
 -- Un aviso de cada tipo por etapa y fecha comprometida; un recordatorio por día;
 -- un resumen por semana y una anotación por día de revisión. Así la revisión se puede correr dos veces sin repetir.
@@ -140,6 +140,7 @@ declare
   v_ultimo date;
   v_n integer;
   v_recordar uuid[] := '{}';
+  v_recordar_cubre uuid[] := '{}';
   v_por_vencer integer := 0; v_c_por_vencer integer := 0;
   v_vencidas integer := 0;   v_c_vencidas integer := 0;
   v_record integer := 0;     v_c_record integer := 0;
@@ -173,14 +174,21 @@ begin
          and not exists (select 1 from public.pruebas_filas f where f.tabla = 'codigo_etapas' and f.fila_id = t.id)
     ), peor as (
       -- Por etapa de arriba, la que vence antes entre ella y sus subetapas.
+      -- Y cuáles cubre el aviso: todas las del mismo color que la peor. Lo ya
+      -- avisado se anota por cada una con su fecha, no por la de arriba: si la
+      -- peor se termina, la que queda ya estaba avisada y no vuelve a salir.
       select distinct on (p.raiz) p.*,
-             count(*) over (partition by p.raiz) as cuantas
+             count(*) over (partition by p.raiz) as cuantas,
+             (select array_agg(q.id order by q.id) from pendientes q
+               where q.raiz = p.raiz and q.semaforo = p.semaforo) as cubre,
+             (select array_agg(q.fin_plan order by q.id) from pendientes q
+               where q.raiz = p.raiz and q.semaforo = p.semaforo) as cubre_fin
         from pendientes p
        order by p.raiz, p.fin_plan, p.orden
     )
     select w.raiz as id, w.codigo, r.nombre as etapa, r.orden,
            case when w.id <> w.raiz then w.nombre end as subetapa,
-           w.cuantas, w.area_id, w.area, w.fin_plan, w.semaforo, w.dias_habiles,
+           w.cuantas, w.area_id, w.area, w.fin_plan, w.semaforo, w.dias_habiles, w.cubre, w.cubre_fin,
            coalesce(
              (select tr.apellidos || ', ' || tr.nombres from public.etapa_responsables er
                 join public.trabajadores tr on tr.id = er.trabajador_id and tr.activo
@@ -199,8 +207,10 @@ begin
               else '' end;
 
     if e.semaforo = 'AMBAR' then
-      continue when exists (select 1 from public.tiempos_entrega_avisos a
-                             where a.etapa_id = e.id and a.tipo = 'POR_VENCER' and a.fin_plan = e.fin_plan);
+      -- Ya avisada si cada una de las que cubre ya se avisó con su fecha.
+      continue when not exists (select 1 from unnest(e.cubre, e.cubre_fin) c(id, fin)
+                                 where not exists (select 1 from public.tiempos_entrega_avisos a
+                                                    where a.etapa_id = c.id and a.tipo = 'POR_VENCER' and a.fin_plan = c.fin));
       v_cuando := case when e.fin_plan = v_hoy then 'Vence hoy'
                        when e.fin_plan = v_hoy + 1 then 'Vence mañana'
                        else 'Vence el ' || to_char(e.fin_plan, 'DD/MM/YYYY') || ', en ' || e.dias_habiles
@@ -210,29 +220,35 @@ begin
                v_cuando || coalesce(' (' || e.area || ')', '') || '. ' || v_quien,
                'codigo_etapas', e.id, false);
       insert into public.tiempos_entrega_avisos (etapa_id, tipo, fin_plan, fecha, avisados)
-      values (e.id, 'POR_VENCER', e.fin_plan, v_hoy, v_n);
+      select c.id, 'POR_VENCER', c.fin, v_hoy, v_n from unnest(e.cubre, e.cubre_fin) c(id, fin)
+      on conflict do nothing;
       v_por_vencer := v_por_vencer + 1; v_c_por_vencer := v_c_por_vencer + v_n;
 
-    elsif not exists (select 1 from public.tiempos_entrega_avisos a
-                       where a.etapa_id = e.id and a.tipo = 'VENCIDA' and a.fin_plan = e.fin_plan) then
-      -- Recién vencida: también a Gerencia.
+    elsif exists (select 1 from unnest(e.cubre, e.cubre_fin) c(id, fin)
+                   where not exists (select 1 from public.tiempos_entrega_avisos a
+                                      where a.etapa_id = c.id and a.tipo = 'VENCIDA' and a.fin_plan = c.fin)) then
+      -- Recién vencida (ella o una subetapa que no se había avisado): también a Gerencia.
       v_n := public.avisar_tiempos_de_entrega(e.area_id, e.codigo,
                'Vencida: ' || e.codigo || ' · ' || e.etapa,
                'Venció el ' || to_char(e.fin_plan, 'DD/MM/YYYY') || coalesce(' (' || e.area || ')', '') || '. ' || v_quien,
                'codigo_etapas', e.id, true);
       insert into public.tiempos_entrega_avisos (etapa_id, tipo, fin_plan, fecha, avisados)
-      values (e.id, 'VENCIDA', e.fin_plan, v_hoy, v_n);
+      select c.id, 'VENCIDA', c.fin, v_hoy, v_n from unnest(e.cubre, e.cubre_fin) c(id, fin)
+      on conflict do nothing;
       v_vencidas := v_vencidas + 1; v_c_vencidas := v_c_vencidas + v_n;
 
     else
       -- Sigue vencida: toca recordarla cada 2 días hábiles desde el último aviso.
-      select max(a.fecha) into v_ultimo from public.tiempos_entrega_avisos a
-       where a.etapa_id = e.id and a.fin_plan = e.fin_plan and a.tipo in ('VENCIDA', 'RECORDATORIO');
+      select max(a.fecha) into v_ultimo
+        from public.tiempos_entrega_avisos a
+        join unnest(e.cubre, e.cubre_fin) c(id, fin) on c.id = a.etapa_id and c.fin = a.fin_plan
+       where a.tipo in ('VENCIDA', 'RECORDATORIO');
       continue when public.sumar_dias_habiles(v_ultimo, 2) > v_hoy;
       insert into public.tiempos_entrega_avisos (etapa_id, tipo, fin_plan, fecha, avisados)
-      values (e.id, 'RECORDATORIO', e.fin_plan, v_hoy, 0)
+      select c.id, 'RECORDATORIO', c.fin, v_hoy, 0 from unnest(e.cubre, e.cubre_fin) c(id, fin)
       on conflict do nothing;
       v_recordar := v_recordar || e.id;
+      v_recordar_cubre := v_recordar_cubre || e.cubre;
     end if;
   end loop;
 
@@ -274,7 +290,7 @@ begin
     get diagnostics v_c_record = row_count;
     v_record := cardinality(v_recordar);
     update public.tiempos_entrega_avisos a set avisados = v_c_record
-     where a.tipo = 'RECORDATORIO' and a.fecha = v_hoy and a.etapa_id = any (v_recordar);
+     where a.tipo = 'RECORDATORIO' and a.fecha = v_hoy and a.etapa_id = any (v_recordar_cubre);
   end if;
 
   -- El resumen de la semana, a Gerencia (quien consulta los tiempos sin
@@ -290,6 +306,7 @@ begin
       from public.tiempos_de_entrega_etapas_calculado(null) t
       join public.tiempos_de_entrega_codigos_calculado(null) c on c.codigo = t.codigo
      where t.fin_real is null and t.padre_id is null
+       and not exists (select 1 from public.pruebas_filas f where f.tabla = 'codigo_etapas' and f.fila_id = t.id)
        and not exists (select 1 from public.etapa_responsables r
                          join public.trabajadores tr on tr.id = r.trabajador_id and tr.activo
                         where r.etapa_id = t.id and r.quitado_en is null);

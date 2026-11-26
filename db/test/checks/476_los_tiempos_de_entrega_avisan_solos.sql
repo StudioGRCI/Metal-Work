@@ -168,6 +168,37 @@ select test.afirmar(
     where r.tipo = 'VENCIDA'),
   'con la fecha cambiada, la vencida avisa de nuevo');
 
+-- Una etapa con dos subetapas vencidas avisa una vez; si la peor se termina, la
+-- otra ya estaba avisada y no vuelve a salir «Vencida» (ni a Gerencia).
+do $$ begin
+  insert into public.codigo_etapas (id, codigo_interno, orden, nombre, area_id, fin_plan, creado_por) values
+    ('47600000-0000-4000-8000-0000000000f0', 'CHK476_S', 1, 'Arriba', (select id from public.areas where codigo = 'PRD'),
+     public.sumar_dias_habiles(current_date, 10), current_setting('prueba.diseno_dis')::uuid),
+    -- Y una que vence mañana, para que el aviso lo diga así.
+    ('47600000-0000-4000-8000-0000000000f3', 'CHK476_S', 2, 'Mañana', (select id from public.areas where codigo = 'PRD'),
+     current_setting('prueba.hoy')::date + 1, current_setting('prueba.diseno_dis')::uuid);
+  insert into public.codigo_etapas (id, codigo_interno, orden, nombre, area_id, fin_plan, inicio_real, padre_id, de_area, creado_por) values
+    ('47600000-0000-4000-8000-0000000000f1', 'CHK476_S', 3, 'Sub1', (select id from public.areas where codigo = 'PRD'),
+     current_date - 4, current_date - 6, '47600000-0000-4000-8000-0000000000f0', true, current_setting('prueba.diseno_dis')::uuid),
+    ('47600000-0000-4000-8000-0000000000f2', 'CHK476_S', 4, 'Sub2', (select id from public.areas where codigo = 'PRD'),
+     current_date - 2, current_date - 6, '47600000-0000-4000-8000-0000000000f0', true, current_setting('prueba.diseno_dis')::uuid);
+end $$;
+select test.afirmar(
+  (select string_agg(r.tipo || '=' || r.avisos, ',' order by r.tipo)
+     from public.revisar_tiempos_de_entrega(current_setting('prueba.hoy')::date) r
+    where r.tipo in ('POR_VENCER', 'VENCIDA')) = 'POR_VENCER=1,VENCIDA=1',
+  'las dos subetapas vencidas de una etapa son un aviso, y la que vence mañana otro');
+select test.afirmar(
+  exists (select 1 from public.notificaciones n where n.titulo = 'Vencida: CHK476_S · Arriba' and n.cuerpo like '%Por la subetapa «Sub1» y 1 más.%')
+  and exists (select 1 from public.notificaciones n where n.titulo = 'Por vencer: CHK476_S · Mañana' and n.cuerpo like 'Vence mañana%'),
+  'el aviso nombra la peor subetapa, y el de mañana dice «Vence mañana»');
+update public.codigo_etapas set fin_real = current_date - 1 where id = '47600000-0000-4000-8000-0000000000f1';
+select test.afirmar(
+  (select r.avisos = 0 from public.revisar_tiempos_de_entrega(current_setting('prueba.hoy')::date) r where r.tipo = 'VENCIDA')
+  and (select count(*) = 1 from public.notificaciones n where n.titulo = 'Vencida: CHK476_S · Arriba'
+          and n.usuario_id = current_setting('prueba.gerente_gge')::uuid),
+  'terminada la peor subetapa, la otra ya estaba avisada: no sale otra «Vencida»');
+
 -- ============================================ 4. El lunes, el resumen a Gerencia
 select test.afirmar(
   (select r.avisos = 1 from public.revisar_tiempos_de_entrega(
@@ -182,6 +213,21 @@ select test.afirmar(
   and not exists (select 1 from public.notificaciones n where n.titulo like 'Resumen%'
       and n.usuario_id in (current_setting('prueba.recursos_humanos_rrh')::uuid, current_setting('prueba.supervisor_prd')::uuid)),
   'el resumen le llega a Gerencia, con las etapas sin nadie a cargo, y no a RR. HH. ni al supervisor');
+
+-- Si el lunes es feriado, el resumen sale el martes, y el miércoles ya no.
+do $$
+declare v_lunes date := (select min(d)::date from generate_series((current_date + 22)::timestamp, current_date + 40, interval '1 day') d
+                          where extract(isodow from d::date) = 1);
+begin
+  perform set_config('prueba.lunes_feriado', v_lunes::text, true);
+  delete from public.feriados where fecha = v_lunes;
+  insert into public.feriados (fecha, nombre, laborable) values (v_lunes, 'Feriado del check 476', false);
+end $$;
+select test.afirmar(
+  not exists (select 1 from public.revisar_tiempos_de_entrega(current_setting('prueba.lunes_feriado')::date) r where r.tipo = 'RESUMEN_SEMANAL')
+  and (select r.avisos = 1 from public.revisar_tiempos_de_entrega(current_setting('prueba.lunes_feriado')::date + 1) r where r.tipo = 'RESUMEN_SEMANAL')
+  and (select r.avisos = 0 from public.revisar_tiempos_de_entrega(current_setting('prueba.lunes_feriado')::date + 2) r where r.tipo = 'RESUMEN_SEMANAL'),
+  'con el lunes feriado, el resumen sale el martes y una sola vez');
 
 -- ============================================ 5. El día no laborable no corre
 select test.afirmar(

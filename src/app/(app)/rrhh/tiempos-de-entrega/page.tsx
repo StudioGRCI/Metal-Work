@@ -37,8 +37,9 @@ export default async function PaginaTiemposDeEntrega({ searchParams }: PageProps
 
   const [todos, revision] = await Promise.all([codigosConTiempos(), ultimaRevisionDeAvisos()])
   const hoy = hoyLima()
-  // Corre de lunes a sábado: más de 3 días sin correr es que se cayó.
-  const revisionAtrasada = !revision || sumarDias(revision.fecha, 3) < hoy
+  // Corre y se anota todos los días a las 7:00 a. m., también el feriado (que no
+  // avisa): si ayer no corrió, se cayó. Antes de las 7:00 la última es la de ayer.
+  const revisionAtrasada = !revision || sumarDias(revision.fecha, 1) < hoy
 
   const llave = llaveParecido(q)
   const palabras = palabrasDeBusqueda(q)
