@@ -40,8 +40,13 @@ export type PendientesGlobales = {
   cuentas: number
 }
 
-/** Lo que vale lo que espera, en cada moneda, para las cuentas que son dinero. */
-export type MontoPendiente = { PEN: number; USD: number }
+/**
+ * Lo que vale lo que espera, en cada moneda, para las cuentas que son dinero,
+ * y cómo se dice junto al monto: «sin IGV» (compras), «con IGV» (lo por
+ * facturar), lo que falta saber, o nada (la planilla, que no lleva IGV). Cada
+ * cuenta lo dice: la tarjeta que lo muestra no lo adivina.
+ */
+export type MontoPendiente = { PEN: number; USD: number; rotulo?: string }
 
 export type TareaPendiente = { clave: string; ruta: string; tono: Tono; cantidad: number; texto: string; monto?: MontoPendiente }
 
@@ -567,9 +572,14 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
         const sinFactura = (bandeja.data ?? []).filter((c) => c.codigo_interno && (c.facturas ?? 0) === 0)
         // La bandeja trae las 300 más nuevas: si no están todas, un monto corto mentiría; va solo la cuenta.
         if (sinFactura.length !== cantidad) return cantidad
+        // Como lo dice Facturación: «con IGV», o que falta confirmarlo si alguna no lo tiene.
+        const sinConfirmar = sinFactura.some((c) => c.incluye_igv === null)
         return {
           cantidad,
-          monto: enMonedas(sinFactura, (c) => c.moneda, (c) => totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv) ?? 0),
+          monto: {
+            ...enMonedas(sinFactura, (c) => c.moneda, (c) => totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv) ?? 0),
+            rotulo: sinConfirmar ? 'falta confirmar si incluye IGV' : 'con IGV',
+          },
         }
       },
     })
@@ -672,7 +682,7 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       // En soles al cambio de su fecha, como la pantalla; sin cambio, en su moneda.
       return {
         cantidad: espera.length,
-        monto: enMonedas(espera, (d) => (d.monto_pen === null ? d.moneda : 'PEN'), (d) => Number(d.monto_pen ?? d.monto ?? 0)),
+        monto: { ...enMonedas(espera, (d) => (d.monto_pen === null ? d.moneda : 'PEN'), (d) => Number(d.monto_pen ?? d.monto ?? 0)), rotulo: 'sin IGV' },
       }
     },
   })
@@ -681,13 +691,15 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
   // uno se le cuentan los que esperan el suyo, de cualquier mes. El enlace abre
   // el mes del más antiguo, que es el primero que hay que validar.
   for (const lado of [
-    { permiso: 'reporte_diario.validar_gerencia', columna: 'visto_gerencia_en' },
-    { permiso: 'reporte_diario.validar_rrhh', columna: 'visto_rrhh_en' },
+    // Gerencia va a «Falta Gerencia»: «Por validar» trae también los que ya
+    // tienen su visto y esperan a RR. HH. RR. HH. no tiene filtro propio.
+    { permiso: 'reporte_diario.validar_gerencia', columna: 'visto_gerencia_en', estado: 'falta-gerencia' },
+    { permiso: 'reporte_diario.validar_rrhh', columna: 'visto_rrhh_en', estado: 'por-validar' },
   ] as const) {
     if (!puede(perfil, lado.permiso) || perfil.rol.codigo === 'ADMIN') continue
     tareas.push({
       clave: `reportes_${lado.columna}`,
-      ruta: '/reportes-diarios?estado=por-validar',
+      ruta: `/reportes-diarios?estado=${lado.estado}`,
       tono: 'aviso',
       texto: n => plural(n, 'reporte diario espera tu visto', 'reportes diarios esperan tu visto'),
       contar: async () => {
@@ -701,7 +713,7 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
           .limit(500)
         if (error) throw new Error('No se pudo consultar el pendiente.')
         const primero = data?.[0]?.fecha
-        return { cantidad: data?.length ?? 0, ruta: primero ? `/reportes-diarios?mes=${primero.slice(0, 7)}&estado=por-validar` : undefined }
+        return { cantidad: data?.length ?? 0, ruta: primero ? `/reportes-diarios?mes=${primero.slice(0, 7)}&estado=${lado.estado}` : undefined }
       },
     })
   }
@@ -826,7 +838,9 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
   if (puede(perfil, 'reporte_diario.registrar') && perfil.area_id && perfil.rol.codigo !== 'ADMIN') {
     const area = perfil.area_id
     tareas.push({
-      clave: 'rq_por_recoger', ruta: '/requerimientos', tono: 'acento',
+      // A la lista con solo lo que tiene algo para recoger: sin filtro abría
+      // todos los RQ del área y el que estaba listo había que buscarlo.
+      clave: 'rq_por_recoger', ruta: '/requerimientos?ver=recoger', tono: 'acento',
       texto: n => plural(n, 'requerimiento de tu área listo para recoger en almacén', 'requerimientos de tu área listos para recoger en almacén'),
       contar: async () => (await rqAbiertos()).filter((r) => r.estado === 'LISTO_EN_ALMACEN' && r.area_id === area).length,
     })

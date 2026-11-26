@@ -152,7 +152,7 @@ function loQueEspera(titulo: string, claves: string[], ruta: string, icono: Luci
       // Cada cuenta con lo que vale al lado; la que no es dinero, solo su texto.
       const textos = mias.map((t) =>
         !opciones.enSoles && t.monto && (t.monto.PEN > 0 || t.monto.USD > 0)
-          ? `${t.texto} (${[t.monto.PEN > 0 ? moneda(t.monto.PEN) : null, t.monto.USD > 0 ? moneda(t.monto.USD, 'USD') : null].filter(Boolean).join(' y ')} sin IGV)`
+          ? `${t.texto} (${[t.monto.PEN > 0 ? moneda(t.monto.PEN) : null, t.monto.USD > 0 ? moneda(t.monto.USD, 'USD') : null].filter(Boolean).join(' y ')}${t.monto.rotulo ? ` ${t.monto.rotulo}` : ''})`
           : t.texto,
       )
       const pie = [sinLeer ? 'una cuenta no se pudo leer' : null, ...(mias.length > 0 ? textos : sinLeer ? [] : ['nada por ahora'])]
@@ -996,8 +996,9 @@ const CIFRAS = {
 type ClaveCifra = keyof typeof CIFRAS
 
 /**
- * Las cifras de cada puesto, en el orden de su trabajo: cómo va su área, no lo
- * que tiene que hacer (el dashboard no manda; eso lo decidió DKS el 2026-10-19).
+ * Las cifras de cada puesto, en el orden de su trabajo: cómo va su área. Lo
+ * que espera por el puesto lo lista «Te toca», arriba de ellas (decisión 4 del
+ * plan de orden y diseño, 2026-11-25).
  */
 const CIFRAS_POR_PUESTO: Record<string, { titulo: string; cifras: ClaveCifra[] }> = {
   REQUERIMIENTOS: { titulo: 'Requerimientos', cifras: ['rq_abiertos', 'rq_por_comprar', 'vehiculos_en_planta', 'gasto_por_codigo'] },

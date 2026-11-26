@@ -10,8 +10,12 @@
  *   2. Con la misma cuenta, a 390: «Te toca» empieza en la primera pantalla,
  *      cada fila mide 44 px para el dedo, «Tus módulos» va al final y nada se
  *      sale por el costado.
- *   3. Con Gerencia: la cuenta de reportes de trabajos sin orden por aprobar
- *      es la de la base, y tocar su fila abre esa pantalla.
+ *   3. Con el rol de Gerencia y de Contabilidad, tres cuentas son las de la
+ *      base (y el monto de las compras por aprobar, «sin IGV»), y tocar su
+ *      fila abre su pantalla.
+ *   4. Una cuenta que no se puede leer (una política que le da error a la
+ *      cuenta de RR. HH., y se quita al terminar) sale como «No se pudo
+ *      contar», nunca como «Nada te espera».
  *
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE,
  * BANCO_CHROMIUM.
@@ -78,7 +82,7 @@ async function entrar(puesto, viewport) {
   return { pagina, contexto, errores }
 }
 
-/** Lo que dice «Te toca»: sus filas (texto, enlace, cantidad, alto) y su total. */
+/** Lo que dice «Te toca»: sus filas (texto, enlace, cantidad, monto, alto) y su cabecera. */
 const leerTeToca = (pagina) =>
   pagina.evaluate(() => {
     const tarjeta = document.querySelector('[data-te-toca]')
@@ -88,15 +92,22 @@ const leerTeToca = (pagina) =>
     const filas = [...tarjeta.querySelectorAll('li a')].map((a) => {
       const caja = a.getBoundingClientRect()
       const texto = a.innerText.replace(/\s+/g, ' ').trim()
-      return { texto, href: a.getAttribute('href'), cantidad: Number(a.dataset.cantidad ?? NaN), alto: caja.height }
+      return {
+        texto,
+        href: a.getAttribute('href'),
+        cantidad: Number(a.dataset.cantidad ?? NaN),
+        monto: a.querySelector('[data-monto]')?.textContent.replace(/\s+/g, ' ').trim() ?? null,
+        alto: caja.height,
+      }
     })
-    // La cabecera de la tarjeta: «Te toca» y, debajo, «N pendientes en M pantallas».
-    const total = Number(tarjeta.firstElementChild?.innerText.match(/(\d+) pendientes?/)?.[1] ?? 0)
+    // La cabecera de la tarjeta: «Te toca» y, debajo, «En M pantallas de tu menú · N sin comprobar».
+    const cabecera = tarjeta.firstElementChild?.innerText.replace(/\s+/g, ' ').trim() ?? ''
     return {
       primero: bloques[0] === tarjeta,
       arriba: Math.round(tarjeta.getBoundingClientRect().top + window.scrollY),
       filas,
-      total,
+      cabecera,
+      sinComprobar: [...tarjeta.querySelectorAll('li a')].filter((a) => a.innerText.includes('No se pudo contar')).length,
       vacio: Boolean(tarjeta.querySelector('[data-sin-datos]')),
     }
   })
@@ -146,8 +157,11 @@ for (const puesto of PUESTOS) {
     const fuera = te.filas.filter((f) => !menu.rutas.includes(f.href.split(/[?#]/)[0]))
     comprobar(fuera.length === 0, `${puesto}: cada fila lleva a una pantalla de su menú${fuera.length ? ` (no: ${fuera.map((f) => f.href).join(', ')})` : ''}`)
     const suma = te.filas.reduce((n, f) => n + (Number.isNaN(f.cantidad) ? 0 : f.cantidad), 0)
-    comprobar(te.vacio ? te.filas.length === 0 && menu.globos === 0 : suma === te.total && suma === menu.globos,
-      `${puesto}: ${te.vacio ? 'dice «Nada te espera» y el menú no tiene globos' : `${te.filas.length} filas suman ${suma}, lo que dice arriba (${te.total}) y los globos del menú (${menu.globos})`}`)
+    comprobar(te.vacio ? te.filas.length === 0 && menu.globos === 0 : suma === menu.globos,
+      `${puesto}: ${te.vacio ? 'dice «Nada te espera» y el menú no tiene globos' : `${te.filas.length} filas suman ${suma}, lo que cuentan los globos del menú (${menu.globos})`}`)
+    const pantallas = new Set(te.filas.filter((f) => !Number.isNaN(f.cantidad)).map((f) => f.href.split(/[?#]/)[0])).size
+    comprobar(pantallas > 1 ? te.cabecera.includes(`En ${pantallas} pantallas`) : !/pantallas/.test(te.cabecera),
+      `${puesto}: la cabecera dice en cuántas pantallas espera algo (${te.cabecera})`)
   }
   const disparejas = cifras.filter((r) => !r.llenas || r.cuantas.some((n) => n !== r.cuantas[0]))
   comprobar(disparejas.length === 0, `${puesto}: las cifras van en filas llenas (${cifras.map((r) => r.cuantas.join('+') + (r.llenas ? '' : ' con hueco')).join(' · ') || 'sin cifras'})`)
@@ -178,21 +192,74 @@ for (const puesto of PUESTOS) {
   await contexto.close()
 }
 
-// ---------------------------------------------------------------- 3. Gerencia, contra la base
-console.log('3. Gerencia: la cuenta es la de la base y la fila lleva a su pantalla')
-{
-  const { rows: [{ n }] } = await base.query(`select count(*)::int as n from public.v_flota_avance_diario where revision = 'PENDIENTE'`)
-  const { pagina, contexto, errores } = await entrar('gerencia', { width: 1440, height: 900 })
+// ---------------------------------------------------------------- 3. contra la base, con el rol de cada puesto
+console.log('3. Las cuentas son las de la base con el rol de cada puesto, y cada fila lleva a su pantalla')
+/** Una lectura con la sesión de la cuenta, como la hace la pantalla: RLS y funciones con su `auth.uid()`. */
+async function conSuRol(puesto, sql) {
+  const { rows: [u] } = await base.query('select id from public.usuarios where correo = $1', [`${puesto}.local@metalwork.test`])
+  await base.query('begin')
+  try {
+    await base.query(`select set_config('request.jwt.claim.sub', $1, true), set_config('request.jwt.claim.role', 'authenticated', true)`, [u.id])
+    await base.query('set local role authenticated')
+    return (await base.query(sql)).rows
+  } finally {
+    await base.query('rollback')
+  }
+}
+const CRUCES = [
+  {
+    puesto: 'gerencia', fila: /trabajos? sin orden por aprobar/,
+    sql: `select count(*)::int as n, null::numeric as pen from public.v_flota_avance_diario where revision = 'PENDIENTE'`,
+  },
+  {
+    // Lo que vale va sin IGV, en soles, como en Aprobación de compras.
+    puesto: 'gerencia', fila: /compras? (o|y) servicios? por aprobar/, rotulo: 'sin IGV',
+    // En soles lo que está en soles o ya tiene su cambio, como la cuenta.
+    sql: `select count(*)::int as n, sum(case when monto_pen is not null or moneda is distinct from 'USD' then coalesce(monto_pen, monto) end) as pen
+            from public.documentos_por_aprobar() where aprobacion = 'POR_APROBAR'`,
+  },
+  {
+    puesto: 'contabilidad', fila: /sin factura/,
+    sql: `select count(*)::int as n, null::numeric as pen from public.compras_sin_factura()`,
+  },
+]
+for (const cruce of CRUCES) {
+  const [{ n, pen }] = await conSuRol(cruce.puesto, cruce.sql)
+  const { pagina, contexto, errores } = await entrar(cruce.puesto, { width: 1440, height: 900 })
   const te = await leerTeToca(pagina)
-  const fila = te?.filas.find((f) => /trabajos? sin orden por aprobar/.test(f.texto))
-  comprobar(n === 0 ? !fila : fila?.cantidad === n, `reportes de trabajos sin orden por aprobar: ${fila?.cantidad ?? 0} en «Te toca», ${n} en la base`)
+  const fila = te?.filas.find((f) => cruce.fila.test(f.texto))
+  comprobar(n === 0 ? !fila : fila?.cantidad === n, `${cruce.puesto}: «${cruce.fila.source}» dice ${fila?.cantidad ?? 0} y la base, con su rol, ${n}`)
+  if (fila && cruce.rotulo) {
+    const esperado = `S/ ${Number(pen).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${cruce.rotulo}`
+    comprobar(fila.monto === esperado, `${cruce.puesto}: su monto dice «${fila.monto}» (la base: «${esperado}»)`)
+  }
   if (fila) {
     await pagina.locator(`[data-te-toca] a[href="${fila.href}"]`).click()
     await pagina.waitForURL((u) => u.pathname === fila.href.split(/[?#]/)[0], { timeout: 30000 }).catch(() => {})
-    comprobar(new URL(pagina.url()).pathname === fila.href.split(/[?#]/)[0], `tocar la fila abre ${fila.href}`)
+    comprobar(new URL(pagina.url()).pathname === fila.href.split(/[?#]/)[0], `${cruce.puesto}: tocar la fila abre ${fila.href}`)
   }
-  comprobar(errores.length === 0, `sin errores en la consola${errores.length ? `: ${errores[0]}` : ''}`)
+  comprobar(errores.length === 0, `${cruce.puesto}: sin errores en la consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
+}
+
+// ---------------------------------------------------------------- 4. una cuenta que falla
+console.log('4. Una cuenta que no se puede leer no sale como «nada»')
+{
+  // Solo para la cuenta de RR. HH.: leer los reportes diarios le da error.
+  const { rows: [u] } = await base.query(`select id from public.usuarios where correo = 'rrhh.local@metalwork.test'`)
+  await base.query(`create policy prb_te_toca_falla on public.reportes_diarios as restrictive for select to authenticated
+    using (case when auth.uid() = '${u.id}' then (1 / 0) = 1 else true end)`)
+  try {
+    const { pagina, contexto } = await entrar('rrhh', { width: 1440, height: 900 })
+    const te = await leerTeToca(pagina)
+    comprobar(te && !te.vacio, 'no dice «Nada te espera por ahora»')
+    comprobar(te?.sinComprobar === 1, 'una fila dice «No se pudo contar lo que te espera»')
+    comprobar(/1 sin comprobar/.test(te?.cabecera ?? ''), `la cabecera dice que falta comprobar una (${te?.cabecera})`)
+    await pagina.screenshot({ path: join(CAPTURAS, 'te-toca-sin-comprobar-1440.png') })
+    await contexto.close()
+  } finally {
+    await base.query('drop policy if exists prb_te_toca_falla on public.reportes_diarios')
+  }
 }
 
 await navegador.close()

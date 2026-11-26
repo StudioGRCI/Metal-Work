@@ -10,7 +10,7 @@ import {
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Indicador, tramos } from '@/components/ui/indicador'
-import { Insignia, Punto, type Tono } from '@/components/ui/etiqueta-estado'
+import { Insignia, Punto, TONOS, type Tono } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -47,10 +47,10 @@ export default async function PaginaDashboard() {
   const esAdmin = perfil.rol.codigo === 'ADMIN'
   // La OT es desde el 2026-10-15 un documento de Diseño: su bloque sale solo a
   // quien la tiene en su menú (Diseño, su colaborador y Administración).
-  const llevaOrdenes = menuDe(perfil.permisos, esAdmin, perfil.rol.codigo).some((g) => g.items.some((i) => i.ruta === '/ordenes'))
+  const modulos = menuDe(perfil.permisos, esAdmin, perfil.rol.codigo).flatMap((g) => g.items)
+  const llevaOrdenes = modulos.some((i) => i.ruta === '/ordenes')
 
   const [area, pendientes] = await Promise.all([dashboardDelPuesto(perfil), pendientesGlobales(perfil)])
-  const modulos = menuDe(perfil.permisos, esAdmin, perfil.rol.codigo).flatMap((g) => g.items)
 
   return (
     <>
@@ -72,9 +72,9 @@ export default async function PaginaDashboard() {
 }
 
 /**
- * Las columnas del monitor según cuántas cifras trae el puesto, para que cada
- * fila vaya llena y todas las tarjetas midan lo mismo: con dos cifras en cuatro
- * columnas quedaba media fila vacía, y con siete, tres sueltas debajo de cuatro.
+ * Las columnas del monitor según cuántas cifras trae el puesto (de una a seis),
+ * para que cada fila vaya llena y todas las tarjetas midan lo mismo: con dos
+ * cifras en cuatro columnas quedaba media fila vacía.
  */
 const COLUMNAS_DEL_MONITOR: Record<number, string> = {
   1: 'lg:grid-cols-1',
@@ -83,16 +83,18 @@ const COLUMNAS_DEL_MONITOR: Record<number, string> = {
   4: 'lg:grid-cols-4',
   5: 'lg:grid-cols-5',
   6: 'lg:grid-cols-3',
-  8: 'lg:grid-cols-4',
-  9: 'lg:grid-cols-3',
-  10: 'lg:grid-cols-5',
 }
+
+/** Una fila de «Te toca»: una cuenta con algo, o una que no se pudo leer. */
+type FilaTeToca =
+  | (TareaPendiente & { tipo: 'cuenta'; orden: number; modulo: ItemNavegacion | null; i: number })
+  | { tipo: 'sin-leer'; clave: string; ruta: string; orden: number; modulo: ItemNavegacion; i: number }
 
 /**
  * «Te toca»: cada cuenta que tiene algo, en el orden del menú del puesto —que
  * es el de su trabajo—, con el módulo donde se atiende y lo que vale si es
  * dinero. Sin nada, lo dice en una línea; una cuenta que no se pudo leer lo
- * dice con su pantalla, nunca como si no hubiera nada.
+ * dice en su lugar del menú, nunca como si no hubiera nada.
  */
 function TeToca({ tareas, sinComprobar, modulos }: { tareas: TareaPendiente[]; sinComprobar: string[]; modulos: ItemNavegacion[] }) {
   const base = (ruta: string) => ruta.split(/[?#]/)[0]
@@ -100,53 +102,80 @@ function TeToca({ tareas, sinComprobar, modulos }: { tareas: TareaPendiente[]; s
     const i = modulos.findIndex((m) => base(m.ruta) === base(ruta))
     return { orden: i === -1 ? modulos.length : i, modulo: i === -1 ? null : modulos[i] }
   }
-  const filas = tareas
-    .map((t, i) => ({ ...t, ...lugar(t.ruta), i }))
-    .sort((a, b) => a.orden - b.orden || a.i - b.i)
-  const sinLeer = sinComprobar.map((ruta) => lugar(ruta).modulo).filter((m): m is ItemNavegacion => m !== null)
-  const total = filas.reduce((n, t) => n + t.cantidad, 0)
-  const pantallas = new Set(filas.map((t) => base(t.ruta))).size
+  const filas: FilaTeToca[] = [
+    ...tareas.map((t, i) => ({ ...t, ...lugar(t.ruta), tipo: 'cuenta' as const, i })),
+    ...sinComprobar.flatMap((ruta, i) => {
+      const { orden, modulo } = lugar(ruta)
+      return modulo ? [{ tipo: 'sin-leer' as const, clave: `sin-leer-${ruta}`, ruta: modulo.ruta, orden, modulo, i: tareas.length + i }] : []
+    }),
+  ].sort((a, b) => a.orden - b.orden || a.i - b.i)
+  const sinLeer = filas.filter((f) => f.tipo === 'sin-leer').length
+  const pantallas = new Set(filas.filter((f) => f.tipo === 'cuenta').map((f) => base(f.ruta))).size
+  // Lo que cambia: en cuántas pantallas, y si falta contar alguna. La suma de
+  // todo no va: un reporte que falta y 37 RQ por recoger no son 38 de lo mismo.
+  const descripcion =
+    [pantallas > 1 ? `En ${pantallas} pantallas de tu menú` : null, sinLeer > 0 ? `${sinLeer} sin comprobar` : null]
+      .filter(Boolean)
+      .join(' · ') || null
 
   return (
     <Tarjeta data-te-toca="">
       <TarjetaCabecera
         titulo="Te toca"
-        descripcion={
-          filas.length === 0
-            ? null
-            : `${total} ${total === 1 ? 'pendiente' : 'pendientes'}${pantallas > 1 ? ` en ${pantallas} pantallas` : ''}`
-        }
-        ayuda="Lo que espera por tu puesto en cada pantalla de tu menú, con el enlace a donde se atiende. Los globos del menú cuentan lo mismo."
+        descripcion={descripcion}
+        ayuda="Lo que espera por tu puesto en cada pantalla de tu menú, con el enlace a donde se atiende. Cuando llega algo nuevo, aparece aquí. Los globos del menú cuentan lo mismo."
       />
-      <TarjetaCuerpo className="p-2 sm:p-3">
-        {filas.length === 0 && sinLeer.length === 0 ? (
-          <div className="px-2 py-2">
-            <SinDatos compacto titulo="Nada te espera por ahora" descripcion="Cuando llegue algo a tus pantallas, aparece aquí con su enlace." />
+      <TarjetaCuerpo className="p-2">
+        {filas.length === 0 ? (
+          <div className="px-2 py-1">
+            <SinDatos compacto titulo="Nada te espera por ahora" />
           </div>
         ) : (
-          <ul className="grid gap-x-4 lg:grid-cols-2">
-            {filas.map((t) => {
-              const Icono = t.modulo?.icono
-              const monto = t.monto && (t.monto.PEN > 0 || t.monto.USD > 0)
-                ? [t.monto.PEN > 0 ? moneda(t.monto.PEN) : null, t.monto.USD > 0 ? moneda(t.monto.USD, 'USD') : null].filter(Boolean).join(' y ')
-                : null
+          // En dos columnas, la lista baja por la primera y sigue en la
+          // segunda: por renglones, dos filas de la misma pantalla quedaban una
+          // en cada lado y se leía saltando.
+          <ul className={cn('gap-x-4', filas.length > 2 && 'lg:columns-2')}>
+            {filas.map((f) => {
+              if (f.tipo === 'sin-leer') {
+                return (
+                  <li key={f.clave} className="break-inside-avoid">
+                    <Link href={f.ruta} className={CLASE_FILA}>
+                      <span className={cn(CLASE_ICONO, TONOS.aviso)}>
+                        <AlertTriangle aria-hidden className="size-4" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium text-texto">No se pudo contar lo que te espera</span>
+                        <span className="block text-xs text-texto-suave">{f.modulo.titulo}: ábrela para verlo</span>
+                      </span>
+                      <ChevronRight aria-hidden className="size-4 shrink-0 text-texto-tenue group-hover:text-acento" />
+                    </Link>
+                  </li>
+                )
+              }
+              const Icono = f.modulo?.icono
+              const monto =
+                f.monto && (f.monto.PEN > 0 || f.monto.USD > 0)
+                  ? [f.monto.PEN > 0 ? moneda(f.monto.PEN) : null, f.monto.USD > 0 ? moneda(f.monto.USD, 'USD') : null].filter(Boolean).join(' y ')
+                  : null
               return (
-                <li key={t.clave}>
-                  <Link
-                    href={t.ruta}
-                    data-cantidad={t.cantidad}
-                    className="group flex min-h-11 items-center gap-3 rounded-[var(--radius-base)] px-2 py-2.5 hover:bg-superficie-2"
-                  >
-                    <span className={cn('flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-base)]', FONDO_DEL_TONO[t.tono])}>
-                      {Icono ? <Icono aria-hidden className="size-4" /> : <Punto tono={t.tono} />}
+                <li key={f.clave} className="break-inside-avoid">
+                  <Link href={f.ruta} data-cantidad={f.cantidad} className={CLASE_FILA}>
+                    <span className={cn(CLASE_ICONO, TONOS[f.tono])}>
+                      {Icono ? <Icono aria-hidden className="size-4" /> : <Punto tono={f.tono} />}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-medium text-texto">{t.texto}</span>
-                      {(t.modulo || monto) && (
+                      <span className="block text-sm font-medium text-texto">{f.texto}</span>
+                      {(f.modulo || monto) && (
                         <span className="block text-xs text-texto-suave">
-                          {t.modulo?.titulo}
-                          {t.modulo && monto && ' · '}
-                          {monto && <span className="tabular text-texto">{monto} sin IGV</span>}
+                          {f.modulo?.titulo}
+                          {f.modulo && monto && ' · '}
+                          {/* Cómo va el monto lo dice su cuenta: «sin IGV», «con IGV» o nada. */}
+                          {monto && (
+                            <span className="tabular text-texto" data-monto>
+                              {monto}
+                              {f.monto?.rotulo ? ` ${f.monto.rotulo}` : ''}
+                            </span>
+                          )}
                         </span>
                       )}
                     </span>
@@ -155,20 +184,6 @@ function TeToca({ tareas, sinComprobar, modulos }: { tareas: TareaPendiente[]; s
                 </li>
               )
             })}
-            {sinLeer.map((m) => (
-              <li key={`sin-leer-${m.ruta}`}>
-                <Link href={m.ruta} className="group flex min-h-11 items-center gap-3 rounded-[var(--radius-base)] px-2 py-2.5 hover:bg-superficie-2">
-                  <span className={cn('flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-base)]', FONDO_DEL_TONO.aviso)}>
-                    <AlertTriangle aria-hidden className="size-4" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium text-texto">No se pudo comprobar lo que espera</span>
-                    <span className="block text-xs text-texto-suave">{m.titulo}: ábrela para verlo</span>
-                  </span>
-                  <ChevronRight aria-hidden className="size-4 shrink-0 text-texto-tenue group-hover:text-acento" />
-                </Link>
-              </li>
-            ))}
           </ul>
         )}
       </TarjetaCuerpo>
@@ -176,15 +191,9 @@ function TeToca({ tareas, sinComprobar, modulos }: { tareas: TareaPendiente[]; s
   )
 }
 
-/** El fondo del ícono de cada fila de «Te toca», del color de su cuenta. */
-const FONDO_DEL_TONO: Record<Tono, string> = {
-  neutro: 'bg-superficie-2 text-texto-suave',
-  exito: 'bg-exito-suave text-exito',
-  aviso: 'bg-aviso-suave text-aviso',
-  peligro: 'bg-peligro-suave text-peligro',
-  info: 'bg-info-suave text-info',
-  acento: 'bg-acento-suave text-acento',
-}
+/** Cada fila de «Te toca»: 44 px para el dedo y su texto alineado con el título de la tarjeta (16 px del borde). */
+const CLASE_FILA = 'group flex min-h-11 items-center gap-2 rounded-[var(--radius-base)] px-2 py-2.5 hover:bg-superficie-2'
+const CLASE_ICONO = 'flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-base)]'
 
 /** Las cifras clave del área, cada una con el enlace a la pantalla donde se mira. */
 function CifrasDelArea({ titulo, cifras }: { titulo: string; cifras: Cifra[] }) {
@@ -315,7 +324,8 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
         />
       </div>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-3">
+      {/* 20 px entre las cifras y las tarjetas, y entre tarjetas: bloques de la pantalla. */}
+      <div className="mt-5 grid gap-5 lg:grid-cols-3">
         <Tarjeta className="lg:col-span-2 lg:self-start">
           <TarjetaCabecera
             titulo="Unidades en taller"
@@ -474,7 +484,7 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
           </TarjetaCuerpo>
         </Tarjeta>
 
-        <div className="space-y-4">
+        <div className="space-y-5">
           <Tarjeta>
             <TarjetaCabecera
               titulo="Requieren atención"
