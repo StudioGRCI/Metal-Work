@@ -24,6 +24,7 @@ import {
   FileCheck2,
   FilePenLine,
   FileSpreadsheet,
+  FileStack,
   FileText,
   Hammer,
   HandCoins,
@@ -397,7 +398,8 @@ export const NAVEGACION = [
       {
         titulo: 'Control de compras',
         ruta: '/almacen/compras',
-        icono: FileCheck2,
+        // No `FileCheck2`: en el menú de Gerencia ya lo lleva «Insumos por autorizar», y dos iguales hacen dudar.
+        icono: FileStack,
         // Lo anota Almacén; lo leen Contabilidad y Tesorería, como en el Excel.
         permiso: ['almacen.ver', 'adquisiciones.ver', 'tesoreria.ver_documentos'],
         descripcion: 'Cada OC y OS del día con su destino, peso y monto; la factura y la guía que llegaron',

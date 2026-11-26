@@ -74,7 +74,7 @@ export default async function PaginaCalidad({ searchParams }: PageProps<'/calida
           }
           estado={inspecciona ? <EstadoDeLaInspeccion /> : undefined}
         />
-        <div className="mb-3 space-y-3">
+        <div className="mb-5 space-y-3">
           <BuscadorSimple ruta="/calidad" clave="codigo" etiqueta="Buscar inspecciones" marcador="Código interno, etapa o área" />
           <Vistas
             etiqueta="Vista"
