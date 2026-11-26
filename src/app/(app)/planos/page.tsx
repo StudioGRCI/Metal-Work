@@ -13,7 +13,7 @@ import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import { limitePorVencer } from '@/lib/datos/limite-por-vencer'
 import { loQueDebeDiseno } from '@/lib/datos/lo-que-debe-diseno'
 import { esDiaDeTaller } from '@/lib/datos/reportes-diarios'
-import { etapasAbiertasDeMiArea, responsablesDeEtapas, type EtapaAbiertaDelArea } from '@/lib/datos/tiempos-entrega'
+import { codigosPausadosDeMiArea, etapasAbiertasDeMiArea, responsablesDeEtapas, type EtapaAbiertaDelArea } from '@/lib/datos/tiempos-entrega'
 import {
   areasParaEtapas,
   dxfDeCodigo,
@@ -106,7 +106,7 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
   // o en otra pestaña estorbaría. Solo en día de taller.
   const reportaSuArea = puede(perfil, 'reporte_diario.registrar') && !cualquierArea
   const conBandeja = reportaSuArea && !q && !vista
-  const [limite, responsables, planos, todasLasEtapas, dxf, ots, codigosConocidos, todasLasAreas, hayTaller, abiertasDelArea] = await Promise.all([
+  const [limite, responsables, planos, todasLasEtapas, dxf, ots, codigosConocidos, todasLasAreas, hayTaller, abiertasDelArea, pausados] = await Promise.all([
     limitePorVencer(),
     responsablesDeEtapas(null),
     planosDeCodigo(null),
@@ -133,6 +133,13 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
           return null
         })
       : Promise.resolve(null),
+    // Los códigos de una OT pausada no piden el reporte; `null` si no se pudieron leer.
+    conBandeja
+      ? codigosPausadosDeMiArea().catch((e: unknown) => {
+          console.error('Planos y etapas: no se pudieron leer los códigos pausados.', e)
+          return null
+        })
+      : Promise.resolve(new Set<string>()),
   ])
   const misAreas = todasLasAreas.filter((a) => puedeHojaDeArea(perfil, a.id))
 
@@ -183,16 +190,18 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
   // Los códigos con una etapa del área que pide el reporte de hoy, y cuáles no
   // lo tienen. Las etapas, su semáforo y el último reporte del área los da la
   // base (`etapas_abiertas_de_mi_area`): ni el atraso ni el reporte se cuentan
-  // aquí otra vez. Los códigos ya entregados o con el costeo cerrado no entran.
+  // aquí otra vez. Los códigos ya entregados o con el costeo cerrado no entran,
+  // y los de una OT pausada no lo piden (DKS, 2026-11-26), aunque su tarjeta
+  // sigue con el plazo del tablero.
   const pidenHoy = new Map<string, EtapaAbiertaDelArea[]>()
   for (const e of abiertasDelArea ?? []) {
-    if (!pideReporteHoy(e, hoy)) continue
+    if (pausados?.has(e.codigo) || !pideReporteHoy(e, hoy)) continue
     pidenHoy.set(e.codigo, [...(pidenHoy.get(e.codigo) ?? []), e])
   }
   // El plazo de cada etapa abierta en su tarjeta, el mismo de la bandeja.
   const semaforos = new Map((abiertasDelArea ?? []).map((e) => [e.id, { semaforo: e.semaforo, dias_habiles: e.dias_habiles }]))
   const sinReporte: CodigoSinReporte[] | null =
-    abiertasDelArea === null
+    abiertasDelArea === null || pausados === null
       ? null
       : [...pidenHoy.entries()]
           .filter(([, etapas]) => !etapas.some((e) => e.ultimo_reporte === hoy))

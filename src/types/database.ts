@@ -15393,6 +15393,12 @@ export type Database = {
           por_pagar_usd: number | null
         }[]
       }
+      codigos_pausados_de_mi_area: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          codigo: string | null
+        }[]
+      }
       completar_cuenta_acceso: {
         Args: {
           p_cuenta: string | null
