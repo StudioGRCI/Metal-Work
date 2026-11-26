@@ -1,6 +1,7 @@
 import { FileDown } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -10,15 +11,19 @@ import { catalogoDeAlmacen } from '@/lib/datos/atencion-materiales'
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import { devolucionesPorReponer } from '@/lib/datos/kardex'
 import { cargarOrdenesCompra, type OrdenCompraListada } from '@/lib/datos/logistica'
+import { plazosDeCompras } from '@/lib/datos/plazos-compras'
 import { proveedoresParaCompra } from '@/lib/datos/proveedores'
 import { ocParaDetector } from '@/lib/dominio/adquisiciones'
 import { igvCompra } from '@/lib/dominio/compra-materiales'
 import { ORIGEN_COMPRA, puedeIrARecojo, situacionCompra } from '@/lib/dominio/logistica'
+import { FILTRO_ATRASADAS, type PlazoDeCompra } from '@/lib/dominio/plazos'
 import { comprobantePedido, compraConPdf, condicionDePago } from '@/lib/dominio/proveedores'
 import { fecha, moneda } from '@/lib/format'
 import { compraComoLogistica, exigirPermiso, puede } from '@/lib/sesion'
 
 import { EsperanReposicion } from '../../almacen/kardex/devolucion-proveedor'
+
+import { PlazoDeLaCompra } from '../plazo'
 
 import { AccionesCompra } from './acciones-compra'
 import { NuevaCompraDirecta } from './formulario-directa'
@@ -29,7 +34,7 @@ function divisa(codigo: string) {
   return codigo === 'USD' ? 'USD' : 'PEN'
 }
 
-export default async function PaginaOrdenesCompra() {
+export default async function PaginaOrdenesCompra({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const perfil = await exigirPermiso(['compras.crear', 'compras.ver'])
   // Emite la OC directa y lleva todas las OC quien compra como Logística. Administración
   // tiene `compras.crear` solo para la OC de su RQA: aquí lleva esa y mira las demás.
@@ -47,6 +52,16 @@ export default async function PaginaOrdenesCompra() {
   const monedaDe = new Map(compras.map((c) => [c.id, c.moneda]))
   const correcciones = await correccionesDe('ORDEN_COMPRA', compras.map((c) => c.id), (id) => monedaDe.get(id) ?? null)
   const esperan = new Set(porReponer.map((d) => d.orden_compra_id))
+  // Cada OC contra la fecha que prometió el proveedor. Si la base no contesta, la
+  // lista sale igual, sin plazos, y lo dice arriba.
+  const plazos = await plazosDeCompras(compras.map((c) => c.id)).catch((e: unknown) => {
+    console.error(e)
+    return null
+  })
+  const params = await searchParams
+  const soloAtrasadas = params.ver === FILTRO_ATRASADAS && plazos !== null
+  const atrasadas = plazos ? compras.filter((c) => plazos.get(c.id)?.atrasada).length : 0
+  const visibles = soloAtrasadas ? compras.filter((c) => plazos?.get(c.id)?.atrasada) : compras
   const sinComprobante = compras.filter((c) => !c.tiene_factura && c.aprobacion !== 'RECHAZADA' && c.aprobacion !== 'ANULADA').length
 
   return (
@@ -88,6 +103,27 @@ export default async function PaginaOrdenesCompra() {
         </Tarjeta>
       )}
 
+      {plazos === null ? (
+        <p role="status" className="mb-3 text-sm text-aviso">
+          No se pudo leer el plazo de las órdenes: la lista sale sin sus fechas. Recarga la página; si continúa, avisa al administrador.
+        </p>
+      ) : (
+        compras.length > 0 && (
+          <PastillaFiltro
+            ruta="/compras/ordenes"
+            clave="ver"
+            params={params}
+            activo={soloAtrasadas ? FILTRO_ATRASADAS : null}
+            etiqueta="Todas o solo las atrasadas"
+            className="mb-3"
+            opciones={[
+              { valor: null, etiqueta: `Todas (${compras.length})` },
+              { valor: FILTRO_ATRASADAS, etiqueta: `Atrasadas (${atrasadas})` },
+            ]}
+          />
+        )
+      )}
+
       <Tarjeta className="overflow-hidden">
         <Tabla>
           <TablaCabecera>
@@ -105,7 +141,12 @@ export default async function PaginaOrdenesCompra() {
             </tr>
           </TablaCabecera>
           <tbody>
-            {compras.length === 0 ? (
+            {soloAtrasadas && visibles.length === 0 ? (
+              <SinDatos
+                titulo="Ninguna orden de compra está atrasada"
+                descripcion="Todas las vigentes llegaron completas o siguen dentro de la fecha que prometió el proveedor. Vuelve a «Todas» para ver la lista entera."
+              />
+            ) : compras.length === 0 ? (
               <SinDatos
                 titulo="Todavía no hay órdenes de compra"
                 descripcion={
@@ -115,7 +156,7 @@ export default async function PaginaOrdenesCompra() {
                 }
               />
             ) : (
-              compras.map((c) => <FilaCompra key={c.id} compra={c} emite={emite || (llevaSuRqa && esDeUnRqa(c))} verAdquisiciones={verAdquisiciones} correcciones={correcciones.get(c.id)} esperaReposicion={esperan.has(c.id)} />)
+              visibles.map((c) => <FilaCompra key={c.id} compra={c} plazo={plazos?.get(c.id)} emite={emite || (llevaSuRqa && esDeUnRqa(c))} verAdquisiciones={verAdquisiciones} correcciones={correcciones.get(c.id)} esperaReposicion={esperan.has(c.id)} />)
             )}
           </tbody>
         </Tabla>
@@ -131,12 +172,14 @@ function esDeUnRqa(c: OrdenCompraListada) {
 
 function FilaCompra({
   compra: c,
+  plazo,
   emite,
   verAdquisiciones,
   correcciones,
   esperaReposicion,
 }: {
   compra: OrdenCompraListada
+  plazo: PlazoDeCompra | undefined
   emite: boolean
   verAdquisiciones: boolean
   correcciones: CorreccionVista[] | undefined
@@ -205,6 +248,8 @@ function FilaCompra({
           </p>
         )}
         <p className="text-xs text-texto-suave md:hidden">Para {para || '—'}</p>
+        {/* En el teléfono el plazo va aquí, con el resto de la fila. */}
+        <PlazoDeLaCompra plazo={plazo} className="mt-1 sm:hidden" />
         <HistorialDeCorrecciones correcciones={correcciones} />
       </TD>
       <TD className="hidden text-texto-suave md:table-cell">{para || '—'}</TD>
@@ -214,6 +259,7 @@ function FilaCompra({
           <Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>
           {reposicion}
         </div>
+        <PlazoDeLaCompra plazo={plazo} className="mt-1" />
       </TD>
       <TD className="hidden sm:table-cell">
         {c.tiene_factura ? (

@@ -2,6 +2,7 @@ import { FileDown } from 'lucide-react'
 
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
@@ -12,13 +13,17 @@ import {
   type OrdenServicioListada,
 } from '@/lib/datos/logistica'
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
+import { plazosDeServicios } from '@/lib/datos/plazos-compras'
 import { proveedoresParaCompra } from '@/lib/datos/proveedores'
 import { llaveParecido, type CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import { resumenDetraccion, type TipoDetraccion } from '@/lib/dominio/detraccion'
 import { ESTADO_SERVICIO, servicioSinPapel } from '@/lib/dominio/logistica'
+import { FILTRO_ATRASADAS, type PlazoDeServicio } from '@/lib/dominio/plazos'
 import { APROBACION_COMPRA, condicionDePago } from '@/lib/dominio/proveedores'
 import { fecha, moneda } from '@/lib/format'
 import { compraComoLogistica, exigirPermiso, puede } from '@/lib/sesion'
+
+import { PlazoDeLaCompra } from '../plazo'
 
 import { AvanceServicio, CorregirServicio } from './controles'
 import { AdjuntarDocumentoServicio, ListaDocumentosServicio } from './documentos-servicio'
@@ -26,15 +31,15 @@ import { NuevaOrdenServicio } from './formulario'
 
 export const metadata = { title: 'Órdenes de servicio' }
 
-export default async function PaginaOrdenesServicio({ searchParams }: { searchParams: Promise<{ codigo?: string }> }) {
+export default async function PaginaOrdenesServicio({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const perfil = await exigirPermiso(['compras.crear', 'compras.ver', 'compras.detraccion'])
   // La OS la lleva Logística: Administración tiene `compras.crear` solo para la OC de su RQA.
   const emite = compraComoLogistica(perfil)
   const corrigeDetraccion = emite || puede(perfil, 'compras.detraccion')
   // La factura y el contrato de la OS los adjunta quien pasa `puede_adjuntar_documento_servicio`.
   const adjunta = emite || puede(perfil, 'tesoreria.pagar_servicios')
-  const { codigo = '' } = await searchParams
-  const buscado = codigo.trim()
+  const params = await searchParams
+  const buscado = (typeof params.codigo === 'string' ? params.codigo : '').trim()
   const [servicios, tipos, proveedores, areas, codigos] = await Promise.all([
     cargarOrdenesServicio(),
     cargarTiposDetraccion(),
@@ -44,7 +49,16 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
   ])
   // El código se compara como en «Códigos internos»: sin mayúsculas, espacios ni signos, y O igual a 0.
   const llave = llaveParecido(buscado)
-  const visibles = buscado ? servicios.filter((s) => s.codigo_interno && llaveParecido(s.codigo_interno).includes(llave)) : servicios
+  const delCodigo = buscado ? servicios.filter((s) => s.codigo_interno && llaveParecido(s.codigo_interno).includes(llave)) : servicios
+  // Cada OS contra la fecha en que el trabajo debía volver. Sin respuesta de la
+  // base, la lista sale con la marca «Atrasada» que ya trae el listado.
+  const plazos = await plazosDeServicios(servicios.map((s) => s.id)).catch((e: unknown) => {
+    console.error(e)
+    return null
+  })
+  const soloAtrasadas = params.ver === FILTRO_ATRASADAS
+  const atrasadas = delCodigo.filter((s) => plazos?.get(s.id)?.atrasada ?? s.atrasada).length
+  const visibles = soloAtrasadas ? delCodigo.filter((s) => plazos?.get(s.id)?.atrasada ?? s.atrasada) : delCodigo
 
   return (
     <>
@@ -69,6 +83,26 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
         <BuscadorSimple ruta="/compras/servicios" clave="codigo" etiqueta="Buscar por código interno" marcador="Código interno, por ejemplo SR_04" />
       </div>
 
+      {plazos === null && (
+        <p role="status" className="mb-3 text-sm text-aviso">
+          No se pudo leer el plazo de las órdenes de servicio: la lista sale sin los días de atraso. Recarga la página; si continúa, avisa al administrador.
+        </p>
+      )}
+      {delCodigo.length > 0 && (
+        <PastillaFiltro
+          ruta="/compras/servicios"
+          clave="ver"
+          params={params}
+          activo={soloAtrasadas ? FILTRO_ATRASADAS : null}
+          etiqueta="Todas o solo las atrasadas"
+          className="mb-3"
+          opciones={[
+            { valor: null, etiqueta: `Todas (${delCodigo.length})` },
+            { valor: FILTRO_ATRASADAS, etiqueta: `Atrasadas (${atrasadas})` },
+          ]}
+        />
+      )}
+
       <Tarjeta className="overflow-hidden">
         <Tabla>
           <TablaCabecera>
@@ -83,7 +117,12 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
             </tr>
           </TablaCabecera>
           <tbody>
-            {visibles.length === 0 ? (
+            {soloAtrasadas && delCodigo.length > 0 && visibles.length === 0 ? (
+              <SinDatos
+                titulo="Ninguna orden de servicio está atrasada"
+                descripcion="Las que siguen abiertas están dentro de su fecha de fin. Vuelve a «Todas» para ver la lista entera."
+              />
+            ) : visibles.length === 0 ? (
               <SinDatos
                 titulo={buscado ? `Ninguna orden de servicio lleva el código ${buscado}` : 'Todavía no hay órdenes de servicio'}
                 descripcion={
@@ -96,7 +135,7 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
               />
             ) : (
               visibles.map((s) => (
-                <FilaServicio key={s.id} servicio={s} emite={emite} adjunta={adjunta} corrigeDetraccion={corrigeDetraccion} tipos={tipos} codigos={codigos} />
+                <FilaServicio key={s.id} servicio={s} plazo={plazos?.get(s.id)} emite={emite} adjunta={adjunta} corrigeDetraccion={corrigeDetraccion} tipos={tipos} codigos={codigos} />
               ))
             )}
           </tbody>
@@ -108,6 +147,7 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
 
 function FilaServicio({
   servicio: s,
+  plazo,
   emite,
   adjunta,
   corrigeDetraccion,
@@ -115,6 +155,7 @@ function FilaServicio({
   codigos,
 }: {
   servicio: OrdenServicioListada
+  plazo: PlazoDeServicio | undefined
   emite: boolean
   adjunta: boolean
   corrigeDetraccion: boolean
@@ -152,7 +193,7 @@ function FilaServicio({
         {/* En el teléfono, el monto y en qué va van aquí: la tabla no cabe con sus columnas. */}
         <div className="mt-2 space-y-1 sm:hidden">
           <p className="tabular text-sm font-semibold text-texto">{moneda(s.monto, s.moneda === 'USD' ? 'USD' : 'PEN')} sin IGV</p>
-          <EnQueVa servicio={s} />
+          <EnQueVa servicio={s} plazo={plazo} />
         </div>
       </TD>
       <TD className="hidden md:table-cell">
@@ -161,7 +202,7 @@ function FilaServicio({
       </TD>
       <TD className="tabular hidden text-right whitespace-nowrap sm:table-cell">{moneda(s.monto, s.moneda === 'USD' ? 'USD' : 'PEN')}</TD>
       <TD className="hidden sm:table-cell">
-        <EnQueVa servicio={s} />
+        <EnQueVa servicio={s} plazo={plazo} />
       </TD>
       <TD className="text-right">
         <div className="flex flex-col items-end gap-2">
@@ -207,7 +248,7 @@ function FilaServicio({
 }
 
 /** En qué va la OS y su detracción. */
-function EnQueVa({ servicio: s }: { servicio: OrdenServicioListada }) {
+function EnQueVa({ servicio: s, plazo }: { servicio: OrdenServicioListada; plazo: PlazoDeServicio | undefined }) {
   // Mientras Gerencia no decide, manda la aprobación; después, el estado del trabajo.
   const decision = s.aprobacion === 'APROBADA' ? null : APROBACION_COMPRA[s.aprobacion]
   const estado = ESTADO_SERVICIO[s.estado]
@@ -217,8 +258,10 @@ function EnQueVa({ servicio: s }: { servicio: OrdenServicioListada }) {
     <>
       <div className="flex flex-wrap gap-1">
         {mostrar && <Insignia tono={mostrar.tono}>{mostrar.etiqueta}</Insignia>}
-        {s.atrasada && <Insignia tono="peligro">Atrasada</Insignia>}
+        {/* Sin el plazo de la base, la marca que ya trae el listado. */}
+        {!plazo && s.atrasada && <Insignia tono="peligro">Atrasada</Insignia>}
       </div>
+      <PlazoDeLaCompra plazo={plazo} servicio className="mt-1" />
       <div className="mt-1" data-detraccion>
         {/* Puede partirse: «Detracción 12 %: falta el tipo de cambio» de un solo
             renglón corría la tabla de costado en el teléfono. */}
