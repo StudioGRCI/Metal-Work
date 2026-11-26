@@ -7,7 +7,8 @@
  *      cada uno con las filas que da la base con su sesión, lo más antiguo
  *      primero y con sus días. No hay ningún botón que apruebe: cada fila es un
  *      enlace a su pantalla, y el de la compra cae en su tarjeta.
- *   2. La pantalla está en «Por aprobar» de su menú, primera.
+ *   2. La pantalla está en «Por aprobar» de su menú, primera, y en el
+ *      teléfono va en lugar de la pestaña «Aprobar».
  *   3. La pantalla es de la Gerencia General: Gerencia de Producción,
  *      Administración y Almacén no entran (van a «Sin permiso»).
  *   4. En el teléfono (390) nada se sale de la pantalla. Capturas en 390 y 1440.
@@ -362,6 +363,11 @@ try {
   // Lo que espera se ve al entrar: las cifras no empujan la primera fila fuera de la pantalla.
   const arriba = await pagina.locator('[data-por-decidir]').first().evaluate((f) => f.getBoundingClientRect().top)
   comprobar(arriba < 844, `Gerencia en 390: la primera fila empieza a ${Math.round(arriba)} px, dentro de la pantalla`)
+  // En el teléfono, «Por decidir» va en lugar de «Aprobar» (DKS, 2026-11-26), y es la pestaña marcada.
+  const pestanas = await pagina.locator('[data-barra-inferior] ul > li > a').evaluateAll((as) => as.map((a) => a.getAttribute('href')))
+  comprobar(pestanas.includes('/por-decidir') && !pestanas.includes('/compras/aprobacion'),
+    `Gerencia en 390: la pestaña «Por decidir» reemplaza a «Aprobar» (${pestanas.join(', ')})`)
+  comprobar((await pagina.locator('[data-barra-inferior] a[href="/por-decidir"][aria-current="page"]').count()) === 1, 'Gerencia en 390: y es la pestaña marcada')
   await capturar(pagina, 'por-decidir-gerencia-390.png')
   await contexto.close()
 }
