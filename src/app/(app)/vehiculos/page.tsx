@@ -137,7 +137,7 @@ function FilaVehiculo({
           {r.placa ?? (r.chasis ? `Chasis ${r.chasis}` : r.codigo_interno)}
         </Link>
         {r.placa && r.chasis && <p className="tabular text-xs text-texto-suave">Chasis {r.chasis}</p>}
-        {r.codigo_interno && (r.placa || r.chasis) && <p className="tabular text-xs text-texto-suave">Código {r.codigo_interno}</p>}
+        {r.codigo_interno && (r.placa || r.chasis) && <p className="tabular text-xs text-texto-suave">{/^OT /.test(r.codigo_interno) ? r.codigo_interno : `Código ${r.codigo_interno}`}</p>}
         <p className="text-xs text-texto">
           {r.unidad} · {r.empresa}
         </p>
