@@ -41,6 +41,12 @@ export type PasoDescrito = PasoDelRecorrido & {
   titulo: string
   /** Una línea más: qué se espera de quien lo tiene, o el dato del paso. */
   nota: string | null
+  /**
+   * Una anotación al margen del circuito (el motivo del atraso, la fecha
+   * corregida): no dice en qué terminó el documento, así que el resumen de un
+   * recorrido cerrado no la usa (DKS, 2026-11-26).
+   */
+  alMargen?: boolean
 }
 
 /** «desde hoy», «hace 1 día», «hace 3 días». Los días los cuenta la base, por fecha de Lima. */
@@ -77,6 +83,8 @@ type Frases = {
   falta: string
   /** La nota del paso hecho, a partir de su detalle. */
   nota?: (detalle: string) => string | null
+  /** Una anotación que no avanza el documento (ver `PasoDescrito.alMargen`). */
+  alMargen?: boolean
 }
 
 const PASOS_DEL_REQUERIMIENTO: Record<string, Frases> = {
@@ -204,7 +212,7 @@ function describir(
       const llano = p.paso.replaceAll('_', ' ').toLowerCase()
       if (p.situacion === 'HECHO') {
         const titulo = f ? (typeof f.hecho === 'function' ? f.hecho(p.detalle) : f.hecho) : llano
-        return { ...p, titulo, nota: p.detalle && f?.nota ? f.nota(p.detalle) : null }
+        return { ...p, titulo, nota: p.detalle && f?.nota ? f.nota(p.detalle) : null, ...(f?.alMargen ? { alMargen: true } : {}) }
       }
       const nota = p.situacion === 'AHORA' && p.espera ? (esperas[p.espera]?.(p.detalle) ?? null) : null
       return { ...p, titulo: f?.falta ?? llano, nota }
@@ -292,8 +300,8 @@ function notaDelSeguimiento(paso: string) {
 }
 
 const SEGUIMIENTO: Record<string, Frases> = {
-  MOTIVO_ATRASO: { hecho: 'Anotó el motivo del atraso', falta: 'Motivo del atraso', nota: notaDelSeguimiento('MOTIVO_ATRASO') },
-  FECHA_CORREGIDA: { hecho: 'Corrigió la fecha prometida', falta: 'Fecha prometida', nota: notaDelSeguimiento('FECHA_CORREGIDA') },
+  MOTIVO_ATRASO: { hecho: 'Anotó el motivo del atraso', falta: 'Motivo del atraso', nota: notaDelSeguimiento('MOTIVO_ATRASO'), alMargen: true },
+  FECHA_CORREGIDA: { hecho: 'Corrigió la fecha prometida', falta: 'Fecha prometida', nota: notaDelSeguimiento('FECHA_CORREGIDA'), alMargen: true },
 }
 
 const PASOS_DE_LA_ORDEN_DE_COMPRA: Record<string, Frases> = {

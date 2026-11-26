@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { describirRecorridoDeLaCotizacion, describirRecorridoDelRequerimiento, haceDias, insumos, tardo } from './recorrido.ts'
+import { describirRecorridoDeLaCotizacion, describirRecorridoDeLaOrdenDeCompra, describirRecorridoDelRequerimiento, haceDias, insumos, tardo } from './recorrido.ts'
 
 const paso = (orden, paso, situacion, mas = {}) => ({
   orden, paso, situacion, puesto: null, en: null, dias: null, espera: null, detalle: null, ...mas,
@@ -127,4 +127,16 @@ test('la cotización sigue hasta el cobro: la factura de lo que falta y el cobro
   const enParte = describirRecorridoDeLaCotizacion([paso(1, 'FACTURA', 'HECHO', { puesto: 'Contabilidad', detalle: 'EN_PARTE' })])
   assert.equal(enParte[0].titulo, 'Facturada en parte')
   assert.equal(describirRecorridoDeLaCotizacion([paso(1, 'FACTURA', 'HECHO', { puesto: 'Contabilidad' })])[0].titulo, 'Facturada')
+})
+
+test('la OC cerrada dice en qué terminó, no la anotación del atraso (DKS, 2026-11-26)', () => {
+  const pasos = describirRecorridoDeLaOrdenDeCompra([
+    paso(1, 'EMISION', 'HECHO', { puesto: 'Logística' }),
+    paso(2, 'COMPLETA', 'HECHO', { puesto: 'Almacén' }),
+    paso(3, 'MOTIVO_ATRASO', 'HECHO', { puesto: 'Logística', detalle: 'PROVEEDOR|' }),
+  ])
+  assert.equal(pasos[2].alMargen, true)
+  assert.equal(pasos[1].alMargen, undefined)
+  const enQueTermino = pasos.filter((p) => p.situacion === 'HECHO' && !p.alMargen).at(-1)
+  assert.equal(enQueTermino?.titulo, 'Completa: llegó todo lo pedido')
 })

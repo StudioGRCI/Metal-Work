@@ -58,7 +58,8 @@ export function Recorrido({
 
   const ahora = pasos.find((p) => p.situacion === 'AHORA')
   const hechos = pasos.filter((p) => p.situacion === 'HECHO')
-  const ultimo = hechos.at(-1)
+  // Cerrado, dice en qué terminó: una anotación al margen (el motivo del atraso) no es eso.
+  const ultimo = hechos.filter((p) => !p.alMargen).at(-1) ?? hechos.at(-1)
 
   return (
     <details className={cn('group/recorrido overflow-hidden', className)} data-recorrido>
