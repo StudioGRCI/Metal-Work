@@ -25,6 +25,8 @@ export type PendienteDeOt = {
   faltaFecha: boolean
   /** De la cotización: el N.º de su OT anulada, si vuelve por eso. */
   otAnulada: string | null
+  /** De la cotización: la OT que pasó a otro comprador, si esta fue su venta anterior. */
+  ventaAnteriorDe: string | null
   /** De la OT: por qué «Editar OT» no puede ponerle el código. */
   codigoBloqueado: 'SIN_UNIDAD' | 'UNIDAD_COMPARTIDA' | null
   desde: string | null
@@ -49,6 +51,7 @@ export const pendientesDeLasOt = cache(async (): Promise<PendientesDeLasOt> => {
       faltaCodigo: Boolean(f.falta_codigo),
       faltaFecha: Boolean(f.falta_fecha),
       otAnulada: f.ot_anulada,
+      ventaAnteriorDe: f.venta_anterior_de,
       codigoBloqueado:
         f.codigo_bloqueado === 'SIN_UNIDAD' || f.codigo_bloqueado === 'UNIDAD_COMPARTIDA' ? f.codigo_bloqueado : null,
       desde: f.desde,

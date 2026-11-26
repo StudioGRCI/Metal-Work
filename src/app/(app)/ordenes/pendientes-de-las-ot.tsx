@@ -97,8 +97,8 @@ export function PendientesDeLasOt({ pendientes: leidos }: { pendientes: Pendient
 
 /** Por qué «Editar OT» no puede ponerle el código: el código va en la unidad. */
 const CODIGO_BLOQUEADO = {
-  SIN_UNIDAD: 'No tiene unidad registrada y el código interno va en la unidad: desde la OT no se puede poner. Avisa al administrador del sistema.',
-  UNIDAD_COMPARTIDA: 'Su unidad está también en otra OT y sus datos no se cambian desde una sola: desde la OT no se puede poner el código. Avisa al administrador del sistema.',
+  SIN_UNIDAD: 'No tiene unidad registrada y el código interno va en la unidad: desde la OT no se puede poner, y por ahora la aplicación no tiene otro lugar.',
+  UNIDAD_COMPARTIDA: 'Su unidad está también en otra OT y sus datos no se cambian desde una sola: desde la OT no se puede poner el código, y por ahora la aplicación no tiene otro lugar.',
 } as const
 
 function Fila({ p }: { p: PendienteDeOt }) {
@@ -123,7 +123,9 @@ function Fila({ p }: { p: PendienteDeOt }) {
           ? 'Poner la fecha'
           : 'Ver la OT'
   const documento = esCotizacion ? `Cotización ${p.numero}` : `OT ${p.numero}`
-  const nota = p.otAnulada
+  const nota = p.ventaAnteriorDe
+    ? `Fue la venta anterior de la OT ${p.ventaAnteriorDe}, que pasó a otro comprador. Cárgale otra OT solo si esta venta sigue.`
+    : p.otAnulada
     ? `Su OT ${p.otAnulada} se anuló. Cárgala otra vez solo si la venta sigue.`
     : p.codigoBloqueado
       ? CODIGO_BLOQUEADO[p.codigoBloqueado]

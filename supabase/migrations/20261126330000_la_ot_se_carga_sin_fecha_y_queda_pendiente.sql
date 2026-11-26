@@ -31,11 +31,6 @@
 --      que su RLS ya le deja ver, y la pide quien carga las OT (`ordenes.crear`,
 --      Administración). Sin importes.
 --
---   3. La cotización que fue la venta anterior de una OT (la OT pasó a otro
---      comprador con «Editar OT») ya no admite otra OT: quedaba aprobada y sin
---      OT vigente, y «Dar código y cargar la OT» creaba una segunda OT para una
---      venta que se cayó.
---
 -- Antes de reemplazar la función se mira que producción tenga el texto que el
 -- repositorio conoce (skill `esquema` › Redefinir una función que producción
 -- pudo cambiar a mano). Respaldo del texto anterior: la migración 20261027200000.
@@ -52,7 +47,7 @@ begin
     raise exception 'Aplica antes la migración 20261027200000: esta cambia su cargar_codigo_y_ot_de_cotizacion.';
   end if;
   -- El de la 20261027200000 y el de esta misma (volver a correrla no cambia nada).
-  if v_md5 not in ('77d669c649a269f92309f2218384a0ff', 'd4d1478061113a19355599fcf186d3e7') then
+  if v_md5 not in ('77d669c649a269f92309f2218384a0ff', '0b3b1cba7983f9dfbbb7caaf16210151') then
     raise exception 'cargar_codigo_y_ot_de_cotizacion no es la que conoce el repositorio (md5 %): alguien la cambió a mano. Revísala antes de aplicar esta migración.', v_md5;
   end if;
 end $$;
@@ -126,21 +121,6 @@ begin
       using errcode = 'unique_violation';
   end if;
 
-  -- La venta que se cayó: «Editar OT» pasó su OT a la cotización del nuevo
-  -- comprador y esta quedó aprobada, pero sin carrocería que fabricar. Otra OT
-  -- para ella sería un documento numerado que solo se podría anular
-  -- (migración 20261126330000).
-  select o.numero into v_otra
-    from public.ot_ventas_anteriores va
-    join public.ordenes_trabajo o on o.id = va.orden_id
-   where va.cotizacion_pdf_id = p_cotizacion
-   order by va.creado_en desc
-   limit 1;
-  if v_otra is not null then
-    raise exception 'La cotización % fue la venta anterior de la OT %: esa OT pasó a otro comprador y esta venta no lleva otra OT.', v_cot.numero, v_otra
-      using errcode = 'check_violation';
-  end if;
-
   -- El código interno: obligatorio, y el de una unidad, no PLANTA.
   if v_codigo is null then
     raise exception 'Escribe el código interno que tendrá la unidad.' using errcode = 'check_violation';
@@ -179,7 +159,7 @@ begin
     raise exception 'Elige si es un semirremolque o una carrocería montada.' using errcode = 'check_violation';
   end if;
   -- Sin fecha de entrega la OT se carga igual (migración 20261126330000): queda
-  -- en «Pendientes de Administración» de la lista de OT hasta que se la ponga.
+  -- en «Por completar», arriba de la lista de OT, hasta que se la ponga.
   if p_ruta_pdf is null or p_ruta_pdf <> 'ot/' || p_orden::text || '/' || split_part(p_ruta_pdf, '/', 3)
      or split_part(p_ruta_pdf, '/', 3) = '' then
     raise exception 'El PDF de la OT no llegó en su sitio: vuelve a elegirlo.' using errcode = 'check_violation';
@@ -267,15 +247,18 @@ grant execute on function public.cargar_codigo_y_ot_de_cotizacion(uuid, uuid, te
 -- -----------------------------------------------------------------------------
 -- Además de qué falta, cada fila dice lo que hace falta saber para completarla:
 --   * `ot_anulada`: la cotización vuelve a la lista porque su OT se anuló; se
---     dice cuál, para que nadie la cargue otra vez sin saberlo.
+--     dice cuál, para que nadie la cargue otra vez sin saberlo, y espera desde
+--     la anulación, no desde la aprobación.
+--   * `venta_anterior_de`: la cotización fue la venta anterior de una OT que
+--     pasó a otro comprador con «Editar OT» (`ot_ventas_anteriores`). Sigue
+--     aprobada y sin OT vigente, así que sale; se dice de qué OT fue, para no
+--     cargarle otra OT sin saberlo. Si esa venta se cierra, lo decide DKS.
 --   * `codigo_bloqueado`: el código interno va en la unidad, y «Editar OT» no
 --     puede ponerlo cuando la OT no tiene unidad (SIN_UNIDAD) o cuando la unidad
 --     es también de otra OT (UNIDAD_COMPARTIDA: `editar_ot_con_historial` no
 --     cambia datos compartidos desde una sola orden). La pantalla lo dice en vez
 --     de ofrecer un botón que no lo resuelve.
 --   * `total`: cuántas hay en todo, aunque la lista se corte en 500.
--- No sale la cotización que fue la venta anterior de una OT que pasó a otro
--- comprador (`ot_ventas_anteriores`): esa venta se cayó y no lleva OT.
 create or replace function public.pendientes_de_las_ot()
 returns table (
   clase            text,         -- COTIZACION u OT
@@ -287,6 +270,7 @@ returns table (
   falta_codigo     boolean,
   falta_fecha      boolean,
   ot_anulada       text,         -- de la cotización: el N.º de su OT anulada
+  venta_anterior_de text,        -- de la cotización: la OT que pasó a otro comprador
   codigo_bloqueado text,         -- de la OT: SIN_UNIDAD o UNIDAD_COMPARTIDA
   desde            timestamptz,  -- desde cuándo espera
   dias             integer,      -- por fecha de Lima, hoy = 0
@@ -307,23 +291,31 @@ begin
   with pendientes as (
     select 'COTIZACION'::text as clase, c.id as documento, c.numero, cl.razon_social as cliente,
            tc.nombre as trabajo, true as falta_ot, false as falta_codigo, false as falta_fecha,
-           (select o.numero from public.ordenes_trabajo o
-             where o.cotizacion_pdf_id = c.id and o.estado = 'ANULADA'
-             order by o.actualizado_en desc limit 1) as ot_anulada,
+           an.numero as ot_anulada,
+           (select o.numero from public.ot_ventas_anteriores va
+              join public.ordenes_trabajo o on o.id = va.orden_id
+             where va.cotizacion_pdf_id = c.id
+             order by va.creado_en desc limit 1) as venta_anterior_de,
            null::text as codigo_bloqueado,
-           coalesce(c.revisado_en, c.creado_en) as desde
+           -- La OT anulada no cambia después de anularse (20261020207000): su
+           -- `actualizado_en` es cuándo se anuló.
+           greatest(coalesce(c.revisado_en, c.creado_en), an.actualizado_en) as desde
       from public.cotizaciones_pdf c
       left join public.clientes cl on cl.id = c.cliente_id
       left join public.tipos_carroceria tc on tc.id = c.tipo_carroceria_id
+      left join lateral (
+        select o.numero, o.actualizado_en from public.ordenes_trabajo o
+         where o.cotizacion_pdf_id = c.id and o.estado = 'ANULADA'
+         order by o.actualizado_en desc limit 1
+      ) an on true
      where c.estado = 'APROBADA'
        and not exists (select 1 from public.ordenes_trabajo o
                         where o.cotizacion_pdf_id = c.id and o.estado <> 'ANULADA')
-       and not exists (select 1 from public.ot_ventas_anteriores va
-                        where va.cotizacion_pdf_id = c.id)
     union all
     select 'OT', o.id, o.numero, cl.razon_social, o.descripcion, false,
            s.sin_codigo,
            o.fecha_entrega_comprometida is null,
+           null::text,
            null::text,
            case when not s.sin_codigo then null
                 when o.unidad_id is null then 'SIN_UNIDAD'
@@ -342,7 +334,7 @@ begin
        and (s.sin_codigo or o.fecha_entrega_comprometida is null)
   )
   select p.clase, p.documento, p.numero, p.cliente, p.trabajo, p.falta_ot, p.falta_codigo, p.falta_fecha,
-         p.ot_anulada, p.codigo_bloqueado, p.desde, public.dias_en_espera(p.desde),
+         p.ot_anulada, p.venta_anterior_de, p.codigo_bloqueado, p.desde, public.dias_en_espera(p.desde),
          (count(*) over ())::integer
     from pendientes p
    order by p.desde, p.numero
@@ -351,7 +343,7 @@ end;
 $$;
 
 comment on function public.pendientes_de_las_ot() is
-  'Lo que Administración tiene por completar en las OT, lo más viejo primero (hasta 500, con el total): cotización aprobada sin OT vigente (desde su aprobación; dice si su OT se anuló; no la venta anterior de una OT que pasó a otro comprador), y OT abierta sin código interno (fabricación, reparación o repotenciación; mantenimiento y garantía van por su N.º; dice si no tiene unidad o si la comparte con otra OT) o sin fecha de entrega comprometida (desde que se creó). Días por fecha de Lima. Corre como quien llama y la pide ordenes.crear. Sin importes. Migración 20261126330000.';
+  'Lo que Administración tiene por completar en las OT, lo más viejo primero (hasta 500, con el total): cotización aprobada sin OT vigente (desde su aprobación o la anulación de su OT; dice si su OT se anuló o si fue la venta anterior de una OT que pasó a otro comprador), y OT abierta sin código interno (fabricación, reparación o repotenciación; mantenimiento y garantía van por su N.º; dice si no tiene unidad o si la comparte con otra OT) o sin fecha de entrega comprometida (desde que se creó). Días por fecha de Lima. Corre como quien llama y la pide ordenes.crear. Sin importes. Migración 20261126330000.';
 
 revoke all on function public.pendientes_de_las_ot() from public, anon;
 grant execute on function public.pendientes_de_las_ot() to authenticated;

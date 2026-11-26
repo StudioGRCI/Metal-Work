@@ -8,8 +8,11 @@
 --     entregada. Lo más viejo primero, con sus días por fecha de Lima y el total.
 --   * Dice por qué «Editar OT» no puede poner el código (OT sin unidad, unidad
 --     de otra OT también) y cuál OT se anuló si la cotización vuelve por eso.
---   * No da la cotización que fue la venta anterior de una OT que pasó a otro
---     comprador, y «Dar código y cargar la OT» no le crea otra.
+--   * La cotización que fue la venta anterior de una OT que pasó a otro
+--     comprador sale diciendo de qué OT fue; la que vuelve por su OT anulada
+--     espera desde la anulación.
+--   * Quien tiene `ordenes.crear` lee lo que la función mira (corre como quien
+--     llama): si no, vería toda OT «sin código» sin ningún error.
 --   * La pide Administración; Ventas, Diseño, Almacén y Gerencia no.
 --   * «Dar código y cargar la OT» sin fecha entra, y el aviso a Diseño dice «por
 --     definir». La OT queda en los pendientes hasta que «Editar OT» le pone la
@@ -43,7 +46,6 @@ select set_config('prueba.cot', gen_random_uuid()::text, true);
 select set_config('prueba.ot_cot', gen_random_uuid()::text, true);
 select set_config('prueba.cot_anulada', gen_random_uuid()::text, true);
 select set_config('prueba.cot_anterior', gen_random_uuid()::text, true);
-select set_config('prueba.ot_anterior', gen_random_uuid()::text, true);
 select set_config('prueba.carroceria', (select id::text from public.tipos_carroceria where activo order by orden_secuencia limit 1), true);
 
 -- Armazón: un cliente; una cotización que Ventas sube y Gerencia aprueba; y OT de
@@ -139,6 +141,20 @@ update public.ordenes_trabajo set estado = 'ANULADA', motivo_anulacion = 'El cli
 insert into public.ot_ventas_anteriores (orden_id, cliente_id, cotizacion_pdf_id, datos, creado_por)
 values (:'completa', :'cliente_id', current_setting('prueba.cot_anterior')::uuid, '{}', :'admin_id');
 reset role;
+-- B se aprobó hace 5 días; su OT se anuló hoy. Sin disparadores, para correr la fecha.
+set local session_replication_role = replica;
+update public.cotizaciones_pdf set revisado_en = now() - interval '5 days' where id = current_setting('prueba.cot_anulada')::uuid;
+set local session_replication_role = origin;
+
+-- Quien carga las OT lee lo que `pendientes_de_las_ot` mira con su RLS.
+select test.afirmar(
+  not exists (
+    select 1 from public.roles r
+     where exists (select 1 from public.roles_permisos rp where rp.rol_id = r.id and rp.permiso_codigo = 'ordenes.crear')
+       and not (exists (select 1 from public.roles_permisos rp where rp.rol_id = r.id and rp.permiso_codigo = 'cotizaciones.ver_pdf_comercial')
+            and exists (select 1 from public.roles_permisos rp where rp.rol_id = r.id and rp.permiso_codigo = 'ordenes.ver')
+            and exists (select 1 from public.roles_permisos rp where rp.rol_id = r.id and rp.permiso_codigo in ('clientes.ver', 'produccion.ver')))),
+  'Todo puesto con ordenes.crear lee cotizaciones, OT y unidades: la lista no le miente');
 
 -- 1. Administración ve lo que falta, lo más viejo primero --------------------------
 do $$
@@ -175,8 +191,13 @@ begin
              where f->>'numero' = 'QA-472-B' and (f->>'falta_ot')::boolean and f->>'ot_anulada' = '8477-2026'),
     'La cotización cuya OT se anuló vuelve, y dice cuál se anuló');
   perform test.afirmar(
-    not exists (select 1 from jsonb_array_elements(v_filas) f where f->>'numero' = 'QA-472-C'),
-    'La venta anterior de una OT que pasó a otro comprador no sale');
+    exists (select 1 from jsonb_array_elements(v_filas) f
+             where f->>'numero' = 'QA-472-C' and f->>'venta_anterior_de' = '8470-2026'),
+    'La venta anterior de una OT que pasó a otro comprador sale, diciendo de qué OT fue');
+  perform test.afirmar(
+    exists (select 1 from jsonb_array_elements(v_filas) f
+             where f->>'numero' = 'QA-472-B' and (f->>'dias')::int = 0),
+    'La que vuelve por su OT anulada espera desde la anulación (hoy), no desde que se aprobó (hace 5 días)');
   perform test.afirmar(
     (select bool_and((f->>'total')::int = jsonb_array_length(v_filas)) from jsonb_array_elements(v_filas) f),
     'Cada fila trae el total, que aquí es el de las filas');
@@ -196,7 +217,7 @@ begin
   perform test.afirmar(v_nros[1] = '8472-2026', 'Lo más viejo va primero: la OT de hace 3 días');
   perform test.afirmar(
     not exists (select 1 from jsonb_array_elements(v_filas) f, jsonb_object_keys(f) k
-                 where k ilike '%monto%' or k ilike '%venta%' or k ilike '%precio%' or k ilike '%importe%'),
+                 where k ilike '%monto%' or k ilike '%precio%' or k ilike '%importe%' or k ilike '%igv%'),
     'Sin importes');
 end $$;
 
@@ -228,12 +249,6 @@ begin
     current_setting('prueba.cot')::uuid, current_setting('prueba.ot_cot')::uuid, 'CHK472_NUEVO', '8474',
     'SEMIRREMOLQUE', null, 'ot/' || current_setting('prueba.ot_cot') || '/orden.pdf', 'orden.pdf', 100);
   select * into v_fila from public.pendientes_de_las_ot() p where p.documento = v_orden;
-  -- La venta anterior no lleva otra OT, aunque siga aprobada.
-  perform test.debe_fallar(format(
-    $q$select public.cargar_codigo_y_ot_de_cotizacion(%L, %L, 'CHK472_ANTERIOR', '8478', 'SEMIRREMOLQUE', null, %L, 'orden.pdf', 100)$q$,
-    current_setting('prueba.cot_anterior'), current_setting('prueba.ot_anterior'),
-    'ot/' || current_setting('prueba.ot_anterior') || '/orden.pdf'),
-    'La venta anterior de una OT no lleva otra OT', 'fue la venta anterior de la OT 8470-2026');
   perform test.afirmar(
     not exists (select 1 from public.pendientes_de_las_ot() p where p.numero = 'QA-472'),
     'Con su OT, la cotización sale de los pendientes');

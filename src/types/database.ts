@@ -15721,6 +15721,7 @@ export type Database = {
           falta_codigo: boolean | null
           falta_fecha: boolean | null
           ot_anulada: string | null
+          venta_anterior_de: string | null
           codigo_bloqueado: string | null
           desde: string | null
           dias: number | null
