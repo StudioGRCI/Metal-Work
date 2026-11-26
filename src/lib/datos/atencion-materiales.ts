@@ -199,7 +199,9 @@ export async function cargarAtencionMateriales(permisos: {
       tiene_factura: (facturas.data ?? []).some(f=>f.orden_compra_id===compra.orden_compra_id
         && (f.tipo==='FACTURA' || entregaPorCompra.get(compra.orden_compra_id ?? '')?.con_factura===false)),
       precios_completos: (precios.data ?? []).filter(p=>p.orden_compra_id===compra.orden_compra_id).every(p=>p.precio_unitario!==null),
-    })),
+    }))
+      // La base ordena por la fecha del documento; se vuelve a ordenar por la que se muestra, la corregida.
+      .sort((a, b) => (a.fecha_estimada ?? '9999-12-31').localeCompare(b.fecha_estimada ?? '9999-12-31')),
     areas: areas.data ?? [],
     responsables: personas.data ?? [],
   }

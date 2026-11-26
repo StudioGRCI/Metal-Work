@@ -1,7 +1,7 @@
 import { Check, ChevronDown, Route, X } from 'lucide-react'
 
 import { Insignia } from '@/components/ui/etiqueta-estado'
-import { haceDias, tardo, type PasoDescrito } from '@/lib/dominio/recorrido'
+import { enQueTermino, haceDias, tardo, type PasoDescrito } from '@/lib/dominio/recorrido'
 import { fecha, fechaHora } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -57,9 +57,8 @@ export function Recorrido({
   if (!pasos || pasos.length === 0) return null
 
   const ahora = pasos.find((p) => p.situacion === 'AHORA')
-  const hechos = pasos.filter((p) => p.situacion === 'HECHO')
-  // Cerrado, dice en qué terminó: una anotación al margen (el motivo del atraso) no es eso.
-  const ultimo = hechos.filter((p) => !p.alMargen).at(-1) ?? hechos.at(-1)
+  // Cerrado, dice en qué terminó (ver `enQueTermino`).
+  const ultimo = enQueTermino(pasos)
 
   return (
     <details className={cn('group/recorrido overflow-hidden', className)} data-recorrido>

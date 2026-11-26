@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { describirRecorridoDeLaCotizacion, describirRecorridoDeLaOrdenDeCompra, describirRecorridoDelRequerimiento, haceDias, insumos, tardo } from './recorrido.ts'
+import { describirRecorridoDeLaCotizacion, describirRecorridoDeLaOrdenDeCompra, describirRecorridoDeLaOrdenDeServicio, describirRecorridoDelRequerimiento, enQueTermino, haceDias, insumos, tardo } from './recorrido.ts'
 
 const paso = (orden, paso, situacion, mas = {}) => ({
   orden, paso, situacion, puesto: null, en: null, dias: null, espera: null, detalle: null, ...mas,
@@ -159,4 +159,22 @@ test('la X roja la llevan solo la OC y la OS que terminaron cortadas, no la coti
   assert.deepEqual(oc.map((p) => p.corta === true), [false, true, true])
   const cotizacion = describirRecorridoDeLaCotizacion([paso(1, 'SUBIDA', 'HECHO'), paso(2, 'ANULACION', 'HECHO')])
   assert.deepEqual(cotizacion.map((p) => p.corta === true), [false, false])
+})
+
+test('la OC completa dice «Completa» aunque Almacén validó después y se anotó el motivo', () => {
+  const oc = describirRecorridoDeLaOrdenDeCompra([
+    paso(1, 'EMISION', 'HECHO'),
+    paso(2, 'DEJADA', 'HECHO'),
+    paso(3, 'COMPLETA', 'HECHO'),
+    paso(4, 'VALIDACION', 'HECHO'),
+    paso(5, 'MOTIVO_ATRASO', 'HECHO', { detalle: 'PAGO|' }),
+  ])
+  assert.equal(enQueTermino(oc)?.paso, 'COMPLETA')
+  const anulada = describirRecorridoDeLaOrdenDeCompra([paso(1, 'EMISION', 'HECHO'), paso(2, 'ANULACION', 'HECHO'), paso(3, 'MOTIVO_ATRASO', 'HECHO', { detalle: 'OTRO|' })])
+  assert.equal(enQueTermino(anulada)?.titulo, 'Anulada')
+  const os = describirRecorridoDeLaOrdenDeServicio([paso(1, 'EMISION', 'HECHO'), paso(2, 'CONFORMIDAD', 'HECHO'), paso(3, 'FECHA_CORREGIDA', 'HECHO')])
+  assert.equal(enQueTermino(os)?.titulo, 'Volvió conforme')
+  // Sin paso que cierre, el último que no va al margen, como antes.
+  const rq = describirRecorridoDelRequerimiento([paso(1, 'REGISTRO', 'HECHO'), paso(2, 'PASO_NUEVO', 'HECHO')])
+  assert.equal(enQueTermino(rq)?.paso, 'PASO_NUEVO')
 })
