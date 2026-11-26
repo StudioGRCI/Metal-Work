@@ -155,7 +155,7 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
           <Link key={s.id} href={`/diseno/informe-semanal?semana=${s.semana_inicio}`}
             className="inline-flex min-h-11 flex-wrap items-center gap-2 rounded-[var(--radius-base)] border border-borde px-4 py-3 text-sm font-medium text-acento hover:bg-acento-suave">
             <span className="tabular">Informe N.º {numeroInforme(s.numero)} · semana del {fecha(s.semana_inicio)}</span>
-            <Insignia tono={s.estado === 'OBSERVADO' ? 'aviso' : 'neutro'}>{s.estado === 'OBSERVADO' ? 'Devuelto' : 'Sin enviar'}</Insignia>
+            <Insignia tono={INSIGNIA_ESTADO[s.estado ?? '']?.tono ?? 'neutro'}>{INSIGNIA_ESTADO[s.estado ?? '']?.etiqueta ?? s.estado}</Insignia>
           </Link>)}</TarjetaCuerpo>
       </Tarjeta>}
 
@@ -200,7 +200,7 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
         </TarjetaCuerpo>
       </Tarjeta>
 
-      <Tarjeta id="actividades-diarias">
+      <Tarjeta id="actividades-diarias" className="scroll-mt-20">
         <TarjetaCabecera titulo="Actividades diarias"
           ayuda="Lo que se hizo cada día, según el requerimiento del día y la urgencia: sin planificar y sin atarlo a los planos. Todas las unidades tienen código interno; las de garantía o mantenimiento, su OT." />
         <TarjetaCuerpo className="space-y-4">
@@ -298,7 +298,7 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
         </TarjetaCuerpo>
       </Tarjeta>}
 
-      <Tarjeta id="contenido-del-informe">
+      <Tarjeta id="contenido-del-informe" className="scroll-mt-20">
         <TarjetaCabecera titulo="Contenido del informe" ayuda="Las secciones del formato, en su orden. Las tablas de arriba entran solas al Word." />
         <TarjetaCuerpo className="space-y-4">
           {escribe && (!informe || ['BORRADOR', 'OBSERVADO'].includes(informe.estado))
