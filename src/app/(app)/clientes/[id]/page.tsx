@@ -207,6 +207,12 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
                   ? `y ${delCliente.anuladas} ${delCliente.anuladas === 1 ? 'anulada' : 'anuladas'}, en Cotización`
                   : null,
               ].filter(Boolean).join(' ')}
+              acciones={
+                // Cotización busca por la razón social: ahí están todas, también las anuladas.
+                <EnlaceBoton href={`/cotizaciones/pdf?q=${encodeURIComponent(cliente.razon_social)}`} variante="contorno">
+                  Ver todas en Cotización
+                </EnlaceBoton>
+              }
             />
             <TarjetaCuerpo className="p-0">
               {delCliente.cotizaciones.length === 0 ? (
@@ -338,12 +344,6 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
 }
 
 /**
- * El recuadro donde se busca la matrícula con la vista. Mientras la placa no
- * llega —y en esta empresa llega meses después—, la unidad se nombra con lo que
- * la identifique y se dice que le falta, para que nadie lea un código interno
- * como si fuera una matrícula. El aviso se calla cuando el nombre ya lo trae.
- */
-/**
  * Qué quiere decir cada palabra del estado de la unidad, y por qué puede no ser
  * la del estado de la OT en «Órdenes de trabajo»: la unidad mira también el
  * avance de su código interno (la OT de una cotización se queda «Aprobada»
@@ -355,7 +355,7 @@ const AYUDA_DE_UNIDADES = (
     <span className="block">De cada unidad con OT: en qué va, en una palabra, y la fecha de entrega que se le prometió al cliente.</span>
     {Object.values(ESTADO_DE_LA_UNIDAD).map((e) => (
       <span key={e.etiqueta} className="mt-1 block">
-        <span className="font-medium">{e.etiqueta}</span>: {e.descripcion?.toLowerCase()}.
+        <span className="font-medium">{e.etiqueta}.</span> {e.descripcion}.
       </span>
     ))}
     <span className="mt-2 block">
@@ -365,6 +365,12 @@ const AYUDA_DE_UNIDADES = (
   </>
 )
 
+/**
+ * El recuadro donde se busca la matrícula con la vista. Mientras la placa no
+ * llega —y en esta empresa llega meses después—, la unidad se nombra con lo que
+ * la identifique y se dice que le falta, para que nadie lea un código interno
+ * como si fuera una matrícula. El aviso se calla cuando el nombre ya lo trae.
+ */
 function NombreUnidad({ unidad }: { unidad: UnidadNombrable }) {
   const nombre = nombreDeUnidad(unidad)
   const falta = todaviaSinPlaca(unidad)

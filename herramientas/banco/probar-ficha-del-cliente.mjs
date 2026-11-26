@@ -173,6 +173,8 @@ for (const ancho of [1440, 390]) {
   const conAhora = await pagina.locator('[data-cotizacion-ahora]').allInnerTexts()
   comprobar(conAhora.length > 0 && conAhora.every((t) => /^\S.* · (hace \d+ días?|desde hoy)/.test(limpio(t))), `${ancho}: quién la tiene y hace cuánto (${limpio(conAhora[0] ?? 'ninguna espera')})`)
   comprobar(!(await pagina.locator('[data-cotizaciones-del-cliente]').innerText()).includes('Anulada'), `${ancho}: sin anuladas en la lista`)
+  const verTodas = await pagina.getByRole('link', { name: 'Ver todas en Cotización' }).getAttribute('href')
+  comprobar(verTodas === `/cotizaciones/pdf?q=${encodeURIComponent(cliente.razon_social)}`, `${ancho}: «Ver todas» busca al cliente en Cotización (${verTodas})`)
 
   if (ancho === 1440) {
     await pagina.locator('h1').scrollIntoViewIfNeeded()
