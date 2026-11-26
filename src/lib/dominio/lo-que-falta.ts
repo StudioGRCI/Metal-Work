@@ -105,9 +105,24 @@ export function faltaDeLaParte(x: { saldo: number }): LoQueFalta[] {
   return x.saldo > 0 ? [{ que: 'el pago, con su voucher', quien: 'Tesorería', traba: false }] : []
 }
 
-/** La compra a crédito que todavía no tiene comprobante. */
-export function faltaDeLaCompraACredito(): LoQueFalta[] {
-  return [{ que: 'registrar la factura en Adquisiciones', quien: 'Contabilidad', traba: true }]
+/**
+ * La compra a crédito que todavía no tiene comprobante. Si su OC espera a
+ * Gerencia, eso va primero: aunque llegue la factura, no se paga sin la
+ * aprobación (`fn_pago_factura_oc_aprobada`).
+ */
+export function faltaDeLaCompraACredito(oc: { nombre: string; aprobacion: string | null; desde?: string | null; dias?: number | null }): LoQueFalta[] {
+  const factura: LoQueFalta = { que: 'registrar la factura en Adquisiciones', quien: 'Contabilidad', traba: true }
+  if (oc.aprobacion === 'RECHAZADA' || oc.aprobacion === 'ANULADA') {
+    return [{
+      que: `ver qué pasa con la compra: la ${oc.nombre} está ${oc.aprobacion === 'ANULADA' ? 'anulada' : 'rechazada'} y no se paga`,
+      quien: 'Logística',
+      traba: true,
+    }]
+  }
+  if (oc.aprobacion === 'POR_APROBAR') {
+    return [{ que: `la aprobación de la ${oc.nombre}`, quien: 'Gerencia', traba: true, desde: oc.desde ?? null, dias: oc.dias ?? null }, factura]
+  }
+  return [factura]
 }
 
 /** La orden de servicio aprobada (Pagos de servicio). Gerencia ya la aprobó: si no, no saldría. */

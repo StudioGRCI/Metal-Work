@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { faltaDeLaBoleta, faltaDeLaFactura, faltaDelServicio, faltaDeLaParte, ocsQueTraban } from './lo-que-falta.ts'
+import { faltaDeLaBoleta, faltaDeLaCompraACredito, faltaDeLaFactura, faltaDelServicio, faltaDeLaParte, ocsQueTraban } from './lo-que-falta.ts'
 
 const oc = (nombre, aprobacion, mas = {}) => ({ nombre, aprobacion, ...mas })
 const factura = (mas = {}) => ({ saldo: 100, enEspera: false, ordenes: [oc('OC-0001-MW', 'APROBADA')], esperaLaBoleta: false, ...mas })
@@ -74,4 +74,13 @@ test('la orden de servicio: Logística da la factura y la conformidad; Tesorerí
   )
   assert.deepEqual(quien(faltaDelServicio(servicio({ todoPagado: true, saldoProveedor: 0 }))), ['Tesorería!'])
   assert.deepEqual(faltaDelServicio(servicio({ cancelada: true })), [])
+})
+
+test('la compra a crédito por aprobar espera primero a Gerencia, con sus días', () => {
+  const falta = faltaDeLaCompraACredito({ nombre: 'OC-0012-MW', aprobacion: 'POR_APROBAR', desde: '2026-11-22T10:00:00Z', dias: 4 })
+  assert.deepEqual(quien(falta), ['Gerencia!', 'Contabilidad!'])
+  assert.equal(falta[0].que, 'la aprobación de la OC-0012-MW')
+  assert.equal(falta[0].dias, 4)
+  assert.deepEqual(quien(faltaDeLaCompraACredito({ nombre: 'OC-0012-MW', aprobacion: 'APROBADA' })), ['Contabilidad!'])
+  assert.deepEqual(quien(faltaDeLaCompraACredito({ nombre: 'OC-0012-MW', aprobacion: 'RECHAZADA' })), ['Logística!'])
 })

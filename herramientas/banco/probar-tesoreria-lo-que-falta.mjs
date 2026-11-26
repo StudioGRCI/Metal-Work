@@ -142,6 +142,8 @@ const ocLista = await emitir(2, 90, true)
 const ocSinBoleta = await emitir(3, 25, false, 'CONTADO', 0)
 const ocAnexada = await emitir(4, 35, false, 'CONTADO', 0)
 const ocCredito = await emitir(5, 55, true)
+// 6: compra a crédito sin comprobante que todavía espera a Gerencia.
+const ocCreditoGerencia = await emitir(6, 45, true)
 await como('gerencia')
 for (const oc of [ocLista, ocSinBoleta, ocAnexada, ocCredito]) await consulta(`select public.aprobar_compra($1)`, [oc])
 // La que espera a Gerencia se pidió hace 4 días: se corre la fecha sin disparadores, como la dejaría el tiempo.
@@ -158,6 +160,7 @@ const NOMBRE = {
   sinBoleta: await nombreDe(ocSinBoleta),
   anexada: await nombreDe(ocAnexada),
   credito: await nombreDe(ocCredito),
+  creditoGerencia: await nombreDe(ocCreditoGerencia),
 }
 
 await como('contabilidad')
@@ -278,6 +281,11 @@ for (const puesto of ['tesoreria', 'gerencia']) {
     const fCredito = await loQueFalta(pagina.locator(`[data-compra-credito="${ocCredito}"]`))
     comprobar(tiene(fCredito, 'Contabilidad', 'registrar la factura en Adquisiciones') && fCredito[0]?.texto.includes('Lo tiene Contabilidad'),
       `${t} · la compra a crédito sin comprobante: la factura, de Contabilidad (${JSON.stringify(fCredito)})`)
+
+    const fCreditoGer = await loQueFalta(pagina.locator(`[data-compra-credito="${ocCreditoGerencia}"]`))
+    comprobar(tiene(fCreditoGer, 'Gerencia', `la aprobación de la ${NOMBRE.creditoGerencia}`) && fCreditoGer[0]?.texto.includes(insignia('Gerencia'))
+      && tiene(fCreditoGer, 'Contabilidad', 'registrar la factura'),
+      `${t} · la compra a crédito por aprobar: primero Gerencia («${insignia('Gerencia')}»), después la factura (${JSON.stringify(fCreditoGer)})`)
 
     const anchoPagar = await pagina.evaluate(() => document.documentElement.scrollWidth)
     comprobar(anchoPagar <= ancho, `${t} · por pagar entra en ${ancho} px (mide ${anchoPagar})`)

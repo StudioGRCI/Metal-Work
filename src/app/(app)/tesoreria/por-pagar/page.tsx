@@ -104,7 +104,11 @@ export default async function PaginaPorPagar() {
   ])
   // La factura en otra moneda que espera lo pagado por la boleta no se paga encima: primero se le pasa al cambio.
   // Lo que espera a Gerencia, con los días desde que se pidió su aprobación (plan 11.2), y la regla que la pide.
-  const ocsPorAprobar = cuentas.flatMap((c) => ocsSinAprobar(c).filter((o) => o.aprobacion === 'POR_APROBAR').map((o) => o.id))
+  // Las compras a crédito sin comprobante también: su OC puede estar esperando a Gerencia.
+  const ocsPorAprobar = [
+    ...cuentas.flatMap((c) => ocsSinAprobar(c).filter((o) => o.aprobacion === 'POR_APROBAR').map((o) => o.id)),
+    ...(pendientes.data ?? []).flatMap((c) => (c.orden_compra_id ? [c.orden_compra_id] : [])),
+  ]
   const [esperas, regla] = await Promise.all([esperaDeGerencia(ocsPorAprobar), reglaDeAprobacion()])
   // Lo que le toca a quien mira: Tesorería paga, Gerencia aprueba.
   const mias: QuienLoTiene[] = [...(paga ? (['Tesorería'] as const) : []), ...(apruebaCompras ? (['Gerencia'] as const) : [])]
@@ -252,7 +256,7 @@ export default async function PaginaPorPagar() {
       <Tarjeta>
         <TarjetaCabecera
           titulo="Facturas por pagar"
-          descripcion={regla ? textoDeLaRegla(regla) : undefined}
+          descripcion={regla === 'error' ? 'No se pudo leer la regla de aprobación de compras: recarga la pantalla para verla.' : regla ? textoDeLaRegla(regla) : undefined}
           ayuda="Cada factura con sus OC y su saldo, por vencimiento: lo vencido, lo que vence hoy, lo que vence esta semana (hasta el domingo) y lo de después, con los días de cada una contados con la fecha de Lima. El total de cada grupo va en soles y en dólares por separado: no se suman. Al final, aparte, las que esperan a Contabilidad o a Gerencia: no se pueden pagar todavía."
         />
         <TarjetaCuerpo className="space-y-3">
@@ -375,7 +379,11 @@ export default async function PaginaPorPagar() {
                   <span className="block text-xs text-texto-suave">
                     Comprada el {fecha(c.fecha_compra)} · <Vencimiento dia={c.fecha_vencimiento} saldo={Number(c.total_estimado ?? 1)} />
                   </span>
-                  <LoQueFaltaDeLaFila className="mt-1" mias={mias} falta={faltaDeLaCompraACredito()} />
+                  <LoQueFaltaDeLaFila
+                    className="mt-1"
+                    mias={mias}
+                    falta={faltaDeLaCompraACredito({ nombre: nombreDeOc(c), aprobacion: null, ...(c.orden_compra_id ? esperas.get(c.orden_compra_id) : undefined) })}
+                  />
                 </span>
                 <strong className="tabular">
                   {c.total_estimado === null ? <span className="font-normal text-aviso">Precio pendiente</span> : moneda(c.total_estimado, codigoMoneda(c.moneda))}
