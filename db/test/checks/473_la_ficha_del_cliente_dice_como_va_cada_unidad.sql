@@ -8,9 +8,12 @@
 --      avance) y APROBADA (todavía no empieza). La OT de una cotización se mira
 --      por su código interno: recién cargada, APROBADA.
 --   3. Solo eso: cuatro columnas, sin costo, margen, avance ni el id de la OT.
---   4. La lee quien lee la ficha del cliente: Ventas sí; Almacén, que no tiene
---      `clientes.ver`, no. Ventas no gana nada sobre la OT: sin `ordenes.ver`
---      sigue sin leerla, y la función le dice igual cómo va.
+--   4. La lee quien lee la ficha del cliente y además ve las órdenes o las
+--      cotizaciones (20261126452000): Ventas sí; Diseño, solo con `ordenes.ver`,
+--      también; Supervisión General, con `clientes.ver` y sin ninguno de los dos,
+--      recibe nada y sin error; Almacén, que no tiene `clientes.ver`, no. Ventas
+--      no gana nada sobre la OT: sin `ordenes.ver` sigue sin leerla, y la
+--      función le dice igual cómo va.
 --
 -- Cada lectura con la cuenta del puesto —nunca ADMIN— y `set local role
 -- authenticated`. Las OT de prueba se siembran con los disparadores apagados
@@ -29,7 +32,7 @@ insert into public.sedes (codigo, nombre) values ('QA473', 'Taller prueba de la 
 do $$
 declare v text; v_id uuid;
 begin
-  foreach v in array array['VENDEDOR:GCO', 'GERENTE:GGE', 'ADMINISTRACION:ADM', 'ALMACENERO:ALM', 'SUPERVISOR_GENERAL:PRD'] loop
+  foreach v in array array['VENDEDOR:GCO', 'GERENTE:GGE', 'ADMINISTRACION:ADM', 'ALMACENERO:ALM', 'SUPERVISOR_GENERAL:PRD', 'DISENO:DIS'] loop
     v_id := gen_random_uuid();
     insert into auth.users (id, email) values (v_id, lower(replace(v, ':', '.')) || '.473@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id, sede_id, documento)
@@ -220,6 +223,13 @@ select test.afirmar(
   (select count(*) from public.unidades u where u.cliente_id = pg_temp.id('cliente')) > 0
   and (select count(*) from public.unidades_del_cliente_con_su_entrega(pg_temp.id('cliente'))) = 0,
   'Supervisión General ve las unidades del cliente, pero no su OT ni en qué va');
+reset role;
+
+-- Diseño ve las órdenes (`ordenes.ver`) pero no las cotizaciones: la lee igual.
+select pg_temp.como('diseno');
+set local role authenticated;
+select test.afirmar(pg_temp.de('QAA-002') like '9002-2026 · EN_FABRICACION · %',
+  'Diseño, que ve las OT pero no las cotizaciones, lee cómo va cada unidad');
 reset role;
 
 -- Sin `ordenes.ver`, Ventas no lee la OT, y la función le dice igual cómo va:

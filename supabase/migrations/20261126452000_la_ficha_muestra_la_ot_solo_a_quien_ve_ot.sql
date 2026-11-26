@@ -9,9 +9,11 @@
 -- (`ordenes.ver`) o las cotizaciones (`cotizaciones.ver_pdf_comercial`).
 --
 -- A quien solo ve clientes la función le devuelve nada, sin error: la ficha
--- sale como antes de la 9.2, sin decir «No se pudo leer». Ventas, Administración,
--- Gerencia, Gerencia Comercial y Diseño siguen igual. Hoy Supervisión General
--- no tiene cuentas (desde la 20261017310000), así que nadie pierde nada.
+-- sale como antes de la 9.2, sin decir «No se pudo leer». Siguen igual todos los
+-- demás puestos que ven clientes: Ventas, Administración, Gerencia y Gerencia
+-- Comercial (los dos permisos), y Diseño, Diseño líder, Costos, Consulta y Jefe
+-- de taller (`ordenes.ver`). Hoy Supervisión General no tiene cuentas (desde la
+-- 20261017310000), así que nadie pierde nada.
 -- =============================================================================
 
 create or replace function public.unidades_del_cliente_con_su_entrega(p_cliente uuid)
