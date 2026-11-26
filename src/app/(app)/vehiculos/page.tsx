@@ -75,7 +75,7 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
         }))}
       />
 
-      {dias === null && enPlanta.length > 0 && (
+      {dias === null && vista === 'en_planta' && enPlanta.length > 0 && (
         <p className="mb-3 rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-texto" role="status" data-dias-sin-leer>
           No se pudieron contar los días que lleva cada vehículo en la planta. Siguen del que entró primero al último; vuelve a cargar la
           pantalla en un momento para ver los días.

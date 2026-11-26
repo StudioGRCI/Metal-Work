@@ -133,144 +133,147 @@ await base.query('commit')
 // ------------------------------------------------ 2 a 5. La pantalla
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
 const errores = []
+try {
 
-async function entrar(puesto, ancho = 1440) {
-  const correo = correoDe(puesto)
-  const telefono = ancho <= 480
-  const contexto = await navegador.newContext({
-    viewport: { width: ancho, height: telefono ? 844 : 900 },
-    deviceScaleFactor: 2,
-    hasTouch: telefono,
-    isMobile: telefono,
-    timezoneId: 'America/Lima',
-  })
-  const pagina = await contexto.newPage()
-  pagina.on('console', (m) => {
-    if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(`${correo}: ${m.text().slice(0, 300)}`)
-  })
-  pagina.on('pageerror', (e) => errores.push(`${correo}: ${String(e).slice(0, 300)}`))
-  await pagina.goto(`${BASE}/ingresar`, { waitUntil: 'networkidle' })
-  await pagina.fill('input[type="email"]', correo)
-  await pagina.fill('input[type="password"]', CLAVE)
-  await Promise.all([
-    pagina.waitForURL((u) => !u.pathname.startsWith('/ingresar'), { timeout: 30000 }).catch(() => {}),
-    pagina.click('button[type="submit"]'),
-  ])
-  if (pagina.url().includes('/ingresar')) throw new Error(`No se pudo entrar como ${correo}`)
-  await pagina.waitForLoadState('networkidle')
-  return { pagina, contexto }
-}
-
-async function ir(pagina, ruta) {
-  await pagina.goto(`${BASE}${ruta}`, { waitUntil: 'networkidle' })
-  await conReact(pagina)
-}
-
-async function capturar(pagina, archivo) {
-  await pagina.addStyleTag({ content: 'nextjs-portal { display: none !important }' })
-  const ventana = pagina.viewportSize()
-  const alto = await pagina.evaluate(() => Math.max(document.documentElement.scrollHeight, document.body.scrollHeight))
-  await pagina.setViewportSize({ width: ventana.width, height: Math.min(Math.max(alto, ventana.height), 6000) })
-  await pagina.evaluate(() => window.scrollTo(0, 0))
-  await pagina.screenshot({ path: `${CAPTURAS}/${archivo}` })
-  await pagina.setViewportSize(ventana)
-}
-
-async function sinDesborde(pagina, donde) {
-  const sobra = await pagina.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
-  comprobar(sobra <= 0, `${donde}: nada se sale de la pantalla (sobran ${sobra} px)`)
-}
-
-/** De cada fila visible: su placa, sus días, si dice «Puede salir», lo que falta y quién la registró. */
-const filas = (pagina) =>
-  pagina.locator('tbody tr').evaluateAll((es) =>
-    es.flatMap((e) => {
-      const enlace = e.querySelector('a[href^="/vehiculos/"]')
-      if (!enlace) return []
-      const visible = (sel) => [...e.querySelectorAll(sel)].find((x) => x.offsetParent !== null) ?? null
-      const dias = visible('[data-dias-en-planta]')
-      return [{
-        placa: enlace.textContent.trim(),
-        dias: dias ? Number(dias.dataset.diasEnPlanta) : null,
-        textoDias: dias?.textContent?.trim() ?? null,
-        puedeSalir: visible('[data-puede-salir]') !== null,
-        faltaParaSalir: visible('[data-falta-para-salir]') !== null,
-        falta: visible('[data-bloqueo-salida]')?.textContent?.trim() ?? null,
-        ingreso: visible('[data-registro-ingreso]')?.textContent?.trim() ?? null,
-        salida: visible('[data-registro-salida]')?.textContent?.trim() ?? null,
-        texto: e.innerText.replace(/\s+/g, ' '),
-      }]
-    }),
-  )
-
-for (const puesto of ['requerimientos', 'gerencia']) {
-  const { pagina, contexto } = await entrar(puesto)
-  await ir(pagina, '/vehiculos')
-  const todas = await filas(pagina)
-  const de = (clave) => todas.find((f) => f.placa === placa[clave])
-  comprobar(de('cochera')?.textoDias === '6 días en planta', `${puesto}: ${placa.cochera} dice «6 días en planta» (${de('cochera')?.textoDias})`)
-  comprobar(de('hoy')?.textoDias === 'Entró hoy', `${puesto}: ${placa.hoy} dice «Entró hoy» (${de('hoy')?.textoDias})`)
-  comprobar(de('fabrica')?.textoDias === '3 días en planta', `${puesto}: ${placa.fabrica} dice «3 días en planta» (${de('fabrica')?.textoDias})`)
-  comprobar(de('cochera')?.puedeSalir && de('hoy')?.puedeSalir, `${puesto}: los de cochera y «otro» dicen «Puede salir»`)
-  comprobar(!de('fabrica')?.puedeSalir && de('fabrica')?.faltaParaSalir && /va en 0 %/.test(de('fabrica')?.falta ?? ''),
-    `${puesto}: el de fabricación dice «Falta para salir» y qué le falta («${de('fabrica')?.falta}»), no «Puede salir»`)
-  comprobar(!de('cochera')?.faltaParaSalir, `${puesto}: el de cochera no dice «Falta para salir»`)
-  comprobar((de('fabrica')?.texto ?? '').includes(`Código S${sufijo}`), `${puesto}: el de fabricación rotula su código interno («Código S${sufijo}»)`)
-  if (puesto === 'requerimientos') {
-    // Lo que falta va en la columna de la salida, junto a su estado, con el id que cita «Marcar salida».
-    const enSalida = await pagina.locator(`#veh-bloqueo-${ids.fabrica}`).evaluate((e) => e.closest('td')?.cellIndex ?? -1)
-    comprobar(enSalida === 3, `lo que falta va en la columna de la salida (columna ${enSalida})`)
+  async function entrar(puesto, ancho = 1440) {
+    const correo = correoDe(puesto)
+    const telefono = ancho <= 480
+    const contexto = await navegador.newContext({
+      viewport: { width: ancho, height: telefono ? 844 : 900 },
+      deviceScaleFactor: 2,
+      hasTouch: telefono,
+      isMobile: telefono,
+      timezoneId: 'America/Lima',
+    })
+    const pagina = await contexto.newPage()
+    pagina.on('console', (m) => {
+      if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(`${correo}: ${m.text().slice(0, 300)}`)
+    })
+    pagina.on('pageerror', (e) => errores.push(`${correo}: ${String(e).slice(0, 300)}`))
+    await pagina.goto(`${BASE}/ingresar`, { waitUntil: 'networkidle' })
+    await pagina.fill('input[type="email"]', correo)
+    await pagina.fill('input[type="password"]', CLAVE)
+    await Promise.all([
+      pagina.waitForURL((u) => !u.pathname.startsWith('/ingresar'), { timeout: 30000 }).catch(() => {}),
+      pagina.click('button[type="submit"]'),
+    ])
+    if (pagina.url().includes('/ingresar')) throw new Error(`No se pudo entrar como ${correo}`)
+    await pagina.waitForLoadState('networkidle')
+    return { pagina, contexto }
   }
-  comprobar(['cochera', 'hoy', 'fabrica'].every((c) => de(c)?.ingreso === 'Lo registró Requerimientos'), `${puesto}: cada ingreso dice «Lo registró Requerimientos»`)
-  comprobar(!de('salio'), `${puesto}: el que salió no está en «En planta»`)
-  const conDias = todas.filter((f) => f.dias !== null).map((f) => f.dias)
-  comprobar(conDias.every((d, i) => i === 0 || conDias[i - 1] >= d), `${puesto}: va primero el que lleva más días (${conDias.join(', ')})`)
-  const botones = await pagina.getByRole('button', { name: /Marcar salida/i }).count()
-  comprobar(puesto === 'requerimientos' ? botones > 0 : botones === 0, `${puesto}: ${puesto === 'requerimientos' ? 'tiene' : 'no tiene'} los botones de salida (${botones})`)
-  if (puesto === 'requerimientos') await capturar(pagina, 'vehiculos-en-planta-1440.png')
 
-  await ir(pagina, '/vehiculos?vista=historial')
-  const salio = (await filas(pagina)).find((f) => f.placa === placa.salio)
-  comprobar(salio?.salida === 'La registró Requerimientos', `${puesto}: en el historial, la salida dice «La registró Requerimientos» (${salio?.salida})`)
-  comprobar(/Estuvo 7 días/.test(salio?.texto ?? ''), `${puesto}: y «Estuvo 7 días»`)
-  if (puesto === 'requerimientos') await capturar(pagina, 'vehiculos-historial-1440.png')
-  await contexto.close()
+  async function ir(pagina, ruta) {
+    await pagina.goto(`${BASE}${ruta}`, { waitUntil: 'networkidle' })
+    await conReact(pagina)
+  }
+
+  async function capturar(pagina, archivo) {
+    await pagina.addStyleTag({ content: 'nextjs-portal { display: none !important }' })
+    const ventana = pagina.viewportSize()
+    const alto = await pagina.evaluate(() => Math.max(document.documentElement.scrollHeight, document.body.scrollHeight))
+    await pagina.setViewportSize({ width: ventana.width, height: Math.min(Math.max(alto, ventana.height), 6000) })
+    await pagina.evaluate(() => window.scrollTo(0, 0))
+    await pagina.screenshot({ path: `${CAPTURAS}/${archivo}` })
+    await pagina.setViewportSize(ventana)
+  }
+
+  async function sinDesborde(pagina, donde) {
+    const sobra = await pagina.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+    comprobar(sobra <= 0, `${donde}: nada se sale de la pantalla (sobran ${sobra} px)`)
+  }
+
+  /** De cada fila visible: su placa, sus días, si dice «Puede salir», lo que falta y quién la registró. */
+  const filas = (pagina) =>
+    pagina.locator('tbody tr').evaluateAll((es) =>
+      es.flatMap((e) => {
+        const enlace = e.querySelector('a[href^="/vehiculos/"]')
+        if (!enlace) return []
+        const visible = (sel) => [...e.querySelectorAll(sel)].find((x) => x.offsetParent !== null) ?? null
+        const dias = visible('[data-dias-en-planta]')
+        return [{
+          placa: enlace.textContent.trim(),
+          dias: dias ? Number(dias.dataset.diasEnPlanta) : null,
+          textoDias: dias?.textContent?.trim() ?? null,
+          puedeSalir: visible('[data-puede-salir]') !== null,
+          faltaParaSalir: visible('[data-falta-para-salir]') !== null,
+          falta: visible('[data-bloqueo-salida]')?.textContent?.trim() ?? null,
+          ingreso: visible('[data-registro-ingreso]')?.textContent?.trim() ?? null,
+          salida: visible('[data-registro-salida]')?.textContent?.trim() ?? null,
+          texto: e.innerText.replace(/\s+/g, ' '),
+        }]
+      }),
+    )
+
+  for (const puesto of ['requerimientos', 'gerencia']) {
+    const { pagina, contexto } = await entrar(puesto)
+    await ir(pagina, '/vehiculos')
+    const todas = await filas(pagina)
+    const de = (clave) => todas.find((f) => f.placa === placa[clave])
+    comprobar(de('cochera')?.textoDias === '6 días en planta', `${puesto}: ${placa.cochera} dice «6 días en planta» (${de('cochera')?.textoDias})`)
+    comprobar(de('hoy')?.textoDias === 'Entró hoy', `${puesto}: ${placa.hoy} dice «Entró hoy» (${de('hoy')?.textoDias})`)
+    comprobar(de('fabrica')?.textoDias === '3 días en planta', `${puesto}: ${placa.fabrica} dice «3 días en planta» (${de('fabrica')?.textoDias})`)
+    comprobar(de('cochera')?.puedeSalir && de('hoy')?.puedeSalir, `${puesto}: los de cochera y «otro» dicen «Puede salir»`)
+    comprobar(!de('fabrica')?.puedeSalir && de('fabrica')?.faltaParaSalir && /va en 0 %/.test(de('fabrica')?.falta ?? ''),
+      `${puesto}: el de fabricación dice «Falta para salir» y qué le falta («${de('fabrica')?.falta}»), no «Puede salir»`)
+    comprobar(!de('cochera')?.faltaParaSalir, `${puesto}: el de cochera no dice «Falta para salir»`)
+    comprobar((de('fabrica')?.texto ?? '').includes(`Código S${sufijo}`), `${puesto}: el de fabricación rotula su código interno («Código S${sufijo}»)`)
+    if (puesto === 'requerimientos') {
+      // Lo que falta va en la columna de la salida, junto a su estado, con el id que cita «Marcar salida».
+      const enSalida = await pagina.locator(`#veh-bloqueo-${ids.fabrica}`).evaluate((e) => e.closest('td')?.cellIndex ?? -1)
+      comprobar(enSalida === 3, `lo que falta va en la columna de la salida (columna ${enSalida})`)
+    }
+    comprobar(['cochera', 'hoy', 'fabrica'].every((c) => de(c)?.ingreso === 'Lo registró Requerimientos'), `${puesto}: cada ingreso dice «Lo registró Requerimientos»`)
+    comprobar(!de('salio'), `${puesto}: el que salió no está en «En planta»`)
+    const conDias = todas.filter((f) => f.dias !== null).map((f) => f.dias)
+    comprobar(conDias.every((d, i) => i === 0 || conDias[i - 1] >= d), `${puesto}: va primero el que lleva más días (${conDias.join(', ')})`)
+    const botones = await pagina.getByRole('button', { name: /Marcar salida/i }).count()
+    comprobar(puesto === 'requerimientos' ? botones > 0 : botones === 0, `${puesto}: ${puesto === 'requerimientos' ? 'tiene' : 'no tiene'} los botones de salida (${botones})`)
+    if (puesto === 'requerimientos') await capturar(pagina, 'vehiculos-en-planta-1440.png')
+
+    await ir(pagina, '/vehiculos?vista=historial')
+    const salio = (await filas(pagina)).find((f) => f.placa === placa.salio)
+    comprobar(salio?.salida === 'La registró Requerimientos', `${puesto}: en el historial, la salida dice «La registró Requerimientos» (${salio?.salida})`)
+    comprobar(/Estuvo 7 días/.test(salio?.texto ?? ''), `${puesto}: y «Estuvo 7 días»`)
+    if (puesto === 'requerimientos') await capturar(pagina, 'vehiculos-historial-1440.png')
+    await contexto.close()
+  }
+
+  // Quien no debe entrar.
+  {
+    const { pagina, contexto } = await entrar('ventas')
+    await pagina.goto(`${BASE}/vehiculos`, { waitUntil: 'networkidle' })
+    comprobar(pagina.url().includes('/sin-permiso'), 'Ventas no entra a Vehículos')
+    await contexto.close()
+  }
+
+  // En el teléfono, lo de las columnas escondidas va en la fila.
+  {
+    const { pagina, contexto } = await entrar('requerimientos', 390)
+    await ir(pagina, '/vehiculos')
+    const todas = await filas(pagina)
+    const cochera = todas.find((f) => f.placa === placa.cochera)
+    comprobar(cochera?.textoDias === '6 días en planta' && cochera?.puedeSalir, 'a 390, la fila dice sus días y «Puede salir»')
+    comprobar(/lo registró Requerimientos/.test(cochera?.texto ?? ''), 'a 390, la fila dice quién registró el ingreso')
+    await sinDesborde(pagina, '«En planta» a 390')
+    await capturar(pagina, 'vehiculos-en-planta-390.png')
+    await ir(pagina, '/vehiculos?vista=historial')
+    const salio = (await filas(pagina)).find((f) => f.placa === placa.salio)
+    comprobar(/Su salida la registró Requerimientos/.test(salio?.texto ?? '') && /Estuvo 7 días/.test(salio?.texto ?? ''), 'a 390, el que salió dice quién registró la salida y cuánto estuvo')
+    await sinDesborde(pagina, '«Historial» a 390')
+    await capturar(pagina, 'vehiculos-historial-390.png')
+    await contexto.close()
+  }
+
+  comprobar(errores.length === 0, `sin errores de consola ni de hidratación ${errores.slice(0, 5).join(' | ')}`)
+} finally {
+  // Lo sembrado no se queda en la planta del banco, aunque algo falle: Requerimientos lo anula,
+  // con motivo, como se haría con un ingreso mal anotado.
+  for (const clave of ['cochera', 'hoy', 'fabrica']) {
+    await como('requerimientos', 'select public.anular_registro_vehiculo($1, $2)', [ids[clave], 'Registro de la sonda 3.2 del banco de pruebas'])
+  }
+  await navegador.close()
 }
 
-// Quien no debe entrar.
-{
-  const { pagina, contexto } = await entrar('ventas')
-  await pagina.goto(`${BASE}/vehiculos`, { waitUntil: 'networkidle' })
-  comprobar(pagina.url().includes('/sin-permiso'), 'Ventas no entra a Vehículos')
-  await contexto.close()
-}
-
-// En el teléfono, lo de las columnas escondidas va en la fila.
-{
-  const { pagina, contexto } = await entrar('requerimientos', 390)
-  await ir(pagina, '/vehiculos')
-  const todas = await filas(pagina)
-  const cochera = todas.find((f) => f.placa === placa.cochera)
-  comprobar(cochera?.textoDias === '6 días en planta' && cochera?.puedeSalir, 'a 390, la fila dice sus días y «Puede salir»')
-  comprobar(/lo registró Requerimientos/.test(cochera?.texto ?? ''), 'a 390, la fila dice quién registró el ingreso')
-  await sinDesborde(pagina, '«En planta» a 390')
-  await capturar(pagina, 'vehiculos-en-planta-390.png')
-  await ir(pagina, '/vehiculos?vista=historial')
-  const salio = (await filas(pagina)).find((f) => f.placa === placa.salio)
-  comprobar(/Su salida la registró Requerimientos/.test(salio?.texto ?? '') && /Estuvo 7 días/.test(salio?.texto ?? ''), 'a 390, el que salió dice quién registró la salida y cuánto estuvo')
-  await sinDesborde(pagina, '«Historial» a 390')
-  await capturar(pagina, 'vehiculos-historial-390.png')
-  await contexto.close()
-}
-
-comprobar(errores.length === 0, `sin errores de consola ni de hidratación ${errores.slice(0, 5).join(' | ')}`)
-
-// Lo sembrado no se queda en la planta del banco: Requerimientos lo anula, con motivo, como se haría con un ingreso mal anotado.
-for (const clave of ['cochera', 'hoy', 'fabrica']) {
-  await como('requerimientos', 'select public.anular_registro_vehiculo($1, $2)', [ids[clave], 'Registro de la sonda 3.2 del banco de pruebas'])
-}
-
-await navegador.close()
 await base.end()
 if (fallas.length > 0) {
   console.error(`\n${fallas.length} cosa(s) no cuadran:\n${fallas.map((f) => ` - ${f}`).join('\n')}`)
