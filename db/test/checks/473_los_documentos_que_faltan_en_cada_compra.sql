@@ -404,15 +404,46 @@ do $$ begin
     'con la factura en borrador, lo devuelto de la OC con boleta todavía no espera nota');
 end $$;
 reset role;
--- La misma factura, ya registrada (sin pasar por sus disparadores: solo importa su estado). Contra ella sí va la nota.
+-- «Lo que falta» y «Esperan nota de crédito» piden la nota con la misma regla (20261126970000): la OC con
+-- factura, o la de boleta con una factura registrada, contra la que se registra la nota.
+-- a) Una boleta de una parte no es una factura: ni una ni otra piden la nota.
 set local session_replication_role = replica;
-update public.adquisiciones set estado = 'REGISTRADA', ruta_storage = 'fb-473.pdf' where id = pg_temp.id('fb');
+insert into public.documentos_compra_material (orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes,
+       subido_por, numero_documento, fecha_emision, monto_de_la_parte, parte_trae_igv)
+values (pg_temp.id('ocb'), 'COMPROBANTE', 'b.pdf', 'chk473/b.pdf', 'application/pdf', 100,
+        pg_temp.id('comprador'), 'B001-473', current_setting('prueba.hoy')::date, 30, true);
 set local session_replication_role = origin;
 select pg_temp.como('contabilidad');
 set local role authenticated;
 do $$ begin
-  perform test.afirmar((select facturas->0->>'numero' = 'FH2-473' from public.devoluciones_sin_nota_credito() where devolucion_id = pg_temp.id('devb')),
-    'con la factura registrada, lo devuelto de la OC con boleta espera su nota, contra esa factura');
+  perform test.afirmar(not exists (select 1 from pg_temp.doc('ocb', 'NOTA_CREDITO'))
+                       and not exists (select 1 from public.devoluciones_sin_nota_credito() where devolucion_id = pg_temp.id('devb')),
+    'con una boleta de una parte, la OC con boleta no pide nota en ninguna de las dos');
+end $$;
+reset role;
+-- b) La misma factura, registrada en otra moneda que la OC (sin pasar por sus disparadores: solo importa su estado).
+set local session_replication_role = replica;
+delete from public.documentos_compra_material where ruta_storage = 'chk473/b.pdf';
+update public.adquisiciones set estado = 'REGISTRADA', ruta_storage = 'fb-473.pdf', moneda = 'USD' where id = pg_temp.id('fb');
+set local session_replication_role = origin;
+select pg_temp.como('contabilidad');
+set local role authenticated;
+do $$ begin
+  perform test.afirmar((select situacion = 'FALTA' from pg_temp.doc('ocb', 'NOTA_CREDITO'))
+                       and (select facturas->0->>'numero' = 'FH2-473' from public.devoluciones_sin_nota_credito() where devolucion_id = pg_temp.id('devb')),
+    'con una factura registrada en dólares, las dos piden la nota de lo devuelto, contra esa factura');
+end $$;
+reset role;
+-- c) En la moneda de la OC, lo mismo.
+set local session_replication_role = replica;
+update public.adquisiciones set moneda = 'PEN' where id = pg_temp.id('fb');
+set local session_replication_role = origin;
+select pg_temp.como('contabilidad');
+set local role authenticated;
+do $$ begin
+  perform test.afirmar((select situacion = 'FALTA' from pg_temp.doc('ocb', 'NOTA_CREDITO'))
+                       and (select facturas->0->>'numero' = 'FH2-473' from public.devoluciones_sin_nota_credito() where devolucion_id = pg_temp.id('devb')),
+    'con la factura registrada en soles, las dos piden la nota, contra esa factura');
 end $$;
 reset role;
 set local session_replication_role = replica;

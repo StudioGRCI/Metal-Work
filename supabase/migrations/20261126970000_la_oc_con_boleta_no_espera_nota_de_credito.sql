@@ -7,28 +7,32 @@
 -- factura de su OC»: una nota de crédito se registra contra una factura, y a la
 -- OC con boleta lo devuelto se lo arregla Tesorería con la devolución del dinero.
 --
--- Es la misma regla que ya sigue «lo que falta» de cada compra
--- (`documentos_de_las_compras`, 20261126480000): la nota se espera de la OC con
--- factura, o de la OC con boleta a la que igual se le registró una factura (el
--- proveedor la entregó), porque contra esa sí se puede registrar.
+-- La regla es «la OC con factura, o la de boleta que tiene una factura
+-- registrada»: lo que acepta `registrar_nota_credito`, que registra la nota
+-- contra una factura de esa OC (`facturas_de_la_compra`). «Lo que falta» de cada
+-- compra (`documentos_de_las_compras`, 20261126480000) decía casi lo mismo, pero
+-- miraba si la OC tenía algo facturado (`compras_facturadas`): pedía la nota de
+-- la OC con boleta que solo tenía una boleta de una parte, donde no hay factura
+-- contra la cual registrarla, y no la pedía cuando la factura estaba en otra
+-- moneda o llegó solo por el anexo de Logística. Las dos pasan a mirar lo mismo.
+-- En `documentos_de_las_compras` cambia solo esa condición, por reemplazo de
+-- texto sobre el cuerpo que hay en la base.
 --
--- Solo cambia el `where`: las mismas columnas, el mismo permiso y el mismo tope.
--- El cuerpo parte del que hay en la base (20261022220000 le cambió el mensaje y
--- el nombre de la OC), y antes de reemplazarlo se mira su huella: si alguien lo
--- cambió en producción, no se pisa. Solo lee. Idempotente.
+-- Las mismas columnas, el mismo permiso y el mismo tope. Antes de reemplazar
+-- cada función se mira su huella: la que tiene producción o la que deja esta
+-- migración. Si alguien la cambió a mano, no se pisa. Solo lee. Idempotente.
 -- =============================================================================
 
 do $$
 declare
-  v_md5   text;
-  v_nueva boolean;
+  v_md5 text;
 begin
-  select md5(replace(p.prosrc, E'\r', '')), p.prosrc like '%c.con_factura or exists%'
-    into v_md5, v_nueva
+  select md5(replace(p.prosrc, E'\r', ''))
+    into v_md5
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = 'devoluciones_sin_nota_credito';
   -- La de 20261022220000, o esta misma si la migración se vuelve a correr.
-  if v_md5 is not null and v_md5 <> '1ad7345b8cec50593309ec147f6c0056' and not v_nueva then
+  if v_md5 is not null and v_md5 not in ('1ad7345b8cec50593309ec147f6c0056', '1ceba8001fe8b00753b48df7c9ed40e9') then
     raise exception 'devoluciones_sin_nota_credito cambió en la base (huella %): revisa antes de reemplazarla.', v_md5;
   end if;
 end $$;
@@ -45,10 +49,7 @@ begin
   return query
   select m.id, m.registrado_en, public.nombre_de_oc(c.numero, c.referencia), c.id, c.proveedor, mt.descripcion::text,
          um.codigo::text, x.falta, round(x.falta * m.precio_unitario, 2), coalesce(m.moneda, c.moneda)::text,
-         m.documento_referencia::text,
-         coalesce((select jsonb_agg(jsonb_build_object('id', a.id, 'numero', a.numero_documento) order by a.fecha_emision)
-                     from public.facturas_de_la_compra(c.id) f
-                     join public.adquisiciones a on a.id = f.adquisicion_id and a.estado = 'REGISTRADA'), '[]'::jsonb)
+         m.documento_referencia::text, fx.facturas
     from public.movimientos_materiales m
     join public.orden_compra_material_detalles d on d.id = m.orden_compra_detalle_id
     join public.ordenes_compra_materiales c on c.id = d.orden_compra_id
@@ -57,11 +58,15 @@ begin
     cross join lateral (
       select m.cantidad::numeric - coalesce((select sum(r.cantidad::numeric) from public.movimientos_materiales r
                                                where r.repone_devolucion = m.id), 0) as falta) x
+    -- Las facturas registradas de su OC (`facturas_de_la_compra` ya trae solo las registradas).
+    cross join lateral (
+      select coalesce(jsonb_agg(jsonb_build_object('id', a.id, 'numero', a.numero_documento) order by a.fecha_emision), '[]'::jsonb) as facturas
+        from public.facturas_de_la_compra(c.id) f
+        join public.adquisiciones a on a.id = f.adquisicion_id) fx
    where m.tipo = 'DEVOLUCION_PROVEEDOR' and not m.se_repone and x.falta > 0
      and not exists (select 1 from public.notas_credito_compra n where n.devolucion_id = m.id and n.anulado_en is null)
      -- La OC con factura, o la de boleta que igual tiene una factura registrada: contra ella va la nota (20261126970000).
-     and (c.con_factura or exists (select 1 from public.facturas_de_la_compra(c.id) f
-                                     join public.adquisiciones a on a.id = f.adquisicion_id and a.estado = 'REGISTRADA'))
+     and (c.con_factura or jsonb_array_length(fx.facturas) > 0)
    order by m.registrado_en
    limit 200;
 end;
@@ -72,3 +77,28 @@ comment on function public.devoluciones_sin_nota_credito() is
 
 revoke all on function public.devoluciones_sin_nota_credito() from public, anon;
 grant execute on function public.devoluciones_sin_nota_credito() to authenticated;
+
+-- «Lo que falta» de cada compra pide la nota con la misma regla.
+do $$
+declare
+  v_md5   text;
+  v_def   text;
+  v_vieja constant text := 'where c.con_factura or coalesce(f.facturado, 0) > 0';
+  v_nueva constant text := 'where c.con_factura or exists (select 1 from public.facturas_de_la_compra(c.id))';
+begin
+  select md5(replace(p.prosrc, E'\r', '')), pg_get_functiondef(p.oid)
+    into v_md5, v_def
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = 'documentos_de_las_compras';
+  if v_md5 is null or v_md5 = '1456ab25e747c672223a3ba3e9b80b06' then
+    return;  -- sin la función, o ya con la regla nueva
+  end if;
+  -- La de 20261126480000, la que tiene producción.
+  if v_md5 <> '4f470602806c484e314d925599ca29cf' then
+    raise exception 'documentos_de_las_compras cambió en la base (huella %): revisa antes de reemplazarla.', v_md5;
+  end if;
+  if (length(v_def) - length(replace(v_def, v_vieja, ''))) / length(v_vieja) <> 1 then
+    raise exception 'documentos_de_las_compras no trae una sola vez la condición de la nota de crédito.';
+  end if;
+  execute replace(v_def, v_vieja, v_nueva);
+end $$;
