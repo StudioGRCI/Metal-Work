@@ -33,7 +33,12 @@ type FilaFactura = Pick<
 export type FacturaVenta = FilaFactura & { url: string | null; cobros: CobroFactura[] }
 
 type FilaCotizacion = Funciones<'cotizaciones_para_facturar'>['Returns'][number]
-export type CotizacionAprobada = FilaCotizacion & { url: string | null }
+/**
+ * `paso_a_otro_comprador`: la venta se cerró porque su OT pasó a otro comprador (las OT, el
+ * número solo para quien lee las órdenes); ya no lleva OT y queda cobrar o anular su factura
+ * (migración 20261126988000). Nulo: no se cerró.
+ */
+export type CotizacionAprobada = FilaCotizacion & { url: string | null; paso_a_otro_comprador: (string | null)[] | null }
 /** En la bandeja de Contabilidad, `facturas` deja de ser la cuenta y trae las facturas mismas. */
 export type CotizacionParaFacturar = Omit<CotizacionAprobada, 'facturas'> & { facturas: FacturaVenta[] }
 
@@ -76,7 +81,11 @@ export async function cotizacionesAprobadas(codigo?: string): Promise<Cotizacion
   // Con `codigo`, solo las de ese código interno: no se firman enlaces de las demás.
   const filas = (data ?? []).filter((f) => codigo === undefined || f.codigo_interno === codigo)
   const esPdf = (f: FilaCotizacion) => (f.archivo_mime ?? 'application/pdf') === 'application/pdf'
-  const urls = await enlaces('cotizaciones-pdf', filas.filter(esPdf).map((f) => f.archivo_ruta))
+  // Solo puede estar cerrada la que no tiene código: la base mira esas.
+  const [urls, cerradas] = await Promise.all([
+    enlaces('cotizaciones-pdf', filas.filter(esPdf).map((f) => f.archivo_ruta)),
+    ventasCerradas(filas.flatMap((f) => (f.cotizacion_id && !f.codigo_interno ? [f.cotizacion_id] : []))),
+  ])
   await Promise.all(
     filas
       .filter((f) => f.archivo_ruta && !esPdf(f))
@@ -86,7 +95,11 @@ export async function cotizacionesAprobadas(codigo?: string): Promise<Cotizacion
         if (firmado?.signedUrl) urls.set(f.archivo_ruta as string, bajarComo(firmado.signedUrl, f.archivo_nombre ?? true))
       }),
   )
-  return filas.map((f) => ({ ...f, url: (f.archivo_ruta && urls.get(f.archivo_ruta)) ?? null }))
+  return filas.map((f) => ({
+    ...f,
+    url: (f.archivo_ruta && urls.get(f.archivo_ruta)) ?? null,
+    paso_a_otro_comprador: (f.cotizacion_id && cerradas.get(f.cotizacion_id)) || null,
+  }))
 }
 
 const COLUMNAS_FACTURA =
@@ -215,6 +228,17 @@ export async function bandejaDeFacturacion(): Promise<CotizacionParaFacturar[]> 
   const turno = (c: CotizacionParaFacturar) =>
     !c.codigo_interno ? 2 : c.facturas.some((f) => !f.anulada_en) ? 1 : 0
   return lista.sort((a, b) => turno(a) - turno(b))
+}
+
+/** De las cotizaciones dadas, las que se cerraron porque su OT pasó a otro comprador, con sus OT. */
+async function ventasCerradas(ids: string[]): Promise<Map<string, (string | null)[]>> {
+  const cerradas = new Map<string, (string | null)[]>()
+  if (ids.length === 0) return cerradas
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('ventas_cerradas_por_otro_comprador', { p_ids: ids })
+  if (error) throw error
+  for (const v of data ?? []) if (v.cotizacion_id) cerradas.set(v.cotizacion_id, v.ordenes ?? [])
+  return cerradas
 }
 
 /**

@@ -176,7 +176,7 @@ export async function personalParaReportar(): Promise<PersonaParaReportar[]> {
 /*
  * Entrega 15.2 (migración 20261126151500): la clasificación, la causa y las
  * acciones correctivas. Lo que cada quien ve lo deciden
- * `ssoma_seguimiento_de_reportes`, `ssoma_acciones_visibles` y
+ * `ssoma_seguimiento_de_reportes`, `ssoma_acciones_a_la_vista` y
  * `ssoma_historia_de_accion`; la clasificación y la causa llegan vacías a quien
  * no es SSOMA ni Gerencia.
  */
@@ -247,9 +247,15 @@ export function seguimientoDe(porReporte: Record<string, SeguimientoSsoma>, id: 
 
 export type AccionSsoma = {
   id: string
-  reporte_id: string
-  reporte_numero: string
+  /** De un reporte (con su número y su tipo) o del hallazgo de una inspección: nunca de los dos. */
+  reporte_id: string | null
+  reporte_numero: string | null
   reporte_tipo: string
+  respuesta_id: string | null
+  inspeccion_id: string | null
+  /** El día de la inspección (`YYYY-MM-DD`) y lo que se encontró en ella. */
+  inspeccion_fecha: string | null
+  hallazgo: string | null
   area: string
   descripcion: string
   responsable_id: string
@@ -276,28 +282,43 @@ export type AccionSsoma = {
 export const MAXIMO_ACCIONES_SSOMA = 300
 
 /**
- * Las acciones que ve quien pregunta: de un reporte, una sola o todas. Ya
- * ordenadas: las vencidas arriba, después las abiertas por su fecha, las
- * cerradas y las anuladas. El orden lo pone la base antes del tope: si no, las
- * más viejas, que suelen ser las vencidas, eran las primeras en quedar fuera.
+ * Las acciones que ve quien pregunta: de un reporte, de una inspección, una
+ * sola o todas. Ya ordenadas: las vencidas arriba, después las abiertas por su
+ * fecha, las cerradas y las anuladas. El orden lo pone la base antes del tope:
+ * si no, las más viejas, que suelen ser las vencidas, eran las primeras en
+ * quedar fuera.
  */
-export async function listarAccionesSsoma({ reporte = null, id = null }: { reporte?: string | null; id?: string | null } = {}) {
+export async function listarAccionesSsoma({
+  reporte = null,
+  inspeccion = null,
+  id = null,
+}: { reporte?: string | null; inspeccion?: string | null; id?: string | null } = {}) {
   const supabase = await createClient()
   const { data, error } = await supabase
-    .rpc('ssoma_acciones_visibles', { p_reporte: reporte, p_id: id })
+    .rpc('ssoma_acciones_a_la_vista', { p_reporte: reporte, p_inspeccion: inspeccion, p_id: id })
     .order('orden', { ascending: true })
     .order('fecha_limite', { ascending: true })
     .order('creado_en', { ascending: false })
     .range(0, MAXIMO_ACCIONES_SSOMA - 1)
   if (error) throw new Error(`No se pudieron leer las acciones correctivas: ${error.message}`)
   const acciones: AccionSsoma[] = (data ?? []).flatMap((f) =>
-    f.id && f.reporte_id && f.reporte_numero && f.descripcion && f.responsable_id && f.fecha_limite && f.estado && f.creado_en
+    f.id &&
+    ((f.reporte_id && f.reporte_numero) || (f.inspeccion_id && f.respuesta_id)) &&
+    f.descripcion &&
+    f.responsable_id &&
+    f.fecha_limite &&
+    f.estado &&
+    f.creado_en
       ? [
           {
             id: f.id,
             reporte_id: f.reporte_id,
             reporte_numero: f.reporte_numero,
             reporte_tipo: f.reporte_tipo ?? '',
+            respuesta_id: f.respuesta_id,
+            inspeccion_id: f.inspeccion_id,
+            inspeccion_fecha: f.inspeccion_fecha,
+            hallazgo: f.hallazgo,
             area: f.area ?? '',
             descripcion: f.descripcion,
             responsable_id: f.responsable_id,
@@ -527,4 +548,168 @@ export async function cargarCharlaSsoma(id: string): Promise<DetalleCharlaSsoma 
     asistentes: (asistentes.data ?? []).flatMap((p) => (p.id && p.nombre ? [{ id: p.id, nombre: p.nombre, cargo: p.cargo, area: p.area }] : [])),
     fotosDeLaCharla: filas.map((f) => ({ id: f.id, orden: f.orden, enlace: enlaces[f.ruta] ?? null })),
   }
+}
+
+/*
+ * Entrega 15.4 (migración 20261126997500): las inspecciones con lista de
+ * verificación por área. Las leen SSOMA y Gerencia; el responsable de una acción
+ * ve la inspección solo con el hallazgo que le toca. Lo decide la base.
+ */
+
+export type InspeccionSsoma = {
+  id: string
+  area_id: string
+  area: string
+  /** `YYYY-MM-DD`, en Lima. */
+  fecha: string
+  tipo: string
+  observacion: string | null
+  registro: string | null
+  creado_en: string
+  anulado_en: string | null
+  anulo: string | null
+  motivo_anulacion: string | null
+  /** Lo que se marcó y cómo van sus acciones: en cero para quien la ve solo por su acción. */
+  puntos: number
+  conformes: number
+  no_conformes: number
+  no_aplica: number
+  /** Los hallazgos que se quedaron sin ninguna acción viva. */
+  sin_accion: number
+  abiertas: number
+  vencidas: number
+  cerradas: number
+  /** `TODOS` (SSOMA y Gerencia) o `RESPONSABLE` (tiene a cargo una de sus acciones). */
+  alcance: 'TODOS' | 'RESPONSABLE'
+}
+
+/** Cuántas inspecciones trae la lista como mucho. */
+export const MAXIMO_INSPECCIONES_SSOMA = 100
+
+async function leerInspecciones(id: string | null): Promise<InspeccionSsoma[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .rpc('ssoma_inspecciones_a_la_vista', { p_id: id })
+    .order('fecha', { ascending: false })
+    .order('creado_en', { ascending: false })
+    .range(0, MAXIMO_INSPECCIONES_SSOMA - 1)
+  if (error) throw new Error(`No se pudieron leer las inspecciones: ${error.message}`)
+  return (data ?? []).flatMap((i) =>
+    i.id && i.area_id && i.fecha && i.tipo && i.creado_en
+      ? [
+          {
+            id: i.id,
+            area_id: i.area_id,
+            area: i.area ?? '',
+            fecha: i.fecha,
+            tipo: i.tipo,
+            observacion: i.observacion,
+            registro: i.registro,
+            creado_en: i.creado_en,
+            anulado_en: i.anulado_en,
+            anulo: i.anulo,
+            motivo_anulacion: i.motivo_anulacion,
+            puntos: i.puntos ?? 0,
+            conformes: i.conformes ?? 0,
+            no_conformes: i.no_conformes ?? 0,
+            no_aplica: i.no_aplica ?? 0,
+            sin_accion: i.sin_accion ?? 0,
+            abiertas: i.abiertas ?? 0,
+            vencidas: i.vencidas ?? 0,
+            cerradas: i.cerradas ?? 0,
+            alcance: i.alcance === 'TODOS' ? 'TODOS' : 'RESPONSABLE',
+          },
+        ]
+      : [],
+  )
+}
+
+/** Las inspecciones, la más reciente arriba; las anuladas también. Solo las que la base deja ver. */
+export function listarInspeccionesSsoma() {
+  return leerInspecciones(null)
+}
+
+export type RespuestaDeInspeccion = { id: string; orden: number; texto: string; resultado: string; hallazgo: string | null }
+
+/** Una inspección con sus puntos. `null` si no existe o si quien mira no la puede ver. */
+export async function cargarInspeccionSsoma(id: string): Promise<{ inspeccion: InspeccionSsoma; respuestas: RespuestaDeInspeccion[] } | null> {
+  const supabase = await createClient()
+  const [inspecciones, respuestas] = await Promise.all([leerInspecciones(id), supabase.rpc('ssoma_respuestas_de_inspeccion', { p_inspeccion: id })])
+  if (respuestas.error) throw new Error(`No se pudieron leer los puntos de la inspección: ${respuestas.error.message}`)
+  const inspeccion = inspecciones[0]
+  if (!inspeccion) return null
+  return {
+    inspeccion,
+    respuestas: (respuestas.data ?? []).flatMap((r) =>
+      r.id && r.texto && r.resultado ? [{ id: r.id, orden: r.orden ?? 0, texto: r.texto, resultado: r.resultado, hallazgo: r.hallazgo }] : [],
+    ),
+  }
+}
+
+export type AreaParaInspeccionar = { id: string; nombre: string; jefe_id: string | null }
+
+/** Las áreas que se inspeccionan, en el orden del proceso, con su responsable: a quien se propone la acción. */
+export async function areasParaInspeccionar(): Promise<AreaParaInspeccionar[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('areas').select('id, nombre, jefe_id').eq('activo', true).order('orden_secuencia')
+  if (error) throw new Error(`No se pudieron leer las áreas: ${error.message}`)
+  return data ?? []
+}
+
+export type AreaInspeccionada = {
+  area_id: string
+  area: string
+  /** Cuántos puntos tiene hoy la lista con que se inspecciona. */
+  puntos: number
+  ultima_id: string | null
+  ultima: string | null
+  /** Los días desde la última, contados en la base con la fecha de Lima. */
+  dias: number | null
+  abiertas: number
+  vencidas: number
+}
+
+/** Cada área activa con su última inspección vigente y las acciones que salieron de sus inspecciones. */
+export async function inspeccionesPorArea(): Promise<AreaInspeccionada[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('ssoma_inspecciones_por_area')
+  if (error) throw new Error(`No se pudo leer cuándo se inspeccionó cada área: ${error.message}`)
+  return (data ?? []).flatMap((a) =>
+    a.area_id && a.area
+      ? [
+          {
+            area_id: a.area_id,
+            area: a.area,
+            puntos: a.puntos ?? 0,
+            ultima_id: a.ultima_id,
+            ultima: a.ultima,
+            dias: a.dias,
+            abiertas: a.abiertas ?? 0,
+            vencidas: a.vencidas ?? 0,
+          },
+        ]
+      : [],
+  )
+}
+
+export type PuntoDeLista = {
+  id: string
+  /** Sin área: se revisa en todas. */
+  area_id: string | null
+  texto: string
+  orden: number
+  activo: boolean
+  retirado_en: string | null
+}
+
+/** La lista de verificación entera, con los puntos retirados: la leen SSOMA y Gerencia. */
+export async function puntosDeLaLista(): Promise<PuntoDeLista[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('ssoma_lista_puntos')
+    .select('id, area_id, texto, orden, activo, retirado_en')
+    .order('orden')
+    .order('creado_en')
+  if (error) throw new Error(`No se pudo leer la lista de verificación: ${error.message}`)
+  return data ?? []
 }

@@ -11,7 +11,9 @@ import {
   MAXIMO_FOTOS_CHARLA,
   MAXIMO_FOTOS_EVIDENCIA,
   MAXIMO_FOTOS_SSOMA,
+  RESULTADOS_INSPECCION,
   TIPOS_CHARLA_SSOMA,
+  TIPOS_INSPECCION_SSOMA,
   TIPOS_REPORTE_SSOMA,
 } from '@/lib/dominio/ssoma'
 import { exigirSesion, puede } from '@/lib/sesion'
@@ -227,7 +229,11 @@ export async function clasificarReporteSsoma(_previo: unknown, formulario: FormD
   return { ok: true, mensaje: 'Clasificación guardada.' }
 }
 
-/** SSOMA encarga una acción correctiva a una cuenta. Mismo permiso que `ssoma_crear_accion`. */
+/**
+ * SSOMA encarga una acción correctiva a una cuenta, para un reporte o para el
+ * hallazgo de una inspección. Mismo permiso que `ssoma_crear_accion` y
+ * `ssoma_accion_de_hallazgo`.
+ */
 export async function crearAccionSsoma(_previo: unknown, formulario: FormData): Promise<ResultadoAccion<{ id: string }>> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'ssoma.gestionar')) return { ok: false, error: 'Una acción correctiva la encarga SSOMA.' }
@@ -235,7 +241,8 @@ export async function crearAccionSsoma(_previo: unknown, formulario: FormData): 
   const analisis = z
     .object({
       operacion_id: z.guid(),
-      reporte_id: z.guid(),
+      reporte_id: z.union([z.literal(''), z.guid()]),
+      respuesta_id: z.union([z.literal(''), z.guid()]),
       descripcion: z
         .string()
         .min(10, 'Escribe qué se tiene que hacer, en al menos 10 caracteres.')
@@ -246,6 +253,7 @@ export async function crearAccionSsoma(_previo: unknown, formulario: FormData): 
     .safeParse({
       operacion_id: dato(formulario, 'operacion_id'),
       reporte_id: dato(formulario, 'reporte_id'),
+      respuesta_id: dato(formulario, 'respuesta_id'),
       descripcion: dato(formulario, 'descripcion'),
       responsable_id: dato(formulario, 'responsable_id'),
       fecha_limite: dato(formulario, 'fecha_limite'),
@@ -256,15 +264,25 @@ export async function crearAccionSsoma(_previo: unknown, formulario: FormData): 
       error: analisis.error.issues[0]?.message ?? 'Revisa la acción.',
     }
   const d = analisis.data
+  // De un reporte o de un hallazgo: de uno solo.
+  if (Boolean(d.reporte_id) === Boolean(d.respuesta_id)) return { ok: false, error: 'Vuelve a abrir el formulario de la acción.' }
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('ssoma_crear_accion', {
-    p_id: d.operacion_id,
-    p_reporte: d.reporte_id,
-    p_descripcion: d.descripcion,
-    p_responsable: d.responsable_id,
-    p_fecha_limite: d.fecha_limite,
-  })
+  const { data, error } = d.respuesta_id
+    ? await supabase.rpc('ssoma_accion_de_hallazgo', {
+        p_id: d.operacion_id,
+        p_respuesta: d.respuesta_id,
+        p_descripcion: d.descripcion,
+        p_responsable: d.responsable_id,
+        p_fecha_limite: d.fecha_limite,
+      })
+    : await supabase.rpc('ssoma_crear_accion', {
+        p_id: d.operacion_id,
+        p_reporte: d.reporte_id,
+        p_descripcion: d.descripcion,
+        p_responsable: d.responsable_id,
+        p_fecha_limite: d.fecha_limite,
+      })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.operacion_id)
     return {
@@ -516,4 +534,144 @@ export async function anularCharlaSsoma(_previo: unknown, formulario: FormData):
 
   revalidatePath('/ssoma', 'layout')
   return { ok: true, mensaje: 'Charla anulada: ya no cuenta como asistencia y queda con su motivo.' }
+}
+
+/*
+ * Entrega 15.4: las inspecciones con lista de verificación. Las cuatro acciones
+ * exigen el mismo permiso que sus funciones en la base (`ssoma.gestionar`).
+ */
+
+/** Lo que se marcó en un punto; del no conforme, lo que se encontró y su acción. */
+const respuestaDeInspeccion = z.discriminatedUnion('resultado', [
+  z.object({ punto: z.guid(), resultado: z.literal('CONFORME') }),
+  z.object({ punto: z.guid(), resultado: z.literal('NO_APLICA') }),
+  z.object({
+    punto: z.guid(),
+    resultado: z.literal('NO_CONFORME'),
+    hallazgo: z.string().trim().min(10, 'En cada punto no conforme, cuenta qué encontraste, en al menos 10 caracteres.').max(500, 'Lo que encontraste pasa de 500 caracteres.'),
+    accion: z.object({
+      que: z.string().trim().min(10, 'En cada punto no conforme, escribe qué se tiene que hacer, en al menos 10 caracteres.').max(500, 'La acción pasa de 500 caracteres.'),
+      responsable: z.guid('En cada punto no conforme, elige al responsable.'),
+      fecha_limite: z.string().regex(FECHA, 'En cada punto no conforme, pon la fecha límite.'),
+    }),
+  }),
+])
+
+/**
+ * SSOMA registra la inspección de un área: cada punto de su lista con su
+ * resultado y, de cada no conforme, lo que encontró y la acción que lo corrige.
+ * Mismo permiso que `ssoma_registrar_inspeccion`, que la guarda entera o no la guarda.
+ */
+export async function registrarInspeccionSsoma(_previo: unknown, formulario: FormData): Promise<ResultadoAccion<{ id: string }>> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'ssoma.gestionar')) return { ok: false, error: 'Una inspección la registra SSOMA.' }
+
+  const analisis = z
+    .object({
+      operacion_id: z.guid(),
+      area_id: z.guid('Elige el área que inspeccionaste.'),
+      fecha: z.string().regex(FECHA, 'Pon la fecha de la inspección.'),
+      tipo: z.enum(TIPOS_INSPECCION_SSOMA, { message: 'Marca si la inspección fue planeada o no planeada.' }),
+      observacion: z.string().max(1000, 'La observación pasa de 1000 caracteres.'),
+      respuestas: z
+        .array(respuestaDeInspeccion, 'Marca cada punto de la lista: conforme, no conforme o no aplica.')
+        .min(1, 'Marca cada punto de la lista: conforme, no conforme o no aplica.')
+        .max(200, 'La lista pasa de 200 puntos.'),
+    })
+    .safeParse({
+      operacion_id: dato(formulario, 'operacion_id'),
+      area_id: dato(formulario, 'area_id'),
+      fecha: dato(formulario, 'fecha'),
+      tipo: dato(formulario, 'tipo'),
+      observacion: dato(formulario, 'observacion'),
+      respuestas: json(formulario, 'respuestas'),
+    })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa la inspección.' }
+  const d = analisis.data
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('ssoma_registrar_inspeccion', {
+    p_id: d.operacion_id,
+    p_area: d.area_id,
+    p_fecha: d.fecha,
+    p_tipo: d.tipo,
+    p_observacion: d.observacion || null,
+    p_respuestas: d.respuestas,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== d.operacion_id) return { ok: false, error: 'La inspección no quedó registrada. Recarga la pantalla.' }
+
+  revalidatePath('/ssoma', 'layout')
+  const hallazgos = d.respuestas.filter((r) => r.resultado === 'NO_CONFORME').length
+  return {
+    ok: true,
+    mensaje:
+      hallazgos === 0
+        ? 'Inspección registrada, sin hallazgos.'
+        : `Inspección registrada con ${hallazgos} ${hallazgos === 1 ? 'hallazgo: su acción ya está encargada' : 'hallazgos: sus acciones ya están encargadas'}.`,
+    datos: { id: d.operacion_id },
+  }
+}
+
+/** SSOMA anula una inspección mal registrada, con su motivo; no se borra. Mismo permiso que `ssoma_anular_inspeccion`. */
+export async function anularInspeccionSsoma(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'ssoma.gestionar')) return { ok: false, error: 'Una inspección la anula SSOMA.' }
+  const analisis = z
+    .object({
+      id: z.guid(),
+      motivo: z.string().min(10, 'Cuenta por qué se anula, en al menos 10 caracteres.').max(500, 'El motivo pasa de 500 caracteres.'),
+    })
+    .safeParse({ id: formulario.get('id'), motivo: dato(formulario, 'motivo') })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('ssoma_anular_inspeccion', { p_id: analisis.data.id, p_motivo: analisis.data.motivo })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== analisis.data.id) return { ok: false, error: 'La inspección no se anuló. Recarga la pantalla.' }
+
+  revalidatePath('/ssoma', 'layout')
+  return { ok: true, mensaje: 'Inspección anulada. Queda con su motivo.' }
+}
+
+/** SSOMA agrega un punto a la lista de verificación de un área, o a la de todas. Mismo permiso que `ssoma_agregar_punto`. */
+export async function agregarPuntoSsoma(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'ssoma.gestionar')) return { ok: false, error: 'La lista de verificación la lleva SSOMA.' }
+  const analisis = z
+    .object({
+      operacion_id: z.guid(),
+      area_id: z.union([z.literal(''), z.guid('Elige un área de la lista, o «Todas las áreas».')]),
+      texto: z.string().min(5, 'Escribe qué se revisa, en al menos 5 caracteres.').max(200, 'El punto pasa de 200 caracteres.'),
+    })
+    .safeParse({ operacion_id: dato(formulario, 'operacion_id'), area_id: dato(formulario, 'area_id'), texto: dato(formulario, 'texto') })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el punto.' }
+  const d = analisis.data
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('ssoma_agregar_punto', { p_id: d.operacion_id, p_area: d.area_id || null, p_texto: d.texto })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== d.operacion_id) return { ok: false, error: 'El punto no quedó en la lista. Recarga la pantalla.' }
+
+  revalidatePath('/ssoma', 'layout')
+  return { ok: true, mensaje: 'Punto agregado: se pide desde la próxima inspección.' }
+}
+
+/** SSOMA retira un punto de la lista o lo restituye. Mismo permiso que `ssoma_activar_punto`. */
+export async function activarPuntoSsoma(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'ssoma.gestionar')) return { ok: false, error: 'La lista de verificación la lleva SSOMA.' }
+  const analisis = z
+    .object({ id: z.guid(), activo: z.enum(['SI', 'NO']) })
+    .safeParse({ id: formulario.get('id'), activo: dato(formulario, 'activo') })
+  if (!analisis.success) return { ok: false, error: 'Vuelve a cargar la pantalla.' }
+  const activo = analisis.data.activo === 'SI'
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('ssoma_activar_punto', { p_id: analisis.data.id, p_activo: activo })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== analisis.data.id) return { ok: false, error: 'El punto no cambió. Recarga la pantalla.' }
+
+  revalidatePath('/ssoma', 'layout')
+  return { ok: true, mensaje: activo ? 'Punto restituido a la lista.' : 'Punto retirado: ya no se pide en las inspecciones nuevas.' }
 }

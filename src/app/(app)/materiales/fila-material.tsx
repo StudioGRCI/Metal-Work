@@ -6,7 +6,7 @@ import { useState } from 'react'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
-import { TD, TR } from '@/components/ui/tabla'
+import { AccionesDeFila, TD, TR } from '@/components/ui/tabla'
 import { Ventana } from '@/components/ui/ventana'
 import { useEnvio } from '@/lib/envio'
 import type { MaterialDelCatalogo } from '@/lib/datos/materiales'
@@ -151,11 +151,26 @@ export function FilaMaterial({
   const [editando, setEditando] = useState(false)
   const estado = useEnvio(cambiarEstadoMaterial, undefined, { documento: material.id })
 
+  // En qué se cuenta y, si el Excel no lo decía, que falta confirmarlo. Sin
+  // color: el aviso es el filtro «Unidad por confirmar» de arriba, con su cuenta.
+  const unidad = (
+    <>
+      {material.unidad?.codigo ?? '—'}
+      {material.unidad_pendiente && (
+        <span className="text-xs text-texto-suave" data-unidad-por-confirmar>
+          {' · '}
+          {/* A quien solo consulta no se le da la orden: es Diseño quien la confirma. */}
+          {puedeEditar ? 'confirmar unidad' : 'unidad por confirmar'}
+        </span>
+      )}
+    </>
+  )
+
   return (
     <TR className={material.activo ? undefined : 'opacity-60'}>
       {/* Una palabra larga sin espacios («(355MMX2,8MMX25,4MM)DEWALT») empujaba
           la tabla fuera del teléfono: se parte donde haga falta. */}
-      <TD className="[overflow-wrap:anywhere] sm:min-w-48">
+      <TD className="[overflow-wrap:anywhere]">
         <p className="text-sm font-medium text-texto">{material.descripcion}</p>
         <p className="text-xs text-texto-suave">
           {material.codigo_almacen_origen ?? material.codigo}
@@ -168,51 +183,35 @@ export function FilaMaterial({
             </Insignia>
           )}
         </p>
-        {/* En el teléfono la categoría y la especificación van bajo el nombre, y
-            en la tableta, la especificación: con sus columnas, la tabla se corría
-            de costado o la descripción quedaba en 90 px y partía «REDOND|O». */}
-        {(material.categoria || material.especificacion_tecnica) && (
-          <p className="text-xs text-texto-suave lg:hidden">
-            {material.categoria && (
-              <span className="sm:hidden">
-                {material.categoria.nombre}
-                {material.especificacion_tecnica && ' · '}
-              </span>
-            )}
-            {material.especificacion_tecnica}
-          </p>
-        )}
+        {/* En la ficha del teléfono, la categoría y la unidad van bajo el nombre;
+            la especificación, hasta que cabe su columna (1280 px): con todas,
+            entre 768 y 1279 la descripción quedaba en 90 px y partía «REDOND|O». */}
+        <p className="text-xs text-texto-suave md:hidden">
+          {material.categoria && `${material.categoria.nombre} · `}
+          {unidad}
+        </p>
+        {material.especificacion_tecnica && <p className="text-xs text-texto-suave xl:hidden">{material.especificacion_tecnica}</p>}
       </TD>
-      <TD className="hidden text-sm text-texto-suave sm:table-cell">{material.categoria?.nombre ?? '—'}</TD>
-      <TD className="text-sm text-texto-suave">
-        {material.unidad?.codigo ?? '—'}
-        {/* En el teléfono se ve más corta, «Confirmar» (el lector de pantalla
-            sigue leyendo «Confirmar unidad»): entera, la tabla se corría 15 px
-            de costado (producción, 2026-10-20). */}
-        {material.unidad_pendiente && (
-          <Insignia tono="aviso" className="mt-1 sm:mt-0 sm:ml-2">
-            {/* A quien solo consulta no se le da la orden: es Diseño quien la confirma. */}
-            {puedeEditar ? 'Confirmar' : 'Por confirmar'}<span className="sr-only sm:not-sr-only">{puedeEditar ? ' unidad' : ' la unidad'}</span>
-          </Insignia>
-        )}
-      </TD>
-      <TD className="hidden text-xs text-texto-suave lg:table-cell">{material.especificacion_tecnica ?? '—'}</TD>
+      <TD className="hidden text-sm text-texto-suave md:table-cell">{material.categoria?.nombre ?? '—'}</TD>
+      <TD className="hidden text-sm whitespace-nowrap text-texto-suave md:table-cell">{unidad}</TD>
+      <TD className="hidden text-xs text-texto-suave xl:table-cell">{material.especificacion_tecnica ?? '—'}</TD>
       {puedeEditar && (
-        // Hasta la tableta los dos botones van uno sobre otro y la celda pierde
-        // su margen: lado a lado ocupaban 112 px y la descripción quedaba en
-        // 121, donde se partían a la mitad palabras como «TRONZADORA».
-        <TD className="px-1 md:px-3">
-          <div className="flex flex-col items-center justify-end gap-1 md:flex-row">
+        <TD>
+          {/* Un renglón, con su nombre: «Corregir» con borde y «Retirar» al final
+              y sin borde (decisión 6, hasta que exista el menú «⋯»). Eran un
+              lápiz y un tacho rojo sin texto, a un toque uno del otro. */}
+          <AccionesDeFila>
             <Boton
               type="button"
-              variante="fantasma"
+              variante="contorno"
               tamano="sm"
               aria-label={`Corregir ${material.descripcion}`}
               onClick={() => setEditando(true)}
             >
               <Pencil aria-hidden className="size-4" />
+              Corregir
             </Boton>
-            <form onSubmit={estado.alEnviar}>
+            <form onSubmit={estado.alEnviar} className="contents">
               <input type="hidden" name="id" value={material.id} />
               <input type="hidden" name="activo" value={material.activo ? '0' : '1'} />
               <Boton
@@ -222,19 +221,16 @@ export function FilaMaterial({
                 cargando={estado.enviando}
                 aria-label={material.activo ? `Retirar ${material.descripcion} del catálogo` : `Devolver ${material.descripcion} al catálogo`}
               >
-                {material.activo ? (
-                  <Trash2 aria-hidden className="size-4 text-peligro" />
-                ) : (
-                  <RotateCcw aria-hidden className="size-4" />
-                )}
+                {material.activo ? <Trash2 aria-hidden className="size-4" /> : <RotateCcw aria-hidden className="size-4" />}
+                {material.activo ? 'Retirar' : 'Devolver'}
               </Boton>
             </form>
             {estado.error && (
-              <p role="alert" className="text-xs text-peligro">
+              <p role="alert" className="order-last basis-full text-xs text-peligro md:text-right">
                 {estado.error}
               </p>
             )}
-          </div>
+          </AccionesDeFila>
           <FormularioMaterial
             material={material}
             catalogos={catalogos}

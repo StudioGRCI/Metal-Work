@@ -51,6 +51,18 @@ En `src/components/ui/`:
   renglón: las columnas de consulta («Para», «Comprobante», el contacto)
   aparecen desde `xl:table-cell` y hasta ahí bajan a la primera celda
   (`xl:hidden`).
+- **Un aviso que se repite en casi todas las filas deja de avisar** (hallazgo
+  4 del plan de orden y diseño; entrega 5, 2026-11-26). «Confirmar unidad» iba
+  en ámbar en 572 materiales en producción (298 en el banco local) y los cinco
+  puntos de Diseño, en cinco casillas vacías, en casi todos los códigos (188 de
+  191 en el banco). Va a un filtro con su cuenta arriba («Unidad por confirmar
+  (N)», «Sin planos, materiales ni etapas de Diseño (N)») y la fila lo dice en
+  letra suave, sin color ni casillas
+  (`LineaLoQueDebeDiseno` lo hace sola cuando no hay nada hecho; conserva los
+  `data-punto`). El color y la insignia quedan para la fila que es la
+  excepción. `PastillaFiltro` admite una opción con otra `clave` de URL
+  (`{ valor: 'unidad', clave: 'ver' }` en Materiales) para sumar ese filtro al
+  grupo que ya existe.
 - `SinDatos` tiene dos tamaños: el grande es para la lista que es el trabajo
   de la pantalla; `compacto` para la bandeja que comparte pantalla con otras
   (lo pendiente del Kardex). No se escribe el vacío a mano con un `<p>`.

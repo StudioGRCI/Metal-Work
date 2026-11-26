@@ -20,7 +20,7 @@ import {
   type ReporteSsoma,
   type SeguimientoSsoma,
 } from '@/lib/datos/ssoma'
-import { cuandoVence, diasEnEspera, ESTADO_ACCION_SSOMA, ESTADO_REPORTE_SSOMA, TIPO_REPORTE_SSOMA } from '@/lib/dominio/ssoma'
+import { cuandoVence, diasEnEspera, ESTADO_ACCION_SSOMA, ESTADO_REPORTE_SSOMA, rutaDeAccion, TIPO_REPORTE_SSOMA } from '@/lib/dominio/ssoma'
 import { fecha, fechaHora } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { exigirSesion, puede } from '@/lib/sesion'
@@ -119,7 +119,7 @@ export default async function PaginaSsoma({ searchParams }: PageProps<'/ssoma'>)
               conReporte
               vacio={{
                 titulo: 'Todavía no hay acciones correctivas',
-                descripcion: 'Se encargan desde cada reporte, después de clasificarlo y anotar la causa.',
+                descripcion: 'Se encargan desde cada reporte, después de clasificarlo y anotar la causa, y nacen con cada hallazgo de una inspección.',
               }}
             />
           </Tarjeta>
@@ -350,7 +350,8 @@ function Situacion({ reporte: r, seg, paraSsoma }: { reporte: ReporteSsoma; seg:
 
 /**
  * Las acciones correctivas, con las vencidas arriba (ya vienen ordenadas). Cada
- * fila lleva a la acción dentro de su reporte, donde se cierra con evidencia.
+ * fila lleva a la acción dentro de su reporte o de su inspección, donde se
+ * cierra con evidencia.
  */
 function TablaDeAcciones({
   acciones,
@@ -388,7 +389,8 @@ function FilaAccion({ accion: a, mia, conReporte }: { accion: AccionSsoma; mia: 
   const vence = a.estado === 'ABIERTA' ? cuandoVence(a.dias_para_vencer) : null
   const vencida = a.estado === 'ABIERTA' && (a.dias_para_vencer ?? 0) < 0
   const tipo = TIPO_REPORTE_SSOMA[a.reporte_tipo]
-  const href = `/ssoma/${a.reporte_id}#accion-${a.id}`
+  // A su reporte o a su inspección: donde se cierra con evidencia.
+  const href = rutaDeAccion(a)
   return (
     <TR data-accion-ssoma={a.id} data-estado={a.estado} data-vencida={vencida || undefined}>
       <TD className={cn('align-top', vencida && 'border-l-2 border-l-peligro')}>
@@ -403,7 +405,7 @@ function FilaAccion({ accion: a, mia, conReporte }: { accion: AccionSsoma; mia: 
         </Link>
         {conReporte && (
           <p className="tabular mt-0.5 text-xs text-texto-suave">
-            {a.reporte_numero}
+            {a.reporte_numero ?? `Inspección${a.inspeccion_fecha ? ` del ${fecha(a.inspeccion_fecha)}` : ''}`}
             {tipo ? ` · ${tipo.etiqueta}` : ''} · {a.area}
           </p>
         )}

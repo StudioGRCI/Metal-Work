@@ -1,4 +1,4 @@
-import { Download, FileText, Hourglass, ReceiptText } from 'lucide-react'
+import { Download, FileText, Hourglass, ReceiptText, UserRoundX } from 'lucide-react'
 import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
@@ -38,6 +38,8 @@ function enOtraMoneda(c: CotizacionParaFacturar) {
  * leía que no le quedaba nada por facturar (auditoría del 27/10/2026).
  */
 function estadoDe(c: CotizacionParaFacturar): { etiqueta: string; tono: 'aviso' | 'exito' | 'neutro' } {
+  // Su OT pasó a otro comprador: ya no lleva OT ni se factura más (migración 20261126988000).
+  if (c.paso_a_otro_comprador) return { etiqueta: 'Pasó a otro comprador', tono: 'neutro' }
   if (!c.codigo_interno) return { etiqueta: 'Sin código interno', tono: 'neutro' }
   // La misma regla que la cabecera del código (`comoVaLaFactura`).
   const como = comoVaLaFactura({
@@ -56,6 +58,16 @@ function estadoDe(c: CotizacionParaFacturar): { etiqueta: string; tono: 'aviso' 
 
 /** Lo que espera factura: con código interno, sin factura vigente o facturada en parte (Plan 10.1). */
 const porFacturar = (c: CotizacionParaFacturar) => estadoDe(c).tono === 'aviso'
+
+/** La venta que se cerró porque su OT pasó a otro comprador, con la OT si se puede leer. */
+function pasoAOtroComprador(c: CotizacionParaFacturar, ordenes: (string | null)[]) {
+  const numeros = ordenes.filter((n): n is string => Boolean(n))
+  const ot = numeros.length === 0 ? 'Su OT' : numeros.length === 1 ? `Su OT ${numeros[0]}` : `Sus OT ${numeros.join(' y ')}`
+  const paso = numeros.length > 1 || ordenes.length > 1 ? 'pasaron' : 'pasó'
+  // Sin factura vigente no sale en la bandeja (`cotizaciones_para_facturar`).
+  const porCobrar = c.facturas.some((f) => !f.anulada_en && !f.cancelada)
+  return `${ot} ${paso} a otro comprador: esta venta ya no lleva OT.${porCobrar ? ' Queda cobrar su factura, o anularla.' : ''}`
+}
 
 /**
  * Quién tiene la cotización que espera factura y desde cuándo. Contabilidad la
@@ -113,7 +125,8 @@ export default async function PaginaFacturacion() {
   // Lo que espera factura va primero, de lo más antiguo a lo más nuevo, y la que está en
   // corrección después, porque no se puede facturar todavía; luego lo facturado y al final
   // lo que espera su OT.
-  const turno = (c: CotizacionParaFacturar) => (!c.codigo_interno ? 3 : porFacturar(c) ? (c.en_correccion ? 1 : 0) : 2)
+  const turno = (c: CotizacionParaFacturar) =>
+    c.paso_a_otro_comprador ? 2 : !c.codigo_interno ? 3 : porFacturar(c) ? (c.en_correccion ? 1 : 0) : 2
   const cotizaciones = [...bandeja].sort((a, b) => turno(a) - turno(b) || (turno(a) === 0 ? (diasDe(b) ?? -1) - (diasDe(a) ?? -1) : 0))
   const pendientes = cotizaciones.filter(porFacturar)
 
@@ -150,8 +163,10 @@ export default async function PaginaFacturacion() {
             const m = codigo(c.moneda)
             const total = totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
             const facturado = facturadoDe(c)
-            const facturadoPct = total === null || enOtraMoneda(c) ? null : parteDe(facturado, total)
-            const falta = total === null || enOtraMoneda(c) ? 0 : Math.max(0, total - facturado)
+            // La venta cerrada no se factura más: el % diría que falta el resto.
+            const facturadoPct = total === null || enOtraMoneda(c) || c.paso_a_otro_comprador ? null : parteDe(facturado, total)
+            // La venta cerrada no se factura más: no le falta nada.
+            const falta = total === null || enOtraMoneda(c) || c.paso_a_otro_comprador ? 0 : Math.max(0, total - facturado)
             const aguarda = esperaDe(c, espera, recorridos)
             return (
               // Con `id`: el aviso de la campana aterriza en esta cotización (`#id`).
@@ -162,7 +177,7 @@ export default async function PaginaFacturacion() {
                       <div>
                         <p className="flex flex-wrap items-center gap-2">
                           <span className="text-base font-semibold text-texto">
-                            {c.codigo_interno ? `Código ${c.codigo_interno}` : 'Sin código interno'}
+                            {c.codigo_interno ? `Código ${c.codigo_interno}` : c.paso_a_otro_comprador ? 'Venta cerrada' : 'Sin código interno'}
                           </span>
                           {/* La que está en corrección no espera a Contabilidad: no se la llama «Por facturar». */}
                           {c.en_correccion && porFacturar(c) ? (
@@ -241,7 +256,12 @@ export default async function PaginaFacturacion() {
                       </p>
                     )}
 
-                    {!c.codigo_interno && (
+                    {c.paso_a_otro_comprador ? (
+                      <p data-paso-a-otro-comprador className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-neutro-suave px-2.5 py-1.5 text-xs text-texto-suave">
+                        <UserRoundX aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+                        <span>{pasoAOtroComprador(c, c.paso_a_otro_comprador)}</span>
+                      </p>
+                    ) : !c.codigo_interno && (
                       <p className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-neutro-suave px-2.5 py-1.5 text-xs text-texto-suave">
                         <Hourglass aria-hidden className="mt-0.5 size-3.5 shrink-0" />
                         <span>Falta que Administración cargue la OT con el código interno de la unidad: la factura se registra en ese código.</span>

@@ -6,6 +6,7 @@ import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Paginacion } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
+import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
@@ -229,7 +230,8 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
         <SinReporteDeHoy codigos={sinReporte} piden={pidenHoy.size} hoy={hoy} sinArea={perfil.area_id === null} />
       )}
 
-      <div className="mb-4 space-y-3">
+      {/* 20 px entre bloques, 12 entre el buscador y sus filtros (la escala de la skill diseno). */}
+      <div className="mb-5 space-y-3">
         <BuscadorSimple ruta="/planos" etiqueta="Buscar código interno" marcador={veOt ? 'Código, OT o cliente' : 'Código interno'} />
         <PastillaFiltro
           ruta="/planos"
@@ -246,7 +248,7 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
       </div>
 
       {misAreas.length > 0 && (
-        <SeccionDesplegable className="mb-4" titulo={`Agregar una etapa de ${misAreas.length === 1 ? misAreas[0].nombre : 'un área'}`}>
+        <SeccionDesplegable className="mb-5" titulo={`Agregar una etapa de ${misAreas.length === 1 ? misAreas[0].nombre : 'un área'}`}>
           <div className="space-y-2">
             <p className="text-sm text-texto-suave">
               Una etapa de tu área para una unidad, después o en paralelo a las que puso Diseño. Para dividir la etapa de Diseño, usa «Subetapa» en ella.
@@ -258,13 +260,10 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
 
       {enPagina.length === 0 ? (
         <Tarjeta>
-          <TarjetaCuerpo>
-            <p className="text-sm font-medium text-texto">{vacio.titulo}</p>
-            <p className="text-sm text-texto-suave">{vacio.texto}</p>
-          </TarjetaCuerpo>
+          <SinDatos enTabla={false} titulo={vacio.titulo} descripcion={vacio.texto} />
         </Tarjeta>
       ) : (
-        <ul className="space-y-4">
+        <ul className="space-y-5">
           {enPagina.map(([codigo, { planos: deCodigo, etapas: susEtapas, dxf: susDxf }]) => (
             <li key={codigo} data-codigo={codigo}>
               <Tarjeta>
