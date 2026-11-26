@@ -1,38 +1,56 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { menuDe, modulosDelInicio, pestanasDe, rutasDeTrabajo } from './navegacion.ts'
+import { menuDe, modulosDelInicio, pestanasDe, rutaActiva, rutasDeTrabajo } from './navegacion.ts'
 
 // Los 32 permisos de Gerencia en producción el 2026-11-25 (leídos de `roles_permisos`), más
 // `rrhh.tiempos_entrega`, que le da la migración 20261125100000 (Semáforo de entregas, #186), y
-// `equipos.ver`, que le da la 20261125160000 (padrón de equipos, #191).
+// `equipos.ver`, que le da la 20261125160000 (padrón de equipos, #191). Desde la 20261126310000
+// tiene además los diez de lectura de las once pantallas que le faltaban, y ya no `proveedores.editar`.
 const GERENCIA = [
   'adquisiciones.ver', 'almacen.ver', 'asistencia.ver', 'auditoria.ver', 'clientes.ver', 'codigos_internos.cerrar',
   'codigos_internos.ver', 'compras.configurar_aprobacion', 'compras.ver', 'costos.ver', 'cotizaciones.revisar',
   'cotizaciones.ver_aprobadas', 'cotizaciones.ver_pdf_comercial', 'diseno.revisar', 'equipos.ver', 'ordenes.anular', 'ordenes.aprobar',
   'ordenes.listar', 'ordenes.ver', 'planilla_diaria.ver', 'produccion.aprobar_sin_orden', 'produccion.cualquier_area',
-  'produccion.ver', 'proveedores.editar', 'proveedores.ver', 'proveedores.ver_cuentas', 'reporte_diario.validar_gerencia',
+  'produccion.ver', 'proveedores.ver', 'proveedores.ver_cuentas', 'reporte_diario.validar_gerencia',
   'reporte_diario.ver', 'requerimientos.ver', 'rrhh.tiempos_entrega', 'subcontratos.ver', 'tesoreria.liberar', 'tesoreria.ver_documentos',
   'vehiculos.ver',
+  'codigos_internos.seguimiento', 'codigos_internos.gasto', 'configuracion.ver', 'diseno.ver_informes', 'diseno.ver_materiales',
+  'diseno.ver_dxf', 'requerimientos.ver_metrado', 'compras.ver_gestion', 'tesoreria.ver_caja', 'tesoreria.ver_tipo_cambio',
+  // Reportes de seguridad, desde el área de SSOMA (#192).
+  'ssoma.ver',
 ]
 
 const rutas = (grupos) => grupos.flatMap((g) => g.items.map((i) => i.ruta))
 
-test('Gerencia ve por área las 38 pantallas que su permiso le abre, cada una una vez', () => {
+test('Gerencia ve por área las 49 pantallas que su permiso le abre, cada una una vez', () => {
   const grupos = menuDe(GERENCIA, false, 'GERENTE')
   assert.deepEqual(grupos.map((g) => g.titulo), [
-    'Principal', 'Por aprobar', 'Ventas', 'Requerimientos', 'Almacén', 'Logística', 'Administración', 'Finanzas', 'Recursos Humanos', 'SSOMA',
+    'Principal', 'Por aprobar', 'Ventas', 'Diseño e Ingeniería', 'Requerimientos', 'Almacén', 'Logística', 'Administración', 'Finanzas',
+    'Recursos Humanos', 'SSOMA',
   ])
   const todas = rutas(grupos)
-  // 36 en main antes del 2026-11-26, más SSOMA (#192, sus reportes en lectura) y Por decidir (plan 12.1).
-  assert.equal(todas.length, 38)
-  assert.equal(new Set(todas).size, 38)
+  // 48 en main el 2026-11-26, más Por decidir (plan 12, entrega 12.1).
+  assert.equal(todas.length, 49)
+  assert.equal(new Set(todas).size, 49)
+  // Las once que se le abrieron en lectura el 2026-11-26, y Proveedores sin `proveedores.editar`.
+  for (const r of [
+    '/carrocerias', '/seguimiento', '/requerimientos/metrado', '/materiales', '/diseno/informe-semanal', '/diseno/dxf',
+    '/requerimientos/gasto-por-codigo', '/seguimiento?vista=materiales', '/compras/gestion', '/tesoreria/caja-diaria',
+    '/tesoreria/tipo-de-cambio', '/proveedores',
+  ]) {
+    assert.ok(todas.includes(r), r)
+  }
   // Las cuatro que el catálogo pide con un permiso de registro le abren con el de lectura.
   assert.ok(todas.includes('/equipos'))
   for (const r of ['/requerimientos/atencion', '/compras/ordenes', '/compras/servicios', '/contabilidad/facturacion']) {
     assert.ok(todas.includes(r), r)
   }
   // Lo reservado del personal y la administración del sistema no están.
-  for (const r of ['/rrhh', '/rrhh/costeo', '/rrhh/pagos-oficina', '/rrhh/cuentas', '/diseno/evaluaciones', '/personal', '/configuracion']) {
+  for (const r of [
+    '/rrhh', '/rrhh/costeo', '/rrhh/pagos-oficina', '/rrhh/cuentas', '/diseno/evaluaciones', '/personal', '/configuracion',
+    // Las de trabajo de un solo puesto o área, que repiten lo que ya ve de todas (decisión 1 del plan).
+    '/diseno/planos', '/diseno/materiales', '/diseno/etapas', '/planos', '/subcontratos/area', '/requerimientos/unidades', '/recojos',
+  ]) {
     assert.ok(!todas.includes(r), r)
   }
 })
@@ -89,9 +107,19 @@ test('en Gerencia, lo que espera su visto va siempre abierto y cada área nace p
   assert.deepEqual(
     grupos.map((g) => [g.titulo, g.pliegue]),
     [
-      ['Principal', 'fijo'], ['Por aprobar', 'fijo'], ['Ventas', 'plegado'], ['Requerimientos', 'plegado'], ['Almacén', 'plegado'],
+      ['Principal', 'fijo'], ['Por aprobar', 'fijo'], ['Ventas', 'plegado'], ['Diseño e Ingeniería', 'plegado'], ['Requerimientos', 'plegado'],
+      ['Almacén', 'plegado'],
       ['Logística', 'plegado'], ['Administración', 'plegado'], ['Finanzas', 'plegado'], ['Recursos Humanos', 'plegado'],
       ['SSOMA', 'plegado'],
     ],
   )
+})
+
+test('«Materiales por código» se marca a sí mismo, no a «Seguimiento por código»', () => {
+  const rutas = ['/seguimiento', '/seguimiento?vista=materiales', '/requerimientos']
+  assert.equal(rutaActiva('/seguimiento', rutas, new URLSearchParams('vista=materiales')), '/seguimiento?vista=materiales')
+  assert.equal(rutaActiva('/seguimiento', rutas, new URLSearchParams('vista=planos')), '/seguimiento')
+  assert.equal(rutaActiva('/seguimiento', rutas, new URLSearchParams()), '/seguimiento')
+  assert.equal(rutaActiva('/seguimiento', ['/seguimiento?vista=materiales'], new URLSearchParams()), undefined)
+  assert.equal(rutaActiva('/requerimientos/atencion', rutas, new URLSearchParams()), '/requerimientos')
 })
