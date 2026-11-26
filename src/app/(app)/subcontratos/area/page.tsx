@@ -6,7 +6,8 @@ import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
-import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { SinDatos } from '@/components/ui/tabla'
+import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
 import { areasDeSubcontratos, subcontratosDelArea, type SubcontratoDelArea } from '@/lib/datos/subcontratos'
 import { llaveParecido } from '@/lib/dominio/codigos-internos'
 import { ESTADO_SUBCONTRATO, estadoDeSubcontrato } from '@/lib/dominio/subcontratos'
@@ -89,7 +90,7 @@ export default async function PaginaSubcontratosDelArea({ searchParams }: PagePr
         migas={[{ titulo: 'Supervisión' }, { titulo: 'Subcontratos' }]}
       />
 
-      <div className="mb-4 space-y-3">
+      <div className="mb-5 space-y-3">
         <BuscadorSimple ruta="/subcontratos/area" clave="codigo" etiqueta="Buscar por código interno" marcador="Código interno, por ejemplo SR_04" />
         <PastillaFiltro
           ruta="/subcontratos/area"
@@ -106,26 +107,27 @@ export default async function PaginaSubcontratosDelArea({ searchParams }: PagePr
       </div>
 
       {codigos.length === 0 ? (
-        <Tarjeta>
-          <TarjetaCuerpo>
-            <p className="text-sm font-medium text-texto" data-sin-subcontratos>
-              {buscado
+        <Tarjeta data-sin-subcontratos>
+          <SinDatos
+            enTabla={false}
+            titulo={
+              buscado
                 ? `Ningún subcontrato de ${todasLasAreas ? 'las áreas' : 'tu área'} lleva el código ${buscado}`
                 : estado === 'VIGENTE'
                   ? `No hay subcontratos vigentes para ${deQuien}`
                   : estado === 'TERMINADO'
                     ? 'Ningún subcontrato terminado todavía'
-                    : `No hay subcontratos para ${deQuien}`}
-            </p>
-            <p className="text-sm text-texto-suave">
-              {buscado
+                    : `No hay subcontratos para ${deQuien}`
+            }
+            descripcion={
+              buscado
                 ? 'Revisa cómo está escrito o borra la búsqueda para ver todos.'
-                : 'Cuando Administración registre uno para tu área te llega el aviso, y aparece aquí con su código interno.'}
-            </p>
-          </TarjetaCuerpo>
+                : 'Cuando Administración registre uno para tu área te llega el aviso, y aparece aquí con su código interno.'
+            }
+          />
         </Tarjeta>
       ) : (
-        <ul className="space-y-4">
+        <ul className="space-y-5">
           {codigos.map((codigo) => {
             const deCodigo = visibles.filter((s) => s.codigo_interno === codigo)
             return (

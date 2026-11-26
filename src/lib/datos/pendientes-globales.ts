@@ -683,6 +683,23 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
             .eq('registrado_por', perfil.id),
         ),
     })
+    // La venta que se reabrió: su OT pasó a otro comprador y allí se anuló. Espera
+    // a que quien la registró diga si sigue o la cancele (migración 20261126988000).
+    tareas.push({
+      clave: 'pdf_ventas_reabiertas',
+      ruta: '/cotizaciones/pdf?estado=APROBADA_SIN_OT&de=mias',
+      tono: 'aviso',
+      texto: (n) => plural(n, 'venta tuya que volvió a esperar su OT: decide si sigue', 'ventas tuyas que volvieron a esperar su OT: decide si siguen'),
+      contar: () =>
+        cabeza(
+          supabase
+            .from('v_cotizaciones_pdf')
+            .select('id', { count: 'exact', head: true })
+            .eq('estado', 'APROBADA')
+            .eq('registrado_por', perfil.id)
+            .not('reabierta_por_ot_anulada', 'is', null),
+        ),
+    })
   }
 
   // ── Lo que cada puesto atiende desde que el trabajo va por código interno ──

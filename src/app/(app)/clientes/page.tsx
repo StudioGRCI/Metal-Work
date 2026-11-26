@@ -85,109 +85,112 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
         }
       />
 
-      <BuscadorSimple
-        ruta="/clientes"
-        etiqueta="Buscar clientes"
-        marcador="Razón social, nombre comercial o RUC"
-      />
+      {/* 20 px entre los bloques (la escala de la skill diseno), sin márgenes sueltos. */}
+      <div className="space-y-5">
+        <BuscadorSimple
+          ruta="/clientes"
+          etiqueta="Buscar clientes"
+          marcador="Razón social, nombre comercial o RUC"
+        />
 
-      <Tarjeta className="mt-4 overflow-hidden">
-        <Tabla>
-          <TablaCabecera>
-            <tr>
-              <TH>Cliente</TH>
-              <TH className="hidden sm:table-cell">Documento</TH>
-              {/* En el teléfono no caben seis columnas: documento, contacto y
-                  ubicación se esconden aquí y bajan a la celda del nombre en letra
-                  chica, que es donde el dedo ya está mirando. */}
-              <TH className="hidden sm:table-cell">Contacto</TH>
-              <TH className="hidden sm:table-cell">Ubicación</TH>
-              <TH className="hidden text-right sm:table-cell">Unidades</TH>
-              <TH className="hidden text-right sm:table-cell">Órdenes</TH>
-              {puede(perfil, 'clientes.editar') && <TH>Acciones</TH>}
-            </tr>
-          </TablaCabecera>
-          <tbody>
-            {clientes.length === 0 ? (
-              <SinDatos
-                colSpan={puede(perfil, 'clientes.editar') ? 7 : 6}
-                titulo={busqueda ? 'Ningún cliente coincide' : 'Aún no hay clientes'}
-                descripcion={
-                  busqueda
-                    ? 'Prueba con menos palabras, con el RUC o con el nombre comercial.'
-                    : 'Registra el primer cliente para poder abrir órdenes de trabajo.'
-                }
-                accion={accionSinDatos}
-              />
-            ) : (
-              clientes.map((c) => {
-                const unidades = (c.unidades as unknown as { count: number }[])?.[0]?.count ?? 0
-                const ordenes = (c.ordenes_trabajo as unknown as { count: number }[])?.[0]?.count ?? 0
-                const ubicacion = [c.distrito, c.provincia].filter(Boolean).join(', ')
-                // Lo que en el teléfono se pierde al esconder las columnas vuelve
-                // aquí en una sola línea; sin esto el listado móvil no diría ni el
-                // teléfono del cliente ni de dónde es.
-                const enElTelefono = [
-                  `${c.tipo_documento} ${c.numero_documento}`, c.telefono, ubicacion,
-                  // Espacio duro entre la cifra y su nombre: si la línea se parte,
-                  // no deja el «0» arriba y «unidades» abajo.
-                  `${unidades}\u00a0${unidades === 1 ? 'unidad' : 'unidades'}`, `${ordenes}\u00a0${ordenes === 1 ? 'orden' : 'órdenes'}`,
-                ].filter(Boolean).join(' · ')
+        <Tarjeta className="overflow-hidden">
+          <Tabla>
+            <TablaCabecera>
+              <tr>
+                <TH>Cliente</TH>
+                <TH className="hidden sm:table-cell">Documento</TH>
+                {/* En el teléfono no caben seis columnas: documento, contacto y
+                    ubicación se esconden aquí y bajan a la celda del nombre en letra
+                    chica, que es donde el dedo ya está mirando. */}
+                <TH className="hidden sm:table-cell">Contacto</TH>
+                <TH className="hidden sm:table-cell">Ubicación</TH>
+                <TH className="hidden text-right sm:table-cell">Unidades</TH>
+                <TH className="hidden text-right sm:table-cell">Órdenes</TH>
+                {puede(perfil, 'clientes.editar') && <TH>Acciones</TH>}
+              </tr>
+            </TablaCabecera>
+            <tbody>
+              {clientes.length === 0 ? (
+                <SinDatos
+                  colSpan={puede(perfil, 'clientes.editar') ? 7 : 6}
+                  titulo={busqueda ? 'Ningún cliente coincide' : 'Aún no hay clientes'}
+                  descripcion={
+                    busqueda
+                      ? 'Prueba con menos palabras, con el RUC o con el nombre comercial.'
+                      : 'Registra el primer cliente para poder abrir órdenes de trabajo.'
+                  }
+                  accion={accionSinDatos}
+                />
+              ) : (
+                clientes.map((c) => {
+                  const unidades = (c.unidades as unknown as { count: number }[])?.[0]?.count ?? 0
+                  const ordenes = (c.ordenes_trabajo as unknown as { count: number }[])?.[0]?.count ?? 0
+                  const ubicacion = [c.distrito, c.provincia].filter(Boolean).join(', ')
+                  // Lo que en el teléfono se pierde al esconder las columnas vuelve
+                  // aquí en una sola línea; sin esto el listado móvil no diría ni el
+                  // teléfono del cliente ni de dónde es.
+                  const enElTelefono = [
+                    `${c.tipo_documento} ${c.numero_documento}`, c.telefono, ubicacion,
+                    // Espacio duro entre la cifra y su nombre: si la línea se parte,
+                    // no deja el «0» arriba y «unidades» abajo.
+                    `${unidades}\u00a0${unidades === 1 ? 'unidad' : 'unidades'}`, `${ordenes}\u00a0${ordenes === 1 ? 'orden' : 'órdenes'}`,
+                  ].filter(Boolean).join(' · ')
 
-                return (
-                  <TR key={c.id}>
-                    <TD>
-                      <Link
-                        href={`/clientes/${c.id}`}
-                        className="font-medium text-acento hover:underline"
-                      >
-                        {c.razon_social}
-                      </Link>
-                      {c.nombre_comercial && (
-                        <p className="text-xs text-texto-suave">{c.nombre_comercial}</p>
-                      )}
-                      {enElTelefono && (
-                        <p className="text-xs text-texto-suave sm:hidden">{enElTelefono}</p>
-                      )}
-                    </TD>
-                    <TD className="hidden whitespace-nowrap sm:table-cell">
-                      <span className="text-texto-suave">{c.tipo_documento}</span>{' '}
-                      <span className="tabular">{c.numero_documento}</span>
-                    </TD>
-                    <TD className="hidden text-texto-suave sm:table-cell">
-                      {c.telefono ?? '—'}
-                      {/* A 12 px el correo, que no tiene dónde partirse, ensanchaba la tabla
-                          12 px en una tableta: si no entra, baja después de la arroba. */}
-                      {c.correo && (
-                        <p className="text-xs">
-                          {c.correo.split('@').map((parte, i) => (
-                            <Fragment key={i}>
-                              {i > 0 && (
-                                <>
-                                  @<wbr />
-                                </>
-                              )}
-                              {parte}
-                            </Fragment>
-                          ))}
-                        </p>
-                      )}
-                    </TD>
-                    <TD className="hidden text-texto-suave sm:table-cell">{ubicacion || '—'}</TD>
-                    <TD className="tabular hidden text-right sm:table-cell">{unidades}</TD>
-                    <TD className="tabular hidden text-right sm:table-cell">{ordenes}</TD>
-                    {puede(perfil, 'clientes.editar') && (
+                  return (
+                    <TR key={c.id}>
                       <TD>
-                        <AccionesCatalogo tipo="cliente" id={c.id} nombre={c.razon_social} activo={c.activo} puedeEditar esAdmin={perfil.rol.codigo === 'ADMIN'} />
+                        <Link
+                          href={`/clientes/${c.id}`}
+                          className="font-medium text-acento hover:underline"
+                        >
+                          {c.razon_social}
+                        </Link>
+                        {c.nombre_comercial && (
+                          <p className="text-xs text-texto-suave">{c.nombre_comercial}</p>
+                        )}
+                        {enElTelefono && (
+                          <p className="text-xs text-texto-suave sm:hidden">{enElTelefono}</p>
+                        )}
                       </TD>
-                    )}
-                  </TR>
-                )
-              })
-            )}
-          </tbody>
-        </Tabla>
-      </Tarjeta>
+                      <TD className="hidden whitespace-nowrap sm:table-cell">
+                        <span className="text-texto-suave">{c.tipo_documento}</span>{' '}
+                        <span className="tabular">{c.numero_documento}</span>
+                      </TD>
+                      <TD className="hidden text-texto-suave sm:table-cell">
+                        {c.telefono ?? '—'}
+                        {/* A 12 px el correo, que no tiene dónde partirse, ensanchaba la tabla
+                            12 px en una tableta: si no entra, baja después de la arroba. */}
+                        {c.correo && (
+                          <p className="text-xs">
+                            {c.correo.split('@').map((parte, i) => (
+                              <Fragment key={i}>
+                                {i > 0 && (
+                                  <>
+                                    @<wbr />
+                                  </>
+                                )}
+                                {parte}
+                              </Fragment>
+                            ))}
+                          </p>
+                        )}
+                      </TD>
+                      <TD className="hidden text-texto-suave sm:table-cell">{ubicacion || '—'}</TD>
+                      <TD className="tabular hidden text-right sm:table-cell">{unidades}</TD>
+                      <TD className="tabular hidden text-right sm:table-cell">{ordenes}</TD>
+                      {puede(perfil, 'clientes.editar') && (
+                        <TD>
+                          <AccionesCatalogo tipo="cliente" id={c.id} nombre={c.razon_social} activo={c.activo} puedeEditar esAdmin={perfil.rol.codigo === 'ADMIN'} />
+                        </TD>
+                      )}
+                    </TR>
+                  )
+                })
+              )}
+            </tbody>
+          </Tabla>
+        </Tarjeta>
+      </div>
 
       <Paginacion
         ruta="/clientes"
