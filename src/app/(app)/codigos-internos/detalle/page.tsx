@@ -1262,7 +1262,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
       <Tarjeta className="overflow-hidden" data-servicios>
         <TarjetaCabecera
           titulo="Órdenes de servicio"
-          ayuda="Los trabajos de terceros para este código —torno, pintura, flete—, sin IGV. La aprobada por Gerencia suma al costo, porque no pasa por el almacén; la que espera su aprobación se muestra y no se suma todavía. Las rechazadas y las anuladas no aparecen."
+          ayuda="Los trabajos de terceros para este código —torno, pintura, flete—, sin IGV. La aprobada por Gerencia suma al costo, porque no pasa por el almacén; la que espera su aprobación se muestra y no se suma todavía. Las rechazadas y las anuladas no aparecen. La que está en dólares pasa a soles con el tipo de cambio de la fecha de su factura, el mismo de la orden; mientras no tiene factura, con el del día en que se emitió."
         />
         <Tabla>
           <TablaCabecera>
@@ -1290,7 +1290,11 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
                         ) : (
                           <p className="font-medium text-texto">{l.documento}</p>
                         )}
-                        <p className="tabular text-xs text-texto-suave">{fecha(l.fecha)}</p>
+                        {/* La fecha de la línea es el día cuyo cambio le toca: en dólares, el de su
+                            factura (o el de emisión mientras no la tiene), y se dice para qué es. */}
+                        <p className="tabular text-xs text-texto-suave" data-dia-de-la-linea={l.fecha}>
+                          {l.moneda && l.moneda !== 'PEN' ? `Al cambio del ${fecha(l.fecha)}` : fecha(l.fecha)}
+                        </p>
                       </TD>
                       <TD className="align-top">
                         <p className="text-texto">{l.concepto}</p>
