@@ -143,6 +143,8 @@ begin
       join public.ordenes_compra_materiales o on o.id = b.registro_id
       left join public.proveedores p on p.id = o.proveedor_id
      where b.tabla = 'ordenes_compra_materiales' and b.accion = 'UPDATE'
+       -- La aprobación se borra después de darse: lo de antes del periodo no la tiene.
+       and b.creado_en >= v_desde
        and b.datos_antes ->> 'aprobacion' = 'APROBADA'
        and b.datos_despues ->> 'aprobacion' is distinct from 'APROBADA'
        and b.datos_antes ->> 'aprobado_en' is not null

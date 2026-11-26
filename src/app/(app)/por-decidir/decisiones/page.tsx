@@ -71,7 +71,7 @@ export default async function PaginaDecisionesTomadas({ searchParams }: PageProp
   const filtrado = Boolean(tipo || decision)
   // Lo que estorba cuando el filtro deja la lista vacía, dicho con sus palabras.
   // «ninguna devolución de compras», «ningún visto bueno», «ninguna decisión de reportes diarios».
-  const loQueFiltra = `${decision === 'VISTO' || decision === 'CERRADO' ? 'ningún' : 'ninguna'} ${decision ? DECISION[decision].etiqueta.toLowerCase() : 'decisión'}${tipo ? ` de ${NOMBRE_DEL_TIPO[tipo].varios.toLowerCase()}` : ''}`
+  const loQueFiltra = `${decision === 'VISTO' || decision === 'CERRADO' ? 'ningún' : 'ninguna'} ${decision ? DECISION[decision].etiqueta.toLowerCase() : 'decisión'}${tipo && tipo !== 'CIERRE_CODIGO' ? ` de ${NOMBRE_DEL_TIPO[tipo].varios.toLowerCase()}` : ''}`
 
   return (
     <>
@@ -83,7 +83,7 @@ export default async function PaginaDecisionesTomadas({ searchParams }: PageProp
             ? `Sin decisiones en ${mesLargo(mes)}.`
             : `${plural(todas.length, 'decisión', 'decisiones')} en ${mesLargo(mes)}, la más reciente primero.`
         }
-        ayuda="Lo que tu puesto aprobó, devolvió, anuló, dio por visto o cerró, con la fecha y el motivo. Es solo lectura: cada fila abre su documento. Las listas de cotizaciones, compras y servicios muestran lo más reciente: el de un mes viejo se busca por su número."
+        ayuda="Lo que tu puesto aprobó, devolvió, anuló, dio por visto o cerró, con la fecha y el motivo. Es solo lectura: cada fila abre su documento. Las listas de cotizaciones, compras y servicios cargan solo las más recientes (200 o 300): un documento de hace meses puede no salir al abrirlo."
         acciones={
           <div className="flex items-center gap-2" role="group" aria-label="Mes">
             <EnlaceBoton href={conMes(anterior)} variante="contorno" tamano="sm" aria-label={`Ver ${mesLargo(anterior)}`}>

@@ -176,15 +176,20 @@ update public.cotizaciones_pdf set estado = 'RECHAZADA', observacion = 'Falta el
 update public.cotizaciones_pdf set estado = 'ANULADA', observacion = 'El cliente compró en otro taller'
  where id = current_setting('prueba.cot5')::uuid;
 reset role;
--- La OC aprobada sube de monto: `evaluar_aprobacion_compra` la vuelve a pedir y borra quién la aprobó.
-update public.ordenes_compra_materiales
-   set aprobacion = 'POR_APROBAR', aprobacion_pedida_en = now(), aprobado_por = null, aprobado_en = null, monto_pen = 1500
- where id = current_setting('prueba.oc3')::uuid;
+-- La OC aprobada por S/ 1000 sube de monto: una línea de S/ 1500 y `evaluar_aprobacion_compra`, el camino
+-- real, la vuelve a pedir y borra quién la aprobó.
+insert into public.orden_compra_material_detalles (orden_compra_id, material_id, cantidad, precio_unitario)
+select current_setting('prueba.oc3')::uuid, m.id, 1, 1500 from public.materiales m
+ where m.activo and not m.unidad_pendiente order by m.codigo limit 1;
+select public.evaluar_aprobacion_compra(current_setting('prueba.oc3')::uuid);
 do $$
 begin
   perform test.afirmar((select estado = 'ANULADA' and revisado_por = current_setting('prueba.gerente')::uuid
                           from public.cotizaciones_pdf where id = current_setting('prueba.cot5')::uuid),
     'Gerencia devolvió y anuló la cotización 5 por el camino de la base');
+  perform test.afirmar((select aprobacion = 'POR_APROBAR' and aprobado_en is null from public.ordenes_compra_materiales
+                         where id = current_setting('prueba.oc3')::uuid),
+    'la OC que subió de monto vuelve a esperar aprobación, sin quién la aprobó');
   perform test.afirmar(exists (select 1 from public.audit_log where tabla = 'ordenes_compra_materiales'
                                  and registro_id = current_setting('prueba.oc3')::uuid and datos_antes ->> 'aprobacion' = 'APROBADA'),
     'la bitácora guardó la aprobación que la OC perdió al subir de monto');
