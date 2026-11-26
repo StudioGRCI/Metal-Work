@@ -1,5 +1,5 @@
 /**
- * Clic real sobre el Plan 9 · 9.2 (migración 20261126210000): la ficha del
+ * Clic real sobre el Plan 9 · 9.2 (migración 20261126451000): la ficha del
  * cliente dice cómo va cada unidad y cada cotización. Con la cuenta de Ventas,
  * nunca ADMIN:
  *
