@@ -44,9 +44,19 @@ select test.debe_fallar(
   $$select public.emitir_compra_directa(gen_random_uuid(), null, 'QA411', 'prueba', '[]'::jsonb, current_date,
       'CONTADO', 0, 'PEN', false, null)$$,
   'Gerencia no emite una OC directa', 'compras.crear');
+-- Desde la 20261126310000 consulta la gestión de recojos (`compras.ver_gestion`),
+-- sin programar, y Proveedores queda en consulta (sin `proveedores.editar`).
+select count(*) >= 0 as gerencia_consulta_la_gestion from public.compras_en_gestion();
 select test.debe_fallar(
-  $$select * from public.compras_en_gestion()$$,
-  'Gerencia no entra a la gestión de recojos de Logística', 'gestión de compras');
+  $$select public.programar_recojo(gen_random_uuid(), 100, null)$$,
+  'Gerencia no programa un recojo', 'compras.programar_recojo');
+select test.afirmar(not public.tiene_permiso('proveedores.editar'), 'Gerencia ya no da de alta ni corrige proveedores');
+select test.afirmar(public.tiene_permiso('proveedores.ver'), 'Gerencia sigue consultando los proveedores');
+select test.afirmar(
+  (select array_agg(distinct r.codigo::text) from public.roles_permisos rp join public.roles r on r.id = rp.rol_id
+    where rp.permiso_codigo in ('diseno.ver_informes', 'diseno.ver_materiales', 'diseno.ver_dxf', 'requerimientos.ver_metrado',
+                                'compras.ver_gestion', 'tesoreria.ver_caja', 'tesoreria.ver_tipo_cambio')) = array['GERENTE'],
+  'los siete permisos de consulta nuevos son solo de Gerencia');
 select test.debe_fallar(
   format($$insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id)
            values ('QA411', 'Material 411', %L, %L)$$,

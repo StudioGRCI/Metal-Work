@@ -11,6 +11,7 @@ import {
   planosDeCodigo,
 } from '@/lib/datos/diseno-codigos'
 import { limitePorVencer } from '@/lib/datos/limite-por-vencer'
+import { responsablesDeEtapas } from '@/lib/datos/tiempos-entrega'
 import { hoyLima } from '@/lib/format'
 
 /**
@@ -21,7 +22,12 @@ import { hoyLima } from '@/lib/format'
  */
 
 export async function VistaEtapas({ codigo }: { codigo: string }) {
-  const [etapas, planos, limite] = await Promise.all([etapasDeCodigo(codigo), planosDeCodigo(codigo), limitePorVencer()])
+  const [etapas, planos, limite, responsables] = await Promise.all([
+    etapasDeCodigo(codigo),
+    planosDeCodigo(codigo),
+    limitePorVencer(),
+    responsablesDeEtapas(codigo),
+  ])
   const hoy = hoyLima()
   return (
     <Tarjeta>
@@ -34,7 +40,7 @@ export async function VistaEtapas({ codigo }: { codigo: string }) {
         {etapas.length === 0 ? (
           <p className="text-sm text-texto-suave">Diseño todavía no armó las etapas de este código. Las carga en «Control de etapas».</p>
         ) : (
-          <ListaEtapas etapas={etapas} hoy={hoy} limite={limite} conPlanosConPeso={planos.some((p) => !p.anulado_en && (p.peso ?? 0) > 0)} />
+          <ListaEtapas etapas={etapas} hoy={hoy} limite={limite} responsables={responsables} conPlanosConPeso={planos.some((p) => !p.anulado_en && (p.peso ?? 0) > 0)} />
         )}
       </TarjetaCuerpo>
     </Tarjeta>
