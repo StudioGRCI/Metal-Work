@@ -91,3 +91,34 @@ export async function proveedoresParaCompra(): Promise<ProveedorParaCompra[]> {
   }
   return lista
 }
+
+/** Cómo le fue a cada proveedor (Plan 4.3, migración 20261126463000). Solo cuentas, sin importes. */
+export type CumplimientoDelProveedor = {
+  /** OC aprobadas y OS aprobadas no anuladas. */
+  compras: number
+  /** De las que ya llegaron, las que tenían fecha prometida: las que se pueden medir. */
+  medidas: number
+  /** De las medidas, las que llegaron a más tardar la fecha prometida al emitirlas. */
+  a_tiempo: number
+  /** OC de las que Almacén le devolvió algo. */
+  devueltas: number
+}
+
+/** El cumplimiento de esos proveedores. Lo lee quien ve el padrón; a los demás la base les dice que no. */
+export async function cumplimientoDeProveedores(ids: string[]): Promise<Map<string, CumplimientoDelProveedor>> {
+  const porProveedor = new Map<string, CumplimientoDelProveedor>()
+  if (ids.length === 0) return porProveedor
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('cumplimiento_de_proveedores', { p_ids: ids })
+  if (error) throw new Error(`No se pudo leer el cumplimiento de los proveedores: ${error.message}`)
+  for (const f of data ?? []) {
+    if (!f.proveedor) continue
+    porProveedor.set(f.proveedor, {
+      compras: Number(f.compras ?? 0),
+      medidas: Number(f.medidas ?? 0),
+      a_tiempo: Number(f.a_tiempo ?? 0),
+      devueltas: Number(f.devueltas ?? 0),
+    })
+  }
+  return porProveedor
+}

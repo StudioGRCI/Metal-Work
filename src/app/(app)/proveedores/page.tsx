@@ -6,11 +6,12 @@ import { Paginacion } from '@/components/estructura/paginacion'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
-import { listarProveedores, PROVEEDORES_POR_PAGINA } from '@/lib/datos/proveedores'
+import { cumplimientoDeProveedores, listarProveedores, PROVEEDORES_POR_PAGINA } from '@/lib/datos/proveedores'
 import { palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { condicionDePago, resumenCuenta } from '@/lib/dominio/proveedores'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
+import { Cumplimiento } from './cumplimiento'
 import { AccionesProveedor, NuevoProveedor } from './formulario'
 import { paginaPedida } from '@/lib/dominio/paginas'
 
@@ -33,6 +34,11 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
     pagina: paginaPedida(params.pagina),
     incluirInactivos,
   })
+  // Cómo le fue a cada uno (Plan 4.3). Si la base no contesta, el padrón sale igual y lo dice.
+  const cumplimiento = await cumplimientoDeProveedores(proveedores.map((p) => p.id)).catch((e: unknown) => {
+    console.error(e)
+    return null
+  })
   const edita = puede(perfil, 'proveedores.editar')
   const verCuentas = puede(perfil, 'proveedores.ver_cuentas')
 
@@ -43,7 +49,7 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
         descripcion={busqueda
           ? total === 0 ? `Ningún proveedor con «${busqueda}»` : `${total === 1 ? '1 proveedor' : `${total} proveedores`} con «${busqueda}»`
           : total === 1 ? '1 proveedor en el padrón' : `${total} proveedores en el padrón`}
-        ayuda="La orden de compra elige el proveedor de este padrón."
+        ayuda="La orden de compra elige el proveedor de este padrón. «Cumplimiento» cuenta las OC y OS aprobadas que se le hicieron; de las que ya llegaron, cuántas llegaron a más tardar la fecha que prometió al emitirlas (no la corregida después), y de cuántas OC Almacén le devolvió algo. Sin importes."
         acciones={
           <div className="flex flex-wrap items-center gap-3">
             {edita && <NuevoProveedor />}
@@ -61,6 +67,13 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
 
       <BuscadorSimple ruta="/proveedores" etiqueta="Buscar proveedores" marcador="Razón social, RUC o rubro" />
 
+      {cumplimiento === null && proveedores.length > 0 && (
+        <p role="status" className="mt-4 text-sm text-aviso">
+          No se pudo leer el cumplimiento de los proveedores: el padrón sale sin él. Recarga la página; si continúa, avisa al
+          administrador.
+        </p>
+      )}
+
       <Tarjeta className="mt-4 overflow-hidden">
         <Tabla>
           <TablaCabecera>
@@ -71,6 +84,7 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
                   caben el RUC y Editar sin correr la tabla de lado. */}
               <TH className="hidden sm:table-cell">Contacto</TH>
               <TH className="hidden sm:table-cell">Pago</TH>
+              <TH className="hidden md:table-cell">Cumplimiento</TH>
               {verCuentas && <TH className="hidden lg:table-cell">Cuentas</TH>}
               {edita && <TH>Acciones</TH>}
             </tr>
@@ -78,7 +92,7 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
           <tbody>
             {proveedores.length === 0 ? (
               <SinDatos
-                colSpan={4 + (edita ? 1 : 0) + (verCuentas ? 1 : 0)}
+                colSpan={5 + (edita ? 1 : 0) + (verCuentas ? 1 : 0)}
                 titulo={busqueda ? 'Ningún proveedor coincide' : 'Aún no hay proveedores en el padrón'}
                 descripcion={
                   busqueda
@@ -110,6 +124,8 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
                       <p className="text-xs text-texto-suave sm:hidden">
                         {[`${p.tipo_documento} ${p.numero_documento}`, pago, contacto].filter(Boolean).join(' · ')}
                       </p>
+                      {/* En el teléfono y la tableta el cumplimiento baja aquí, en un renglón. */}
+                      {cumplimiento && <Cumplimiento datos={cumplimiento.get(p.id)} enLinea className="mt-1 md:hidden" />}
                     </TD>
                     <TD className="hidden whitespace-nowrap sm:table-cell">
                       <span className="text-texto-suave">{p.tipo_documento} </span><span className="tabular">{p.numero_documento}</span>
@@ -119,6 +135,9 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
                       {p.correo && <p className="text-xs">{p.correo}</p>}
                     </TD>
                     <TD className="hidden whitespace-nowrap text-texto-suave sm:table-cell">{pago}</TD>
+                    <TD className="hidden md:table-cell">
+                      {cumplimiento ? <Cumplimiento datos={cumplimiento.get(p.id)} /> : <span className="text-texto-tenue">—</span>}
+                    </TD>
                     {verCuentas && (
                       <TD className="hidden text-texto-suave lg:table-cell">
                         {p.cuentas.length === 0 ? (

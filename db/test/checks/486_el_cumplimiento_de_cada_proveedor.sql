@@ -1,0 +1,182 @@
+-- El cumplimiento de cada proveedor (migración 20261126463000, Plan 4.3). Con la
+-- cuenta de cada puesto —nunca ADMIN— y `set local role authenticated`.
+-- Termina en rollback.
+--
+-- Un proveedor nuevo. Logística le emite cuatro OC y dos OS:
+--   a. OC prometida en 3 días que llega hoy, entera: a tiempo. Almacén le
+--      devuelve un disco que se repone: «con devolución», y sigue a tiempo.
+--   b. OC prometida hace 2 días; Logística corrige la fecha a mañana y llega
+--      hoy, sin validar: la lista de OC dice 0 días (contra la corregida), pero
+--      el proveedor no llegó a tiempo contra lo que prometió al emitirla.
+--   c. OC aprobada que no llega: cuenta como compra, no se mide.
+--   d. OC que espera a Gerencia: no cuenta.
+--   e. OS que vuelve conforme antes de su fin: a tiempo. OS anulada: no cuenta.
+-- Total: 4 compras (a, b, c, OS), 3 medidas, 2 a tiempo, 1 con devolución.
+-- Lo leen Logística y Almacén (proveedores.ver); Ventas no; sin sesión, nadie.
+-- Y la lista de OC sigue dando lo mismo por el envoltorio nuevo.
+\set ON_ERROR_STOP on
+begin;
+set local timezone = 'UTC';
+
+do $$
+declare v text; v_id uuid;
+begin
+  foreach v in array array['COMPRADOR:LOG', 'GERENTE:GGE', 'CONDUCTOR:LOG', 'ALMACENERO:ALM', 'VENDEDOR:VEN'] loop
+    v_id := gen_random_uuid();
+    insert into auth.users (id, email) values (v_id, lower(replace(v, ':', '.')) || '.486@prueba.local');
+    insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
+    select v_id, split_part(v, ':', 1), 'Check 486', lower(replace(v, ':', '.')) || '.486@prueba.local', r.id,
+           (select id from public.areas where codigo = split_part(v, ':', 2))
+      from public.roles r where r.codigo = split_part(v, ':', 1);
+    perform set_config('prueba.' || lower(split_part(v, ':', 1)), v_id::text, true);
+  end loop;
+  perform test.afirmar((select count(*) from public.usuarios where apellidos = 'Check 486') = 5,
+    'se crearon los cinco usuarios del check, uno por puesto');
+  foreach v in array array['oca', 'ocb', 'occ', 'ocd', 'os1', 'os2', 'mova', 'deva'] loop
+    perform set_config('prueba.' || v, gen_random_uuid()::text, true);
+  end loop;
+end $$;
+
+create or replace function pg_temp.como(p_clave text) returns void language plpgsql as $$
+begin
+  perform set_config('request.jwt.claim.sub', current_setting('prueba.' || p_clave), true);
+  perform set_config('request.jwt.claim.role', 'authenticated', true);
+  perform set_config('request.jwt.claims', json_build_object('sub', current_setting('prueba.' || p_clave), 'role', 'authenticated')::text, true);
+end $$;
+create or replace function pg_temp.id(p text) returns uuid language sql as $$ select current_setting('prueba.' || p)::uuid $$;
+create or replace function pg_temp.hoy() returns date language sql as $$ select (now() at time zone 'America/Lima')::date $$;
+
+-- Armazón, como dueño: un material y un proveedor con un RUC inventado.
+do $$
+declare
+  v_cat uuid := (select id from public.categorias_material where activo and almacen = 'CONSUMIBLES' and codigo <> 'ALM_POR_CLASIFICAR' order by codigo limit 1);
+  v_um  uuid := (select id from public.unidades_medida where codigo = 'UND');
+  v_m uuid;
+begin
+  insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id)
+  values ('CHK486-1', 'Disco de corte de prueba 486', v_cat, v_um) returning id into v_m;
+  perform set_config('prueba.disco', v_m::text, true);
+  insert into public.proveedores (id, numero_documento, razon_social)
+  select gen_random_uuid(), r, 'PROVEEDOR DE PRUEBA 486'
+    from (select '2069' || lpad(n::text, 6, '0') || d::text as r from generate_series(486000, 486200) n, generate_series(0, 9) d) x
+   where public.ruc_es_valido(r)
+   order by r limit 1
+  on conflict (tipo_documento, numero_documento) do update set activo = true;
+  perform set_config('prueba.proveedor', (select id::text from public.proveedores where razon_social = 'PROVEEDOR DE PRUEBA 486'), true);
+end $$;
+
+-- Sin compras todavía: el proveedor sale con ceros, no desaparece.
+select pg_temp.como('comprador');
+set local role authenticated;
+select test.afirmar((select compras = 0 and medidas = 0 and a_tiempo = 0 and devueltas = 0
+                       from public.cumplimiento_de_proveedores(array[pg_temp.id('proveedor')])),
+  'el proveedor sin compras sale con todo en cero');
+
+do $$
+declare v text;
+begin
+  foreach v in array array['oca', 'ocb', 'occ', 'ocd'] loop
+    perform public.emitir_compra_directa(pg_temp.id(v), pg_temp.id('proveedor'), 'COT-486-' || v, 'Discos para el almacén',
+      jsonb_build_array(jsonb_build_object('material_id', pg_temp.id('disco'), 'cantidad', 5, 'precio', 8)),
+      pg_temp.hoy() + 3, 'CONTADO', 0, 'PEN', true, 'PLANTA');
+  end loop;
+  perform public.emitir_orden_servicio(pg_temp.id('os1'), pg_temp.id('proveedor'), null, (select id from public.areas where codigo = 'ACB'),
+    'PLANTA', 'Torneado de ejes, prueba 486', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'PEN', 500, 'CONTADO', 0, '025', null);
+  perform public.emitir_orden_servicio(pg_temp.id('os2'), pg_temp.id('proveedor'), null, (select id from public.areas where codigo = 'ACB'),
+    'PLANTA', 'Pintura de la tolva, prueba 486', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'PEN', 700, 'CONTADO', 0, '025', null);
+end $$;
+reset role;
+-- La regla de aprobación corre al cerrar la transacción: aquí se adelanta.
+set constraints all immediate;
+set constraints all deferred;
+
+-- La b se emitió prometida para hace 2 días: como dueño se corre hacia atrás.
+update public.ordenes_compra_materiales set fecha_estimada = pg_temp.hoy() - 2 where id = pg_temp.id('ocb');
+
+select pg_temp.como('gerente');
+set local role authenticated;
+select public.aprobar_compra(pg_temp.id('oca'));
+select public.aprobar_compra(pg_temp.id('ocb'));
+select public.aprobar_compra(pg_temp.id('occ'));
+select public.aprobar_orden_servicio(pg_temp.id('os1'));
+select public.aprobar_orden_servicio(pg_temp.id('os2'));
+reset role;
+
+select pg_temp.como('comprador');
+set local role authenticated;
+select public.corregir_fecha_esperada(gen_random_uuid(), 'OC', pg_temp.id('ocb'), pg_temp.hoy() + 1, 'PROVEEDOR', 'Avisó que llega mañana');
+select public.programar_recojo(pg_temp.id('oca'), 10, null);
+select public.programar_recojo(pg_temp.id('ocb'), 10, null);
+select public.avanzar_orden_servicio(pg_temp.id('os1'), 'EN_EJECUCION', null);
+select public.avanzar_orden_servicio(pg_temp.id('os1'), 'CONFORME', null);
+select public.avanzar_orden_servicio(pg_temp.id('os2'), 'ANULADA', 'El proveedor no puede hacer el trabajo');
+reset role;
+
+select pg_temp.como('conductor');
+set local role authenticated;
+select public.marcar_compra_recogida(pg_temp.id('oca'));
+select public.marcar_compra_dejada_almacen(pg_temp.id('oca'));
+select public.marcar_compra_recogida(pg_temp.id('ocb'));
+select public.marcar_compra_dejada_almacen(pg_temp.id('ocb'));
+reset role;
+
+-- Almacén valida la a entera y le devuelve un disco que se repone. La b queda sin validar.
+select set_config('prueba.ingresosa', (
+  select jsonb_agg(jsonb_build_object('id', i.id, 'movimiento_id', pg_temp.id('mova'), 'cantidad', i.cantidad))
+    from public.ingresos_pendientes_almacen i where i.orden_compra_id = pg_temp.id('oca'))::text, true);
+select pg_temp.como('almacenero');
+set local role authenticated;
+select public.validar_ingresos_compra(pg_temp.id('oca'), current_setting('prueba.ingresosa')::jsonb, null);
+select public.devolver_al_proveedor(pg_temp.id('deva'), pg_temp.id('mova'), 1, 'GR-486', 'Un disco llegó rajado de fábrica', true);
+reset role;
+
+-- ============================================ Lo que ve Logística
+select pg_temp.como('comprador');
+set local role authenticated;
+do $$
+declare r record;
+begin
+  select * into r from public.cumplimiento_de_proveedores(array[pg_temp.id('proveedor')]);
+  perform test.afirmar(r.compras = 4,
+    format('cuentan las OC aprobadas y la OS no anulada; no la que espera a Gerencia ni la anulada (dice %s)', r.compras));
+  perform test.afirmar(r.medidas = 3, format('se miden las que ya llegaron: a, b y la OS (dice %s)', r.medidas));
+  perform test.afirmar(r.a_tiempo = 2,
+    format('a tiempo la a y la OS; la b no, aunque se corrigió la fecha (dice %s)', r.a_tiempo));
+  perform test.afirmar(r.devueltas = 1, format('una OC con devolución (dice %s)', r.devueltas));
+
+  -- La lista de OC, contra la fecha corregida, no la ve atrasada: son dos preguntas distintas.
+  select * into r from public.plazos_de_compras(array[pg_temp.id('ocb')]);
+  perform test.afirmar(r.esperada = pg_temp.hoy() + 1 and r.dias_atraso = 0 and not r.atrasada and r.por_validar,
+    format('la lista de OC mide la b contra la fecha corregida (esperada %s, días %s)', r.esperada, r.dias_atraso));
+  select * into r from public.plazos_de_compras(array[pg_temp.id('oca')]);
+  perform test.afirmar(r.completa_en is not null and r.dias_atraso = 0 and not r.atrasada,
+    'la a sigue completa y a tiempo en la lista de OC tras la devolución');
+end $$;
+select test.debe_fallar(
+  'select * from public.cumplimiento_de_proveedores(array(select gen_random_uuid() from generate_series(1, 101)))',
+  'más de 100 proveedores a la vez lo dice', 'hasta 100');
+select test.afirmar((select count(*) from public.cumplimiento_de_proveedores(array[]::uuid[])) = 0, 'sin proveedores no devuelve nada');
+select test.debe_fallar('select * from public.plazos_de_compras_calculados(array[''' || pg_temp.id('oca') || '''::uuid])',
+  'el cálculo interno no lo llama nadie directo', 'permission denied');
+reset role;
+
+-- ============================================ Quién lo lee
+select pg_temp.como('almacenero');
+set local role authenticated;
+select test.afirmar((select a_tiempo = 2 and devueltas = 1 from public.cumplimiento_de_proveedores(array[pg_temp.id('proveedor')])),
+  'Almacén, que ve el padrón, lee las mismas cifras');
+reset role;
+select pg_temp.como('vendedor');
+set local role authenticated;
+select test.debe_fallar('select * from public.cumplimiento_de_proveedores(array[''' || pg_temp.id('proveedor') || '''::uuid])',
+  'Ventas, que no ve el padrón, no lee el cumplimiento', 'permiso');
+reset role;
+do $$
+begin
+  perform test.afirmar(not has_function_privilege('anon', 'public.cumplimiento_de_proveedores(uuid[])', 'execute')
+                   and not has_function_privilege('anon', 'public.plazos_de_compras_calculados(uuid[])', 'execute')
+                   and not has_function_privilege('authenticated', 'public.plazos_de_compras_calculados(uuid[])', 'execute'),
+    'sin sesión no se ejecuta, y el cálculo interno no lo ejecuta nadie');
+end $$;
+
+rollback;
