@@ -28,13 +28,13 @@ update public.usuarios set area_id = (select id from public.areas where codigo =
 update public.usuarios set area_id = (select id from public.areas where codigo = 'LOG') where id = :'ajeno_id';
 update public.areas set jefe_id = :'jefe_id' where codigo = 'MTZ';
 -- SSOMA entra recién en la sección 11: hasta entonces, la de riesgo va a Gerencia.
--- Las cuentas de SSOMA y de Mantenimiento que ya traiga la base (la
--- `20261126600000` crea las de los dos puestos) quedan fuera toda la prueba: si
--- no, el aviso les llega a ellas y la sección 9 no tiene «sin Mantenimiento».
 update public.usuarios set activo = false where id = :'ssoma_id';
+-- Las cuentas de SSOMA y de Mantenimiento que traen las migraciones (las de
+-- producción, 20261126600000) se apagan aquí: si no, los avisos les llegaban a
+-- esas y no a las del check, ni a Gerencia cuando las del check se apagan.
 update public.usuarios u set activo = false
  where u.id not in (:'ssoma_id', :'mnt_id') and u.activo
-   and exists (select 1 from public.roles r where r.id = u.rol_id and r.codigo in ('SSOMA', 'MANTENIMIENTO'));
+   and u.rol_id in (select id from public.roles where codigo in ('SSOMA', 'MANTENIMIENTO'));
 
 select set_config('prueba.mnt', :'mnt_id', true);
 select set_config('prueba.ger', :'ger_id', true);

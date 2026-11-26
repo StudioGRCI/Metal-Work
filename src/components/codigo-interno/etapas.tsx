@@ -4,6 +4,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import type { EtapaDeCodigo } from '@/lib/datos/diseno-codigos'
 import { AREAS_DE_PLANOS, estadoEtapa, plazoEtapa } from '@/lib/dominio/diseno-codigos'
+import { plazoEnPalabras, SEMAFORO_DE_CODIGO, type Semaforo } from '@/lib/dominio/tiempos-entrega'
 import { fecha } from '@/lib/format'
 
 const AREAS_QUE_REPORTAN: readonly string[] = AREAS_DE_PLANOS
@@ -47,6 +48,7 @@ export function ListaEtapas({
   responsables,
   acciones,
   conPlanosConPeso = false,
+  semaforos,
 }: {
   etapas: EtapaDeCodigo[]
   hoy: string
@@ -57,6 +59,12 @@ export function ListaEtapas({
   acciones?: (etapa: EtapaDeCodigo, lugar: LugarDeEtapa) => ReactNode
   /** El código tiene planos con % de la unidad: su avance no entra al de la etapa, y se dice. */
   conPlanosConPeso?: boolean
+  /**
+   * El semáforo del tablero de tiempos de entrega de cada etapa abierta, por su
+   * id, con los días hábiles (`etapas_abiertas_de_mi_area`). Con él, el plazo
+   * de esa etapa es el del tablero y no se cuenta aquí en días corridos.
+   */
+  semaforos?: ReadonlyMap<string, { semaforo: Semaforo; dias_habiles: number | null }>
 }) {
   const grupos = etapasConSubetapas(etapas)
   return (
@@ -70,6 +78,7 @@ export function ListaEtapas({
             limite={limite}
             responsable={responsables?.get(etapa.id)?.nombre ?? null}
             conPlanosConPeso={conPlanosConPeso}
+            delTablero={semaforos?.get(etapa.id)}
             acciones={acciones?.(etapa, { primera: i === 0, ultima: i === grupos.length - 1, subetapas })}
           />
           {subetapas.length > 0 && (
@@ -83,6 +92,7 @@ export function ListaEtapas({
                     limite={limite}
                     responsable={responsables?.get(s.id)?.nombre ?? null}
                     conPlanosConPeso={conPlanosConPeso}
+                    delTablero={semaforos?.get(s.id)}
                     sub
                     acciones={acciones?.(s, { primera: j === 0, ultima: j === subetapas.length - 1, subetapas: [] })}
                   />
@@ -105,6 +115,7 @@ function FilaEtapa({
   conPlanosConPeso,
   sub = false,
   acciones,
+  delTablero,
 }: {
   e: EtapaDeCodigo
   numero: string
@@ -114,9 +125,18 @@ function FilaEtapa({
   conPlanosConPeso: boolean
   sub?: boolean
   acciones?: ReactNode
+  delTablero?: { semaforo: Semaforo; dias_habiles: number | null }
 }) {
   const estado = estadoEtapa(e)
-  const plazo = plazoEtapa(e, hoy, limite)
+  // La etapa abierta con su semáforo del tablero lo dice igual que el tablero
+  // y que «Sin reporte de hoy»: el mismo color y los mismos días hábiles.
+  const plazo =
+    delTablero && !e.fin_real
+      ? {
+          etiqueta: plazoEnPalabras(delTablero.semaforo, delTablero.dias_habiles, { fechaPlan: e.fin_plan, hoy }),
+          tono: SEMAFORO_DE_CODIGO[delTablero.semaforo].tono,
+        }
+      : plazoEtapa(e, hoy, limite)
   // En el teléfono los botones van debajo: al lado dejaban el nombre en 60 px (auditoría del 27/10/2026).
   return (
     <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-start sm:justify-between" data-etapa={e.nombre} data-subetapa={sub || undefined}>
