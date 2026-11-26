@@ -54,7 +54,8 @@ export function resumenDetraccion(d: DetraccionDeServicio): { texto: string; det
   const porcentaje = porcentajeCorto(d.porcentaje)
   if (d.total_con_igv_pen === null) {
     // Tesorería, que lo ve, no registra el cambio: el aviso dice de qué día y quién (DKS, 2026-11-26).
-    const dia = d.emitida_en ? ` del ${fecha(d.emitida_en)}` : ''
+    // Día y mes: la insignia no se parte, y con el año salía de la tarjeta en el teléfono.
+    const dia = d.emitida_en ? ` del ${fecha(d.emitida_en).slice(0, 5)}` : ''
     return {
       texto: `Detracción ${porcentaje}: falta el tipo de cambio${dia}`,
       detalle: [tipo, 'Lo registran Contabilidad o Administración en Tipo de cambio.'].filter(Boolean).join(' · '),
