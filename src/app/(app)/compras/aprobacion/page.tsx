@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { DiasEnEspera } from '@/components/ui/dias-en-espera'
 import { Insignia } from '@/components/ui/etiqueta-estado'
-import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
+import { AccionesDeFila, SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Pliegue } from '@/components/ui/seccion-desplegable'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import {
@@ -72,7 +72,8 @@ export default async function PaginaAprobacionCompras() {
         migas={[{ titulo: 'Compras' }, { titulo: 'Aprobación' }]}
       />
 
-      <div className="space-y-6">
+      {/* 20 px entre bloques (la escala de la skill diseno; entrega 6). */}
+      <div className="space-y-5">
         <section className="space-y-3">
           <h2 className="text-base font-semibold text-texto">
             Por aprobar <span className="tabular text-texto-suave">({pendientes.length})</span>
@@ -112,14 +113,15 @@ export default async function PaginaAprobacionCompras() {
         {decididas.length > 0 && (
           <section className="space-y-3">
             <h2 className="text-base font-semibold text-texto">Decididas en los últimos 30 días</h2>
+            {/* En el teléfono, una ficha por orden: quién la decidió y cuándo no salía. */}
             <Tarjeta className="overflow-hidden">
-              <Tabla>
+              <Tabla apilada>
                 <TablaCabecera>
                   <tr>
                     <TH>Orden</TH>
                     <TH className="text-right">Monto</TH>
                     <TH>Decisión</TH>
-                    <TH className="hidden sm:table-cell">Quién y cuándo</TH>
+                    <TH>Quién y cuándo</TH>
                   </tr>
                 </TablaCabecera>
                 <tbody>
@@ -131,10 +133,19 @@ export default async function PaginaAprobacionCompras() {
                           <NombreDeLaOrden numero={c.sin_numero ? null : c.numero} referencia={c.referencia} proveedor={c.proveedor} />
                           <p className="text-xs text-texto-suave">{destinoDeCompra(c)}</p>
                           {c.motivo_rechazo && <p className="mt-1 text-xs text-texto-suave">Motivo: {c.motivo_rechazo}</p>}
+                          {/* En la ficha, el monto y la decisión en un renglón y quién la tomó
+                              debajo: con una celda por dato cada ficha medía 200 px. */}
+                          <p className="mt-1 flex flex-wrap items-center gap-2 md:hidden">
+                            <span className="tabular font-medium text-texto">{moneda(c.monto, divisa(c.moneda))}</span>
+                            {estado && <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>}
+                          </p>
+                          <p className="text-xs text-texto-suave md:hidden" data-quien-decidio>
+                            {c.decidida_por ?? '—'} · {fechaHora(c.decidida_en)}
+                          </p>
                         </TD>
-                        <TD className="tabular text-right whitespace-nowrap">{moneda(c.monto, divisa(c.moneda))}</TD>
-                        <TD>{estado && <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>}</TD>
-                        <TD className="hidden text-texto-suave sm:table-cell">
+                        <TD className="tabular hidden text-right whitespace-nowrap md:table-cell">{moneda(c.monto, divisa(c.moneda))}</TD>
+                        <TD className="hidden md:table-cell">{estado && <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>}</TD>
+                        <TD className="hidden text-texto-suave md:table-cell">
                           {c.decidida_por ?? '—'}
                           <p className="text-xs">{fechaHora(c.decidida_en)}</p>
                         </TD>
@@ -186,15 +197,15 @@ function ComprasAnulables({ compras }: { compras: CompraAnulable[] }) {
         {se.length === 0 ? (
           <SinDatos enTabla={false} titulo="Ninguna se puede anular hoy" descripcion="Las aprobadas que ya avanzaron están abajo, con lo que lo impide." />
         ) : (
-          <Tabla>
+          // En el teléfono, una ficha por orden, con en qué va, que no salía. «Anular»
+          // va sin borde (decisión 6): treinta y nueve botones rojos eran la pantalla.
+          <Tabla apilada>
             <TablaCabecera>
               <tr>
                 <TH>Orden</TH>
                 <TH className="text-right">Monto</TH>
-                <TH className="hidden sm:table-cell">En qué va</TH>
-                <TH className="text-right">
-                  <span className="sr-only">Anular</span>
-                </TH>
+                <TH>En qué va</TH>
+                <TH className="text-right md:w-28">Acciones</TH>
               </tr>
             </TablaCabecera>
             <tbody>
@@ -209,13 +220,19 @@ function ComprasAnulables({ compras }: { compras: CompraAnulable[] }) {
                           .filter(Boolean)
                           .join(' · ')}
                       </p>
+                      <p className="mt-1 flex flex-wrap items-center gap-2 md:hidden">
+                        <span className="tabular font-medium text-texto">{moneda(c.monto, divisa(c.moneda))}</span>
+                        <Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>
+                      </p>
                     </TD>
-                    <TD className="tabular text-right whitespace-nowrap">{moneda(c.monto, divisa(c.moneda))}</TD>
-                    <TD className="hidden sm:table-cell">
+                    <TD className="tabular hidden text-right whitespace-nowrap md:table-cell">{moneda(c.monto, divisa(c.moneda))}</TD>
+                    <TD className="hidden md:table-cell">
                       <Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>
                     </TD>
-                    <TD className="text-right">
-                      <AnularCompra id={c.id} numero={c.numero} />
+                    <TD>
+                      <AccionesDeFila>
+                        <AnularCompra id={c.id} numero={c.numero} />
+                      </AccionesDeFila>
                     </TD>
                   </TR>
                 )
@@ -345,6 +362,10 @@ function CompraPorAprobar({ compra: c, aprueba, dias }: { compra: CompraParaApro
                     <p className="text-xs text-texto-suave">
                       {l.material_codigo}
                       <span className="sm:hidden"> · {l.orden ? `OT ${l.orden}` : deRq ? 'De RQ' : 'Almacén'}</span>
+                    </p>
+                    {/* El precio unitario no salía en el teléfono: su columna aparece desde 640 px. */}
+                    <p className="tabular text-xs text-texto-suave sm:hidden" data-precio-en-telefono>
+                      P. unitario {l.precio_unitario === null ? 'pendiente' : moneda(l.precio_unitario, divisa(c.moneda))}
                     </p>
                     {/* Para no aprobar dos veces la misma compra (Almacén, 20/11/2026): lo
                         que ya viene, aparte de lo que otras OC piden y también esperan. */}

@@ -23,6 +23,7 @@ import { fecha, hoyLima, moneda, parteDe, porcentaje } from '@/lib/format'
 import { puede, type PerfilSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
+import { ConRotulo } from './con-rotulo'
 import { CorregirFactura } from './corregir'
 import { AvisosDelDetector, avisosDeFacturaRegistrada, InsigniaDelDetector } from './detector'
 import { CompletarAdquisicion, FormularioAdquisicion } from './formulario'
@@ -201,7 +202,8 @@ export async function PestanaFacturas({ perfil, params }: { perfil: PerfilSesion
         </p>
       )}
 
-      {/* En el teléfono, una tarjeta por factura: la tabla de ocho columnas se corría de costado y el proveedor salía cortado. */}
+      {/* Hasta 1279 px, una ficha por factura: la tabla de ocho columnas pide de 1 131 px para arriba —1 218 con un
+          código interno de 19 letras— y se salía de su tarjeta (413 px a 1024). Por eso las ocho van desde 1700, con 176 px de holgura. */}
       <ComprasEnTelefono
         facturas={facturas}
         esperan={esperan}
@@ -215,16 +217,16 @@ export async function PestanaFacturas({ perfil, params }: { perfil: PerfilSesion
         nc={nc}
       />
 
-      <Tarjeta className="hidden overflow-hidden sm:block">
+      <Tarjeta className="hidden overflow-hidden xl:block">
         <Tabla aria-label="Compras: RQ, OC, factura y pago">
           <TablaCabecera>
             <tr>
               <TH>RQ</TH>
               <TH>OC</TH>
               <TH>Factura</TH>
-              <TH>Fecha de factura</TH>
+              <TH className="hidden min-[1700px]:table-cell">Fecha de factura</TH>
               <TH>Proveedor</TH>
-              <TH>Código interno</TH>
+              <TH className="hidden min-[1700px]:table-cell">Código interno</TH>
               <TH className="text-right">Total</TH>
               <TH>Pago</TH>
             </tr>
@@ -275,9 +277,12 @@ export async function PestanaFacturas({ perfil, params }: { perfil: PerfilSesion
                             {compra.facturas.join(', ')}: {moneda(compra.facturado, codigo(compra.moneda))}
                           </p>
                         )}
+                        <p className="mt-1 text-xs text-texto-suave min-[1700px]:hidden" data-fecha-en-fila>
+                          OC del <span className="tabular whitespace-nowrap">{fecha(compra.creado_en)}</span>
+                        </p>
                         <AnexadasPorRegistrar facturas={porRegistrarDe.get(compra.orden_compra_id) ?? []} />
                       </TD>
-                      <TD className="align-top text-xs text-texto-suave">OC del {fecha(compra.creado_en)}</TD>
+                      <TD className="hidden align-top text-xs text-texto-suave min-[1700px]:table-cell">OC del {fecha(compra.creado_en)}</TD>
                       <CeldaProveedor proveedor={compra.proveedor} acceso={acceso} />
                       <CeldaCodigo orden={orden} acceso={acceso} />
                       <TD className="text-right align-top tabular whitespace-nowrap">
@@ -415,14 +420,14 @@ function ComprasEnTelefono({
 }) {
   if (vacio) {
     return (
-      <Tarjeta className="px-4 py-8 text-center sm:hidden">
+      <Tarjeta className="px-4 py-8 text-center xl:hidden">
         <p className="text-sm font-medium text-texto">{vacio.titulo}</p>
         <p className="mt-1 text-xs text-texto-suave">{vacio.descripcion}</p>
       </Tarjeta>
     )
   }
   return (
-    <div className="space-y-4 sm:hidden">
+    <div className="space-y-4 xl:hidden">
       {facturas.length > 0 && (
         <Tarjeta className="overflow-hidden">
           <ul className="divide-y divide-borde" aria-label="Facturas de compra">
@@ -451,14 +456,21 @@ function ComprasEnTelefono({
                     corrige={corrige}
                     nc={nc}
                   />
-                  {ordenes.length > 0 && (
-                    <ul className="space-y-0.5 text-xs text-texto-suave">
-                      {ordenes.map((o) => (
-                        <OcEnUnaLinea key={o.id} orden={o} acceso={acceso} />
-                      ))}
-                    </ul>
-                  )}
-                  <Pago factura={f} acceso={acceso} />
+                  {/* Cada parte con su nombre, como la ficha de las OC; de 640 px en adelante, lado a lado. */}
+                  <dl className="grid gap-x-6 gap-y-2 pt-1 sm:grid-cols-2">
+                    {ordenes.length > 0 && (
+                      <ConRotulo rotulo="OC, RQ y código">
+                        <ul className="space-y-0.5 text-xs text-texto-suave">
+                          {ordenes.map((o) => (
+                            <OcEnUnaLinea key={o.id} orden={o} acceso={acceso} />
+                          ))}
+                        </ul>
+                      </ConRotulo>
+                    )}
+                    <ConRotulo rotulo="Pago">
+                      <Pago factura={f} acceso={acceso} />
+                    </ConRotulo>
+                  </dl>
                 </li>
               )
             })}
@@ -650,8 +662,19 @@ function GrupoFactura({
             <>
               <TD rowSpan={alto} className="align-top">
                 <DatosDeFactura factura={f} propia={propia} avisos={avisos} correcciones={correcciones} corrige={corrige} nc={nc} />
+                {/* Entre 1280 y 1699 px la fecha no tiene columna: va aquí, con su rótulo. */}
+                <p className="mt-1 text-xs text-texto-suave min-[1700px]:hidden" data-fecha-en-fila>
+                  Del <span className="tabular whitespace-nowrap">{fecha(f.fecha_emision)}</span> ·{' '}
+                  {f.condicion_pago === 'CREDITO' ? (
+                    <>
+                      crédito, vence <span className="tabular whitespace-nowrap">{fecha(f.fecha_vencimiento)}</span>
+                    </>
+                  ) : (
+                    'contado'
+                  )}
+                </p>
               </TD>
-              <TD rowSpan={alto} className="align-top whitespace-nowrap">
+              <TD rowSpan={alto} className="hidden align-top whitespace-nowrap min-[1700px]:table-cell">
                 <span className="tabular">{fecha(f.fecha_emision)}</span>
                 <p className="text-xs text-texto-suave">
                   {f.condicion_pago === 'CREDITO' ? `Crédito, vence ${fecha(f.fecha_vencimiento)}` : 'Contado'}
@@ -660,7 +683,11 @@ function GrupoFactura({
               <CeldaProveedor proveedor={f.proveedor} acceso={acceso} alto={alto} />
             </>
           )}
-          {orden ? <CeldaCodigo orden={orden} acceso={acceso} /> : <TD className="align-top text-texto-suave">—</TD>}
+          {orden ? (
+            <CeldaCodigo orden={orden} acceso={acceso} />
+          ) : (
+            <TD className="hidden align-top text-texto-suave min-[1700px]:table-cell">—</TD>
+          )}
           {i === 0 && (
             <>
               <TD rowSpan={alto} className="text-right align-top tabular font-semibold whitespace-nowrap">
@@ -746,7 +773,7 @@ function DatosDeFactura({
             <li key={n.id} data-nota-credito={n.numero} className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className={n.anulada ? 'text-texto-suave line-through' : 'text-texto'}>
                 {n.url ? (
-                  <a href={n.url} target="_blank" rel="noreferrer" className={`tabular inline-flex min-h-11 items-center sm:min-h-0 ${enlace}`}>
+                  <a href={n.url} target="_blank" rel="noreferrer" className={`tabular inline-flex min-h-11 items-center xl:min-h-0 ${enlace}`}>
                     Nota {n.numero}
                   </a>
                 ) : (
@@ -850,6 +877,12 @@ function CeldaOc({ orden, acceso }: { orden: OcEnTabla; acceso: Acceso }) {
         </p>
       )}
       <p className="tabular text-xs text-texto-suave">{orden.sin_precio ? 'Sin precio' : moneda(orden.total, codigo(orden.moneda))}</p>
+      {/* Entre 1280 y 1699 px el código interno no tiene columna: va bajo su OC. */}
+      {orden.codigos.length > 0 && (
+        <div className="mt-1 text-xs min-[1700px]:hidden" data-codigo-en-fila>
+          <CodigosDeLaOc orden={orden} acceso={acceso} />
+        </div>
+      )}
     </TD>
   )
 }
@@ -875,28 +908,34 @@ function NombreProveedor({ proveedor, acceso }: { proveedor: string; acceso: Acc
 function CeldaCodigo({ orden, acceso }: { orden: OcEnTabla; acceso: Acceso }) {
   if (orden.codigos.length === 0) {
     return (
-      <TD className="align-top">
+      <TD className="hidden align-top min-[1700px]:table-cell">
         <span className="text-texto-suave">—</span>
       </TD>
     )
   }
-  // La OC que junta insumos de varios RQ lleva el código de cada uno.
   return (
-    <TD className="align-top">
-      <ul className="space-y-0.5">
-        {orden.codigos.map((c) => (
-          <li key={c} className="whitespace-nowrap">
-            {acceso.codigo && c !== 'PLANTA' ? (
-              <Link href={`/codigos-internos/detalle?codigo=${encodeURIComponent(c)}`} className={`tabular ${enlace}`}>
-                {c}
-              </Link>
-            ) : (
-              <span className="tabular">{c}</span>
-            )}
-          </li>
-        ))}
-      </ul>
+    <TD className="hidden align-top min-[1700px]:table-cell">
+      <CodigosDeLaOc orden={orden} acceso={acceso} />
     </TD>
+  )
+}
+
+/** Los códigos internos de una OC: la que junta insumos de varios RQ lleva el de cada uno. */
+function CodigosDeLaOc({ orden, acceso }: { orden: OcEnTabla; acceso: Acceso }) {
+  return (
+    <ul className="space-y-0.5">
+      {orden.codigos.map((c) => (
+        <li key={c} className="whitespace-nowrap">
+          {acceso.codigo && c !== 'PLANTA' ? (
+            <Link href={`/codigos-internos/detalle?codigo=${encodeURIComponent(c)}`} className={`tabular ${enlace}`}>
+              {c}
+            </Link>
+          ) : (
+            <span className="tabular">{c}</span>
+          )}
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -910,11 +949,16 @@ function Pago({ factura: f, acceso }: { factura: FacturaEnTabla; acceso: Acceso 
       ) : f.saldo <= 0 ? (
         <Insignia tono="exito">Pagada</Insignia>
       ) : (
-        <p className="tabular whitespace-nowrap text-texto">
-          {f.enEspera ? 'Por confirmar' : f.pagado && f.pagado > 0 ? 'Saldo' : 'Por pagar'} {moneda(f.saldo, m)}
+        // Cada pieza entera, pero la línea puede partirse entre ellas (como en la pestaña de las OC).
+        <p className="tabular text-texto">
+          {f.enEspera ? 'Por confirmar' : f.pagado && f.pagado > 0 ? 'Saldo' : 'Por pagar'}{' '}
+          <span className="whitespace-nowrap">{moneda(f.saldo, m)}</span>
           {/* Lo pagado como parte de la factura (DKS, 27/10/2026: porcentaje y costo). */}
           {f.pagado !== null && f.pagado > 0 && parteDe(f.pagado, f.total) !== null && (
-            <span className="text-texto-suave"> · pagado {porcentaje(parteDe(f.pagado, f.total))}</span>
+            <span className="text-texto-suave">
+              {' '}
+              · <span className="whitespace-nowrap">pagado {porcentaje(parteDe(f.pagado, f.total))}</span>
+            </span>
           )}
         </p>
       )}
@@ -944,7 +988,7 @@ function Pago({ factura: f, acceso }: { factura: FacturaEnTabla; acceso: Acceso 
       )}
       {/* Solo la que falta pagar: la pagada ya trae aquí sus vouchers, y allá va plegada. */}
       {acceso.porPagar && f.estado === 'REGISTRADA' && f.saldo !== null && f.saldo > 0 && (
-        <Link href={`/tesoreria/por-pagar#factura-${f.id}`} className={`inline-flex min-h-11 items-center sm:min-h-0 ${enlace}`}>
+        <Link href={`/tesoreria/por-pagar#factura-${f.id}`} className={`inline-flex min-h-11 items-center xl:min-h-0 ${enlace}`}>
           {acceso.porPagar === 'pagar' ? 'Pagar en Cuentas por pagar' : 'Ver en Cuentas por pagar'}
         </Link>
       )}
