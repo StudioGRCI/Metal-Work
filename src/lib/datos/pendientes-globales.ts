@@ -852,9 +852,14 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       almacen && compra ? plural(n, 'requerimiento espera por ti', 'requerimientos esperan por ti')
       : almacen ? plural(n, 'requerimiento por validar, dejar listo o entregar espera por ti', 'requerimientos por validar, dejar listos o entregar esperan por ti')
       // Programar el recojo es solo de Logística: a la administradora, lo que falta comprar.
+      // El RQ listo de su propia área también es suyo: lo recoge.
       : atiende.compraDe.OPERACION
-        ? plural(n, 'requerimiento por comprar o programar espera por ti', 'requerimientos por comprar o programar esperan por ti')
-        : plural(n, 'requerimiento por comprar espera por ti', 'requerimientos por comprar esperan por ti'),
+        ? perfil.area_id
+          ? plural(n, 'requerimiento por comprar, programar o recoger espera por ti', 'requerimientos por comprar, programar o recoger esperan por ti')
+          : plural(n, 'requerimiento por comprar o programar espera por ti', 'requerimientos por comprar o programar esperan por ti')
+        : perfil.area_id
+          ? plural(n, 'requerimiento por comprar o recoger espera por ti', 'requerimientos por comprar o recoger esperan por ti')
+          : plural(n, 'requerimiento por comprar espera por ti', 'requerimientos por comprar esperan por ti'),
     contar: async () => (await queEspera()).filter((r) => loTieneQuienAtiende(r.espera, r, atiende, perfil.area_id ?? null)).length,
   })
   // El supervisor recoge de Almacén lo que su área pidió.
