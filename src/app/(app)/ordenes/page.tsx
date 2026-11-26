@@ -59,9 +59,11 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
   const hayFiltros = Boolean(
     palabrasDeBusqueda(filtros.busqueda).length > 0 || filtros.estado || filtros.prioridad || filtros.atrasadas,
   )
-  // Lo que falta completar (plan 8.1) lo ve quien lo completa, arriba de la
-  // lista y sin filtros: quien filtra está consultando, no atendiendo.
-  const verPendientes = puede(perfil, ['ordenes.crear', 'ordenes.editar']) && !hayFiltros && filtros.pagina <= 1
+  // Lo que falta completar (plan 8.1) lo ve quien carga las OT, arriba de la
+  // lista y sin filtros: quien filtra está consultando, no atendiendo. Solo
+  // `ordenes.crear`: quien solo corrige OT no ve las cotizaciones y la tarjeta
+  // le diría que no falta ninguna.
+  const verPendientes = puede(perfil, 'ordenes.crear') && !hayFiltros && filtros.pagina <= 1
   const [{ ordenes, total, pagina, paginas }, pendientes] = await Promise.all([
     listarOrdenes(filtros),
     verPendientes

@@ -309,7 +309,7 @@ const esquemaCodigoYOt = z.object({
   marca: z.string().trim().max(80).optional(),
   modelo: z.string().trim().max(80).optional(),
   // Sin fecha se carga igual y la OT queda en los pendientes de la lista de OT
-  // (plan 8, migración 20261126300000).
+  // (plan 8, migración 20261126330000).
   fecha_entrega: z.union([z.literal(''), z.string().regex(ES_FECHA, 'La fecha de entrega al cliente no es válida')]).optional(),
   ruta_pdf: z.string().min(1),
   nombre_pdf: z.string().trim().min(1).max(200),

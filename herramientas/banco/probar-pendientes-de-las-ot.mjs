@@ -1,6 +1,6 @@
 /**
  * Recorre con clic real los pendientes de Administración en Órdenes de trabajo
- * (plan 8, entrega 8.1, migración 20261126300000), con la cuenta de cada puesto
+ * (plan 8, entrega 8.1, migración 20261126330000), con la cuenta de cada puesto
  * (nunca ADMIN):
  *
  *   1. Ventas sube una cotización y Gerencia la aprueba.
@@ -9,8 +9,9 @@
  *      interno. «Cargar la OT» la lleva a la tarjeta de la cotización.
  *   3. Carga el código y la OT **sin fecha de entrega**: entra, y la OT vuelve
  *      a la lista de pendientes «Sin fecha de entrega».
- *   4. «Poner la fecha» la lleva a la OT, que muestra el recorrido desde su
- *      cotización; con «Editar OT» le pone la fecha y sale de los pendientes.
+ *   4. «Poner la fecha» la lleva a la OT con «Editar OT» ya abierta; le pone
+ *      la fecha, sale de los pendientes, y la OT muestra el recorrido de su
+ *      cotización.
  *   5. Gerencia ve la lista de OT sin la tarjeta (consulta, no completa).
  *
  * Capturas en teléfono (390) y monitor (1440). Arma sus datos ficticios
@@ -219,7 +220,9 @@ let otId = null
                                   and nullif(btrim(coalesce(u.codigo_interno, '')), '') is null`)
   for (const { numero } of demo) {
     const texto = limpio(await fila(pagina, numero).textContent().catch(() => ''))
-    comprobar(texto.includes('Sin código interno') && /Poner el código|Completar/.test(texto), `la OT ${numero} sale «Sin código interno», con su botón`)
+    // Con su botón, o con el porqué si desde la OT no se puede (sin unidad, o la comparte).
+    comprobar(texto.includes('Sin código interno') && (/Poner el código|Completar/.test(texto) || texto.includes('desde la OT no se puede poner')),
+      `la OT ${numero} sale «Sin código interno», con su botón o con por qué no se puede ahí («${texto}»)`)
   }
   await pagina.screenshot({ path: join(CAPTURAS, '8-1-administracion-1440-1-por-completar.png'), fullPage: false })
 
@@ -261,24 +264,16 @@ let otId = null
   comprobar(textoFo.includes('Sin fecha de entrega') && !textoFo.includes('Sin código') && textoFo.includes('Poner la fecha'),
     `y la OT queda «Sin fecha de entrega», con «Poner la fecha» («${textoFo}»)`)
 
-  // 4. «Poner la fecha» lleva a la OT, con el recorrido desde su cotización.
+  // 4. «Poner la fecha» lleva a la OT con «Editar OT» ya abierta, y le pone la fecha.
   await (await aLaVista(pagina, `${N}-${anio}`)).getByRole('link', { name: /Poner la fecha/ }).click()
   await pagina.waitForURL((u) => u.pathname === `/ordenes/${otId}`, { timeout: 30000 })
   await pagina.waitForLoadState('networkidle')
-  const r = pagina.locator('[data-recorrido-de-la-ot]')
-  const textoR = limpio(await r.textContent().catch(() => ''))
-  comprobar(textoR.includes('Desde su cotización') && textoR.includes(`Cotización ${cot.numero}`), 'la OT muestra «Desde su cotización»')
-  await r.locator('summary').first().click()
-  const pasos = await r.locator('[data-recorrido-paso]').evaluateAll((l) => l.map((e) => `${e.getAttribute('data-recorrido-paso')}:${e.getAttribute('data-situacion')}`))
-  comprobar(pasos.includes('SUBIDA:HECHO') && pasos.includes('REVISION:HECHO') && pasos.includes('CODIGO_Y_OT:HECHO'),
-    `con la subida, la revisión de Gerencia y el código y la OT hechos (${pasos.join(', ')})`)
-  const textoPasos = limpio(await r.textContent())
-  comprobar(textoPasos.includes(`OT ${N}-${anio}`) && !/\b\d{1,3}(,\d{3})*\.\d{2}\b/.test(textoPasos), 'dice el número de la OT y ningún importe')
-  await pagina.screenshot({ path: join(CAPTURAS, '8-1-administracion-1440-2-recorrido-de-la-ot.png'), fullPage: true })
-
-  // «Editar OT» le pone la fecha.
-  await pagina.getByRole('button', { name: 'Editar OT / cambiar cliente' }).click()
   const ve = pagina.locator('[role="dialog"]')
+  await ve.waitFor({ timeout: 15000 }).catch(() => {})
+  const tituloVe = limpio(await ve.locator('h2').first().textContent().catch(() => ''))
+  comprobar(tituloVe === `Editar OT ${N}-${anio}`, `y abre «Editar OT» sola («${tituloVe}»)`)
+  comprobar(!new URL(pagina.url()).searchParams.has('editar'), 'y quita «editar» de la dirección, para no abrirla otra vez al recargar')
+  await pagina.screenshot({ path: join(CAPTURAS, '8-1-administracion-1440-3-poner-la-fecha.png'), fullPage: false })
   const dia = (await uno(`select to_char((now() at time zone 'America/Lima')::date + 20, 'YYYY-MM-DD') as d`)).d
   await ve.locator('input[name="fecha_entrega_comprometida"]').fill(dia)
   await ve.locator('textarea[name="motivo"]').fill('El cliente confirmó la fecha de entrega')
@@ -287,6 +282,21 @@ let otId = null
   comprobar(e2 === '', `«Editar OT» guarda la fecha${e2 ? ` (dijo: ${e2})` : ''}`)
   const conFecha = await uno(`select fecha_entrega_comprometida::text as f from public.ordenes_trabajo where id = $1`, [otId])
   comprobar(conFecha?.f === dia, `en la base, la OT tiene su fecha (${conFecha?.f})`)
+
+  // El recorrido de su cotización, en la misma OT.
+  await pagina.reload({ waitUntil: 'networkidle' })
+  const reabierta = limpio(await pagina.locator('[role="dialog"] h2').first().textContent({ timeout: 2000 }).catch(() => ''))
+  comprobar(reabierta === '', `al recargar, «Editar OT» no se abre otra vez${reabierta ? ` (abrió «${reabierta}» en ${pagina.url()})` : ''}`)
+  const r = pagina.locator('[data-recorrido-de-la-ot]')
+  const textoR = limpio(await r.textContent().catch(() => ''))
+  comprobar(textoR.includes('Recorrido de su cotización') && textoR.includes(`Cotización ${cot.numero}`), 'la OT muestra «Recorrido de su cotización»')
+  await r.locator('summary').first().click()
+  const pasos = await r.locator('[data-recorrido-paso]').evaluateAll((l) => l.map((e) => `${e.getAttribute('data-recorrido-paso')}:${e.getAttribute('data-situacion')}`))
+  comprobar(pasos.includes('SUBIDA:HECHO') && pasos.includes('REVISION:HECHO') && pasos.includes('CODIGO_Y_OT:HECHO'),
+    `con la subida, la revisión de Gerencia y el código y la OT hechos (${pasos.join(', ')})`)
+  const textoPasos = limpio(await r.textContent())
+  comprobar(textoPasos.includes(`OT ${N}-${anio}`) && !/\b\d{1,3}(,\d{3})*\.\d{2}\b/.test(textoPasos), 'dice el número de la OT y ningún importe')
+  await pagina.screenshot({ path: join(CAPTURAS, '8-1-administracion-1440-2-recorrido-de-la-ot.png'), fullPage: true })
   await pagina.goto(`${BASE}/ordenes`, { waitUntil: 'networkidle' })
   comprobar((await fila(pagina, `${N}-${anio}`).count()) === 0, 'y sale de «Por completar»')
   await contexto.close()

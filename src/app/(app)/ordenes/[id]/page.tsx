@@ -377,10 +377,13 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
                   disenoCumplida={pendientes.planos > 0 && pendientes.planosEntregados >= pendientes.planos}
                 />
               )}
-              {cotizacionDelRecorrido && recorridoDeLaCotizacion !== undefined && (
+              {/* Sin pasos no hay tarjeta: Costos pasa el filtro por
+                  `tesoreria.ver_documentos` y la base no le muestra ninguno. */}
+              {cotizacionDelRecorrido && recorridoDeLaCotizacion !== undefined &&
+                (recorridoDeLaCotizacion === null || recorridoDeLaCotizacion.length > 0) && (
                 <Tarjeta className="overflow-hidden" data-recorrido-de-la-ot>
                   <TarjetaCabecera
-                    titulo="Desde su cotización"
+                    titulo="Recorrido de su cotización"
                     descripcion={cotizacionDelRecorrido.numero ? `Cotización ${cotizacionDelRecorrido.numero}` : undefined}
                     ayuda="Por dónde pasó esta OT antes de llegar al taller y después: la cotización subida, la revisión de Gerencia, el código interno y la OT que cargó Administración, y su factura. Quién hizo cada paso y cuándo."
                   />
@@ -480,7 +483,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
             <SeccionDesplegable titulo="Cliente y unidad" descripcion={cliente?.razon_social ?? 'Datos de identificación de esta OT'} abierta={puedeEditarDatos}>
               {puedeEditarDatos && (
                 <div className="mb-2 flex justify-end">
-                  <EditarOrden orden={orden} cotizaciones={nuevasCotizaciones} />
+                  <EditarOrden orden={orden} cotizaciones={nuevasCotizaciones} abrirAlEntrar={query.editar === '1'} />
                 </div>
               )}
               <div>
