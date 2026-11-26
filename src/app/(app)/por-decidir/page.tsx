@@ -60,6 +60,11 @@ export default async function PaginaPorDecidir() {
       <EncabezadoPagina
         titulo="Por decidir"
         descripcion={descripcion}
+        acciones={
+          <EnlaceBoton href="/por-decidir/decisiones" variante="contorno" tamano="sm">
+            Decisiones tomadas
+          </EnlaceBoton>
+        }
         ayuda="Lo que espera tu decisión en cotizaciones, compras y servicios, pagos, reportes diarios, trabajos sin orden y cierre de códigos, lo más antiguo primero. Aquí no se aprueba: cada fila abre su pantalla, donde se decide con su regla de siempre."
       />
 

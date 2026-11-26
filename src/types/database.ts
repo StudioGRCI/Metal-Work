@@ -14652,6 +14652,24 @@ export type Database = {
         }
         Returns: number
       }
+      decisiones_tomadas: {
+        Args: {
+          p_desde: string | null
+          p_hasta: string | null
+        }
+        Returns: {
+          tipo: string | null
+          documento: string | null
+          nombre: string | null
+          detalle: string | null
+          codigo: string | null
+          decision: string | null
+          decidido_en: string | null
+          puesto: string | null
+          motivo: string | null
+          enlace: string | null
+        }[]
+      }
       dejar_de_esperar_reposicion: {
         Args: {
           p_devolucion: string | null
