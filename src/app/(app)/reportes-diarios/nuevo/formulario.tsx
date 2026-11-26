@@ -837,7 +837,10 @@ function SeccionDelCodigo({
                       ? `${s.codigoLeido}: ${s.opciones.length} ${s.opciones.length === 1 ? 'cosa' : 'cosas'} para reportar en tu área, o una tarea nueva.`
                       : s.codigoLeido === CODIGO_SIN_AVANCE
                         ? `${CODIGO_SIN_AVANCE} no lleva avance: anota el trabajo del día como tarea nueva.`
-                        : `${s.codigoLeido} no tiene planos ni subcontratos de tu área, ni tareas abiertas. Revisa que el código esté bien escrito; si lo está, anota una tarea nueva.`
+                        : codigos.some((c) => normalizarCodigo(c) === normalizarCodigo(s.codigoLeido))
+                          ? // Un código que el sistema conoce está bien escrito: no se pone en duda (Plan 1, 1.3).
+                            `${s.codigoLeido} no tiene planos ni subcontratos de tu área, ni tareas abiertas: anota una tarea nueva con el trabajo de hoy.`
+                          : `${s.codigoLeido} no tiene planos ni subcontratos de tu área, ni tareas abiertas. Revisa que el código esté bien escrito; si lo está, anota una tarea nueva.`
                   }`}
         </p>
         {s.trabajos.map((t, i) => {

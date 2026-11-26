@@ -3,6 +3,7 @@ import { Download, FileText, HandCoins } from 'lucide-react'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { AvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
 import { FacturaDeVenta } from '@/components/finanzas/factura-de-venta'
+import { GruposPorVencimiento } from '@/components/finanzas/grupos-por-vencimiento'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
@@ -91,7 +92,10 @@ export default async function PaginaPorCobrar() {
       {solicitudes.length > 0 && <SolicitudesOT solicitudes={solicitudes} />}
 
       <Tarjeta>
-        <TarjetaCabecera titulo="Por cobrar" ayuda="Cada factura con su saldo; lo vencido sale en rojo." />
+        <TarjetaCabecera
+          titulo="Por cobrar"
+          ayuda="Cada factura con su saldo, por vencimiento: lo vencido, lo que vence hoy, lo que vence esta semana (hasta el domingo) y lo de después, con los días de cada una contados con la fecha de Lima. El total de cada grupo va en soles y en dólares por separado: no se suman."
+        />
         <TarjetaCuerpo className="space-y-3">
           {pendientes.length === 0 ? (
             <div className="flex flex-col items-center py-8 text-center">
@@ -104,28 +108,38 @@ export default async function PaginaPorCobrar() {
               </p>
             </div>
           ) : (
-            pendientes.map((f) => (
-              <FacturaDeVenta
-                key={f.id}
-                factura={f}
-                conCotizacion
-                acciones={
-                  cobra && f.id && f.numero ? (
-                    <CobrarFactura
-                      facturaId={f.id}
-                      numero={f.numero}
-                      cliente={f.cliente ?? 'Cliente sin registrar'}
-                      hoy={hoy}
-                      saldo={Number(f.saldo)}
-                      codigoMoneda={codigo(f.moneda)}
-                      cuentas={cuentasCaja}
-                    />
-                  ) : null
-                }
-                accionCobro={cobra ? (b) => <AnularCobro cobroId={b.id} /> : undefined}
-                cajas={cajas}
-              />
-            ))
+            // Por vencimiento (plan 11.1): vencido, hoy, esta semana y después, con su total en cada moneda.
+            <GruposPorVencimiento
+              lista="por-cobrar"
+              filas={pendientes}
+              hoy={hoy}
+              dia={(f) => f.fecha_vencimiento}
+              moneda={(f) => f.moneda}
+              monto={(f) => Number(f.saldo)}
+              clave={(f) => f.id ?? f.numero ?? ''}
+              nombre={['factura', 'facturas']}
+              fila={(f) => (
+                <FacturaDeVenta
+                  factura={f}
+                  conCotizacion
+                  acciones={
+                    cobra && f.id && f.numero ? (
+                      <CobrarFactura
+                        facturaId={f.id}
+                        numero={f.numero}
+                        cliente={f.cliente ?? 'Cliente sin registrar'}
+                        hoy={hoy}
+                        saldo={Number(f.saldo)}
+                        codigoMoneda={codigo(f.moneda)}
+                        cuentas={cuentasCaja}
+                      />
+                    ) : null
+                  }
+                  accionCobro={cobra ? (b) => <AnularCobro cobroId={b.id} /> : undefined}
+                  cajas={cajas}
+                />
+              )}
+            />
           )}
         </TarjetaCuerpo>
       </Tarjeta>
