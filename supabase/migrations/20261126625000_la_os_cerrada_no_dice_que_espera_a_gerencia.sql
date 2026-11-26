@@ -10,7 +10,7 @@
 -- Solo cambia ese mensaje. El resto de `avanzar_orden_servicio` queda igual:
 -- se toma su texto vivo y se reemplaza esa línea, como en 20261026160000, para
 -- no pisar lo que otras migraciones le hayan cambiado. Idempotente: si el texto
--- ya no está (porque se aplicó), no hace nada.
+-- nuevo ya está, no hace nada.
 do $$
 declare
   v_def text;
@@ -34,6 +34,11 @@ begin
   end if;
   if position(v_nuevo in v_def) > 0 then
     return;
+  end if;
+  -- El texto viejo queda como última línea del nuevo: si ya hay otra versión de
+  -- este bloque, reemplazarlo de nuevo lo duplicaría.
+  if position('está anulada: ya no se ejecuta' in v_def) > 0 then
+    raise exception 'avanzar_orden_servicio tiene otra versión de este mensaje: revisa esta migración a mano.';
   end if;
   if position(v_viejo in v_def) = 0 then
     raise exception 'avanzar_orden_servicio ya no tiene el mensaje que esta migración corrige: revísala a mano.';

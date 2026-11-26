@@ -9,9 +9,11 @@
 --   4. en soles: ya tiene su monto y no cambia;
 --   5. en dólares, rechazada por Gerencia.
 -- Primero Administración registra el cambio de mañana: no se busca hacia
--- adelante, nadie se completa. Después registra el de hoy: la 1 y la 2 toman su
--- monto en soles, y la 1 su total con IGV y su detracción. Contabilidad lo
--- corrige después: lo que ya se completó no cambia. La guarda de la OS conforme
+-- adelante, nadie se completa. Después registra el de hoy, mal tipeado (37,50):
+-- la 1 y la 2 toman su monto en soles con él. Contabilidad lo corrige a 3,75 y
+-- las dos se recalculan, la 1 con su total con IGV y su detracción. La 2 recibe
+-- un pago, Contabilidad corrige otra vez: la 1 se recalcula y la 2, pagada, no.
+-- Corregir el cambio de mañana no toca nada. La guarda de la OS conforme
 -- sigue frenando cualquier otro cambio, también con la marca puesta. Y «En
 -- ejecución» sobre la anulada y la rechazada dice cómo están (20261126625000).
 \set ON_ERROR_STOP on
@@ -107,10 +109,18 @@ select test.afirmar((pg_temp.os('os1')).monto_pen is null,
 select pg_temp.como('administracion');
 set local role authenticated;
 insert into public.tipos_de_cambio (id, fecha, compra, venta, fuente, registrado_por)
-values (pg_temp.id('tc'), pg_temp.hoy(), 3.70, 3.75, 'SUNAT', pg_temp.id('administracion'));
+values (pg_temp.id('tc'), pg_temp.hoy(), 37.00, 37.50, 'SUNAT', pg_temp.id('administracion'));
+reset role;
+select test.afirmar((pg_temp.os('os1')).monto_pen = 37500.00 and (pg_temp.os('os2')).monto_pen = 37500.00,
+  format('la OS en ejecución y la conforme toman su monto en soles con el cambio registrado, aunque esté mal (dice %s)', (pg_temp.os('os1')).monto_pen));
+
+-- ============================================ Contabilidad corrige el error: las OS se recalculan
+select pg_temp.como('contabilidad');
+set local role authenticated;
+update public.tipos_de_cambio set compra = 3.70, venta = 3.75 where id = pg_temp.id('tc');
 reset role;
 select test.afirmar((pg_temp.os('os1')).monto_pen = 3750.00,
-  format('la OS en ejecución toma su monto en soles con el cambio registrado (dice %s)', (pg_temp.os('os1')).monto_pen));
+  format('corregido el cambio, la OS en ejecución se recalcula (dice %s)', (pg_temp.os('os1')).monto_pen));
 select test.afirmar((pg_temp.os('os1')).total_con_igv_pen = 4425.00 and (pg_temp.os('os1')).detraccion_monto is not null,
   format('y con él su total con IGV y su detracción (total %s, detracción %s)',
          (pg_temp.os('os1')).total_con_igv_pen, (pg_temp.os('os1')).detraccion_monto));
@@ -120,13 +130,28 @@ select test.afirmar((pg_temp.os('os3')).monto_pen is null, 'la OS anulada queda 
 select test.afirmar((pg_temp.os('os5')).monto_pen is null, 'la OS rechazada tampoco se toca');
 select test.afirmar((pg_temp.os('os4')).monto_pen = 900, 'la OS en soles no cambia');
 
--- ============================================ Contabilidad corrige el cambio: lo completado no cambia
+-- ============================================ La OS con un pago vigente ya no se recalcula
+set local session_replication_role = replica;
+insert into public.pagos_orden_servicio (orden_servicio_id, fecha_pago, moneda, monto, archivo_ruta, archivo_mime, archivo_tamano, registrado_por)
+values (pg_temp.id('os2'), current_date, 'USD', 500, 'prueba/487/pago.pdf', 'application/pdf', 1000, pg_temp.id('comprador'));
+set local session_replication_role = origin;
 select pg_temp.como('contabilidad');
 set local role authenticated;
 update public.tipos_de_cambio set venta = 3.80 where id = pg_temp.id('tc');
 reset role;
-select test.afirmar((pg_temp.os('os1')).monto_pen = 3750.00,
-  'corregir el tipo de cambio no cambia el monto en soles que la OS ya tenía');
+select test.afirmar((pg_temp.os('os1')).monto_pen = 3800.00,
+  format('otra corrección vuelve a recalcular la OS sin pagos (dice %s)', (pg_temp.os('os1')).monto_pen));
+select test.afirmar((pg_temp.os('os2')).monto_pen = 3750.00,
+  format('la OS con un pago vigente conserva la cifra con la que se pagó (dice %s)', (pg_temp.os('os2')).monto_pen));
+select pg_temp.como('contabilidad');
+set local role authenticated;
+update public.tipos_de_cambio set venta = 3.66 where id = pg_temp.id('tc2');
+reset role;
+select test.afirmar((pg_temp.os('os1')).monto_pen = 3800.00,
+  'corregir el cambio de otro día no toca la OS de hoy');
+select test.afirmar((pg_temp.os('os3')).monto_pen is null and (pg_temp.os('os5')).monto_pen is null
+                    and (pg_temp.os('os4')).monto_pen = 900,
+  'la anulada, la rechazada y la de soles siguen igual tras las correcciones');
 
 -- ============================================ Las guardas siguen en pie
 select test.debe_fallar(
@@ -149,8 +174,10 @@ reset role;
 do $$
 begin
   perform test.afirmar(not has_function_privilege('authenticated', 'public.completar_monto_pen_de_servicios()', 'execute')
-                   and not has_function_privilege('anon', 'public.completar_monto_pen_de_servicios()', 'execute'),
-    'el completado no lo ejecuta nadie con sesión');
+                   and not has_function_privilege('anon', 'public.completar_monto_pen_de_servicios()', 'execute')
+                   and not has_function_privilege('authenticated', 'public.recalcular_monto_pen_de_servicios(date, numeric, numeric)', 'execute')
+                   and not has_function_privilege('anon', 'public.recalcular_monto_pen_de_servicios(date, numeric, numeric)', 'execute'),
+    'el completado y el recálculo no los ejecuta nadie con sesión');
 end $$;
 
 rollback;
