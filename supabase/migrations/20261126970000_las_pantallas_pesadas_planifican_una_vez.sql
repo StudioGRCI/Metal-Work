@@ -18,8 +18,8 @@
 --
 -- Aquí cada una pasa a plpgsql con el MISMO cuerpo, palabra por palabra,
 -- envuelto en `return query`. No cambia ninguna fila, ninguna columna, ningún
--- tipo ni ningún permiso: `create or replace` conserva el dueño, los `grant`,
--- el `search_path` y el comentario. Medido en producción dentro de una
+-- tipo ni ningún permiso: `create or replace` conserva el dueño, los `grant` y
+-- el comentario, y cada una vuelve a declarar su `set search_path`. Medido en producción dentro de una
 -- transacción que se deshizo, con la cuenta de Gerencia: la misma huella md5
 -- de la lista de códigos, del costo, del resumen y del avance de las OT antes
 -- y después; con la conexión ya en uso, la lista de códigos baja de 65 a 34 ms,

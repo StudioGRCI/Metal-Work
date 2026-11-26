@@ -236,8 +236,11 @@ haber hecho nada, igual que la pantalla que dice «listo» y miente.
   Una base que se arma a mano para medir en un servidor que no lo trae apagado
   lleva `alter database … set jit = off`, o mide lo que producción no hace. Y la
   función que da una fila o ninguna lleva `rows 1`.
-- **Una función de cálculo que alguna pantalla llama va en plpgsql, no en
-  `language sql`.** Postgres 17 no guarda entre llamadas el plan de una función
+- **Una función de cálculo que devuelve una tabla y que las pantallas llaman
+  muchas veces (o que otra llama fila por fila o código por código) va en
+  plpgsql, no en `language sql`.** Las escalares cortas
+  (`normalizar_codigo_interno`) y las que se llaman una vez por pedido
+  (`codigos_internos_lista`) pueden seguir en SQL. Postgres 17 no guarda entre llamadas el plan de una función
   SQL, y con `set search_path` (que aquí llevan todas) tampoco la puede
   incrustar: la vuelve a planificar cada vez, también cuando otra función la
   llama fila por fila o código por código. Con los datos de hoy eso es casi
@@ -250,7 +253,9 @@ haber hecho nada, igual que la pantalla que dice «listo» y miente.
   cambiar el lenguaje se comparan los tipos del cuerpo con los declarados
   (`prepare` del cuerpo y `pg_prepared_statements.result_types`). Para ver
   dónde se va el tiempo de una llamada, `set track_functions = 'all'` en la
-  sesión y leer `pg_stat_xact_user_functions` en la misma transacción.
+  sesión y leer `pg_stat_xact_user_functions` en la misma transacción (en
+  producción lo acepta el rol `postgres` de la Management API, probado el 26/11;
+  en el Postgres local, como superusuario).
 
 ## Escribir sobre datos reales
 
