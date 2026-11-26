@@ -5,13 +5,16 @@
  * del semáforo de la etapa y un botón que abre el reporte con el código puesto.
  * Con la cuenta de cada puesto, nunca ADMIN:
  *
- *   1. Arma en el banco cuatro unidades con etapas: una de Maestranza vencida
- *      y sin reporte, una de Maestranza ya reportada hoy, una de Maestranza que
- *      empieza en tres días y una de Acabados en marcha. Y una quinta de
- *      Maestranza, sin reporte, que se reporta a media prueba.
- *   2. sup.mtz ve en la bandeja la vencida («Vencida hace 2 días», el mismo
- *      plazo que la tarjeta del código) y la quinta; no la reportada, ni la
- *      que no empieza, ni la de Acabados.
+ *   1. Arma en el banco unidades con etapas: de Maestranza, una vencida y
+ *      sin reporte, una ya reportada hoy, una que empieza en tres días, una
+ *      con solo la fecha comprometida (vencida, sin «Empezó») y una que
+ *      empieza hoy, sin reporte, que se reporta a media prueba; y una de
+ *      Acabados en marcha.
+ *   2. sup.mtz ve en la bandeja la vencida, la de solo fecha comprometida y la
+ *      que empieza hoy, la más atrasada arriba, con el plazo del tablero de
+ *      tiempos de entrega en días hábiles (el que da la base); no la
+ *      reportada, ni la que no empieza, ni la de Acabados. El código lleva a
+ *      su tarjeta.
  *   3. «Subir el reporte» abre /reportes-diarios/nuevo con el código puesto.
  *   4. Reportada la quinta, sale de la bandeja; con búsqueda o en otra pestaña
  *      la bandeja no está.
@@ -90,6 +93,8 @@ const UNIDADES = [
   { codigo: 'QA-ETAPA-FUTURA', placa: 'Q1A-133', de: mtz, etapa: 'Forrado (prueba 1.3)', inicio_plan: 3, fin_plan: 8, reportada: false },
   { codigo: 'QA-ETAPA-ACABADOS', placa: 'Q1A-134', de: acb, etapa: 'Pintura (prueba 1.3)', inicio_real: -1, fin_plan: 1, reportada: false },
   { codigo: 'QA-ETAPA-LUEGO', placa: 'Q1A-135', de: mtz, etapa: 'Puertas (prueba 1.3)', inicio_plan: 0, fin_plan: 6, reportada: false },
+  // Como las carga Diseño muchas veces: solo la fecha comprometida, ya vencida, y nadie marcó «Empezó».
+  { codigo: 'QA-ETAPA-SOLOFIN', placa: 'Q1A-136', de: mtz, etapa: 'Ensamblaje (prueba 1.3)', fin_plan: -3, reportada: false },
 ]
 const dia = (n) => (n === undefined ? null : n)
 for (const u of UNIDADES) {
@@ -137,6 +142,23 @@ const ultimos = await consulta(
 )
 comprobar(ultimos.find((e) => e.codigo === 'QA-ETAPA-REPORTADA')?.ultimo === hoy, 'la base da el reporte de hoy en la etapa de la reportada')
 comprobar(ultimos.find((e) => e.codigo === 'QA-ETAPA-VENCIDA')?.ultimo !== hoy, 'la base no da reporte de hoy en la vencida')
+
+// El semáforo del tablero de RR. HH. para cada etapa: lo que la bandeja tiene que decir, en días hábiles.
+const semaforo = Object.fromEntries(
+  (
+    await consulta(`select codigo, semaforo, dias_habiles from public.tiempos_de_entrega_etapas_calculado(null) where codigo like 'QA-ETAPA-%'`)
+  ).map((e) => [e.codigo, e]),
+)
+const habiles = (n) => `${n} ${n === 1 ? 'día hábil' : 'días hábiles'}`
+const plazoDe = (codigo) => {
+  const { semaforo: s, dias_habiles: d } = semaforo[codigo]
+  return s === 'ROJO' ? `Vencida hace ${habiles(-d)}` : s === 'VERDE' ? `Faltan ${habiles(d)}` : d === 0 ? 'Vence hoy' : `Vence en ${habiles(d)}`
+}
+// El orden esperado: el peor color y, a igual color, menos días hábiles.
+const PESO = { ROJO: 0, AMBAR: 1, VERDE: 2 }
+const esperados = ['QA-ETAPA-VENCIDA', 'QA-ETAPA-LUEGO', 'QA-ETAPA-SOLOFIN'].sort(
+  (a, b) => PESO[semaforo[a].semaforo] - PESO[semaforo[b].semaforo] || semaforo[a].dias_habiles - semaforo[b].dias_habiles,
+)
 
 // ------------------------------------------------ la pantalla
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
@@ -206,8 +228,8 @@ for (const ancho of [390, 1440]) {
   comprobar((await bandeja.count()) === 1, `${ancho}: sup.mtz ve «Sin reporte de hoy»`)
   const codigos = await enLaBandeja(pagina)
   comprobar(
-    codigos.includes('QA-ETAPA-VENCIDA') && codigos.includes('QA-ETAPA-LUEGO'),
-    `${ancho}: salen la vencida y la que empieza hoy (${codigos.join(', ')})`,
+    codigos.join(',') === esperados.join(','),
+    `${ancho}: salen las que piden reporte, la más atrasada arriba (${codigos.join(', ')}; se esperaba ${esperados.join(', ')})`,
   )
   for (const fuera of ['QA-ETAPA-REPORTADA', 'QA-ETAPA-FUTURA', 'QA-ETAPA-ACABADOS'])
     comprobar(!codigos.includes(fuera), `${ancho}: no sale ${fuera}`)
@@ -224,10 +246,15 @@ for (const ancho of [390, 1440]) {
   // El plazo es el del semáforo de la etapa: el mismo que la tarjeta del código.
   const vencida = pagina.locator('[data-codigo-sin-reporte="QA-ETAPA-VENCIDA"]')
   const plazo = (await vencida.textContent()) ?? ''
-  comprobar(plazo.includes('Vencida hace 2 días'), `${ancho}: la vencida dice «Vencida hace 2 días»`)
-  comprobar(plazo.includes(`Etapa: ${de('QA-ETAPA-VENCIDA').etapa}`) && !plazo.includes('debía empezar'), `${ancho}: dice qué etapa está en marcha`)
+  comprobar(plazo.includes(plazoDe('QA-ETAPA-VENCIDA')), `${ancho}: la vencida dice el plazo del tablero: «${plazoDe('QA-ETAPA-VENCIDA')}»`)
+  comprobar(plazo.includes(`Etapa: ${de('QA-ETAPA-VENCIDA').etapa}`) && !plazo.includes('sin marcar'), `${ancho}: dice qué etapa está en marcha`)
+  comprobar((await vencida.locator('a[href="/planos?q=QA-ETAPA-VENCIDA"]').count()) === 1, `${ancho}: el código lleva a su tarjeta, con las fechas de sus etapas`)
+  const solofin = (await pagina.locator('[data-codigo-sin-reporte="QA-ETAPA-SOLOFIN"]').textContent()) ?? ''
+  comprobar(solofin.includes(plazoDe('QA-ETAPA-SOLOFIN')) && solofin.includes('(sin marcar «Empezó»)'),
+    `${ancho}: la que solo tiene fecha comprometida, vencida y sin empezar, sale y lo dice (${solofin.slice(0, 140)})`)
   const luego = (await pagina.locator('[data-codigo-sin-reporte="QA-ETAPA-LUEGO"]').textContent()) ?? ''
-  comprobar(luego.includes('Vence el') && luego.includes('debía empezar el'), `${ancho}: la que debía empezar hoy dice su plazo y que no empezó (${luego.slice(0, 120)})`)
+  comprobar(luego.includes(plazoDe('QA-ETAPA-LUEGO')) && luego.includes('inicio planeado hoy, sin marcar «Empezó»'),
+    `${ancho}: la que empieza hoy dice su plazo y que nadie marcó «Empezó» (${luego.slice(0, 140)})`)
 
   await sinDesborde(pagina, `${ancho} /planos`)
   await capturar(pagina, `1-3-supervisor-${ancho}-planos.png`)
