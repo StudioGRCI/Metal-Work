@@ -2,7 +2,7 @@
  * El recorrido de un documento numerado: por dónde pasó, quién hizo cada paso y
  * cuándo, quién lo tiene ahora y hace cuántos días (migración 20261125130000).
  * La base da las claves (`recorrido_de_requerimientos`,
- * `recorrido_de_cotizaciones`); las frases viven aquí. Un documento nuevo suma
+ * `recorrido_de_cotizaciones`, `recorrido_de_planillas`); las frases viven aquí. Un documento nuevo suma
  * su función con la misma forma y su mapa de pasos en este archivo.
  */
 
@@ -194,6 +194,28 @@ export function describirRecorridoDeLaCotizacion(pasos: readonly PasoDelRecorrid
     ? descritos.map((p) => (p.paso === 'REVISION' && p.detalle === 'APROBADA' ? { ...p, nota: null } : p))
     : descritos
 }
+
+/** «1 persona», «12 personas». */
+const personas = (n: string) => (Number(n) === 1 ? '1 persona' : `${n} personas`)
+
+// La planilla del mes (migración 20261126610000): no es un documento numerado,
+// pero RR. HH. la sigue igual, paso a paso, hasta cerrarla.
+const PASOS_DE_LA_PLANILLA: Record<string, Frases> = {
+  CREADA: { hecho: 'Creada', falta: 'Creación' },
+  IMPORTACION: { hecho: 'Excel importado', falta: 'Excel', nota: (n) => `Entraron ${personas(n)}` },
+  A_MANO: { hecho: 'Agregadas a mano', falta: 'Agregadas a mano', nota: (n) => `${personas(n)} fuera del Excel. La hora es la de la última que se agregó.` },
+  QUITADAS: { hecho: 'Quitadas de la planilla', falta: 'Quitadas', nota: (n) => `${personas(n)}. La hora es la de la última que se quitó.` },
+  CIERRE: { hecho: 'Cerrada', falta: 'Cierre' },
+}
+
+const ESPERAS_DE_LA_PLANILLA: Record<string, (detalle: string | null) => string> = {
+  IMPORTAR: () => 'Importa el Excel del mes o agrega a la primera persona.',
+  CERRAR: () => 'Revisa lo que falta y la cierra.',
+}
+
+/** El recorrido de una planilla del mes, en palabras. */
+export const describirRecorridoDeLaPlanilla = (pasos: readonly PasoDelRecorrido[]) =>
+  describir(pasos, PASOS_DE_LA_PLANILLA, ESPERAS_DE_LA_PLANILLA)
 
 /** El recorrido de un reporte de avería, en palabras. */
 export const describirRecorridoDeLaAveria = (pasos: readonly PasoDelRecorrido[]) =>

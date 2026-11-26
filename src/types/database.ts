@@ -16219,6 +16219,20 @@ export type Database = {
           remuneracion_mensual: number | null
         }[]
       }
+      planilla_lo_que_falta: {
+        Args: {
+          p_planilla: string | null
+        }
+        Returns: {
+          clase: string | null
+          documento: string | null
+          fecha: string | null
+          nombre: string | null
+          detalle: string | null
+          desde: string | null
+          dias: number | null
+        }[]
+      }
       plano_pdf_subido: {
         Args: {
           p_ruta: string | null
@@ -16618,6 +16632,22 @@ export type Database = {
         }[]
       }
       recorrido_de_cotizaciones: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          documento: string | null
+          orden: number | null
+          paso: string | null
+          situacion: string | null
+          puesto: string | null
+          en: string | null
+          dias: number | null
+          espera: string | null
+          detalle: string | null
+        }[]
+      }
+      recorrido_de_planillas: {
         Args: {
           p_ids: string[] | null
         }
