@@ -205,6 +205,10 @@ select test.afirmar(pg_temp.fila('ing') = 'DISENO (heredada)' and pg_temp.fila('
   '4. Las dos filas conservan la cuenta dada de baja: la pantalla lo marca en las dos');
 update public.areas set nombre = nombre where codigo in ('ING', 'DIS');
 select test.afirmar(pg_temp.fila('ing') = 'DISENO (heredada)', '4. Corregir otra cosa de Ingeniería no falla ni le quita la heredada dada de baja');
+-- Pero dejarla como propia es elegirla, y una dada de baja no se elige.
+select test.debe_fallar($q$select pg_temp.asignar('ing', 'diseno')$q$,
+  '4. La heredada dada de baja no se le deja como propia', 'tiene que ser una cuenta activa');
+select test.afirmar(pg_temp.fila('ing') = 'DISENO (heredada)', '4. y sigue heredada');
 -- Ponerle una propia y quitársela mientras la de Diseño está de baja: vuelve a
 -- la de Diseño sin error, para que responda sola cuando esa vuelva de alta.
 select test.afirmar(pg_temp.asignar('ing', 'gerente') = 1 and pg_temp.fila('ing') = 'GERENTE', '4. Mientras tanto se le puede poner una propia');

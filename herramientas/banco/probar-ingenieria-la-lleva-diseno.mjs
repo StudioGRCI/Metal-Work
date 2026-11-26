@@ -183,6 +183,19 @@ const resumenEsperado = (con, total) =>
       ? `Las ${total} áreas tienen su cuenta responsable`
       : `${con} de ${total} áreas tienen cuenta responsable`
 const campoDe = (ventana) => ventana.getByRole('combobox', { name: 'Cuenta responsable' })
+/**
+ * La tarjeta entera en una captura. Es más alta que la ventana, y la captura
+ * de un elemento que no cabe se arma por tramos: bajo el encabezado fijo salía
+ * con una franja en blanco. Se agranda la ventana lo que mide la tarjeta.
+ */
+async function fotoDeLaTarjeta(pagina, nombre) {
+  const antes = pagina.viewportSize()
+  const alto = await pagina.locator(TARJETA).evaluate((t) => Math.ceil(t.getBoundingClientRect().height))
+  await pagina.setViewportSize({ width: antes.width, height: alto + 400 })
+  await pagina.locator(TARJETA).scrollIntoViewIfNeeded()
+  await pagina.locator(TARJETA).screenshot({ path: join(CAPTURAS, nombre) })
+  await pagina.setViewportSize(antes)
+}
 
 /** Abre la ventana de un área con el botón de su fila y la devuelve. */
 async function abrir(pagina, nombre) {
@@ -251,8 +264,7 @@ async function guardar(pagina, ventana) {
   comprobar(conDos.con === antes.con + 2, `una sola asignación cubre las dos áreas (${antes.con} → ${conDos.con})`)
   comprobar((await resumenDe(pagina)).includes(resumenEsperado(conDos.con, conDos.total)), `y el resumen sube a ${conDos.con}`)
   await pagina.screenshot({ path: join(CAPTURAS, 'a4-configuracion-1440-heredada.png'), fullPage: true })
-  await ingenieria.scrollIntoViewIfNeeded()
-  await pagina.locator(TARJETA).screenshot({ path: join(CAPTURAS, 'a4-responsables-1440.png') })
+  await fotoDeLaTarjeta(pagina, 'a4-responsables-1440.png')
 
   // --- la ventana de Ingeniería: sin cuenta propia, y las de Diseño primero
   ventana = await abrir(pagina, 'Ingeniería')
@@ -313,8 +325,7 @@ async function guardar(pagina, ventana) {
   )
   comprobar((await responde('ING')) === null, 'responsable_del_area(«ING») no da a nadie mientras tanto')
   comprobar((await resumenDe(pagina)).includes(resumenEsperado(conDos.con - 1, conDos.total)), `y el resumen baja a ${conDos.con - 1}`)
-  await ingenieria.scrollIntoViewIfNeeded()
-  await pagina.locator(TARJETA).screenshot({ path: join(CAPTURAS, 'a4-responsables-1440-de-baja.png') })
+  await fotoDeLaTarjeta(pagina, 'a4-responsables-1440-de-baja.png')
   await activar(supervisor.id, true)
   await pagina.reload({ waitUntil: 'networkidle' })
 
@@ -393,8 +404,7 @@ async function guardar(pagina, ventana) {
   comprobar((await campoDe(ventana).inputValue()) === '', 'y abre sin cuenta propia')
   await ventana.getByRole('button', { name: 'Cancelar' }).click()
   await ventana.waitFor({ state: 'detached', timeout: 15000 })
-  await ingenieria.scrollIntoViewIfNeeded()
-  await pagina.locator(TARJETA).screenshot({ path: join(CAPTURAS, 'a4-responsables-1440-diseno-de-baja.png') })
+  await fotoDeLaTarjeta(pagina, 'a4-responsables-1440-diseno-de-baja.png')
   await activar(supervisor.id, true)
   await pagina.reload({ waitUntil: 'networkidle' })
   comprobar(
@@ -430,8 +440,7 @@ async function guardar(pagina, ventana) {
   comprobar((await textoDe(ingenieria)).includes('Responde Diseño'), 'a 390, Ingeniería dice «Responde Diseño»')
   const desborde = await pagina.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   comprobar(desborde <= 0, `a 390 la pantalla no se desborda a lo ancho (${desborde} px)`)
-  await ingenieria.scrollIntoViewIfNeeded()
-  await pagina.locator(TARJETA).screenshot({ path: join(CAPTURAS, 'a4-responsables-390.png') })
+  await fotoDeLaTarjeta(pagina, 'a4-responsables-390.png')
   const ventana = await abrir(pagina, 'Ingeniería')
   await pagina.screenshot({ path: join(CAPTURAS, 'a4-ventana-ingenieria-390.png') })
   await ventana.getByRole('button', { name: 'Cancelar' }).click()

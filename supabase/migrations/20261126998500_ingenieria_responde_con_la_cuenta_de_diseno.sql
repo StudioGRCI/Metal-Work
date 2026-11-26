@@ -65,7 +65,7 @@ begin
   if v_huella is null then
     raise exception 'Falta public.fn_area_responsable_activo(): esta base no tiene los responsables de área (20261125205000).';
   end if;
-  if v_huella not in ('89f4572cb124d6754a43b71872788954', '4a18c326689a760b7c28b2f862cf5c32') then
+  if v_huella not in ('89f4572cb124d6754a43b71872788954', '43cf4b2de5c08fdb0abee7f5c0797180') then
     raise exception 'public.fn_area_responsable_activo() no es la que conoce el repositorio (se cambió a mano, huella %): no se reemplaza. Avisa antes de seguir.', v_huella;
   end if;
 end $$;
@@ -145,7 +145,10 @@ begin
 
   -- La cuenta del área que la lleva, tal cual la tiene (activa o no: lo juzga
   -- quien la lee, igual que la de ella). Un área dada de baja no reparte la suya.
-  select a.jefe_id into v_de_ella from public.areas a where a.id = new.llevada_por_id and a.activo;
+  -- Con la fila de esa área sujeta (`for share`): si alguien le está cambiando
+  -- la cuenta en este instante, se espera a que termine en vez de copiar la de
+  -- antes y dejar esta fila desfasada sin que nada avise.
+  select a.jefe_id into v_de_ella from public.areas a where a.id = new.llevada_por_id and a.activo for share;
 
   -- Sin cuenta propia (se la quitaron o nunca tuvo): la del área que la lleva.
   if new.jefe_id is null then
@@ -197,12 +200,15 @@ begin
   if new.jefe_id is null then
     return new;
   end if;
-  if tg_op = 'UPDATE' and new.jefe_id is not distinct from old.jefe_id then
-    return new;
-  end if;
   -- `trg_area_llevada_por` corre antes y solo deja la marca si la cuenta es la
   -- misma del área que la lleva.
   if new.jefe_heredado then
+    return new;
+  end if;
+  -- La que no cambió no se vuelve a juzgar. Sí la que deja de ser heredada
+  -- para ser propia: es elegirla, aunque sea la misma cuenta.
+  if tg_op = 'UPDATE' and new.jefe_id is not distinct from old.jefe_id
+     and new.jefe_heredado is not distinct from old.jefe_heredado then
     return new;
   end if;
   if not exists (select 1 from public.usuarios u where u.id = new.jefe_id and u.activo) then
@@ -247,8 +253,7 @@ begin
      and (c.jefe_heredado or c.jefe_id is null)
      and c.jefe_id is distinct from v_cuenta;
   if v_falta is not null then
-    raise exception 'No se pudo anotar la cuenta de % en %, que lleva: no se guarda el cambio. Avisa al administrador del sistema.', new.nombre, v_falta
-      using errcode = 'check_violation';
+    raise exception 'No se pudo anotar la cuenta de % en %, que lleva: no se guardó el cambio. Vuelve a intentarlo.', new.nombre, v_falta;
   end if;
   return null;
 end $$;
