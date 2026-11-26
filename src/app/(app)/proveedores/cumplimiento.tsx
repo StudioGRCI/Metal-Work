@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 
 import type { CumplimientoDelProveedor } from '@/lib/datos/proveedores'
 import { cn } from '@/lib/utils'
@@ -37,10 +37,11 @@ export function Cumplimiento({
             <span className="tabular">
               {c.a_tiempo} de {c.medidas}
             </span>{' '}
-            a tiempo
+            {c.medidas === 1 ? 'llegada' : 'llegadas'} a tiempo
           </>
         ),
-        aviso: c.a_tiempo < c.medidas,
+        // En aviso también si otras pasaron la fecha sin llegar: «1 de 1» no es un proveedor sin falla.
+        aviso: c.a_tiempo < c.medidas || c.atrasadas > 0,
       })
     if (c.llegaron > c.medidas)
       partes.push({
@@ -61,11 +62,14 @@ export function Cumplimiento({
       className={cn('text-texto-suave', enLinea ? 'text-xs' : 'flex flex-col text-sm', className)}
     >
       {partes.map((p, i) => (
-        <span key={p.clave} className={cn(p.fuerte && 'text-texto', p.aviso && 'text-aviso')}>
-          {/* Entre partes, un separador: a la vista «·» en el renglón; al lector, una coma también en la columna. */}
+        <Fragment key={p.clave}>
+          {/* Entre partes, un separador sin color: a la vista «·» en el renglón; al lector, una coma también en la columna. */}
           {i > 0 && (enLinea ? ' · ' : <span className="sr-only">, </span>)}
-          {enLinea && i > 0 && typeof p.texto === 'string' ? p.texto.charAt(0).toLowerCase() + p.texto.slice(1) : p.texto}
-        </span>
+          {/* En el renglón, cada parte entera: corta entre partes, no a mitad de frase. */}
+          <span className={cn(p.fuerte && 'text-texto', p.aviso && 'text-aviso', enLinea && 'whitespace-nowrap')}>
+            {enLinea && i > 0 && typeof p.texto === 'string' ? p.texto.charAt(0).toLowerCase() + p.texto.slice(1) : p.texto}
+          </span>
+        </Fragment>
       ))}
     </p>
   )

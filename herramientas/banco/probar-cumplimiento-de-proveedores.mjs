@@ -120,7 +120,7 @@ function esperado(c) {
   const veces = (n, una, varias) => `${n} ${n === 1 ? una : varias}`
   const partes = [veces(c.compras, 'compra', 'compras')]
   if (c.llegaron === 0) partes.push('ninguna llegó completa todavía')
-  else if (c.medidas > 0) partes.push(`${c.a_tiempo} de ${c.medidas} a tiempo`)
+  else if (c.medidas > 0) partes.push(`${c.a_tiempo} de ${c.medidas} ${c.medidas === 1 ? 'llegada' : 'llegadas'} a tiempo`)
   if (c.llegaron > c.medidas) partes.push(`${veces(c.llegaron - c.medidas, 'llegó', 'llegaron')} sin fecha prometida`)
   if (c.atrasadas > 0) partes.push(`${veces(c.atrasadas, 'atrasada', 'atrasadas')} sin llegar completa${c.atrasadas === 1 ? '' : 's'}`)
   partes.push(c.devueltas > 0 ? `${c.devueltas} con devolución` : 'sin devoluciones')
