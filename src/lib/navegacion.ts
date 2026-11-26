@@ -47,6 +47,7 @@ import {
   Route,
   ScanSearch,
   ScrollText,
+  SearchCheck,
   Settings,
   ShieldAlert,
   ShieldCheck,
@@ -676,7 +677,7 @@ export const NAVEGACION = [
       {
         titulo: 'Inspecciones de calidad',
         ruta: '/calidad',
-        icono: ClipboardCheck,
+        icono: SearchCheck,
         permiso: ['calidad.inspeccionar', 'calidad.ver'],
         descripcion: 'Cada etapa revisada por código interno, lo no conforme y cómo va su corrección',
         disponible: true,
@@ -684,7 +685,7 @@ export const NAVEGACION = [
       {
         titulo: 'Observaciones de calidad',
         ruta: '/calidad',
-        icono: ClipboardCheck,
+        icono: SearchCheck,
         descripcion: 'Lo que Calidad observó en el trabajo de tu área, para corregirlo',
         disponible: true,
       },
@@ -1037,11 +1038,13 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       { titulo: 'Por autorizar', rutas: ['/requerimientos/metrado'] },
       { titulo: 'Por código interno', rutas: ['/diseno/planos', '/diseno/materiales', '/diseno/etapas', '/diseno/dxf'] },
       // Al final, lo que Calidad le observa a la etapa de diseño (A.1): lo marca corregido.
-      { titulo: 'Diseño e Ingeniería', rutas: ['/ordenes', '/materiales', '/diseno/informe-semanal', '/diseno/evaluaciones', '/calidad'] },
+      { titulo: 'Diseño e Ingeniería', rutas: ['/ordenes', '/diseno/informe-semanal', '/diseno/evaluaciones', '/calidad'] },
       // Nace plegado desde el 2026-11-26: con «Reportar» al final, el menú de
       // Diseño no entraba a 760 px. Los catálogos se tocan poco y se abre solo
       // si la pantalla que se abre está dentro.
-      { titulo: 'Catálogos', pliegue: 'plegado', rutas: ['/carrocerias', '/unidades'] },
+      // El de materiales se sumó el 2026-11-26 (A.2): con las observaciones de
+      // Calidad (A.1) el menú volvió a pasar de 760 px, y también es un catálogo.
+      { titulo: 'Catálogos', pliegue: 'plegado', rutas: ['/materiales', '/carrocerias', '/unidades'] },
       { titulo: 'Consultas', rutas: ['/requerimientos', '/clientes'] },
     ],
     telefono: ['/requerimientos/metrado', '/diseno/planos', '/diseno/materiales', '/ordenes'],
@@ -1078,7 +1081,14 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
         rutas: ['/cotizaciones/pdf', '/ordenes', '/garantias', '/avance/trabajos', '/subcontratos', '/costos/gastos-generales', '/tesoreria/tipo-de-cambio'],
       },
       // El stock de Almacén, para ver qué hay antes de pedir (2026-10-20).
-      { titulo: 'Requerimiento de Administración', rutas: ['/requerimientos', '/requerimientos/atencion', '/compras/ordenes', '/almacen/stock'] },
+      // Nace plegado desde el 2026-11-26: con los reclamos de garantía (A.2) el
+      // menú no entraba a 760 px. Lo de oficina se pide de vez en cuando; el
+      // grupo plegado suma sus pendientes y se abre solo si la pantalla está dentro.
+      {
+        titulo: 'Requerimiento de Administración',
+        pliegue: 'plegado',
+        rutas: ['/requerimientos', '/requerimientos/atencion', '/compras/ordenes', '/almacen/stock'],
+      },
       { titulo: 'Consultas', rutas: ['/diseno/evaluaciones', '/rrhh/tardanzas', '/rrhh/observaciones', '/vehiculos', '/clientes'] },
     ],
     telefono: ['/cotizaciones/pdf', '/ordenes', '/subcontratos', '/requerimientos'],
