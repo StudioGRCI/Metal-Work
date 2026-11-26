@@ -91,6 +91,24 @@ begin
   reset role;
 end $$;
 
+-- El recorrido de la cotización como lo lee Ventas: el código y la OT, y la factura.
+create function pg_temp.camino(p_cot text) returns text
+language plpgsql as $$
+declare v text;
+begin
+  reset role;
+  perform test.como_usuario(current_setting('prueba.vendedor')::uuid);
+  set local role authenticated;
+  select string_agg(r.paso || ':' || r.situacion || coalesce(':' || r.puesto, '') || coalesce(':' || r.detalle, ''), ' > ' order by r.orden)
+    into v
+    from public.recorrido_de_cotizaciones(array[p_cot::uuid]) r
+   where r.paso in ('CODIGO_Y_OT', 'FACTURA');
+  reset role;
+  perform test.como_usuario(current_setting('prueba.oficina')::uuid);
+  set local role authenticated;
+  return v;
+end $$;
+
 -- 2. Administración carga una OT por unidad, cada una con su código -----------------
 do $$
 declare
@@ -105,11 +123,15 @@ begin
   select * into v from public.v_cotizaciones_pdf where id = v_cot::uuid;
   perform test.afirmar(v.cantidad_unidades = 3 and v.ordenes_vigentes = 1 and v.ordenes_faltantes = 2,
     'Con la primera OT, la cotización de tres espera dos más');
+  perform test.afirmar(pg_temp.camino(v_cot) = 'CODIGO_Y_OT:AHORA:Administración:1/3 > FACTURA:PENDIENTE',
+    'Con 1 de 3 OT el recorrido sigue en Administración, no en Contabilidad: ' || coalesce(pg_temp.camino(v_cot), 'nada'));
 
   perform test.debe_fallar(format('select pg_temp.cargar(%L, %L, %L, %L)', v_cot, current_setting('prueba.ot2'), 'qa-474  a', '47402'),
     'Dos unidades de la misma cotización no comparten código', 'cada unidad lleva su propio código');
   perform pg_temp.cargar(v_cot, current_setting('prueba.ot2'), 'QA-474 B', '47402');
   perform pg_temp.cargar(v_cot, current_setting('prueba.ot3'), 'QA-474 C', '47403');
+  perform test.afirmar(pg_temp.camino(v_cot) = 'CODIGO_Y_OT:HECHO:Administración:3 OT > FACTURA:AHORA:Contabilidad',
+    'Con las 3 OT el paso queda hecho y le toca a Contabilidad: ' || coalesce(pg_temp.camino(v_cot), 'nada'));
   perform test.debe_fallar(format('select pg_temp.cargar(%L, %L, %L, %L)', v_cot, current_setting('prueba.ot4'), 'QA-474 D', '47404'),
     'No entra una cuarta OT en una cotización de tres', 'es de 3 unidades y ya tiene sus 3 OT');
   -- La misma carga otra vez (la respuesta se perdió): se dice como duplicado,
@@ -118,7 +140,11 @@ begin
     'La misma carga repetida se reconoce como la que ya entró', 'ya quedó registrada la primera vez');
 
   -- La de una unidad, como siempre: una OT y no dos.
+  perform test.afirmar(pg_temp.camino(current_setting('prueba.cot1')) = 'CODIGO_Y_OT:AHORA:Administración > FACTURA:PENDIENTE',
+    'La de una unidad espera su OT como siempre, sin «0/1»');
   perform pg_temp.cargar(current_setting('prueba.cot1'), current_setting('prueba.ots'), 'QA-474 S', '47410');
+  perform test.afirmar(pg_temp.camino(current_setting('prueba.cot1')) = 'CODIGO_Y_OT:HECHO:Administración:OT 47410-' || to_char((now() at time zone 'America/Lima')::date, 'YYYY') || ' > FACTURA:AHORA:Contabilidad',
+    'La de una unidad, con su OT, pasa a Contabilidad como siempre: ' || coalesce(pg_temp.camino(current_setting('prueba.cot1')), 'nada'));
   perform test.debe_fallar(format('select pg_temp.cargar(%L, %L, %L, %L)', current_setting('prueba.cot1'), current_setting('prueba.ots2'), 'QA-474 T', '47411'),
     'La cotización de una unidad no lleva dos OT', 'ya tiene su OT');
   reset role;

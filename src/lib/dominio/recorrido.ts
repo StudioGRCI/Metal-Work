@@ -143,7 +143,15 @@ const PASOS_DE_LA_COTIZACION: Record<string, Frases> = {
 const ESPERAS_DE_LA_COTIZACION: Record<string, (detalle: string | null) => string> = {
   REVISION: () => 'La aprueba o la rechaza.',
   CORRECCION: () => 'Sube la corrección con el mismo número.',
-  CODIGO_Y_OT: () => 'Le da el código interno de la unidad y sube la OT.',
+  // Con varias unidades el detalle dice cuántas OT lleva de cuántas («1/3»).
+  CODIGO_Y_OT: (d) => {
+    const [lleva, de] = (d ?? '').split('/').map(Number)
+    if (!de) return 'Le da el código interno de la unidad y sube la OT.'
+    const faltan = de - lleva
+    return lleva
+      ? `Lleva ${lleva} de ${de} OT: ${faltan === 1 ? 'falta la de 1 unidad, con su código interno' : `faltan las de ${faltan} unidades, cada una con su código interno`}.`
+      : `Le da a cada una de las ${de} unidades su código interno y sube su OT.`
+  },
   FACTURA: () => 'Registra su factura.',
 }
 

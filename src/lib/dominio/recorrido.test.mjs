@@ -109,3 +109,16 @@ test('un paso que este mapa no conoce se pinta en llano, no se esconde', () => {
   assert.equal(ahora.titulo, 'otro paso')
   assert.equal(ahora.nota, null)
 })
+
+test('con varias unidades, Administración la tiene hasta cargar la OT de cada una', () => {
+  const [ninguna, algunas, una, todas] = describirRecorridoDeLaCotizacion([
+    paso(1, 'CODIGO_Y_OT', 'AHORA', { puesto: 'Administración', espera: 'CODIGO_Y_OT', detalle: '0/3' }),
+    paso(2, 'CODIGO_Y_OT', 'AHORA', { puesto: 'Administración', espera: 'CODIGO_Y_OT', detalle: '1/3' }),
+    paso(3, 'CODIGO_Y_OT', 'AHORA', { puesto: 'Administración', espera: 'CODIGO_Y_OT', detalle: '2/3' }),
+    paso(4, 'CODIGO_Y_OT', 'HECHO', { detalle: '3 OT' }),
+  ])
+  assert.equal(ninguna.nota, 'Le da a cada una de las 3 unidades su código interno y sube su OT.')
+  assert.equal(algunas.nota, 'Lleva 1 de 3 OT: faltan las de 2 unidades, cada una con su código interno.')
+  assert.equal(una.nota, 'Lleva 2 de 3 OT: falta la de 1 unidad, con su código interno.')
+  assert.equal(todas.nota, '3 OT')
+})

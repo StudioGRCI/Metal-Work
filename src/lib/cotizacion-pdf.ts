@@ -110,13 +110,26 @@ export function leerIgvDeCotizacion(texto: string): boolean | null {
  * columna CANTIDAD y la cifra sale sola en su línea («02», COT 3588) o al
  * comienzo de la descripción («03 CAMA BAJA…»); a veces se escribe
  * «CANTIDAD : 03». Se toma la primera fila: si hay otra, la persona confirma.
+ * «CANTIDAD DE …» es de una pieza (ejes, llantas) y no cuenta.
  * Null si el papel no la dice; entonces queda lo que se escriba (1 por omisión).
  */
 export function leerCantidadDeCotizacion(texto: string): number | null {
-  const lineas = texto.split(/\r?\n/).map(limpiar).filter(Boolean)
+  const todas = texto.split(/\r?\n/).map(limpiar).filter(Boolean)
+  // Las especificaciones van antes de la propuesta económica y tienen sus
+  // propias cantidades («CANTIDAD DE EJES : 3»): se busca primero desde ella.
+  const propuesta = todas.findIndex((l) => /PROPUESTA\s+ECON[OÓ]MICA/i.test(l))
+  if (propuesta > 0) {
+    const desde = cantidadEn(todas.slice(propuesta))
+    if (desde !== null) return desde
+  }
+  return cantidadEn(todas)
+}
+
+function cantidadEn(lineas: string[]): number | null {
   const valida = (n: number) => (Number.isInteger(n) && n >= 1 && n <= 50 ? n : null)
   for (let i = 0; i < lineas.length; i++) {
-    if (!/^CANTIDAD\b/i.test(lineas[i])) continue
+    // «CANTIDAD DE LLANTAS», «CANTIDAD DE EJES»: es de una pieza, no de unidades.
+    if (!/^CANTIDAD\b/i.test(lineas[i]) || /^CANTIDAD\s+DE\b/i.test(lineas[i])) continue
     const enLinea = lineas[i].match(/^CANTIDAD\s*:?\s*(\d{1,2})\b(?![.,]\d)/i)
     if (enLinea) return valida(Number(enLinea[1]))
     // La cabecera de la tabla: la cifra viene después de los rótulos de las columnas.

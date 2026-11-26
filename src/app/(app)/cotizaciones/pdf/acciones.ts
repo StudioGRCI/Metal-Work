@@ -390,12 +390,13 @@ export async function cargarCodigoYOt(
 
   // Con varias unidades, decir cuántas faltan: «ya la puede facturar» no es
   // cierto de una cotización a medio cargar (migración 20261126700000).
-  const { data: cuenta } = await supabase
+  // Si no se pudo leer, no se dice ni lo uno ni lo otro.
+  const { data: cuenta, error: errorCuenta } = await supabase
     .from('v_cotizaciones_pdf')
     .select('ordenes_faltantes')
     .eq('id', v.cotizacion_id)
     .maybeSingle()
-  const faltan = cuenta?.ordenes_faltantes ?? 0
+  const faltan = errorCuenta || !cuenta ? null : (cuenta.ordenes_faltantes ?? 0)
 
   revalidatePath('/cotizaciones/pdf')
   revalidatePath('/codigos-internos')
@@ -403,9 +404,11 @@ export async function cargarCodigoYOt(
   revalidatePath('/diseno/codigo')
   return {
     ok: true,
-    mensaje: faltan > 0
-      ? `Listo: el código ${v.codigo_interno.toUpperCase()} con su OT. Diseño ya la tiene. ${faltan === 1 ? 'Falta 1 OT' : `Faltan ${faltan} OT`} de esta cotización.`
-      : `Listo: el código ${v.codigo_interno.toUpperCase()} con su OT. Diseño ya la tiene y Contabilidad ya la puede facturar.`,
+    mensaje: faltan === null
+      ? `Listo: el código ${v.codigo_interno.toUpperCase()} con su OT. Diseño ya la tiene.`
+      : faltan > 0
+        ? `Listo: el código ${v.codigo_interno.toUpperCase()} con su OT. Diseño ya la tiene. ${faltan === 1 ? 'Falta 1 OT' : `Faltan ${faltan} OT`} de esta cotización.`
+        : `Listo: el código ${v.codigo_interno.toUpperCase()} con su OT. Diseño ya la tiene y Contabilidad ya la puede facturar.`,
     datos: { codigo: v.codigo_interno },
   }
 }

@@ -119,6 +119,7 @@ export function CorregirCotizacion({
   carroceriaId,
   unidades,
   conOrdenes,
+  unidadMayor = 0,
   clientes,
   carrocerias,
 }: {
@@ -136,6 +137,8 @@ export function CorregirCotizacion({
   unidades: number
   /** Las OT que ya tiene: la cantidad no baja de ahí. */
   conOrdenes: number
+  /** La unidad mayor con OT vigente: la cantidad tampoco baja de ahí. */
+  unidadMayor?: number
   clientes: { id: string; razon_social: string }[]
   carrocerias: { id: string; nombre: string }[]
 }) {
@@ -145,7 +148,11 @@ export function CorregirCotizacion({
   const [cantidad, setCantidad] = useState(String(unidades))
   // Las que dice el archivo corregido: si quedan otras, se avisa en ámbar.
   const [unidadesLeidas, setUnidadesLeidas] = useState<number | null>(null)
-  const unidadesNoCalzan = unidadesLeidas !== null && Number(cantidad) !== unidadesLeidas
+  // La cantidad no baja de las OT que tiene ni de la unidad mayor con OT (con la
+  // 2 anulada y la 4 vigente, tres OT piden 4): lo mismo que exige la base.
+  const minimo = Math.max(conOrdenes, unidadMayor, 1)
+  // Con el campo vacío no se avisa: todavía se está escribiendo.
+  const unidadesNoCalzan = unidadesLeidas !== null && cantidad.trim() !== '' && Number(cantidad) !== unidadesLeidas
   const [dice, setDice] = useState<string | null>(null)
   const [leyendo, setLeyendo] = useState(false)
   const [total, setTotal] = useState<TotalCotizacion>({ monto: null, moneda: null })
@@ -224,7 +231,7 @@ export function CorregirCotizacion({
       if (!aMano.current.has('igv')) setIncluyeIgv(lectura.incluyeIgv === null ? '' : lectura.incluyeIgv ? 'si' : 'no')
       setUnidadesLeidas(lectura.unidades)
       // Lo leído llena el campo si la persona no lo tocó y cabe: no baja de las OT que ya tiene.
-      if (lectura.unidades !== null && lectura.unidades >= conOrdenes && !aMano.current.has('unidades')) setCantidad(String(lectura.unidades))
+      if (lectura.unidades !== null && lectura.unidades >= minimo && !aMano.current.has('unidades')) setCantidad(String(lectura.unidades))
     } finally {
       setLeyendo(false)
     }
@@ -400,9 +407,11 @@ export function CorregirCotizacion({
                 etiqueta="Unidades"
                 htmlFor="corregir-unidades"
                 ayuda={
-                  conOrdenes > 0
-                    ? `Ya tiene ${conOrdenes === 1 ? 'una OT' : `${conOrdenes} OT`}: no baja de ${conOrdenes}.`
-                    : 'Una OT por cada unidad.'
+                  conOrdenes === 0
+                    ? 'Una OT por cada unidad.'
+                    : minimo > conOrdenes
+                      ? `Ya tiene ${conOrdenes === 1 ? 'una OT' : `${conOrdenes} OT`} y la de la unidad ${minimo}: no baja de ${minimo}.`
+                      : `Ya tiene ${conOrdenes === 1 ? 'una OT' : `${conOrdenes} OT`}: no baja de ${conOrdenes}.`
                 }
                 requerido
               >
@@ -410,7 +419,7 @@ export function CorregirCotizacion({
                   id="corregir-unidades"
                   type="number"
                   inputMode="numeric"
-                  min={Math.max(conOrdenes, 1)}
+                  min={minimo}
                   max={50}
                   step={1}
                   value={cantidad}
@@ -424,7 +433,10 @@ export function CorregirCotizacion({
               </Campo>
               {unidadesNoCalzan && (
                 <p role="status" className="text-xs text-pretty text-aviso">
-                  El documento dice {unidadesLeidas === 1 ? '1 unidad' : `${unidadesLeidas} unidades`}: revisa.
+                  El documento dice {unidadesLeidas === 1 ? '1 unidad' : `${unidadesLeidas} unidades`}
+                  {unidadesLeidas !== null && unidadesLeidas < minimo
+                    ? `, pero ya tiene ${conOrdenes === 1 ? 'una OT' : `${conOrdenes} OT`}: para bajar la cantidad, Administración anula primero la que sobra.`
+                    : ': revisa.'}
                 </p>
               )}
             </div>
@@ -951,7 +963,11 @@ export function CargarCodigoYOt({
           <Campo
             etiqueta="Código interno"
             htmlFor="eo-codigo-interno"
-            ayuda="El que tendrá la unidad, como VSC_SR_O4_6_26/30. Si ya existe para este cliente, la OT se suma a esa unidad."
+            ayuda={
+              varias
+                ? 'El de esta unidad, como VSC_SR_O4_6_26/30: cada unidad de la cotización lleva el suyo.'
+                : 'El que tendrá la unidad, como VSC_SR_O4_6_26/30. Si ya existe para este cliente, la OT se suma a esa unidad.'
+            }
             error={errorCodigo ?? undefined}
             requerido
           >
@@ -969,11 +985,13 @@ export function CargarCodigoYOt({
                 if (errorCodigo) setError(null)
                 setCodigo(e.target.value)
               }}
+              // Los códigos que ya tienen las otras unidades también se leen al llegar al campo.
+              aria-describedby={varias?.otras?.length ? `eo-otras-${cotizacionId}` : undefined}
               className="font-mono"
             />
           </Campo>
           {varias && varias.otras && varias.otras.length > 0 && (
-            <p className="-mt-2 text-xs text-texto-suave">
+            <p id={`eo-otras-${cotizacionId}`} className="text-xs text-texto-suave">
               Ya tienen código:{' '}
               {varias.otras.map((o, i) => (
                 <span key={o.unidad}>

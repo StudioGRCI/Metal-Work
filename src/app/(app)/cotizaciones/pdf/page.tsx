@@ -524,6 +524,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                             rechazada={c.estado === 'RECHAZADA'} aprobada={c.estado === 'APROBADA'}
                             version={c.version ?? 1} clienteId={c.cliente_id ?? ''} carroceriaId={c.tipo_carroceria_id ?? ''}
                             unidades={unidades} conOrdenes={c.ordenes.length}
+                            unidadMayor={Math.max(0, ...c.ordenes.map((o) => o.unidad ?? 1))}
                             clientes={catalogos.clientes} carrocerias={catalogos.carrocerias} />
                         )}
                         {!c.orden_id && quitable && c.id && <QuitarCotizacion id={c.id} numero={c.numero ?? ''} />}

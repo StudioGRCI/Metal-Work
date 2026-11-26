@@ -120,7 +120,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   const [unidades, setUnidades] = useState('1')
   // Las que dice el documento: si quedan otras, se avisa en ámbar, como el monto.
   const [unidadesLeidas, setUnidadesLeidas] = useState<number | null>(null)
-  const unidadesNoCalzan = unidadesLeidas !== null && Number(unidades) !== unidadesLeidas
+  const unidadesNoCalzan = unidadesLeidas !== null && unidades.trim() !== '' && Number(unidades) !== unidadesLeidas
 
   const [listaClientes, setListaClientes] = useState(clientes)
   const [clienteNuevo, setClienteNuevo] = useState(false)

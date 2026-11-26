@@ -190,11 +190,12 @@ export async function cotizacionPdfDeOrden(ordenId: string) {
   // 20261126700000).
   const { data: orden, error: errorOrden } = await supabase
     .from('ordenes_trabajo')
-    .select('cotizacion_pdf_id')
+    .select('cotizacion_pdf_id, estado')
     .eq('id', ordenId)
     .maybeSingle()
   if (errorOrden) throw new Error(`No se pudo leer la cotización de la orden: ${errorOrden.message}`)
-  if (!orden?.cotizacion_pdf_id) return null
+  // La OT anulada ya no muestra su cotización, como antes (la vista solo nombraba OT vigentes).
+  if (!orden?.cotizacion_pdf_id || orden.estado === 'ANULADA') return null
 
   const { data, error } = await supabase
     .from('v_cotizaciones_pdf')
