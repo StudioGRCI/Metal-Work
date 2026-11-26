@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 
-import { leerTextoDeCotizacion, leerTotalDeCotizacion } from '../../src/lib/cotizacion-pdf.ts'
+import { leerCantidadDeCotizacion, leerTextoDeCotizacion, leerTotalDeCotizacion } from '../../src/lib/cotizacion-pdf.ts'
 
 assert.deepEqual(leerTotalDeCotizacion('IGV S/ 4,200.00\nTOTAL A PAGAR S/ 29,880.00'), {
   monto: '29880.00',
@@ -55,4 +55,14 @@ assert.equal(leerTextoDeCotizacion(cotizacionEnColumnas).producto,
   'FURGÓN SEMIRREMOLQUE CUELLO GANSO DOBLE NIVEL CRUCERO RIELES ALUMINIO - SUSPENSION NEUMÁTICA')
 assert.deepEqual(leerTotalDeCotizacion(cotizacionEnColumnas), { monto: '68000.00', moneda: 'USD' })
 
-console.log('Lectura de cotización: 9 casos correctos.')
+// Cuántas unidades cotiza (migración 20261126700000): la COT 3588 son dos furgones.
+assert.equal(leerCantidadDeCotizacion(cotizacionEnColumnas), 2)
+assert.equal(leerCantidadDeCotizacion('CANTIDAD : 03 UNIDADES\nTOTAL US$ 135,000.00'), 3)
+assert.equal(leerCantidadDeCotizacion('CANTIDAD DESCRIPCIÓN PRECIO TOTAL\n01 CAMA BAJA 3 EJES\n$ 45,000.00'), 1)
+// Sin la columna, o con un importe donde iría la cifra, no se adivina.
+assert.equal(leerCantidadDeCotizacion('TOTAL US$ 45,000.00'), null)
+assert.equal(leerCantidadDeCotizacion('CANTIDAD DESCRIPCIÓN\n$ 45,000.00'), null)
+assert.equal(leerCantidadDeCotizacion('CANTIDAD\n2.5 TONELADAS'), null)
+assert.equal(leerCantidadDeCotizacion('CANTIDAD : 0'), null)
+
+console.log('Lectura de cotización: 16 casos correctos.')

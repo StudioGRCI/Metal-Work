@@ -113,11 +113,14 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   useCursorAlRechazo(enviando, error, () => (errorNumero ? campoNumero.current : avisoError.current))
   // Lo que la persona escribió o eligió a mano: la lectura del archivo, aunque
   // termine después o sea de otro archivo, no lo pisa.
-  const aMano = useRef(new Set<'numero' | 'monto' | 'moneda' | 'igv' | 'cliente' | 'carroceria'>())
+  const aMano = useRef(new Set<'numero' | 'unidades' | 'monto' | 'moneda' | 'igv' | 'cliente' | 'carroceria'>())
 
   const [numero, setNumero] = useState('')
   // Cuántas unidades lleva: Administración carga una OT por cada una (migración 20261126700000).
   const [unidades, setUnidades] = useState('1')
+  // Las que dice el documento: si quedan otras, se avisa en ámbar, como el monto.
+  const [unidadesLeidas, setUnidadesLeidas] = useState<number | null>(null)
+  const unidadesNoCalzan = unidadesLeidas !== null && Number(unidades) !== unidadesLeidas
 
   const [listaClientes, setListaClientes] = useState(clientes)
   const [clienteNuevo, setClienteNuevo] = useState(false)
@@ -152,6 +155,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
     setAviso(null)
     setNumero('')
     setUnidades('1')
+    setUnidadesLeidas(null)
     setListaClientes(clientes)
     setClienteNuevo(false)
     setClienteId('')
@@ -201,6 +205,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
     setError(null)
     setLectura(null)
     setTotalLeido(null)
+    setUnidadesLeidas(null)
     const noSirve = await revisarArchivo(elegido, ACEPTA_COTIZACION, MAXIMO_ADJUNTO_MB)
     setArchivo(elegido)
     setAvisoArchivo(noSirve)
@@ -218,6 +223,8 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
         moneda: monedaAMano ? v.moneda : resultado.total.moneda,
       }))
       if (!aMano.current.has('igv')) setIncluyeIgv(resultado.incluyeIgv === null ? '' : resultado.incluyeIgv ? 'si' : 'no')
+      setUnidadesLeidas(resultado.unidades)
+      if (resultado.unidades !== null && !aMano.current.has('unidades')) setUnidades(String(resultado.unidades))
     } finally {
       setLeyendo(false)
     }
@@ -464,6 +471,14 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
                         <dd className="text-texto">{lectura.producto}</dd>
                       </>
                     )}
+                    {unidadesLeidas !== null && (
+                      <>
+                        <dt>Cantidad</dt>
+                        <dd className="tabular text-texto">
+                          {unidadesLeidas === 1 ? '1 unidad' : `${unidadesLeidas} unidades`}
+                        </dd>
+                      </>
+                    )}
                   </dl>
                 </>
               ) : (
@@ -489,10 +504,11 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
                 autoComplete="off"
               />
             </Campo>
+            <div className="space-y-1.5">
             <Campo
               etiqueta="Unidades"
               htmlFor="cot-unidades"
-              ayuda="Cuántas unidades cotiza: tres camabajas son 3. Administración carga una OT por cada una."
+              ayuda={unidadesLeidas !== null && !unidadesNoCalzan ? 'Leídas del documento' : 'Una OT por cada una'}
               requerido
             >
               <Entrada
@@ -503,11 +519,20 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
                 max={50}
                 step={1}
                 value={unidades}
-                onChange={(e) => setUnidades(e.target.value)}
+                onChange={(e) => {
+                  aMano.current.add('unidades')
+                  setUnidades(e.target.value)
+                }}
                 required
                 className="tabular"
               />
             </Campo>
+            {unidadesNoCalzan && (
+              <p role="status" className="text-xs text-pretty text-aviso">
+                El documento dice {unidadesLeidas === 1 ? '1 unidad' : `${unidadesLeidas} unidades`}: revisa.
+              </p>
+            )}
+            </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-[1fr_9rem_11rem]">

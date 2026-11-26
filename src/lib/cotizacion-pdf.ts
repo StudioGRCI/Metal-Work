@@ -104,6 +104,31 @@ export function leerIgvDeCotizacion(texto: string): boolean | null {
   return null
 }
 
+/**
+ * Cuántas unidades cotiza el papel: Administración carga una OT por cada una
+ * (migración 20261126700000). La propuesta económica de la casa abre con la
+ * columna CANTIDAD y la cifra sale sola en su línea («02», COT 3588) o al
+ * comienzo de la descripción («03 CAMA BAJA…»); a veces se escribe
+ * «CANTIDAD : 03». Se toma la primera fila: si hay otra, la persona confirma.
+ * Null si el papel no la dice; entonces queda lo que se escriba (1 por omisión).
+ */
+export function leerCantidadDeCotizacion(texto: string): number | null {
+  const lineas = texto.split(/\r?\n/).map(limpiar).filter(Boolean)
+  const valida = (n: number) => (Number.isInteger(n) && n >= 1 && n <= 50 ? n : null)
+  for (let i = 0; i < lineas.length; i++) {
+    if (!/^CANTIDAD\b/i.test(lineas[i])) continue
+    const enLinea = lineas[i].match(/^CANTIDAD\s*:?\s*(\d{1,2})\b(?![.,]\d)/i)
+    if (enLinea) return valida(Number(enLinea[1]))
+    // La cabecera de la tabla: la cifra viene después de los rótulos de las columnas.
+    for (const l of lineas.slice(i + 1, i + 8)) {
+      if (/^(?:DESCRIPCI[OÓ]N|PRECIO|UNITARIO|TOTAL|P\.?\s*UNIT|IMPORTE|ITEM)\b/i.test(l)) continue
+      const fila = l.match(/^(\d{1,2})(?:\s|$)(?![.,]\d)/)
+      return fila ? valida(Number(fila[1])) : null
+    }
+  }
+  return null
+}
+
 const VACIA: CabeceraCotizacion = { numero: null, fecha: null, cliente: null, documento: null, producto: null }
 
 const limpiar = (t: string) => t.replace(/\s+/g, ' ').trim()

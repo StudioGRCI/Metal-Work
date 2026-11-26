@@ -123,7 +123,8 @@ function enFiltro(
     case 'RECHAZADA':
       return c.estado === 'RECHAZADA'
     case 'CON_OT':
-      return c.ordenes.length > 0
+      // Con todas sus OT: la que está a medio cargar sigue en las que esperan.
+      return c.ordenes.length > 0 && (c.ordenes_faltantes ?? 0) === 0
     case 'ANULADA':
       return c.estado === 'ANULADA'
     default:
@@ -158,7 +159,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
   const delMes = cotizaciones.filter((c) => aprobadaEsteMes(c, mes)).length
   const sinOrden = cotizaciones.filter(faltaSuOt).length
   const rechazadas = cotizaciones.filter((c) => c.estado === 'RECHAZADA').length
-  const conOrden = cotizaciones.filter((c) => c.ordenes.length > 0).length
+  const conOrden = cotizaciones.filter((c) => enFiltro(c, 'CON_OT', mes)).length
   const anuladas = cotizaciones.filter((c) => c.estado === 'ANULADA').length
 
   // Los filtros y la búsqueda se resuelven en memoria: la lista ya viene entera
@@ -198,7 +199,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
     { valor: null, etiqueta: `Vigentes (${cotizaciones.length - anuladas})` },
     { valor: 'POR_REVISAR', etiqueta: `Por revisar (${porRevisar})` },
     { valor: 'APROBADA_MES', etiqueta: `Aprobadas del mes (${delMes})` },
-    { valor: 'APROBADA_SIN_OT', etiqueta: `Aprobadas sin código (${sinOrden})` },
+    { valor: 'APROBADA_SIN_OT', etiqueta: `Aprobadas que esperan OT (${sinOrden})` },
     { valor: 'RECHAZADA', etiqueta: `Rechazadas (${rechazadas})` },
     { valor: 'CON_OT', etiqueta: `Con código y OT (${conOrden})` },
     { valor: 'ANULADA', etiqueta: `Anuladas (${anuladas})` },
@@ -311,6 +312,9 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
             const unidades = c.cantidad_unidades ?? 1
             const varias = unidades > 1
             const faltan = c.ordenes_faltantes ?? 0
+            // La unidad que sigue: la primera sin OT vigente (si se anuló la 2, la 2).
+            const tomadas = new Set(c.ordenes.map((o, i) => o.unidad ?? i + 1))
+            const siguiente = Array.from({ length: unidades }, (_, i) => i + 1).find((k) => !tomadas.has(k)) ?? c.ordenes.length + 1
 
             return (
               // Con `id`: el aviso de la campana aterriza en esta fila (`#id`).
@@ -342,7 +346,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                         : 'Monto total pendiente de confirmar'}
                       {varias && c.monto_venta !== null && c.monto_venta !== undefined && (
                         <span className="font-normal text-texto-suave">
-                          {' '}· {formatoMoneda(Math.round((c.monto_venta / unidades) * 100) / 100, c.moneda ?? 'PEN')} por unidad
+                          {' '}· {formatoMoneda(Math.round((c.monto_venta / unidades) * 100) / 100, c.moneda ?? 'PEN')} en promedio por unidad
                         </span>
                       )}
                     </p>
@@ -450,12 +454,12 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                         {c.ordenes.map((o, i) => (
                           <li key={o.id ?? `${o.codigo_interno ?? 'sin-codigo'}-${i}`} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
                             <Hash aria-hidden className="size-4 text-texto-suave" />
-                            {varias && <span className="text-xs font-medium text-texto-suave">Unidad {i + 1}</span>}
+                            {varias && <span className="text-xs font-medium text-texto-suave">Unidad {o.unidad ?? i + 1}</span>}
                             {o.codigo_interno ? (
                               veCodigos ? (
                                 <Link
                                   href={`/codigos-internos/detalle?codigo=${encodeURIComponent(o.codigo_interno)}`}
-                                  className="font-mono font-medium break-all text-acento hover:underline"
+                                  className="font-mono font-medium break-all text-acento hover:underline pointer-coarse:inline-flex pointer-coarse:min-h-11 pointer-coarse:items-center"
                                 >
                                   {o.codigo_interno}
                                 </Link>
@@ -467,7 +471,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                             )}
                             {o.numero &&
                               (veOt && o.id ? (
-                                <Link href={`/ordenes/${o.id}`} className="font-medium text-acento hover:underline">
+                                <Link href={`/ordenes/${o.id}`} className="font-medium text-acento hover:underline pointer-coarse:inline-flex pointer-coarse:min-h-11 pointer-coarse:items-center">
                                   · OT {o.numero}
                                 </Link>
                               ) : (
@@ -503,7 +507,11 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                             cotizacionId={c.id}
                             numero={c.numero ?? 'cotización'}
                             tipoUnidad={c.tipo_unidad}
-                            unidad={{ cual: c.ordenes.length + 1, de: unidades }}
+                            unidad={{
+                              cual: siguiente,
+                              de: unidades,
+                              otras: c.ordenes.flatMap((o, i) => (o.codigo_interno ? [{ unidad: o.unidad ?? i + 1, codigo: o.codigo_interno }] : [])),
+                            }}
                           />
                         )}
                         {corrige && c.id && (

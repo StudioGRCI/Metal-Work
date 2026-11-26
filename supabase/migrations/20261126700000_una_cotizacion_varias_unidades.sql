@@ -26,6 +26,9 @@
 --     mueva una OT. Una OT anulada libera su lugar.
 --   · Cada unidad lleva su propio código: dos OT vigentes de la misma
 --     cotización no comparten código interno.
+--   · Cada OT guarda qué unidad es (`ordenes_trabajo.numero_de_unidad`): si se
+--     anula la OT de la unidad 2, la que se carga después es la unidad 2, no la
+--     «unidad 3» repetida. Las OT de antes no lo tienen y valen como unidad 1.
 --   · Ventas cambia la cantidad solo con una corrección (vuelve a Gerencia), y
 --     nunca por debajo de las OT que ya tiene.
 --   · El precio de cada unidad es el total entre las unidades: el margen de cada
@@ -61,6 +64,29 @@ end $$;
 comment on column public.cotizaciones_pdf.cantidad_unidades is
   'Cuántas unidades (camabajas, furgones…) lleva la cotización: Administración carga una OT por cada una (migración 20261126700000).';
 
+-- Qué unidad de su cotización es cada OT. Sin relleno: las OT de antes son de
+-- cotizaciones de una unidad y se leen como la 1 (`coalesce(…, 1)`), y una OT
+-- anulada no acepta un UPDATE.
+alter table public.ordenes_trabajo
+  add column if not exists numero_de_unidad smallint;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'ck_ot_numero_de_unidad') then
+    alter table public.ordenes_trabajo
+      add constraint ck_ot_numero_de_unidad check (numero_de_unidad between 1 and 50);
+  end if;
+end $$;
+
+comment on column public.ordenes_trabajo.numero_de_unidad is
+  'Qué unidad de su cotización es (1, 2, 3…); null en las de antes, que valen como la 1 (migración 20261126700000).';
+
+-- Dos OT vigentes no son la misma unidad de la misma cotización. Con una unidad,
+-- es el mismo «una OT por cotización» de antes.
+create unique index if not exists uq_ot_unidad_de_cotizacion
+  on public.ordenes_trabajo (cotizacion_pdf_id, (coalesce(numero_de_unidad, 1)))
+  where cotizacion_pdf_id is not null and estado <> 'ANULADA';
+
 -- 2. Las OT vigentes de una cotización, para quien ve la cotización --------------
 -- Corre como dueña: el código interno de cada OT lo ve todo el que ve la
 -- cotización (como `codigo_interno_de_cotizacion`), y el número y el estado de
@@ -77,8 +103,9 @@ as $$
            'id', case when v.ve then o.id end,
            'numero', case when v.ve then o.numero end,
            'estado', case when v.ve then o.estado::text end,
-           'codigo_interno', public.normalizar_codigo_interno(u.codigo_interno))
-         order by o.creado_en, o.numero), '[]'::jsonb)
+           'codigo_interno', public.normalizar_codigo_interno(u.codigo_interno),
+           'unidad', coalesce(o.numero_de_unidad, 1))
+         order by coalesce(o.numero_de_unidad, 1), o.creado_en), '[]'::jsonb)
     from public.ordenes_trabajo o
     left join public.unidades u on u.id = o.unidad_id
     cross join (select public.es_admin() or public.tiene_permiso('ordenes.ver') as ve) v
@@ -87,7 +114,7 @@ as $$
 $$;
 
 comment on function public.ordenes_de_cotizacion(uuid) is
-  'Las OT vigentes de la cotización, en el orden en que se cargaron, con su código interno; el id, el número y el estado solo para quien ve las órdenes (migración 20261126700000).';
+  'Las OT vigentes de la cotización, por su número de unidad, con su código interno; el id, el número y el estado solo para quien ve las órdenes (migración 20261126700000).';
 
 revoke all on function public.ordenes_de_cotizacion(uuid) from public, anon;
 grant execute on function public.ordenes_de_cotizacion(uuid) to authenticated;
@@ -158,11 +185,13 @@ set search_path to 'public'
 as $$
 declare
   v_vigentes integer;
+  v_mayor    integer;
+  v_ot       text;
 begin
   if new.cantidad_unidades is not distinct from old.cantidad_unidades then
     return new;
   end if;
-  select count(*) into v_vigentes
+  select count(*), max(coalesce(o.numero_de_unidad, 1)) into v_vigentes, v_mayor
     from public.ordenes_trabajo o
    where o.cotizacion_pdf_id = new.id and o.estado <> 'ANULADA';
   if new.cantidad_unidades < v_vigentes then
@@ -170,6 +199,14 @@ begin
       old.numero, v_vigentes, new.cantidad_unidades,
       case when new.cantidad_unidades = 1 then 'unidad' else 'unidades' end
       using errcode = 'check_violation';
+  end if;
+  -- Con la 2 anulada y la 3 vigente, quedar en 2 dejaría a la 3 fuera de la cuenta.
+  if new.cantidad_unidades < v_mayor then
+    select o.numero into v_ot from public.ordenes_trabajo o
+     where o.cotizacion_pdf_id = new.id and o.estado <> 'ANULADA' and coalesce(o.numero_de_unidad, 1) = v_mayor
+     limit 1;
+    raise exception 'La OT % es la unidad % de la cotización %: no puede quedar con % unidades.',
+      v_ot, v_mayor, old.numero, new.cantidad_unidades using errcode = 'check_violation';
   end if;
   return new;
 end;
@@ -307,6 +344,7 @@ declare
                                                  when 'CARROCERIA_MONTADA' then 'Carrocería montada' end;
   v_enlace   text;
   v_cual     text;
+  v_n        integer;
 begin
   if public.usuario_actual() is not null and not (public.es_admin() or public.tiene_permiso('ordenes.crear')) then
     raise exception 'No tienes permiso para dar el código interno ni subir la OT de la cotización.'
@@ -439,17 +477,24 @@ begin
     update public.unidades set cliente_id = v_cot.cliente_id where id = v_unidad and cliente_id is null;
   end if;
 
-  -- Qué unidad de la cotización es: solo se dice cuando lleva más de una.
+  -- Qué unidad de la cotización es: la primera que no tiene OT vigente (si se
+  -- anuló la de la 2, esta es la 2). Solo se dice cuando lleva más de una.
+  select min(k) into v_n
+    from generate_series(1, v_cot.cantidad_unidades) k
+   where not exists (select 1 from public.ordenes_trabajo o
+                      where o.cotizacion_pdf_id = p_cotizacion and o.estado <> 'ANULADA'
+                        and coalesce(o.numero_de_unidad, 1) = k);
   v_cual := case when v_cot.cantidad_unidades > 1
-                 then format('unidad %s de %s', v_vigentes + 1, v_cot.cantidad_unidades) end;
+                 then format('unidad %s de %s', v_n, v_cot.cantidad_unidades) end;
 
   -- La OT nace aprobada, con su PDF: Gerencia ya aprobó su cotización.
   v_sede := coalesce(public.mi_sede(), (select id from public.sedes where activo order by nombre limit 1));
   insert into public.ordenes_trabajo (id, numero, cliente_id, unidad_id, tipo_carroceria_id, sede_id, tipo_trabajo,
-                                      prioridad, descripcion, fecha_entrega_comprometida, estado, cotizacion_pdf_id, tipo_unidad)
+                                      prioridad, descripcion, fecha_entrega_comprometida, estado, cotizacion_pdf_id, tipo_unidad,
+                                      numero_de_unidad)
   values (p_orden, v_numero, v_cot.cliente_id, v_unidad, v_cot.tipo_carroceria_id, v_sede, 'FABRICACION',
           'NORMAL', concat_ws(' · ', v_cot.carroceria, v_tipo, 'cotización ' || v_cot.numero, v_cual), p_fecha_entrega,
-          'APROBADA', p_cotizacion, p_tipo_unidad);
+          'APROBADA', p_cotizacion, p_tipo_unidad, v_n);
   update public.series_documentarias
      set correlativo_actual = greatest(correlativo_actual, v_cifras::bigint)
    where tipo = 'ORDEN_TRABAJO' and (sede_id is null or sede_id = v_sede) and correlativo_actual < v_cifras::bigint;

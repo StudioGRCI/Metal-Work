@@ -34,6 +34,7 @@ select set_config('prueba.ot3', gen_random_uuid()::text, true);
 select set_config('prueba.ot4', gen_random_uuid()::text, true);
 select set_config('prueba.ots', gen_random_uuid()::text, true);
 select set_config('prueba.ots2', gen_random_uuid()::text, true);
+select set_config('prueba.ot5', gen_random_uuid()::text, true);
 
 alter table storage.objects enable row level security;
 grant select, insert, delete on storage.objects to authenticated;
@@ -232,6 +233,43 @@ begin
        from public.codigos_internos_costo_calculado(null) c where c.codigo like 'QA-474 _')
       = 'QA-474 A=7500.00,QA-474 B=7500.00,QA-474 C=7500.00,QA-474 D=7500.00,QA-474 S=9000.00',
     'Cada código recibe su parte de la venta, y el de una unidad, el total');
+end $$;
+
+-- 7. Anulada la OT de la unidad 2, la que se carga es la unidad 2 --------------------
+do $$
+declare v_desc text; v_unidades text;
+begin
+  perform test.como_usuario(current_setting('prueba.gerente')::uuid);
+  set local role authenticated;
+  update public.ordenes_trabajo set estado = 'ANULADA', motivo_anulacion = 'Prueba 474: el cliente cambió la unidad 2'
+   where id = current_setting('prueba.ot2')::uuid;
+  reset role;
+
+  perform test.como_usuario(current_setting('prueba.oficina')::uuid);
+  set local role authenticated;
+  perform pg_temp.cargar(current_setting('prueba.cot3'), current_setting('prueba.ot5'), 'QA-474 E', '47405');
+  reset role;
+  select descripcion into v_desc from public.ordenes_trabajo where id = current_setting('prueba.ot5')::uuid;
+  perform test.afirmar(v_desc like '%· unidad 2 de 4', format('La OT que reemplaza a la anulada es la unidad 2, no otra «4 de 4» (%s)', v_desc));
+  select string_agg((o->>'unidad') || '=' || (o->>'codigo_interno'), ',')
+    into v_unidades
+    from jsonb_array_elements(public.ordenes_de_cotizacion(current_setting('prueba.cot3')::uuid)) o;
+  perform test.afirmar(v_unidades = '1=QA-474 A,2=QA-474 E,3=QA-474 C,4=QA-474 D',
+    format('La lista sale por unidad, con la nueva en el lugar de la anulada (%s)', v_unidades));
+
+  -- Con la 2 libre y la 4 vigente, la cotización no puede quedar en 3 unidades.
+  perform test.como_usuario(current_setting('prueba.gerente')::uuid);
+  set local role authenticated;
+  update public.ordenes_trabajo set estado = 'ANULADA', motivo_anulacion = 'Prueba 474: otra vez la unidad 2'
+   where id = current_setting('prueba.ot5')::uuid;
+  reset role;
+  perform test.como_usuario(current_setting('prueba.vendedor')::uuid);
+  set local role authenticated;
+  perform test.debe_fallar(format(
+    'update public.cotizaciones_pdf set cantidad_unidades = 3, ruta_storage = %L, nombre_archivo = %L, motivo_correccion = %L, estado = %L where id = %L',
+    'cot/' || current_setting('prueba.cot3') || '/v3.pdf', 'v3.pdf', 'Al final son tres', 'POR_REVISAR', current_setting('prueba.cot3')),
+    'No queda con menos unidades que la mayor que ya tiene OT', 'es la unidad 4 de la cotización QA-474-3: no puede quedar con 3 unidades');
+  reset role;
 end $$;
 
 rollback;

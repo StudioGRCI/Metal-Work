@@ -25,6 +25,8 @@ export type OrdenDeCotizacion = {
   numero: string | null
   estado: string | null
   codigo_interno: string | null
+  /** Qué unidad de la cotización es (1, 2, 3…). */
+  unidad: number | null
 }
 
 export type CotizacionPdf = Omit<Vistas<'v_cotizaciones_pdf'>, 'ordenes'> & {

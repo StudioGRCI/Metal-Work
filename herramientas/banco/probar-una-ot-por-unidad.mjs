@@ -2,7 +2,8 @@
  * Recorre con clic real «una cotización de varias unidades, una OT por unidad»
  * (migración 20261126700000), con la cuenta de cada puesto (nunca ADMIN):
  *
- *   1. Ventas sube una cotización de tres camabajas y pone «Unidades: 3». La
+ *   1. Ventas sube una cotización de tres camabajas: el PDF dice «CANTIDAD : 03»
+ *      y «Unidades» se llena con 3 (con otra cifra avisa en ámbar). La
  *      tarjeta dice «3 unidades» y el precio por unidad.
  *   2. Gerencia la aprueba con un toque, como siempre.
  *   3. Administración ve «Cargar la OT 1 de 3» y carga las tres OT, cada una con
@@ -234,7 +235,15 @@ let cotTres
   await esperar(async () => (await v.locator('#cot-numero').inputValue()) === numeroTres, 30000)
   comprobar((await v.locator('#cot-numero').inputValue()) === numeroTres, `el número sale del PDF (${numeroTres})`)
   comprobar((await v.locator('#cot-cliente').inputValue()) === clienteId, 'y el cliente, por su RUC')
+  await esperar(async () => (await v.locator('#cot-unidades').inputValue()) === '3', 10000)
+  comprobar((await v.locator('#cot-unidades').inputValue()) === '3', '«Unidades» se llena con la cantidad que dice el PDF (03)')
+  comprobar(limpio(await v.locator('[role="status"]').filter({ hasText: 'Leído del archivo' }).innerText()).includes('Cantidad 3 unidades'),
+    'y «Leído del archivo» la muestra')
+  // Si queda otra, se avisa en ámbar junto al campo; al volver a 3, el aviso se va.
+  await v.locator('#cot-unidades').fill('2')
+  comprobar(limpio(await v.innerText()).includes('El documento dice 3 unidades: revisa.'), 'con otra cantidad avisa lo que dice el documento')
   await v.locator('#cot-unidades').fill('3')
+  comprobar(!limpio(await v.innerText()).includes('El documento dice 3 unidades'), 'y con la del documento, el aviso se va')
   if (!(await v.locator('#cot-carroceria').inputValue())) await v.locator('#cot-carroceria').selectOption({ index: 1 })
   if (!(await v.locator('#cot-moneda').inputValue())) await v.locator('#cot-moneda').selectOption('USD')
   if (!(await v.locator('#cot-igv').inputValue())) await v.locator('#cot-igv').selectOption('no')
@@ -250,7 +259,7 @@ let cotTres
   await pagina.goto(`${BASE}/cotizaciones/pdf`, { waitUntil: 'networkidle' })
   const t = pagina.locator(`li[id="${cotTres?.id}"]`)
   const texto = limpio(await t.textContent())
-  comprobar(texto.includes('· 3 unidades') && texto.includes('US$ 45,000.00 por unidad'), `la tarjeta dice «3 unidades» y el precio de cada una («${texto.slice(0, 200)}»)`)
+  comprobar(texto.includes('· 3 unidades') && texto.includes('US$ 45,000.00 en promedio por unidad'), `la tarjeta dice «3 unidades» y el precio de cada una («${texto.slice(0, 200)}»)`)
   await contexto.close()
 }
 if (!cotTres) {
@@ -298,6 +307,11 @@ if (!cotTres) {
     await v.waitFor()
     const titulo = limpio(await v.locator('h2').first().textContent())
     comprobar(titulo === `Unidad ${cual} de 3 de la ${numeroTres}`, `la ventana dice qué unidad es («${titulo}»)`)
+    if (cual > 1) {
+      const otras = limpio(await v.getByText('Ya tienen código:').innerText().catch(() => ''))
+      comprobar(UNIDADES.slice(0, i).every((x, k) => otras.includes(`unidad ${k + 1} ${x.codigo}`)),
+        `la ventana muestra los códigos que ya tienen las otras unidades («${otras}»)`)
+    }
     if (cual === 2) {
       // El código de la unidad 1, otra vez: se rechaza en su campo.
       await v.locator('input[name="codigo_interno"]').fill(UNIDADES[0].codigo.toLowerCase())
