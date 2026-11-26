@@ -178,7 +178,7 @@ const yaMetrado = await consulta(`select 1 from public.codigo_materiales where c
 if (yaMetrado.length === 0)
   await comoCuenta('diseno', `select public.guardar_material_codigo(null, $1, $2, 10, null, $3)`, [codigo, plancha, `Metrado de prueba ${sello}`])
 
-const ids = { compra: randomUUID(), metrado: randomUUID(), entregado: randomUUID() }
+const ids = { compra: randomUUID(), metrado: randomUUID(), ajeno: randomUUID(), entregado: randomUUID(), faltante: randomUUID() }
 const linea = (material_id, cantidad) => ({ material_id, cantidad })
 const emitir = (id, justificacion, lineas) =>
   comoCuenta('sup.mtz', `select public.emitir_requerimiento($1, 'OPERACION', $2, $3, $4, null, $5::jsonb)`, [
@@ -187,6 +187,12 @@ const emitir = (id, justificacion, lineas) =>
 await emitir(ids.compra, `${sello} Tubos, conos y discos para el armado`, [linea(tubo, 6), linea(conos, 4), linea(disco, 10), linea(guantes, 2)])
 await emitir(ids.metrado, `${sello} Planchas para el refuerzo del piso`, [linea(plancha, 500)])
 await emitir(ids.entregado, `${sello} Conos para delimitar la zona`, [linea(conos, 2)])
+await emitir(ids.faltante, `${sello} Conos y guantes para el pintado`, [linea(conos, 2), linea(guantes, 3)])
+// Requerimientos registra para Maestranza uno que se pasa del metrado: el
+// sustento lo escribe quien lo registró, no el supervisor.
+await comoCuenta('requerimientos', `select public.emitir_requerimiento($1, 'OPERACION', $2, $3, $4, null, $5::jsonb)`, [
+  ids.ajeno, mtz.area_id, codigo, `${sello} Planchas que pidió Requerimientos`, JSON.stringify([linea(plancha, 400)]),
+])
 const numeros = Object.fromEntries(
   (await consulta(`select id, numero from public.requerimientos where id = any($1)`, [Object.values(ids)])).map((r) => [r.id, r.numero]),
 )
@@ -240,6 +246,21 @@ await armazon(
 )
 await salida(ids.entregado, 1, conos, 2, `Rosa Huamán ${sello}`)
 
+// El entregado con faltante: salieron los conos; los guantes ya no hacían falta y no salieron del kardex.
+await armazon(
+  `update public.requerimientos set estado = 'ENTREGADO', revision_stock_en = now(), listo_en_almacen_en = now(),
+          entregado_en = now(), entregado_por = $2, faltante_al_entregar = true, motivo_del_faltante = 'Los guantes ya no hacen falta (prueba)'
+    where id = $1`,
+  [ids.faltante, almacen.id],
+)
+await armazon(
+  `update public.requerimiento_lineas set cantidad_en_stock = cantidad, stock_revisado_en = now(), stock_revisado_por = $2,
+          sin_salida_al_entregar = case when item = 2 then cantidad end
+    where requerimiento_id = $1`,
+  [ids.faltante, almacen.id],
+)
+await salida(ids.faltante, 1, conos, 2, `Elsa Rojas ${sello}`)
+
 // ------------------------------------------------ la base, con cada cuenta
 const desde = async (puesto) =>
   comoCuenta(puesto, `select requerimiento_id, item, visto_diseno, fecha_esperada::text, recibido_por from public.seguimiento_de_insumos($1)`, [
@@ -247,7 +268,7 @@ const desde = async (puesto) =>
   ])
 const delSupervisor = await desde('sup.mtz')
 const fila = (rq, item) => delSupervisor.find((f) => f.requerimiento_id === rq && f.item === item)
-comprobar(delSupervisor.length === 6, `la base le da al supervisor sus 6 insumos (${delSupervisor.length})`)
+comprobar(delSupervisor.length === 9, `la base le da al supervisor sus 9 insumos, también los del RQ que registró Requerimientos (${delSupervisor.length})`)
 comprobar(fila(ids.compra, 1)?.fecha_esperada === llega, `el tubo se espera el ${llega}: ${fila(ids.compra, 1)?.fecha_esperada}`)
 comprobar(fila(ids.compra, 3)?.recibido_por === `Juan Quispe ${sello}`, 'los discos los recibió Juan')
 comprobar(fila(ids.metrado, 1)?.visto_diseno === 'SIN_SUSTENTO', `las planchas se pasan del metrado y esperan su sustento: ${fila(ids.metrado, 1)?.visto_diseno}`)
@@ -300,6 +321,21 @@ for (const ancho of [390, 1440]) {
   comprobar(resumenMetrado.includes('Falta tu sustento para Diseño'), `${ancho}: cerrado, el pliegue ya dice que falta su sustento: «${resumenMetrado}»`)
   comprobar((await rq(ids.metrado).locator(`[data-pide-sustento] a[href="/requerimientos?rq=${ids.metrado}"]`).count()) === 1,
     `${ancho}: y lleva al RQ para escribirlo`)
+
+  // El que registró Requerimientos: espera el sustento, pero no se le pide al supervisor.
+  const resumenAjeno = limpio(await rq(ids.ajeno).locator('[data-resumen-de-insumos]').innerText())
+  comprobar(resumenAjeno.includes('Espera el sustento para Diseño') && !resumenAjeno.includes('tu sustento'),
+    `${ancho}: en el RQ de Requerimientos no le pide su sustento: «${resumenAjeno}»`)
+  comprobar((await rq(ids.ajeno).locator('[data-pide-sustento]').count()) === 0 && (await rq(ids.ajeno).locator('[data-espera-sustento]').count()) === 1,
+    `${ancho}: y dice que espera el de quien lo registró, sin el enlace`)
+
+  // El entregado con faltante: los guantes no salieron y no se pintan entregados.
+  comprobar((await insumo(ids.faltante, 2).getAttribute('data-faltante')) === '3', `${ancho}: los guantes del entregado con faltante no salieron (3)`)
+  comprobar((await texto(ids.faltante, 2)).includes('Entregado con faltante: no salió 3'), `${ancho}: y lo dice: «${await texto(ids.faltante, 2)}»`)
+  const barraGuantes = await insumo(ids.faltante, 2).locator('[data-paso-del-insumo="ENTREGADO"] > span').first().getAttribute('class')
+  comprobar(!barraGuantes.includes('bg-exito') && barraGuantes.includes('bg-aviso'), `${ancho}: su paso «Entregado» no va en verde`)
+  comprobar((await insumo(ids.faltante, 1).getAttribute('data-faltante')) === null && (await texto(ids.faltante, 1)).includes(`Lo recibió Elsa Rojas ${sello}`),
+    `${ancho}: los conos del mismo RQ sí salieron: «${await texto(ids.faltante, 1)}»`)
 
   comprobar((await paso(ids.entregado, 1)) === 'ENTREGADO', `${ancho}: el entregado de esta semana sigue en la tarjeta, entregado (${await paso(ids.entregado, 1)})`)
   comprobar((await texto(ids.entregado, 1)).includes(`Lo recibió Rosa Huamán ${sello}`), `${ancho}: y dice quién lo recibió: «${await texto(ids.entregado, 1)}»`)

@@ -45,6 +45,8 @@ type Insumo = {
   paso: ReturnType<typeof pasoDelInsumo>
   /** La fecha en que se espera, solo mientras se compra o viene en camino. */
   llega: string | null
+  /** La OC todavía espera la aprobación de Gerencia: su fecha es la que espera Logística. */
+  porAprobar: boolean
 }
 
 /**
@@ -56,15 +58,19 @@ type Insumo = {
  * igual, de la etapa, y la página lo dice una vez arriba.
  *
  * El pliegue llega cerrado, pero su título ya dice lo que más se pregunta: en
- * qué va cada insumo y cuándo llega lo que falta; y si el área tiene que
- * escribir el sustento para Diseño, lo dice primero.
+ * qué va cada insumo y cuándo llega lo que falta; y si falta el sustento para
+ * Diseño, lo dice primero. El sustento lo escribe quien registró el RQ
+ * (`rq_exigir_del_area`): a él se le pide, con el enlace; a los demás del área
+ * solo se les dice que espera (`yo` es quien mira).
  */
 export function InsumosDelRequerimiento({
   rq,
   seguimiento,
+  yo,
 }: {
   rq: RequerimientoListado
   seguimiento: Map<string, SeguimientoDelInsumo> | null
+  yo: string
 }) {
   if (rq.lineas.length === 0 || rq.estado === 'ANULADO') return null
   const hoy = hoyLima()
@@ -72,27 +78,34 @@ export function InsumosDelRequerimiento({
     const s = seguimiento?.get(`${rq.id}:${l.item}`) ?? null
     const paso = pasoDelInsumo(l, s?.visto_diseno ?? null)
     const llega = paso !== null && ESPERA_COMPRA.includes(paso.actual) ? (s?.fecha_esperada ?? null) : null
-    return { linea: l, seguimiento: s, paso, llega }
+    return { linea: l, seguimiento: s, paso, llega, porAprobar: l.etapa === 'OC_POR_APROBAR' }
   })
-  const pideSustento = insumos.some((i) => i.paso?.frenado && VISTO_QUE_PIDE_SUSTENTO.includes(i.seguimiento?.visto_diseno ?? ''))
+  const faltaSustento = insumos.some((i) => i.paso?.frenado && VISTO_QUE_PIDE_SUSTENTO.includes(i.seguimiento?.visto_diseno ?? ''))
+  const pideSustento = faltaSustento && rq.creado_por === yo
 
   return (
     <Pliegue
       enCaja
-      titulo={<TituloDelPliegue insumos={insumos} pideSustento={pideSustento} terminado={rq.estado === 'ENTREGADO'} />}
+      titulo={<TituloDelPliegue insumos={insumos} faltaSustento={faltaSustento} pideSustento={pideSustento} terminado={rq.estado === 'ENTREGADO'} />}
       className="mt-1"
       data-insumos-del-rq={rq.id}
     >
-      {pideSustento && (
+      {pideSustento ? (
         <p className="mb-2 text-sm text-aviso" data-pide-sustento>
-          Se pasa del metrado de Diseño y espera el sustento de tu área.{' '}
+          Se pasa del metrado de Diseño y espera tu sustento.{' '}
           <Link href={`/requerimientos?rq=${rq.id}`} className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0">
             Escribe el sustento en el RQ
           </Link>
         </p>
+      ) : (
+        faltaSustento && (
+          <p className="mb-2 text-sm text-aviso" data-espera-sustento>
+            Se pasa del metrado de Diseño y espera el sustento de quien registró el RQ.
+          </p>
+        )
       )}
       <ol className="divide-y divide-borde" aria-label={`Insumos de ${rq.numero}`}>
-        {insumos.map(({ linea: l, seguimiento: s, paso, llega }) => {
+        {insumos.map(({ linea: l, seguimiento: s, paso, llega, porAprobar }) => {
           const visto = s?.visto_diseno ?? null
           const etapa = l.etapa ? ETAPA_AVANCE_RQ[l.etapa] : undefined
           // El visto solo se dice si sigue valiendo: autorizado, o frenando ahora.
@@ -100,16 +113,25 @@ export function InsumosDelRequerimiento({
           const atrasada = llega !== null && llega < hoy
           const salio = l.entregado !== null && l.entregado > 0 ? l.entregado : null
           const parte = salio !== null && salio < l.cantidad
-          const titulo = paso ? TITULO_PASO_DEL_INSUMO[paso.actual] : null
-          // La línea de abajo: el freno de Diseño, o la etapa; si ya salió entero, «Entregado».
+          const titulo = paso && !paso.faltante ? TITULO_PASO_DEL_INSUMO[paso.actual] : null
+          // La línea de abajo: el freno de Diseño, o la etapa; si ya salió entero,
+          // «Entregado»; si el RQ se entregó sin todo, lo que no salió.
           const dice =
             paso?.frenado && vistoDice
               ? vistoDice
-              : paso?.actual === 'ENTREGADO'
-                ? { etiqueta: 'Entregado', tono: 'neutro' as Tono }
-                : etapa
+              : paso?.faltante
+                ? { etiqueta: `Entregado con faltante: no salió ${cantidad(paso.faltante)} ${l.unidad}`, tono: 'aviso' as Tono }
+                : paso?.actual === 'ENTREGADO'
+                  ? { etiqueta: 'Entregado', tono: 'neutro' as Tono }
+                  : etapa
           return (
-            <li key={l.id} className="space-y-1.5 py-2.5 first:pt-0 last:pb-0" data-insumo={l.item} data-paso={paso?.actual}>
+            <li
+              key={l.id}
+              className="space-y-1.5 py-2.5 first:pt-0 last:pb-0"
+              data-insumo={l.item}
+              data-paso={paso?.actual}
+              data-faltante={paso?.faltante ?? undefined}
+            >
               <p className="text-sm break-words text-texto">
                 <span className="tabular text-texto-suave">{l.item}.</span> {l.descripcion}
                 <span className="tabular text-texto-suave">
@@ -117,7 +139,7 @@ export function InsumosDelRequerimiento({
                   {cantidad(l.cantidad)} {l.unidad}
                 </span>
               </p>
-              {paso && <PasosDelInsumo item={l.item} {...paso} rechazado={visto === 'RECHAZADO' && paso.frenado} />}
+              {paso && <PasosDelInsumo item={l.item} {...paso} rechazado={visto === 'RECHAZADO' && paso.frenado} conFaltante={paso.faltante !== null} />}
               <p className="text-xs break-words text-texto-suave">
                 {/* En el teléfono no se ven los nombres de los pasos: el de ahora va aquí, si la línea no lo dice ya. */}
                 {titulo && titulo !== dice?.etiqueta && <span className="font-medium text-texto sm:hidden">{titulo} · </span>}
@@ -127,7 +149,11 @@ export function InsumosDelRequerimiento({
                 {llega && (
                   <span className={atrasada ? 'text-aviso' : undefined} data-llega={llega}>
                     {' · '}
-                    {atrasada ? `Se esperaba el ${fecha(llega)}` : `Llega aprox. el ${fecha(llega)}`}
+                    {porAprobar
+                      ? `Si Gerencia aprueba la compra, llega aprox. el ${fecha(llega)}`
+                      : atrasada
+                        ? `Se esperaba el ${fecha(llega)}`
+                        : `Llega aprox. el ${fecha(llega)}`}
                   </span>
                 )}
               </p>
@@ -155,23 +181,37 @@ export function InsumosDelRequerimiento({
 /**
  * El título del pliegue, que se lee cerrado: si falta el sustento, eso
  * primero; después cuántos insumos van en cada paso, del más atrasado al más
- * adelantado, y la fecha más cercana en que llega lo que se compra.
+ * adelantado, y la fecha más cercana en que llega lo que ya se aprobó comprar.
  */
-function TituloDelPliegue({ insumos, pideSustento, terminado }: { insumos: Insumo[]; pideSustento: boolean; terminado: boolean }) {
+function TituloDelPliegue({
+  insumos,
+  faltaSustento,
+  pideSustento,
+  terminado,
+}: {
+  insumos: Insumo[]
+  faltaSustento: boolean
+  pideSustento: boolean
+  terminado: boolean
+}) {
   const cuenta = new Map<PasoDelInsumo, number>()
   for (const i of insumos) if (i.paso) cuenta.set(i.paso.actual, (cuenta.get(i.paso.actual) ?? 0) + 1)
   // Con un solo insumo, el número sobra: «en compra».
-  const enPasos = PASOS_DEL_INSUMO.filter((p) => cuenta.has(p)).map((p) =>
-    insumos.length === 1 ? EN_EL_RESUMEN[p] : `${cuenta.get(p) ?? 0} ${EN_EL_RESUMEN[p]}`,
-  )
+  const enPasos = PASOS_DEL_INSUMO.filter((p) => cuenta.has(p)).map((p) => {
+    const n = cuenta.get(p) ?? 0
+    return insumos.length === 1 ? EN_EL_RESUMEN[p] : `${n} ${n > 1 && p === 'ENTREGADO' ? 'entregados' : EN_EL_RESUMEN[p]}`
+  })
   const llegan = insumos
+    .filter((i) => !i.porAprobar)
     .map((i) => i.llega)
     .filter((d): d is string => d !== null)
     .sort()
   const resumen = [...enPasos, llegan.length > 0 ? `llega aprox. el ${fecha(llegan[0])}` : null].filter(Boolean).join(', ')
   return (
     <span className="block py-1.5" data-resumen-de-insumos>
-      {pideSustento && <span className="block font-semibold text-aviso">Falta tu sustento para Diseño</span>}
+      {faltaSustento && (
+        <span className="block font-semibold text-aviso">{pideSustento ? 'Falta tu sustento para Diseño' : 'Espera el sustento para Diseño'}</span>
+      )}
       <span className="block">{insumos.length === 1 ? 'Cómo va su insumo' : `Cómo va cada insumo (${insumos.length})`}</span>
       {resumen && !terminado && <span className="block text-xs font-normal text-texto-suave first-letter:uppercase">{resumen}</span>}
     </span>
@@ -189,12 +229,14 @@ function PasosDelInsumo({
   actual,
   terminado,
   rechazado,
+  conFaltante,
 }: {
   item: number
   pasos: PasoDelInsumo[]
   actual: PasoDelInsumo
   terminado: boolean
   rechazado: boolean
+  conFaltante: boolean
 }) {
   const indice = pasos.indexOf(actual)
   return (
@@ -208,7 +250,7 @@ function PasosDelInsumo({
               aria-hidden
               className={cn(
                 'block h-1.5 rounded-full',
-                hecho ? 'bg-exito' : ahora ? (rechazado ? 'bg-peligro' : 'bg-acento') : 'border border-texto-tenue bg-superficie',
+                hecho ? 'bg-exito' : ahora ? (rechazado ? 'bg-peligro' : conFaltante ? 'bg-aviso' : 'bg-acento') : 'border border-texto-tenue bg-superficie',
               )}
             />
             <span
@@ -220,7 +262,7 @@ function PasosDelInsumo({
               {TITULO_PASO_DEL_INSUMO[p]}
             </span>
             <span className="sr-only sm:hidden">{TITULO_PASO_DEL_INSUMO[p]}</span>
-            <span className="sr-only">{hecho ? ': hecho' : ahora ? ': ahora' : ': falta'}</span>
+            <span className="sr-only">{hecho ? ': hecho' : ahora ? (conFaltante ? ': con faltante' : ': ahora') : ': falta'}</span>
           </li>
         )
       })}

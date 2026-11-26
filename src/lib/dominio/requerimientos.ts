@@ -304,11 +304,13 @@ export const VISTO_QUE_PIDE_SUSTENTO = ['SIN_SUSTENTO', 'RECHAZADO']
  * - La compra y el camino no le tocan si Almacén ya lo tenía entero.
  * - Entregado es por insumo: el que ya salió entero va entregado aunque otro
  *   del mismo RQ siga en compra (`entregado`, de `entregado_de_requerimientos`).
+ * - El RQ entregado con faltante deja en `faltante` lo que no salió de ese
+ *   insumo: su paso «Entregado» no termina en verde.
  */
 export function pasoDelInsumo(
-  l: { etapa: string | null; cantidad: number; en_stock: number | null; entregado: number | null },
+  l: { etapa: string | null; cantidad: number; en_stock: number | null; entregado: number | null; sin_salida?: number | null },
   visto: string | null,
-): { pasos: PasoDelInsumo[]; actual: PasoDelInsumo; terminado: boolean; frenado: boolean } | null {
+): { pasos: PasoDelInsumo[]; actual: PasoDelInsumo; terminado: boolean; frenado: boolean; faltante: number | null } | null {
   const segun = l.etapa ? PASO_DE_LA_ETAPA[l.etapa] : undefined
   if (!segun) return null
   const frenado = visto !== null && VISTO_QUE_FRENA.includes(visto) && segun === 'POR_ATENDER'
@@ -316,8 +318,11 @@ export function pasoDelInsumo(
   const deStock = l.etapa === 'EN_STOCK' || (l.en_stock !== null && l.en_stock >= l.cantidad)
   const salioEntero = l.entregado !== null && l.cantidad > 0 && l.entregado >= l.cantidad
   const actual: PasoDelInsumo = frenado ? 'VISTO_DISENO' : salioEntero ? 'ENTREGADO' : segun
+  // El RQ se entregó con faltante y de este insumo no salió todo: no se pinta
+  // como entregado entero (`sin_salida_al_entregar`, lo que no salió del kardex).
+  const faltante = segun === 'ENTREGADO' && !salioEntero && l.sin_salida != null && l.sin_salida > 0 ? l.sin_salida : null
   const pasos = PASOS_DEL_INSUMO.filter((p) => (p !== 'VISTO_DISENO' || conVisto) && ((p !== 'EN_COMPRA' && p !== 'EN_CAMINO') || !deStock))
-  return { pasos, actual, terminado: actual === 'ENTREGADO', frenado }
+  return { pasos, actual, terminado: actual === 'ENTREGADO' && faltante === null, frenado, faltante }
 }
 
 /** Las dos etapas del recojo que Gerencia quiere distinguir de un vistazo. */

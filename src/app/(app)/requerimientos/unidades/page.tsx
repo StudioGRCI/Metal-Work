@@ -217,6 +217,7 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
           {unidades.map(([codigo, u]) => (
             <li key={codigo}>
               <TarjetaDeUnidad
+                yo={perfil.id}
                 codigo={codigo}
                 unidad={unidadDe.get(codigo) ?? null}
                 entregada={cerrados.has(codigo)}
@@ -269,7 +270,7 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
           />
           <TarjetaCuerpo className="space-y-3">
             <AvisoDeLaUnidad codigo={CODIGO_FIJO_PLANTA.codigo} />
-            <RequerimientosDeLaUnidad codigo={CODIGO_FIJO_PLANTA.codigo} rqs={dePlanta} seguimiento={seguimiento} desde={desde} />
+            <RequerimientosDeLaUnidad codigo={CODIGO_FIJO_PLANTA.codigo} rqs={dePlanta} seguimiento={seguimiento} desde={desde} yo={perfil.id} />
           </TarjetaCuerpo>
         </Tarjeta>
       )}
@@ -284,6 +285,7 @@ function TarjetaDeUnidad({
   delArea,
   seguimiento,
   desde,
+  yo,
 }: {
   codigo: string
   unidad: string | null
@@ -291,6 +293,7 @@ function TarjetaDeUnidad({
   delArea: DeLaUnidad
   seguimiento: Seguimiento
   desde: string
+  yo: string
 }) {
   return (
     <Tarjeta>
@@ -330,7 +333,7 @@ function TarjetaDeUnidad({
             </ul>
           </div>
         )}
-        <RequerimientosDeLaUnidad codigo={codigo} rqs={delArea.rqs} seguimiento={seguimiento} desde={desde} />
+        <RequerimientosDeLaUnidad codigo={codigo} rqs={delArea.rqs} seguimiento={seguimiento} desde={desde} yo={yo} />
       </TarjetaCuerpo>
     </Tarjeta>
   )
@@ -346,11 +349,14 @@ function RequerimientosDeLaUnidad({
   rqs,
   seguimiento,
   desde,
+  yo,
 }: {
   codigo: string
   rqs: RequerimientoListado[]
   seguimiento: Seguimiento
   desde: string
+  /** Quien mira: el sustento se le pide solo en los RQ que registró. */
+  yo: string
 }) {
   // Los tres más recientes en camino; el resto, en «Ver sus N».
   const enCaminoTodos = rqs.filter(abierto)
@@ -391,7 +397,7 @@ function RequerimientosDeLaUnidad({
                         {r.lineas.length === 1 ? r.lineas[0].descripcion : `${r.lineas.length} insumos`}
                       </span>
                     </div>
-                    <InsumosDelRequerimiento rq={r} seguimiento={seguimiento} />
+                    <InsumosDelRequerimiento rq={r} seguimiento={seguimiento} yo={yo} />
                   </li>
                 )
               })}
