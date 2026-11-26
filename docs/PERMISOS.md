@@ -321,6 +321,36 @@ e incidentes de la R.M. 050-2013-TR (Ley 29783), con número de la casa
 reportó a `audit_log`, que lee Gerencia y el área no debe ver. Una cuenta sin
 `area_id` no tiene alcance de área: ve solo lo suyo.
 
+## Calidad: la inspección por código interno y etapa
+
+Plan aparte de las demás áreas, entrega A.1. Migración
+`20261126520000_calidad_inspecciona_por_codigo_y_etapa`, comprobada con los roles
+reales en la base local (check 491) y con clic real en el banco
+(`herramientas/banco/probar-calidad.mjs`). El SIG no trae formato de Calidad: es
+el mínimo que aprobó DKS el 2026-11-26 (código interno, etapa o área, conforme o
+no conforme, observación y hasta 4 fotos), sin número propio; si la empresa
+codifica su formato (`MW-FOR-CAL-1`), se le pone entonces. No restaura las
+inspecciones de la OT que retiró la `094`: aquellas colgaban de la OT y
+bloqueaban; estas van por código interno, avisan y **no detienen la etapa
+siguiente**.
+
+| Qué | Quién | Cómo lo exige la base |
+| --- | --- | --- |
+| Registrar una inspección: el código interno (de una OT abierta o con etapas de Diseño), su etapa, o el área si el código no tiene etapas; conforme o no conforme, con observación (obligatoria si no es conforme) y hasta 4 fotos | `calidad.inspeccionar`: Control de calidad | `calidad_inspeccionar` (`security definer`) exige el permiso, el mismo que la acción `registrarInspeccion`. La etapa tiene que ser del código y el área la de la etapa. Un reenvío idéntico devuelve la misma (`mismo_envio`, `useIdDelEnvio('inspeccion_calidad')`) |
+| A quién le llega lo no conforme | El área de la etapa | `calidad_avisar_al_area`: a la cuenta responsable del área (`responsable_del_area`, de la A.0); si no tiene, a las cuentas activas del área; si el área no tiene ninguna, a Gerencia (`calidad.ver`). La pantalla dice a quién le llegó, no «se avisó al área» sin que sea cierto |
+| Ver todas, con las anuladas | `calidad.inspeccionar` (Calidad) y `calidad.ver` (Gerencia, en consulta: no registra, no revisa, no anula) | `calidad_inspecciones_visibles` y la política `ver_calidad_inspecciones` (`puede_ver_toda_la_calidad()`) |
+| Ver las de su área (no anuladas), con su recorrido y sus fotos | Toda cuenta activa del área (`usuarios.area_id`) y su responsable (`areas.jefe_id`) | La misma política, por `calidad_es_del_area` |
+| Marcar corregido, con nota o foto | El área de la inspección, cuando está «Por corregir» | `calidad_registrar_paso('CORREGIDA')` mira que quien lo marca sea del área; la acción no pide permiso de módulo, porque la base decide por el área. Le llega a Calidad |
+| Levantar la observación o volver a observarla (con lo que sigue mal) | `calidad.inspeccionar`: Calidad | `calidad_registrar_paso('LEVANTADA' / 'OBSERVADA_DE_NUEVO')` y la acción `registrarPasoDeCalidad` piden el mismo permiso. Le llega al área |
+| Anular una mal registrada, con motivo (10 a 500 caracteres) | `calidad.inspeccionar`: Calidad | `calidad_anular_inspeccion`, el mismo permiso que `anularInspeccion`. Nadie la borra, tampoco el administrador (`fn_calidad_inspeccion_guardia`), que además sella quién y cuándo. Los pasos y las fotos no se cambian ni se borran (`fn_calidad_evidencia_guardia`) |
+| Las fotos | Sube quien inspecciona o marca el paso, a su carpeta | Bucket privado `fotos-calidad`, ruta `{cuenta}/{inspección}/{foto}`, JPEG, PNG o WEBP de hasta 5 MB. La ve quien ve la inspección; la que ninguna fila nombra solo la ve y la quita quien la subió |
+
+Calidad recibe además `codigos_internos.seguimiento`, para abrir el seguimiento
+por código desde su menú. Gerencia de Producción no tiene `calidad.ver`: su menú
+lo lleva otro hilo, y se le puede sumar con una línea. Los puestos con menú
+propio que no lleva Calidad (Diseño, Logística…) se enteran por la campana y
+abren la observación desde el aviso.
+
 ## Responsables de área
 
 Migración `20261125205000_el_responsable_de_cada_area_es_una_cuenta`,
@@ -402,8 +432,8 @@ punto y coma con su nombre delante.
 | Almacén | Por atender: Atención de requerimiento, Materiales por código; Almacén: Kardex, Reposición de stock (desde el 2026-11-20), Stock en almacén (desde el 2026-10-20, el que comparte con Supervisión, Requerimientos y Administración), Equipos (desde el 2026-11-25, para anotar quién tiene cada uno) (EPP, Consumibles, Accesorios y Materia prima salieron del menú el 2026-10-15: se abren desde el tablero de arriba del kardex) | — | Atención, Materiales, Kardex, Dashboard |
 | Logística | Atención de requerimiento, Reposición de stock (desde el 2026-11-20), Gestión de compras, Órdenes de compra, Órdenes de servicio (sin «Compras agrupadas» desde el 2026-10-15: eran las compras por OT) | Adquisiciones, Proveedores, Valorización del almacén (Aprobación de compras se abre por su dirección; el visto de cada OC se ve en Órdenes de compra) | Atención, Gestión, OC, OS |
 | Conductor de Logística | Recojos | — | Recojos, Dashboard |
-| Gerencia | Códigos internos, segundo después del Dashboard; Por aprobar: Cotización, Aprobación de compras, Reporte diario (lo valida), Trabajos sin orden (desde el 2026-10-20) | Desde el 2026-11-25, por área y en el orden del circuito, las demás pantallas que su permiso le deja leer (31, para 37 en todo su menú): Ventas, Requerimientos, Almacén, Logística, Administración, Finanzas (con Adquisiciones, Cuentas por cobrar y Cuentas por pagar, sin registrar cobros ni pagos) y Recursos Humanos (con Tiempos de entrega), y SSOMA (Reportes de seguridad, desde el 2026-11-26, sin anular). Solo le cuentan pendientes y cifras, y van en «Tus módulos», lo que espera su visto y las cinco que ya tenía: Tiempos de entrega y las cuatro de Finanzas | Códigos, Cotizar, Aprobar, Reporte |
-| Supervisor de área | Desde el 2026-10-20, en el orden que pidió DKS: Reporte diario (uno o varios códigos), Planos y etapas (lo que Diseño cargó para su área y las etapas que hace; de cada código, «Materiales y pedidos»), Subcontratos (los de su área, también Maestranza, sin montos ni recibos: inicio, fin y avance), RQ por unidad (desde el 2026-11-20: cada unidad de su área con «Nuevo RQ»), Requerimientos (lo que su área recoge de Almacén: cada RQ con su barra por insumo, para recoger y por llegar), Stock en almacén (lo que hay antes de pedirlo) | — | Reporte, Planos, Subcontratos, RQ (Stock, en «Más») |
+| Gerencia | Códigos internos, segundo después del Dashboard; Por aprobar: Cotización, Aprobación de compras, Reporte diario (lo valida), Trabajos sin orden (desde el 2026-10-20) | Desde el 2026-11-25, por área y en el orden del circuito, las demás pantallas que su permiso le deja leer (32, para 38 en todo su menú): Ventas, Requerimientos, Almacén, Logística, Administración, Finanzas (con Adquisiciones, Cuentas por cobrar y Cuentas por pagar, sin registrar cobros ni pagos) y Recursos Humanos (con Tiempos de entrega), y SSOMA (Reportes de seguridad, desde el 2026-11-26, sin anular), y Calidad (Inspecciones de calidad, desde el 2026-11-26, sin registrar ni anular). Solo le cuentan pendientes y cifras, y van en «Tus módulos», lo que espera su visto y las cinco que ya tenía: Tiempos de entrega y las cuatro de Finanzas | Códigos, Cotizar, Aprobar, Reporte |
+| Supervisor de área | Desde el 2026-10-20, en el orden que pidió DKS: Reporte diario (uno o varios códigos), Planos y etapas (lo que Diseño cargó para su área y las etapas que hace; de cada código, «Materiales y pedidos»), Subcontratos (los de su área, también Maestranza, sin montos ni recibos: inicio, fin y avance), RQ por unidad (desde el 2026-11-20: cada unidad de su área con «Nuevo RQ»), Requerimientos (lo que su área recoge de Almacén: cada RQ con su barra por insumo, para recoger y por llegar), Stock en almacén (lo que hay antes de pedirlo), Observaciones de calidad (desde el 2026-11-26: lo que Calidad le observó a su área, para marcarlo corregido) | — | Reporte, Planos, Subcontratos, RQ (Stock, en «Más») |
 | Supervisor General | Seguimiento por código, Informe semanal de Diseño; Clientes y Unidades (la cotización ya no); Requerimientos y Vehículos; Kardex (los cuatro almacenes, desde su tablero) y Valorización; Gastos del mes, cada bloque con el nombre de su área y en el orden del circuito | — | Seguimiento, RQ, Kardex, Dashboard |
 | Administración | Códigos internos, segundo después del Dashboard (en lectura, desde el 2026-10-19); Administración: Cotización, Órdenes de trabajo, Trabajos sin orden (desde el 2026-10-20), Subcontratos, Gastos del mes, Tipo de cambio; Requerimiento de Administración: Requerimientos, Atención de requerimiento, Órdenes de compra, Stock en almacén (desde el 2026-10-20). Personal y Configuración salieron de su menú y de sus permisos el 2026-10-19: son del administrador del sistema | Evaluación de desempeño, Tardanzas, Observaciones, Vehículos y, al final, Clientes | Cotizar, Órdenes, Subcontratos, RQ |
 | Tesorería | Adquisiciones, Caja diaria, Cuentas por cobrar, Cuentas por pagar, Pagos de servicio, Recibos por honorarios, Planilla diaria. El tipo de cambio salió el 2026-10-20: lo registra Contabilidad | Cotización | Compras, Caja, Por cobrar, Por pagar |
@@ -416,6 +446,7 @@ punto y coma con su nombre delante.
 | Agente de Ventas | Cotización, Clientes, Unidades, Carrocerías | — | Cotizar, Clientes, Unidades, Dashboard |
 | Gerencia Comercial (desde el 2026-11-25) | — | Ventas: Cotización (cada una lleva a su OT), Clientes, Unidades, Órdenes de trabajo | Cotizar, Clientes, Órdenes, Dashboard |
 | Gerencia de Producción (desde el 2026-11-25) | Por validar: Reporte diario (da el visto de Gerencia); Avance: Seguimiento por código y Tiempos de entrega (de RR. HH., en consulta) | — | Reporte, Seguimiento, Entregas, Dashboard |
+| Control de calidad (desde el 2026-11-26) | Inspecciones de calidad | Seguimiento por código, Órdenes de trabajo | Calidad, Seguimiento, Órdenes, Dashboard |
 | SSOMA | Reportes de seguridad (desde el 2026-11-25; las acciones correctivas, las charlas, las inspecciones y el EPP se suman con sus entregas) | — | Seguridad, Dashboard |
 
 Una pantalla nueva no aparece sola en estos menús: se suma al del puesto que la

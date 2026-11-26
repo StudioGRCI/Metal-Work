@@ -612,6 +612,30 @@ export const NAVEGACION = [
       },
     ],
   },
+  // Calidad inspecciona por código interno y etapa (plan «Las demás áreas», A.1,
+  // migración 20261126520000): la lleva Calidad y Gerencia la consulta. La
+  // misma pantalla va otra vez sin permiso para el área que recibe lo
+  // observado: ve solo lo suyo (lo decide la base) y lo marca corregido.
+  {
+    titulo: 'Calidad',
+    items: [
+      {
+        titulo: 'Inspecciones de calidad',
+        ruta: '/calidad',
+        icono: ClipboardCheck,
+        permiso: ['calidad.inspeccionar', 'calidad.ver'],
+        descripcion: 'Cada etapa revisada por código interno, lo no conforme y cómo va su corrección',
+        disponible: true,
+      },
+      {
+        titulo: 'Observaciones de calidad',
+        ruta: '/calidad',
+        icono: ClipboardCheck,
+        descripcion: 'Lo que Calidad observó en el trabajo de tu área, para corregirlo',
+        disponible: true,
+      },
+    ],
+  },
   // El padrón de equipos de la planta (Plan 16). Lo lleva Mantenimiento; Almacén
   // entra a anotar quién tiene cada equipo. Gerencia lo consulta desde su
   // grupo Almacén (2026-11-26).
@@ -839,6 +863,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       },
       // Los reportes de seguridad, en consulta y sin anular (Plan 15).
       { titulo: 'SSOMA', consulta: true, rutas: ['/ssoma'] },
+      // Las inspecciones de calidad, en consulta: no registra ni anula (A.1).
+      { titulo: 'Calidad', consulta: true, rutas: ['/calidad'] },
     ],
     telefono: ['/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios'],
     // Lo que consultaba desde su menú antes del 2026-11-25 sigue en su inicio.
@@ -997,7 +1023,11 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // de Almacén, que consulta para saber qué hay.
   SUPERVISOR: {
     grupos: [
-      { titulo: 'Supervisión', rutas: ['/reportes-diarios', '/planos', '/subcontratos/area', '/requerimientos/unidades', '/requerimientos', '/almacen/stock'] },
+      // Lo que Calidad le observa a su área va al final: llega también por la campana.
+      {
+        titulo: 'Supervisión',
+        rutas: ['/reportes-diarios', '/planos', '/subcontratos/area', '/requerimientos/unidades', '/requerimientos', '/almacen/stock', '/calidad'],
+      },
     ],
     // En el teléfono, RQ abre la lista, que lleva la cifra de lo listo para
     // recoger; «Por unidad» es su primera pestaña.
@@ -1049,6 +1079,13 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   SSOMA: {
     grupos: [{ titulo: 'SSOMA', rutas: ['/ssoma'] }],
     telefono: ['/ssoma', '/'],
+  },
+  // Control de calidad (A.1): lo que inspecciona y lo que espera su revisión
+  // arriba; los códigos internos y las OT, en consulta y sin montos.
+  CALIDAD: {
+    principal: ['/calidad'],
+    grupos: [{ titulo: 'Consultas', consulta: true, rutas: ['/seguimiento', '/ordenes'] }],
+    telefono: ['/calidad', '/seguimiento', '/ordenes', '/'],
   },
 }
 // El líder de Diseño hace el trabajo de Diseño y además revisa el de su equipo
@@ -1253,4 +1290,6 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/almacen/stock', corto: 'Stock' },
   { ruta: '/almacen/reposicion', corto: 'Reposición' },
   { ruta: '/equipos', corto: 'Equipos' },
+  // Al final: a los puestos sin menú propio no les quita ninguna de las cuatro que ya tenían.
+  { ruta: '/calidad', corto: 'Calidad' },
 ]

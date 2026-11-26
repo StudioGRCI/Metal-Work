@@ -38,6 +38,10 @@ export const CLAVES_DEL_ENVIO = [
   'cuenta_caja',
   // El reporte a SSOMA (Plan 15.1): reabrir tras «No llegó la respuesta» no da otro número RI al mismo hecho.
   'reporte_ssoma',
+  // Calidad (A.1): reabrir tras «No llegó la respuesta» no registra dos veces la
+  // misma inspección ni el mismo paso de su observación.
+  'inspeccion_calidad',
+  'paso_calidad',
 ] as const
 
 export type ClaveDelEnvio = (typeof CLAVES_DEL_ENVIO)[number]

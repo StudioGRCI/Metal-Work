@@ -4,27 +4,31 @@ import { menuDe, modulosDelInicio, pestanasDe, rutasDeTrabajo } from './navegaci
 
 // Los 32 permisos de Gerencia en producción el 2026-11-25 (leídos de `roles_permisos`), más
 // `rrhh.tiempos_entrega`, que le da la migración 20261125100000 (Semáforo de entregas, #186), y
-// `equipos.ver`, que le da la 20261125160000 (padrón de equipos, #191).
+// `equipos.ver`, que le da la 20261125160000 (padrón de equipos, #191), `ssoma.ver`, que le da la
+// 20261125150100 (SSOMA, #192), y `calidad.ver`, que le da la 20261126520000 (Calidad, A.1).
 const GERENCIA = [
-  'adquisiciones.ver', 'almacen.ver', 'asistencia.ver', 'auditoria.ver', 'clientes.ver', 'codigos_internos.cerrar',
+  'adquisiciones.ver', 'almacen.ver', 'asistencia.ver', 'auditoria.ver', 'calidad.ver', 'clientes.ver', 'codigos_internos.cerrar',
   'codigos_internos.ver', 'compras.configurar_aprobacion', 'compras.ver', 'costos.ver', 'cotizaciones.revisar',
   'cotizaciones.ver_aprobadas', 'cotizaciones.ver_pdf_comercial', 'diseno.revisar', 'equipos.ver', 'ordenes.anular', 'ordenes.aprobar',
   'ordenes.listar', 'ordenes.ver', 'planilla_diaria.ver', 'produccion.aprobar_sin_orden', 'produccion.cualquier_area',
   'produccion.ver', 'proveedores.editar', 'proveedores.ver', 'proveedores.ver_cuentas', 'reporte_diario.validar_gerencia',
-  'reporte_diario.ver', 'requerimientos.ver', 'rrhh.tiempos_entrega', 'subcontratos.ver', 'tesoreria.liberar', 'tesoreria.ver_documentos',
-  'vehiculos.ver',
+  'reporte_diario.ver', 'requerimientos.ver', 'rrhh.tiempos_entrega', 'ssoma.ver', 'subcontratos.ver', 'tesoreria.liberar',
+  'tesoreria.ver_documentos', 'vehiculos.ver',
 ]
 
 const rutas = (grupos) => grupos.flatMap((g) => g.items.map((i) => i.ruta))
 
-test('Gerencia ve por área las 36 pantallas que su permiso le abre, cada una una vez', () => {
+test('Gerencia ve por área las 38 pantallas que su permiso le abre, cada una una vez', () => {
   const grupos = menuDe(GERENCIA, false, 'GERENTE')
   assert.deepEqual(grupos.map((g) => g.titulo), [
     'Principal', 'Por aprobar', 'Ventas', 'Requerimientos', 'Almacén', 'Logística', 'Administración', 'Finanzas', 'Recursos Humanos',
+    'SSOMA', 'Calidad',
   ])
   const todas = rutas(grupos)
-  assert.equal(todas.length, 36)
-  assert.equal(new Set(todas).size, 36)
+  assert.equal(todas.length, 38)
+  assert.equal(new Set(todas).size, 38)
+  // Calidad la consulta con su permiso: la entrada del área (sin permiso) no la reemplaza.
+  assert.equal(grupos.find((g) => g.titulo === 'Calidad')?.items[0]?.titulo, 'Inspecciones de calidad')
   // Las cuatro que el catálogo pide con un permiso de registro le abren con el de lectura.
   assert.ok(todas.includes('/equipos'))
   for (const r of ['/requerimientos/atencion', '/compras/ordenes', '/compras/servicios', '/contabilidad/facturacion']) {
@@ -89,6 +93,22 @@ test('en Gerencia, lo que espera su visto va siempre abierto y cada área nace p
     [
       ['Principal', 'fijo'], ['Por aprobar', 'fijo'], ['Ventas', 'plegado'], ['Requerimientos', 'plegado'], ['Almacén', 'plegado'],
       ['Logística', 'plegado'], ['Administración', 'plegado'], ['Finanzas', 'plegado'], ['Recursos Humanos', 'plegado'],
+      ['SSOMA', 'plegado'], ['Calidad', 'plegado'],
     ],
   )
+})
+
+test('Calidad lleva sus inspecciones arriba y consulta los códigos y las OT sin montos', () => {
+  const permisos = ['ordenes.listar', 'ordenes.ver', 'produccion.ver', 'calidad.inspeccionar', 'codigos_internos.seguimiento']
+  const grupos = menuDe(permisos, false, 'CALIDAD')
+  assert.deepEqual(rutas(grupos), ['/', '/calidad', '/seguimiento', '/ordenes', '/ssoma'])
+  assert.equal(grupos[0].items[1].titulo, 'Inspecciones de calidad')
+  assert.deepEqual(pestanasDe(permisos, false, 'CALIDAD').map((p) => p.ruta), ['/calidad', '/seguimiento', '/ordenes', '/'])
+  assert.ok(!rutasDeTrabajo(permisos, false, 'CALIDAD').has('/seguimiento'))
+})
+
+test('el supervisor ve lo que Calidad le observa a su área, y Diseño no', () => {
+  const supervisor = rutas(menuDe(['reporte_diario.ver'], false, 'SUPERVISOR'))
+  assert.ok(supervisor.includes('/calidad'))
+  assert.ok(!rutas(menuDe(['diseno.codigos'], false, 'DISENO')).includes('/calidad'))
 })
