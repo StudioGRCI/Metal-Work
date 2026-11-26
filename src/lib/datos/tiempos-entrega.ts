@@ -311,6 +311,20 @@ export async function etapasAbiertasDeMiArea(): Promise<EtapaAbiertaDelArea[]> {
 }
 
 /**
+ * Los códigos con una etapa abierta del área de quien mira cuya única OT
+ * abierta está pausada, según el tablero de entregas
+ * (`codigos_pausados_de_mi_area`, migración 20261126336000). «Sin reporte de
+ * hoy» no se los pide (DKS, 2026-11-26); su tarjeta sigue con el plazo del
+ * tablero.
+ */
+export async function codigosPausadosDeMiArea(): Promise<Set<string>> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('codigos_pausados_de_mi_area')
+  if (error) throw new Error(`No se pudieron leer los códigos pausados de tu área: ${error.message}`)
+  return new Set((data ?? []).flatMap((c) => (c.codigo ? [c.codigo] : [])))
+}
+
+/**
  * La última revisión diaria de avisos (migración 20261126315000): el día que
  * corrió y a qué hora terminó. Vacía si todavía no corrió nunca. Así el
  * tablero no promete avisos que no salen.

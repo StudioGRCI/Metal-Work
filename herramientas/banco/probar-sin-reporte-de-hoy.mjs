@@ -8,13 +8,14 @@
  *   1. Arma en el banco unidades con etapas: de Maestranza, una vencida y
  *      sin reporte, una ya reportada hoy, una que empieza en tres días, una
  *      con solo la fecha comprometida (vencida, sin «Empezó») y una que
- *      empieza hoy, sin reporte, que se reporta a media prueba; y una de
- *      Acabados en marcha.
+ *      empieza hoy, sin reporte, que se reporta a media prueba, y una en
+ *      marcha cuya única OT está pausada; y una de Acabados en marcha.
  *   2. sup.mtz ve en la bandeja la vencida, la de solo fecha comprometida y la
  *      que empieza hoy, la más atrasada arriba, con el plazo del tablero de
  *      tiempos de entrega en días hábiles (el que da la base); no la
- *      reportada, ni la que no empieza, ni la de Acabados. El código lleva a
- *      su tarjeta.
+ *      reportada, ni la que no empieza, ni la pausada (DKS, 2026-11-26), ni la
+ *      de Acabados. El código lleva a su tarjeta, y la tarjeta (también la de
+ *      la pausada) dice el plazo del tablero.
  *   3. «Subir el reporte» abre /reportes-diarios/nuevo con el código puesto.
  *   4. Reportada la quinta, sale de la bandeja; con búsqueda o en otra pestaña
  *      la bandeja no está.
@@ -95,6 +96,8 @@ const UNIDADES = [
   { codigo: 'QA-ETAPA-LUEGO', placa: 'Q1A-135', de: mtz, etapa: 'Puertas (prueba 1.3)', inicio_plan: 0, fin_plan: 6, reportada: false },
   // Como las carga Diseño muchas veces: solo la fecha comprometida, ya vencida, y nadie marcó «Empezó».
   { codigo: 'QA-ETAPA-SOLOFIN', placa: 'Q1A-136', de: mtz, etapa: 'Ensamblaje (prueba 1.3)', fin_plan: -3, reportada: false },
+  // En marcha y sin reporte, pero su única OT está pausada: no pide reporte (DKS, 2026-11-26).
+  { codigo: 'QA-ETAPA-PAUSADA', placa: 'Q1A-137', de: mtz, etapa: 'Chasis (prueba 1.3)', inicio_real: -2, fin_plan: 3, reportada: false, pausada: true },
 ]
 const dia = (n) => (n === undefined ? null : n)
 for (const u of UNIDADES) {
@@ -126,6 +129,18 @@ for (const u of UNIDADES) {
     [u.codigo, u.de.id],
   )
   if (u.reportada) await reportar(u)
+  if (u.pausada) {
+    await armazon(
+      `insert into public.ordenes_trabajo (numero, cliente_id, unidad_id, sede_id, descripcion, estado, motivo_pausa, abierta_en_taller, fecha_entrega_comprometida)
+       select 'QA-PAUSADA-1', null, un.id, (select id from public.sedes order by creado_en limit 1), 'Prueba 1.3: OT pausada', 'PAUSADA',
+              'Espera repuestos (prueba 1.3)', true, $2::date + 10
+         from public.unidades un
+        where un.codigo_interno = $1
+          and not exists (select 1 from public.ordenes_trabajo o where o.numero = 'QA-PAUSADA-1')`,
+      [u.codigo, hoy],
+    )
+    await armazon(`update public.ordenes_trabajo set estado = 'PAUSADA', motivo_pausa = 'Espera repuestos (prueba 1.3)' where numero = 'QA-PAUSADA-1'`)
+  }
 }
 async function reportar(u) {
   await armazon(
@@ -135,6 +150,12 @@ async function reportar(u) {
   )
 }
 const de = (codigo) => UNIDADES.find((u) => u.codigo === codigo)
+
+// La pausada está en el tablero con su OT pausada y una etapa en marcha: lo que la saca es la pausa.
+const [pausada] = await consulta(
+  `select ot_estado, ots_abiertas from public.tiempos_de_entrega_codigos_calculado('QA-ETAPA-PAUSADA')`,
+)
+comprobar(pausada?.ot_estado === 'PAUSADA' && pausada?.ots_abiertas === 1, `la base da la pausada en el tablero con su única OT pausada (${JSON.stringify(pausada)})`)
 
 // La base, como la lee la pantalla: el último reporte de cada etapa (`ultimo_reporte`).
 const ultimos = await consulta(
@@ -231,7 +252,7 @@ for (const ancho of [390, 1440]) {
     codigos.join(',') === esperados.join(','),
     `${ancho}: salen las que piden reporte, la más atrasada arriba (${codigos.join(', ')}; se esperaba ${esperados.join(', ')})`,
   )
-  for (const fuera of ['QA-ETAPA-REPORTADA', 'QA-ETAPA-FUTURA', 'QA-ETAPA-ACABADOS'])
+  for (const fuera of ['QA-ETAPA-REPORTADA', 'QA-ETAPA-FUTURA', 'QA-ETAPA-ACABADOS', 'QA-ETAPA-PAUSADA'])
     comprobar(!codigos.includes(fuera), `${ancho}: no sale ${fuera}`)
   // Va antes de la búsqueda: es lo que espera al supervisor.
   const antes = await pagina.evaluate(() => {
@@ -247,9 +268,10 @@ for (const ancho of [390, 1440]) {
   const vencida = pagina.locator('[data-codigo-sin-reporte="QA-ETAPA-VENCIDA"]')
   const plazo = (await vencida.textContent()) ?? ''
   comprobar(plazo.includes(plazoDe('QA-ETAPA-VENCIDA')), `${ancho}: la vencida dice el plazo del tablero: «${plazoDe('QA-ETAPA-VENCIDA')}»`)
-  for (const c of ['QA-ETAPA-VENCIDA', 'QA-ETAPA-SOLOFIN', 'QA-ETAPA-LUEGO']) {
+  // La pausada no pide reporte, pero su tarjeta sigue con el plazo del tablero.
+  for (const c of ['QA-ETAPA-VENCIDA', 'QA-ETAPA-SOLOFIN', 'QA-ETAPA-LUEGO', 'QA-ETAPA-PAUSADA']) {
     const enLaTarjeta = (await pagina.locator(`[data-etapa="${de(c).etapa}"]`).first().textContent()) ?? ''
-    comprobar(enLaTarjeta.includes(plazoDe(c)), `${ancho}: la tarjeta de ${c} dice el mismo plazo que la bandeja: «${plazoDe(c)}»`)
+    comprobar(enLaTarjeta.includes(plazoDe(c)), `${ancho}: la tarjeta de ${c} dice el plazo del tablero: «${plazoDe(c)}» (dice «${enLaTarjeta.replace(/\s+/g, ' ').slice(0, 160)}»)`)
   }
   comprobar(plazo.includes(`Etapa: ${de('QA-ETAPA-VENCIDA').etapa}`) && !plazo.includes('sin marcar'), `${ancho}: dice qué etapa está en marcha`)
   comprobar((await vencida.locator('a[href="/planos?q=QA-ETAPA-VENCIDA"]').count()) === 1, `${ancho}: el código lleva a su tarjeta, con las fechas de sus etapas`)
