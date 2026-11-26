@@ -45,6 +45,8 @@ const plantillaId = await primero(
 const evaluacionId = await primero('select id from public.diseno_evaluaciones order by creado_en desc limit 1')
 // La tabla nace en la migración 20261015221000: un banco anterior no la tiene.
 const subcontratoId = await primero('select id from public.subcontratos order by creado_en desc limit 1').catch(() => null)
+// SSOMA nace en la migración 20261125150100.
+const reporteSsomaId = await primero('select id from public.ssoma_reportes order by creado_en desc limit 1').catch(() => null)
 
 const RUTAS = [
   ['tablero', '/'],
@@ -65,6 +67,7 @@ const RUTAS = [
   // La cotización pasó a PDF: las pantallas de cotización armada y su tabla
   // ya no existen, y el recorrido se caía buscándolas.
   ['cotizacion-pdf', '/cotizaciones/pdf'],
+  ['por-decidir', '/por-decidir'],
   ['avance-taller', '/avance'],
   ['avance-abrir-orden', '/avance/abrir-orden'],
   ordenId && ['avance-unidad', `/avance/${ordenId}`],
@@ -102,6 +105,9 @@ const RUTAS = [
   ['subcontratos-del-area', '/subcontratos/area'],
   ['recibos-por-honorarios', '/tesoreria/recibos-por-honorarios'],
   ['caja-diaria', '/tesoreria/caja-diaria'],
+  ['ssoma', '/ssoma'],
+  ['ssoma-anulados', '/ssoma?vista=anulados'],
+  reporteSsomaId && ['ssoma-reporte', `/ssoma/${reporteSsomaId}`],
   ['sin-permiso', '/sin-permiso'],
 ].filter(Boolean)
 

@@ -44,6 +44,7 @@ export function ListaEtapas({
   etapas,
   hoy,
   limite,
+  responsables,
   acciones,
   conPlanosConPeso = false,
 }: {
@@ -51,6 +52,8 @@ export function ListaEtapas({
   hoy: string
   /** El último día que todavía es «por vencer», de la base (`limitePorVencer`). */
   limite?: string | null
+  /** Quién lleva cada etapa, por su id: lo asigna Recursos Humanos (`responsablesDeEtapas`). */
+  responsables?: ReadonlyMap<string, { nombre: string }>
   acciones?: (etapa: EtapaDeCodigo, lugar: LugarDeEtapa) => ReactNode
   /** El código tiene planos con % de la unidad: su avance no entra al de la etapa, y se dice. */
   conPlanosConPeso?: boolean
@@ -65,6 +68,7 @@ export function ListaEtapas({
             numero={`${i + 1}.`}
             hoy={hoy}
             limite={limite}
+            responsable={responsables?.get(etapa.id)?.nombre ?? null}
             conPlanosConPeso={conPlanosConPeso}
             acciones={acciones?.(etapa, { primera: i === 0, ultima: i === grupos.length - 1, subetapas })}
           />
@@ -77,6 +81,7 @@ export function ListaEtapas({
                     numero={`${i + 1}.${j + 1}`}
                     hoy={hoy}
                     limite={limite}
+                    responsable={responsables?.get(s.id)?.nombre ?? null}
                     conPlanosConPeso={conPlanosConPeso}
                     sub
                     acciones={acciones?.(s, { primera: j === 0, ultima: j === subetapas.length - 1, subetapas: [] })}
@@ -96,6 +101,7 @@ function FilaEtapa({
   numero,
   hoy,
   limite,
+  responsable,
   conPlanosConPeso,
   sub = false,
   acciones,
@@ -104,6 +110,7 @@ function FilaEtapa({
   numero: string
   hoy: string
   limite?: string | null
+  responsable: string | null
   conPlanosConPeso: boolean
   sub?: boolean
   acciones?: ReactNode
@@ -156,6 +163,12 @@ function FilaEtapa({
           </div>
         )}
         {e.nota && <p className="text-xs text-texto">Nota: {e.nota}</p>}
+        {responsable && (
+          <p className="text-xs" data-responsable={responsable}>
+            <span className="text-texto-suave">La lleva: </span>
+            <span className="font-medium text-texto">{responsable}</span>
+          </p>
+        )}
       </div>
       {acciones && <div className="flex flex-wrap items-center gap-1">{acciones}</div>}
     </div>

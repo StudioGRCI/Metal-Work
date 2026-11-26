@@ -2,7 +2,7 @@
 
 import { ChevronDown } from 'lucide-react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
 import { cookieDelMenu, menuDe, rutaActiva, pendientesEnPalabras, type GrupoNavegacion } from '@/lib/navegacion'
@@ -85,6 +85,7 @@ export function NavegacionLista({
   plegado?: string
 }) {
   const ruta = usePathname()
+  const busqueda = useSearchParams()
   const prefijo = useId()
 
   // El menú de su puesto, el mismo que arma la barra de abajo del teléfono.
@@ -94,6 +95,7 @@ export function NavegacionLista({
   const activa = rutaActiva(
     ruta,
     grupos.flatMap((g) => g.items).map((i) => i.ruta),
+    busqueda,
   )
 
   const crudo = useSyncExternalStore(suscribir, () => leer(rolCodigo), () => plegado)

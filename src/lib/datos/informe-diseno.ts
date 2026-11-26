@@ -82,3 +82,15 @@ export async function datosInformeDiseno(inicio: string) {
 }
 
 export type DatosInformeDiseno = Awaited<ReturnType<typeof datosInformeDiseno>>
+
+/**
+ * Las semanas de quien mira: las que empezó o en las que anotó una actividad
+ * (`informes_de_diseno_propios`, migración 20261126300000), de la más reciente
+ * a la más antigua. El informe es uno por semana para toda el área.
+ */
+export async function semanasPropiasDiseno() {
+  const db = await createClient()
+  const { data, error } = await db.rpc('informes_de_diseno_propios')
+  if (error) throw new Error('No se pudieron cargar tus semanas del informe.')
+  return data ?? []
+}

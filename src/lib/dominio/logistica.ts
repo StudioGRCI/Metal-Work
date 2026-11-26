@@ -21,6 +21,9 @@ export const RECOJO_COMPRA: Record<string, Def> = {
   DEJADO: { etiqueta: 'En almacén', tono: 'exito', descripcion: 'El conductor la dejó; Almacén valida el ingreso.' },
 }
 
+/** El intento que no se pudo: la compra volvió a «Por programar» de Logística. */
+export const RECOJO_NO_LOGRADO: Def = { etiqueta: 'No se pudo · volvió a Logística', tono: 'aviso', descripcion: 'El conductor avisó que no se pudo recoger, con su motivo.' }
+
 /** El estado del servicio. La aprobación de Gerencia va aparte, en `APROBACION_COMPRA`. */
 export const ESTADO_SERVICIO: Record<string, Def> = {
   EMITIDA: { etiqueta: 'Emitida', tono: 'neutro', descripcion: 'Emitida; se inicia cuando Gerencia la aprueba.' },
@@ -219,6 +222,18 @@ export function telefonoDiceMas(texto: string | null | undefined, numeros: Telef
   return soloCifras(texto).length !== numeros.reduce((suma, t) => suma + soloCifras(t.texto).length, 0)
 }
 
+/**
+ * Las fotos que el conductor suma al marcar «Ya la recogí»: la guía firmada o el
+ * bulto. Opcionales, hasta tres y de hasta 5 MB, como exige la base (migración
+ * 20261125500000). Van en `{cuenta}/{compra}/` del bucket privado.
+ */
+export const BUCKET_FOTOS_RECOJO = 'fotos-recojo'
+export const MAXIMO_FOTOS_RECOJO = 3
+export const MAXIMO_MB_FOTO_RECOJO = 5
+
+/** «No se pudo recoger»: el motivo que lee Logística para volver a programarla. Lo mismo exige la base. */
+export const MOTIVO_NO_LOGRADO = { minimo: 10, maximo: 500 }
+
 /** La dirección del proveedor en el mapa del teléfono: abre la aplicación de mapas si la hay, o el navegador. */
 export function enlaceAlMapa(direccion: string) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccion)}`
@@ -228,10 +243,22 @@ export function enlaceAlMapa(direccion: string) {
  * Lo que el conductor recogió y dejó en un día, en el orden en que pasó. Sale
  * de las horas que ya guarda cada compra; no hay otra tabla.
  */
-export type PasoDelDia = { compra: string; nombre: string; proveedor: string; paso: 'RECOGIDO' | 'DEJADO'; en: string }
+export type PasoDelDia = { compra: string; nombre: string; proveedor: string; paso: 'RECOGIDO' | 'DEJADO' | 'NO_LOGRADO'; en: string }
 
+/**
+ * También el último «No se pudo recoger» de hoy (`no_logrado`): la compra sale
+ * de la lista del conductor y, sin esta línea, no quedaba en ningún lado de su
+ * pantalla que lo avisó.
+ */
 export function pasosDelDia(
-  compras: { id: string; nombre: string; proveedor: string; recogido_en: string | null; dejado_en: string | null }[],
+  compras: {
+    id: string
+    nombre: string
+    proveedor: string
+    recogido_en: string | null
+    dejado_en: string | null
+    no_logrado?: { registrado_en: string } | null
+  }[],
   dia: string,
   diaDe: (instante: string) => string,
 ): PasoDelDia[] {
@@ -239,6 +266,29 @@ export function pasosDelDia(
   for (const c of compras) {
     if (c.recogido_en && diaDe(c.recogido_en) === dia) pasos.push({ compra: c.id, nombre: c.nombre, proveedor: c.proveedor, paso: 'RECOGIDO', en: c.recogido_en })
     if (c.dejado_en && diaDe(c.dejado_en) === dia) pasos.push({ compra: c.id, nombre: c.nombre, proveedor: c.proveedor, paso: 'DEJADO', en: c.dejado_en })
+    const intento = c.no_logrado?.registrado_en
+    if (intento && diaDe(intento) === dia) pasos.push({ compra: c.id, nombre: c.nombre, proveedor: c.proveedor, paso: 'NO_LOGRADO', en: intento })
   }
   return pasos.sort((a, b) => new Date(a.en).getTime() - new Date(b.en).getTime())
+}
+
+/**
+ * Para qué es una compra por aprobar: el código y el RQ de cada insumo, la OT y
+ * su unidad, o el almacén en la compra directa. Lo dicen igual Aprobación de
+ * compras y «Por decidir».
+ */
+export function destinoDeCompra(c: {
+  tipo: 'OC' | 'OS'
+  origen: string
+  requerimientos: string[]
+  codigos: string[]
+  codigo_interno: string | null
+  ordenes: string[]
+  unidades: string[]
+}): string {
+  // La que compra insumos de RQ va al código interno de cada uno.
+  if (c.requerimientos.length > 0) return [c.codigos.join(', '), c.requerimientos.join(', ')].filter(Boolean).join(' · ')
+  if (c.origen === 'DIRECTA') return 'Para el almacén'
+  const partes = [c.codigo_interno, c.ordenes.length ? `OT ${c.ordenes.join(', ')}` : null, ...c.unidades].filter(Boolean)
+  return partes.length ? partes.join(' · ') : c.tipo === 'OS' ? 'Sin OT' : 'OT —'
 }

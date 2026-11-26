@@ -58,9 +58,9 @@ export function minutosEntre(ingreso: string | null | undefined, salida: string 
   return Number.isFinite(total) && total > 0 ? total : null
 }
 
-/** El mes de la URL es válido si tiene la forma `2026-10` y un mes de 01 a 12. */
+/** El mes de la URL es válido si tiene la forma `2026-10`, un mes de 01 a 12 y un año desde el 2000 (el año 0 tumbaba la consulta). */
 export function mesValido(valor: unknown): valor is string {
-  return typeof valor === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(valor)
+  return typeof valor === 'string' && /^(2\d{3})-(0[1-9]|1[0-2])$/.test(valor)
 }
 
 /** La fecha de la URL es válida si tiene la forma `2026-10-13`. */

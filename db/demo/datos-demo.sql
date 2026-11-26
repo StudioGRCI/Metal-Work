@@ -436,6 +436,56 @@ begin
 end;
 $$;
 
+-- ------------------------------------------------------------------- SSOMA
+-- Tres reportes de seguridad (Plan 15, migración 20261125150100), cada uno con
+-- la sesión de quien lo reporta: la función da el número RI y anota quién fue.
+-- Sin fotos, porque el archivo vive en Storage. El primero se hizo hace tres
+-- días, para que la lista muestre desde cuándo espera.
+do $$
+declare
+  v_quien uuid;
+  v_id    uuid;
+begin
+  if exists (select 1 from public.ssoma_reportes) then
+    return;
+  end if;
+
+  select u.id into v_quien from public.usuarios u where u.correo = 'supervisor@metalworkperusac.com' and u.activo;
+  if v_quien is not null then
+    perform set_config('request.jwt.claim.sub', v_quien::text, true);
+    v_id := gen_random_uuid();
+    perform public.ssoma_reportar(v_id, 'INCIDENTE', (select id from public.areas where codigo = 'PRD'),
+      'Nave 2, zona de soldadura',
+      'Se soltó la manguera del compresor al cambiar de herramienta y golpeó la mesa de trabajo. No había nadie al lado. Se cerró la llave y se retiró la manguera.',
+      now() - interval '3 days 2 hours', null, null, '[]'::jsonb);
+    -- Solo en la demostración: la fecha del reporte se corre a mano.
+    perform set_config('session_replication_role', 'replica', true);
+    update public.ssoma_reportes set creado_en = now() - interval '3 days' where id = v_id;
+    perform set_config('session_replication_role', 'origin', true);
+  end if;
+
+  select u.id into v_quien from public.usuarios u where u.correo = 'almacen@metalworkperusac.com' and u.activo;
+  if v_quien is not null then
+    perform set_config('request.jwt.claim.sub', v_quien::text, true);
+    perform public.ssoma_reportar(gen_random_uuid(), 'CONDICION_INSEGURA', (select id from public.areas where codigo = 'ALM'),
+      'Pasillo de planchas, junto al estante 3',
+      'Hay aceite derramado en el piso desde la mañana y las planchas apiladas pasan la altura del estante. Se puso un cono, falta limpiar y reacomodar.',
+      now() - interval '1 day 4 hours', null, null, '[]'::jsonb);
+  end if;
+
+  select u.id into v_quien from public.usuarios u where u.correo = 'supervisor.maestranza@metalworkperusac.com' and u.activo;
+  if v_quien is not null then
+    perform set_config('request.jwt.claim.sub', v_quien::text, true);
+    perform public.ssoma_reportar(gen_random_uuid(), 'ACCIDENTE', (select id from public.areas where codigo = 'MTZ'),
+      'Plegadora hidráulica',
+      'Al retirar una plancha recién cortada, la rebaba alcanzó al operario. Tenía guantes de badana, no los de corte. Se le llevó al tópico y se paró la plegadora hasta revisar las planchas.',
+      now() - interval '5 hours', true, null, '[]'::jsonb);
+  end if;
+
+  perform set_config('request.jwt.claim.sub', '', true);
+end;
+$$;
+
 -- -----------------------------------------------------------------------------
 -- El padrón de equipos de la planta (Plan 16). Códigos con la forma de la hoja
 -- de máquinas del taller y personas inventadas: unos operativos, uno con
