@@ -24,7 +24,7 @@ import { chromium } from 'playwright-core'
 
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
-const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
+const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1243/chrome-linux64/chrome'
 const CAPTURAS = process.env.CAPTURAS ?? '/tmp/banco-capturas'
 const CUENTAS = {
   rrhh: 'rrhh.local@metalwork.test',
@@ -166,7 +166,8 @@ const [persona] = await consulta(
 comprobar(Boolean(persona), `la planilla diaria lleva a Juan: ${JSON.stringify(persona)}`)
 
 // ------------------------------------------------ el navegador
-const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
+// Se lanza dentro del `try`: si no arranca, el `finally` igual deja anulado lo que se sembró.
+let navegador = null
 
 async function entrar(correo, viewport) {
   const contexto = await navegador.newContext({ viewport, deviceScaleFactor: 2, ...(viewport.width < 500 ? { isMobile: true, hasTouch: true } : {}) })
@@ -186,6 +187,7 @@ const texto = async (l) => limpio(await l.first().innerText({ timeout: 5000 }).c
 const cuenta = (pagina, parte) => pagina.locator(`[data-linea-de-tiempo] [data-suceso="${parte}"]`).count()
 
 try {
+  navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
   // ---------------------------------------------- 1. RR. HH., la hoja de Juan
   for (const viewport of [
     { width: 1440, height: 900 },
@@ -208,7 +210,9 @@ try {
       comprobar(cifras.includes('Tardanzas 3') && cifras.includes('1 h 07 min'), `las cifras de tardanzas: «${cifras.slice(0, 160)}»`)
       comprobar(cifras.includes('se descuenta 5 % · S/ 120.00'), 'RR. HH. ve el descuento del mes en soles (5 % de S/ 2,400)')
       comprobar(cifras.includes('1 h por justificar'), 'los permisos dicen lo que falta justificar')
-      comprobar(cifras.includes(`Pagado S/ ${Number(persona.total).toLocaleString('en-US', { minimumFractionDigits: 2 })}`), `lo pagado cuadra con la planilla diaria (${persona.total})`)
+      // Tesorería todavía no la pagó: no es «Pagado», es «por pagar».
+      const total = Number(persona.total).toLocaleString('en-US', { minimumFractionDigits: 2 })
+      comprobar(cifras.includes('Pagado S/ 0.00') && cifras.includes(`S/ ${total} por pagar`), `lo que falta pagar no cuenta como pagado (${persona.total}): «${cifras.slice(-120)}»`)
       const pago = await texto(pagina.locator('[data-suceso="pagos"]'))
       comprobar(pago.includes(persona.numero) && pago.includes('Por pagar') && pago.includes('16 h'), `el renglón del pago: «${pago}»`)
       const permiso = await texto(pagina.locator('[data-suceso="permisos"]', { hasText: 'Cita médica' }))
@@ -279,24 +283,26 @@ try {
     comprobar(pagina.url().includes('/sin-permiso') || (await pagina.locator('[data-hoja-persona]').count()) === 0, `almacén no abre la hoja (${pagina.url()})`)
     await contexto.close()
   }
+} catch (e) {
+  fallas.push(`la prueba se cortó: ${e?.message ?? e}`)
 } finally {
-  await navegador.close()
+  await navegador?.close()
   if (planillaDiaria) {
     await comoPuesto(CUENTAS.rrhh, `select public.anular_planilla_diaria($1, 'Prueba del banco: se deja anulada al terminar')`, [planillaDiaria]).catch((e) =>
       fallas.push(`no se pudo anular la planilla diaria: ${e}`),
     )
   }
   for (const p of await consulta(`select id from oficina_pagos where trabajador_id = $1 and anulado_en is null`, [lucia.id])) {
-    await comoPuesto(CUENTAS.rrhh, `select public.rrhh_anular_pago_oficina($1, 'Prueba del banco')`, [p.id]).catch(() => {})
+    await comoPuesto(CUENTAS.rrhh, `select public.rrhh_anular_pago_oficina($1, 'Prueba del banco')`, [p.id]).catch((e) => fallas.push(`no se pudo deshacer lo sembrado: ${e?.message ?? e}`))
   }
   for (const p of await consulta(`select id from permisos_personal where trabajador_id = $1 and anulado_en is null`, [juan.id])) {
-    await comoPuesto(CUENTAS.rrhh, `select public.rrhh_anular_permiso($1, 'Prueba del banco')`, [p.id]).catch(() => {})
+    await comoPuesto(CUENTAS.rrhh, `select public.rrhh_anular_permiso($1, 'Prueba del banco')`, [p.id]).catch((e) => fallas.push(`no se pudo deshacer lo sembrado: ${e?.message ?? e}`))
   }
   for (const a of await consulta(`select id from asistencias where trabajador_id = $1 and anulado_en is null`, [juan.id])) {
-    await comoPuesto(CUENTAS.rrhh, `select public.anular_asistencia($1, 'Prueba del banco')`, [a.id]).catch(() => {})
+    await comoPuesto(CUENTAS.rrhh, `select public.anular_asistencia($1, 'Prueba del banco')`, [a.id]).catch((e) => fallas.push(`no se pudo deshacer lo sembrado: ${e?.message ?? e}`))
   }
   for (const t of [juan, lucia]) {
-    await comoPuesto(CUENTAS.rrhh, `select public.rrhh_dar_de_baja_trabajador($1, $2::date)`, [t.id, hoy]).catch(() => {})
+    await comoPuesto(CUENTAS.rrhh, `select public.rrhh_dar_de_baja_trabajador($1, $2::date)`, [t.id, hoy]).catch((e) => fallas.push(`no se pudo deshacer lo sembrado: ${e?.message ?? e}`))
   }
   await base.end()
 }

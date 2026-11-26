@@ -65,20 +65,21 @@ export default async function PaginaHojaDeLaPersona({ params, searchParams }: Pa
     tardanzas: true, // la misma puerta de la página: `rrhh.personal` o `asistencia.ver`, como Tardanzas
     permisos: puede(perfil, ['rrhh.permisos', 'asistencia.ver']),
     observaciones: true, // como Observaciones
-    pagos: llevaElPersonal, // como Pagos de la oficina; la planilla diaria la arma RR. HH.
+    pagos: llevaElPersonal, // como Pagos de la oficina
   }
+  // La planilla diaria, además, con el permiso de su pantalla y de su política (`puede_ver_planilla_diaria`).
+  const veDiarias = llevaElPersonal && puede(perfil, 'planilla_diaria.preparar')
   const veSueldo = puede(perfil, ['rrhh.personal', 'planilla_diaria.preparar'])
 
-  const persona = await trabajadorPorId(id, { conDni: llevaElPersonal })
-  if (!persona) notFound()
-
-  const [marcas, resumen, permisos, observaciones, pagos] = await Promise.all([
+  const [persona, marcas, resumen, permisos, observaciones, pagos] = await Promise.all([
+    trabajadorPorId(id, { conDni: llevaElPersonal }),
     tardanzasDeLaPersona(id, mes),
     resumenTardanzas(mes).then((r) => r.find((x) => x.trabajador.id === id) ?? null),
     ve.permisos ? listarPermisos(mes).then((l) => l.filter((p) => p.trabajador_id === id)) : Promise.resolve([] as Permiso[]),
     listarObservaciones({ trabajadorId: id, mes }),
-    ve.pagos ? pagosDeLaPersona(id, mes) : Promise.resolve([] as PagoDeLaHoja[]),
+    ve.pagos ? pagosDeLaPersona(id, mes, { diarias: veDiarias }) : Promise.resolve([] as PagoDeLaHoja[]),
   ])
+  if (!persona) notFound()
 
   const sucesos: Suceso[] = [
     ...marcas.tardanzas.map((t) => ({ parte: 'tardanzas' as const, fecha: t.fecha, orden: `1${t.hora}`, tardanza: t })),
@@ -101,7 +102,11 @@ export default async function PaginaHojaDeLaPersona({ params, searchParams }: Pa
   const horasPermiso = vigentes.permisos.reduce((n, p) => n + p.horas, 0)
   const porJustificar = vigentes.permisos.reduce((n, p) => n + p.por_justificar, 0)
   const amonestaciones = vigentes.observaciones.filter((o) => o.tipo !== 'OBSERVACION').length
-  const pagado = vigentes.pagos.reduce((n, p) => n + (p.clase === 'OFICINA' ? p.monto : p.total), 0)
+  // Pagado es lo que ya salió: la planilla diaria cuando Tesorería la pagó; el pago de la oficina, en el mes
+  // en que termina su tramo (si pasa de un mes a otro, no se cuenta dos veces).
+  const yaPagados = vigentes.pagos.filter((p) => (p.clase === 'OFICINA' ? p.hasta.slice(0, 7) === mes : p.pagado_el !== null))
+  const pagado = yaPagados.reduce((n, p) => n + (p.clase === 'OFICINA' ? p.monto : p.total), 0)
+  const porPagar = vigentes.pagos.reduce((n, p) => n + (p.clase === 'PLANILLA_DIARIA' && p.pagado_el === null ? p.total : 0), 0)
 
   const enlace = (cambios: { mes?: string; ver?: Parte | null }) => {
     const m = cambios.mes ?? mes
@@ -124,8 +129,8 @@ export default async function PaginaHojaDeLaPersona({ params, searchParams }: Pa
           .join(' · ')}
         ayuda={
           llevaElPersonal
-            ? 'Todo lo de la persona en un mes, día por día: sus tardanzas, sus permisos, lo que se le observó y lo que se le pagó. Cada renglón lleva a su pantalla, donde se corrige o se anula. Lo anulado queda tachado, con su motivo.'
-            : 'Las tardanzas, los permisos y lo que se le observó a la persona en un mes, día por día. Los pagos, el sueldo, el costo y la cuenta los lleva Recursos Humanos.'
+            ? 'Todo lo de la persona en un mes, día por día: sus tardanzas, sus permisos, lo que se le observó y lo que se le pagó. La flecha de cada renglón abre su pantalla, donde se corrige o se anula. Lo anulado queda tachado, con su motivo.'
+            : 'Las tardanzas, los permisos y lo que se le observó a la persona en un mes, día por día. La flecha de cada renglón abre su pantalla. Los pagos, el sueldo, el costo y la cuenta los lleva Recursos Humanos.'
         }
         migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'Personal', ruta: '/rrhh/personal' }, { titulo: nombre }]}
       />
@@ -182,10 +187,12 @@ export default async function PaginaHojaDeLaPersona({ params, searchParams }: Pa
             />
           )}
           <Indicador
+            // Con tres cifras en el teléfono, la tercera va a todo el ancho: no queda un hueco.
+            className={!ve.pagos && ve.permisos ? 'col-span-2 lg:col-span-1' : undefined}
             titulo="Observaciones"
             icono={MessageSquareWarning}
             valor={<span className="tabular">{vigentes.observaciones.length}</span>}
-            tono={amonestaciones > 0 ? 'peligro' : 'neutro'}
+            tono={amonestaciones > 0 ? 'aviso' : 'neutro'}
             pie={amonestaciones > 0 ? `${amonestaciones} ${amonestaciones === 1 ? 'amonestación o suspensión' : 'amonestaciones o suspensiones'}` : 'Sin amonestaciones'}
             href={`/rrhh/observaciones?persona=${id}&mes=${mes}`}
           />
@@ -194,10 +201,16 @@ export default async function PaginaHojaDeLaPersona({ params, searchParams }: Pa
               titulo="Pagado"
               icono={Wallet}
               valor={<span className="tabular">{moneda(pagado)}</span>}
+              tono={porPagar > 0 ? 'aviso' : 'neutro'}
               pie={
                 vigentes.pagos.length === 0
                   ? 'Sin pagos este mes'
-                  : `${vigentes.pagos.length} ${vigentes.pagos.length === 1 ? 'pago' : 'pagos'}`
+                  : [
+                      `${yaPagados.length} ${yaPagados.length === 1 ? 'pago' : 'pagos'}`,
+                      porPagar > 0 ? `${moneda(porPagar)} por pagar` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')
               }
             />
           )}
@@ -206,7 +219,11 @@ export default async function PaginaHojaDeLaPersona({ params, searchParams }: Pa
         <Tarjeta className="overflow-hidden">
           <TarjetaCabecera
             titulo="Lo del mes, día por día"
-            ayuda="Del día más reciente al más antiguo. Toca un renglón para abrir su pantalla, donde se corrige o se anula."
+            ayuda={
+              llevaElPersonal
+                ? 'Del día más reciente al más antiguo. La flecha de cada renglón abre su pantalla, donde se corrige o se anula.'
+                : 'Del día más reciente al más antiguo. La flecha de cada renglón abre su pantalla.'
+            }
           />
           {partesVisibles.length > 1 && (
             <div className="border-b border-borde px-4 py-3">
@@ -259,7 +276,13 @@ function pieDeTardanzas(
   resumen: { porcentaje: number; descuento: number | null } | null,
   veSueldo: boolean,
 ): string {
-  const partes = [minutos > 0 ? `${minutosLargos(minutos)} en total` : `${diasConIngreso} ${diasConIngreso === 1 ? 'día' : 'días'} marcó su ingreso`]
+  const partes = [
+    minutos > 0
+      ? `${minutosLargos(minutos)} en total`
+      : diasConIngreso === 0
+        ? 'Sin ingresos marcados'
+        : `Marcó su ingreso ${diasConIngreso} ${diasConIngreso === 1 ? 'día' : 'días'}, a tiempo`,
+  ]
   if (resumen && resumen.porcentaje > 0) {
     partes.push(
       veSueldo && resumen.descuento !== null
@@ -296,6 +319,7 @@ function Renglon({ suceso: s, mes, id, veSueldo }: { suceso: Suceso; mes: string
           href={`/rrhh/asistencia?fecha=${t.fecha}`}
           irA="Ver la asistencia del día"
           parte="tardanzas"
+          cuando={diaConSemana(s.fecha)}
         >
           Marcó su ingreso a las <span className="tabular">{horaCorta(t.hora)}</span>: <span className="tabular">{minutosLargos(t.minutos)}</span> tarde
         </Linea>
@@ -312,6 +336,7 @@ function Renglon({ suceso: s, mes, id, veSueldo }: { suceso: Suceso; mes: string
           href={`/rrhh/permisos?mes=${mes}`}
           irA="Ver en Permisos"
           parte="permisos"
+          cuando={diaConSemana(s.fecha)}
           detalle={detalleDelPermiso(p, veSueldo)}
         >
           {p.motivo}
@@ -334,6 +359,7 @@ function Renglon({ suceso: s, mes, id, veSueldo }: { suceso: Suceso; mes: string
           href={`/rrhh/observaciones?persona=${id}&mes=${mes}`}
           irA="Ver en Observaciones"
           parte="observaciones"
+          cuando={diaConSemana(s.fecha)}
           detalle={o.codigo_interno ? `Código ${o.codigo_interno}` : undefined}
         >
           <span className="font-medium">{MOTIVO_OBSERVACION[o.motivo]?.etiqueta ?? o.motivo}</span>: {o.detalle}
@@ -357,6 +383,7 @@ function Renglon({ suceso: s, mes, id, veSueldo }: { suceso: Suceso; mes: string
             href={`/planilla-diaria/${p.planilla_id}`}
             irA={`Ver la ${p.numero}`}
             parte="pagos"
+            cuando={diaConSemana(s.fecha)}
             detalle={[
               horas.join(' + '),
               p.monto_descuentos > 0 && `se restó ${moneda(p.monto_descuentos)} por tardanzas y permisos`,
@@ -377,6 +404,7 @@ function Renglon({ suceso: s, mes, id, veSueldo }: { suceso: Suceso; mes: string
           href={`/rrhh/pagos-oficina?mes=${mes}`}
           irA="Ver en Pagos de la oficina"
           parte="pagos"
+          cuando={diaConSemana(s.fecha)}
           detalle={[
             `aportes ${moneda(p.aportes)}`,
             p.descuentos !== 0 && (p.descuentos > 0 ? `se restó ${moneda(p.descuentos)}` : `se devolvió ${moneda(-p.descuentos)}`),
@@ -434,6 +462,7 @@ function Linea({
   motivoAnulacion,
   href,
   irA,
+  cuando,
   parte,
 }: {
   insignia: ReactNode
@@ -444,22 +473,24 @@ function Linea({
   motivoAnulacion: string | null
   href: string
   irA: string
+  /** El día del renglón, para que el lector de pantalla no oiga diez enlaces iguales. */
+  cuando: string
   parte: Parte
 }) {
   return (
-    <li className={`flex items-start justify-between gap-3 ${anulado ? 'opacity-60' : ''}`} data-suceso={parte}>
+    <li className="flex items-start justify-between gap-3" data-suceso={parte} data-anulado={anulado || undefined}>
       <div className="min-w-0 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
-          {anulado ? <Insignia tono="neutro">Anulado</Insignia> : insignia}
-          {estado}
+          {insignia}
+          {anulado ? <Insignia tono="neutro">Anulado</Insignia> : estado}
         </div>
-        <p className={`text-sm text-pretty text-texto ${anulado ? 'line-through' : ''}`}>{children}</p>
-        {detalle && <p className="text-xs text-pretty text-texto-suave">{detalle}</p>}
-        {anulado && motivoAnulacion && <p className="text-xs text-texto-suave">Anulado: {motivoAnulacion}</p>}
+        <p className={`text-sm text-pretty ${anulado ? 'text-texto-suave line-through' : 'text-texto'}`}>{children}</p>
+        {detalle && <p className={`text-xs text-pretty text-texto-suave ${anulado ? 'line-through' : ''}`}>{detalle}</p>}
+        {anulado && motivoAnulacion && <p className="text-xs text-pretty text-texto">Motivo de la anulación: {motivoAnulacion}</p>}
       </div>
       <Link
         href={href}
-        aria-label={irA}
+        aria-label={`${irA} (${cuando})`}
         title={irA}
         className="-my-2 inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-texto-suave hover:bg-superficie-2 hover:text-acento"
       >

@@ -117,7 +117,7 @@ function FilaTrabajador({
   return (
     <TR className={t.activo ? undefined : 'opacity-60'}>
       <TD className="align-top">
-        <Link href={`/rrhh/personal/${t.id}`} className="font-semibold text-texto hover:text-acento hover:underline" data-hoja={t.id}>
+        <Link href={`/rrhh/personal/${t.id}`} className="inline-flex min-h-11 items-center font-semibold text-acento underline-offset-2 hover:underline sm:min-h-0" data-hoja={t.id}>
           {t.apellidos}, {t.nombres}
         </Link>
         {t.dni && <p className="tabular text-xs text-texto-suave">DNI {t.dni}</p>}

@@ -109,14 +109,24 @@ type FilaPersonaPlanilla = {
  * mes, anulados incluidos. Solo para quien lleva el personal: son soles, y
  * Gerencia y Administración no los ven.
  */
-export async function pagosDeLaPersona(trabajadorId: string, mes: string): Promise<PagoDeLaHoja[]> {
+export async function pagosDeLaPersona(
+  trabajadorId: string,
+  mes: string,
+  { diarias: conDiarias }: { diarias: boolean },
+): Promise<PagoDeLaHoja[]> {
   const supabase = await createClient()
   const { desde, hasta } = rangoDelMes(mes)
+  // El último día del mes: un pago de la oficina que termina en el mes siguiente se pone aquí.
+  const finDelMes = new Date(Date.parse(`${hasta}T12:00:00Z`) - 86_400_000).toISOString().slice(0, 10)
   // Primero las planillas diarias del mes y después la parte de la persona en
   // ellas: filtrar por la fecha de la planilla dentro del embebido pide `!inner`
   // con su llave nombrada, que el banco local no lee.
   const [delMes, oficina] = await Promise.all([
-    supabase.from('planillas_diarias').select('id, numero, fecha, anulado_en, motivo_anulacion').gte('fecha', desde).lt('fecha', hasta),
+    // La planilla diaria se pide solo a quien la ve en su pantalla (`planilla_diaria.preparar`): si no, la
+    // política la esconde y la parte saldría vacía sin decirlo.
+    conDiarias
+      ? supabase.from('planillas_diarias').select('id, numero, fecha, anulado_en, motivo_anulacion').gte('fecha', desde).lt('fecha', hasta)
+      : Promise.resolve({ data: [] as { id: string; numero: string; fecha: string; anulado_en: string | null; motivo_anulacion: string | null }[], error: null }),
     supabase
       .from('oficina_pagos')
       .select('id, desde, hasta, monto, aportes, nota, anulado_en, motivo_anulacion, descuentos:descuentos_del_pago!descuentos_del_pago_oficina_pago_id_fkey(monto)')
@@ -165,7 +175,8 @@ export async function pagosDeLaPersona(trabajadorId: string, mes: string): Promi
     pagos.push({
       clase: 'OFICINA',
       id: p.id,
-      fecha: p.hasta,
+      // Un tramo puede pasar de un mes a otro (hasta 61 días): se pone en el mes que se mira.
+      fecha: p.hasta > finDelMes ? finDelMes : p.hasta,
       desde: p.desde,
       hasta: p.hasta,
       monto: Number(p.monto),

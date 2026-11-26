@@ -100,7 +100,7 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
                       <TD>
                         <Link
                           href={`/rrhh/personal/${r.trabajador.id}?mes=${mes}`}
-                          className="font-medium text-texto hover:text-acento hover:underline"
+                          className="inline-flex min-h-11 items-center font-medium text-acento underline-offset-2 hover:underline sm:min-h-0"
                         >
                           {r.trabajador.apellidos}, {r.trabajador.nombres}
                         </Link>
