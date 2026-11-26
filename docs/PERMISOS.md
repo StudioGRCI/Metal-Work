@@ -459,16 +459,18 @@ están.
 | --- | --- | --- |
 | Registrar un trámite: su tipo, la unidad y su OT si es de una unidad (el cliente queda congelado), qué se tramita (5 a 300), la entidad, el expediente, cuándo se presentó y su fecha límite | `tramites.gestionar`: Tramitador | `tramites_registrar` (`security definer`) exige el permiso, el mismo que la acción `registrarTramite`. Un reenvío idéntico devuelve el mismo trámite; con otra cosa, dice que ya quedó. Sin fecha de presentación nace «Por iniciar»; con ella, «En trámite». Elige la unidad con `tramites_unidades_para_elegir`, que pide el mismo permiso |
 | Llevarlo: por iniciar, en trámite u observado por la entidad (con su nota), su expediente y sus fechas | `tramites.gestionar`: Tramitador | `tramites_actualizar`, el mismo permiso que `actualizarTramite`. No toca el tipo, la unidad ni la OT. No vale sobre uno anulado ni sobre uno que espera el visto de Gerencia |
-| Mantener el catálogo de tipos: nombre, entidad, de una unidad o de la empresa, si se renueva, los días de aviso (1 a 5, de 0 a 120) y si sigue en uso | `tramites.gestionar`: Tramitador | `tramites_guardar_tipo`, el mismo permiso que `guardarTipo`. Un tipo no se borra (`fn_tramite_tipo_guardia`): se desactiva. Con trámites, no cambia de unidad a empresa |
+| Mantener el catálogo de tipos: nombre, entidad, de una unidad o de la empresa, si se renueva, los días de aviso (1 a 5, de 0 a 120) y si sigue en uso | `tramites.gestionar`: Tramitador | `tramites_guardar_tipo`, el mismo permiso que `guardarTipo`. Un tipo no se borra (`fn_tramite_tipo_guardia`): se desactiva. Con trámites, no cambia de unidad a empresa. El alta (`p_alta`) repetida con lo mismo devuelve el tipo que ya quedó; con otra cosa, dice que ya está y manda a «Editar». El trámite guarda el nombre de su tipo y si se renueva como eran al registrarlo (`tipo_nombre`, `se_renueva`): renombrar el tipo no cambia los trámites ya hechos |
 | Pedir la anulación, con motivo (10 a 500) | `tramites.gestionar`: Tramitador | `tramites_pedir_anulacion`, el mismo permiso que `pedirAnulacion`. Le llega a quien aprueba; si ninguna cuenta activa puede aprobar, lo dice en vez de dejar el pedido esperando |
-| Aprobar la anulación, o no (con motivo, 10 a 500) | `tramites.aprobar_anulacion`: Gerencia | `tramites_resolver_anulacion`, el mismo permiso que `resolverAnulacion`. Le llega a quien lo pidió. Anulado queda congelado; nadie lo borra, tampoco el administrador (`fn_tramite_guardia`) |
-| Ver todos, de las unidades y de la empresa | `tramites.gestionar` o `tramites.ver`: Tramitador, Gerencia y Administración | `tramites_visibles` y la política `ver_tramites` (`tramites_ve_todos()`); la tabla no se escribe directo. Su copia en `audit_log` se lee con lo mismo (política restrictiva `tramites_con_su_permiso`) |
+| Aprobar la anulación, o no (con motivo, 10 a 500) | `tramites.aprobar_anulacion`: Gerencia | `tramites_resolver_anulacion`, el mismo permiso que `resolverAnulacion`. La respuesta lleva la hora del pedido que la ficha mostraba (`p_pedido`): si se volvió a pedir con otro motivo, la base no responde por ese y pide recargar. Le llega a quien lo pidió. Anulado queda congelado; nadie lo borra, tampoco el administrador (`fn_tramite_guardia`) |
+| Ver todos, de las unidades y de la empresa | `tramites.gestionar`, `tramites.ver` o `tramites.aprobar_anulacion`: Tramitador, Gerencia y Administración | `tramites_visibles` y la política `ver_tramites` (`tramites_ve_todos()`: quien aprueba la anulación lee lo que aprueba, aunque no tuviera `tramites.ver`); la tabla no se escribe directo. Su copia en `audit_log` se lee con lo mismo (política restrictiva `tramites_con_su_permiso`) |
 | Ver solo los de una unidad | `tramites.ver_de_unidades`: Agente de Ventas y Gerencia Comercial | La misma función y la misma política, con `ambito = 'UNIDAD'`. No leen el catálogo de tipos de la empresa ni la auditoría de los trámites |
 
 Los globos: a Gerencia le cuenta las anulaciones que esperan su visto; al
 Tramitador, los trámites que pasaron su fecha límite y los que la entidad
 observó (`pendientes-globales.ts`, con `puede_resolver_anulacion` y
-`puede_actualizar` de la base).
+`puede_actualizar` de la base). Las anulaciones que esperan a Gerencia salen
+también en «Por decidir» (`por-decidir.ts`, grupo «Trámites por anular», con
+`tramites.aprobar_anulacion`); todavía no en «Decisiones tomadas».
 
 ## Responsables de área
 

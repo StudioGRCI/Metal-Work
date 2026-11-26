@@ -20,7 +20,7 @@ import { createClient } from '@/lib/supabase/server'
  * con su sesión, así que el RLS y las funciones de la base dejan fuera lo que
  * no es suyo. Un grupo que no se pudo leer lo dice: nunca sale como vacío.
  */
-export type ClaveGrupo = 'cotizaciones' | 'compras' | 'pagos' | 'reportes' | 'trabajos' | 'cierres'
+export type ClaveGrupo = 'cotizaciones' | 'compras' | 'pagos' | 'reportes' | 'trabajos' | 'cierres' | 'tramites'
 
 export type FilaPorDecidir = {
   id: string
@@ -273,6 +273,39 @@ async function codigosPorCerrar(perfil: PerfilSesion): Promise<Leido> {
   }
 }
 
+/**
+ * Los trámites que quien los lleva pidió anular y esperan el visto de quien
+ * mira: lo dice la base (`puede_resolver_anulacion`), con la misma regla que
+ * `tramites_resolver_anulacion`.
+ */
+async function tramitesPorAnular(): Promise<Leido> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .rpc('tramites_visibles', { p_id: null })
+    .select('id, numero, tipo, asunto, placa, cliente, ambito, anulacion_pidio, registro_puesto, anulacion_pedida_en')
+    .eq('puede_resolver_anulacion', true)
+    .order('anulacion_pedida_en')
+    .limit(300)
+  if (error) throw new Error(`No se pudieron leer las anulaciones de trámites: ${error.message}`)
+  return {
+    nota: siLlegoAlTope(data?.length ?? 0, 300),
+    filas: (data ?? []).flatMap((t) =>
+      t.id
+        ? [
+            {
+              id: t.id,
+              que: `Anulación del trámite ${t.numero ?? 'sin número'}`,
+              detalle: [t.tipo, t.ambito === 'UNIDAD' ? (t.placa ?? 'Sin placa') : 'De la empresa', t.cliente, t.asunto].filter(Boolean).join(' · ') || null,
+              quien: [t.registro_puesto, t.anulacion_pidio].filter(Boolean).join(' · ') || null,
+              desde: t.anulacion_pedida_en,
+              ruta: `/tramites/${t.id}`,
+            },
+          ]
+        : [],
+    ),
+  }
+}
+
 type DefGrupo = {
   clave: ClaveGrupo
   titulo: string
@@ -349,6 +382,17 @@ const GRUPOS: DefGrupo[] = [
     cuenta: { uno: 'listo para cerrar', varios: 'listos para cerrar' },
     resuelve: (p) => puede(p, 'codigos_internos.cerrar'),
     leer: codigosPorCerrar,
+  },
+  {
+    clave: 'tramites',
+    corto: 'Trámites por anular',
+    titulo: 'Trámites que esperan tu visto para anularse',
+    pantalla: { titulo: 'Trámites', ruta: '/tramites?vista=por-anular' },
+    accion: 'Aprobar o no',
+    cuenta: { uno: 'por anular', varios: 'por anular' },
+    // El administrador entra por `es_admin()`: el visto es de quien tiene el permiso.
+    resuelve: (p) => p.rol.codigo !== 'ADMIN' && puede(p, 'tramites.aprobar_anulacion'),
+    leer: tramitesPorAnular,
   },
 ]
 

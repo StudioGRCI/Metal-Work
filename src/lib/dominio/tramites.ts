@@ -39,6 +39,9 @@ export const SITUACION_TRAMITE: Record<string, Def> = {
   ANULADO: { etiqueta: 'Anulado', tono: 'neutro', descripcion: 'Quedó sin efecto, con su motivo y el visto de Gerencia.' },
 }
 
+/** Cuántas unidades trae la lista para elegir como mucho: el tope de filas de la API. La ventana lo dice si se llega. */
+export const MAXIMO_UNIDADES_PARA_ELEGIR = 1000
+
 /** Los avisos antes del vencimiento que admite un tipo, como `ck_tramite_tipo_datos`. */
 export const MAXIMO_AVISOS_DEL_TIPO = 5
 export const MAXIMO_DIAS_DE_AVISO = 120

@@ -53,6 +53,10 @@ select set_config('prueba.tra', :'tra_id', true), set_config('prueba.ger', :'ger
 create or replace function pg_temp.id(p_clave text) returns uuid language sql as $$
   select current_setting('prueba.' || p_clave)::uuid;
 $$;
+-- El pedido de anulación que el trámite tiene ahora: lo que la ficha manda al responder.
+create or replace function pg_temp.pedido(p_tramite text) returns timestamptz language sql as $$
+  select anulacion_pedida_en from public.tramites where id = pg_temp.id(p_tramite);
+$$;
 create or replace function pg_temp.avisos(p_cuenta text, p_tramite text) returns integer language sql as $$
   select count(*)::integer from public.notificaciones
    where usuario_id = pg_temp.id(p_cuenta) and origen_tabla = 'tramites' and origen_id = pg_temp.id(p_tramite);
@@ -95,7 +99,7 @@ do $$ begin
   perform test.debe_fallar(format($q$select * from public.tramites_registrar(%L, %L, null, null, 'SOAT de la camioneta', null, null, null, null, null)$q$,
       gen_random_uuid(), current_setting('prueba.tipo_soat')),
     'Tesorería no registra trámites', 'No tienes permiso');
-  perform test.debe_fallar(format($q$select * from public.tramites_guardar_tipo(%L, 'Permiso de prueba', 'MTC', 'EMPRESA', true, '[30]', true)$q$, gen_random_uuid()),
+  perform test.debe_fallar(format($q$select * from public.tramites_guardar_tipo(%L, 'Permiso de prueba', 'MTC', 'EMPRESA', true, '[30]', true, true)$q$, gen_random_uuid()),
     'Tesorería no toca el catálogo', 'No tienes permiso');
   perform test.afirmar((select count(*) from public.tramite_tipos) = 0, 'Tesorería no lee el catálogo');
 end $$;
@@ -107,7 +111,7 @@ do $$ begin
   perform test.debe_fallar(format($q$select * from public.tramites_registrar(%L, %L, null, null, 'SOAT de la camioneta', null, null, null, null, null)$q$,
       gen_random_uuid(), current_setting('prueba.tipo_soat')),
     'Gerencia consulta: no registra', 'No tienes permiso');
-  perform test.debe_fallar(format($q$select * from public.tramites_guardar_tipo(%L, 'Permiso de prueba', 'MTC', 'EMPRESA', true, '[30]', true)$q$, gen_random_uuid()),
+  perform test.debe_fallar(format($q$select * from public.tramites_guardar_tipo(%L, 'Permiso de prueba', 'MTC', 'EMPRESA', true, '[30]', true, true)$q$, gen_random_uuid()),
     'Gerencia no toca el catálogo', 'No tienes permiso');
 end $$;
 reset role;
@@ -119,19 +123,28 @@ do $$
 declare r record;
 begin
   perform test.afirmar((select count(*) from public.tramite_tipos) >= 6, 'el Tramitador lee el catálogo');
-  perform test.debe_fallar(format($q$select * from public.tramites_guardar_tipo(%L, ' soat ', 'Otra', 'EMPRESA', true, '[30]', true)$q$, current_setting('prueba.tipo_nuevo')),
+  perform test.debe_fallar(format($q$select * from public.tramites_guardar_tipo(%L, ' soat ', 'Otra', 'EMPRESA', true, '[30]', true, true)$q$, current_setting('prueba.tipo_nuevo')),
     'un nombre repetido no entra, tampoco con otras mayúsculas', 'Ya hay un tipo');
-  perform test.debe_fallar(format($q$select * from public.tramites_guardar_tipo(%L, 'Bonificación de placas', 'MTC', 'EMPRESA', true, '[200]', true)$q$, current_setting('prueba.tipo_nuevo')),
+  perform test.debe_fallar(format($q$select * from public.tramites_guardar_tipo(%L, 'Bonificación de placas', 'MTC', 'EMPRESA', true, '[200]', true, true)$q$, current_setting('prueba.tipo_nuevo')),
     'los días de aviso van de 0 a 120', '0 a 120');
-  perform test.debe_fallar(format($q$select * from public.tramites_guardar_tipo(%L, 'Bonificación de placas', 'MTC', 'EMPRESA', true, '[]', true)$q$, current_setting('prueba.tipo_nuevo')),
+  perform test.debe_fallar(format($q$select * from public.tramites_guardar_tipo(%L, 'Bonificación de placas', 'MTC', 'EMPRESA', true, '[]', true, true)$q$, current_setting('prueba.tipo_nuevo')),
     'hace falta al menos un aviso', '1 a 5');
-  perform test.debe_fallar(format($q$select * from public.tramites_guardar_tipo(%L, 'Bonificación de placas', 'MTC', 'TALLER', true, '[30]', true)$q$, current_setting('prueba.tipo_nuevo')),
+  perform test.debe_fallar(format($q$select * from public.tramites_guardar_tipo(%L, 'Bonificación de placas', 'MTC', 'TALLER', true, '[30]', true, true)$q$, current_setting('prueba.tipo_nuevo')),
     'el ámbito es unidad o empresa', 'unidad o de la empresa');
-  select * into r from public.tramites_guardar_tipo(pg_temp.id('tipo_nuevo'), '  Bonificación   de placas ', ' MTC ', 'UNIDAD', false, '[7, 15, 7, 30]', true);
+  select * into r from public.tramites_guardar_tipo(pg_temp.id('tipo_nuevo'), '  Bonificación   de placas ', ' MTC ', 'UNIDAD', false, '[7, 15, 7, 30]', true, true);
   perform test.afirmar(r.creado and (select nombre = 'Bonificación de placas' and entidad = 'MTC' and dias_aviso = array[30, 15, 7] and creado_por = pg_temp.id('tra')
                                         from public.tramite_tipos where id = pg_temp.id('tipo_nuevo')),
     'da de alta un tipo, sin espacios de más y con los días de más a menos y sin repetir');
-  select * into r from public.tramites_guardar_tipo(pg_temp.id('tipo_nuevo'), 'Bonificación de placas', 'MTC', 'UNIDAD', false, '[10]', false);
+  select * into r from public.tramites_guardar_tipo(pg_temp.id('tipo_nuevo'), 'Bonificación de placas', 'MTC', 'UNIDAD', false, '[30, 15, 7]', true, true);
+  perform test.afirmar(r.creado and (select count(*) = 1 and bool_and(dias_aviso = array[30, 15, 7]) from public.tramite_tipos where id = pg_temp.id('tipo_nuevo')),
+    'el alta que se repite con lo mismo devuelve el mismo tipo, sin tocarlo');
+  perform test.debe_fallar(format($q$select * from public.tramites_guardar_tipo(%L, 'Bonificación de placas', 'SUNARP', 'UNIDAD', false, '[10]', true, true)$q$, current_setting('prueba.tipo_nuevo')),
+    'el alta que se repite con otra cosa no corrige a escondidas', 'ya quedó agregado la primera vez');
+  perform test.afirmar((select entidad = 'MTC' and dias_aviso = array[30, 15, 7] from public.tramite_tipos where id = pg_temp.id('tipo_nuevo')),
+    'y el tipo sigue como quedó');
+  perform test.debe_fallar(format($q$select * from public.tramites_guardar_tipo(%L, 'Tipo que no existe', 'MTC', 'UNIDAD', false, '[10]', true, false)$q$, gen_random_uuid()),
+    'corregir un tipo que no existe no lo crea', 'ya no está en el catálogo');
+  select * into r from public.tramites_guardar_tipo(pg_temp.id('tipo_nuevo'), 'Bonificación de placas', 'MTC', 'UNIDAD', false, '[10]', false, false);
   perform test.afirmar(not r.creado and (select dias_aviso = array[10] and not activo from public.tramite_tipos where id = pg_temp.id('tipo_nuevo')),
     'lo corrige y lo desactiva');
   perform test.debe_fallar(format('delete from public.tramite_tipos where id = %L', current_setting('prueba.tipo_nuevo')),
@@ -269,7 +282,7 @@ do $$ begin
     'ni los lleva', 'No tienes permiso');
   perform test.debe_fallar(format($q$select public.tramites_pedir_anulacion(%L, 'Se registró por error dos veces')$q$, current_setting('prueba.tr1')),
     'ni pide anularlos', 'No tienes permiso');
-  perform test.debe_fallar(format($q$select * from public.tramites_resolver_anulacion(%L, true, null)$q$, current_setting('prueba.tr1')),
+  perform test.debe_fallar(format($q$select * from public.tramites_resolver_anulacion(%L, true, null, now())$q$, current_setting('prueba.tr1')),
     'ni aprueba una anulación', 'No tienes permiso');
 end $$;
 reset role;
@@ -319,7 +332,7 @@ select test.como_usuario(:'ger_id');
 set local role authenticated;
 do $$ begin
   perform test.afirmar((select count(*) from public.tramites_visibles(null)) = 2, 'Gerencia ve los dos');
-  perform test.debe_fallar(format($q$select * from public.tramites_resolver_anulacion(%L, true, null)$q$, current_setting('prueba.tr2')),
+  perform test.debe_fallar(format($q$select * from public.tramites_resolver_anulacion(%L, true, null, now())$q$, current_setting('prueba.tr2')),
     'Gerencia no anula lo que nadie pidió anular', 'no espera tu visto');
   perform test.debe_fallar(format($q$select public.tramites_pedir_anulacion(%L, 'Se registró por error dos veces')$q$, current_setting('prueba.tr2')),
     'ni pide anular: eso es de quien lo lleva', 'No tienes permiso');
@@ -343,7 +356,7 @@ do $$ begin
   perform test.debe_fallar(format($q$select public.tramites_actualizar(%L, 'EN_TRAMITE', 'SOAT de la camioneta de reparto', 'Rímac', 'POL-779', %L, null, null)$q$,
       current_setting('prueba.tr2'), pg_temp.hoy()),
     'mientras espera no se cambia', 'espera el visto');
-  perform test.debe_fallar(format($q$select * from public.tramites_resolver_anulacion(%L, true, null)$q$, current_setting('prueba.tr2')),
+  perform test.debe_fallar(format($q$select * from public.tramites_resolver_anulacion(%L, true, null, now())$q$, current_setting('prueba.tr2')),
     'el Tramitador no se aprueba su propio pedido', 'No tienes permiso');
 end $$;
 reset role;
@@ -360,13 +373,19 @@ declare r record;
 begin
   perform test.afirmar((select v.puede_resolver_anulacion and not v.puede_actualizar from public.tramites_visibles(pg_temp.id('tr2')) v),
     'Gerencia puede responder, y nada más');
-  perform test.debe_fallar(format($q$select * from public.tramites_resolver_anulacion(%L, false, 'no')$q$, current_setting('prueba.tr2')),
+  perform set_config('prueba.pedido1', pg_temp.pedido('tr2')::text, true);
+  perform test.debe_fallar(format($q$select * from public.tramites_resolver_anulacion(%L, false, 'no', %L)$q$, current_setting('prueba.tr2'), current_setting('prueba.pedido1')),
     'no aprobar pide el motivo', '10 a 500');
-  select * into r from public.tramites_resolver_anulacion(pg_temp.id('tr2'), false, 'El otro SOAT es de otra camioneta: este sigue.');
+  perform test.debe_fallar(format($q$select * from public.tramites_resolver_anulacion(%L, true, null, null)$q$, current_setting('prueba.tr2')),
+    'la respuesta dice a qué pedido responde', 'lee el pedido antes de responder');
+  perform test.debe_fallar(format($q$select * from public.tramites_resolver_anulacion(%L, true, null, %L)$q$, current_setting('prueba.tr2'),
+      (current_setting('prueba.pedido1')::timestamptz - interval '1 second')::text),
+    'no se anula respondiendo a un pedido que no es el que espera', 'se volvió a pedir anular');
+  select * into r from public.tramites_resolver_anulacion(pg_temp.id('tr2'), false, 'El otro SOAT es de otra camioneta: este sigue.', pg_temp.pedido('tr2'));
   perform test.afirmar(not r.anulado, 'no la aprueba');
-  select * into r from public.tramites_resolver_anulacion(pg_temp.id('tr2'), false, 'El otro SOAT es de otra camioneta: este sigue.');
+  select * into r from public.tramites_resolver_anulacion(pg_temp.id('tr2'), false, 'El otro SOAT es de otra camioneta: este sigue.', pg_temp.pedido('tr2'));
   perform test.afirmar(not r.anulado, 'la misma respuesta repetida entra igual');
-  perform test.debe_fallar(format($q$select * from public.tramites_resolver_anulacion(%L, true, null)$q$, current_setting('prueba.tr2')),
+  perform test.debe_fallar(format($q$select * from public.tramites_resolver_anulacion(%L, true, null, %L)$q$, current_setting('prueba.tr2'), current_setting('prueba.pedido1')),
     'respondida, ya no espera', 'no espera tu visto');
 end $$;
 reset role;
@@ -396,10 +415,22 @@ set local role authenticated;
 do $$
 declare r record;
 begin
-  select * into r from public.tramites_resolver_anulacion(pg_temp.id('tr2'), true, null);
+  -- La pestaña que quedó abierta con el primer pedido no responde al segundo:
+  -- anular no tiene vuelta atrás, y ese motivo no lo leyó.
+  perform test.afirmar(pg_temp.pedido('tr2') > current_setting('prueba.pedido1')::timestamptz, 'el segundo pedido tiene su propia hora');
+  perform test.debe_fallar(format($q$select * from public.tramites_resolver_anulacion(%L, true, null, %L)$q$, current_setting('prueba.tr2'), current_setting('prueba.pedido1')),
+    'desde la pantalla del primer pedido no se aprueba el segundo', 'se volvió a pedir anular');
+  perform test.debe_fallar(format($q$select * from public.tramites_resolver_anulacion(%L, false, 'El otro SOAT es de otra camioneta: este sigue.', %L)$q$,
+      current_setting('prueba.tr2'), current_setting('prueba.pedido1')),
+    'ni se rechaza: el «no» repetido tarde no responde al pedido nuevo', 'se volvió a pedir anular');
+  perform test.afirmar((select v.situacion = 'POR_ANULAR' and v.motivo_anulacion = 'La aseguradora devolvió la solicitud: se hará con otra.'
+                          from public.tramites_visibles(pg_temp.id('tr2')) v), 'y el pedido nuevo sigue esperando');
+  select * into r from public.tramites_resolver_anulacion(pg_temp.id('tr2'), true, null, pg_temp.pedido('tr2'));
   perform test.afirmar(r.anulado, 'la aprueba');
-  select * into r from public.tramites_resolver_anulacion(pg_temp.id('tr2'), true, null);
+  select * into r from public.tramites_resolver_anulacion(pg_temp.id('tr2'), true, null, pg_temp.pedido('tr2'));
   perform test.afirmar(r.anulado, 'la misma aprobación repetida entra igual');
+  perform test.debe_fallar(format($q$select * from public.tramites_resolver_anulacion(%L, true, null, %L)$q$, current_setting('prueba.tr2'), current_setting('prueba.pedido1')),
+    'y la de otro pedido dice que ya está anulado', 'ya está anulado');
   perform test.afirmar(
     (select v.estado = 'ANULADO' and v.situacion = 'ANULADO' and v.anulo = 'Gera Gerencia' and v.anulado_en is not null
             and v.dias_para_limite is null and not v.vencido
@@ -425,8 +456,14 @@ do $$ begin
   perform test.debe_fallar(format($q$select public.tramites_pedir_anulacion(%L, 'Pedirlo otra vez no tiene sentido')$q$, current_setting('prueba.tr2')),
     'ni pide anularlo otra vez', 'ya está anulado');
   -- El tipo con trámites no cambia de ámbito.
-  perform test.debe_fallar(format($q$select * from public.tramites_guardar_tipo(%L, 'SOAT', 'Aseguradora', 'UNIDAD', true, '[30, 15, 7]', true)$q$, current_setting('prueba.tipo_soat')),
+  perform test.debe_fallar(format($q$select * from public.tramites_guardar_tipo(%L, 'SOAT', 'Aseguradora', 'UNIDAD', true, '[30, 15, 7]', true, false)$q$, current_setting('prueba.tipo_soat')),
     'un tipo con trámites no cambia de empresa a unidad', 'ya tiene trámites');
+  -- Corregir el nombre del tipo no cambia lo que dice un trámite ya registrado.
+  perform public.tramites_guardar_tipo(pg_temp.id('tipo_soat'), 'SOAT de los vehículos', 'Aseguradora', 'EMPRESA', false, '[30, 15, 7]', true, false);
+  perform test.afirmar((select v.tipo = 'SOAT' and v.se_renueva from public.tramites_visibles(pg_temp.id('tr2')) v),
+    'el trámite anulado conserva el nombre de su tipo y si se renovaba, aunque el catálogo cambie');
+  perform test.debe_fallar(format($q$update public.tramites set tipo_nombre = 'por debajo' where id = %L$q$, current_setting('prueba.tr1')),
+    'el nombre congelado no se corrige por debajo', 'permission denied');
 end $$;
 reset role;
 

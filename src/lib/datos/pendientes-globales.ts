@@ -1165,7 +1165,8 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
   // anulaciones que esperan su visto; a quien los lleva, los que pasaron su
   // fecha límite y los que la entidad observó. Cuál le toca a quien mira lo
   // dice la base (`puede_resolver_anulacion`, `puede_actualizar`), con la misma
-  // regla que la función que escribe.
+  // regla que la función que escribe. El observado que además venció se cuenta
+  // una vez, con los vencidos, que es lo más urgente.
   const tramites = async (filtro: 'por_resolver' | 'vencidos' | 'observados') => {
     const consulta = supabase.rpc('tramites_visibles', { p_id: null }).select('id')
     const { data, error } = await (filtro === 'por_resolver'
@@ -1188,7 +1189,7 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       contar: () => tramites('vencidos'),
     })
     tareas.push({
-      clave: 'tramites_observados', ruta: '/tramites', tono: 'aviso',
+      clave: 'tramites_observados', ruta: '/tramites?vista=observados', tono: 'aviso',
       texto: n => plural(n, 'trámite observado por la entidad', 'trámites observados por la entidad'),
       contar: () => tramites('observados'),
     })

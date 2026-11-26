@@ -1,4 +1,4 @@
-import { BadgeCheck, FilePenLine, Hammer, Lock, NotebookPen, Wallet } from 'lucide-react'
+import { BadgeCheck, FilePenLine, Hammer, Lock, NotebookPen, Stamp, Wallet } from 'lucide-react'
 import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
@@ -22,6 +22,7 @@ const ICONOS: Record<ClaveGrupo, typeof FilePenLine> = {
   reportes: NotebookPen,
   trabajos: Hammer,
   cierres: Lock,
+  tramites: Stamp,
 }
 
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`
@@ -65,7 +66,7 @@ export default async function PaginaPorDecidir() {
             Decisiones tomadas
           </EnlaceBoton>
         }
-        ayuda="Lo que espera tu decisión en cotizaciones, compras y servicios, pagos, reportes diarios, trabajos sin orden y cierre de códigos, lo más antiguo primero. Aquí no se aprueba: cada fila abre su pantalla, donde se decide con su regla de siempre."
+        ayuda="Lo que espera tu decisión en cotizaciones, compras y servicios, pagos, reportes diarios, trabajos sin orden, cierre de códigos y anulación de trámites, lo más antiguo primero. Aquí no se aprueba: cada fila abre su pantalla, donde se decide con su regla de siempre."
       />
 
       <div className="space-y-5">
@@ -87,7 +88,8 @@ export default async function PaginaPorDecidir() {
                 </Link>
               ))}
             </nav>
-            <nav aria-label="Grupos por decidir" className="hidden grid-cols-3 gap-3 md:grid">
+            {/* Con siete grupos, en el monitor ancho van cuatro por fila: de a tres, el último quedaba solo. */}
+            <nav aria-label="Grupos por decidir" className={`hidden grid-cols-3 gap-3 md:grid ${grupos.length > 6 ? 'xl:grid-cols-4' : ''}`}>
               {grupos.map((g) => {
                 const dias = masAntigua(g)
                 return (

@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { filtrosDeBusqueda } from '@/lib/dominio/busqueda'
+import { MAXIMO_UNIDADES_PARA_ELEGIR } from '@/lib/dominio/tramites'
 import { createClient } from '@/lib/supabase/server'
 
 /*
@@ -199,7 +200,7 @@ function aOrdenes(valor: unknown): OtDeLaUnidad[] {
 /** Las unidades de los clientes con sus OT, para elegir de cuál es el trámite. Las lee quien registra (`tramites.gestionar`). */
 export async function unidadesParaTramitar(): Promise<UnidadParaTramitar[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('tramites_unidades_para_elegir')
+  const { data, error } = await supabase.rpc('tramites_unidades_para_elegir').range(0, MAXIMO_UNIDADES_PARA_ELEGIR - 1)
   if (error) throw new Error(`No se pudo leer la lista de unidades: ${error.message}`)
   return (data ?? []).flatMap((u) =>
     u.id

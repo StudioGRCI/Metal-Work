@@ -8,18 +8,24 @@
  *      rechazo se dice, el cursor va al aviso y lo escrito sigue. Corrige y
  *      envía tres veces: entra un solo TR, «En trámite», con el cliente de la
  *      unidad. Registra otro de la empresa sin presentar y con la fecha límite
- *      pasada: «Por iniciar» y vencido, arriba en la lista. Agrega un tipo al
- *      catálogo (un nombre repetido se rechaza junto a su campo), marca el
- *      primero «Observado» con su nota y pide anular el segundo.
+ *      pasada: «Por iniciar» y vencido, arriba en la lista. «¿No está en la
+ *      lista?» lo lleva al catálogo: agrega un tipo (un nombre repetido se
+ *      rechaza junto a su campo; los días de aviso se proponen solos) y lo deja
+ *      fuera de uso con «Editar». Marca el primero «Observado» con su nota (sale
+ *      en la vista «Observados» y en «Te toca») y pide anular el segundo.
  *   2. El Tramitador, en el celular: la lista y la ficha no se deslizan de costado.
- *   3. Gerencia: su menú cuenta la anulación; consulta sin «Registrar»; no la
- *      aprueba (con motivo) y el trámite sigue; el Tramitador la pide otra vez y
- *      Gerencia la aprueba con tres toques: queda anulado, una vez.
+ *   3. Gerencia: su menú y «Por decidir» cuentan la anulación; consulta sin
+ *      «Registrar»; no la aprueba (con motivo) y el trámite sigue. El Tramitador
+ *      la pide otra vez; con esa ficha abierta en una pestaña, Gerencia dice que
+ *      no en otra y el Tramitador la pide con otro motivo: desde la pestaña que
+ *      quedó abierta no se anula. Recargada, la aprueba con tres toques: queda
+ *      anulado, una vez.
  *   4. Administración consulta los dos y el catálogo, sin botones.
  *   5. Ventas ve solo el de la unidad; el de la empresa, ni por su dirección.
  *   6. Tesorería: sin «Trámites» en el menú, y su dirección la manda a «Sin permiso».
  *
- * Deja en el banco los trámites y el tipo: un documento numerado no se borra.
+ * Deja en el banco los trámites y el tipo (fuera de uso): un documento numerado
+ * no se borra, y un tipo tampoco.
  *
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE.
  */
@@ -130,7 +136,7 @@ async function entrar(correo, viewport = MONITOR) {
   // minuto, también es una acción de servidor y no se cuenta.
   const acciones = { n: 0 }
   pagina.on('request', (r) => {
-    if (r.method() === 'POST' && r.headers()['next-action'] && /tipo_id|motivo|respuesta|name="estado"|dias_aviso/.test(r.postData() ?? '')) acciones.n++
+    if (r.method() === 'POST' && r.headers()['next-action'] && /tipo_id|motivo|respuesta|_estado"|dias_aviso/.test(r.postData() ?? '')) acciones.n++
   })
   await ir(pagina, `${BASE}/ingresar`)
   await pagina.fill('input[type="email"]', correo)
@@ -255,12 +261,26 @@ let tr2 = null
   const globo = (await pagina.locator('nav a[aria-label^="Trámites, "]').first().getAttribute('aria-label').catch(() => null)) ?? ''
   comprobar(/\d+ pendientes?/.test(globo), `[Tramitador 1440] su menú cuenta el trámite vencido: «${globo}»`)
 
-  // --- el catálogo
+  // --- el catálogo: «¿No está en la lista?» cierra la ventana y lleva a «Agregar tipo»
   await ir(pagina, `${BASE}/tramites`)
-  await pagina.locator('#tipos-de-tramite > summary').click()
+  await pagina.getByRole('button', { name: 'Registrar trámite' }).click()
+  v = ventanaDe(pagina)
+  await v.waitFor({ timeout: 15000 })
+  await v.locator('[data-ir-a-tipos]').click()
+  const enElCatalogo = await hasta(
+    () => pagina.evaluate(() => document.getElementById('tipos-de-tramite')?.open === true && document.activeElement?.getAttribute('data-guardar-tipo') === 'nuevo'),
+    Boolean,
+    5000,
+  )
+  comprobar(enElCatalogo && (await pagina.locator('[role="dialog"]').count()) === 0, '[Tramitador 1440] «¿No está en la lista?» cierra la ventana, abre el catálogo y deja el cursor en «Agregar tipo»')
   await pagina.locator('[data-guardar-tipo="nuevo"]').click()
   v = ventanaDe(pagina)
   await v.waitFor({ timeout: 15000 })
+  const propuestos = await v.locator('input[name="dias_aviso"]').inputValue()
+  await v.locator('input[name="se_renueva"]').check()
+  const siSeRenueva = await v.locator('input[name="dias_aviso"]').inputValue()
+  await v.locator('input[name="se_renueva"]').uncheck()
+  comprobar(propuestos === '5' && siSeRenueva === '30, 15, 7', `[Tramitador 1440] al tipo nuevo le propone avisar 5 días antes, y 30, 15 y 7 si se renueva («${propuestos}» / «${siSeRenueva}»)`)
   await v.locator('input[name="nombre"]').fill('soat')
   await v.locator('input[name="entidad"]').fill('MTC')
   await v.locator('input[name="dias_aviso"]').fill('5, 20, 5')
@@ -276,6 +296,20 @@ let tr2 = null
   comprobar((await hasta(() => pagina.locator(`[data-tipo="${TIPO_NUEVO}"]`).count(), (n) => n === 1, 15000)) === 1, '[Tramitador 1440] y sale en el catálogo')
   comprobar(/agregado/.test(limpio(await pagina.locator('#tipos-de-tramite p[role="status"]').innerText().catch(() => ''))), '[Tramitador 1440] y lo dice junto al botón')
   await captura(pagina, 'tramites-lista-tramitador-1440.png')
+  // El tipo de prueba se deja fuera de uso: no se borra, y así no se ofrece al registrar.
+  await pagina.locator(`[data-guardar-tipo="${TIPO_NUEVO}"]`).click()
+  v = ventanaDe(pagina)
+  await v.waitFor({ timeout: 15000 })
+  await v.locator('input[name="activo"]').uncheck()
+  await tresToques(v.getByRole('button', { name: 'Guardar' }))
+  const [fueraDeUso] = await hasta(() => consulta(`select activo, dias_aviso from public.tramite_tipos where nombre = $1`, [TIPO_NUEVO]), (r) => r[0]?.activo === false, 20000)
+  comprobar(fueraDeUso?.activo === false && JSON.stringify(fueraDeUso?.dias_aviso) === '[20,5]', '[Tramitador 1440] «Editar» lo deja fuera de uso, sin tocar lo demás')
+  await quieta(pagina)
+  await pagina.getByRole('button', { name: 'Registrar trámite' }).click()
+  v = ventanaDe(pagina)
+  await v.waitFor({ timeout: 15000 })
+  comprobar((await v.locator('#tramite-tipo option', { hasText: TIPO_NUEVO }).count()) === 0, '[Tramitador 1440] y ya no se ofrece al registrar')
+  await pagina.keyboard.press('Escape')
 
   // --- la ficha: observado, con su nota
   await ir(pagina, `${BASE}/tramites/${tr1?.id}`)
@@ -299,6 +333,11 @@ let tr2 = null
   comprobar(t1?.estado === 'OBSERVADO' && t1?.nota === 'Falta la firma legalizada del cliente en el formulario.', '[Tramitador 1440] queda «Observado», con lo que observó la entidad')
   comprobar(/Falta la firma/.test(limpio(await pagina.locator('[data-nota]').innerText().catch(() => ''))), '[Tramitador 1440] y la ficha lo muestra')
   await captura(pagina, 'tramites-ficha-tramitador-1440.png')
+  await ir(pagina, `${BASE}/tramites?vista=observados`)
+  comprobar((await pagina.locator(`[data-tramite="${tr1?.numero}"]`).count()) === 1 && (await pagina.locator(`[data-tramite="${tr2?.numero}"]`).count()) === 0,
+    '[Tramitador 1440] la vista «Observados» trae el observado y no el otro')
+  await ir(pagina, `${BASE}/`)
+  comprobar((await pagina.locator('a[href="/tramites?vista=observados"]').count()) >= 1, '[Tramitador 1440] «Te toca» lleva a los observados')
 
   // --- pide anular el de la empresa
   await ir(pagina, `${BASE}/tramites/${tr2?.id}`)
@@ -361,25 +400,57 @@ comprobar((await avisosDe(CUENTAS.administracion, tr2?.id)).length === 0, '[Admi
   await pagina.locator('#tipos-de-tramite > summary').click()
   comprobar((await pagina.locator('[data-tipo]').count()) > 5 && (await pagina.locator('[data-guardar-tipo]').count()) === 0, '[Gerencia 1440] lee el catálogo, sin «Agregar tipo» ni «Editar»')
 
+  await ir(pagina, `${BASE}/por-decidir`)
+  const grupo = pagina.locator('[data-grupo-por-decidir="tramites"]')
+  comprobar(
+    Number(await grupo.getAttribute('data-cantidad').catch(() => '0')) >= 1 && (await grupo.locator(`a[href="/tramites/${tr2?.id}"]`).count()) >= 1,
+    '[Gerencia 1440] «Por decidir» trae la anulación que espera su visto, con el salto a su ficha',
+  )
+  await captura(pagina, 'tramites-por-decidir-gerencia-1440.png')
+
   await ir(pagina, `${BASE}/tramites/${tr2?.id}`)
   comprobar(/Te toca/.test(limpio(await pagina.locator('[data-que-sigue]').innerText().catch(() => ''))), '[Gerencia 1440] la ficha dice que le toca')
   comprobar((await pagina.getByRole('button', { name: /Actualizar|Pedir anulación/ }).count()) === 0, '[Gerencia 1440] no lleva el trámite ni pide anularlo')
   await captura(pagina, 'tramites-ficha-gerencia-1440.png')
-  // No la aprueba
-  await pagina.getByRole('button', { name: 'No aprobar' }).click()
-  let v = ventanaDe(pagina)
+  // No la aprueba, desde otra pestaña: la primera se queda abierta con este pedido a la vista.
+  const otra = await contexto.newPage()
+  await ir(otra, `${BASE}/tramites/${tr2?.id}`)
+  await otra.getByRole('button', { name: 'No aprobar' }).click()
+  let v = ventanaDe(otra)
   await v.waitFor({ timeout: 15000 })
   await v.locator('textarea[name="motivo"]').fill('El otro SOAT es de otra camioneta: este sigue.')
   await v.getByRole('button', { name: 'No aprobar la anulación' }).click()
-  await hasta(() => pagina.locator('[data-situacion]').first().getAttribute('data-situacion'), (s) => s === 'POR_INICIAR', 20000)
-  await quieta(pagina)
+  await hasta(() => otra.locator('[data-situacion]').first().getAttribute('data-situacion'), (s) => s === 'POR_INICIAR', 20000)
+  await quieta(otra)
+  await otra.close()
+  await ir(pagina, `${BASE}/tramites/${tr2?.id}`)
   let t2 = await tramite(tr2?.id)
   comprobar(t2?.estado === 'POR_INICIAR' && t2?.anulacion_rechazada_por === yo.id && t2?.anulado_en === null, '[Gerencia 1440] no la aprueba: el trámite sigue como estaba')
   comprobar(/no aprobó anularlo/.test(limpio(await pagina.locator('[data-anulacion-no-aprobada]').innerText().catch(() => ''))), '[Gerencia 1440] y la ficha guarda la respuesta con su motivo')
   comprobar((await avisosDe(CUENTAS.tramitador, tr2?.id)).length === 1, '[Tramitador] le llegó que no se aprobó')
 
-  // El Tramitador la pide otra vez (en SQL, con su cuenta) y Gerencia la aprueba.
+  // El Tramitador la pide otra vez (en SQL, con su cuenta), con otro motivo.
+  await como(CUENTAS.tramitador, `select public.tramites_pedir_anulacion($1, $2)`, [tr2?.id, 'Se registró dos veces el mismo SOAT.'])
+  // Una pestaña de Gerencia se queda abierta con este pedido a la vista…
+  const quieto = await contexto.newPage()
+  await ir(quieto, `${BASE}/tramites/${tr2?.id}`)
+  // …mientras en otra dice que no, y el Tramitador lo vuelve a pedir con otro motivo.
+  await como(CUENTAS.gerencia, `select * from public.tramites_resolver_anulacion($1, false, $2, (select anulacion_pedida_en from public.tramites where id = $1))`, [
+    tr2?.id,
+    'Sigue siendo de otra camioneta: no se anula.',
+  ])
   await como(CUENTAS.tramitador, `select public.tramites_pedir_anulacion($1, $2)`, [tr2?.id, 'La aseguradora devolvió la solicitud: se hará con otra.'])
+  // Desde la pestaña que quedó abierta, anular no entra: ese motivo no lo leyó.
+  await quieto.getByRole('button', { name: 'Aprobar la anulación' }).click()
+  v = ventanaDe(quieto)
+  await v.waitFor({ timeout: 15000 })
+  comprobar(/Se registró dos veces/.test(limpio(await v.innerText())), '[Gerencia 1440] la pestaña que quedó abierta muestra el motivo del pedido anterior')
+  await v.getByRole('button', { name: 'Anular el trámite' }).click()
+  const rechazoViejo = await hasta(() => v.locator('[role="alert"]').first().innerText().catch(() => ''), (t) => /volvió a pedir/.test(t), 15000)
+  t2 = await tramite(tr2?.id)
+  comprobar(/se volvió a pedir anular/.test(rechazoViejo) && t2?.estado === 'POR_INICIAR' && t2?.anulado_en === null,
+    `[Gerencia 1440] desde esa pestaña no se anula con un motivo que no leyó: «${limpio(rechazoViejo).slice(0, 110)}»`)
+  await quieto.close()
   await ir(pagina, `${BASE}/tramites/${tr2?.id}`)
   await pagina.getByRole('button', { name: 'Aprobar la anulación' }).click()
   v = ventanaDe(pagina)
@@ -394,7 +465,7 @@ comprobar((await avisosDe(CUENTAS.administracion, tr2?.id)).length === 0, '[Admi
   comprobar((await pagina.getByRole('button', { name: /Aprobar|No aprobar|Actualizar/ }).count()) === 0, '[Gerencia 1440] anulado, sin botones')
   comprobar(/Anulado con el visto/.test(limpio(await pagina.locator('[data-anulado]').innerText().catch(() => ''))), '[Gerencia 1440] la ficha dice quién lo anuló y por qué')
   await captura(pagina, 'tramites-ficha-anulado-gerencia-1440.png')
-  comprobar((await avisosDe(CUENTAS.tramitador, tr2?.id)).length === 2, '[Tramitador] le llegó que se anuló')
+  comprobar((await avisosDe(CUENTAS.tramitador, tr2?.id)).length === 3, '[Tramitador] le llegó cada respuesta: dos «no» y la anulación')
   comprobar(errores.length === 0, `[Gerencia 1440] sin errores de consola ${errores.join(' | ')}`)
   await contexto.close()
 }

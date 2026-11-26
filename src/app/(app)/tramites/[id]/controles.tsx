@@ -11,6 +11,7 @@ import type { ResultadoAccion } from '@/lib/acciones'
 import type { Tramite } from '@/lib/datos/tramites'
 import { ESTADOS_QUE_SE_LLEVAN, SITUACION_TRAMITE } from '@/lib/dominio/tramites'
 import { useCursorAlRechazo, useEnvio } from '@/lib/envio'
+import { fecha } from '@/lib/format'
 import { useEstadoCompartido } from '@/lib/estado-compartido'
 
 import { actualizarTramite, pedirAnulacion, resolverAnulacion } from '../acciones'
@@ -141,6 +142,8 @@ export function ActualizarTramite({ tramite: t, hoy }: { tramite: Tramite; hoy: 
 function CamposDelTramite({ tramite: t, hoy }: { tramite: Tramite; hoy: string }) {
   const [estado, setEstado] = useState<string>((ESTADOS_QUE_SE_LLEVAN as readonly string[]).includes(t.estado) ? t.estado : 'EN_TRAMITE')
   const observado = estado === 'OBSERVADO'
+  // Lo que la entidad observó sigue en la nota al volver a «En trámite»: se dice, para que no se lea como de hoy.
+  const quedaLoObservado = t.estado === 'OBSERVADO' && !observado && Boolean(t.nota)
   return (
     <>
       <fieldset className="space-y-2">
@@ -161,7 +164,7 @@ function CamposDelTramite({ tramite: t, hoy }: { tramite: Tramite; hoy: string }
       </fieldset>
 
       <Campo etiqueta="Qué se tramita" htmlFor={`actualizar-asunto-${t.id}`} requerido>
-        <Entrada id={`actualizar-asunto-${t.id}`} name="asunto" required minLength={5} maxLength={300} autoComplete="off" defaultValue={t.asunto} />
+        <AreaTexto id={`actualizar-asunto-${t.id}`} name="asunto" required minLength={5} maxLength={300} rows={2} defaultValue={t.asunto} />
       </Campo>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -198,12 +201,23 @@ function CamposDelTramite({ tramite: t, hoy }: { tramite: Tramite; hoy: string }
           <Entrada id={`actualizar-limite-${t.id}`} name="fecha_limite" type="date" defaultValue={t.fecha_limite ?? ''} className="tabular" />
         </Campo>
       </div>
+      {estado === 'POR_INICIAR' && t.fecha_inicio && (
+        <p className="text-sm text-aviso" data-se-quita-la-presentacion>
+          Al volver a «Por iniciar» se quita la fecha en que se presentó ({fecha(t.fecha_inicio)}).
+        </p>
+      )}
 
       <Campo
         etiqueta={observado ? 'Qué observó la entidad' : 'Nota'}
         htmlFor={`actualizar-nota-${t.id}`}
         requerido={observado}
-        ayuda={observado ? 'Lo que pide subsanar y hasta cuándo.' : 'Opcional: lo que haga falta recordar.'}
+        ayuda={
+          observado
+            ? 'Lo que pide subsanar y hasta cuándo.'
+            : quedaLoObservado
+              ? 'Aquí sigue lo que observó la entidad: si ya se subsanó, bórralo o cuenta cómo quedó.'
+              : 'Opcional: lo que haga falta recordar.'
+        }
         ayudaEnIcono={false}
       >
         <AreaTexto
@@ -257,7 +271,20 @@ export function PedirAnulacion({ id, numero }: { id: string; numero: string }) {
 }
 
 /** Gerencia aprueba la anulación que pidió quien lleva el trámite. */
-export function AprobarAnulacion({ id, numero, motivo, pidio }: { id: string; numero: string; motivo: string | null; pidio: string | null }) {
+export function AprobarAnulacion({
+  id,
+  numero,
+  motivo,
+  pidio,
+  pedido,
+}: {
+  id: string
+  numero: string
+  motivo: string | null
+  pidio: string | null
+  /** La hora del pedido que se muestra: la respuesta vale solo para ese. */
+  pedido: string
+}) {
   return (
     <AccionDelTramite
       id={id}
@@ -278,6 +305,7 @@ export function AprobarAnulacion({ id, numero, motivo, pidio }: { id: string; nu
       {() => (
         <>
           <input type="hidden" name="respuesta" value="aprobar" />
+          <input type="hidden" name="pedido" value={pedido} />
           <div className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 px-3 py-2 text-sm">
             <p className="text-xs text-texto-suave">Motivo{pidio ? ` que dio ${pidio}` : ''}</p>
             <p className="mt-1 whitespace-pre-wrap text-texto">{motivo}</p>
@@ -289,7 +317,7 @@ export function AprobarAnulacion({ id, numero, motivo, pidio }: { id: string; nu
 }
 
 /** Gerencia no aprueba la anulación: dice por qué y el trámite sigue como estaba. */
-export function NoAprobarAnulacion({ id, numero }: { id: string; numero: string }) {
+export function NoAprobarAnulacion({ id, numero, pedido }: { id: string; numero: string; pedido: string }) {
   return (
     <AccionDelTramite
       id={id}
@@ -308,6 +336,7 @@ export function NoAprobarAnulacion({ id, numero }: { id: string; numero: string 
       {() => (
         <>
           <input type="hidden" name="respuesta" value="rechazar" />
+          <input type="hidden" name="pedido" value={pedido} />
           <Campo etiqueta="Por qué no se anula" htmlFor={`no-aprobar-${id}`} requerido>
             <AreaTexto
               id={`no-aprobar-${id}`}

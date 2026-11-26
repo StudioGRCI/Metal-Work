@@ -35,6 +35,8 @@ export const metadata = { title: 'Trámites' }
 
 const VISTAS = [
   { valor: 'en-curso', titulo: 'En curso' },
+  // Los que la entidad observó, aparte: el globo del menú de quien los lleva trae aquí.
+  { valor: 'observados', titulo: 'Observados' },
   { valor: 'por-anular', titulo: 'Por anular' },
   { valor: 'anulados', titulo: 'Anulados' },
 ] as const
@@ -74,6 +76,7 @@ export default async function PaginaTramites({ searchParams }: PageProps<'/trami
   ])
   const grupos: Record<Vista, Tramite[]> = {
     'en-curso': tramites.filter((t) => t.situacion !== 'POR_ANULAR' && t.situacion !== 'ANULADO').sort(porPlazo),
+    observados: tramites.filter((t) => t.situacion === 'OBSERVADO').sort(porPlazo),
     'por-anular': tramites.filter((t) => t.situacion === 'POR_ANULAR'),
     anulados: tramites.filter((t) => t.situacion === 'ANULADO'),
   }
@@ -101,7 +104,7 @@ export default async function PaginaTramites({ searchParams }: PageProps<'/trami
       />
       <div className="space-y-5">
         <div className="space-y-3">
-          <BuscadorSimple ruta="/tramites" clave="buscar" etiqueta="Buscar trámites" marcador="TR, tipo, entidad, expediente, placa o cliente" />
+          <BuscadorSimple ruta="/tramites" clave="buscar" etiqueta="Buscar trámites" marcador="TR, tipo, entidad, expediente, placa, código interno, cliente u OT" />
           <Vistas
             etiqueta="Vista"
             vistas={VISTAS.map((v) => ({
@@ -118,14 +121,20 @@ export default async function PaginaTramites({ searchParams }: PageProps<'/trami
             tramites={grupos[vista]}
             vacio={
               busqueda
-                ? { titulo: 'Ninguno con esa búsqueda', descripcion: 'Prueba con otro número, tipo, entidad, placa o cliente, o en otra vista.' }
+                ? { titulo: 'Ninguno con esa búsqueda', descripcion: 'Prueba con otro número, tipo, entidad, expediente, placa, código interno, cliente u OT, o en otra vista.' }
                 : vista === 'en-curso'
                   ? {
                       titulo: 'No hay trámites en curso',
                       descripcion: gestiona
-                        ? 'Toca «Registrar trámite» para guardar el primero.'
-                        : 'Cuando se registre un trámite, aparece aquí.',
+                        ? enUso.length > 0
+                          ? 'Toca «Registrar trámite» para guardar el primero.'
+                          : 'Ningún tipo de trámite está en uso: agrega uno en «Tipos de trámite» para poder registrar.'
+                        : veElCatalogo
+                          ? 'Cuando se registre un trámite, aparece aquí.'
+                          : 'Aquí salen los trámites de las unidades de los clientes: la tarjeta de propiedad, las placas, los certificados. Cuando se registre uno, aparece aquí.',
                     }
+                  : vista === 'observados'
+                    ? { titulo: 'Ningún trámite observado', descripcion: 'Cuando una entidad observa un trámite, quien lo lleva lo marca «Observado» con lo que pide subsanar, y sale aquí.' }
                   : vista === 'por-anular'
                     ? { titulo: 'Ningún trámite espera anularse', descripcion: 'La anulación se pide desde la ficha del trámite, con su motivo, y la aprueba Gerencia.' }
                     : { titulo: 'No hay trámites anulados', descripcion: 'Un trámite anulado queda aquí, con su motivo, quién lo pidió y quién lo aprobó.' }
@@ -266,7 +275,7 @@ function Catalogo({ tipos, gestiona }: { tipos: TipoDeTramite[]; gestiona: boole
               <h3 className="text-xs font-semibold tracking-wide text-texto-suave uppercase">{AMBITO_TRAMITE[ambito].etiqueta}</h3>
               <ul className="mt-1 divide-y divide-borde">
                 {delAmbito.map((t) => (
-                  <li key={t.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-2" data-tipo={t.nombre} data-activo={t.activo}>
+                  <li key={t.id} className="flex items-start justify-between gap-x-4 py-2" data-tipo={t.nombre} data-activo={t.activo}>
                     <div className="min-w-0">
                       <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-texto">
                         {t.nombre}
@@ -277,7 +286,11 @@ function Catalogo({ tipos, gestiona }: { tipos: TipoDeTramite[]; gestiona: boole
                         {t.entidad} · Aviso: <span className="tabular">{diasDeAvisoEnTexto(t.dias_aviso).toLowerCase()}</span>
                       </p>
                     </div>
-                    {gestiona && <GuardarTipo tipo={t} />}
+                    {gestiona && (
+                      <div className="shrink-0">
+                        <GuardarTipo tipo={t} />
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>

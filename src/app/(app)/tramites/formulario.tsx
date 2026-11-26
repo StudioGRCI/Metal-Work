@@ -13,7 +13,7 @@ import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import type { TipoDeTramite, UnidadParaTramitar } from '@/lib/datos/tramites'
 import { definir, ESTADO_OT } from '@/lib/dominio/estados'
-import { AMBITO_TRAMITE, AMBITOS_TRAMITE, nombreDeLaUnidad } from '@/lib/dominio/tramites'
+import { AMBITO_TRAMITE, AMBITOS_TRAMITE, MAXIMO_UNIDADES_PARA_ELEGIR, nombreDeLaUnidad } from '@/lib/dominio/tramites'
 import { refrescarSiEsDeLaPestana, useCursorAlRechazo, useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { useEstadoCompartido } from '@/lib/estado-compartido'
 
@@ -92,6 +92,17 @@ export function RegistrarTramite({ tipos, unidades, hoy }: {
             unidades={unidades}
             hoy={hoy}
             alCancelar={() => setAbierta(false)}
+            alAgregarTipo={() => {
+              setAbierta(false)
+              // Cuando la ventana ya devolvió el cursor a su botón, el catálogo se abre y lo recibe.
+              window.setTimeout(() => {
+                const catalogo = document.getElementById('tipos-de-tramite')
+                if (!(catalogo instanceof HTMLDetailsElement)) return
+                catalogo.open = true
+                catalogo.scrollIntoView({ block: 'start' })
+                catalogo.querySelector<HTMLElement>('[data-guardar-tipo="nuevo"]')?.focus()
+              }, 150)
+            }}
             alTerminar={(entro) => {
               setAbierta(false)
               setEntro(entro)
@@ -110,8 +121,10 @@ const DE_LA_OT = /OT de esa unidad|OT de la lista/
 const DEL_INICIO = /fecha en que se presentó/
 const DEL_LIMITE = /fecha límite/
 
-function FormularioTramite({ envio, tipos, unidades, hoy, alCancelar, alTerminar }: {
+function FormularioTramite({ envio, tipos, unidades, hoy, alCancelar, alAgregarTipo, alTerminar }: {
   envio: ReturnType<typeof useIdDelEnvio>
+  /** Cierra la ventana y lleva al catálogo, con el cursor en «Agregar tipo». */
+  alAgregarTipo: () => void
   tipos: TipoDeTramite[]
   unidades: UnidadParaTramitar[]
   hoy: string
@@ -166,8 +179,6 @@ function FormularioTramite({ envio, tipos, unidades, hoy, alCancelar, alTerminar
           etiqueta="Tipo de trámite"
           htmlFor="tramite-tipo"
           requerido
-          ayuda="¿No está en la lista? Agrégalo abajo, en «Tipos de trámite»."
-          ayudaEnIcono={false}
           error={errorDe('tipo')}
         >
           <Seleccion
@@ -203,6 +214,18 @@ function FormularioTramite({ envio, tipos, unidades, hoy, alCancelar, alTerminar
             })}
           </Seleccion>
         </Campo>
+        <p className="-mt-2 text-xs text-texto-suave">
+          ¿No está en la lista?{' '}
+          <button
+            type="button"
+            onClick={alAgregarTipo}
+            data-ir-a-tipos
+            className="inline-flex min-h-11 items-center font-medium text-acento underline-offset-2 hover:underline sm:min-h-0"
+          >
+            Agrégalo en «Tipos de trámite»
+          </button>
+          . Lo escrito aquí no se guarda.
+        </p>
 
         {deUnidad && unidades.length === 0 && (
           <p className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 px-3 py-2 text-sm text-texto" data-sin-unidades>
@@ -240,6 +263,11 @@ function FormularioTramite({ envio, tipos, unidades, hoy, alCancelar, alTerminar
                 }))}
               />
             </Campo>
+            {unidades.length >= MAXIMO_UNIDADES_PARA_ELEGIR && (
+              <p className="-mt-2 text-xs text-aviso" data-unidades-al-tope>
+                La lista trae las primeras {MAXIMO_UNIDADES_PARA_ELEGIR} unidades y hay más: si la tuya no sale, avisa al administrador del sistema.
+              </p>
+            )}
             {unidad && (
               <p className="-mt-2 text-xs text-texto-suave" data-cliente-de-la-unidad>
                 Cliente: <span className="font-medium text-texto">{unidad.cliente ?? 'Sin cliente'}</span>.
@@ -407,6 +435,10 @@ export function GuardarTipo({ tipo }: { tipo?: TipoDeTramite }) {
   )
 }
 
+/** Los avisos que se proponen a un tipo nuevo: 30, 15 y 7 días si se renueva; 5 si no (decisión del 26/11/2026). */
+const DIAS_SI_SE_RENUEVA = '30, 15, 7'
+const DIAS_SI_NO = '5'
+
 function FormularioTipo({ id, tipo, alCancelar, alTerminar }: {
   id: string
   tipo?: TipoDeTramite
@@ -417,6 +449,9 @@ function FormularioTipo({ id, tipo, alCancelar, alTerminar }: {
     corrige: Boolean(tipo),
     documento: id,
   })
+  const [renueva, setRenueva] = useState(tipo?.se_renueva ?? false)
+  const [dias, setDias] = useState(tipo ? tipo.dias_aviso.join(', ') : DIAS_SI_NO)
+  const [diasTocados, setDiasTocados] = useState(false)
   const errorNombre = error && /Ya hay un tipo|nombre del tipo/.test(error) ? error : null
   const errorDias = !errorNombre && error && /días de aviso|avisos antes/.test(error) ? error : null
   useCursorAlRechazo(
@@ -431,6 +466,8 @@ function FormularioTipo({ id, tipo, alCancelar, alTerminar }: {
     <form onSubmit={alEnviar} className="space-y-4">
       <input type="hidden" name="id" value={id} />
       {!tipo && <input type="hidden" name="activo" value="on" />}
+      {/* El tipo nuevo lo dice: si su envío se repite con otra cosa, la base no lo corrige a escondidas. */}
+      {!tipo && <input type="hidden" name="alta" value="1" />}
       <fieldset disabled={enviando} className="min-w-0 space-y-4">
         <Campo etiqueta="Nombre" htmlFor={`tipo-nombre-${id}`} requerido error={errorNombre ?? undefined}>
           <Entrada
@@ -467,7 +504,7 @@ function FormularioTipo({ id, tipo, alCancelar, alTerminar }: {
           etiqueta="Avisar antes del vencimiento"
           htmlFor={`tipo-dias-${id}`}
           requerido
-          ayuda="Los días de anticipación, separados por comas. Hasta cinco avisos, de 0 a 120 días."
+          ayuda="Los días de anticipación, separados por comas: 30, 15, 7. Hasta cinco avisos, de 0 a 120 días."
           ayudaEnIcono={false}
           error={errorDias ?? undefined}
         >
@@ -475,16 +512,30 @@ function FormularioTipo({ id, tipo, alCancelar, alTerminar }: {
             id={`tipo-dias-${id}`}
             name="dias_aviso"
             required
-            inputMode="numeric"
+            // Sin teclado numérico: el del teléfono no trae la coma que separa los días.
             pattern="[0-9 ,;y]+"
             maxLength={40}
             autoComplete="off"
-            defaultValue={(tipo?.dias_aviso ?? [30, 15, 7]).join(', ')}
+            value={dias}
+            onChange={(e) => {
+              setDias(e.target.value)
+              setDiasTocados(true)
+            }}
             className="tabular"
           />
         </Campo>
         <label className={CASILLA}>
-          <input type="checkbox" name="se_renueva" defaultChecked={tipo?.se_renueva ?? false} className="size-5 shrink-0 accent-[var(--acento)] sm:size-4" />
+          <input
+            type="checkbox"
+            name="se_renueva"
+            checked={renueva}
+            onChange={(e) => {
+              setRenueva(e.target.checked)
+              // En un tipo nuevo, los días que se proponen siguen a la marca mientras nadie los escriba.
+              if (!tipo && !diasTocados) setDias(e.target.checked ? DIAS_SI_SE_RENUEVA : DIAS_SI_NO)
+            }}
+            className="size-5 shrink-0 accent-[var(--acento)] sm:size-4"
+          />
           <span>
             Se renueva
             <span className="block text-xs text-texto-suave">Vence cada cierto tiempo y se vuelve a tramitar: el SOAT, una revisión técnica.</span>

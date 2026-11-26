@@ -1233,9 +1233,11 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     telefono: ['/calidad', '/garantias', '/seguimiento', '/'],
   },
   // El Tramitador (plan «El puesto de Tramitador», entrega 1): su única
-  // pantalla es la de los trámites que registra y lleva.
+  // pantalla es la de los trámites que registra y lleva. Va arriba, junto al
+  // Dashboard: un grupo «Trámites» con una sola entrada «Trámites» repetía el nombre.
   TRAMITADOR: {
-    grupos: [{ titulo: 'Trámites', rutas: ['/tramites'] }],
+    principal: ['/tramites'],
+    grupos: [],
     telefono: ['/tramites', '/'],
   },
 }

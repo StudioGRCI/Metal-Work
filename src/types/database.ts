@@ -12516,6 +12516,8 @@ export type Database = {
           id: string
           numero: string
           tipo_id: string
+          tipo_nombre: string
+          se_renueva: boolean
           ambito: string
           entidad: string
           asunto: string
@@ -12543,6 +12545,8 @@ export type Database = {
           id?: string
           numero: string
           tipo_id: string
+          tipo_nombre: string
+          se_renueva?: boolean
           ambito: string
           entidad: string
           asunto: string
@@ -12570,6 +12574,8 @@ export type Database = {
           id?: string
           numero?: string
           tipo_id?: string
+          tipo_nombre?: string
+          se_renueva?: boolean
           ambito?: string
           entidad?: string
           asunto?: string
@@ -21240,6 +21246,7 @@ export type Database = {
           p_se_renueva: boolean | null
           p_dias_aviso: Json | null
           p_activo: boolean | null
+          p_alta: boolean | null
         }
         Returns: {
           tipo: string | null
@@ -21276,6 +21283,7 @@ export type Database = {
           p_id: string | null
           p_aprobar: boolean | null
           p_motivo: string | null
+          p_pedido: string | null
         }
         Returns: {
           tramite: string | null

@@ -97,8 +97,9 @@ select public.activar_registro_de_prueba('tramite_tipos');
 
 -- Los tipos de partida. Los de la unidad salen de la OT («Certificados» y
 -- «Tarjeta de propiedad y placas», docs/ANALISIS-ONEDRIVE.md §5) y del formato
--- MW-FOR-ADM-7, área F. Los de la empresa son los que StudioGRCI nombró. El
--- Tramitador corrige la entidad y los días de aviso, y agrega los que falten.
+-- MW-FOR-ADM-7, área F. Los de la empresa son los que StudioGRCI nombró. Los
+-- días de aviso, como los decidió: 30, 15 y 7 para lo que se renueva y 5 para
+-- lo demás. El Tramitador corrige la entidad y los días, y agrega los que falten.
 insert into public.tramite_tipos (nombre, entidad, ambito, se_renueva, dias_aviso, creado_por)
 select t.nombre, t.entidad, t.ambito, t.se_renueva, t.dias_aviso, null
   from (values
@@ -106,12 +107,12 @@ select t.nombre, t.entidad, t.ambito, t.se_renueva, t.dias_aviso, null
     ('Placas',                           'Asociación Automotriz del Perú',   'UNIDAD',  false, '{5}'::integer[]),
     ('Certificados de la unidad',        'Entidad certificadora',            'UNIDAD',  false, '{5}'::integer[]),
     ('Otro trámite de una unidad',       'Por definir',                      'UNIDAD',  false, '{5}'::integer[]),
-    ('Licencia de funcionamiento',       'Municipalidad',                    'EMPRESA', false, '{30,15,7}'::integer[]),
+    ('Licencia de funcionamiento',       'Municipalidad',                    'EMPRESA', false, '{5}'::integer[]),
     ('Certificado de Defensa Civil (ITSE)', 'Municipalidad',                 'EMPRESA', true,  '{30,15,7}'::integer[]),
     ('SOAT',                             'Aseguradora',                      'EMPRESA', true,  '{30,15,7}'::integer[]),
     ('Revisión técnica vehicular',       'Centro de inspección técnica',     'EMPRESA', true,  '{30,15,7}'::integer[]),
     ('Permiso del MTC',                  'MTC',                              'EMPRESA', true,  '{30,15,7}'::integer[]),
-    ('Otro trámite de la empresa',       'Por definir',                      'EMPRESA', false, '{30,15,7}'::integer[])
+    ('Otro trámite de la empresa',       'Por definir',                      'EMPRESA', false, '{5}'::integer[])
   ) as t(nombre, entidad, ambito, se_renueva, dias_aviso)
  where not exists (select 1 from public.tramite_tipos x where lower(x.nombre) = lower(t.nombre));
 
@@ -120,6 +121,11 @@ create table if not exists public.tramites (
   id                        uuid primary key default gen_random_uuid(),
   numero                    text not null,
   tipo_id                   uuid not null references public.tramite_tipos(id) on delete restrict,
+  -- Cómo se llamaba el tipo y si se renovaba cuando se registró, congelados:
+  -- corregir el catálogo después no cambia lo que dice un trámite ya
+  -- registrado, tampoco uno anulado.
+  tipo_nombre               text not null,
+  se_renueva                boolean not null default false,
   -- De una unidad o de la empresa: sale del tipo al registrar y queda
   -- congelado. Ventas ve solo los de una unidad, y filtra por aquí (b).
   ambito                    text not null,
@@ -152,6 +158,7 @@ create table if not exists public.tramites (
   constraint uq_tramites_numero unique (numero),
   constraint ck_tramite_datos check (
     ambito in ('UNIDAD', 'EMPRESA')
+    and char_length(btrim(tipo_nombre)) between 3 and 80
     and char_length(btrim(entidad)) between 2 and 80
     and char_length(btrim(asunto)) between 5 and 300
     and (expediente is null or char_length(expediente) between 1 and 60)
@@ -180,17 +187,17 @@ create table if not exists public.tramites (
 );
 comment on table public.tramites is
   'El trámite de una unidad o de la empresa (TR-…): su tipo, su entidad, qué se tramita, su expediente, cuándo se presentó, su fecha límite y en qué va. Lo registra y lo lleva el Tramitador (tramites.gestionar); lo consultan Gerencia y Administración (tramites.ver) y, los de una unidad, Ventas (tramites.ver_de_unidades). No se borra: quien lo lleva pide anularlo con su motivo y Gerencia lo aprueba (tramites.aprobar_anulacion).';
+comment on column public.tramites.tipo_nombre is
+  'El nombre del tipo cuando se registró el trámite, congelado: corregir el catálogo no cambia lo que dice un trámite ya registrado.';
 comment on column public.tramites.cliente_id is
   'El cliente de la unidad cuando se registró el trámite, congelado.';
 comment on column public.tramites.fecha_limite is
   'Hasta cuándo debe quedar el trámite. Pasada esa fecha y sin anular, está vencido.';
 -- La lista se lee de la más reciente a la más vieja (b).
 create index if not exists ix_tramites_creado on public.tramites (creado_en desc);
--- Los trámites de una unidad y los de una OT (b); sirven también a sus llaves.
-create index if not exists ix_tramites_unidad on public.tramites (unidad_id) where unidad_id is not null;
-create index if not exists ix_tramites_orden on public.tramites (orden_id) where orden_id is not null;
--- Lo que vence: los vivos por su fecha límite (b), para la lista y los avisos de la entrega 3.
-create index if not exists ix_tramites_limite on public.tramites (fecha_limite) where fecha_limite is not null and estado <> 'ANULADO';
+-- Sin índice por unidad, por OT ni por fecha límite: hoy nada filtra por ellas
+-- (la lista ordena lo que ya leyó) y ni la unidad ni la OT se borran. Los crea
+-- la entrega que los use (los avisos por vencer, el enlace con la OT).
 select public.activar_timestamps('tramites');
 select public.activar_auditoria('tramites');
 select public.activar_registro_de_prueba('tramites');
@@ -200,7 +207,8 @@ create or replace function public.fn_tramite_guardia()
 returns trigger language plpgsql set search_path to 'public' as $$
 declare
   -- Lo que fija quien registra: no cambia nunca.
-  v_fijo     constant text[] := array['id', 'numero', 'tipo_id', 'ambito', 'unidad_id', 'cliente_id', 'orden_id', 'registrado_por', 'creado_en'];
+  v_fijo     constant text[] := array['id', 'numero', 'tipo_id', 'tipo_nombre', 'se_renueva', 'ambito', 'unidad_id', 'cliente_id', 'orden_id',
+                                   'registrado_por', 'creado_en'];
   -- Lo único que cambia mientras espera el visto de Gerencia: su respuesta.
   v_respuesta constant text[] := array['estado', 'anulado_por', 'anulado_en', 'anulacion_rechazada_por', 'anulacion_rechazada_en',
                                        'anulacion_rechazo_motivo', 'actualizado_en'];
@@ -230,7 +238,9 @@ begin
     end if;
     new.motivo_anulacion := btrim(new.motivo_anulacion);
     new.anulacion_pedida_por := coalesce(public.usuario_actual(), new.anulacion_pedida_por);
-    new.anulacion_pedida_en := now();
+    -- La hora del reloj, no la de la transacción: cada pedido tiene la suya, y
+    -- quien responde dice a cuál responde (`tramites_resolver_anulacion`).
+    new.anulacion_pedida_en := clock_timestamp();
     -- Un pedido nuevo deja atrás la respuesta del anterior.
     new.anulacion_rechazada_por := null;
     new.anulacion_rechazada_en := null;
@@ -284,7 +294,9 @@ create or replace function public.tramites_ve_todos()
 returns boolean language sql stable security definer set search_path to 'public' as $$
   select coalesce(
     public.usuario_actual() is not null and public.es_usuario_activo()
-     and (public.es_admin() or public.tiene_permiso('tramites.gestionar') or public.tiene_permiso('tramites.ver')),
+     and (public.es_admin() or public.tiene_permiso('tramites.gestionar') or public.tiene_permiso('tramites.ver')
+          -- Quien aprueba la anulación tiene que poder leer lo que le piden anular.
+          or public.tiene_permiso('tramites.aprobar_anulacion')),
     false);
 $$;
 revoke all on function public.tramites_ve_todos() from public, anon;
@@ -334,7 +346,8 @@ grant select on public.tramite_tipos to authenticated;
 -- nuevo, lo da de alta. Si el tipo ya tiene trámites, no cambia de «unidad» a
 -- «empresa»: sus trámites quedarían con una unidad que el tipo ya no admite.
 create or replace function public.tramites_guardar_tipo(
-  p_id uuid, p_nombre text, p_entidad text, p_ambito text, p_se_renueva boolean, p_dias_aviso jsonb, p_activo boolean
+  p_id uuid, p_nombre text, p_entidad text, p_ambito text, p_se_renueva boolean, p_dias_aviso jsonb, p_activo boolean,
+  p_alta boolean
 ) returns table (tipo uuid, creado boolean)
 language plpgsql security definer set search_path to 'public' as $$
 declare
@@ -380,10 +393,24 @@ begin
 
   select * into v_actual from public.tramite_tipos where id = p_id for update;
   if not found then
+    if not coalesce(p_alta, false) then
+      raise exception 'Ese tipo de trámite ya no está en el catálogo. Recarga la pantalla.' using errcode = 'no_data_found';
+    end if;
     insert into public.tramite_tipos (id, nombre, entidad, ambito, se_renueva, dias_aviso, activo, creado_por)
     values (p_id, v_nombre, v_entidad, p_ambito, coalesce(p_se_renueva, false), v_dias, coalesce(p_activo, true), v_yo);
     return query select p_id, true;
     return;
+  end if;
+  -- El alta que se repite (se perdió la respuesta y se volvió a enviar) no
+  -- corrige: con lo mismo, es el mismo envío; con otra cosa, dice que ya quedó.
+  if coalesce(p_alta, false) then
+    if (v_actual.nombre, v_actual.entidad, v_actual.ambito, v_actual.se_renueva, v_actual.dias_aviso, v_actual.activo)
+       is not distinct from (v_nombre, v_entidad, p_ambito, coalesce(p_se_renueva, false), v_dias, coalesce(p_activo, true)) then
+      return query select p_id, true;
+      return;
+    end if;
+    raise exception 'El tipo «%» ya quedó agregado la primera vez. Cierra esta ventana y corrígelo con «Editar».', v_actual.nombre
+      using errcode = 'unique_violation';
   end if;
   if v_actual.ambito <> p_ambito and exists (select 1 from public.tramites x where x.tipo_id = p_id) then
     raise exception 'El tipo «%» ya tiene trámites registrados: no cambia de % a %. Crea otro tipo.', v_actual.nombre,
@@ -400,10 +427,10 @@ begin
   return query select p_id, false;
 end;
 $$;
-comment on function public.tramites_guardar_tipo(uuid, text, text, text, boolean, jsonb, boolean) is
-  'Quien lleva los trámites (tramites.gestionar) da de alta un tipo de trámite o lo corrige: nombre, entidad, si es de una unidad o de la empresa, si se renueva, los días de aviso y si sigue en uso.';
-revoke all on function public.tramites_guardar_tipo(uuid, text, text, text, boolean, jsonb, boolean) from public, anon;
-grant execute on function public.tramites_guardar_tipo(uuid, text, text, text, boolean, jsonb, boolean) to authenticated;
+comment on function public.tramites_guardar_tipo(uuid, text, text, text, boolean, jsonb, boolean, boolean) is
+  'Quien lleva los trámites (tramites.gestionar) da de alta un tipo de trámite (p_alta) o lo corrige: nombre, entidad, si es de una unidad o de la empresa, si se renueva, los días de aviso y si sigue en uso. El alta repetida con lo mismo devuelve el mismo tipo; con otra cosa, dice que ya quedó.';
+revoke all on function public.tramites_guardar_tipo(uuid, text, text, text, boolean, jsonb, boolean, boolean) from public, anon;
+grant execute on function public.tramites_guardar_tipo(uuid, text, text, text, boolean, jsonb, boolean, boolean) to authenticated;
 
 -- 8. Las unidades para elegir -------------------------------------------------------------
 -- Quien lleva los trámites no lee clientes, unidades ni órdenes con su permiso:
@@ -518,9 +545,9 @@ begin
   end if;
 
   v_numero := public.siguiente_correlativo('TRAMITE', '001', null);
-  insert into public.tramites (id, numero, tipo_id, ambito, entidad, asunto, unidad_id, cliente_id, orden_id, expediente,
-                               fecha_inicio, fecha_limite, nota, estado, registrado_por)
-  values (p_id, v_numero, p_tipo, v_tipo.ambito, v_entidad, v_asunto,
+  insert into public.tramites (id, numero, tipo_id, tipo_nombre, se_renueva, ambito, entidad, asunto, unidad_id, cliente_id, orden_id,
+                               expediente, fecha_inicio, fecha_limite, nota, estado, registrado_por)
+  values (p_id, v_numero, p_tipo, v_tipo.nombre, v_tipo.se_renueva, v_tipo.ambito, v_entidad, v_asunto,
           case when v_tipo.ambito = 'UNIDAD' then p_unidad end,
           case when v_tipo.ambito = 'UNIDAD' then v_unidad.cliente_id end,
           case when v_tipo.ambito = 'UNIDAD' then p_orden end,
@@ -661,7 +688,11 @@ grant execute on function public.tramites_pedir_anulacion(uuid, text) to authent
 
 -- 12. Gerencia responde ---------------------------------------------------------------------------
 -- p_aprobar: lo anula. Si no, dice por qué y el trámite sigue como estaba.
-create or replace function public.tramites_resolver_anulacion(p_id uuid, p_aprobar boolean, p_motivo text)
+-- p_pedido es el pedido que quien responde tiene a la vista (su
+-- `anulacion_pedida_en`): si entre tanto se respondió y se volvió a pedir con
+-- otro motivo, la respuesta de una pantalla vieja no vale para el pedido nuevo.
+-- Anular no tiene vuelta atrás: no se anula con un motivo que no se leyó.
+create or replace function public.tramites_resolver_anulacion(p_id uuid, p_aprobar boolean, p_motivo text, p_pedido timestamptz)
 returns table (tramite uuid, anulado boolean)
 language plpgsql security definer set search_path to 'public' as $$
 declare
@@ -678,14 +709,17 @@ begin
   if not p_aprobar and char_length(v_motivo) not between 10 and 500 then
     raise exception 'Cuenta por qué no se anula, en 10 a 500 caracteres.' using errcode = 'check_violation';
   end if;
+  if p_pedido is null then
+    raise exception 'Recarga la ficha del trámite y lee el pedido antes de responder.' using errcode = 'check_violation';
+  end if;
   select * into v_t from public.tramites where id = p_id for update;
   if not found then raise exception 'Ese trámite no existe.' using errcode = 'check_violation'; end if;
-  -- La misma respuesta repetida (se perdió la primera) entra.
-  if p_aprobar and v_t.estado = 'ANULADO' and v_t.anulado_por = v_yo then
+  -- La misma respuesta repetida al mismo pedido (se perdió la primera) entra.
+  if p_aprobar and v_t.estado = 'ANULADO' and v_t.anulado_por = v_yo and v_t.anulacion_pedida_en = p_pedido then
     return query select p_id, true;
     return;
   end if;
-  if not p_aprobar and v_t.estado <> 'ANULADO' and v_t.anulacion_rechazada_en is not null
+  if not p_aprobar and v_t.estado <> 'ANULADO' and v_t.anulacion_rechazada_en is not null and v_t.anulacion_pedida_en = p_pedido
      and v_t.anulacion_rechazada_por = v_yo and v_t.anulacion_rechazo_motivo = v_motivo then
     return query select p_id, false;
     return;
@@ -695,6 +729,10 @@ begin
   end if;
   if v_t.anulacion_pedida_en is null or v_t.anulacion_rechazada_en is not null then
     raise exception 'El trámite % no espera tu visto: nadie pidió anularlo, o ya se respondió.', v_t.numero using errcode = 'check_violation';
+  end if;
+  if v_t.anulacion_pedida_en <> p_pedido then
+    raise exception 'El trámite % se volvió a pedir anular, con otro motivo, después de que abriste esta pantalla: recárgala y lee el pedido antes de responder.', v_t.numero
+      using errcode = 'check_violation';
   end if;
 
   if p_aprobar then
@@ -714,10 +752,10 @@ begin
   return query select p_id, p_aprobar;
 end;
 $$;
-comment on function public.tramites_resolver_anulacion(uuid, boolean, text) is
-  'Quien aprueba (tramites.aprobar_anulacion) responde al pedido de anular un trámite: lo anula, o dice por qué no y el trámite sigue como estaba. Avisa a quien lo pidió.';
-revoke all on function public.tramites_resolver_anulacion(uuid, boolean, text) from public, anon;
-grant execute on function public.tramites_resolver_anulacion(uuid, boolean, text) to authenticated;
+comment on function public.tramites_resolver_anulacion(uuid, boolean, text, timestamptz) is
+  'Quien aprueba (tramites.aprobar_anulacion) responde al pedido de anular un trámite que tiene a la vista (p_pedido, su anulacion_pedida_en): lo anula, o dice por qué no y el trámite sigue como estaba. Si el pedido cambió desde que abrió la pantalla, no responde. Avisa a quien lo pidió.';
+revoke all on function public.tramites_resolver_anulacion(uuid, boolean, text, timestamptz) from public, anon;
+grant execute on function public.tramites_resolver_anulacion(uuid, boolean, text, timestamptz) to authenticated;
 
 -- 13. Lo que cada quien lee ---------------------------------------------------------------------
 -- Una sola lectura para la lista (p_id vacío) y la ficha, con el tipo, la
@@ -762,7 +800,7 @@ begin
   )
   select b.id, b.numero, b.estado, case when b.espera_visto then 'POR_ANULAR' else b.estado end,
          b.creado_en, b.actualizado_en,
-         b.tipo_id, tt.nombre, tt.se_renueva, b.ambito, b.entidad, b.asunto, b.expediente,
+         b.tipo_id, b.tipo_nombre, b.se_renueva, b.ambito, b.entidad, b.asunto, b.expediente,
          b.fecha_inicio, b.fecha_limite,
          case when b.estado <> 'ANULADO' and b.fecha_limite is not null then b.fecha_limite - v_hoy end,
          b.estado <> 'ANULADO' and b.fecha_limite is not null and b.fecha_limite < v_hoy,
@@ -777,7 +815,6 @@ begin
          v_gestiona and b.estado <> 'ANULADO' and not b.espera_visto,
          v_aprueba and b.espera_visto
     from base b
-    join public.tramite_tipos tt on tt.id = b.tipo_id
     left join public.unidades u on u.id = b.unidad_id
     left join public.tipos_carroceria tc on tc.id = u.tipo_carroceria_id
     left join public.clientes c on c.id = b.cliente_id

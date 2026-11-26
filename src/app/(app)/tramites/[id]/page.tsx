@@ -35,8 +35,11 @@ export default async function PaginaTramite({ params }: PageProps<'/tramites/[id
 
   const acciones = (
     <>
-      {t.puede_resolver_anulacion && <AprobarAnulacion id={t.id} numero={t.numero} motivo={t.motivo_anulacion} pidio={t.anulacion_pidio} />}
-      {t.puede_resolver_anulacion && <NoAprobarAnulacion id={t.id} numero={t.numero} />}
+      {/* La respuesta lleva la hora del pedido que esta ficha muestra: si se volvió a pedir con otro motivo, la base no responde por ella. */}
+      {t.puede_resolver_anulacion && t.anulacion_pedida_en && (
+        <AprobarAnulacion id={t.id} numero={t.numero} motivo={t.motivo_anulacion} pidio={t.anulacion_pidio} pedido={t.anulacion_pedida_en} />
+      )}
+      {t.puede_resolver_anulacion && t.anulacion_pedida_en && <NoAprobarAnulacion id={t.id} numero={t.numero} pedido={t.anulacion_pedida_en} />}
       {t.puede_actualizar && <ActualizarTramite tramite={t} hoy={hoyLima()} />}
       {t.puede_pedir_anulacion && <PedirAnulacion id={t.id} numero={t.numero} />}
     </>
@@ -62,7 +65,7 @@ export default async function PaginaTramite({ params }: PageProps<'/tramites/[id
                   {plazo.texto}
                 </Insignia>
               )}
-              {t.se_renueva && <Insignia tono="info">Se renueva</Insignia>}
+              {t.se_renueva && t.situacion !== 'ANULADO' && <Insignia tono="info">Se renueva</Insignia>}
             </div>
             <QueSigue tramite={t} />
             {t.situacion === 'POR_ANULAR' && (
@@ -71,6 +74,31 @@ export default async function PaginaTramite({ params }: PageProps<'/tramites/[id
                   {t.anulacion_pidio ?? 'Quien lo lleva'} pidió anularlo{t.anulacion_pedida_en ? `, ${fechaHora(t.anulacion_pedida_en)}` : ''}
                 </p>
                 {t.motivo_anulacion && <p className="mt-1 whitespace-pre-wrap text-texto">{t.motivo_anulacion}</p>}
+              </div>
+            )}
+            {/* Por qué se anuló, o por qué no: arriba, junto a cómo va. En el teléfono quedaba al fondo. */}
+            {t.anulado_en && (
+              <div className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 px-3 py-2 text-sm" data-anulado>
+                <p className="font-medium text-texto">
+                  Anulado con el visto de {t.anulo ?? 'Gerencia'}, {fechaHora(t.anulado_en)}
+                </p>
+                {t.motivo_anulacion && <p className="mt-1 whitespace-pre-wrap text-texto">{t.motivo_anulacion}</p>}
+                <p className="mt-1 text-xs text-texto-suave">
+                  Lo pidió {t.anulacion_pidio ?? 'quien lo lleva'}
+                  {t.anulacion_pedida_en ? `, ${fechaHora(t.anulacion_pedida_en)}` : ''}
+                </p>
+              </div>
+            )}
+            {t.anulacion_rechazada_en && (
+              <div className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 px-3 py-2 text-sm" data-anulacion-no-aprobada>
+                <p className="font-medium text-texto">
+                  {t.anulacion_rechazo ?? 'Gerencia'} no aprobó anularlo, {fechaHora(t.anulacion_rechazada_en)}
+                </p>
+                {t.anulacion_rechazo_motivo && <p className="mt-1 whitespace-pre-wrap text-texto">{t.anulacion_rechazo_motivo}</p>}
+                <p className="mt-1 text-xs text-texto-suave">
+                  Lo había pedido {t.anulacion_pidio ?? 'quien lo lleva'}
+                  {t.motivo_anulacion ? `: «${t.motivo_anulacion}»` : ''}
+                </p>
               </div>
             )}
             <div>
@@ -121,37 +149,6 @@ export default async function PaginaTramite({ params }: PageProps<'/tramites/[id
           </TarjetaCuerpo>
         </Tarjeta>
 
-        {(t.anulado_en || t.anulacion_rechazada_en) && (
-          <Tarjeta>
-            <TarjetaCabecera titulo="Anulación" />
-            <TarjetaCuerpo className="space-y-3 text-sm">
-              {t.anulado_en && (
-                <div className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 px-3 py-2" data-anulado>
-                  <p className="font-medium text-texto">
-                    Anulado con el visto de {t.anulo ?? 'Gerencia'}, {fechaHora(t.anulado_en)}
-                  </p>
-                  {t.motivo_anulacion && <p className="mt-1 whitespace-pre-wrap text-texto">{t.motivo_anulacion}</p>}
-                  <p className="mt-1 text-xs text-texto-suave">
-                    Lo pidió {t.anulacion_pidio ?? 'quien lo lleva'}
-                    {t.anulacion_pedida_en ? `, ${fechaHora(t.anulacion_pedida_en)}` : ''}
-                  </p>
-                </div>
-              )}
-              {t.anulacion_rechazada_en && (
-                <div className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 px-3 py-2" data-anulacion-no-aprobada>
-                  <p className="font-medium text-texto">
-                    {t.anulacion_rechazo ?? 'Gerencia'} no aprobó anularlo, {fechaHora(t.anulacion_rechazada_en)}
-                  </p>
-                  {t.anulacion_rechazo_motivo && <p className="mt-1 whitespace-pre-wrap text-texto">{t.anulacion_rechazo_motivo}</p>}
-                  <p className="mt-1 text-xs text-texto-suave">
-                    Lo había pedido {t.anulacion_pidio ?? 'quien lo lleva'}
-                    {t.motivo_anulacion ? `: «${t.motivo_anulacion}»` : ''}
-                  </p>
-                </div>
-              )}
-            </TarjetaCuerpo>
-          </Tarjeta>
-        )}
       </div>
     </>
   )

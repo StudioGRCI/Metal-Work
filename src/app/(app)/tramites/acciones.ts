@@ -166,7 +166,9 @@ export async function pedirAnulacion(_previo: unknown, formulario: FormData): Pr
 
 /**
  * Gerencia responde al pedido de anular un trámite: lo anula, o dice por qué no
- * y el trámite sigue. Mismo permiso que `tramites_resolver_anulacion`.
+ * y el trámite sigue. Mismo permiso que `tramites_resolver_anulacion`. Manda
+ * el pedido que la ficha tenía a la vista (`pedido`, su hora): si entre tanto
+ * se volvió a pedir con otro motivo, la base no responde por ella.
  */
 export async function resolverAnulacion(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
@@ -174,13 +176,23 @@ export async function resolverAnulacion(_previo: unknown, formulario: FormData):
 
   const aprobar = dato(formulario, 'respuesta') === 'aprobar'
   const analisis = z
-    .object({ id: z.guid(), motivo: aprobar ? z.string().max(500) : motivo('por qué no se anula') })
-    .safeParse({ id: dato(formulario, 'id'), motivo: dato(formulario, 'motivo') })
+    .object({
+      id: z.guid(),
+      motivo: aprobar ? z.string().max(500) : motivo('por qué no se anula'),
+      // La hora del pedido, como la entregó la base: se devuelve tal cual.
+      pedido: z.string().regex(/^\d{4}-\d{2}-\d{2}[T ][0-9:.]+(Z|[+-]\d{2}(:?\d{2})?)$/, 'Recarga la ficha del trámite y lee el pedido antes de responder.'),
+    })
+    .safeParse({ id: dato(formulario, 'id'), motivo: dato(formulario, 'motivo'), pedido: dato(formulario, 'pedido') })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
 
   const supabase = await createClient()
   const { data, error } = await supabase
-    .rpc('tramites_resolver_anulacion', { p_id: analisis.data.id, p_aprobar: aprobar, p_motivo: analisis.data.motivo || null })
+    .rpc('tramites_resolver_anulacion', {
+      p_id: analisis.data.id,
+      p_aprobar: aprobar,
+      p_motivo: analisis.data.motivo || null,
+      p_pedido: analisis.data.pedido,
+    })
     .maybeSingle()
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data?.tramite !== analisis.data.id || data.anulado !== aprobar) return { ok: false, error: 'La respuesta no quedó anotada. Recarga la pantalla.' }
@@ -231,6 +243,8 @@ export async function guardarTipo(_previo: unknown, formulario: FormData): Promi
       p_se_renueva: formulario.get('se_renueva') === 'on',
       p_dias_aviso: dias,
       p_activo: formulario.get('activo') === 'on',
+      // El tipo nuevo lo dice: su alta repetida no corrige a escondidas.
+      p_alta: dato(formulario, 'alta') === '1',
     })
     .maybeSingle()
   if (error) return { ok: false, error: mensajeDeError(error) }
