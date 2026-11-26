@@ -16259,6 +16259,25 @@ export type Database = {
         }
         Returns: string
       }
+      pendientes_de_las_ot: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          clase: string | null
+          documento: string | null
+          numero: string | null
+          cliente: string | null
+          trabajo: string | null
+          falta_ot: boolean | null
+          falta_codigo: boolean | null
+          falta_fecha: boolean | null
+          ot_anulada: string | null
+          venta_anterior_de: string | null
+          codigo_bloqueado: string | null
+          desde: string | null
+          dias: number | null
+          total: number | null
+        }[]
+      }
       permisos_por_dia: {
         Args: Record<PropertyKey, never>
         Returns: {
