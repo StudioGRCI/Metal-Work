@@ -1,0 +1,17 @@
+-- =============================================================================
+-- EL TRÁMITE TIENE NÚMERO
+-- -----------------------------------------------------------------------------
+-- StudioGRCI, 2026-11-26, plan «El puesto de Tramitador», entrega 1: un puesto
+-- que registra y lleva los trámites de la empresa —la tarjeta de propiedad, las
+-- placas y los certificados de cada unidad, y las licencias, el SOAT y los
+-- permisos de la casa— y los deja guardados. La empresa no tiene formato propio
+-- de trámite (`docs/ANALISIS-ONEDRIVE.md` solo trae su plazo en la OT): el
+-- número es TR-0001-2026, con la misma forma que AV, RI y RG.
+--
+-- Es un documento numerado: no se borra nunca, se anula con su motivo y con el
+-- visto de Gerencia.
+--
+-- Va sola porque Postgres no deja usar en la misma transacción un valor de
+-- enum recién agregado: la migración 20261126997100 crea la serie con él.
+-- =============================================================================
+alter type public.tipo_correlativo add value if not exists 'TRAMITE';

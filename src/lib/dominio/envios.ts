@@ -57,6 +57,8 @@ export const CLAVES_DEL_ENVIO = [
   'fecha_prometida',
   // El reclamo de garantía (A.2): reabrir tras «No llegó la respuesta» no da otro número RG al mismo reclamo.
   'reclamo_garantia',
+  // El trámite (plan «El puesto de Tramitador», entrega 1): reabrir tras «No llegó la respuesta» no da otro número TR al mismo trámite.
+  'tramite',
 ] as const
 
 export type ClaveDelEnvio = (typeof CLAVES_DEL_ENVIO)[number]
