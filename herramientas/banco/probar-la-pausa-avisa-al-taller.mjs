@@ -12,8 +12,12 @@
  *      sup.prd.local, cuya etapa ya terminó, no recibe nada.
  *   4. administracion.local la reanuda; sup.acb.local, en el monitor (1440), ve
  *      «Orden … reanudada».
+ *   Y lo que el aviso promete: en proceso, «Sin reporte de hoy» le pide el
+ *   código a Maestranza; pausada, ya no. La ventana de pausar dice a quién le
+ *   llega el motivo.
  *
- * Deja la OT como la encontró (en proceso y con su unidad). Variables:
+ * Deja la OT como la encontró (en proceso y con su unidad) y quita lo sembrado, también sus avisos.
+ * Variables:
  * BANCO_CLAVE, BASE (http://localhost:3111), BANCO_BASE (mw_demo),
  * BANCO_CHROMIUM, CAPTURAS.
  */
@@ -138,10 +142,19 @@ try {
   // ---------------------------------------------- 2. Administración pausa
   const motivo = `Falta el chasis del cliente (prueba ${sufijo})`
   {
+    // Antes de pausar, el código le pide el reporte a Maestranza.
+    const mtz = await entrar('sup.mtz', 1440)
+    await ir(mtz.pagina, '/planos')
+    comprobar((await mtz.pagina.locator(`[data-codigo-sin-reporte="${codigo}"]`).count()) === 1, `en proceso, «Sin reporte de hoy» le pide ${codigo} a Maestranza`)
+    await mtz.contexto.close()
+
     const { pagina, contexto } = await entrar('administracion', 1440)
     await ir(pagina, `/ordenes/${orden.id}`)
     await boton(pagina, 'Pausar').click()
     const ventana = pagina.getByRole('dialog')
+    const explica = limpio(await ventana.innerText())
+    comprobar(explica.includes('les llega a los supervisores de las áreas con una etapa abierta'), 'la ventana dice que el motivo les llega a los supervisores')
+    await capturar(pagina, 'aviso-pausa-1440-ventana.png')
     await ventana.locator('textarea[name="motivo"]').fill(motivo)
     await ventana.getByRole('button', { name: 'Confirmar' }).click()
     const pausada = await esperarEstado('PAUSADA')
@@ -174,6 +187,9 @@ try {
     comprobar(url.pathname === '/planos' && url.searchParams.get('q') === codigo, `al tocarlo llega a Planos y etapas con el código buscado (${url.pathname}${url.search})`)
     comprobar(limpio(await pagina.locator('main').innerText()).includes(codigo), `y ahí está el código ${codigo}`)
     await capturar(pagina, 'aviso-pausa-390-planos.png')
+    // Lo que el aviso promete: la bandeja ya no le pide ese código.
+    await ir(pagina, '/planos')
+    comprobar((await pagina.locator(`[data-codigo-sin-reporte="${codigo}"]`).count()) === 0, `pausada, «Sin reporte de hoy» ya no le pide ${codigo}`)
     await contexto.close()
   }
 
@@ -192,7 +208,7 @@ try {
     const fila = acb.pagina.getByRole('button', { name: new RegExp(titulo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) })
     comprobar((await fila.count()) === 1, `Acabados ve «${titulo}»`)
     const dice = limpio(await fila.textContent().catch(() => ''))
-    comprobar(dice.includes(`el código ${codigo} vuelve a pedir tu reporte diario`), `y que vuelve a pedir el reporte: «${dice.slice(0, 200)}»`)
+    comprobar(dice.includes(`El código ${codigo} vuelve a pedir tu reporte diario`), `y que vuelve a pedir el reporte: «${dice.slice(0, 200)}»`)
     await capturar(acb.pagina, 'aviso-pausa-1440-reanudada.png')
     await acb.contexto.close()
     comprobar((await avisosDe('sup.mtz')).length === 2, 'Maestranza tiene los dos avisos: pausada y reanudada')
@@ -204,6 +220,10 @@ try {
   await base.query('begin')
   await base.query('set local session_replication_role = replica')
   await base.query(`update public.ordenes_trabajo set estado = 'EN_PROCESO', motivo_pausa = null, unidad_id = $1 where id = $2`, [orden.unidad_id, orden.id])
+  // Y se va lo sembrado: si no, cada corrida suma un código con etapas abiertas al tablero y a «Sin reporte de hoy».
+  await base.query(`delete from public.notificaciones where origen_id = $1 and titulo like $2`, [orden.id, `% · ${codigo}`])
+  await base.query(`delete from public.codigo_etapas where codigo_interno = $1`, [codigo])
+  await base.query(`delete from public.unidades where id = $1`, [unidad.id])
   await base.query('commit')
   await navegador.close()
   await base.end()

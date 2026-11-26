@@ -15,12 +15,19 @@
 --
 -- El código sale igual que en el tablero de tiempos de entrega: el de la unidad,
 -- o el número de la OT si es mantenimiento o garantía (migración 20261120500000).
--- Si el código tiene otra OT abierta, sigue pidiendo el reporte, y el aviso no
--- dice que deja de pedirlo.
+-- «No te pide el reporte» es la regla de las migraciones 335000 y 336000
+-- (`codigos_pausados_de_mi_area`): el código cuya única OT abierta está pausada
+-- sale de «Sin reporte de hoy». Por eso esta migración va después de ellas. Si
+-- el código tiene otra OT abierta, sigue pidiendo el reporte, y el aviso no
+-- dice que deja de pedirlo. Tampoco se lo dice a quien la bandeja no se lo pide
+-- hoy: el área cuya etapa todavía no empieza.
 --
 -- Va en un disparador propio, como pide la skill `seguridad`: no se redefine
 -- `fn_ot_avisa_de_estado`. El aviso lleva a «Planos y etapas» con el código
--- buscado: el supervisor no entra a la OT.
+-- buscado: el supervisor no entra a la OT. El código va escapado en la ruta.
+--
+-- El disparador corre solo cuando cambia el estado (`when`), no en cada
+-- corrección de la OT.
 --
 -- Sin DROP. Idempotente: `create or replace function` y `create or replace trigger`.
 -- =============================================================================
@@ -55,36 +62,52 @@ begin
     return null;
   end if;
 
-  -- ¿Es la única OT abierta del código? Entonces deja (o vuelve a) pedir el reporte.
-  select c.ots_abiertas = 1 into v_sola
+  -- ¿El código deja de pedir el reporte? La misma condición que
+  -- `codigos_pausados_de_mi_area` (336000): su única OT abierta está pausada.
+  -- Al reanudar, la condición es que esa OT sea la única abierta.
+  select case when v_pausa then c.ot_estado = 'PAUSADA' and c.ots_abiertas = 1
+              else c.ots_abiertas = 1 end
+    into v_sola
     from public.tiempos_de_entrega_codigos_calculado(v_codigo) c
    limit 1;
   v_quien := coalesce(public.puesto_de(v_yo), 'la oficina');
+  v_titulo := 'Orden ' || new.numero || case when v_pausa then ' pausada · ' else ' reanudada · ' end || v_codigo;
+  v_cuerpo := case when v_pausa
+                   then 'La pausó ' || v_quien || '. Motivo: ' || rtrim(left(btrim(new.motivo_pausa), 300), '. ') || '.'
+                   else 'La reanudó ' || v_quien || '. El trabajo sigue.' end;
 
-  if v_pausa then
-    v_titulo := 'Orden ' || new.numero || ' pausada · ' || v_codigo;
-    v_cuerpo := 'La pausó ' || v_quien || '. Motivo: ' || left(btrim(new.motivo_pausa), 300) || '.'
-             || case when coalesce(v_sola, false)
-                     then ' Mientras siga pausada, el código ' || v_codigo || ' no te pide el reporte diario.'
-                     else '' end;
-  else
-    v_titulo := 'Orden ' || new.numero || ' reanudada · ' || v_codigo;
-    v_cuerpo := 'La reanudó ' || v_quien || '. El trabajo sigue'
-             || case when coalesce(v_sola, false)
-                     then ' y el código ' || v_codigo || ' vuelve a pedir tu reporte diario.'
-                     else '.' end;
-  end if;
-
+  -- La frase del reporte va solo a quien la bandeja se lo pide: un área con una
+  -- etapa que ya empezó, o cuya fecha de inicio ya llegó (`pideReporteHoy` de
+  -- `src/lib/dominio/tiempos-entrega.ts`), y sin `produccion.cualquier_area`,
+  -- que no ve la bandeja. A la etapa que empieza en dos semanas no se le dice
+  -- que «vuelve a pedir» un reporte que todavía no pide.
   insert into public.notificaciones (usuario_id, titulo, cuerpo, ruta, origen_tabla, origen_id)
-  select u.id, v_titulo, v_cuerpo, '/planos?q=' || v_codigo, 'ordenes_trabajo', new.id
-    from public.usuarios u
-   where u.activo
-     and u.id is distinct from v_yo
-     and u.area_id is not null
-     and exists (select 1 from public.roles_permisos rp
-                  where rp.rol_id = u.rol_id and rp.permiso_codigo = 'reporte_diario.registrar')
-     and exists (select 1 from public.tiempos_de_entrega_etapas_calculado(v_codigo) e
-                  where e.area_id = u.area_id and e.fin_real is null);
+  select d.id, v_titulo,
+         v_cuerpo || case when coalesce(v_sola, false) and d.pide_hoy and not d.cualquier_area
+                          then case when v_pausa
+                                    then ' Mientras siga pausada, el código ' || v_codigo || ' no te pide el reporte diario.'
+                                    else ' El código ' || v_codigo || ' vuelve a pedir tu reporte diario.' end
+                          else '' end,
+         -- Escapado como en `avisar_tiempos_de_entrega` (315000): «OT 2921-2026»
+         -- lleva espacio, y la campana no abre una ruta con espacios.
+         '/planos?q=' || replace(replace(replace(replace(replace(replace(v_codigo,
+           '%', '%25'), '&', '%26'), '#', '%23'), '+', '%2B'), '/', '%2F'), ' ', '+'),
+         'ordenes_trabajo', new.id
+    from (select u.id,
+                 exists (select 1 from public.tiempos_de_entrega_etapas_calculado(v_codigo) e
+                          where e.area_id = u.area_id and e.fin_real is null
+                            and (e.inicio_real is not null
+                                 or coalesce(e.inicio_plan, e.fin_plan) <= (now() at time zone 'America/Lima')::date)) as pide_hoy,
+                 exists (select 1 from public.roles_permisos rp
+                          where rp.rol_id = u.rol_id and rp.permiso_codigo = 'produccion.cualquier_area') as cualquier_area
+            from public.usuarios u
+           where u.activo
+             and u.id is distinct from v_yo
+             and u.area_id is not null
+             and exists (select 1 from public.roles_permisos rp
+                          where rp.rol_id = u.rol_id and rp.permiso_codigo = 'reporte_diario.registrar')
+             and exists (select 1 from public.tiempos_de_entrega_etapas_calculado(v_codigo) e
+                          where e.area_id = u.area_id and e.fin_real is null)) d;
 
   return null;
 end;
@@ -97,4 +120,5 @@ revoke all on function public.fn_ot_avisa_la_pausa() from public, anon, authenti
 
 create or replace trigger trg_ot_avisa_la_pausa
   after update on public.ordenes_trabajo
-  for each row execute function public.fn_ot_avisa_la_pausa();
+  for each row when (old.estado is distinct from new.estado)
+  execute function public.fn_ot_avisa_la_pausa();

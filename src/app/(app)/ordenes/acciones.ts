@@ -190,7 +190,7 @@ export async function cambiarEstadoOrden(
     return { ok: false, error: 'Indica el motivo, con al menos 3 letras, para continuar.' }
   }
 
-  const { data, error } = await supabase
+  const cambio = supabase
     .from('ordenes_trabajo')
     .update({
       estado,
@@ -198,10 +198,16 @@ export async function cambiarEstadoOrden(
       ...(estado === 'ANULADA' ? { motivo_anulacion: motivo } : {}),
     })
     .eq('id', orden_id)
+  // Pausar solo la que sigue en proceso: si otra pestaña la pausó en el mismo
+  // instante, no se pisa su motivo, que es el que ya le llegó al taller.
+  const { data, error } = await (estado === 'PAUSADA' ? cambio.eq('estado', 'EN_PROCESO') : cambio)
     .select('id')
     .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data && estado === 'PAUSADA') {
+    return { ok: false, error: 'La orden cambió mientras tanto: recarga la pantalla para ver cómo está.' }
+  }
   if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${orden_id}`)
