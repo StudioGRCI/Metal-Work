@@ -265,7 +265,7 @@ export async function personasParaAsignar(): Promise<{ id: string; nombre: strin
 }
 
 /**
- * La última revisión diaria de avisos (migración 20261126310000): el día que
+ * La última revisión diaria de avisos (migración 20261126315000): el día que
  * corrió y a qué hora terminó. Vacía si todavía no corrió nunca. Así el
  * tablero no promete avisos que no salen.
  */

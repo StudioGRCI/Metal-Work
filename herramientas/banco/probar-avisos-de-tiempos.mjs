@@ -1,5 +1,5 @@
 /**
- * Los avisos de los tiempos de entrega (migración 20261126310000), mirados en
+ * Los avisos de los tiempos de entrega (migración 20261126315000), mirados en
  * la campana con la cuenta de cada puesto (nunca ADMIN):
  *
  *   1. Se siembra el código AVI_UNO con una etapa por vencer y una vencida en

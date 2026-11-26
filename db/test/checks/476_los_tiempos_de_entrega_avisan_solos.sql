@@ -1,4 +1,4 @@
--- Los tiempos de entrega avisan solos (migración 20261126310000). La revisión
+-- Los tiempos de entrega avisan solos (migración 20261126315000). La revisión
 -- diaria la corre pg_cron, sin sesión; aquí se corre igual, sin sesión, y los
 -- avisos se leen con la cuenta de cada puesto y `set local role authenticated`
 -- —nunca ADMIN—: RR. HH., el supervisor del área, el de otra área, Gerencia y

@@ -44,7 +44,7 @@ create table if not exists public.tiempos_entrega_avisos (
   constraint ck_tiempos_entrega_aviso_etapa check ((tipo in ('RESUMEN_SEMANAL', 'REVISION')) = (etapa_id is null))
 );
 comment on table public.tiempos_entrega_avisos is
-  'Cada aviso de tiempos de entrega que salió: de qué etapa o subetapa (un aviso por etapa de arriba anota cada una de las que cubre), de qué tipo, por qué fecha comprometida y a cuántas cuentas (en el recordatorio, las del aviso agrupado del día). Y cada revisión diaria que corrió (REVISION), para que el tablero diga cuándo fue la última y no prometa avisos que no salen. Lo escribe solo la revisión diaria. Migración 20261126310000.';
+  'Cada aviso de tiempos de entrega que salió: de qué etapa o subetapa (un aviso por etapa de arriba anota cada una de las que cubre), de qué tipo, por qué fecha comprometida y a cuántas cuentas (en el recordatorio, las del aviso agrupado del día). Y cada revisión diaria que corrió (REVISION), para que el tablero diga cuándo fue la última y no prometa avisos que no salen. Lo escribe solo la revisión diaria. Migración 20261126315000.';
 
 -- Un aviso de cada tipo por etapa y fecha comprometida; un recordatorio por día;
 -- un resumen por semana y una anotación por día de revisión. Así la revisión se puede correr dos veces sin repetir.
