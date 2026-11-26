@@ -211,6 +211,7 @@ const PASOS_DE_LA_ORDEN_DE_COMPRA: Record<string, Frases> = {
   PROGRAMACION: { hecho: 'Recojo programado con el conductor', falta: 'Programar el recojo' },
   GUIA: { hecho: 'Contabilidad cargó la guía de remisión', falta: 'Guía de remisión' },
   SALIDA: { hecho: 'El conductor salió a recogerla', falta: 'Salida a recogerla' },
+  NO_SE_PUDO_RECOGER: { hecho: 'El conductor no la pudo recoger', falta: 'Recojo donde el proveedor', nota: (motivo) => motivo },
   RECOGIDA: { hecho: 'Recogida donde el proveedor', falta: 'Recojo donde el proveedor' },
   DEJADA: { hecho: 'Dejada en el almacén', falta: 'Llegada al almacén' },
   VALIDACION: {

@@ -3,6 +3,7 @@ import { FileDown } from 'lucide-react'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { Recorrido } from '@/components/ui/recorrido'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
@@ -12,18 +13,21 @@ import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import { devolucionesPorReponer } from '@/lib/datos/kardex'
 import { cargarOrdenesCompra, type OrdenCompraListada } from '@/lib/datos/logistica'
 import { plazosDeCompras } from '@/lib/datos/plazos-compras'
+import { recorridoDeOrdenesCompra } from '@/lib/datos/recorrido'
 import { proveedoresParaCompra } from '@/lib/datos/proveedores'
 import { ocParaDetector } from '@/lib/dominio/adquisiciones'
 import { igvCompra } from '@/lib/dominio/compra-materiales'
 import { ORIGEN_COMPRA, puedeIrARecojo, situacionCompra } from '@/lib/dominio/logistica'
 import { FILTRO_ATRASADAS, type PlazoDeCompra } from '@/lib/dominio/plazos'
+import { describirRecorridoDeLaOrdenDeCompra, type PasoDelRecorrido } from '@/lib/dominio/recorrido'
 import { comprobantePedido, compraConPdf, condicionDePago } from '@/lib/dominio/proveedores'
 import { fecha, moneda } from '@/lib/format'
 import { compraComoLogistica, exigirPermiso, puede } from '@/lib/sesion'
 
 import { EsperanReposicion } from '../../almacen/kardex/devolucion-proveedor'
 
-import { InsigniaDelPlazo, PlazoDeLaCompra } from '../plazo'
+import { InsigniaDelPlazo, PlazoDeLaCompra, UltimoMotivo } from '../plazo'
+import { SeguimientoDeLaCompra } from '../seguimiento'
 import { VerTodas } from '../ver-todas'
 
 import { AccionesCompra } from './acciones-compra'
@@ -51,11 +55,17 @@ export default async function PaginaOrdenesCompra({ searchParams }: { searchPara
     puede(perfil, ['compras.crear', 'almacen.ver']) ? devolucionesPorReponer() : Promise.resolve([]),
   ])
   const monedaDe = new Map(compras.map((c) => [c.id, c.moneda]))
-  const [correcciones, plazos, params] = await Promise.all([
+  const [correcciones, plazos, recorridos, params] = await Promise.all([
     correccionesDe('ORDEN_COMPRA', compras.map((c) => c.id), (id) => monedaDe.get(id) ?? null),
     // Cada OC contra la fecha que prometió el proveedor. Si la base no contesta,
     // la lista sale igual, sin plazos, y lo dice arriba.
     plazosDeCompras(compras.map((c) => c.id)).catch((e: unknown) => {
+      console.error(e)
+      return null
+    }),
+    // Quién tiene cada OC, y el motivo y la fecha que anotó Logística (Plan 4.2).
+    // Sin respuesta, cada fila lo dice en su recorrido.
+    recorridoDeOrdenesCompra(compras.map((c) => c.id)).catch((e: unknown) => {
       console.error(e)
       return null
     }),
@@ -168,7 +178,7 @@ export default async function PaginaOrdenesCompra({ searchParams }: { searchPara
                 }
               />
             ) : (
-              visibles.map((c) => <FilaCompra key={c.id} compra={c} plazo={plazos?.get(c.id)} emite={emite || (llevaSuRqa && esDeUnRqa(c))} verAdquisiciones={verAdquisiciones} correcciones={correcciones.get(c.id)} esperaReposicion={esperan.has(c.id)} />)
+              visibles.map((c) => <FilaCompra key={c.id} compra={c} plazo={plazos?.get(c.id)} recorrido={recorridos ? (recorridos.get(c.id) ?? []) : null} emite={emite || (llevaSuRqa && esDeUnRqa(c))} verAdquisiciones={verAdquisiciones} correcciones={correcciones.get(c.id)} esperaReposicion={esperan.has(c.id)} />)
             )}
           </tbody>
         </Tabla>
@@ -185,6 +195,7 @@ function esDeUnRqa(c: OrdenCompraListada) {
 function FilaCompra({
   compra: c,
   plazo,
+  recorrido,
   emite,
   verAdquisiciones,
   correcciones,
@@ -192,6 +203,8 @@ function FilaCompra({
 }: {
   compra: OrdenCompraListada
   plazo: PlazoDeCompra | undefined
+  /** `null`: no se pudo leer. */
+  recorrido: PasoDelRecorrido[] | null
   emite: boolean
   verAdquisiciones: boolean
   correcciones: CorreccionVista[] | undefined
@@ -205,6 +218,8 @@ function FilaCompra({
   )
   const origen = ORIGEN_COMPRA[c.origen === 'DIRECTA' && c.requerimientos.length > 0 ? 'RQ' : c.origen]
   const situacion = situacionCompra(c)
+  const corregida = Boolean(recorrido?.some((p) => p.paso === 'FECHA_CORREGIDA'))
+  const vigente = c.aprobacion !== 'RECHAZADA' && c.aprobacion !== 'ANULADA'
   const para = [
     // La OC que junta insumos de varios RQ no tiene un código propio: lleva el de cada uno.
     c.codigo_interno ?? (c.codigos.length ? c.codigos.join(', ') : null),
@@ -262,8 +277,16 @@ function FilaCompra({
         )}
         <p className="text-xs text-texto-suave md:hidden">Para {para || '—'}</p>
         {/* En el teléfono el plazo va aquí, con el resto de la fila. */}
-        <PlazoDeLaCompra plazo={plazo} className="mt-1 sm:hidden" />
+        <PlazoDeLaCompra plazo={plazo} corregida={corregida} className="mt-1 sm:hidden" />
+        <UltimoMotivo pasos={recorrido} className="mt-1 sm:hidden" />
         <HistorialDeCorrecciones correcciones={correcciones} />
+        {/* Quién la tiene ahora y hace cuántos días; abierto, cada paso y lo que anotó Logística. */}
+        <Recorrido
+          pasos={recorrido ? describirRecorridoDeLaOrdenDeCompra(recorrido) : null}
+          className="mt-2 rounded-[var(--radius-base)] border border-borde"
+          relleno="px-2.5"
+          femenino
+        />
       </TD>
       <TD className="hidden text-texto-suave md:table-cell">{para || '—'}</TD>
       <TD className="tabular hidden text-right whitespace-nowrap sm:table-cell">{moneda(c.monto, divisa(c.moneda))}</TD>
@@ -273,7 +296,8 @@ function FilaCompra({
           <InsigniaDelPlazo plazo={plazo} />
           {reposicion}
         </div>
-        <PlazoDeLaCompra plazo={plazo} className="mt-1" />
+        <PlazoDeLaCompra plazo={plazo} corregida={corregida} className="mt-1" />
+        <UltimoMotivo pasos={recorrido} className="mt-1" />
       </TD>
       <TD className="hidden sm:table-cell">
         {c.tiene_factura ? (
@@ -308,6 +332,13 @@ function FilaCompra({
               <FileDown aria-hidden className="size-4" />
               PDF
             </a>
+          )}
+          {emite && vigente && plazo && (
+            <SeguimientoDeLaCompra
+              documento={{ tipo: 'OC', id: c.id, nombre: c.nombre }}
+              motivo={(plazo.dias_atraso ?? 0) > 0}
+              fecha={plazo.completa_en ? undefined : plazo.esperada}
+            />
           )}
           {emite && c.aprobacion !== 'ANULADA' && (
             <AccionesCompra

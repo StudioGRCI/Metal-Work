@@ -44,7 +44,7 @@ create table if not exists public.seguimiento_de_compras (
   -- Solo de FECHA_ESPERADA: la que valía antes y la nueva.
   fecha_anterior    date,
   fecha_nueva       date,
-  registrado_por    uuid references public.usuarios (id) default public.usuario_actual(),
+  registrado_por    uuid not null references public.usuarios (id) default public.usuario_actual(),
   registrado_en     timestamptz not null default now(),
   creado_en         timestamptz not null default now(),
   actualizado_en    timestamptz not null default now(),
@@ -404,7 +404,7 @@ begin
   ),
   lineas as (
     select d.orden_compra_id as oc, d.id, d.cantidad,
-           greatest(d.cantidad - k.sin_reponer - k.neto - coalesce(pv.cantidad, 0), 0) as falta,
+           greatest(d.cantidad - k.sin_reponer - k.por_reponer - k.neto - coalesce(pv.cantidad, 0), 0) as falta,
            coalesce(pv.cantidad, 0) as por_validar,
            coalesce(d.material_id, om.material_id) as material_id
       from public.orden_compra_material_detalles d
@@ -424,7 +424,8 @@ begin
              where ip.orden_compra_id = l.oc and ip.estado = 'PENDIENTE') as ultimo_por_validar,
            (select max(coalesce(ip.dejado_en, m.registrado_en)) from public.movimientos_materiales m
               left join public.ingresos_pendientes_almacen ip on ip.movimiento_id = m.id
-             where m.tipo = 'INGRESO' and m.orden_compra_detalle_id in (select x.id from lineas x where x.oc = l.oc)) as ultimo_ingreso
+             where m.tipo = 'INGRESO' and m.repone_devolucion is null
+               and m.orden_compra_detalle_id in (select x.id from lineas x where x.oc = l.oc)) as ultimo_ingreso
       from lineas l
      group by l.oc
   ),
@@ -622,6 +623,13 @@ begin
       join public.orden_compra_material_detalles d on d.id = m.orden_compra_detalle_id
      where m.tipo = 'DEVOLUCION_PROVEEDOR' and d.orden_compra_id = any(p_ids)
   ),
+  -- Cada vez que el conductor fue y no la pudo recoger (migración 20261125500000):
+  -- la OC vuelve a Logística y pierde la hora de salida, que queda aquí.
+  no_logrados as (
+    select n.orden_compra_id as oc, n.motivo, n.salio_en, n.programado_en, n.registrado_por, n.registrado_en
+      from public.recojos_no_logrados n
+     where n.orden_compra_id = any(p_ids)
+  ),
   seguimiento as (
     select s.orden_compra_id as oc, s.tipo, s.motivo, s.nota, s.fecha_anterior, s.fecha_nueva, s.registrado_por, s.registrado_en
       from public.seguimiento_de_compras s
@@ -639,7 +647,8 @@ begin
             30, 'MANDADA_A_RECOJO', coalesce(public.puesto_de(o.creado_por), 'Logística'), 'MANDAR_A_RECOJO',
             coalesce(o.aprobado_en, o.creado_en)),
          (o.recojo = 'POR_RECOGER' and o.posicion is null,
-            40, 'PROGRAMACION', 'Logística', 'PROGRAMAR', o.recojo_pedido_en),
+            40, 'PROGRAMACION', 'Logística', 'PROGRAMAR',
+            greatest(o.recojo_pedido_en, (select max(n.registrado_en) from no_logrados n where n.oc = o.id))),
          (o.recojo = 'POR_RECOGER',
             50, 'SALIDA', 'Conductor de Logística', 'SALIR', coalesce(o.programado_en, o.recojo_pedido_en)),
          (o.recojo = 'EN_RECOJO',
@@ -693,6 +702,19 @@ begin
     -- 40 · Programada con el conductor
     select o.id, 40, 'PROGRAMACION', 'HECHO', o.programado_por, null, o.programado_en, null, null
       from oc o where o.programado_en is not null and (o.posicion is not null or o.recojo in ('EN_RECOJO', 'RECOGIDO', 'DEJADO'))
+       and not exists (select 1 from no_logrados n where n.oc = o.id and n.programado_en = o.programado_en)
+    union all
+    -- La programación de cada recojo que no se logró: no guarda quién, y solo
+    -- Logística programa (`compras.programar_recojo`).
+    select distinct n.oc, 40, 'PROGRAMACION', 'HECHO', null::uuid, 'Logística', n.programado_en, null, null
+      from no_logrados n where n.programado_en is not null
+    union all
+    -- 55 · El conductor salió y no la pudo recoger, con su motivo
+    select n.oc, 50, 'SALIDA', 'HECHO', n.registrado_por, null, n.salio_en, null, null
+      from no_logrados n where n.salio_en is not null
+    union all
+    select n.oc, 55, 'NO_SE_PUDO_RECOGER', 'HECHO', n.registrado_por, null, n.registrado_en, null, n.motivo
+      from no_logrados n
     union all
     -- 45 · Contabilidad cargó la guía de remisión
     select g.oc, 45, 'GUIA', 'HECHO', g.cargada_por, null, g.cargada_en, null, null

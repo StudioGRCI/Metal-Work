@@ -4,6 +4,7 @@ import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { Recorrido } from '@/components/ui/recorrido'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import {
@@ -14,16 +15,19 @@ import {
 } from '@/lib/datos/logistica'
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import { plazosDeServicios } from '@/lib/datos/plazos-compras'
+import { recorridoDeOrdenesServicio } from '@/lib/datos/recorrido'
 import { proveedoresParaCompra } from '@/lib/datos/proveedores'
 import { llaveParecido, type CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import { resumenDetraccion, type TipoDetraccion } from '@/lib/dominio/detraccion'
 import { ESTADO_SERVICIO, servicioSinPapel } from '@/lib/dominio/logistica'
 import { FILTRO_ATRASADAS, type PlazoDeServicio } from '@/lib/dominio/plazos'
+import { describirRecorridoDeLaOrdenDeServicio, type PasoDelRecorrido } from '@/lib/dominio/recorrido'
 import { APROBACION_COMPRA, condicionDePago } from '@/lib/dominio/proveedores'
 import { fecha, moneda } from '@/lib/format'
 import { compraComoLogistica, exigirPermiso, puede } from '@/lib/sesion'
 
-import { InsigniaDelPlazo, PlazoDeLaCompra } from '../plazo'
+import { InsigniaDelPlazo, PlazoDeLaCompra, UltimoMotivo } from '../plazo'
+import { SeguimientoDeLaCompra } from '../seguimiento'
 import { VerTodas } from '../ver-todas'
 
 import { AvanceServicio, CorregirServicio } from './controles'
@@ -53,10 +57,17 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
   const delCodigo = buscado ? servicios.filter((s) => s.codigo_interno && llaveParecido(s.codigo_interno).includes(llave)) : servicios
   // Cada OS contra la fecha en que el trabajo debía volver. Sin respuesta de la
   // base, la lista sale con la marca «Atrasada» que ya trae el listado.
-  const plazos = await plazosDeServicios(servicios.map((s) => s.id)).catch((e: unknown) => {
-    console.error(e)
-    return null
-  })
+  const [plazos, recorridos] = await Promise.all([
+    plazosDeServicios(servicios.map((s) => s.id)).catch((e: unknown) => {
+      console.error(e)
+      return null
+    }),
+    // Quién tiene cada OS, y el motivo y la fecha que anotó Logística (Plan 4.2).
+    recorridoDeOrdenesServicio(servicios.map((s) => s.id)).catch((e: unknown) => {
+      console.error(e)
+      return null
+    }),
+  ])
   const soloAtrasadas = params.ver === FILTRO_ATRASADAS
   const esAtrasada = (s: OrdenServicioListada) => plazos?.get(s.id)?.atrasada ?? s.atrasada
   const atrasadas = delCodigo.filter(esAtrasada).length
@@ -143,7 +154,7 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
               />
             ) : (
               visibles.map((s) => (
-                <FilaServicio key={s.id} servicio={s} plazo={plazos?.get(s.id)} emite={emite} adjunta={adjunta} corrigeDetraccion={corrigeDetraccion} tipos={tipos} codigos={codigos} />
+                <FilaServicio key={s.id} servicio={s} plazo={plazos?.get(s.id)} recorrido={recorridos ? (recorridos.get(s.id) ?? []) : null} emite={emite} adjunta={adjunta} corrigeDetraccion={corrigeDetraccion} tipos={tipos} codigos={codigos} />
               ))
             )}
           </tbody>
@@ -156,6 +167,7 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
 function FilaServicio({
   servicio: s,
   plazo,
+  recorrido,
   emite,
   adjunta,
   corrigeDetraccion,
@@ -164,6 +176,8 @@ function FilaServicio({
 }: {
   servicio: OrdenServicioListada
   plazo: PlazoDeServicio | undefined
+  /** `null`: no se pudo leer. */
+  recorrido: PasoDelRecorrido[] | null
   emite: boolean
   adjunta: boolean
   corrigeDetraccion: boolean
@@ -192,6 +206,13 @@ function FilaServicio({
         {s.motivo_anulacion && <p className="mt-1 text-xs text-peligro">Anulada: {s.motivo_anulacion}</p>}
         {s.observacion_conformidad && <p className="mt-1 text-xs text-texto-suave">Conformidad: {s.observacion_conformidad}</p>}
         <ListaDocumentosServicio documentos={s.documentos} anula={adjunta && vigente} />
+        {/* Quién la tiene ahora y hace cuántos días; abierto, cada paso y lo que anotó Logística. */}
+        <Recorrido
+          pasos={recorrido ? describirRecorridoDeLaOrdenDeServicio(recorrido) : null}
+          className="mt-2 rounded-[var(--radius-base)] border border-borde"
+          relleno="px-2.5"
+          femenino
+        />
         <p className="mt-1 text-xs text-texto-suave md:hidden">
           <span className="tabular font-medium text-texto" data-codigo>
             {s.codigo_interno ?? 'Sin código interno'}
@@ -201,7 +222,7 @@ function FilaServicio({
         {/* En el teléfono, el monto y en qué va van aquí: la tabla no cabe con sus columnas. */}
         <div className="mt-2 space-y-1 sm:hidden">
           <p className="tabular text-sm font-semibold text-texto">{moneda(s.monto, s.moneda === 'USD' ? 'USD' : 'PEN')} sin IGV</p>
-          <EnQueVa servicio={s} plazo={plazo} />
+          <EnQueVa servicio={s} plazo={plazo} recorrido={recorrido} />
         </div>
       </TD>
       <TD className="hidden md:table-cell">
@@ -210,7 +231,7 @@ function FilaServicio({
       </TD>
       <TD className="tabular hidden text-right whitespace-nowrap sm:table-cell">{moneda(s.monto, s.moneda === 'USD' ? 'USD' : 'PEN')}</TD>
       <TD className="hidden sm:table-cell">
-        <EnQueVa servicio={s} plazo={plazo} />
+        <EnQueVa servicio={s} plazo={plazo} recorrido={recorrido} />
       </TD>
       <TD className="text-right">
         <div className="flex flex-col items-end gap-2">
@@ -225,6 +246,13 @@ function FilaServicio({
               <FileDown aria-hidden className="size-4" />
               PDF
             </a>
+          )}
+          {emite && vigente && plazo && (
+            <SeguimientoDeLaCompra
+              documento={{ tipo: 'OS', id: s.id, nombre: s.numero }}
+              motivo={(plazo.dias_atraso ?? 0) > 0}
+              fecha={plazo.completa_en ? undefined : plazo.esperada}
+            />
           )}
           {emite && s.aprobacion !== 'RECHAZADA' && abierta && (
             <AvanceServicio
@@ -256,7 +284,15 @@ function FilaServicio({
 }
 
 /** En qué va la OS y su detracción. */
-function EnQueVa({ servicio: s, plazo }: { servicio: OrdenServicioListada; plazo: PlazoDeServicio | undefined }) {
+function EnQueVa({
+  servicio: s,
+  plazo,
+  recorrido,
+}: {
+  servicio: OrdenServicioListada
+  plazo: PlazoDeServicio | undefined
+  recorrido: PasoDelRecorrido[] | null
+}) {
   // Mientras Gerencia no decide, manda la aprobación; después, el estado del trabajo.
   const decision = s.aprobacion === 'APROBADA' ? null : APROBACION_COMPRA[s.aprobacion]
   const estado = ESTADO_SERVICIO[s.estado]
@@ -270,7 +306,14 @@ function EnQueVa({ servicio: s, plazo }: { servicio: OrdenServicioListada; plazo
         {plazo ? <InsigniaDelPlazo plazo={plazo} servicio /> : s.atrasada && <Insignia tono="peligro">Atrasada</Insignia>}
       </div>
       {/* La fecha de fin ya va en la primera celda: aquí solo si cambió, y cuándo volvió. */}
-      <PlazoDeLaCompra plazo={plazo} servicio fechaDelDocumento={s.fecha_fin} className="mt-1" />
+      <PlazoDeLaCompra
+        plazo={plazo}
+        servicio
+        fechaDelDocumento={s.fecha_fin}
+        corregida={Boolean(recorrido?.some((p) => p.paso === 'FECHA_CORREGIDA'))}
+        className="mt-1"
+      />
+      <UltimoMotivo pasos={recorrido} className="mt-1" />
       <div className="mt-1" data-detraccion>
         {/* Puede partirse: «Detracción 12 %: falta el tipo de cambio» de un solo
             renglón corría la tabla de costado en el teléfono. */}

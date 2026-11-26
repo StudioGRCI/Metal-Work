@@ -2,7 +2,8 @@ import type { ReactNode } from 'react'
 
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Pliegue } from '@/components/ui/seccion-desplegable'
-import { estadoDelPlazo, faltaDe, type PlazoDeCompra } from '@/lib/dominio/plazos'
+import { estadoDelPlazo, faltaDe, motivoDeAtraso, type PlazoDeCompra } from '@/lib/dominio/plazos'
+import { ultimoSeguimiento, type PasoDelRecorrido } from '@/lib/dominio/recorrido'
 import { cantidad, fecha, hoyLima } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -33,11 +34,14 @@ export function PlazoDeLaCompra({
   plazo,
   servicio = false,
   fechaDelDocumento,
+  corregida = false,
   className,
 }: {
   plazo: PlazoDeCompra | undefined
   servicio?: boolean
   fechaDelDocumento?: string | null
+  /** Logística corrigió la fecha que prometió el proveedor (Plan 4.2): la anterior está en el recorrido. */
+  corregida?: boolean
   className?: string
 }) {
   if (!plazo) return null
@@ -56,6 +60,7 @@ export function PlazoDeLaCompra({
       prometida ? (
         <span key="prometida">
           {servicio ? 'Debe volver' : 'Prometida'} <span className="tabular font-medium text-texto">{prometida}</span>
+          {corregida && ' (corregida)'}
         </span>
       ) : (
         <span key="prometida" className="text-texto-tenue">
@@ -115,5 +120,27 @@ export function PlazoDeLaCompra({
         </Pliegue>
       )}
     </div>
+  )
+}
+
+/**
+ * Lo último que Logística anotó del atraso (Plan 4.2): el motivo y su nota, o
+ * la fecha que corrigió, con su puesto y la fecha. Lo de antes, en el recorrido.
+ */
+export function UltimoMotivo({ pasos, className }: { pasos: readonly PasoDelRecorrido[] | null | undefined; className?: string }) {
+  const u = ultimoSeguimiento(pasos ?? undefined)
+  if (!u) return null
+  const que = u.paso.paso === 'FECHA_CORREGIDA' ? 'Fecha corregida' : 'Atraso'
+  return (
+    <p className={cn('text-xs break-words text-texto-suave', className)} data-ultimo-motivo={u.motivo}>
+      <span className="font-medium text-texto">
+        {que}: {motivoDeAtraso(u.motivo)}
+      </span>
+      {u.nota && <> · {u.nota}</>}
+      <span className="text-texto-tenue">
+        {' '}
+        — {u.paso.puesto ?? 'sin cuenta'}, <span className="tabular">{fecha(u.paso.en)}</span>
+      </span>
+    </p>
   )
 }

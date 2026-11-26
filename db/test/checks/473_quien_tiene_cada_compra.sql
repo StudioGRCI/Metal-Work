@@ -1,4 +1,4 @@
--- Quién tiene cada compra y por qué se atrasó (migración 20261126210000, Plan
+-- Quién tiene cada compra y por qué se atrasó (migración 20261126420000, Plan
 -- 4.2). Con la cuenta de cada puesto —nunca ADMIN— y `set local role
 -- authenticated`. Termina en rollback.
 --

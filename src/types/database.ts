@@ -10283,7 +10283,7 @@ export type Database = {
           nota: string | null
           fecha_anterior: string | null
           fecha_nueva: string | null
-          registrado_por: string | null
+          registrado_por: string
           registrado_en: string
           creado_en: string
           actualizado_en: string
@@ -10297,7 +10297,7 @@ export type Database = {
           nota?: string | null
           fecha_anterior?: string | null
           fecha_nueva?: string | null
-          registrado_por?: string | null
+          registrado_por?: string
           registrado_en?: string
           creado_en?: string
           actualizado_en?: string
@@ -10311,7 +10311,7 @@ export type Database = {
           nota?: string | null
           fecha_anterior?: string | null
           fecha_nueva?: string | null
-          registrado_por?: string | null
+          registrado_por?: string
           registrado_en?: string
           creado_en?: string
           actualizado_en?: string
