@@ -3,7 +3,7 @@ import 'server-only'
 import type { DetraccionDeServicio, TipoDetraccion } from '@/lib/dominio/detraccion'
 import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { BUCKET_DOCUMENTOS_SERVICIO } from '@/lib/dominio/finanzas'
-import { validacionDeCompra, type ValidacionIngreso } from '@/lib/dominio/logistica'
+import { BUCKET_FOTOS_RECOJO, validacionDeCompra, type ValidacionIngreso } from '@/lib/dominio/logistica'
 import { createClient } from '@/lib/supabase/server'
 
 /** Una orden de compra en el listado de Logística: número, para qué y en qué va. */
@@ -171,6 +171,12 @@ export async function cargarOrdenesCompra(): Promise<OrdenCompraListada[]> {
 /** Lo que el conductor necesita para ir, recoger y dejar. Sin precios. */
 export type LineaRecojo = { material_codigo: string | null; material: string | null; unidad: string | null; cantidad: number; orden: string | null }
 
+/** Una foto que el conductor tomó al recogerla, con su enlace firmado por una hora. */
+export type FotoDeRecojo = { ruta: string; url: string | null }
+
+/** La última vez que el conductor no pudo recogerla, y cuántas van. */
+export type RecojoNoLogrado = { motivo: string; registrado_en: string; salio_en: string | null; quien: string | null; veces: number }
+
 /** La guía de remisión vigente de una compra, cargada por Contabilidad. */
 export type GuiaRemision = { id: string; numero: string; fecha: string; nombre_archivo: string; cargada_en: string }
 
@@ -207,12 +213,18 @@ export type CompraParaRecojo = {
   codigo_interno: string | null
   /** Si Logística la puso en la lista del conductor. */
   en_lista: boolean
+  /** Cuándo Logística la puso en la lista: cambia cada vez que la vuelve a programar. */
+  programado_en: string | null
   /** 1.º, 2.º… entre las pendientes de recojo que están en la lista; vacío si no. */
   lugar: number | null
   /** El peso que puso Logística; se queda aunque la saque de la lista. */
   peso_kg: number | null
   guia: GuiaRemision | null
   guias_anuladas: number
+  /** Lo que fotografió al recogerla (opcional). */
+  fotos: FotoDeRecojo[]
+  /** Si alguna vez no se pudo recoger: lo último que dijo el conductor. */
+  no_logrado: RecojoNoLogrado | null
 }
 
 /**
@@ -221,11 +233,46 @@ export type CompraParaRecojo = {
  * remisión (migración 20261015140000). La misma lista la leen Logística, que la
  * programa; Contabilidad, que carga la guía; y el conductor, que la recoge.
  */
+/** PostgREST no conoce la función (PGRST202), o Postgres no la tiene (42883). */
+const faltaLaFuncion = (e: { code?: string }) => e.code === 'PGRST202' || e.code === '42883'
+
 export async function cargarRecojos(): Promise<CompraParaRecojo[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('compras_en_gestion')
+  // Las fotos y los intentos van en sus funciones, con el mismo permiso: no cambian las columnas de compras_en_gestion.
+  const [{ data, error }, fotos, intentos] = await Promise.all([
+    supabase.rpc('compras_en_gestion'),
+    supabase.rpc('recojo_fotos_en_gestion'),
+    supabase.rpc('recojos_no_logrados_en_gestion'),
+  ])
   if (error) throw new Error(`No se pudieron leer los recojos: ${error.message}`)
-  const insumos = await insumosPorCompra(supabase, (data ?? []).flatMap((c) => (c.id && !c.codigo_interno ? [c.id] : [])))
+  // Si el despliegue llega antes que la migración 20261125500000, la lista se
+  // sigue viendo sin fotos ni intentos, en vez de caerse la pantalla entera.
+  if (fotos.error && !faltaLaFuncion(fotos.error)) throw new Error(`No se pudieron leer las fotos de los recojos: ${fotos.error.message}`)
+  if (intentos.error && !faltaLaFuncion(intentos.error)) throw new Error(`No se pudo leer qué recojos no se lograron: ${intentos.error.message}`)
+  const [insumos, enlaces] = await Promise.all([
+    insumosPorCompra(supabase, (data ?? []).flatMap((c) => (c.id && !c.codigo_interno ? [c.id] : []))),
+    enlacesDeFotosDeRecojo(supabase, (fotos.data ?? []).flatMap((f) => (f.ruta ? [f.ruta] : []))),
+  ])
+  const fotosDe = new Map<string, FotoDeRecojo[]>()
+  for (const f of fotos.data ?? []) {
+    if (!f.orden_compra_id || !f.ruta) continue
+    fotosDe.set(f.orden_compra_id, [...(fotosDe.get(f.orden_compra_id) ?? []), { ruta: f.ruta, url: enlaces[f.ruta] ?? null }])
+  }
+  // Vienen del más reciente al más viejo: el primero de cada compra es el que se muestra.
+  const noLogradoDe = new Map<string, RecojoNoLogrado>()
+  for (const n of intentos.data ?? []) {
+    if (!n.orden_compra_id || !n.motivo || !n.registrado_en) continue
+    const antes = noLogradoDe.get(n.orden_compra_id)
+    if (antes) antes.veces += 1
+    else
+      noLogradoDe.set(n.orden_compra_id, {
+        motivo: n.motivo,
+        registrado_en: n.registrado_en,
+        salio_en: n.salio_en,
+        quien: n.registrado_por_nombre,
+        veces: 1,
+      })
+  }
   return (data ?? []).map((c) => ({
     id: c.id ?? '',
     numero: c.numero?.trim() || null,
@@ -252,6 +299,7 @@ export async function cargarRecojos(): Promise<CompraParaRecojo[]> {
     comprobante_adjunto: c.comprobante_adjunto === true,
     codigo_interno: c.codigo_interno,
     en_lista: c.en_lista === true,
+    programado_en: c.programado_en ?? null,
     lugar: c.lugar,
     peso_kg: c.peso_kg === null ? null : Number(c.peso_kg),
     guia:
@@ -259,7 +307,23 @@ export async function cargarRecojos(): Promise<CompraParaRecojo[]> {
         ? { id: c.guia_id, numero: c.guia_numero, fecha: c.guia_fecha ?? '', nombre_archivo: c.guia_nombre_archivo ?? '', cargada_en: c.guia_cargada_en ?? '' }
         : null,
     guias_anuladas: c.guias_anuladas ?? 0,
+    fotos: fotosDe.get(c.id ?? '') ?? [],
+    no_logrado: noLogradoDe.get(c.id ?? '') ?? null,
   }))
+}
+
+/** Los enlaces firmados de las fotos del recojo. Sin ellos la tarjeta igual sirve: dice que hay fotos. */
+async function enlacesDeFotosDeRecojo(supabase: Awaited<ReturnType<typeof createClient>>, rutas: string[]) {
+  const enlaces: Record<string, string> = {}
+  if (rutas.length === 0) return enlaces
+  const { data, error } = await supabase.storage.from(BUCKET_FOTOS_RECOJO).createSignedUrls(rutas, 3600)
+  if (error || !data) {
+    // La tarjeta dice que hay fotos y que no se pudieron abrir; el porqué queda en el registro del servidor.
+    console.error(`No se pudieron firmar las fotos del recojo: ${error?.message ?? 'sin respuesta'}`)
+    return enlaces
+  }
+  for (const item of data) if (item.path && item.signedUrl) enlaces[item.path] = item.signedUrl
+  return enlaces
 }
 
 export type OrdenServicioListada = {

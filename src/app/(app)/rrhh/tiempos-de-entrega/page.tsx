@@ -1,9 +1,11 @@
+import { Users } from 'lucide-react'
 import Link from 'next/link'
 
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Paginacion } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -73,6 +75,12 @@ export default async function PaginaTiemposDeEntrega({ searchParams }: PageProps
         }
         ayuda={AYUDA}
         migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'Tiempos de entrega' }]}
+        acciones={
+          <EnlaceBoton href={`${RUTA_TIEMPOS}/personas`} variante="secundario">
+            <Users aria-hidden className="size-4" />
+            Por persona
+          </EnlaceBoton>
+        }
       />
 
       {todos.length > 0 && (
