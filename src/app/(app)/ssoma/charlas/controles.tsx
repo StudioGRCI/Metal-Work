@@ -330,18 +330,19 @@ function FormularioCharla({
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
               />
-              <div className="max-h-80 overflow-y-auto rounded-[var(--radius-base)] border border-borde">
+              {/* En el teléfono desplaza solo la ventana: una lista que desplaza dentro de otra atrapa el dedo. */}
+              <div className="rounded-[var(--radius-base)] border border-borde md:max-h-80 md:overflow-y-auto">
                 {porArea.length === 0 ? (
                   <p className="px-3 py-3 text-sm text-texto-suave">Nadie coincide con «{busqueda.trim()}».</p>
                 ) : (
-                  porArea.map(([area, gente]) => {
+                  porArea.map(([area, gente], i) => {
                     const todos = gente.every((p) => marcados.has(p.id))
                     return (
-                      <fieldset key={area} className="border-b border-borde last:border-b-0">
+                      <fieldset key={area} aria-labelledby={`charla-area-${i}`} className="border-b border-borde last:border-b-0">
                         <div className="sticky top-0 z-[1] flex items-center justify-between gap-2 bg-superficie-2 px-3 py-1.5">
-                          <legend className="float-left text-xs font-medium text-texto">
+                          <p id={`charla-area-${i}`} className="text-xs font-medium text-texto">
                             {area} <span className="tabular text-texto-suave">· {gente.length}</span>
-                          </legend>
+                          </p>
                           <button
                             type="button"
                             className="inline-flex min-h-11 items-center text-xs font-medium text-acento hover:underline sm:min-h-0"

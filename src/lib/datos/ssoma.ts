@@ -449,12 +449,15 @@ export async function listarCharlasDelMes(mes: string): Promise<CharlaSsoma[]> {
 export type PersonaDeLaLista = { id: string; nombre: string; cargo: string | null; area: string | null }
 export type FaltoEnElMes = PersonaDeLaLista & { ultima: string | null }
 
-/** El personal activo que no asistió a ninguna charla ni inducción vigente del mes, con la última vez que asistió. */
+/**
+ * Quien estaba en la planta ese mes (no la lista de hoy: quien entró después no faltó) y no asistió a
+ * ninguna charla ni inducción vigente del mes, con la última vez que asistió; y cuántos estaban.
+ */
 export async function noAsistieronEnElMes(mes: string): Promise<{ faltaron: FaltoEnElMes[]; activos: number }> {
   const supabase = await createClient()
   const [faltaron, activos] = await Promise.all([
     supabase.rpc('ssoma_no_asistieron', { p_mes: `${mes}-01` }),
-    supabase.rpc('ssoma_personal_activo'),
+    supabase.rpc('ssoma_personal_del_mes', { p_mes: `${mes}-01` }),
   ])
   const error = faltaron.error ?? activos.error
   if (error) throw new Error(`No se pudo leer quién no asistió: ${error.message}`)

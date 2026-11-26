@@ -181,7 +181,11 @@ end $$;
 -- ============================================================ 2. Quién ve
 do $$
 declare
-  v_activos integer := (select count(*) from public.trabajadores where activo);
+  -- Quienes estaban en la planta este mes, con la misma regla de la base.
+  v_activos integer := (select count(*)::integer from public.trabajadores t
+     where public.ssoma_vigente_en_el_mes(t.activo, t.fecha_ingreso, t.fecha_baja,
+             date_trunc('month', current_setting('prueba.hoy')::date)::date,
+             (date_trunc('month', current_setting('prueba.hoy')::date) + interval '1 month')::date));
 begin
   perform test.como_usuario(current_setting('prueba.gerente')::uuid);
   set local role authenticated;
@@ -193,7 +197,7 @@ begin
   perform test.afirmar((select count(*) from public.ssoma_charla_fotos where charla_id = current_setting('prueba.c1')::uuid) = 1
     and (select count(*) from storage.objects where name = current_setting('prueba.f1')) = 1,
     'y la foto, en la tabla y en Storage');
-  perform test.afirmar(public.ssoma_personal_activo() = v_activos, 'y cuántas personas tiene la lista');
+  perform test.afirmar(public.ssoma_personal_del_mes(current_setting('prueba.hoy')::date) = v_activos, 'y cuántas personas estaban en la planta este mes');
   reset role;
 
   -- RR. HH., Ventas y Supervisión no ven nada de las charlas.
@@ -204,7 +208,7 @@ begin
     and (select count(*) from public.ssoma_charlas) = 0
     and (select count(*) from public.ssoma_charla_asistentes) = 0
     and (select count(*) from public.ssoma_no_asistieron(current_setting('prueba.hoy')::date)) = 0
-    and public.ssoma_personal_activo() = 0,
+    and public.ssoma_personal_del_mes(current_setting('prueba.hoy')::date) = 0,
     'RR. HH. no ve las charlas ni quién faltó');
   reset role;
   perform test.como_usuario(current_setting('prueba.vendedor')::uuid);
@@ -236,7 +240,11 @@ end $$;
 -- ============================================================ 3. Quién no asistió en el mes
 do $$
 declare
-  v_activos integer := (select count(*) from public.trabajadores where activo);
+  -- Quienes estaban en la planta este mes, con la misma regla de la base.
+  v_activos integer := (select count(*)::integer from public.trabajadores t
+     where public.ssoma_vigente_en_el_mes(t.activo, t.fecha_ingreso, t.fecha_baja,
+             date_trunc('month', current_setting('prueba.hoy')::date)::date,
+             (date_trunc('month', current_setting('prueba.hoy')::date) + interval '1 month')::date));
 begin
   perform test.como_usuario(current_setting('prueba.ssoma')::uuid);
   set local role authenticated;
@@ -262,8 +270,10 @@ begin
     exists (select 1 from public.ssoma_no_asistieron(current_setting('prueba.hoy')::date) where id = current_setting('prueba.t1')::uuid)
     and not exists (select 1 from public.ssoma_no_asistieron(current_setting('prueba.hoy')::date) where id = current_setting('prueba.t3')::uuid),
     'con la charla anulada, sus asistentes vuelven a faltar');
+  perform test.afirmar(public.ssoma_anular_charla(current_setting('prueba.c1')::uuid, 'Se registró en la fecha equivocada') = current_setting('prueba.c1')::uuid,
+    'el mismo pedido repetido (se perdió la respuesta) entra sin error');
   perform test.debe_fallar(format('select public.ssoma_anular_charla(%L, %L)', current_setting('prueba.c1'), 'Otra vez la misma charla'),
-    'no se anula dos veces', 'ya está anulada');
+    'otro motivo sobre una ya anulada se rechaza diciendo el que quedó', 'Se registró en la fecha equivocada');
   reset role;
 
   perform test.como_usuario(current_setting('prueba.gerente')::uuid);
@@ -272,6 +282,60 @@ begin
     'Gerencia no anula', 'la anula SSOMA');
   perform test.afirmar(exists (select 1 from public.ssoma_no_asistieron(current_setting('prueba.hoy')::date) where id = current_setting('prueba.t1')::uuid),
     'Gerencia ve quién no asistió');
+  reset role;
+end $$;
+
+-- ============================================================ 3b. Un mes pasado, con quien estaba ese mes
+-- Quien entró este mes no faltó el mes pasado; quien se fue el mes pasado sí
+-- cuenta en él y ya no en este; el inactivo sin fecha de baja no cuenta en ninguno.
+select test.como_usuario(:'admin_id');
+do $$
+declare
+  v       uuid;
+  v_este  date := date_trunc('month', current_setting('prueba.hoy')::date)::date;
+  v_antes date := (date_trunc('month', current_setting('prueba.hoy')::date) - interval '1 month')::date;
+begin
+  insert into public.trabajadores (nombres, apellidos, dni, cargo, area_id, fecha_ingreso)
+  values ('Nora', 'Nueva Charla', '47647605', 'Ayudante', (select id from public.areas where codigo = 'PRD'), v_este) returning id into v;
+  perform set_config('prueba.t5', v::text, true);
+  insert into public.trabajadores (nombres, apellidos, dni, cargo, area_id, activo, fecha_ingreso, fecha_baja)
+  values ('Bruno', 'Baja Charla', '47647606', 'Ayudante', (select id from public.areas where codigo = 'PRD'), false, v_antes - 200, v_antes + 14)
+  returning id into v;
+  perform set_config('prueba.t6', v::text, true);
+  perform set_config('prueba.antes', v_antes::text, true);
+end $$;
+select set_config('request.jwt.claim.sub', '', true);
+
+do $$
+declare
+  v_antes date := current_setting('prueba.antes')::date;
+  v_hoy   date := current_setting('prueba.hoy')::date;
+  v_t4    uuid := current_setting('prueba.t4')::uuid;
+  v_t5    uuid := current_setting('prueba.t5')::uuid;
+  v_t6    uuid := current_setting('prueba.t6')::uuid;
+  -- Se cuenta antes de cambiar de rol: el ayudante no lo ejecuta `authenticated`.
+  v_esperado integer := (select count(*) from public.trabajadores t
+    where public.ssoma_vigente_en_el_mes(t.activo, t.fecha_ingreso, t.fecha_baja, current_setting('prueba.antes')::date,
+            (current_setting('prueba.antes')::date + interval '1 month')::date));
+begin
+  perform test.como_usuario(current_setting('prueba.ssoma')::uuid);
+  set local role authenticated;
+  perform test.afirmar(
+    not exists (select 1 from public.ssoma_no_asistieron(v_antes) where id = v_t5)
+    and exists (select 1 from public.ssoma_no_asistieron(v_hoy) where id = v_t5),
+    'quien entró este mes no faltó el mes pasado, y este sí cuenta');
+  perform test.afirmar(
+    exists (select 1 from public.ssoma_no_asistieron(v_antes) where id = v_t6)
+    and not exists (select 1 from public.ssoma_no_asistieron(v_hoy) where id = v_t6),
+    'quien se fue el mes pasado cuenta en ese mes y ya no en este');
+  perform test.afirmar(
+    not exists (select 1 from public.ssoma_no_asistieron(v_antes) where id = v_t4)
+    and not exists (select 1 from public.ssoma_no_asistieron(v_hoy) where id = v_t4),
+    'el inactivo sin fecha de baja no cuenta en ningún mes');
+  perform test.afirmar(
+    public.ssoma_personal_del_mes(v_antes) = v_esperado
+    and public.ssoma_personal_del_mes(v_antes) >= 1,
+    'el «de cuántos» del mes pasado cuenta a quien estaba entonces');
   reset role;
 end $$;
 
@@ -300,6 +364,29 @@ begin
   get diagnostics v = row_count;
   perform test.afirmar(v = 0, 'la foto de una charla registrada no se quita de Storage');
   reset role;
+end $$;
+
+-- ============================================================ 6. Un lote de prueba se limpia entero
+-- Los asistentes llevan `id` y `activar_registro_de_prueba`: sin eso,
+-- `pruebas_limpiar` los tomaba por datos ajenos y se negaba a limpiar la charla.
+select test.crear_usuario('Lote', 'Prueba', 'lote476@demo.pe', 'SSOMA', (select id from public.sedes limit 1)) as lote_usuario \gset
+insert into public.pruebas_cuentas (usuario_id, motivo) values (:'lote_usuario', 'check 476');
+select public.pruebas_abrir('check 476: una charla de prueba', array[:'lote_usuario'::uuid]) as lote \gset
+select set_config('request.jwt.claim.sub', :'lote_usuario', true);
+insert into public.ssoma_charlas (tipo, tema, expositor, fecha, creado_por)
+values ('CHARLA', 'Charla del lote de prueba', 'SSOMA', current_date, :'lote_usuario') returning id as lote_charla \gset
+insert into public.ssoma_charla_asistentes (charla_id, trabajador_id) values (:'lote_charla', current_setting('prueba.t2')::uuid);
+select set_config('request.jwt.claim.sub', '', true);
+select set_config('prueba.lote', :'lote', true);
+select set_config('prueba.lote_charla', :'lote_charla', true);
+do $$
+begin
+  perform public.pruebas_limpiar(current_setting('prueba.lote')::uuid);
+  perform test.afirmar(
+    not exists (select 1 from public.ssoma_charlas where id = current_setting('prueba.lote_charla')::uuid)
+    and not exists (select 1 from public.ssoma_charla_asistentes where charla_id = current_setting('prueba.lote_charla')::uuid)
+    and exists (select 1 from public.trabajadores where id = current_setting('prueba.t2')::uuid),
+    'el lote de prueba se lleva la charla y sus asistentes, y deja a la persona real');
 end $$;
 
 rollback;

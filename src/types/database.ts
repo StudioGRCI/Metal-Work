@@ -10838,18 +10838,21 @@ export type Database = {
       }
       ssoma_charla_asistentes: {
         Row: {
+          id: string
           charla_id: string
           trabajador_id: string
           creado_en: string
           actualizado_en: string
         }
         Insert: {
+          id?: string
           charla_id: string
           trabajador_id: string
           creado_en?: string
           actualizado_en?: string
         }
         Update: {
+          id?: string
           charla_id?: string
           trabajador_id?: string
           creado_en?: string
@@ -19090,8 +19093,10 @@ export type Database = {
         }
         Returns: string
       }
-      ssoma_personal_activo: {
-        Args: Record<PropertyKey, never>
+      ssoma_personal_del_mes: {
+        Args: {
+          p_mes: string | null
+        }
         Returns: number
       }
       ssoma_personal_para_charla: {
@@ -19218,6 +19223,16 @@ export type Database = {
           vencidas: number | null
           cerradas: number | null
         }[]
+      }
+      ssoma_vigente_en_el_mes: {
+        Args: {
+          p_activo: boolean | null
+          p_ingreso: string | null
+          p_baja: string | null
+          p_desde: string | null
+          p_hasta: string | null
+        }
+        Returns: boolean
       }
       stock_al_aprobar_compras: {
         Args: {

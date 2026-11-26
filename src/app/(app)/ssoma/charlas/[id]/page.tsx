@@ -51,8 +51,9 @@ export default async function PaginaCharlaSsoma({ params }: PageProps<'/ssoma/ch
           <div role="note" className="rounded-[var(--radius-base)] border border-borde bg-neutro-suave px-4 py-3 text-sm text-texto" data-charla-anulada>
             <p className="font-medium">
               Anulada{c.anulo ? ` por ${c.anulo}` : ''}
-              {c.anulado_en ? ` el ${fechaHora(c.anulado_en)}` : ''}. Ya no cuenta como asistencia.
+              {c.anulado_en ? ` el ${fechaHora(c.anulado_en)}` : ''}
             </p>
+            <p className="mt-1">Ya no cuenta como asistencia.</p>
             {c.motivo_anulacion && <p className="mt-1 text-texto-suave">Motivo: {c.motivo_anulacion}</p>}
           </div>
         )}

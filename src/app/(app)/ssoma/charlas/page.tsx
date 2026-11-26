@@ -3,12 +3,13 @@ import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { Pliegue } from '@/components/ui/seccion-desplegable'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
 import { listarCharlasDelMes, noAsistieronEnElMes, personalParaCharla, type CharlaSsoma, type FaltoEnElMes } from '@/lib/datos/ssoma'
 import { mesDeLima, mesValido, mesVecino } from '@/lib/dominio/rrhh'
-import { TIPO_CHARLA_SSOMA } from '@/lib/dominio/ssoma'
-import { fecha, hoyLima, mesLargo } from '@/lib/format'
+import { DIAS_PARA_REGISTRAR_CHARLA, TIPO_CHARLA_SSOMA } from '@/lib/dominio/ssoma'
+import { fecha, hoyLima, mesLargo, sumarDias } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { cn } from '@/lib/utils'
 
@@ -40,13 +41,17 @@ export default async function PaginaCharlasSsoma({ searchParams }: PageProps<'/s
   const vigentes = charlas.filter((c) => !c.anulado_en)
   const inducciones = vigentes.filter((c) => c.tipo === 'INDUCCION').length
   const nombreDelMes = mesLargo(`${mes}-01`)
+  const charlasVigentes = vigentes.length - inducciones
+  const resumen = `${charlasVigentes} ${charlasVigentes === 1 ? 'charla' : 'charlas'} y ${inducciones} ${inducciones === 1 ? 'inducción' : 'inducciones'} en ${nombreDelMes}`
+  // Un mes pasado todavía se completa si cae dentro de los días que acepta la base.
+  const aunSeRegistra = !enCurso && `${mesVecino(mes, 1)}-01` > sumarDias(hoy, -DIAS_PARA_REGISTRAR_CHARLA)
 
   return (
     <>
       <EncabezadoPagina
         titulo="Charlas e inducciones"
-        descripcion={gestiona ? 'Registra cada charla con su foto y quiénes asistieron.' : 'Las charlas de seguridad y las inducciones que registra SSOMA.'}
-        ayuda="Cada charla o inducción, con su tema, quién la dio, la fecha, las fotos y quiénes asistieron de la lista de RR. HH. Abajo, quién del personal activo no asistió a ninguna en el mes. Una charla registrada no se edita ni se borra: si quedó mal, SSOMA la anula con su motivo y deja de contar."
+        descripcion={<span data-resumen-charlas>{resumen}</span>}
+        ayuda="Cada charla o inducción, con su tema, quién la dio, la fecha, las fotos y quiénes asistieron de la lista de RR. HH., y quién del personal que estaba en la planta ese mes no asistió a ninguna. Una charla registrada no se edita ni se borra: si quedó mal, SSOMA la anula con su motivo y deja de contar."
         migas={[{ titulo: 'SSOMA', ruta: '/ssoma' }, { titulo: 'Charlas e inducciones' }]}
         acciones={
           gestiona && <RegistrarCharla cuentaId={perfil.id} personal={personal} hoy={hoy} expositor={`${perfil.nombres} ${perfil.apellidos}`.trim()} />
@@ -54,7 +59,7 @@ export default async function PaginaCharlasSsoma({ searchParams }: PageProps<'/s
         estado={gestiona ? <EstadoDeLaCharla /> : undefined}
       />
 
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <div className="space-y-5">
         <nav aria-label="Mes" className="flex items-center gap-1">
           <Link
             href={`/ssoma/charlas?mes=${mesVecino(mes, -1)}`}
@@ -76,22 +81,16 @@ export default async function PaginaCharlasSsoma({ searchParams }: PageProps<'/s
             </Link>
           )}
         </nav>
-        <p className="text-xs text-texto-suave" data-resumen-charlas>
-          <span className="tabular">{vigentes.length - inducciones}</span> {vigentes.length - inducciones === 1 ? 'charla' : 'charlas'} ·{' '}
-          <span className="tabular">{inducciones}</span> {inducciones === 1 ? 'inducción' : 'inducciones'}
-        </p>
-      </div>
 
-      <div className="space-y-5">
         <Tarjeta className="overflow-hidden" data-no-asistieron={faltaron.length}>
           <TarjetaCabecera
             titulo={`No asistieron en ${nombreDelMes}`}
             descripcion={
               activos === 0
                 ? undefined
-                : `${faltaron.length} de ${activos} ${activos === 1 ? 'persona activa' : 'personas activas'}${enCurso ? ' · el mes sigue en curso' : ''}`
+                : `${faltaron.length} de ${activos} ${activos === 1 ? 'persona' : 'personas'} que estaban en la planta${enCurso ? ' · el mes sigue en curso' : ''}`
             }
-            ayuda="El personal activo de RR. HH. que no estuvo en ninguna charla ni inducción vigente del mes. Una charla anulada no cuenta."
+            ayuda="Quien estaba en la planta ese mes según RR. HH. (entró antes de que terminara y no se había ido antes de que empezara) y no estuvo en ninguna charla ni inducción vigente. Una charla anulada no cuenta."
           />
           <TablaDeFaltas faltaron={faltaron} activos={activos} mes={nombreDelMes} enCurso={enCurso} />
         </Tarjeta>
@@ -104,7 +103,11 @@ export default async function PaginaCharlasSsoma({ searchParams }: PageProps<'/s
               gestiona
                 ? {
                     titulo: enCurso ? 'Todavía no hay charlas este mes' : 'No se registraron charlas ese mes',
-                    descripcion: enCurso ? 'Cuando des la siguiente, toca «Registrar charla» y marca quiénes asistieron.' : '',
+                    descripcion: enCurso
+                      ? 'Cuando des la siguiente, toca «Registrar charla» y marca quiénes asistieron.'
+                      : aunSeRegistra
+                        ? `Si se dio alguna, todavía la puedes registrar con su fecha: se aceptan las de los últimos ${DIAS_PARA_REGISTRAR_CHARLA} días.`
+                        : '',
                   }
                 : { titulo: 'No hay charlas registradas en el mes', descripcion: 'Las registra SSOMA, con su foto y quiénes asistieron.' }
             }
@@ -119,7 +122,7 @@ function TablaDeFaltas({ faltaron, activos, mes, enCurso }: { faltaron: FaltoEnE
   if (activos === 0) {
     return (
       <div className="px-4 pb-4">
-        <SinDatos compacto titulo="RR. HH. no tiene personal activo" descripcion="Sin la lista del personal no hay a quién contar." />
+        <SinDatos compacto titulo="RR. HH. no tenía a nadie en la planta ese mes" descripcion="Sin la lista del personal no hay a quién contar." />
       </div>
     )
   }
@@ -129,11 +132,34 @@ function TablaDeFaltas({ faltaron, activos, mes, enCurso }: { faltaron: FaltoEnE
         <SinDatos
           compacto
           titulo={enCurso ? 'Este mes ya asistieron todos' : `En ${mes} asistieron todos`}
-          descripcion="Cada persona activa estuvo en al menos una charla o inducción."
+          descripcion="Cada persona que estaba en la planta asistió al menos a una charla o inducción."
         />
       </div>
     )
   }
+  const vistas = faltaron.slice(0, A_LA_VISTA)
+  const resto = faltaron.slice(A_LA_VISTA)
+  return (
+    <>
+      <FilasDeFaltas gente={vistas} />
+      {/* Al empezar el mes falta casi todo el personal: el resto, plegado, para que las charlas no queden al fondo. */}
+      {resto.length > 0 && (
+        <div className="border-t border-borde px-4">
+          <Pliegue titulo={`Ver las otras ${resto.length} personas`} data-otras-faltas="">
+            <div className="-mx-4 border-t border-borde">
+              <FilasDeFaltas gente={resto} />
+            </div>
+          </Pliegue>
+        </div>
+      )}
+    </>
+  )
+}
+
+/** Cuántas personas de «No asistieron» se ven sin abrir el pliegue. */
+const A_LA_VISTA = 10
+
+function FilasDeFaltas({ gente }: { gente: FaltoEnElMes[] }) {
   return (
     <Tabla>
       <TablaCabecera>
@@ -144,7 +170,7 @@ function TablaDeFaltas({ faltaron, activos, mes, enCurso }: { faltaron: FaltoEnE
         </tr>
       </TablaCabecera>
       <tbody>
-        {faltaron.map((p) => (
+        {gente.map((p) => (
           <TR key={p.id} data-falto={p.id}>
             <TD className="align-top">
               <p className="text-sm text-texto">{p.nombre}</p>
@@ -155,7 +181,7 @@ function TablaDeFaltas({ faltaron, activos, mes, enCurso }: { faltaron: FaltoEnE
             </TD>
             <TD className="hidden align-top text-sm text-texto sm:table-cell">{p.area ?? '—'}</TD>
             <TD className="hidden align-top sm:table-cell">
-              <p className={cn('tabular text-xs whitespace-nowrap', p.ultima ? 'text-texto' : 'text-texto-suave')}>
+              <p className={cn('tabular text-sm whitespace-nowrap', p.ultima ? 'text-texto' : 'text-texto-suave')}>
                 {p.ultima ? fecha(p.ultima) : 'Ninguna registrada'}
               </p>
             </TD>
@@ -223,7 +249,7 @@ function FilaCharla({ charla: c }: { charla: CharlaSsoma }) {
         </p>
       </TD>
       <TD className="hidden align-top sm:table-cell">
-        <p className="tabular text-xs whitespace-nowrap text-texto">{fecha(c.fecha)}</p>
+        <p className="tabular text-sm whitespace-nowrap text-texto">{fecha(c.fecha)}</p>
       </TD>
       <TD className="hidden align-top sm:table-cell">
         <p className="text-sm text-texto">{c.expositor}</p>

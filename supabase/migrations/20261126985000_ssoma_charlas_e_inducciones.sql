@@ -77,18 +77,23 @@ select public.activar_timestamps('ssoma_charlas');
 select public.activar_registro_de_prueba('ssoma_charlas');
 
 -- Quiénes asistieron: personas de la lista de RR. HH. (tengan o no cuenta).
+-- Con su `id`, para que `pruebas_limpiar` reconozca la fila de un lote de prueba
+-- como suya y no se niegue a limpiar la charla.
 create table if not exists public.ssoma_charla_asistentes (
+  id              uuid primary key default gen_random_uuid(),
   charla_id       uuid not null references public.ssoma_charlas(id) on delete restrict,
   -- «Quién no asistió» busca por persona (b).
   trabajador_id   uuid not null references public.trabajadores(id) on delete restrict,
   creado_en       timestamptz not null default now(),
   actualizado_en  timestamptz not null default now(),
-  primary key (charla_id, trabajador_id)
+  -- También es el índice de la llave hacia la charla.
+  constraint uq_ssoma_charla_asistente unique (charla_id, trabajador_id)
 );
 comment on table public.ssoma_charla_asistentes is
   'Quiénes asistieron a cada charla o inducción de SSOMA, de la lista de personal de RR. HH. No se cambia ni se borra.';
 create index if not exists ix_ssoma_charla_asistentes_trabajador on public.ssoma_charla_asistentes (trabajador_id);
 select public.activar_timestamps('ssoma_charla_asistentes');
+select public.activar_registro_de_prueba('ssoma_charla_asistentes');
 
 -- Las fotos de la charla: de una a cuatro, en fotos-ssoma con la ruta {cuenta}/{charla}/{foto}.
 create table if not exists public.ssoma_charla_fotos (
@@ -232,6 +237,7 @@ declare
   v_ruta      text;
   v_objeto    storage.objects%rowtype;
   v_n         int := 0;
+  v_inactivo  text;
 begin
   if v_yo is null or not (public.es_admin() or public.tiene_permiso('ssoma.gestionar')) then
     raise exception 'Una charla la registra SSOMA.' using errcode = 'insufficient_privilege';
@@ -271,9 +277,14 @@ begin
   if cardinality(v_personas) > 500 then
     raise exception 'Van hasta 500 asistentes por charla.' using errcode = 'check_violation';
   end if;
-  if exists (select 1 from unnest(v_personas) as x
-              where not exists (select 1 from public.trabajadores t where t.id = x and t.activo)) then
-    raise exception 'Alguien de la lista ya no está activo en RR. HH.: vuelve a abrir el formulario.' using errcode = 'check_violation';
+  -- Quien RR. HH. dio de baja mientras se llenaba la lista: se dice quién, para desmarcarlo.
+  select btrim(t.apellidos || ' ' || t.nombres) into v_inactivo
+    from unnest(v_personas) as x left join public.trabajadores t on t.id = x
+   where t.id is null or not t.activo
+   limit 1;
+  if found then
+    raise exception '% ya no está activo en RR. HH.: desmárcalo y vuelve a registrar.', coalesce(v_inactivo, 'Alguien de la lista')
+      using errcode = 'check_violation';
   end if;
 
   if jsonb_typeof(v_fotos) <> 'array' then
@@ -324,18 +335,21 @@ returns uuid
 language plpgsql security definer set search_path to 'public' as $$
 declare
   v_charla public.ssoma_charlas%rowtype;
-  v_motivo text := btrim(coalesce(p_motivo, ''));
+  v_motivo text := regexp_replace(btrim(coalesce(p_motivo, '')), '\s+', ' ', 'g');
 begin
   if public.usuario_actual() is null or not (public.es_admin() or public.tiene_permiso('ssoma.gestionar')) then
     raise exception 'Una charla la anula SSOMA.' using errcode = 'insufficient_privilege';
   end if;
+  if char_length(v_motivo) not between 10 and 500 then
+    raise exception 'Cuenta por qué se anula, en 10 a 500 caracteres.' using errcode = 'check_violation';
+  end if;
   select * into v_charla from public.ssoma_charlas where id = p_id for update;
   if not found then raise exception 'Esa charla no existe.' using errcode = 'check_violation'; end if;
   if v_charla.anulado_en is not null then
-    raise exception 'La charla ya está anulada.' using errcode = 'check_violation';
-  end if;
-  if char_length(v_motivo) not between 10 and 500 then
-    raise exception 'Cuenta por qué se anula, en 10 a 500 caracteres.' using errcode = 'check_violation';
+    -- El mismo pedido repetido (se perdió la respuesta) ya quedó; otro motivo no cambia el que quedó.
+    if v_charla.motivo_anulacion = v_motivo then return p_id; end if;
+    raise exception 'Esta charla ya estaba anulada, con este motivo: «%». No se cambia.', v_charla.motivo_anulacion
+      using errcode = 'check_violation';
   end if;
   update public.ssoma_charlas set motivo_anulacion = v_motivo where id = p_id;
   return p_id;
@@ -401,8 +415,22 @@ comment on function public.ssoma_asistentes_de_charla(uuid) is
 revoke all on function public.ssoma_asistentes_de_charla(uuid) from public, anon;
 grant execute on function public.ssoma_asistentes_de_charla(uuid) to authenticated;
 
--- Quién no asistió en el mes: el personal activo sin ninguna charla ni inducción
--- vigente en ese mes, con la última vez que asistió a una (vigente), si alguna vez.
+-- Quién estaba en la planta en un mes: entró antes de que terminara y no se había
+-- ido antes de que empezara. Un mes pasado no se cuenta con la lista de hoy:
+-- quien entró después no «faltó», y quien se fue después sí cuenta. Quien está
+-- inactivo sin fecha de baja no se sabe cuándo se fue, y no entra.
+create or replace function public.ssoma_vigente_en_el_mes(p_activo boolean, p_ingreso date, p_baja date, p_desde date, p_hasta date)
+returns boolean language sql immutable set search_path to 'public' as $$
+  select (p_ingreso is null or p_ingreso < p_hasta)
+     and (case when p_activo then p_baja is null or p_baja >= p_desde else p_baja is not null and p_baja >= p_desde end);
+$$;
+comment on function public.ssoma_vigente_en_el_mes(boolean, date, date, date, date) is
+  'Si una persona de RR. HH. estaba en la planta entre p_desde y p_hasta (sin incluir): entró antes del fin y no se fue antes del inicio. Ayudante de las charlas de SSOMA.';
+revoke all on function public.ssoma_vigente_en_el_mes(boolean, date, date, date, date) from public, anon, authenticated;
+
+-- Quién no asistió en el mes: el personal que estaba en la planta ese mes, sin
+-- ninguna charla ni inducción vigente en él, con la última vez que asistió a una
+-- (vigente) hasta ese mes, si alguna vez.
 create or replace function public.ssoma_no_asistieron(p_mes date)
 returns table (id uuid, nombre text, cargo text, area text, ultima date)
 language sql stable security definer set search_path to 'public' rows 100 as $$
@@ -417,7 +445,7 @@ language sql stable security definer set search_path to 'public' rows 100 as $$
     cross join mes m
     left join public.areas a on a.id = t.area_id
    where public.puede_ver_reportes_ssoma()
-     and t.activo
+     and public.ssoma_vigente_en_el_mes(t.activo, t.fecha_ingreso, t.fecha_baja, m.desde, m.hasta)
      and not exists (select 1 from public.ssoma_charla_asistentes s
                        join public.ssoma_charlas c on c.id = s.charla_id
                       where s.trabajador_id = t.id and c.anulado_en is null
@@ -425,17 +453,20 @@ language sql stable security definer set search_path to 'public' rows 100 as $$
    order by a.nombre nulls last, t.apellidos, t.nombres;
 $$;
 comment on function public.ssoma_no_asistieron(date) is
-  'El personal activo de RR. HH. que no asistió a ninguna charla ni inducción vigente en el mes de p_mes, con la última vez que asistió a una. Solo nombre, cargo y área. Solo para SSOMA y Gerencia.';
+  'El personal de RR. HH. que estaba en la planta en el mes de p_mes y no asistió a ninguna charla ni inducción vigente en él, con la última vez que asistió a una. Solo nombre, cargo y área. Solo para SSOMA y Gerencia.';
 revoke all on function public.ssoma_no_asistieron(date) from public, anon;
 grant execute on function public.ssoma_no_asistieron(date) to authenticated;
 
--- Cuántas personas activas tiene la lista de RR. HH., para decir «x de y».
-create or replace function public.ssoma_personal_activo()
+-- Cuántas personas estaban en la planta en el mes, para decir «x de y».
+create or replace function public.ssoma_personal_del_mes(p_mes date)
 returns integer language sql stable security definer set search_path to 'public' as $$
   select case when public.puede_ver_reportes_ssoma()
-              then (select count(*)::integer from public.trabajadores t where t.activo) else 0 end;
+              then (select count(*)::integer from public.trabajadores t
+                     where public.ssoma_vigente_en_el_mes(t.activo, t.fecha_ingreso, t.fecha_baja,
+                             date_trunc('month', p_mes)::date, (date_trunc('month', p_mes) + interval '1 month')::date))
+              else 0 end;
 $$;
-comment on function public.ssoma_personal_activo() is
-  'Cuántas personas activas tiene la lista de RR. HH. Solo para SSOMA y Gerencia; a los demás, 0.';
-revoke all on function public.ssoma_personal_activo() from public, anon;
-grant execute on function public.ssoma_personal_activo() to authenticated;
+comment on function public.ssoma_personal_del_mes(date) is
+  'Cuántas personas de RR. HH. estaban en la planta en el mes de p_mes. Solo para SSOMA y Gerencia; a los demás, 0.';
+revoke all on function public.ssoma_personal_del_mes(date) from public, anon;
+grant execute on function public.ssoma_personal_del_mes(date) to authenticated;

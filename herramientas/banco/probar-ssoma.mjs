@@ -264,7 +264,7 @@ let delSupervisor = null
   await quieta(pagina)
   await abrirRecorrido(pagina)
   const recorrido = limpio(await pagina.locator('[data-recorrido]').innerText())
-  comprobar(/Reportado/.test(recorrido) && /Almacenero/.test(recorrido) && /Lo tiene SSOMA/.test(recorrido), `[Almacén 390] ve el recorrido de su reporte: «${recorrido.slice(0, 120)}»`)
+  comprobar(/Reportado/.test(recorrido) && /Almacenero/.test(recorrido) && /Lo tiene SSOMA desde hoy/.test(recorrido), `[Almacén 390] ve el recorrido de su reporte: «${recorrido.slice(0, 120)}»`)
   const fotoVista = await hasta(() => pagina.locator('main img').first().evaluate((i) => i.complete && i.naturalWidth > 0).catch(() => false), Boolean, 15000)
   comprobar(fotoVista, '[Almacén 390] ve la foto de su reporte')
   comprobar((await pagina.locator('[data-anular-reporte]').count()) === 0, '[Almacén 390] no se le ofrece anular')
@@ -403,8 +403,10 @@ let delSupervisor = null
   comprobar(anulado?.estado === 'ANULADO' && anulado?.motivo_anulacion === motivo && anulado?.anulado_por === yo.id && acciones.n - antes === 1, `[SSOMA 1440] anula con su motivo, en un solo envío (${acciones.n - antes})`)
   const alAutor = await consulta(`select titulo from public.notificaciones where origen_id = $1 and usuario_id = $2 and titulo like 'SSOMA anuló%'`, [delSupervisor?.id, delSupervisor?.registrado_por])
   comprobar(alAutor.length === 1, `[SSOMA 1440] a quien lo reportó le llega el aviso de la anulación: «${alAutor[0]?.titulo}»`)
-  const ficha = await hasta(() => abrirRecorrido(pagina).then(() => pagina.locator('main').innerText()).then(limpio), (t) => t.includes(motivo), 15000)
-  comprobar(/Anulado/.test(ficha) && ficha.includes(motivo) && (await pagina.locator('[data-anular-reporte]').count()) === 0, '[SSOMA 1440] la ficha dice quién lo anuló y por qué, y ya no ofrece anular')
+  await hasta(() => abrirRecorrido(pagina).then(() => pagina.locator('main').innerText()).then(limpio), (t) => t.includes(motivo), 15000)
+  const recorridoAnulado = limpio(await pagina.locator('[data-recorrido]').innerText())
+  // Quién lo anuló va en el recorrido, por su puesto: SSOMA.
+  comprobar(/Anulado/.test(recorridoAnulado) && /SSOMA/.test(recorridoAnulado) && recorridoAnulado.includes(motivo) && (await pagina.locator('[data-anular-reporte]').count()) === 0, '[SSOMA 1440] la ficha dice quién lo anuló y por qué, y ya no ofrece anular')
   await pagina.screenshot({ path: join(CAPTURAS, 'ssoma-detalle-anulado-1440.png'), fullPage: true })
   await ir(pagina, `${BASE}/ssoma?vista=anulados`)
   comprobar((await pagina.locator(`[data-reporte-ssoma="${delSupervisor?.numero}"]`).count()) === 1, '[SSOMA 1440] el anulado pasa a la vista «Anulados»')
@@ -438,6 +440,9 @@ let delSupervisor = null
   await ir(pagina, `${BASE}/ssoma`)
   const titulo = limpio(await pagina.locator('h1').innerText())
   comprobar(titulo === 'Reportes de seguridad' && (await pagina.locator(`[data-reporte-ssoma="${delAlmacen?.numero}"]`).count()) === 1, '[Gerencia 1440] consulta todos los reportes')
+  // Quién reportó, con su nombre, lo ven solo SSOMA y Gerencia (decisión de 15.1): va en la fila de la lista.
+  const filaGerencia = limpio(await pagina.locator(`[data-reporte-ssoma="${delAlmacen?.numero}"]`).innerText())
+  comprobar(/Almacén Banco/.test(filaGerencia), `[Gerencia 1440] la lista le dice quién reportó, con su nombre: «${filaGerencia.slice(0, 110)}»`)
   await ir(pagina, `${BASE}/ssoma/${delAlmacen?.id}`)
   await abrirRecorrido(pagina)
   // Desde la 15.2 la ficha nombra a quien reportó por su puesto, en el recorrido; el nombre va en la lista.
