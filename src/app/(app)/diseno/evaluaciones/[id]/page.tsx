@@ -70,13 +70,13 @@ export default async function PaginaEvaluacion({ params }: PageProps<'/diseno/ev
             <div className="tabla-con-corte overflow-x-auto">
               <table className="w-full border-collapse text-sm">
                 <caption className="sr-only">Puntaje de cada comportamiento</caption>
-                <thead className="border-b border-borde bg-superficie-2 text-[11px] font-semibold tracking-wide text-texto-suave uppercase">
+                <thead className="border-b border-borde bg-superficie-2 text-xs font-semibold tracking-wide text-texto-suave uppercase">
                   <tr>
                     <th scope="col" className="px-2 py-2 text-left sm:px-3">Área del desempeño</th>
                     {ESCALA_DISENO.map((n) => (
                       <th key={n.valor} scope="col" className="w-7 px-0.5 py-2 text-center sm:w-12 sm:px-1" title={n.nivel}>
                         <span className="tabular block text-xs text-texto">{n.valor}</span>
-                        <span className="hidden text-[9px] leading-tight font-medium normal-case sm:block">{n.nivel}</span>
+                        <span className="hidden text-xs leading-tight font-medium normal-case sm:block">{n.nivel}</span>
                       </th>
                     ))}
                     <th scope="col" className="w-12 px-2 py-2 text-right sm:w-16 sm:px-3">Puntaje</th>
@@ -85,7 +85,7 @@ export default async function PaginaEvaluacion({ params }: PageProps<'/diseno/ev
                 {GRUPOS.map((g) => (
                   <tbody key={g.grupo} className="border-b border-borde">
                     <tr>
-                      <th scope="colgroup" colSpan={7} className="bg-superficie-2/60 px-2 pt-3 pb-1 text-left text-[11px] font-semibold tracking-wide text-acento uppercase sm:px-3">
+                      <th scope="colgroup" colSpan={7} className="bg-superficie-2/60 px-2 pt-3 pb-1 text-left text-xs font-semibold tracking-wide text-acento uppercase sm:px-3">
                         {g.grupo}
                       </th>
                     </tr>

@@ -99,7 +99,7 @@ export default async function PaginaPlantilla({ params }: PageProps<'/carroceria
             ) : (
               plantilla.secciones.map((s) => (
                 <section key={s.seccion}>
-                  <h3 className="mb-1.5 text-[11px] font-semibold tracking-wide text-texto-suave uppercase">
+                  <h3 className="mb-1.5 text-xs font-semibold tracking-wide text-texto-suave uppercase">
                     {s.seccion}
                   </h3>
                   <ul className="space-y-1 text-sm">

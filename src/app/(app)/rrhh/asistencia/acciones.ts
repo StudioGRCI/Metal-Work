@@ -12,8 +12,15 @@ function dato(formulario: FormData, nombre: string) {
   return typeof valor === 'string' ? valor.trim() : ''
 }
 
-/** El portero marca el ingreso o la salida de una persona. Mismo permiso que `marcar_asistencia`. */
-export async function marcarAsistencia(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+/** Lo que la base guardó de la marca: la hora la pone ella, en Lima. `null` si no se pudo leer. */
+export type MarcaGuardada = { hora: string | null; es_tardanza: boolean; tardanza_minutos: number }
+
+/**
+ * El portero marca el ingreso o la salida de una persona. Mismo permiso que
+ * `marcar_asistencia`. Devuelve la hora que puso la base, para decirla en
+ * grande apenas entra: la lee de `asistencias`, que la portería ya ve.
+ */
+export async function marcarAsistencia(_previo: unknown, formulario: FormData): Promise<ResultadoAccion<MarcaGuardada>> {
   const perfil = await exigirSesion()
   if (!editaComoRrhh(perfil, 'asistencia.marcar')) return { ok: false, error: 'No tienes permiso para marcar la asistencia.' }
 
@@ -43,9 +50,17 @@ export async function marcarAsistencia(_previo: unknown, formulario: FormData): 
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.marca_id) return { ok: false, error: 'La marca no quedó registrada. Recarga la pantalla.' }
 
+  // La marca ya entró: si esta lectura falla, la pantalla dice que entró y la
+  // hora llega con la lista al día.
+  const { data: fila } = await supabase.from('asistencias').select('hora, es_tardanza, tardanza_minutos').eq('id', d.marca_id).maybeSingle()
+
   revalidatePath('/rrhh/asistencia')
   revalidatePath('/rrhh/tardanzas')
-  return { ok: true, mensaje: d.tipo === 'INGRESO' ? 'Ingreso marcado.' : 'Salida marcada.' }
+  return {
+    ok: true,
+    mensaje: d.tipo === 'INGRESO' ? 'Ingreso marcado.' : 'Salida marcada.',
+    datos: { hora: fila?.hora ?? null, es_tardanza: fila?.es_tardanza ?? false, tardanza_minutos: fila?.tardanza_minutos ?? 0 },
+  }
 }
 
 /**

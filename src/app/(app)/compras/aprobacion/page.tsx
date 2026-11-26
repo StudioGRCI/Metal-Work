@@ -123,14 +123,14 @@ export default async function PaginaAprobacionCompras() {
                       <TR key={`${c.tipo}-${c.id}`}>
                         <TD>
                           <NombreDeLaOrden numero={c.sin_numero ? null : c.numero} referencia={c.referencia} proveedor={c.proveedor} />
-                          <p className="text-[11px] text-texto-suave">{destino(c)}</p>
+                          <p className="text-xs text-texto-suave">{destino(c)}</p>
                           {c.motivo_rechazo && <p className="mt-1 text-xs text-texto-suave">Motivo: {c.motivo_rechazo}</p>}
                         </TD>
                         <TD className="tabular text-right whitespace-nowrap">{moneda(c.monto, divisa(c.moneda))}</TD>
                         <TD>{estado && <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>}</TD>
                         <TD className="hidden text-texto-suave sm:table-cell">
                           {c.decidida_por ?? '—'}
-                          <p className="text-[11px]">{fechaHora(c.decidida_en)}</p>
+                          <p className="text-xs">{fechaHora(c.decidida_en)}</p>
                         </TD>
                       </TR>
                     )
@@ -198,7 +198,7 @@ function ComprasAnulables({ compras }: { compras: CompraAnulable[] }) {
                   <TR key={c.id} data-anulable={c.numero}>
                     <TD>
                       <NombreDeLaOrden numero={c.sin_numero ? null : c.numero} referencia={c.referencia} proveedor={c.proveedor} />
-                      <p className="text-[11px] text-texto-suave">
+                      <p className="text-xs text-texto-suave">
                         {[c.codigos.join(', '), c.ordenes.length ? `OT ${c.ordenes.join(', ')}` : null, c.con_factura ? 'Con factura' : 'Con boleta', c.aprobado_en && `aprobada ${fecha(c.aprobado_en)}`]
                           .filter(Boolean)
                           .join(' · ')}
@@ -249,7 +249,7 @@ function NombreDeLaOrden({ numero, referencia, proveedor }: { numero: string | n
         {numero ?? 'OC sin número'} · {proveedor}
       </p>
       {numero === null && referencia && (
-        <p className="text-[11px] text-texto-suave">
+        <p className="text-xs text-texto-suave">
           Ref. del proveedor: <span className="tabular whitespace-nowrap">{referencia}</span>
         </p>
       )}
@@ -342,7 +342,7 @@ function CompraPorAprobar({ compra: c, aprueba, dias }: { compra: CompraParaApro
                 <TR key={`${l.material_codigo}-${l.orden}-${i}`}>
                   <TD>
                     <p className="text-texto">{l.material}</p>
-                    <p className="text-[11px] text-texto-suave">
+                    <p className="text-xs text-texto-suave">
                       {l.material_codigo}
                       <span className="sm:hidden"> · {l.orden ? `OT ${l.orden}` : deRq ? 'De RQ' : 'Almacén'}</span>
                     </p>
@@ -368,7 +368,7 @@ function CompraPorAprobar({ compra: c, aprueba, dias }: { compra: CompraParaApro
                   </TD>
                   <TD className="hidden text-texto-suave sm:table-cell">
                     {l.orden ?? (deRq ? '—' : 'Almacén')}
-                    {l.area && <p className="text-[11px]">{NOMBRE_AREA[l.area] ?? l.area}</p>}
+                    {l.area && <p className="text-xs">{NOMBRE_AREA[l.area] ?? l.area}</p>}
                   </TD>
                   <TD className="tabular text-right whitespace-nowrap">
                     {cantidad(l.cantidad)} {l.unidad}
