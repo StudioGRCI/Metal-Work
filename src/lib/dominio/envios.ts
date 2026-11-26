@@ -52,6 +52,8 @@ export const CLAVES_DEL_ENVIO = [
   // El seguimiento de cada compra (Plan 4.2, 20261126462000).
   'motivo_atraso',
   'fecha_prometida',
+  // El reclamo de garantía (A.2): reabrir tras «No llegó la respuesta» no da otro número RG al mismo reclamo.
+  'reclamo_garantia',
 ] as const
 
 export type ClaveDelEnvio = (typeof CLAVES_DEL_ENVIO)[number]

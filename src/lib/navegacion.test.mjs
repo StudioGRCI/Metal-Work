@@ -7,7 +7,8 @@ import { menuDe, modulosDelInicio, pestanasDe, rutaActiva, rutasDeTrabajo } from
 // `equipos.ver`, que le da la 20261125160000 (padrón de equipos, #191). Desde la 20261126310000
 // tiene además los diez de lectura de las once pantallas que le faltaban, y ya no `proveedores.editar`;
 // desde la 20261126100100, `averias.ver` (reportar una avería, Plan 16.2), y desde la
-// 20261126700000, `calidad.ver` (Calidad, A.1).
+// 20261126700000, `calidad.ver` (Calidad, A.1), y desde la 20261126991000, `garantias.ver`
+// (reclamos de garantía, A.2).
 const GERENCIA = [
   'adquisiciones.ver', 'almacen.ver', 'averias.ver', 'asistencia.ver', 'auditoria.ver', 'calidad.ver', 'clientes.ver', 'codigos_internos.cerrar',
   'codigos_internos.ver', 'compras.configurar_aprobacion', 'compras.ver', 'costos.ver', 'cotizaciones.revisar',
@@ -20,6 +21,7 @@ const GERENCIA = [
   'diseno.ver_dxf', 'requerimientos.ver_metrado', 'compras.ver_gestion', 'tesoreria.ver_caja', 'tesoreria.ver_tipo_cambio',
   // Reportes de seguridad, desde el área de SSOMA (#192).
   'ssoma.ver',
+  'garantias.ver',
 ]
 
 const rutas = (grupos) => grupos.flatMap((g) => g.items.map((i) => i.ruta))
@@ -32,9 +34,11 @@ test('Gerencia ve por área las 53 pantallas que su permiso le abre, cada una un
   ])
   const todas = rutas(grupos)
   // 49 en main el 2026-11-26 (con Averías), más Por decidir (plan 12, entrega 12.1), el Control de compras de Almacén,
-  // las inspecciones de calidad (A.1) y las charlas e inducciones de SSOMA (plan 15, entrega 15.3).
-  assert.equal(todas.length, 53)
-  assert.equal(new Set(todas).size, 53)
+  // las inspecciones de calidad (A.1), las charlas e inducciones de SSOMA (plan 15, entrega 15.3) y los reclamos de garantía (A.2).
+  assert.equal(todas.length, 54)
+  assert.equal(new Set(todas).size, 54)
+  // Los reclamos de garantía, en lo que consulta de Ventas: un grupo más no entraba en el monitor.
+  assert.deepEqual(rutas(grupos.filter((g) => g.titulo === 'Ventas')), ['/clientes', '/unidades', '/carrocerias', '/garantias'])
   // Calidad la consulta con su permiso: la entrada del área (sin permiso) no la reemplaza.
   assert.equal(grupos.find((g) => g.titulo === 'SSOMA y Calidad')?.items[2]?.titulo, 'Inspecciones de calidad')
   // Las averías y los reportes de seguridad, en lo que consulta: no se repiten en «Reportar», que va al final para todos.
@@ -157,7 +161,9 @@ test('Calidad lleva sus inspecciones arriba y consulta los códigos y las OT sin
   const grupos = menuDe(permisos, false, 'CALIDAD')
   assert.deepEqual(rutas(grupos), ['/', '/calidad', '/seguimiento', '/ordenes', '/ssoma', '/averias'])
   assert.equal(grupos[0].items[1].titulo, 'Inspecciones de calidad')
-  assert.deepEqual(pestanasDe(permisos, false, 'CALIDAD').map((p) => p.ruta), ['/calidad', '/seguimiento', '/ordenes', '/'])
+  assert.deepEqual(pestanasDe(permisos, false, 'CALIDAD').map((p) => p.ruta), ['/calidad', '/seguimiento', '/'])
+  // Con la causa de la garantía (A.2), como lo tiene el puesto: anota la causa en el teléfono.
+  assert.deepEqual(pestanasDe([...permisos, 'garantias.causa'], false, 'CALIDAD').map((p) => p.ruta), ['/calidad', '/garantias', '/seguimiento', '/'])
   assert.ok(!rutasDeTrabajo(permisos, false, 'CALIDAD').has('/seguimiento'))
 })
 
@@ -176,4 +182,21 @@ test('cada puesto de un área de la planta con menú propio ve lo que Calidad le
   for (const puesto of ['TESORERIA', 'CONTABILIDAD', 'COMPRADOR', 'VENDEDOR']) {
     assert.ok(!rutas(menuDe([], false, puesto)).includes('/calidad'), puesto)
   }
+})
+
+test('los reclamos de garantía: Ventas y Gerencia Comercial registran, Administración atiende, Calidad anota la causa; la oficina no', () => {
+  const menu = (rol, permisos) => rutas(menuDe(permisos, false, rol))
+  assert.deepEqual(menu('VENDEDOR', ['cotizaciones.crear', 'clientes.ver', 'garantias.registrar']).slice(-4), ['/carrocerias', '/garantias', '/ssoma', '/averias'])
+  assert.ok(menu('GERENTE_COMERCIAL', ['cotizaciones.ver_pdf_comercial', 'clientes.ver', 'ordenes.listar', 'garantias.registrar']).includes('/garantias'))
+  const administracion = menu('ADMINISTRACION', ['cotizaciones.ver_aprobadas', 'ordenes.listar', 'garantias.atender'])
+  assert.equal(administracion[administracion.indexOf('/ordenes') + 1], '/garantias', 'Administración: justo después de las OT')
+  // Calidad, arriba, junto a sus inspecciones: anotar la causa es su trabajo.
+  const calidad = menuDe(['ordenes.listar', 'calidad.inspeccionar', 'garantias.causa'], false, 'CALIDAD')
+  assert.deepEqual(rutas([calidad[0]]), ['/', '/calidad', '/garantias'])
+  assert.ok(rutasDeTrabajo(['ordenes.listar', 'calidad.inspeccionar', 'garantias.causa'], false, 'CALIDAD').has('/garantias'))
+  // Sin su permiso no sale: la entrada desaparece en vez de llevar a «Sin permiso».
+  for (const puesto of ['TESORERIA', 'CONTABILIDAD', 'COMPRADOR', 'SUPERVISOR']) {
+    assert.ok(!menu(puesto, ['reporte_diario.ver']).includes('/garantias'), puesto)
+  }
+  assert.ok(!menu('VENDEDOR', ['cotizaciones.crear']).includes('/garantias'))
 })

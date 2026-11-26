@@ -30,6 +30,8 @@ const esquemaNuevaOrden = z.object({
   ruta_pdf: z.string().min(1, 'Elige el PDF de la orden de trabajo.'),
   nombre_pdf: z.string().trim().min(1).max(200),
   tamano_pdf: z.coerce.number().int().positive('El PDF de la orden llegó vacío.'),
+  // La OT de garantía que nace desde su reclamo (A.2): al registrarse se le enlaza.
+  reclamo_id: z.guid().optional().or(z.literal('')),
 })
 
 function opcional(valor: FormDataEntryValue | null) {
@@ -37,7 +39,13 @@ function opcional(valor: FormDataEntryValue | null) {
   return t === '' ? null : t
 }
 
-export async function crearOrden(_previo: unknown, datos: FormData): Promise<ResultadoAccion<{ id: string }>> {
+/** La OT que nace desde un reclamo de garantía, y si no se le pudo enlazar, por qué. */
+type ReclamoEnlazado = { id: string; numero: string; noSeEnlazo: string | null }
+
+export async function crearOrden(
+  _previo: unknown,
+  datos: FormData,
+): Promise<ResultadoAccion<{ id: string; reclamo?: ReclamoEnlazado }>> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'ordenes.crear')) return { ok: false, error: 'No tienes permiso para crear órdenes.' }
 
@@ -54,6 +62,50 @@ export async function crearOrden(_previo: unknown, datos: FormData): Promise<Res
     return { ok: false, error: 'El PDF de la orden no llegó en su sitio: vuelve a elegirlo.' }
   }
   const supabase = await createClient()
+
+  // La OT que nace de un reclamo de garantía va con su cliente y su unidad, y
+  // es de garantía: si no, la base no la enlaza, y una OT numerada ya no se
+  // borra. Se mira antes de registrarla, no después.
+  if (v.reclamo_id) {
+    const [{ data: rec, error: errorRec }, { data: aqui, error: errorAqui }] = await Promise.all([
+      supabase.from('garantia_reclamos').select('numero, cliente_id, unidad_id, orden_id').eq('id', v.reclamo_id).maybeSingle(),
+      supabase.rpc('garantias_reclamos_visibles', { p_id: v.reclamo_id }).select('puede_enlazar, situacion').maybeSingle(),
+    ])
+    if (errorRec || errorAqui) return { ok: false, error: mensajeDeError((errorRec ?? errorAqui)!) }
+    if (!rec || !aqui) return { ok: false, error: 'Ese reclamo de garantía ya no está a la vista: ábrelo otra vez desde Garantías.' }
+    // Si el reclamo se cerró o se anuló mientras se llenaba, la OT no nace: nacía
+    // numerada y sin enlazar. El mismo envío repetido (ya enlazada a esta OT) sí sigue.
+    // Salvo que esta misma OT ya haya quedado registrada por este envío (se
+    // perdió la respuesta): entonces sigue por el camino de «ya quedó», que no
+    // dice «no se registró» de lo que sí se registró.
+    const yaQuedoEsta =
+      !aqui.puede_enlazar && rec.orden_id !== v.orden_id
+        ? Boolean(
+            (
+              await supabase
+                .from('ot_adjuntos')
+                .select('orden_id')
+                .eq('ruta_storage', v.ruta_pdf)
+                .eq('orden_id', v.orden_id)
+                .eq('subido_por', perfil.id)
+                .eq('tipo', 'ORDEN')
+                .maybeSingle()
+            ).data,
+          )
+        : false
+    if (!aqui.puede_enlazar && rec.orden_id !== v.orden_id && !yaQuedoEsta) {
+      return {
+        ok: false,
+        error: `El reclamo ${rec.numero} ya no espera su OT (se cerró, se anuló o ya tiene otra). La orden no se registró: vuelve al reclamo.`,
+      }
+    }
+    if (v.tipo_trabajo !== 'GARANTIA' || rec.cliente_id !== v.cliente_id || rec.unidad_id !== (v.unidad_id || null)) {
+      return {
+        ok: false,
+        error: `La OT del reclamo ${rec.numero} es de garantía y va con su mismo cliente y su misma unidad. No se registró: vuelve a abrirla desde el reclamo.`,
+      }
+    }
+  }
 
   const { data, error } = await supabase.rpc('registrar_orden_sin_cotizacion', {
     p_orden: v.orden_id,
@@ -93,7 +145,8 @@ export async function crearOrden(_previo: unknown, datos: FormData): Promise<Res
         .maybeSingle()
       if (ya) {
         revalidatePath('/ordenes')
-        return { ok: true, datos: { id: v.orden_id } }
+        // Si la primera respuesta se perdió antes de enlazarla, se enlaza ahora: es idempotente.
+        return { ok: true, datos: { id: v.orden_id, ...(await enlazarAlReclamo(v.reclamo_id, v.orden_id)) } }
       }
     }
     return { ok: false, error: mensajeDeError(error) }
@@ -103,7 +156,25 @@ export async function crearOrden(_previo: unknown, datos: FormData): Promise<Res
   revalidatePath('/ordenes')
   // Sin `redirect`: la promesa de una acción que redirige llega rechazada al
   // formulario, y el formulario quita el PDF cuando la orden no se registró.
-  return { ok: true, datos: { id: data } }
+  return { ok: true, datos: { id: data, ...(await enlazarAlReclamo(v.reclamo_id, data)) } }
+}
+
+/**
+ * La OT de garantía que nace desde su reclamo queda enlazada a él, con la misma
+ * función (y el mismo permiso, `garantias.atender`) que el botón del reclamo.
+ * La orden ya quedó: si el enlace no entra, no se deshace, y se dice por qué
+ * para enlazarla desde el reclamo.
+ */
+async function enlazarAlReclamo(reclamo: string | undefined, orden: string): Promise<{ reclamo?: ReclamoEnlazado }> {
+  if (!reclamo) return {}
+  const supabase = await createClient()
+  const { data: fila } = await supabase.from('garantia_reclamos').select('numero').eq('id', reclamo).maybeSingle()
+  const numero = fila?.numero ?? 'de garantía'
+  const { data, error } = await supabase.rpc('garantias_enlazar_ot', { p_reclamo: reclamo, p_orden: orden }).maybeSingle()
+  revalidatePath('/garantias', 'layout')
+  if (error) return { reclamo: { id: reclamo, numero, noSeEnlazo: mensajeDeError(error) } }
+  if (data?.reclamo !== reclamo) return { reclamo: { id: reclamo, numero, noSeEnlazo: 'la base no contestó el enlace.' } }
+  return { reclamo: { id: reclamo, numero, noSeEnlazo: null } }
 }
 
 const esquemaCambioEstado = z.object({
