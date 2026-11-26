@@ -11,6 +11,7 @@ import { SinDatos } from '@/components/ui/tabla'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_COTIZACION, ESTADO_DE_LA_UNIDAD, ESTADO_OT, definir } from '@/lib/dominio/estados'
+import { quienLoTiene } from '@/lib/dominio/recorrido'
 import { nombreDeUnidad, tipoDeVehiculo, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { fecha, puesto } from '@/lib/format'
 import type { UnidadNombrable } from '@/lib/dominio/unidades'
@@ -248,7 +249,8 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
                   <ul className="divide-y divide-[var(--borde)]" data-cotizaciones-del-cliente>
                     {delCliente.cotizaciones.map((c) => {
                       const estado = definir(ESTADO_COTIZACION, c.estado)
-                      const ahora = (c.id && recorridos?.get(c.id)?.find((p) => p.situacion === 'AHORA')) || null
+                      // Con varias unidades la pueden tener varios a la vez: se nombran todos.
+                      const ahora = (c.id && quienLoTiene(recorridos?.get(c.id) ?? [])) || null
                       // La tarjeta de esa cotización; `IrALaTarjetaDelAviso` la trae a la vista y la marca.
                       const enlace = `/cotizaciones/pdf#${c.id}`
                       return (
@@ -276,7 +278,7 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
                             </div>
                             {ahora && (
                               <span data-cotizacion-ahora>
-                                <DiasEnEspera dias={ahora.dias} desde={ahora.en} quien={ahora.puesto ?? 'alguien'} verQuien />
+                                <DiasEnEspera dias={ahora.dias} desde={ahora.desde} quien={ahora.quien} plural={ahora.plural} verQuien />
                               </span>
                             )}
                           </Link>

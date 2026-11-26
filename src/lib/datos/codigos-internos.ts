@@ -764,9 +764,11 @@ export async function documentosDelCodigo(codigo: string): Promise<DocumentoDelC
  * con la regla del costeo (`codigo_interno_recorrido`, migración 20261126640000):
  * la garantía que llega después de entregar no pasa por «la OT» del código, ni la
  * cotización de una OT anulada por «la cotización». La entrega es el acta de esa OT.
+ * De la cotización de varias unidades, qué unidad es este código («2 de 3»,
+ * migración 20261126998800); en la de una, `unidad` va en nulo.
  */
 export type RecorridoDelCodigoBase = {
-  cotizacion: { id: string; numero: string; estado: string; fecha: string | null } | null
+  cotizacion: { id: string; numero: string; estado: string; fecha: string | null; unidad: number | null; unidades: number | null } | null
   /** Las cotizaciones vigentes del código, contando la elegida. */
   cotizaciones: number
   orden: { id: string; numero: string; estado: string; tipo: string | null; delTaller: boolean; entregadaEl: string | null } | null
@@ -782,7 +784,14 @@ export async function recorridoDelCodigo(codigo: string): Promise<RecorridoDelCo
   return {
     cotizacion:
       f?.cotizacion_id && f.cotizacion_numero
-        ? { id: f.cotizacion_id, numero: f.cotizacion_numero, estado: f.cotizacion_estado ?? '', fecha: f.cotizacion_fecha }
+        ? {
+            id: f.cotizacion_id,
+            numero: f.cotizacion_numero,
+            estado: f.cotizacion_estado ?? '',
+            fecha: f.cotizacion_fecha,
+            unidad: f.cotizacion_unidades && f.cotizacion_unidad ? f.cotizacion_unidad : null,
+            unidades: f.cotizacion_unidades ?? null,
+          }
         : null,
     cotizaciones: f?.cotizaciones ?? 0,
     orden:

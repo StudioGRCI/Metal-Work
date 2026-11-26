@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { describirRecorridoDeLaAveria, describirRecorridoDeLaCotizacion, describirRecorridoDeLaOrdenDeCompra, describirRecorridoDeLaOrdenDeServicio, describirRecorridoDelRequerimiento, enQueTermino, haceDias, insumos, tardo } from './recorrido.ts'
+import { describirRecorridoDeLaAveria, describirRecorridoDeLaCotizacion, describirRecorridoDeLaOrdenDeCompra, describirRecorridoDeLaOrdenDeServicio, describirRecorridoDelRequerimiento, enQueTermino, enumerar, haceDias, insumos, quienLoTiene, recorridoDeLaUnidad, tardo, tramosDelRecorrido } from './recorrido.ts'
 
 const paso = (orden, paso, situacion, mas = {}) => ({
   orden, paso, situacion, puesto: null, en: null, dias: null, espera: null, detalle: null, ...mas,
@@ -241,4 +241,79 @@ test('la OC completa dice «Completa» aunque Almacén validó después y se ano
   // Sin paso que cierre, el último que no va al margen, como antes.
   const rq = describirRecorridoDelRequerimiento([paso(1, 'REGISTRO', 'HECHO'), paso(2, 'PASO_NUEVO', 'HECHO')])
   assert.equal(enQueTermino(rq)?.paso, 'PASO_NUEVO')
+})
+
+// La cotización de varias unidades: su OT, su factura y su cobro, unidad por unidad (migración 20261126998800).
+const deTresUnidades = () => describirRecorridoDeLaCotizacion([
+  paso(1, 'SUBIDA', 'HECHO', { puesto: 'Ventas' }),
+  paso(2, 'REVISION', 'HECHO', { puesto: 'Gerencia', detalle: 'APROBADA' }),
+  paso(3, 'CODIGO_Y_OT', 'HECHO', { puesto: 'Administración', detalle: 'OT 2921-2026', unidad: 1, unidades: 3 }),
+  paso(4, 'FACTURA', 'HECHO', { puesto: 'Contabilidad', detalle: 'EN_PARTE', unidad: 1, unidades: 3 }),
+  paso(5, 'FACTURA_RESTO', 'AHORA', { puesto: 'Contabilidad', dias: 2, en: '2026-11-24T15:00:00Z', espera: 'FACTURA_RESTO', unidad: 1, unidades: 3 }),
+  paso(6, 'COBRO', 'AHORA', { puesto: 'Tesorería', dias: 5, en: '2026-11-21T15:00:00Z', espera: 'COBRO', unidad: 1, unidades: 3 }),
+  paso(7, 'CODIGO_Y_OT', 'HECHO', { puesto: 'Administración', unidad: 2, unidades: 3 }),
+  paso(8, 'FACTURA', 'AHORA', { puesto: 'Contabilidad', dias: 1, en: '2026-11-25T15:00:00Z', espera: 'FACTURA', unidad: 2, unidades: 3 }),
+  paso(9, 'COBRO', 'PENDIENTE', { unidad: 2, unidades: 3 }),
+  paso(10, 'CODIGO_Y_OT', 'AHORA', { puesto: 'Administración', dias: 6, en: '2026-11-20T15:00:00Z', espera: 'CODIGO_Y_OT', unidad: 3, unidades: 3 }),
+  paso(11, 'FACTURA', 'PENDIENTE', { unidad: 3, unidades: 3 }),
+  paso(12, 'COBRO', 'PENDIENTE', { unidad: 3, unidades: 3 }),
+])
+
+test('el recorrido de varias unidades se parte en lo de toda la cotización y un tramo por unidad', () => {
+  const tramos = tramosDelRecorrido(deTresUnidades())
+  assert.deepEqual(tramos.map((t) => [t.unidad, t.unidades, t.pasos.length]), [[null, null, 2], [1, 3, 4], [2, 3, 3], [3, 3, 3]])
+  // La anulación llega después de las unidades: es otro tramo de toda la cotización.
+  const anulada = tramosDelRecorrido([
+    paso(1, 'SUBIDA', 'HECHO'),
+    paso(2, 'CODIGO_Y_OT', 'HECHO', { unidad: 1, unidades: 2 }),
+    paso(3, 'ANULACION', 'HECHO'),
+  ])
+  assert.deepEqual(anulada.map((t) => t.unidad), [null, 1, null])
+  // Sin unidades, un solo tramo: se pinta como siempre.
+  assert.equal(tramosDelRecorrido([paso(1, 'SUBIDA', 'HECHO'), paso(2, 'REVISION', 'AHORA')]).length, 1)
+  assert.deepEqual(tramosDelRecorrido([]), [])
+})
+
+test('cada paso de una unidad habla de esa unidad', () => {
+  const pasos = deTresUnidades()
+  assert.equal(pasos[2].nota, 'OT 2921-2026')
+  assert.equal(pasos[3].titulo, 'Facturada en parte')
+  assert.equal(pasos[4].nota, 'Registra la factura de lo que le falta a esta unidad.')
+  assert.equal(pasos[7].nota, 'Registra su factura.')
+  assert.equal(pasos[9].nota, 'Le da el código interno de la unidad y sube la OT.')
+  // La unidad cuya OT pasó a otro comprador lo dice con su OT.
+  const [paso1] = describirRecorridoDeLaCotizacion([paso(1, 'OTRO_COMPRADOR', 'HECHO', { detalle: '2921-2026', unidad: 2, unidades: 3 })])
+  assert.equal(paso1.titulo, 'Pasó a otro comprador')
+  assert.equal(paso1.nota, 'La OT 2921-2026 ya no es de esta venta')
+})
+
+test('con varias unidades la tienen varios a la vez: se nombran todos, con la espera más larga', () => {
+  assert.deepEqual(quienLoTiene(deTresUnidades()), {
+    quien: 'Contabilidad, Tesorería y Administración', plural: true, dias: 6, desde: '2026-11-20T15:00:00Z',
+  })
+  // Todas las unidades esperan al mismo puesto: uno solo, en singular.
+  const uno = quienLoTiene([
+    paso(1, 'FACTURA', 'AHORA', { puesto: 'Contabilidad', dias: 1, en: 'a', unidad: 1, unidades: 2 }),
+    paso(2, 'FACTURA', 'AHORA', { puesto: 'Contabilidad', dias: 3, en: 'b', unidad: 2, unidades: 2 }),
+  ])
+  assert.deepEqual(uno, { quien: 'Contabilidad', plural: false, dias: 3, desde: 'b' })
+  // Sin unidades, el primer paso que espera, como siempre: la de una unidad no cambia.
+  const deUna = quienLoTiene([
+    paso(1, 'FACTURA_RESTO', 'AHORA', { puesto: 'Contabilidad', dias: 4, en: 'a' }),
+    paso(2, 'COBRO', 'AHORA', { puesto: 'Tesorería', dias: 9, en: 'b' }),
+  ])
+  assert.deepEqual(deUna, { quien: 'Contabilidad', plural: false, dias: 4, desde: 'a' })
+  assert.equal(quienLoTiene([paso(1, 'SUBIDA', 'HECHO')]), null)
+  assert.equal(quienLoTiene([paso(1, 'REVISION', 'AHORA')])?.quien, 'alguien')
+  assert.equal(enumerar(['Gerencia']), 'Gerencia')
+  assert.equal(enumerar(['Administración', 'Tesorería']), 'Administración y Tesorería')
+})
+
+test('la OT y la ficha del código ven lo de toda la cotización y lo de su unidad, sin las otras', () => {
+  const deLaDos = recorridoDeLaUnidad(deTresUnidades(), 2)
+  assert.deepEqual(deLaDos.map((p) => p.orden), [1, 2, 7, 8, 9])
+  // Sin unidad (la cotización de una sola), entero.
+  assert.equal(recorridoDeLaUnidad(deTresUnidades(), null).length, 12)
+  const deUna = [paso(1, 'SUBIDA', 'HECHO'), paso(2, 'FACTURA', 'AHORA')]
+  assert.equal(recorridoDeLaUnidad(deUna, 1).length, 2)
 })

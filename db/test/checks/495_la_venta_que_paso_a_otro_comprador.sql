@@ -89,7 +89,8 @@ begin
     'El cliente cedió la unidad a otro comprador (prueba 495)');
 end $$;
 
--- El recorrido de la cotización como lo lee Ventas.
+-- El recorrido de la cotización como lo lee Ventas. En la de varias unidades
+-- cada paso es de su unidad («2·», migración 20261126998800).
 create function pg_temp.camino(p_cot text) returns text
 language plpgsql as $$
 declare v text;
@@ -97,7 +98,7 @@ begin
   reset role;
   perform test.como_usuario(current_setting('prueba.ventas')::uuid);
   set local role authenticated;
-  select string_agg(r.paso || ':' || r.situacion || coalesce(':' || r.puesto, '') || coalesce(':' || r.detalle, ''), ' > ' order by r.orden)
+  select string_agg(coalesce(r.unidad || '·', '') || r.paso || ':' || r.situacion || coalesce(':' || r.puesto, '') || coalesce(':' || r.detalle, ''), ' > ' order by r.orden)
     into v
     from public.recorrido_de_cotizaciones(array[p_cot::uuid]) r
    where r.paso in ('OTRO_COMPRADOR', 'CODIGO_Y_OT', 'FACTURA', 'COBRO');
@@ -250,9 +251,11 @@ begin
     (select p.trabajo from public.pendientes_de_las_ot() p where p.documento = v_cot::uuid) like '% · falta 1 de 3 OT',
     'Sigue en «Por completar» con la que falta');
   perform test.afirmar(
-    pg_temp.camino(v_cot) = 'OTRO_COMPRADOR:HECHO:Administración:49502-' || to_char((now() at time zone 'America/Lima')::date, 'YYYY')
-                            || ' > CODIGO_Y_OT:AHORA:Administración:1/3/1 > FACTURA:PENDIENTE',
-    'El recorrido dice que una pasó y espera a Administración por la que falta: ' || coalesce(pg_temp.camino(v_cot), 'nada'));
+    pg_temp.camino(v_cot) = '1·OTRO_COMPRADOR:HECHO:Administración:49502-' || to_char((now() at time zone 'America/Lima')::date, 'YYYY')
+                            || ' > 2·CODIGO_Y_OT:HECHO:Administración:OT 49503-' || to_char((now() at time zone 'America/Lima')::date, 'YYYY')
+                            || ' > 2·FACTURA:AHORA:Contabilidad'
+                            || ' > 3·CODIGO_Y_OT:AHORA:Administración > 3·FACTURA:PENDIENTE',
+    'El recorrido dice que la unidad 1 pasó y ya no espera nada, que la 2 espera su factura y la 3 su OT: ' || coalesce(pg_temp.camino(v_cot), 'nada'));
 
   perform pg_temp.cargar(v_cot, current_setting('prueba.ot5'), 'QA-495 E', '49505');
   perform test.afirmar(
@@ -262,8 +265,9 @@ begin
     not exists (select 1 from public.pendientes_de_las_ot() p where p.documento = v_cot::uuid),
     'Con la que faltaba, sale de «Por completar»');
   perform test.afirmar(
-    pg_temp.camino(v_cot) like 'OTRO_COMPRADOR:HECHO%CODIGO_Y_OT:HECHO%FACTURA:AHORA:Contabilidad',
-    'Y espera su factura: ' || coalesce(pg_temp.camino(v_cot), 'nada'));
+    pg_temp.camino(v_cot) like '1·OTRO_COMPRADOR:HECHO% > 2·CODIGO_Y_OT:HECHO% > 2·FACTURA:AHORA:Contabilidad > 3·CODIGO_Y_OT:HECHO% > 3·FACTURA:AHORA:Contabilidad'
+    and pg_temp.camino(v_cot) not like '%1·FACTURA%',
+    'Y las dos que tienen su OT esperan su factura; la que pasó, no: ' || coalesce(pg_temp.camino(v_cot), 'nada'));
   perform test.debe_fallar(
     format('select pg_temp.cargar(%L, %L, %L, %L)', v_cot, current_setting('prueba.ot6'), 'QA-495 F', '49506'),
     'No lleva una cuarta OT',

@@ -863,11 +863,13 @@ end $$;
 reset role;
 
 -- ============================================ 5. Ni importes ni datos de RR. HH.
+-- La de cotizaciones suma solo de qué unidad es el paso y cuántas tiene la cotización (migración 20261126998800).
 select test.afirmar(
   (select bool_and(pg_get_function_result(p.oid) =
-                   'TABLE(documento uuid, orden integer, paso text, situacion text, puesto text, en timestamp with time zone, dias integer, espera text, detalle text)')
+                   'TABLE(documento uuid, orden integer, paso text, situacion text, puesto text, en timestamp with time zone, dias integer, espera text, detalle text'
+                   || case when p.proname = 'recorrido_de_cotizaciones' then ', unidad integer, unidades integer)' else ')' end)
      from pg_proc p where p.proname in ('recorrido_de_requerimientos', 'recorrido_de_cotizaciones')),
-  'las dos funciones devuelven las mismas nueve columnas: ninguna es un monto ni el nombre de la persona');
+  'las dos funciones devuelven las mismas nueve columnas, y la de cotizaciones la unidad: ninguna es un monto ni el nombre de la persona');
 select pg_temp.como('gerente');
 set local role authenticated;
 select test.afirmar(

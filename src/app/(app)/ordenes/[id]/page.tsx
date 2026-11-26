@@ -27,7 +27,7 @@ import { actividadesDeOrden, areasDelTaller, despachosParaReporte } from '@/lib/
 import { adjuntosDeOrden, ordenTienePdf } from '@/lib/datos/adjuntos'
 import { cotizacionPdfDeOrden } from '@/lib/datos/cotizaciones-pdf'
 import { recorridoDeCotizaciones } from '@/lib/datos/recorrido'
-import { describirRecorridoDeLaCotizacion } from '@/lib/dominio/recorrido'
+import { describirRecorridoDeLaCotizacion, recorridoDeLaUnidad } from '@/lib/dominio/recorrido'
 import { Recorrido } from '@/components/ui/recorrido'
 import { materialesParaPantalla } from '@/lib/datos/materiales-orden'
 import { controlesYSolicitudesDeOrden, costoDeOrdenes, mermaDeOrden } from '@/lib/datos/costos-ot'
@@ -160,7 +160,9 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
 
   // El recorrido de la OT desde su cotización (plan 8.1): lo lee quien ya ve esa
   // cotización (`recorrido_de_cotizaciones` lo vuelve a mirar). Sin él, la
-  // tarjeta lo dice en su lugar (`null`); sin cotización, no hay tarjeta.
+  // tarjeta lo dice en su lugar (`null`); sin cotización, no hay tarjeta. De la
+  // cotización de varias unidades, lo de toda la cotización y lo de la unidad
+  // de esta OT, sin las otras (migración 20261126998800).
   const cotizacionDelRecorrido =
     vista === 'resumen' &&
     orden.cotizacion_pdf_id &&
@@ -172,7 +174,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     vista === 'resumen' && !orden.plan_etapas_manual ? fechasClaveDeOrden(id) : Promise.resolve(null),
     cotizacionDelRecorrido
       ? recorridoDeCotizaciones([cotizacionDelRecorrido.id])
-          .then((r) => describirRecorridoDeLaCotizacion(r.get(cotizacionDelRecorrido.id) ?? []))
+          .then((r) => recorridoDeLaUnidad(describirRecorridoDeLaCotizacion(r.get(cotizacionDelRecorrido.id) ?? []), orden.numero_de_unidad ?? 1))
           .catch((e: unknown) => {
             console.error('OT: no se pudo leer el recorrido de su cotización.', e)
             return null
@@ -385,7 +387,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
                   <TarjetaCabecera
                     titulo="Recorrido de su cotización"
                     descripcion={cotizacionDelRecorrido.numero ? `Cotización ${cotizacionDelRecorrido.numero}` : undefined}
-                    ayuda="Por dónde pasó esta OT antes de llegar al taller y después: la cotización subida, la revisión de Gerencia, el código interno y la OT que cargó Administración, y su factura. Quién hizo cada paso y cuándo."
+                    ayuda="Por dónde pasó esta OT antes de llegar al taller y después: la cotización subida, la revisión de Gerencia, el código interno y la OT que cargó Administración, y su factura. Quién hizo cada paso y cuándo. Si la cotización es de varias unidades, la OT, la factura y el cobro son los de la unidad de esta OT."
                   />
                   <Recorrido pasos={recorridoDeLaCotizacion} className="border-t border-borde" femenino />
                 </Tarjeta>
