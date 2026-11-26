@@ -396,10 +396,12 @@ select test.afirmar(
 select pg_temp.como('gerente');
 set local role authenticated;
 select test.afirmar(public.tiene_permiso('auditoria.ver'), 'Gerencia consulta la auditoría');
+-- Desde la 20261126310000 las consulta en la gestión (`compras.ver_gestion`);
+-- por la auditoría sigue sin leerlas.
 select test.afirmar(
-  (select count(*) from public.recojo_fotos) = 0 and (select count(*) from public.recojos_no_logrados) = 0
+  (select count(*) from public.recojo_fotos) > 0
   and (select count(*) from public.audit_log where tabla in ('recojo_fotos', 'recojos_no_logrados')) = 0,
-  'Gerencia no lee las fotos ni los motivos del recojo, tampoco por la auditoría');
+  'Gerencia consulta las fotos del recojo, pero no por la auditoría');
 reset role;
 select test.afirmar(
   (select count(*) from public.recojo_fotos) > 0

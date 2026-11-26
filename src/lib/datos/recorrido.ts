@@ -30,7 +30,7 @@ const SITUACIONES: readonly SituacionDelPaso[] = ['HECHO', 'AHORA', 'PENDIENTE']
 const POR_TANDA = 100
 
 async function leer(
-  funcion: 'recorrido_de_requerimientos' | 'recorrido_de_cotizaciones' | 'recorrido_de_planillas',
+  funcion: 'recorrido_de_requerimientos' | 'recorrido_de_cotizaciones' | 'recorrido_de_planillas' | 'recorrido_de_averias',
   ids: string[],
   de: string,
 ): Promise<Recorridos> {
@@ -88,3 +88,6 @@ export const recorridoDeCotizaciones = (ids: string[]) => leer('recorrido_de_cot
 
 /** El recorrido de esas planillas del mes. Lo lee quien ve las planillas (`rrhh.ver_planillas`). */
 export const recorridoDePlanillas = (ids: string[]) => leer('recorrido_de_planillas', ids, 'las planillas')
+
+/** El recorrido de esos reportes de avería (Plan 16.2): solo de los que quien mira ya puede ver. */
+export const recorridoDeAverias = (ids: string[]) => leer('recorrido_de_averias', ids, 'los reportes de avería')
