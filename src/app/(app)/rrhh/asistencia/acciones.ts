@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
+import { hoyLima } from '@/lib/format'
 import { editaComoRrhh, exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -12,8 +13,23 @@ function dato(formulario: FormData, nombre: string) {
   return typeof valor === 'string' ? valor.trim() : ''
 }
 
-/** El portero marca el ingreso o la salida de una persona. Mismo permiso que `marcar_asistencia`. */
-export async function marcarAsistencia(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+/**
+ * Lo que la base guardó de la marca: la hora la pone ella, en Lima (`null` si
+ * no se pudo leer). `id` es el de la marca que vale; con `ya_estaba`, la
+ * persona ya tenía esa marca de hoy y este envío no guardó otra.
+ */
+export type MarcaGuardada = { id: string; hora: string | null; es_tardanza: boolean; tardanza_minutos: number; ya_estaba: boolean }
+
+const COLUMNAS_MARCA_GUARDADA = 'id, hora, es_tardanza, tardanza_minutos'
+
+/**
+ * El portero marca el ingreso o la salida de una persona. Mismo permiso que
+ * `marcar_asistencia`. Devuelve la hora que puso la base, para decirla en
+ * grande apenas entra: la lee de `asistencias`, que la portería ya ve. Que el
+ * mismo envío entre una vez, y solo como la marca que era, lo decide la base
+ * (migración 20261125410000).
+ */
+export async function marcarAsistencia(_previo: unknown, formulario: FormData): Promise<ResultadoAccion<MarcaGuardada>> {
   const perfil = await exigirSesion()
   if (!editaComoRrhh(perfil, 'asistencia.marcar')) return { ok: false, error: 'No tienes permiso para marcar la asistencia.' }
 
@@ -40,12 +56,49 @@ export async function marcarAsistencia(_previo: unknown, formulario: FormData): 
     p_tipo: d.tipo,
     p_observacion: d.observacion || null,
   })
-  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (error) {
+    // La persona ya tiene esa marca hoy: la que entró sin que llegara su
+    // respuesta y se tocó otra vez con la pantalla de antes, u otro teléfono
+    // de la portería. No es un error: es la marca que ya estaba, y se dice con
+    // su hora en vez de un rojo junto a «Sin ingreso».
+    if (error.code === '23505') {
+      const { data: vigente } = await supabase
+        .from('asistencias')
+        .select(COLUMNAS_MARCA_GUARDADA)
+        .eq('trabajador_id', d.trabajador_id)
+        .eq('tipo', d.tipo)
+        .eq('fecha', hoyLima())
+        .is('anulado_en', null)
+        .maybeSingle()
+      if (vigente) {
+        revalidatePath('/rrhh/asistencia')
+        return {
+          ok: true,
+          mensaje: d.tipo === 'INGRESO' ? 'Ya tenía su ingreso de hoy.' : 'Ya tenía su salida de hoy.',
+          datos: { ...vigente, ya_estaba: true },
+        }
+      }
+    }
+    // Todo rechazo de la base pone la lista al día: el envío que ya fue otra
+    // marca o se anuló (con su motivo), el ingreso que RR. HH. anuló mientras la
+    // salida esperaba en «Sin confirmar», la persona que se dio de baja. Con la
+    // lista vieja, la tarjeta seguía ofreciendo lo que la base ya no acepta.
+    revalidatePath('/rrhh/asistencia')
+    return { ok: false, error: mensajeDeError(error) }
+  }
   if (data !== d.marca_id) return { ok: false, error: 'La marca no quedó registrada. Recarga la pantalla.' }
+
+  // La marca ya entró: si esta lectura falla, la pantalla dice que entró y la
+  // hora llega con la lista al día.
+  const { data: fila } = await supabase.from('asistencias').select(COLUMNAS_MARCA_GUARDADA).eq('id', d.marca_id).maybeSingle()
 
   revalidatePath('/rrhh/asistencia')
   revalidatePath('/rrhh/tardanzas')
-  return { ok: true, mensaje: d.tipo === 'INGRESO' ? 'Ingreso marcado.' : 'Salida marcada.' }
+  return {
+    ok: true,
+    mensaje: d.tipo === 'INGRESO' ? 'Ingreso marcado.' : 'Salida marcada.',
+    datos: { id: d.marca_id, hora: fila?.hora ?? null, es_tardanza: fila?.es_tardanza ?? false, tardanza_minutos: fila?.tardanza_minutos ?? 0, ya_estaba: false },
+  }
 }
 
 /**

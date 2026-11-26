@@ -33,7 +33,7 @@ export default async function PaginaAsistencia({ searchParams }: PageProps<'/rrh
         titulo={esHoy ? 'Asistencia de hoy' : 'Asistencia'}
         ayuda={
           marca
-            ? 'Toca «Ingreso» cuando la persona entra y «Salida» cuando se va. La hora la pone el sistema; si entra después de su hora, queda la tardanza.'
+            ? 'Toca «Ingreso» cuando la persona entra y «Salida» cuando se va. La hora la pone el sistema; si entra después de su hora, queda la tardanza. Apenas entra la marca, arriba sale de quién fue y a qué hora, con el botón para anularla si no era. «Dentro ahora» y «Todavía no llegan» son para mirar: se marca desde «Todos».'
             : 'Lo que marcó la portería cada día, con las tardanzas. El descuento sale del mes, en «Tardanzas».'
         }
         migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'Asistencia' }]}
@@ -45,7 +45,7 @@ export default async function PaginaAsistencia({ searchParams }: PageProps<'/rrh
             <Link
               href={`/rrhh/asistencia?fecha=${diaVecino(fecha, -1)}`}
               aria-label="Día anterior"
-              className="inline-flex size-9 items-center justify-center rounded-lg border border-borde text-texto-suave hover:text-texto"
+              className="inline-flex size-11 items-center justify-center rounded-lg border border-borde text-texto-suave hover:text-texto sm:size-9"
             >
               <ChevronLeft aria-hidden className="size-4" />
             </Link>
@@ -55,7 +55,7 @@ export default async function PaginaAsistencia({ searchParams }: PageProps<'/rrh
             <Link
               href={`/rrhh/asistencia?fecha=${diaVecino(fecha, 1)}`}
               aria-label="Día siguiente"
-              className="inline-flex size-9 items-center justify-center rounded-lg border border-borde text-texto-suave hover:text-texto"
+              className="inline-flex size-11 items-center justify-center rounded-lg border border-borde text-texto-suave hover:text-texto sm:size-9"
             >
               <ChevronRight aria-hidden className="size-4" />
             </Link>
@@ -73,6 +73,10 @@ export default async function PaginaAsistencia({ searchParams }: PageProps<'/rrh
       </div>
 
       <Marcador
+        // Otro día es otra lista: sin esto, Next deja montado el marcador al
+        // cambiar ?fecha= y la lista elegida hoy («Dentro ahora») seguía puesta
+        // en el día anterior, vacía y sin pastillas para volver.
+        key={fecha}
         personal={personal.map((p) => ({
           id: p.id,
           nombres: p.nombres,

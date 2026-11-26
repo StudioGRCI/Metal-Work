@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 
 import { type Emitida, GenerarCompraDeInsumos, type InsumoParaCompra } from '@/app/(app)/compras/ordenes/formulario-directa'
+import { DiasEnEspera } from '@/components/ui/dias-en-espera'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
 import type { MaterialParaConteo } from '@/lib/datos/atencion-materiales'
@@ -10,7 +11,14 @@ import type { ProveedorParaCompra } from '@/lib/datos/proveedores'
 import { cantidad, fecha } from '@/lib/format'
 
 /** Un insumo por comprar, con el material como lo nombra el catálogo para agruparlo. */
-export type InsumoPorComprar = InsumoParaCompra & { material: string; codigo_material: string | null; fecha_requerida: string | null }
+export type InsumoPorComprar = InsumoParaCompra & {
+  material: string
+  codigo_material: string | null
+  fecha_requerida: string | null
+  /** Días que su RQ lleva esperando la compra, por fecha de Lima (de la base), y desde cuándo. */
+  dias: number | null
+  desde: string | null
+}
 
 /** Los insumos de un tipo de RQ: una orden no junta los de operación con los de Administración. */
 export type GrupoPorComprar = { tipo: string; titulo: string; descripcion: string; insumos: InsumoPorComprar[] }
@@ -214,7 +222,10 @@ function MaterialPorComprar({
           </TD>
           <TD className="text-sm text-texto">{i.descripcion}</TD>
           <TD className="text-sm">
-            <span className="tabular font-medium text-texto">{i.requerimiento}</span>
+            <span className="flex flex-wrap items-center gap-1">
+              <span className="tabular font-medium text-texto">{i.requerimiento}</span>
+              <DiasEnEspera dias={i.dias} desde={i.desde} />
+            </span>
             <span className="block text-xs text-texto-suave">
               {i.area}
               {i.fecha_requerida && ` · para el ${fecha(i.fecha_requerida)}`}

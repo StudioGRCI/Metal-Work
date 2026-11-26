@@ -6,7 +6,7 @@
  * con 1600 px del lado más largo en JPEG al 80 %, que pesa unos cientos de KB.
  * Solo corre en el navegador: dibuja la foto en un lienzo y la vuelve a guardar.
  */
-export async function comprimirFoto(original: File, { ladoMaximo = 1600, calidad = 0.8 } = {}): Promise<File> {
+export async function comprimirFoto(original: File, { ladoMaximo = 1600, calidad = 0.8, siempre = false } = {}): Promise<File> {
   const imagen = await decodificar(original)
   try {
     const escala = Math.min(1, ladoMaximo / Math.max(imagen.ancho, imagen.alto))
@@ -14,8 +14,9 @@ export async function comprimirFoto(original: File, { ladoMaximo = 1600, calidad
     const alto = Math.max(1, Math.round(imagen.alto * escala))
 
     // Una JPEG que ya es chica y no hay que achicar se sube tal cual: volver a
-    // comprimirla solo la empeora.
-    if (escala === 1 && original.type === 'image/jpeg' && original.size <= 600 * 1024) return original
+    // comprimirla solo la empeora. Con `siempre` se vuelve a guardar igual: el
+    // lienzo no copia lo que la cámara anota dentro (la ubicación).
+    if (!siempre && escala === 1 && original.type === 'image/jpeg' && original.size <= 600 * 1024) return original
 
     const lienzo = document.createElement('canvas')
     lienzo.width = ancho

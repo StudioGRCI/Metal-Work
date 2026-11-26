@@ -1,16 +1,21 @@
 import { FileText, MapPin, Phone, Receipt, Scale, User } from 'lucide-react'
 import Link from 'next/link'
+import { Fragment } from 'react'
 
+import { FotosDelRecojo, NoSeLogroRecoger } from '@/components/compras/evidencia-del-recojo'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cargarRecojos, type CompraParaRecojo } from '@/lib/datos/logistica'
-import { RECOJO_COMPRA } from '@/lib/dominio/logistica'
+import { enlaceAlMapa, pasosDelDia, RECOJO_COMPRA, RECOJO_NO_LOGRADO, telefonoDiceMas, telefonosParaLlamar } from '@/lib/dominio/logistica'
+import { CODIGO_SIN_AVANCE } from '@/lib/dominio/codigos-internos'
 import { comprobantePedido } from '@/lib/dominio/proveedores'
-import { cantidad, fecha, fechaHora } from '@/lib/format'
+import { cantidad, diaLima, fecha, fechaHora, hora, hoyLima } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
+import { LoQueEntroEnRecojos } from './lo-que-entro'
 import { PasoRecojo } from './paso-recojo'
 
 export const metadata = { title: 'Recojos' }
@@ -32,6 +37,9 @@ export default async function PaginaRecojos() {
   const pendientes = recojos.filter((r) => r.recojo === 'EN_RECOJO' || r.recojo === 'RECOGIDO' || (r.recojo === 'POR_RECOGER' && r.en_lista))
   const sinProgramar = recojos.filter((r) => r.recojo === 'POR_RECOGER' && !r.en_lista)
   const dejadas = recojos.filter((r) => r.recojo === 'DEJADO')
+  // Lo recogido y lo dejado hoy, con su hora: sale de las horas que ya guarda cada compra.
+  const deHoy = pasosDelDia(recojos, hoyLima(), diaLima)
+  const paraQuien = new Map(recojos.map((r) => [r.id, paraQuienEs(r)]))
 
   return (
     <>
@@ -39,8 +47,8 @@ export default async function PaginaRecojos() {
         titulo="Recojos"
         ayuda={
           conductor
-            ? 'Las compras que Logística te programó, en el orden en que tienes que recogerlas, con su peso y su guía de remisión. Marca «Salgo a recoger» cuando vas al proveedor, «Ya la recogí» al salir con el material y «La dejé en almacén» al entregarla: el requerimiento muestra en qué va y Almacén valida el ingreso sin volver a registrarlo.'
-            : 'Lo que el conductor tiene que recoger, en el orden que le programó Logística, y lo que ya dejó en almacén.'
+            ? 'Las compras que Logística te programó, en el orden en que tienes que recogerlas, con su peso y su guía de remisión. Marca «Salgo a recoger» cuando vas al proveedor, «Ya la recogí» al salir con el material (si quieres, con una foto de la guía firmada o del bulto) y «La dejé en almacén» al entregarla; si no se pudo, «No se pudo recoger» con el motivo la devuelve a Logística: el requerimiento muestra en qué va y Almacén valida el ingreso sin volver a registrarlo. En cada parada puedes llamar al proveedor y abrir su dirección en el mapa; abajo queda lo que recogiste y dejaste hoy, con su hora.'
+            : 'Lo que el conductor tiene que recoger, en el orden que le programó Logística, lo que recogió y dejó hoy con su hora, y lo que ya dejó en almacén esta semana.'
         }
       />
 
@@ -49,6 +57,7 @@ export default async function PaginaRecojos() {
           <h2 className="text-base font-semibold text-texto">
             Por hacer <span className="tabular text-texto-suave">({pendientes.length})</span>
           </h2>
+          {conductor && <LoQueEntroEnRecojos />}
           {pendientes.length === 0 ? (
             <Tarjeta>
               <SinDatos
@@ -58,7 +67,7 @@ export default async function PaginaRecojos() {
               />
             </Tarjeta>
           ) : (
-            pendientes.map((r) => <TarjetaRecojo key={r.id} recojo={r} conductor={conductor} />)
+            pendientes.map((r) => <TarjetaRecojo key={r.id} recojo={r} conductor={conductor} cuentaId={perfil.id} />)
           )}
           {sinProgramar.length > 0 && (
             <p className="text-sm text-texto-suave">
@@ -75,11 +84,43 @@ export default async function PaginaRecojos() {
           )}
         </section>
 
+        <section className="space-y-3" aria-labelledby="recojos-de-hoy">
+          <h2 id="recojos-de-hoy" className="text-base font-semibold text-texto">
+            Recogido y dejado hoy
+          </h2>
+          {deHoy.length === 0 ? (
+            <p className="text-sm text-texto-suave">
+              {conductor ? 'Todavía no recogiste ni dejaste nada hoy.' : 'El conductor todavía no recogió ni dejó nada hoy.'}
+            </p>
+          ) : (
+            <Tarjeta>
+              <ol className="divide-y divide-borde">
+                {deHoy.map((p) => {
+                  const paso = p.paso === 'NO_LOGRADO' ? RECOJO_NO_LOGRADO : RECOJO_COMPRA[p.paso]
+                  const para = paraQuien.get(p.compra)
+                  return (
+                    <li key={`${p.compra}-${p.paso}`} className="flex items-start gap-3 px-4 py-3 text-sm">
+                      <span className="tabular w-12 shrink-0 font-semibold text-texto">{hora(p.en)}</span>
+                      <span className="min-w-0 flex-1 space-y-0.5">
+                        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span className="font-medium text-texto">{p.nombre}</span>
+                          {paso && <Insignia tono={paso.tono}>{paso.etiqueta}</Insignia>}
+                        </span>
+                        <span className="block text-xs text-texto-suave">{[p.proveedor, ...(para ?? [])].join(' · ')}</span>
+                      </span>
+                    </li>
+                  )
+                })}
+              </ol>
+            </Tarjeta>
+          )}
+        </section>
+
         {dejadas.length > 0 && (
           <section className="space-y-3">
             <h2 className="text-base font-semibold text-texto">Dejadas en almacén esta semana</h2>
             {dejadas.map((r) => (
-              <TarjetaRecojo key={r.id} recojo={r} conductor={false} />
+              <TarjetaRecojo key={r.id} recojo={r} conductor={false} cuentaId={perfil.id} />
             ))}
           </section>
         )}
@@ -88,8 +129,35 @@ export default async function PaginaRecojos() {
   )
 }
 
-function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; conductor: boolean }) {
+/**
+ * Para qué unidad es, o «Para el almacén» si es una compra directa. La directa
+ * para PLANTA decía las dos cosas («Para PLANTA · Para el almacén»), y PLANTA no
+ * es una unidad.
+ */
+function paraQuienEs(r: Pick<CompraParaRecojo, 'codigo_interno' | 'origen'>): string[] {
+  const directa = r.origen === 'DIRECTA'
+  return [
+    ...(r.codigo_interno && !(directa && r.codigo_interno === CODIGO_SIN_AVANCE) ? [`Para ${r.codigo_interno}`] : []),
+    ...(directa ? ['Para el almacén'] : []),
+  ]
+}
+
+/**
+ * 44 px o más. En el teléfono cada botón crece hasta llenar su fila desde el ancho de su texto (no desde cero,
+ * que los apretaba en una fila de tres con el texto partido en tres renglones); un número que no cabe en
+ * 320 baja de renglón en vez de salirse.
+ */
+const BOTON_DE_PARADA = 'h-auto min-h-11 flex-auto justify-center whitespace-normal px-4 py-2 text-center sm:flex-none'
+
+function TarjetaRecojo({ recojo: r, conductor, cuentaId }: { recojo: CompraParaRecojo; conductor: boolean; cuentaId: string }) {
   const estado = RECOJO_COMPRA[r.recojo]
+  // El conductor, camino al proveedor, llama y abre el mapa con botones grandes. Después, y para Logística,
+  // la dirección y los números quedan como enlaces del texto, como siempre estuvieron.
+  const botones = conductor && (r.recojo === 'POR_RECOGER' || r.recojo === 'EN_RECOJO')
+  const telefonos = telefonosParaLlamar(r.proveedor_telefono)
+  // Lo que el padrón dice además del número (un anexo, un nombre, un horario) no se pierde detrás de los botones.
+  const diceMas = telefonoDiceMas(r.proveedor_telefono, telefonos)
+  const aQuien = r.proveedor_contacto?.trim() || r.proveedor
   return (
     <Tarjeta>
       <TarjetaCabecera
@@ -97,8 +165,8 @@ function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; con
         titulo={`${r.recojo === 'POR_RECOGER' && r.lugar ? `${r.lugar}.º · ` : ''}${r.numero ?? 'OC sin número'} · ${r.proveedor}`}
         descripcion={[
           r.numero === null ? `Ref. del proveedor: ${r.referencia}` : r.referencia && r.referencia !== r.numero ? `Ref. ${r.referencia}` : null,
-          r.codigo_interno ? `Para ${r.codigo_interno}` : null,
-          r.origen === 'DIRECTA' ? 'Para el almacén' : r.ordenes.length ? `OT ${r.ordenes.join(', ')}` : null,
+          ...paraQuienEs(r),
+          r.origen !== 'DIRECTA' && r.ordenes.length ? `OT ${r.ordenes.join(', ')}` : null,
           r.fecha_estimada ? `Lista desde ${fecha(r.fecha_estimada)}` : null,
         ]
           .filter(Boolean)
@@ -106,26 +174,40 @@ function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; con
         acciones={estado && <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>}
       />
       <TarjetaCuerpo className="space-y-4">
+        {/* Volvió a la lista después de un intento: lo que pasó la vez anterior. */}
+        {(r.recojo === 'POR_RECOGER' || r.recojo === 'EN_RECOJO') && <NoSeLogroRecoger compra={r} />}
         <ul className="space-y-1 text-sm text-texto">
           {r.proveedor_direccion && (
             <li className="flex items-start gap-2">
               <MapPin aria-hidden className="mt-0.5 size-4 shrink-0 text-texto-suave" />
-              <a
-                className="text-acento hover:underline"
-                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.proveedor_direccion)}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                {r.proveedor_direccion}
-              </a>
+              {botones ? (
+                <span>{r.proveedor_direccion}</span>
+              ) : (
+                <a className="text-acento hover:underline" href={enlaceAlMapa(r.proveedor_direccion)} target="_blank" rel="noreferrer">
+                  {r.proveedor_direccion}
+                </a>
+              )}
             </li>
           )}
-          {r.proveedor_telefono && (
-            <li className="flex items-center gap-2">
-              <Phone aria-hidden className="size-4 shrink-0 text-texto-suave" />
-              <a className="tabular text-acento hover:underline" href={`tel:${r.proveedor_telefono.replace(/[^\d+]/g, '')}`}>
-                {r.proveedor_telefono}
-              </a>
+          {r.proveedor_telefono && (!botones || diceMas || telefonos.length === 0) && (
+            <li className="flex items-start gap-2">
+              <Phone aria-hidden className="mt-0.5 size-4 shrink-0 text-texto-suave" />
+              <span className="tabular">
+                {(diceMas || telefonos.length === 0) && <span>{r.proveedor_telefono}</span>}
+                {!botones && telefonos.length > 0 && (
+                  <>
+                    {diceMas && <span className="text-texto-suave"> · Llamar: </span>}
+                    {telefonos.map((t, i) => (
+                      <Fragment key={t.numero}>
+                        {i > 0 && ' / '}
+                        <a className="whitespace-nowrap text-acento hover:underline" href={`tel:${t.numero}`}>
+                          {t.texto}
+                        </a>
+                      </Fragment>
+                    ))}
+                  </>
+                )}
+              </span>
             </li>
           )}
           {r.proveedor_contacto && (
@@ -167,6 +249,33 @@ function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; con
           )}
         </ul>
 
+        {botones && (r.proveedor_direccion || telefonos.length > 0) && (
+          <div className="flex flex-wrap gap-2">
+            {/* El nombre que se oye empieza con lo que se lee en el botón; lo de quién, solo para el lector. */}
+            {r.proveedor_direccion && (
+              <EnlaceBoton
+                variante="contorno"
+                tamano="lg"
+                className={BOTON_DE_PARADA}
+                href={enlaceAlMapa(r.proveedor_direccion)}
+                target="_blank"
+                rel="noreferrer"
+                prefetch={false}
+              >
+                <MapPin aria-hidden className="size-4 shrink-0" />
+                Abrir en el mapa<span className="sr-only">: {r.proveedor}</span>
+              </EnlaceBoton>
+            )}
+            {telefonos.map((t) => (
+              <EnlaceBoton key={t.numero} variante="contorno" tamano="lg" className={`tabular ${BOTON_DE_PARADA}`} href={`tel:${t.numero}`} prefetch={false}>
+                <Phone aria-hidden className="size-4 shrink-0" />
+                Llamar {t.texto}
+                <span className="sr-only">, {aQuien}</span>
+              </EnlaceBoton>
+            ))}
+          </div>
+        )}
+
         <ul className="divide-y divide-borde rounded-md border border-borde">
           {r.lineas.map((l, i) => (
             <li key={`${l.material_codigo}-${i}`} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
@@ -181,6 +290,8 @@ function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; con
           ))}
         </ul>
 
+        <FotosDelRecojo compra={r} />
+
         <p className="text-xs text-texto-suave">
           {[
             r.pedido_en && `Mandada a recojo ${fechaHora(r.pedido_en)}`,
@@ -194,7 +305,7 @@ function TarjetaRecojo({ recojo: r, conductor }: { recojo: CompraParaRecojo; con
 
         {/* Sale a recoger solo lo que Logística le programó; la base también lo exige. */}
         {conductor && SIGUIENTE_PASO[r.recojo] && (r.recojo !== 'POR_RECOGER' || r.en_lista) && (
-          <PasoRecojo id={r.id} nombre={r.nombre} paso={SIGUIENTE_PASO[r.recojo]} />
+          <PasoRecojo id={r.id} nombre={r.nombre} paso={SIGUIENTE_PASO[r.recojo]} cuentaId={cuentaId} programadoEn={r.programado_en} />
         )}
       </TarjetaCuerpo>
     </Tarjeta>

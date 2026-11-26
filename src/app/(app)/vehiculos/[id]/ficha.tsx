@@ -7,6 +7,7 @@ import { BASE_BOTON, Boton, TAMANOS, VARIANTES } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { Pliegue } from '@/components/ui/seccion-desplegable'
 import type { FichaDeVehiculo, PuntoDeFicha } from '@/lib/datos/vehiculos'
 import {
   BUCKET_FICHAS_VEHICULO,
@@ -180,11 +181,13 @@ export function FichaDelVehiculo({
             const deCategoria = puntos.filter((p) => p.categoria === categoria.valor)
             if (deCategoria.length === 0) return null
             return (
-              <details key={categoria.valor} className="rounded-[var(--radius-base)] border border-borde p-3" data-categoria={categoria.valor}>
-                <summary className="cursor-pointer text-sm font-medium text-texto">
-                  {categoria.etiqueta} <span className="text-xs font-normal text-texto-suave">({deCategoria.length})</span>
-                </summary>
-                <ul className="mt-3 divide-y divide-borde">
+              <Pliegue
+                key={categoria.valor}
+                enCaja
+                data-categoria={categoria.valor}
+                titulo={<>{categoria.etiqueta} <span className="text-xs font-normal text-texto-suave">({deCategoria.length})</span></>}
+              >
+                <ul className="-my-2 divide-y divide-borde">
                   {deCategoria.map((p) => (
                     <li key={p.codigo} className="grid gap-2 py-2 sm:grid-cols-[1fr_10rem_10rem] sm:items-center">
                       <span className="text-sm text-texto">{p.nombre}</span>
@@ -209,7 +212,7 @@ export function FichaDelVehiculo({
                     </li>
                   ))}
                 </ul>
-              </details>
+              </Pliegue>
             )
           })}
         </section>
