@@ -207,6 +207,8 @@ async function cerrar(pagina, cuenta, saldoBanco, observaciones) {
   await v.locator('input[name="saldo_banco"]').fill(saldoBanco)
   const aviso = limpio(await v.locator('[role="status"]').textContent().catch(() => ''))
   if (observaciones) await v.locator('textarea[name="observaciones"]').fill(observaciones)
+  // Un banco se cierra con la captura del día (migración 20261126550000); la caja chica, sin ella si no la hay.
+  if ((await v.locator('input[name="captura"][required]').count()) > 0) await v.locator('input[name="captura"]').setInputFiles(CAPTURA_SALDO)
   await v.getByRole('button', { name: 'Cerrar el día' }).click()
   return { aviso, error: await esperarVentana(pagina) }
 }
@@ -332,6 +334,12 @@ const movimientos = (caja, fecha) =>
   // Con coma decimal, como lo copian del estado de cuenta: la vista previa y la base leen lo mismo.
   let r = await cerrar(pagina, BCP, '9704,50')
   comprobar(r.aviso === 'Cuadra con la caja.' && !r.error, `con coma decimal, el banco cuadra y cierra (${r.aviso}${r.error ? `: ${r.error}` : ''})`)
+  {
+    const [k] = await consulta(`select k.captura_ruta, o.owner_id from cierres_caja k join cajas c on c.id = k.caja_id
+                                  left join storage.objects o on o.bucket_id = 'cierre-caja' and o.name = k.captura_ruta
+                                 where c.nombre = $1 and k.fecha = $2 and k.anulado_en is null`, [BCP, ayer])
+    comprobar(Boolean(k?.captura_ruta && k.owner_id), `el cierre del banco guardó la captura del día, subida a cierre-caja (${k?.captura_ruta})`)
+  }
   // Sin observaciones, o muy cortas, el navegador no deja enviar: la ventana sigue abierta.
   await pagina.locator(`[data-cerrar-dia="${CHICA}"]`).click()
   const v = pagina.locator(VENTANA)
@@ -534,7 +542,19 @@ for (const vista of [
 }
 
 // ------------------------------------------------- 8. los que no la llevan
-for (const puesto of ['gerencia', 'contabilidad']) {
+// Gerencia la consulta desde la migración 20261126310000 (`tesoreria.ver_caja`):
+// la tiene en su menú y entra, pero sin un solo botón que escriba.
+{
+  const { pagina, contexto } = await entrar(CUENTAS.gerencia)
+  comprobar((await pagina.locator('nav a[href="/tesoreria/caja-diaria"]').count()) > 0, 'gerencia tiene «Caja diaria» en su menú, para consultar')
+  await pagina.goto(RUTA, { waitUntil: 'networkidle' })
+  comprobar(!pagina.url().includes('/sin-permiso'), 'gerencia entra a consultar la caja')
+  const escribe = await pagina.locator('main button:visible').allInnerTexts()
+  const queEscriben = escribe.filter((t) => /registrar|transferir|cerrar|reabrir|anular|corregir|agregar|nueva|dar de alta/i.test(t))
+  comprobar(queEscriben.length === 0, `gerencia no ve botones que escriban${queEscriben.length ? ` (ve: ${queEscriben.join(' | ')})` : ''}`)
+  await contexto.close()
+}
+for (const puesto of ['contabilidad']) {
   const { pagina, contexto } = await entrar(CUENTAS[puesto])
   comprobar((await pagina.locator('nav a[href="/tesoreria/caja-diaria"]').count()) === 0, `${puesto} no tiene «Caja diaria» en su menú`)
   await pagina.goto(RUTA, { waitUntil: 'networkidle' })

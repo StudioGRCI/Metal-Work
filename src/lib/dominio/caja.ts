@@ -212,6 +212,20 @@ export const BUCKET_APERTURA_CAJA = 'apertura-caja'
  */
 export const enlaceCaptura = (cuentaId: string) => `/tesoreria/caja-diaria/captura/${cuentaId}`
 
+/*
+ * La captura del estado de cuenta con que se cierra cada día (migración
+ * 20261126550000): bucket privado `cierre-caja`, en `{cuenta}/{cierre}.{extensión}`.
+ * El nombre es el id del cierre, que se conserva tras «No llegó la respuesta»:
+ * el reintento sube al mismo sitio y no la duplica.
+ */
+export const BUCKET_CIERRE_CAJA = 'cierre-caja'
+
+/** Dónde se abre la captura de un cierre: el enlace firmado se pide al tocar. */
+export const enlaceCapturaDelCierre = (cierreId: string) => `/tesoreria/caja-diaria/cierres/captura/${cierreId}`
+
+/** La forma que exige la base para la ruta de una captura de saldo, de apertura o de cierre. */
+export const RUTA_CAPTURA_SALDO = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\.(jpg|png|webp|pdf)$/
+
 /** Lo que acepta la base, con la extensión que lleva la ruta. */
 export const TIPOS_CAPTURA_SALDO: Record<string, string> = {
   'image/jpeg': 'jpg',

@@ -1,7 +1,7 @@
 import { Check, ChevronDown, Route } from 'lucide-react'
 
 import { Insignia } from '@/components/ui/etiqueta-estado'
-import { haceDias, type PasoDescrito } from '@/lib/dominio/recorrido'
+import { haceDias, tardo, type PasoDescrito } from '@/lib/dominio/recorrido'
 import { fecha, fechaHora } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -9,6 +9,9 @@ import { cn } from '@/lib/utils'
  * El recorrido de un documento numerado, plegado dentro de su tarjeta: los pasos
  * del circuito en orden, quién hizo cada uno y cuándo, quién lo tiene ahora y
  * hace cuántos días, y lo que falta (migración 20261125130000).
+ *
+ * Cada paso hecho dice, si la base lo da, cuánto tardó desde el anterior («a
+ * los 2 días»): hoy lo da la cotización (Plan 9.1).
  *
  * Cerrado ya dice lo que más se pregunta: quién lo tiene y hace cuánto. Los
  * días los cuenta la base por fecha de Lima; aquí no se calcula nada. Todavía
@@ -22,17 +25,22 @@ import { cn } from '@/lib/utils'
  * (`rounded-[var(--radius-base)] border border-borde`). `relleno`, el margen
  * lateral de esa tarjeta. `femenino`, para el documento que lo es: «la tiene
  * Gerencia» de la cotización, «lo tiene Almacén» del requerimiento.
+ * `sinQuienEnElResumen`, donde la fila ya dice quién lo tiene y hace cuánto
+ * (la insignia de días de Atención de requerimiento): cerrado dice solo
+ * «Recorrido», para no repetirlo a 80 px; abierto, igual que siempre.
  */
 export function Recorrido({
   pasos,
   className,
   relleno = 'px-4',
   femenino = false,
+  sinQuienEnElResumen = false,
 }: {
   pasos: readonly PasoDescrito[] | null | undefined
   className?: string
   relleno?: string
   femenino?: boolean
+  sinQuienEnElResumen?: boolean
 }) {
   const lo = femenino ? 'la' : 'lo'
   if (pasos === null) {
@@ -63,12 +71,14 @@ export function Recorrido({
         </span>
         {/* Lo que más se pregunta, sin abrir: quién lo tiene y hace cuánto; si ya nadie, en qué terminó. */}
         {ahora ? (
+          !sinQuienEnElResumen && (
           <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-texto-suave" data-recorrido-ahora>
             <span className="min-w-0 break-words">
               {femenino ? 'La' : 'Lo'} tiene <span className="font-medium text-texto">{ahora.puesto ?? 'alguien'}</span>
             </span>
             {ahora.dias !== null && <Insignia>{haceDias(ahora.dias)}</Insignia>}
           </span>
+          )
         ) : (
           ultimo && (
             <span className="min-w-0 text-xs break-words text-texto-suave">
@@ -91,7 +101,11 @@ export function Recorrido({
                   <p className="text-xs break-words text-texto-suave">
                     {p.puesto || 'Sin cuenta registrada'}
                   </p>
-                  <p className="tabular text-xs text-texto-tenue">{fechaHora(p.en)}</p>
+                  <p className="tabular text-xs text-texto-tenue">
+                    {fechaHora(p.en)}
+                    {/* Cuánto tardó desde el paso anterior, si la base lo da (hoy, la cotización). */}
+                    {p.dias !== null && <span data-recorrido-tardo className="text-texto-suave"> · {tardo(p.dias)}</span>}
+                  </p>
                   {p.nota && <p className="text-xs break-words text-texto-suave">{p.nota}</p>}
                 </>
               )}

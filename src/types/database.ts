@@ -511,6 +511,7 @@ export type Database = {
           motivo_anulacion: string | null
           creado_en: string
           actualizado_en: string
+          captura_ruta: string | null
         }
         Insert: {
           id?: string
@@ -528,6 +529,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          captura_ruta?: string | null
         }
         Update: {
           id?: string
@@ -545,6 +547,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          captura_ruta?: string | null
         }
         Relationships: [
           {
@@ -12811,15 +12814,6 @@ export type Database = {
         }
         Returns: string
       }
-      captura_de_caja: {
-        Args: {
-          p_caja: string | null
-        }
-        Returns: {
-          nombre: string | null
-          apertura_ruta: string | null
-        }[]
-      }
       cargar_codigo_y_ot_de_cotizacion: {
         Args: {
           p_cotizacion: string | null
@@ -12880,6 +12874,7 @@ export type Database = {
           p_fecha: string | null
           p_saldo_banco: number | null
           p_observaciones: string | null
+          p_captura_ruta: string | null
         }
         Returns: string
       }
@@ -14683,12 +14678,6 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
-      es_captura_de_caja: {
-        Args: {
-          p_ruta: string | null
-        }
-        Returns: boolean
-      }
       es_codigo_de_ot: {
         Args: {
           p_codigo: string | null
@@ -15092,6 +15081,7 @@ export type Database = {
           reabierto_por: string | null
           reabierto_en: string | null
           motivo_reapertura: string | null
+          con_captura_del_dia: boolean | null
         }[]
       }
       horas_en_texto: {
@@ -18246,6 +18236,17 @@ export type Database = {
           guia: Json | null
           guias_anuladas: number | null
           pago: string | null
+        }[]
+      }
+      unidades_del_cliente_con_su_entrega: {
+        Args: {
+          p_cliente: string | null
+        }
+        Returns: {
+          unidad_id: string | null
+          ot_numero: string | null
+          estado: string | null
+          fecha_entrega: string | null
         }[]
       }
       unidades_para_salida_almacen: {

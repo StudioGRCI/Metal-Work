@@ -401,7 +401,8 @@ async function abrir(pagina, nombre) {
 {
   const { pagina, contexto } = await entrar(CUENTAS.gerencia)
   await pagina.goto(`${BASE}/configuracion`, { waitUntil: 'networkidle' })
-  comprobar(pagina.url().includes('/sin-permiso'), 'Gerencia no entra a Configuración')
+  // La consulta desde la 20261126310000 (`configuracion.ver`), sin cambiar nada.
+  comprobar(!pagina.url().includes('/sin-permiso'), 'Gerencia consulta Configuración')
   await contexto.close()
 
   const gerencia = await cuenta(CUENTAS.gerencia)

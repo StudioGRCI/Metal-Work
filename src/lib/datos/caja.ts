@@ -91,14 +91,15 @@ export type CajaDelDia = {
 const n = (v: number | null | undefined) => Number(v ?? 0)
 const o = (v: number | null | undefined) => (v === null || v === undefined ? null : Number(v))
 
-export async function cajaDelDia(dia: string): Promise<CajaDelDia> {
+/** Con `conCodigos` falso (quien solo consulta, que no registra) no pide la lista de códigos para elegir: no la puede leer. */
+export async function cajaDelDia(dia: string, { conCodigos = true }: { conCodigos?: boolean } = {}): Promise<CajaDelDia> {
   const supabase = await createClient()
   const [cuentas, movimientos, reabiertos, cambio, codigos, capturas] = await Promise.all([
     supabase.rpc('caja_del_dia', { p_fecha: dia }),
     supabase.rpc('movimientos_caja_del_dia', { p_fecha: dia }),
     supabase.rpc('cierres_caja_reabiertos', { p_fecha: dia }),
     supabase.rpc('cambio_del_dia', { p_fecha: dia, p_operacion: 'COMPRA' }),
-    codigosParaElegir(supabase),
+    conCodigos ? codigosParaElegir(supabase) : Promise.resolve([]),
     // `caja_del_dia` no la trae: cambiar lo que devuelve obligaría a borrarla y volver a crearla.
     supabase.from('cajas').select('id, apertura_ruta').not('apertura_ruta', 'is', null),
   ])
@@ -343,13 +344,15 @@ export type CierreDeLaHistoria = {
   reabiertoPor: string | null
   reabiertoEn: string | null
   motivoReapertura: string | null
+  /** Si el cierre guardó la captura de su día (desde la migración 20261126550000). */
+  conCapturaDelDia: boolean
 }
 
 /**
  * Los días cerrados de todas las cuentas entre dos fechas, del más reciente al
- * más antiguo (migración 20261126100000). Solo lectura: la base exige
- * `tesoreria.caja` o `tesoreria.ver_documentos`, y Gerencia, que no lee la
- * caja, la ve por esta función y nada más.
+ * más antiguo (migraciones 20261126100000 y 20261126540000). Solo lectura: la
+ * base exige `tesoreria.caja` (Tesorería) o `tesoreria.ver_caja` (Gerencia, que
+ * la consulta); Costos no la ve.
  */
 export async function historiaDeCierres(desde: string, hasta: string): Promise<CierreDeLaHistoria[]> {
   const supabase = await createClient()
@@ -380,6 +383,7 @@ export async function historiaDeCierres(desde: string, hasta: string): Promise<C
             reabiertoPor: k.reabierto_por,
             reabiertoEn: k.reabierto_en,
             motivoReapertura: k.motivo_reapertura,
+            conCapturaDelDia: k.con_captura_del_dia ?? false,
           },
         ]
       : [],
