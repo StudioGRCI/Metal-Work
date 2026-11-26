@@ -226,7 +226,7 @@ const esquemaDocumentoDeLaCompra = z.object({
 
 /**
  * Qué documento lleva cada OC y cada OS, cuál falta y desde cuándo
- * (`documentos_de_las_compras()`, migración 20261126220000), por compra. La
+ * (`documentos_de_las_compras()`, migración 20261126480000), por compra. La
  * función pide lo mismo que la pantalla (`adquisiciones.ver`) y solo lee.
  */
 export async function documentosDeLasCompras(): Promise<Map<string, DocumentoDeLaCompra[]>> {

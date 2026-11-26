@@ -229,7 +229,7 @@ export function anexoPorRevisarAlAnular(
 
 /**
  * Los documentos que lleva cada OC y cada OS, como los da
- * `documentos_de_las_compras()` (migración 20261126220000, Plan 10). Cada uno
+ * `documentos_de_las_compras()` (migración 20261126480000, Plan 10). Cada uno
  * dice cómo se nombra cuando falta, cuando está a medias y cuando ya está.
  */
 export const DOCUMENTO_DE_COMPRA: Record<

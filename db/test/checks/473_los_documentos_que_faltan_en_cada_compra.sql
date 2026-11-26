@@ -1,5 +1,5 @@
 -- Qué documento tiene cada OC y cada OS, cuál le falta y desde cuándo (Plan 10, entrega 10.2;
--- migración 20261126220000). Con la cuenta de cada puesto —nunca ADMIN— y
+-- migración 20261126480000). Con la cuenta de cada puesto —nunca ADMIN— y
 -- `set local role authenticated`. Termina en rollback.
 --
 -- Una OC con factura de 10 discos, que Gerencia aprobó hace 5 días:
