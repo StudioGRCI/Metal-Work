@@ -17090,6 +17090,23 @@ export type Database = {
         }
         Returns: string
       }
+      quien_subio_y_quien_leyo: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          tipo: string | null
+          clave: string | null
+          subido_por: string | null
+          subido_en: string | null
+          area: string | null
+          area_nombre: string | null
+          destinatarios: number | null
+          leidos: number | null
+          primera_lectura: string | null
+          ultima_lectura: string | null
+        }[]
+      }
       quitar_descuento_nota_credito: {
         Args: {
           p_pago: string | null
