@@ -146,7 +146,8 @@ export async function cambiarEstadoOrden(
   // Reanudar es pasar a EN_PROCESO desde PAUSADA: con `ordenes.pausar` vale
   // solo desde ahí (iniciar o reabrir siguen con `ordenes.cambiar_estado`).
   if (!permitido && estado === 'EN_PROCESO' && puede(perfil, 'ordenes.pausar')) {
-    const { data: actual } = await supabase.from('ordenes_trabajo').select('estado').eq('id', orden_id).maybeSingle()
+    const { data: actual, error: errorEstado } = await supabase.from('ordenes_trabajo').select('estado').eq('id', orden_id).maybeSingle()
+    if (errorEstado) return { ok: false, error: mensajeDeError(errorEstado) }
     permitido = actual?.estado === 'PAUSADA'
   }
   if (!permitido && (estado === 'APROBADA' || estado === 'ANULADA') && puede(perfil, 'ordenes.revisar_taller')) {

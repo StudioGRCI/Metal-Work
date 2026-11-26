@@ -18,11 +18,17 @@
 --      permiso sin rol es una puerta tapiada).
 --   2. `fn_ot_permiso_por_estado` lo acepta en esos dos pasos. Antes de
 --      reemplazarla se mira que sea una de las versiones que conoce el
---      repositorio: la de la 110 con sus comentarios, la de producción sin
---      ellos, o la que deja esta migración.
+--      repositorio: la de la 20261023140000 (sobre la 110) con sus
+--      comentarios, la de producción sin ellos, o la que deja esta migración.
 --   3. La política de UPDATE de `ordenes_trabajo` lo acepta también: el permiso
 --      que exige la acción y el que acepta la política tienen que ser el mismo,
---      o el UPDATE afecta cero filas sin error.
+--      o el UPDATE afecta cero filas sin error. La política deja pasar el
+--      UPDATE de la fila entera, como con `ordenes.anular` (20261020207000):
+--      hoy no abre nada, porque Administración ya tiene `ordenes.editar`; si
+--      otro rol recibe `ordenes.pausar` sin `ordenes.editar`, podría corregir
+--      también los datos de la OT.
+--   4. La descripción de `ordenes.cambiar_estado` nombra también programar y
+--      reabrir, que ya abría: así se lee qué queda fuera de `ordenes.pausar`.
 --
 -- Sin DROP. Idempotente: `on conflict`, `create or replace` y `alter policy`.
 -- =============================================================================
@@ -42,7 +48,7 @@ on conflict do nothing;
 
 do $$
 declare
-  -- 8ae4…: la de la migración 110, con sus comentarios.
+  -- 8ae4…: la de la 20261023140000 (sobre la 110), con sus comentarios.
   -- 188f…: la misma sin los comentarios, como está en producción.
   -- ebe3…: la que deja esta migración.
   conocidas constant text[] := array['8ae42c8678a85ed980a06d764daf7270', '188f2fa327e6b65af69b42659e9210e2',
