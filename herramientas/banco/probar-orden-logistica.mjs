@@ -273,12 +273,14 @@ try {
     { puesto: 'logistica', ruta: '/proveedores', boton: /^Editar$/, titulo: 'razon-social', nombre: '«Editar» del proveedor' },
     { puesto: 'logistica', ruta: '/compras/servicios', boton: /^Conforme$/, titulo: /^Conformidad de la orden de servicio/, nombre: '«Conforme» de la OS' },
     { puesto: 'logistica', ruta: '/compras/ordenes', boton: /^Adjuntar$/, titulo: /^Adjuntar a la compra/, nombre: '«Adjuntar» de la OC' },
-    { puesto: 'requerimientos', ruta: '/vehiculos', boton: /^Marcar salida$/, titulo: new RegExp(`^Salida de ${placa}`), nombre: '«Marcar salida» del vehículo' },
+    { puesto: 'requerimientos', ruta: '/vehiculos', boton: /^Marcar salida$/, fila: placa, titulo: new RegExp(`^Salida de ${placa}`), nombre: '«Marcar salida» del vehículo' },
   ]
   for (const v of VENTANAS) {
     const { pagina, contexto, errores } = await entrar(v.puesto, { width: 390, height: 844 })
     await ir(pagina, v.ruta)
-    const boton = pagina.locator('main tbody').getByRole('button', { name: v.boton }).first()
+    // En planta va primero el que lleva más días: el sembrado se busca por su placa.
+    const filas = v.fila ? pagina.locator('main tbody > tr', { hasText: v.fila }) : pagina.locator('main tbody')
+    const boton = filas.getByRole('button', { name: v.boton }).first()
     // La ventana de «Editar» lleva la razón social de su fila, no otra.
     const razon = v.titulo === 'razon-social' ? ((await boton.locator('xpath=ancestor::tr').locator('td').first().locator('p').first().textContent()) ?? '').replace(/Dado de baja/, '').trim() : null
     await boton.scrollIntoViewIfNeeded()

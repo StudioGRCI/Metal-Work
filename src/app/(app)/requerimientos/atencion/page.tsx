@@ -221,7 +221,7 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
       )}
 
       {notas === null && (
-        <p role="status" className="mb-3 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-notas-sin-leer>
+        <p role="status" className="rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-notas-sin-leer>
           No se pudieron leer las notas de las entregas: si quien pidió anotó que algo no llegó, no se ve aquí. Vuelve a cargar la pantalla en
           un momento.
         </p>
