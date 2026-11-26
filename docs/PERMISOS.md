@@ -440,6 +440,10 @@ arriba abajo:
    cuentas y no tienen este bloque.
 2. **Las cifras de su área** (`src/lib/datos/dashboard.ts`, `CIFRAS_POR_PUESTO`):
    cómo va su trabajo, cada cifra con el enlace a su pantalla, en filas llenas.
+   Ninguna repite «Te toca»: el 2026-11-26 DKS quitó las que sumaban sus
+   mismas cuentas («Por aprobar» de Gerencia, «Aprobadas sin código» de
+   Administración, «Por facturar» de Contabilidad y «Planillas por pagar» de
+   Tesorería).
 3. Gerencia, además, los seis códigos internos con movimiento más reciente, con
    su avance y su costo. Diseño, su colaborador y Administración, que todavía
    llevan la OT, el bloque de órdenes de trabajo.
