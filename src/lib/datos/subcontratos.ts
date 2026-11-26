@@ -83,10 +83,20 @@ function resumen(r: FilaResumen): ReciboResumen {
   return { ...r, monto_bruto: num(r.monto_bruto), retencion_monto: num(r.retencion_monto), monto_neto: num(r.monto_neto), pagos: r.pagos ?? [] }
 }
 
-/** Los subcontratos, del más reciente al más viejo, con lo justo de sus recibos para las cuentas. */
+/**
+ * Los subcontratos, del más reciente al más viejo, con lo justo de sus recibos
+ * para las cuentas. Los vigentes vienen todos: el que vence o ya venció suele
+ * ser de los más viejos, y con el tope de 300 salía de «Vencen pronto» y de su
+ * cuenta sin aviso. Los terminados y anulados, los 300 más recientes.
+ */
 export async function listarSubcontratos(): Promise<SubcontratoListado[]> {
+  const [vigentes, otros] = await Promise.all([leerSubcontratos('VIGENTE'), leerSubcontratos('OTROS')])
+  return [...vigentes, ...otros].sort((a, b) => Date.parse(b.creado_en) - Date.parse(a.creado_en))
+}
+
+async function leerSubcontratos(cuales: 'VIGENTE' | 'OTROS'): Promise<SubcontratoListado[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase
+  const consulta = supabase
     .from('subcontratos')
     .select(
       'id, numero, codigo_interno, descripcion, moneda, monto, fecha_inicio, fecha_fin, inicio_real, fin_real, estado, creado_en, motivo_anulacion,' +
@@ -96,7 +106,7 @@ export async function listarSubcontratos(): Promise<SubcontratoListado[]> {
         ' pagos:pagos_recibo_honorarios!pagos_recibo_honorarios_recibo_id_fkey(anulado_en))',
     )
     .order('creado_en', { ascending: false })
-    .limit(300)
+  const { data, error } = await (cuales === 'VIGENTE' ? consulta.eq('estado', 'VIGENTE') : consulta.neq('estado', 'VIGENTE').limit(300))
   if (error) throw new Error(`No se pudieron leer los subcontratos: ${error.message}`)
   type Fila = Omit<SubcontratoListado, 'area_codigo' | 'monto' | 'moneda' | 'subcontratista' | 'recibos'> & {
     area: Uno<{ codigo: string }>

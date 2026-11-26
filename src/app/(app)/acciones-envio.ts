@@ -342,6 +342,14 @@ async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo:
       const { data } = await supabase.from('ssoma_reportes').select('numero, registrado_por').eq('id', id).maybeSingle()
       return data && { por: data.registrado_por, lo: dicho('El reporte', 'Los reportes', 'otro', data.numero) }
     }
+    case 'accion_ssoma': {
+      const { data } = await supabase.from('ssoma_acciones').select('descripcion, creado_por').eq('id', id).maybeSingle()
+      return data && { por: data.creado_por, lo: dicho('La acción', 'Las acciones', 'otra', data.descripcion) }
+    }
+    case 'cierre_accion_ssoma': {
+      const { data } = await supabase.from('ssoma_accion_eventos').select('hecho_por, tipo').eq('id', id).maybeSingle()
+      return data?.tipo === 'CERRADA' ? { por: data.hecho_por, lo: dicho('El cierre', 'Los cierres', 'otro', null) } : null
+    }
     case 'transferencia_caja': {
       const { data } = await supabase
         .from('movimientos_caja')
