@@ -10,6 +10,6 @@
 -- Es un documento numerado: no se borra nunca, se anula con su motivo.
 --
 -- Va sola porque Postgres no deja usar en la misma transacción un valor de
--- enum recién agregado: la migración 20261126951000 crea la serie con él.
+-- enum recién agregado: la migración 20261126991000 crea la serie con él.
 -- =============================================================================
 alter type public.tipo_correlativo add value if not exists 'RECLAMO_GARANTIA';

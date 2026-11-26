@@ -190,7 +190,7 @@ export const NAVEGACION = [
       { titulo: 'Unidades', ruta: '/unidades', icono: Truck, permiso: 'clientes.ver', descripcion: 'Los vehículos de los clientes que pasan por el taller', disponible: true },
       { titulo: 'Carrocerías', ruta: '/carrocerias', icono: Layers, permiso: ['diseno.planos', 'configuracion.ver', 'cotizaciones.crear'], descripcion: 'Los tipos de carrocería que se cotizan, con su ficha técnica', disponible: true },
       // El reclamo del cliente que vuelve por garantía (plan «Las demás áreas»,
-      // A.2, migración 20261126951000): Ventas lo registra, Administración abre
+      // A.2, migración 20261126991000): Ventas lo registra, Administración abre
       // su OT de garantía, Calidad anota la causa y Gerencia lo consulta.
       {
         titulo: 'Garantías',

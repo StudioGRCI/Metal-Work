@@ -24,9 +24,10 @@
 --   * QUIÉN VE QUÉ: Ventas, Administración, Calidad y el área de Garantías (sus
 --     cuentas y su responsable) ven todos los reclamos; Gerencia los consulta
 --     (`garantias.ver`). Los demás, ninguno.
---   * NO SE BORRA: mientras no tiene OT, quien lo registra (Ventas) o
---     Administración lo anulan con su motivo, y queda como evidencia. Con OT no
---     se anula: se anula la OT y se enlaza otra, o se cierra con su causa.
+--   * NO SE BORRA: sin OT, o con su OT anulada, quien lo registra (Ventas) o
+--     Administración lo anulan con su motivo, y queda como evidencia. Con su OT
+--     viva no se anula: se cierra con su causa, o se anula la OT y se enlaza
+--     otra (o se cierra como «No procede»).
 --
 -- No restaura `garantia_reclamos` como lo retiró la 094 («lo que no es del
 -- circuito se va»): aquel colgaba de la entrega de la OT (`ot_entregas`, que
@@ -119,7 +120,7 @@ create table if not exists public.garantia_reclamos (
        and char_length(btrim(coalesce(motivo_anulacion, ''))) between 10 and 500))
 );
 comment on table public.garantia_reclamos is
-  'El reclamo de garantía de un cliente (RG-…): la unidad que vuelve, qué reclama y sus fotos. Lo registra Ventas (garantias.registrar), Administración le enlaza su OT de garantía o lo cierra como «No procede» (garantias.atender) y Calidad lo cierra con su causa cuando la garantía está terminada (garantias.causa). Lo ven esos tres, el área de Garantías y Gerencia (garantias.ver). No se borra: sin OT, se anula con su motivo.';
+  'El reclamo de garantía de un cliente (RG-…): la unidad que vuelve, qué reclama y sus fotos. Lo registra Ventas (garantias.registrar), Administración le enlaza su OT de garantía o lo cierra como «No procede» (garantias.atender) y Calidad lo cierra con su causa cuando la garantía está terminada (garantias.causa). Lo ven esos tres, el área de Garantías y Gerencia (garantias.ver). No se borra: sin OT, o con su OT anulada, se anula con su motivo.';
 comment on column public.garantia_reclamos.cliente_id is
   'El cliente de la unidad cuando se registró el reclamo, congelado.';
 -- Una OT de garantía atiende un solo reclamo. También es el índice de su llave.
@@ -165,7 +166,7 @@ declare
   v_fijo constant text[] := array['id', 'numero', 'unidad_id', 'cliente_id', 'descripcion', 'trae', 'contacto', 'registrado_por', 'creado_en'];
 begin
   if tg_op = 'DELETE' then
-    raise exception 'Un reclamo de garantía no se borra: sin OT, se anula con su motivo.' using errcode = 'check_violation';
+    raise exception 'Un reclamo de garantía no se borra: se anula con su motivo.' using errcode = 'check_violation';
   end if;
   if old.estado in ('ANULADO', 'CERRADO', 'NO_PROCEDE') then
     raise exception 'El reclamo % ya está cerrado: queda como evidencia.', old.numero using errcode = 'check_violation';

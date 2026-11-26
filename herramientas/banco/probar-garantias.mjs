@@ -1,6 +1,6 @@
 /**
  * El reclamo de garantía (plan «Las demás áreas», entrega A.2, migraciones
- * 20261126950000 y 20261126951000), con clic real y la cuenta de cada puesto
+ * 20261126990000 y 20261126991000), con clic real y la cuenta de cada puesto
  * (nunca ADMIN):
  *
  *   1. Ventas, en el monitor: «Garantías» en su menú. Registra el reclamo de una

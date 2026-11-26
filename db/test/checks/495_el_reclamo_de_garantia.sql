@@ -1,4 +1,4 @@
--- El reclamo de garantía (migraciones 20261126950000 y 20261126951000, plan
+-- El reclamo de garantía (migraciones 20261126990000 y 20261126991000, plan
 -- aparte de las demás áreas, entrega A.2). Cada paso con su cuenta y `set local
 -- role authenticated`: Ventas registra (y Gerencia Comercial anula uno sin OT),
 -- Administración enlaza la OT de garantía o lo cierra como «No procede»,

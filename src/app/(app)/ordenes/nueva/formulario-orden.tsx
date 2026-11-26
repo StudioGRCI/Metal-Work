@@ -80,6 +80,8 @@ export function FormularioOrden({ catalogos, reclamo = null }: { catalogos: Cata
   const [unidadId, setUnidadId] = useState(() => (reclamo && catalogos.clientes.some((c) => c.id === reclamo.cliente_id) ? reclamo.unidad_id : ''))
   // La garantía es de un vehículo que vuelve: va con su unidad (migración 20261021120000).
   const [tipoTrabajo, setTipoTrabajo] = useState(reclamo ? 'GARANTIA' : 'FABRICACION')
+  // Registrada y sin enlazar a su reclamo: el aviso de abajo va en ámbar.
+  const [aMedias, setAMedias] = useState(false)
   const esGarantia = tipoTrabajo === 'GARANTIA'
   const [carroceriaId, setCarroceriaId] = useState('')
   const [responsableId, setResponsableId] = useState('')
@@ -400,7 +402,10 @@ export function FormularioOrden({ catalogos, reclamo = null }: { catalogos: Cata
         // Registrada y sin enlazar (el reclamo se cerró mientras se llenaba): no
         // se va a ningún lado, que al irse el aviso se perdía. Lo dice junto al
         // botón, con el enlace a la OT para anularla si no hace falta.
-        if (r.datos?.reclamo?.noSeEnlazo) return
+        if (r.datos?.reclamo?.noSeEnlazo) {
+          setAMedias(true)
+          return
+        }
         const { url, ...dicho } = ida
         navegarSiEsDeLaPestana(router, url, desde, { ...dicho, juntoAlBoton: true })
       } catch (e) {
@@ -749,7 +754,7 @@ export function FormularioOrden({ catalogos, reclamo = null }: { catalogos: Cata
         </p>
       )}
 
-      <YaQuedo ida={quedo} />
+      <YaQuedo ida={quedo} aMedias={aMedias} />
 
       <div className="flex justify-end gap-2">
         <EnlaceBoton href={reclamo ? `/garantias/${reclamo.id}` : '/ordenes'} variante="fantasma">

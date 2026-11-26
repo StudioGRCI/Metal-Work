@@ -104,7 +104,7 @@ export default async function PaginaGarantias({ searchParams }: PageProps<'/gara
                   }
                 : vista === 'cerrados'
                   ? { titulo: 'Todavía no hay reclamos cerrados', descripcion: 'Un reclamo se cierra con la causa que anota Calidad, o como «No procede».' }
-                  : { titulo: 'No hay reclamos anulados', descripcion: 'Un reclamo sin OT se anula desde su ficha, con su motivo.' }
+                  : { titulo: 'No hay reclamos anulados', descripcion: 'Un reclamo sin OT, o con su OT anulada, se anula desde su ficha, con su motivo.' }
           }
         />
       </Tarjeta>

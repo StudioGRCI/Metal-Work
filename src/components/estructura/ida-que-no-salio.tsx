@@ -7,6 +7,7 @@ import { useEffect, useReducer, useRef } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { decirLoQueSeLlevoLaRecarga, type IdaQueNoSalio as Ida, ponerIdaQueNoSalio, sigueMontado, useIdaQueNoSalio } from '@/lib/envio'
+import { cn } from '@/lib/utils'
 
 // Lo que la ida le pone a su dirección solo para esa vez («?creada=1»,
 // «?contrato=pendiente») o para elegir pestaña o filtrar («vista», «q»): llegar
@@ -181,11 +182,13 @@ export function IdaQueNoSalio() {
  * (X1 de la crítica de la trigesimonovena pasada). Siempre montada, como la de
  * arriba.
  */
-export function YaQuedo({ ida }: { ida: Omit<Ida, 'dichaEn'> | null }) {
+export function YaQuedo({ ida, aMedias = false }: { ida: Omit<Ida, 'dichaEn'> | null; aMedias?: boolean }) {
+  // `aMedias`: entró, pero algo de lo que seguía no (la OT que no se enlazó a su
+  // reclamo): en ámbar, que en verde se leía de reojo como terminado.
   return (
     <p
       role="status"
-      className={ida ? 'rounded-[var(--radius-base)] bg-exito-suave px-3 py-2 text-sm text-texto text-pretty' : 'sr-only'}
+      className={ida ? cn('rounded-[var(--radius-base)] px-3 py-2 text-sm text-texto text-pretty', aMedias ? 'bg-aviso-suave' : 'bg-exito-suave') : 'sr-only'}
       data-ya-quedo={ida ? '' : undefined}
     >
       {ida && (

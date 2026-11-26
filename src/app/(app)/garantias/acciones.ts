@@ -122,14 +122,15 @@ export async function enlazarOt(_previo: unknown, formulario: FormData): Promise
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
 
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .rpc('garantias_enlazar_ot', { p_reclamo: analisis.data.id, p_orden: analisis.data.orden_id })
-    .maybeSingle()
+  // Quién lo registró no cambia nunca: se lee junto con la escritura, no después.
+  const [{ data, error }, aviso] = await Promise.all([
+    supabase.rpc('garantias_enlazar_ot', { p_reclamo: analisis.data.id, p_orden: analisis.data.orden_id }).maybeSingle(),
+    avisoAQuienRegistro(supabase, analisis.data.id, perfil.id, 'Le avisamos a quien registró el reclamo.'),
+  ])
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data?.reclamo !== analisis.data.id || !data.numero_ot) return { ok: false, error: 'La OT no se enlazó. Recarga la pantalla.' }
 
   revalidatePath('/garantias', 'layout')
-  const aviso = await avisoAQuienRegistro(supabase, analisis.data.id, perfil.id, 'Le avisamos a quien registró el reclamo.')
   return { ok: true, mensaje: `Enlazada la OT ${data.numero_ot}.${aviso}` }
 }
 
@@ -144,12 +145,14 @@ export async function noProcede(_previo: unknown, formulario: FormData): Promise
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('garantias_no_procede', { p_reclamo: analisis.data.id, p_motivo: analisis.data.motivo })
+  const [{ data, error }, aviso] = await Promise.all([
+    supabase.rpc('garantias_no_procede', { p_reclamo: analisis.data.id, p_motivo: analisis.data.motivo }),
+    avisoAQuienRegistro(supabase, analisis.data.id, perfil.id, 'Le avisamos a quien lo registró.'),
+  ])
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== analisis.data.id) return { ok: false, error: 'El reclamo no se cerró. Recarga la pantalla.' }
 
   revalidatePath('/garantias', 'layout')
-  const aviso = await avisoAQuienRegistro(supabase, analisis.data.id, perfil.id, 'Le avisamos a quien lo registró.')
   return { ok: true, mensaje: `Cerrado como «No procede», con su motivo.${aviso}` }
 }
 
@@ -168,16 +171,14 @@ export async function anotarCausa(_previo: unknown, formulario: FormData): Promi
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('garantias_anotar_causa', {
-    p_reclamo: analisis.data.id,
-    p_causa: analisis.data.causa,
-    p_detalle: analisis.data.detalle,
-  })
+  const [{ data, error }, aviso] = await Promise.all([
+    supabase.rpc('garantias_anotar_causa', { p_reclamo: analisis.data.id, p_causa: analisis.data.causa, p_detalle: analisis.data.detalle }),
+    avisoAQuienRegistro(supabase, analisis.data.id, perfil.id, 'Le avisamos a quien lo registró.'),
+  ])
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== analisis.data.id) return { ok: false, error: 'La causa no quedó anotada. Recarga la pantalla.' }
 
   revalidatePath('/garantias', 'layout')
-  const aviso = await avisoAQuienRegistro(supabase, analisis.data.id, perfil.id, 'Le avisamos a quien lo registró.')
   return { ok: true, mensaje: `Causa anotada: el reclamo quedó cerrado.${aviso}` }
 }
 

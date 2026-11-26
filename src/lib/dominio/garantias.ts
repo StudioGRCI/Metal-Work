@@ -2,7 +2,7 @@ import type { Tono } from '@/components/ui/etiqueta-estado'
 
 /*
  * El reclamo de garantía (plan «Las demás áreas», A.2, migración
- * 20261126951000): el cliente vuelve con su unidad. Ventas lo registra con su
+ * 20261126991000): el cliente vuelve con su unidad. Ventas lo registra con su
  * número RG, Administración abre su OT de garantía (o dice que no procede) y
  * Calidad anota la causa cuando la garantía está terminada. Lo que la pantalla
  * y las acciones comparten con la base.
@@ -41,7 +41,7 @@ export const SITUACION_RECLAMO: Record<string, Def & { quien?: string }> = {
     descripcion: 'La garantía está terminada: Calidad anota por qué falló y el reclamo se cierra.',
   },
   CERRADO: { etiqueta: 'Cerrado', tono: 'exito', descripcion: 'Cerrado con la causa que anotó Calidad.' },
-  NO_PROCEDE: { etiqueta: 'No procede', tono: 'neutro', descripcion: 'Administración lo cerró sin OT, con su motivo.' },
+  NO_PROCEDE: { etiqueta: 'No procede', tono: 'neutro', descripcion: 'Administración lo cerró sin OT de garantía viva, con su motivo.' },
   ANULADO: { etiqueta: 'Anulado', tono: 'neutro', descripcion: 'Quedó sin efecto, con su motivo.' },
 }
 

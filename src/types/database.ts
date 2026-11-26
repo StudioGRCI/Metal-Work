@@ -16084,20 +16084,6 @@ export type Database = {
           codigo_interno: string | null
         }[]
       }
-      definir_etapas_diseno: {
-        Args: {
-          p_orden_id: string | null
-          p_etapas: string[] | null
-        }
-        Returns: number
-      }
-      definir_etapas_ponderadas: {
-        Args: {
-          p_orden_id: string | null
-          p_config: Json | null
-        }
-        Returns: number
-      }
       decisiones_tomadas: {
         Args: {
           p_desde: string | null
@@ -16115,6 +16101,20 @@ export type Database = {
           motivo: string | null
           enlace: string | null
         }[]
+      }
+      definir_etapas_diseno: {
+        Args: {
+          p_orden_id: string | null
+          p_etapas: string[] | null
+        }
+        Returns: number
+      }
+      definir_etapas_ponderadas: {
+        Args: {
+          p_orden_id: string | null
+          p_config: Json | null
+        }
+        Returns: number
       }
       dejar_de_esperar_reposicion: {
         Args: {
@@ -16905,6 +16905,12 @@ export type Database = {
           p_motivo: string | null
         }
         Returns: string
+      }
+      garantias_avisar_la_causa: {
+        Args: {
+          p_reclamo: string | null
+        }
+        Returns: null
       }
       garantias_enlazar_ot: {
         Args: {

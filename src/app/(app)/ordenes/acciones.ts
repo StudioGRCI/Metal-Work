@@ -75,7 +75,25 @@ export async function crearOrden(
     if (!rec || !aqui) return { ok: false, error: 'Ese reclamo de garantía ya no está a la vista: ábrelo otra vez desde Garantías.' }
     // Si el reclamo se cerró o se anuló mientras se llenaba, la OT no nace: nacía
     // numerada y sin enlazar. El mismo envío repetido (ya enlazada a esta OT) sí sigue.
-    if (!aqui.puede_enlazar && rec.orden_id !== v.orden_id) {
+    // Salvo que esta misma OT ya haya quedado registrada por este envío (se
+    // perdió la respuesta): entonces sigue por el camino de «ya quedó», que no
+    // dice «no se registró» de lo que sí se registró.
+    const yaQuedoEsta =
+      !aqui.puede_enlazar && rec.orden_id !== v.orden_id
+        ? Boolean(
+            (
+              await supabase
+                .from('ot_adjuntos')
+                .select('orden_id')
+                .eq('ruta_storage', v.ruta_pdf)
+                .eq('orden_id', v.orden_id)
+                .eq('subido_por', perfil.id)
+                .eq('tipo', 'ORDEN')
+                .maybeSingle()
+            ).data,
+          )
+        : false
+    if (!aqui.puede_enlazar && rec.orden_id !== v.orden_id && !yaQuedoEsta) {
       return {
         ok: false,
         error: `El reclamo ${rec.numero} ya no espera su OT (se cerró, se anuló o ya tiene otra). La orden no se registró: vuelve al reclamo.`,

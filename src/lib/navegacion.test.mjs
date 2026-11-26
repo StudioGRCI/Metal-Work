@@ -7,7 +7,7 @@ import { menuDe, modulosDelInicio, pestanasDe, rutaActiva, rutasDeTrabajo } from
 // `equipos.ver`, que le da la 20261125160000 (padrón de equipos, #191). Desde la 20261126310000
 // tiene además los diez de lectura de las once pantallas que le faltaban, y ya no `proveedores.editar`;
 // desde la 20261126100100, `averias.ver` (reportar una avería, Plan 16.2), y desde la
-// 20261126700000, `calidad.ver` (Calidad, A.1), y desde la 20261126951000, `garantias.ver`
+// 20261126700000, `calidad.ver` (Calidad, A.1), y desde la 20261126991000, `garantias.ver`
 // (reclamos de garantía, A.2).
 const GERENCIA = [
   'adquisiciones.ver', 'almacen.ver', 'averias.ver', 'asistencia.ver', 'auditoria.ver', 'calidad.ver', 'clientes.ver', 'codigos_internos.cerrar',

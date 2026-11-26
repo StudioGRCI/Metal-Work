@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 
 /*
  * Los reclamos de garantía (plan «Las demás áreas», A.2, migración
- * 20261126951000). Todo se lee por `garantias_reclamos_visibles`, que decide
+ * 20261126991000). Todo se lee por `garantias_reclamos_visibles`, que decide
  * quién ve (Ventas, Administración, Calidad, Gerencia y el área de Garantías)
  * y trae la unidad, el cliente y la OT: quien ve el reclamo no siempre lee esas
  * tablas. También dice qué puede hacer quien pregunta en cada uno, con la misma
@@ -227,11 +227,6 @@ export async function otsParaEnlazar(reclamo: string): Promise<OtParaEnlazar[]> 
 }
 
 /**
- * Lo que la OT nueva necesita del reclamo para nacer con él (`/ordenes/nueva?reclamo=`):
- * su cliente, su unidad y lo que reclama. `null` si no existe, si quien mira no
- * lo ve o si ya no espera su OT.
- */
-/**
  * Si la base deja ver los reclamos a quien mira: los cuatro permisos, o ser del
  * área de Garantías o su responsable (`puede_ver_los_reclamos_de_garantia`).
  */
@@ -242,6 +237,11 @@ export async function puedeVerLosReclamos(): Promise<boolean> {
   return data === true
 }
 
+/**
+ * Lo que la OT nueva necesita del reclamo para nacer con él (`/ordenes/nueva?reclamo=`):
+ * su cliente, su unidad y lo que reclama. `null` si no existe, si quien mira no
+ * lo ve o si ya no espera su OT.
+ */
 export async function reclamoParaAbrirSuOt(id: string) {
   const reclamo = await cargarReclamo(id)
   if (!reclamo || !reclamo.puede_enlazar) return null
