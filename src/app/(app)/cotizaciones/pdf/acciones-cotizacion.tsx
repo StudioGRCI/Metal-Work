@@ -583,8 +583,9 @@ export function QuitarCotizacion({ id, numero }: { id: string; numero: string })
 /**
  * Ventas cancela la venta que se reabrió porque su OT pasó a otro comprador y
  * allí se anuló (StudioGRCI, 2026-11-26; migración 20261126988000). La
- * cotización queda anulada con su motivo: no se borra. Solo la ve quien la
- * registró; la base lo vuelve a comprobar.
+ * cotización queda anulada con su motivo: no se borra. La ve quien la registró
+ * y, por si esa persona ya no está, Gerencia (migración 20261126998000); la
+ * base lo vuelve a comprobar.
  *
  * Cancelada, la tarjeta sale de las vigentes: la pantalla va a «Anuladas», a
  * esa tarjeta, para que no parezca borrada; si la ida no sale (la persona ya

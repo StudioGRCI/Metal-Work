@@ -39,8 +39,16 @@ type FilaCotizacion = Funciones<'cotizaciones_para_facturar'>['Returns'][number]
  * (migración 20261126988000). Nulo: no se cerró.
  */
 export type CotizacionAprobada = FilaCotizacion & { url: string | null; paso_a_otro_comprador: (string | null)[] | null }
-/** En la bandeja de Contabilidad, `facturas` deja de ser la cuenta y trae las facturas mismas. */
-export type CotizacionParaFacturar = Omit<CotizacionAprobada, 'facturas'> & { facturas: FacturaVenta[] }
+/**
+ * En la bandeja de Contabilidad, `facturas` deja de ser la cuenta y trae las facturas mismas.
+ * `unidades_a_otro_comprador`: de una cotización de varias unidades, cuántas pasaron a otro
+ * comprador mientras otra sigue siendo de esta venta. El total no descuenta nada (la cotización
+ * guarda un solo monto): Facturación lo avisa y Contabilidad decide (migración 20261126998000).
+ */
+export type CotizacionParaFacturar = Omit<CotizacionAprobada, 'facturas'> & {
+  facturas: FacturaVenta[]
+  unidades_a_otro_comprador: { pasaron: number; unidades: number } | null
+}
 
 export const SIN_ENLACES =
   'No se pudieron preparar los enlaces temporales de los documentos. Recarga la página para volver a intentar.'
@@ -223,8 +231,13 @@ async function conCobros(filas: FilaFactura[]): Promise<FacturaVenta[]> {
  */
 export async function bandejaDeFacturacion(): Promise<CotizacionParaFacturar[]> {
   const cotizaciones = await cotizacionesAprobadas()
-  const facturas = await facturasDeVenta(cotizaciones.flatMap((c) => (c.cotizacion_id ? [c.cotizacion_id] : [])))
-  const lista = cotizaciones.map((c) => ({ ...c, facturas: facturas.filter((f) => f.cotizacion_pdf_id === c.cotizacion_id) }))
+  const ids = cotizaciones.flatMap((c) => (c.cotizacion_id ? [c.cotizacion_id] : []))
+  const [facturas, pasaron] = await Promise.all([facturasDeVenta(ids), unidadesAOtroComprador(ids)])
+  const lista = cotizaciones.map((c) => ({
+    ...c,
+    facturas: facturas.filter((f) => f.cotizacion_pdf_id === c.cotizacion_id),
+    unidades_a_otro_comprador: (c.cotizacion_id && pasaron.get(c.cotizacion_id)) || null,
+  }))
   const turno = (c: CotizacionParaFacturar) =>
     !c.codigo_interno ? 2 : c.facturas.some((f) => !f.anulada_en) ? 1 : 0
   return lista.sort((a, b) => turno(a) - turno(b))
@@ -239,6 +252,23 @@ async function ventasCerradas(ids: string[]): Promise<Map<string, (string | null
   if (error) throw error
   for (const v of data ?? []) if (v.cotizacion_id) cerradas.set(v.cotizacion_id, v.ordenes ?? [])
   return cerradas
+}
+
+/**
+ * De las cotizaciones dadas, las de varias unidades de las que alguna pasó a otro comprador y
+ * otra sigue siendo de esta venta: cuántas pasaron y de cuántas. Si no se puede leer, lanza: sin
+ * ese aviso Contabilidad facturaría el total entero sin saber que una unidad ya no es de esa venta.
+ */
+async function unidadesAOtroComprador(ids: string[]): Promise<Map<string, { pasaron: number; unidades: number }>> {
+  const mapa = new Map<string, { pasaron: number; unidades: number }>()
+  if (ids.length === 0) return mapa
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('unidades_que_pasaron_a_otro_comprador', { p_ids: ids })
+  if (error) throw new Error(`No se pudo leer qué unidades pasaron a otro comprador: ${error.message}`)
+  for (const u of data ?? []) {
+    if (u.cotizacion_id && u.pasaron && u.unidades) mapa.set(u.cotizacion_id, { pasaron: u.pasaron, unidades: u.unidades })
+  }
+  return mapa
 }
 
 /**

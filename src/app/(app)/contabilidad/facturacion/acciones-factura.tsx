@@ -41,6 +41,7 @@ export function RegistrarFactura({
   monedaCotizacion,
   totalCotizacion,
   facturado,
+  unidadesAOtroComprador = null,
 }: {
   cotizacionId: string
   numeroCotizacion: string
@@ -51,6 +52,12 @@ export function RegistrarFactura({
   totalCotizacion: number | null
   /** Lo ya facturado en la moneda de la cotización, sin las anuladas. */
   facturado: number
+  /**
+   * De una cotización de varias unidades, cuántas pasaron a otro comprador: el
+   * total es el de la cotización entera y Contabilidad decide cuánto factura
+   * (StudioGRCI, 2026-11-26). Se repite aquí, donde se escribe el monto.
+   */
+  unidadesAOtroComprador?: { pasaron: number; unidades: number } | null
 }) {
   const factura = useIdDelEnvio('factura_venta', undefined, cotizacionId)
   const [abierta, setAbierta] = useState(false)
@@ -152,6 +159,15 @@ export function RegistrarFactura({
               />
             </Campo>
           </div>
+          {/* A la vista, no detrás de la «i» del total: la ventana tapa la nota de la tarjeta. */}
+          {unidadesAOtroComprador && (
+            <p data-unidades-a-otro-comprador className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-aviso">
+              {unidadesAOtroComprador.pasaron} de sus {unidadesAOtroComprador.unidades} unidades{' '}
+              {unidadesAOtroComprador.pasaron === 1 ? 'pasó' : 'pasaron'} a otro comprador
+              {totalCotizacion !== null ? ` y el total de la cotización (${moneda(totalCotizacion, monedaCotizacion)}) es el de todas` : ''}: factura solo lo que
+              corresponde.
+            </p>
+          )}
           {pasa && totalCotizacion !== null && (
             <p role="status" className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-aviso">
               Con esta factura lo facturado llega a {moneda(conEsta, monedaCotizacion)} y la cotización es por{' '}
