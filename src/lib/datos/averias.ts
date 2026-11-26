@@ -62,6 +62,19 @@ export type Averia = {
   /** Desde cuándo está parado el equipo por este reporte, si lo sigue: para proponer las horas al cerrar. */
   equipo_parado_desde: string | null
   rq_enlazados: number
+  /**
+   * Si quien mira dice si quedó bien (`averias_puede_confirmar`): quien la
+   * reportó; si ya no tiene cuenta activa, el responsable del área o Mantenimiento.
+   */
+  puede_confirmar: boolean
+  /** Si la cuenta de quien la reportó sigue activa. */
+  reporto_activo: boolean
+  /** Quién la confirmó, si no fue quien la reportó (ya no tenía cuenta). */
+  confirmo_en_lugar: string | null
+  /** Quién dijo la última vez que no quedó bien, si no fue quien la reportó. */
+  devolvio_en_lugar: string | null
+  /** El número de la avería del mismo equipo cerrada en los 30 días antes de esta: esta la repite. */
+  repite_a: string | null
 }
 
 type Fila = { [K in keyof Averia]: Averia[K] | null } & { area_id: string | null }
@@ -111,6 +124,12 @@ function aAveria(f: Fila): Averia | null {
     paro_al_reportar: f.paro_al_reportar === true,
     equipo_parado_desde: f.equipo_parado_desde,
     rq_enlazados: f.rq_enlazados ?? 0,
+    puede_confirmar: f.puede_confirmar === true,
+    // Sin el dato (una base de antes de la 16.4), se da por activa: es lo que pasaba antes.
+    reporto_activo: f.reporto_activo !== false,
+    confirmo_en_lugar: f.confirmo_en_lugar,
+    devolvio_en_lugar: f.devolvio_en_lugar,
+    repite_a: f.repite_a,
   }
 }
 
@@ -139,6 +158,22 @@ export async function listarAverias(): Promise<{ averias: Averia[]; alTope: bool
     .flatMap((f) => aAveria(f) ?? [])
     .sort((a, b) => b.creado_en.localeCompare(a.creado_en) || b.numero.localeCompare(a.numero))
   return { averias: filas, alTope: (terminadas.data ?? []).length >= MAXIMO_AVERIAS }
+}
+
+/**
+ * Los reportes de un equipo que ve quien pregunta, del más reciente al más
+ * viejo, para su historia (Plan 16.4). Cada quien ve los que ya veía: las cifras
+ * del equipo las da `equipos_historia`, que los cuenta todos.
+ */
+export async function averiasDelEquipo(equipo: string): Promise<Averia[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .rpc('averias_visibles', { p_id: null })
+    .eq('equipo_id', equipo)
+    .order('creado_en', { ascending: false })
+    .order('numero', { ascending: false })
+  if (error) throw new Error(`No se pudieron leer los reportes del equipo: ${error.message}`)
+  return ((data ?? []) as Fila[]).flatMap((f) => aAveria(f) ?? [])
 }
 
 /** Una foto del reporte, con su enlace firmado por una hora. */

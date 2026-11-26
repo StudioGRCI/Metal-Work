@@ -1,3 +1,5 @@
+import Link from 'next/link'
+
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Paginacion } from '@/components/estructura/paginacion'
@@ -11,8 +13,11 @@ import {
   codigosQueSiguen,
   contarEquipos,
   EQUIPOS_POR_PAGINA,
+  historiaDeEquipos,
   listarEquipos,
+  nombresDeEquipos,
 } from '@/lib/datos/equipos'
+import { losQueMasFallan } from '@/lib/dominio/averias'
 import { palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { cuantosEquipos, ESTADO_EQUIPO, FILTRO_DE_ESTADO } from '@/lib/dominio/equipos'
 import { paginaPedida } from '@/lib/dominio/paginas'
@@ -20,6 +25,7 @@ import { fecha } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { AccionesEquipo, AvisoDelPadron, CategoriasDeEquipo, NuevoEquipo } from './formulario'
+import { LecturaDeEquipos } from './lectura'
 
 export const metadata = { title: 'Equipos' }
 
@@ -59,6 +65,16 @@ export default async function PaginaEquipos({ searchParams }: PageProps<'/equipo
 
   const conFiltro = Boolean(busqueda || (!deBaja && (estado || categoria)))
 
+  // La lectura de Gerencia (Plan 16.4), arriba del padrón sin filtros: los
+  // parados hoy y los que más fallan. La historia la cuenta la base.
+  const conLectura = !deBaja && !conFiltro && cuenta.enUso > 0
+  const [historia, parados] = conLectura
+    ? await Promise.all([historiaDeEquipos(), cuenta.porEstado.PARADO > 0 ? listarEquipos({ estado: 'PARADO' }) : null])
+    : [null, null]
+  const nombres = historia
+    ? await nombresDeEquipos(losQueMasFallan([...historia.entries()].map(([id, h]) => ({ id, ...h }))).map((f) => f.id))
+    : null
+
   const resumen = deBaja
     ? `${cuantosEquipos(cuenta.deBaja)} ${cuenta.deBaja === 1 ? 'dado' : 'dados'} de baja`
     : cuenta.enUso === 0
@@ -89,6 +105,9 @@ export default async function PaginaEquipos({ searchParams }: PageProps<'/equipo
       />
 
       {(gestiona || asigna) && <AvisoDelPadron />}
+      {historia && nombres && (
+        <LecturaDeEquipos parados={parados?.equipos ?? []} totalParados={parados?.total ?? 0} historia={historia} nombres={nombres} />
+      )}
       <div className="space-y-3">
         <BuscadorSimple ruta="/equipos" etiqueta="Buscar equipos" marcador="Código, nombre, marca o serie" />
         {(cuenta.deBaja > 0 || deBaja) && (
@@ -197,11 +216,14 @@ export default async function PaginaEquipos({ searchParams }: PageProps<'/equipo
                 return (
                   <TR key={e.id}>
                     <TD>
-                      <p className="font-medium text-texto">
-                        <span className="tabular">{e.codigo}</span>
-                        <span className="font-normal text-texto-suave"> · </span>
-                        {e.descripcion}
-                      </p>
+                      {/* El código lleva a su historia: averías, tiempo parado y repetidas. */}
+                      <Link href={`/equipos/${e.id}`} className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0">
+                        <span>
+                          <span className="tabular">{e.codigo}</span>
+                          <span className="font-normal text-texto-suave"> · </span>
+                          {e.descripcion}
+                        </span>
+                      </Link>
                       {(e.marca || series) && <p className="text-xs text-texto-suave">{[e.marca, series].filter(Boolean).join(' · ')}</p>}
                       <p className="text-xs text-texto-suave md:hidden">{[e.categoria?.nombre, donde].filter(Boolean).join(' · ')}</p>
                       {e.a_cargo_de && <p className="text-xs text-texto-suave lg:hidden">A cargo de {e.a_cargo_de}</p>}

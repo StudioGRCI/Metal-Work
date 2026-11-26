@@ -1102,13 +1102,17 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
     contar: () =>
       cabeza(supabase.from('averias').select('id', { count: 'exact', head: true }).in('estado', ['REPORTADA', 'EN_ATENCION'])),
   })
+  // A quién le toca lo dice la base (`puede_confirmar`), con la regla de la
+  // función que confirma: quien la reportó o, si ya no tiene cuenta, el
+  // responsable del área o Mantenimiento (Plan 16.4).
   tareas.push({
     clave: 'averias_por_confirmar', ruta: '/averias', tono: 'aviso',
-    texto: n => plural(n, 'avería que reportaste espera que digas si quedó bien', 'averías que reportaste esperan que digas si quedaron bien'),
-    contar: () =>
-      cabeza(
-        supabase.from('averias').select('id', { count: 'exact', head: true }).eq('estado', 'CERRADA').eq('registrado_por', perfil.id),
-      ),
+    texto: n => plural(n, 'avería cerrada espera que digas si quedó bien', 'averías cerradas esperan que digas si quedaron bien'),
+    contar: async () => {
+      const { data, error } = await supabase.rpc('averias_visibles', { p_id: null }).select('id').eq('estado', 'CERRADA').eq('puede_confirmar', true)
+      if (error) throw new Error('No se pudo consultar el pendiente.')
+      return (data ?? []).length
+    },
   })
 
   // Calidad (A.1): al área, lo que Calidad le observó y espera su corrección; a

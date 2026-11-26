@@ -213,14 +213,22 @@ const PASOS_DE_LA_AVERIA: Record<string, Frases> = {
   },
   // Lo que dijo quien la reportó: la ficha muestra solo la última vez.
   REAPERTURA: { hecho: 'No quedó bien: volvió a Mantenimiento', falta: 'Reapertura', nota: (t) => (t ? `«${t}»` : null) },
-  CONFIRMACION: { hecho: 'Quien la reportó confirmó que quedó bien', falta: 'Quien la reportó confirma que quedó bien' },
+  CONFIRMACION: {
+    // Si quien la reportó ya no tenía cuenta, la confirmó otra persona (DKS, 2026-11-26): el puesto dice quién.
+    hecho: (d) => (d === 'EN_LUGAR' ? 'Confirmó que quedó bien, en lugar de quien la reportó' : 'Quien la reportó confirmó que quedó bien'),
+    falta: 'Quien la reportó confirma que quedó bien',
+    nota: (d) => (d === 'EN_LUGAR' ? 'Quien la reportó ya no tenía cuenta activa.' : null),
+  },
   ANULACION: { hecho: 'Anulada por Mantenimiento', falta: 'Anulación' },
 }
 
 const ESPERAS_DE_LA_AVERIA: Record<string, (detalle: string | null) => string> = {
   ATENCION: () => 'La revisa y anota qué tiene.',
   CIERRE: () => 'La arregla y la cierra con el trabajo hecho y las horas parado.',
-  CONFIRMACION: () => 'Prueba el equipo y dice si quedó bien.',
+  CONFIRMACION: (d) =>
+    d === 'SIN_CUENTA'
+      ? 'Quien la reportó ya no tiene cuenta activa: prueba el equipo y dice si quedó bien.'
+      : 'Prueba el equipo y dice si quedó bien.',
 }
 
 function describir(
@@ -429,4 +437,7 @@ export const describirRecorridoDeLaPlanilla = (pasos: readonly PasoDelRecorrido[
 
 /** El recorrido de un reporte de avería, en palabras. */
 export const describirRecorridoDeLaAveria = (pasos: readonly PasoDelRecorrido[]) =>
-  describir(pasos, PASOS_DE_LA_AVERIA, ESPERAS_DE_LA_AVERIA)
+  describir(pasos, PASOS_DE_LA_AVERIA, ESPERAS_DE_LA_AVERIA).map((p) =>
+    // Sin la cuenta de quien la reportó, la confirma otra persona: el título no la nombra.
+    p.situacion === 'AHORA' && p.paso === 'CONFIRMACION' && p.detalle === 'SIN_CUENTA' ? { ...p, titulo: 'Confirmación: si quedó bien' } : p,
+  )

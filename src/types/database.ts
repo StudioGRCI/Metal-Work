@@ -13702,6 +13702,14 @@ export type Database = {
         }
         Returns: boolean
       }
+      averia_que_repite: {
+        Args: {
+          p_equipo: string | null
+          p_averia: string | null
+          p_creado: string | null
+        }
+        Returns: string
+      }
       averias_a_quien_se_aviso: {
         Args: {
           p_averia: string | null
@@ -13757,6 +13765,7 @@ export type Database = {
           sigue_parado_por: string | null
           avisada: boolean | null
           equipo_estado: string | null
+          confirma: string | null
         }[]
       }
       averias_confirmar: {
@@ -13805,6 +13814,13 @@ export type Database = {
       averias_foto_anotada: {
         Args: {
           p_ruta: string | null
+        }
+        Returns: boolean
+      }
+      averias_puede_confirmar: {
+        Args: {
+          p_registrado_por: string | null
+          p_area: string | null
         }
         Returns: boolean
       }
@@ -13928,6 +13944,11 @@ export type Database = {
           rq_enlazados: number | null
           diagnostico_de: string | null
           diagnostico_en: string | null
+          puede_confirmar: boolean | null
+          reporto_activo: boolean | null
+          confirmo_en_lugar: string | null
+          devolvio_en_lugar: string | null
+          repite_a: string | null
         }[]
       }
       avisar_a_diseno: {
@@ -14873,6 +14894,21 @@ export type Database = {
           unidad: string | null
         }[]
       }
+      codigo_interno_lo_vendido: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          cotizacion_id: string | null
+          numero: string | null
+          moneda: string | null
+          monto_venta: number | null
+          incluye_igv: boolean | null
+          facturas: number | null
+          facturado_en_su_moneda: number | null
+          en_otra_moneda: boolean | null
+        }[]
+      }
       codigo_interno_materiales: {
         Args: {
           p_codigo: string | null
@@ -14947,21 +14983,6 @@ export type Database = {
           subido_en: string | null
           recibido_en: string | null
           recibido_por_area: string | null
-        }[]
-      }
-      codigo_interno_lo_vendido: {
-        Args: {
-          p_codigo: string | null
-        }
-        Returns: {
-          cotizacion_id: string | null
-          numero: string | null
-          moneda: string | null
-          monto_venta: number | null
-          incluye_igv: boolean | null
-          facturas: number | null
-          facturado_en_su_moneda: number | null
-          en_otra_moneda: boolean | null
         }[]
       }
       codigo_interno_recorrido: {
@@ -15234,6 +15255,10 @@ export type Database = {
           p_cuenta: string | null
         }
         Returns: null
+      }
+      completar_monto_pen_de_servicios: {
+        Args: Record<PropertyKey, never>
+        Returns: number
       }
       compra_pagada_fuera_de_la_factura: {
         Args: {
@@ -16241,6 +16266,25 @@ export type Database = {
         Returns: {
           categoria_id: string | null
           codigo: string | null
+        }[]
+      }
+      equipos_historia: {
+        Args: {
+          p_equipo: string | null
+        }
+        Returns: {
+          equipo_id: string | null
+          averias: number | null
+          averias_90: number | null
+          repetidas: number | null
+          repetidas_90: number | null
+          no_quedo_bien: number | null
+          horas_parado: number | null
+          horas_parado_90: number | null
+          abiertas: number | null
+          parado_por: string | null
+          parado_desde: string | null
+          ultima_en: string | null
         }[]
       }
       es_admin: {
@@ -18089,6 +18133,14 @@ export type Database = {
           p_etapa_id: string | null
         }
         Returns: null
+      }
+      recalcular_monto_pen_de_servicios: {
+        Args: {
+          p_fecha: string | null
+          p_venta_vieja: number | null
+          p_venta_nueva: number | null
+        }
+        Returns: number
       }
       rechazar_compra: {
         Args: {

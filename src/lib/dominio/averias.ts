@@ -124,3 +124,32 @@ export function aQuienSeAviso(
   }
   return texto
 }
+
+/**
+ * Cuánto lleva parado un equipo, dicho como se habla: «5 horas» o, desde dos
+ * días, «3 días» (días cumplidos). Para la lectura de Gerencia y la ficha del equipo.
+ */
+export function tiempoParado(horasParado: number): string {
+  if (horasParado >= 48) {
+    const dias = Math.floor(horasParado / 24)
+    return `${dias} días`
+  }
+  const redondo = Math.round(horasParado * 2) / 2
+  // «Lleva 0 horas parado» se leía como que no está parado.
+  return redondo < 1 ? 'menos de una hora' : horas(redondo)
+}
+
+/** Lo que hace falta de la historia de un equipo para saber cuánto falla. */
+export type FallasDelEquipo = { averias90: number; horasParado90: number; repetidas90: number }
+
+/**
+ * Los equipos que más fallan (DKS: «los que más fallan»): los de los últimos 90
+ * días, primero el que tuvo más averías; entre iguales, el que estuvo más horas
+ * parado y, después, el que más repitió. Los que no fallaron no entran.
+ */
+export function losQueMasFallan<T extends FallasDelEquipo>(equipos: readonly T[], cuantos = 5): T[] {
+  return equipos
+    .filter((e) => e.averias90 > 0)
+    .sort((a, b) => b.averias90 - a.averias90 || b.horasParado90 - a.horasParado90 || b.repetidas90 - a.repetidas90)
+    .slice(0, cuantos)
+}

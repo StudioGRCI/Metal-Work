@@ -167,3 +167,89 @@ export async function codigosQueSiguen(): Promise<Record<string, string>> {
   if (error) throw new Error(`No se pudo leer el código que sigue de cada categoría: ${error.message}`)
   return Object.fromEntries((data ?? []).flatMap((f) => (f.codigo ? [[f.categoria_id, f.codigo]] : [])))
 }
+
+/**
+ * La historia de un equipo (Plan 16.4, `equipos_historia`): las averías sin las
+ * anuladas, las repetidas, las veces que no quedó bien y las horas parado que
+ * anotó Mantenimiento al cerrar, en total y en los últimos 90 días; y el reporte
+ * que lo tiene parado hoy. Las cuenta la base, todas, para quien ve el padrón.
+ */
+export type HistoriaDeEquipo = {
+  averias: number
+  averias90: number
+  repetidas: number
+  repetidas90: number
+  noQuedoBien: number
+  horasParado: number
+  horasParado90: number
+  abiertas: number
+  /** El número del reporte que tiene parado el equipo ahora, si lo hay. */
+  paradoPor: string | null
+  paradoDesde: string | null
+  ultimaEn: string | null
+}
+
+type FilaHistoria = {
+  equipo_id: string | null
+  averias: number | null
+  averias_90: number | null
+  repetidas: number | null
+  repetidas_90: number | null
+  no_quedo_bien: number | null
+  horas_parado: number | null
+  horas_parado_90: number | null
+  abiertas: number | null
+  parado_por: string | null
+  parado_desde: string | null
+  ultima_en: string | null
+}
+
+function aHistoria(f: FilaHistoria): HistoriaDeEquipo {
+  return {
+    averias: f.averias ?? 0,
+    averias90: f.averias_90 ?? 0,
+    repetidas: f.repetidas ?? 0,
+    repetidas90: f.repetidas_90 ?? 0,
+    noQuedoBien: f.no_quedo_bien ?? 0,
+    horasParado: Number(f.horas_parado ?? 0),
+    horasParado90: Number(f.horas_parado_90 ?? 0),
+    abiertas: f.abiertas ?? 0,
+    paradoPor: f.parado_por,
+    paradoDesde: f.parado_desde,
+    ultimaEn: f.ultima_en,
+  }
+}
+
+/** La historia de todos los equipos en uso, por id. */
+export async function historiaDeEquipos(): Promise<Map<string, HistoriaDeEquipo>> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('equipos_historia', { p_equipo: null })
+  if (error) throw new Error(`No se pudo leer la historia de los equipos: ${error.message}`)
+  return new Map(((data ?? []) as FilaHistoria[]).flatMap((f) => (f.equipo_id ? [[f.equipo_id, aHistoria(f)] as const] : [])))
+}
+
+/** La historia de un equipo, también si está dado de baja. */
+export async function historiaDeEquipo(id: string): Promise<HistoriaDeEquipo | null> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('equipos_historia', { p_equipo: id })
+  if (error) throw new Error(`No se pudo leer la historia del equipo: ${error.message}`)
+  const fila = ((data ?? []) as FilaHistoria[])[0]
+  return fila ? aHistoria(fila) : null
+}
+
+/** Un equipo del padrón, en uso o dado de baja; `null` si no existe o quien mira no ve el padrón. */
+export async function cargarEquipo(id: string): Promise<Equipo | null> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('equipos').select(COLUMNAS).eq('id', id).maybeSingle()
+  if (error) throw new Error(`No se pudo leer el equipo: ${error.message}`)
+  return (data as Equipo | null) ?? null
+}
+
+/** Código y nombre de unos equipos, para nombrarlos en la lectura de Gerencia. */
+export async function nombresDeEquipos(ids: string[]): Promise<Map<string, { codigo: string; descripcion: string }>> {
+  if (ids.length === 0) return new Map()
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('equipos').select('id, codigo, descripcion').in('id', ids)
+  if (error) throw new Error(`No se pudieron leer los equipos: ${error.message}`)
+  return new Map((data ?? []).map((e) => [e.id, { codigo: e.codigo, descripcion: e.descripcion }]))
+}

@@ -54,8 +54,9 @@ export default async function PaginaAveria({ params }: PageProps<'/averias/[id]'
   const atiende = puede(perfil, 'averias.atender')
   const enAtencion = a.estado === 'EN_ATENCION'
   const vigenteParaMantenimiento = a.estado === 'REPORTADA' || enAtencion
-  // Solo quien la reportó confirma; la base lo vuelve a mirar.
-  const confirma = a.es_mia && a.estado === 'CERRADA'
+  // Quien la reportó confirma; si ya no tiene cuenta, el responsable del área o
+  // Mantenimiento. Lo dice la base (`puede_confirmar`), con la regla de la función que confirma.
+  const confirma = a.puede_confirmar && a.estado === 'CERRADA'
   const opcionesRq = atiende && enAtencion ? await rqParaEnlazar() : []
 
   const tipo = TIPO_AVERIA[a.tipo]
@@ -63,17 +64,21 @@ export default async function PaginaAveria({ params }: PageProps<'/averias/[id]'
   const anulada = a.estado === 'ANULADA'
   const estadoEquipo = ESTADO_EQUIPO[a.equipo_estado as EstadoEquipo]
   const veTodo = puede(perfil, ['averias.atender', 'averias.ver'])
+  // Quien ve el padrón abre la historia del equipo (los mismos permisos que /equipos).
+  const veEquipos = puede(perfil, ['equipos.ver', 'equipos.gestionar', 'equipos.asignar'])
 
   const acciones = (
     <>
-      {confirma && <ConfirmarAveria id={a.id} numero={a.numero} detieneElTrabajo={a.detiene_trabajo} />}
+      {confirma && (
+        <ConfirmarAveria id={a.id} numero={a.numero} detieneElTrabajo={a.detiene_trabajo} enLugarDe={a.es_mia ? null : a.reporto} />
+      )}
       {atiende && enAtencion && (
         <CerrarAveria
           id={a.id}
           numero={a.numero}
           horasSugeridas={horasParadoSugeridas(a.equipo_parado_desde)}
           dejaOperativo={a.equipo_parado_desde != null}
-          avisaAQuienReporto={!a.es_mia}
+          confirmaQuien={a.es_mia ? 'YO' : a.reporto_activo ? 'QUIEN_REPORTO' : 'OTRO'}
         />
       )}
       {atiende && vigenteParaMantenimiento && <AtenderAveria id={a.id} numero={a.numero} diagnostico={a.diagnostico} />}
@@ -121,7 +126,16 @@ export default async function PaginaAveria({ params }: PageProps<'/averias/[id]'
               </Dato>
               <Dato titulo="Cómo va">{estado ? <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia> : a.estado}</Dato>
               <Dato titulo="Equipo">
-                {a.equipo_codigo} · {a.equipo_descripcion}
+                {veEquipos ? (
+                  <Link href={`/equipos/${a.equipo_id}`} className="text-acento hover:underline" data-historia-del-equipo>
+                    {a.equipo_codigo} · {a.equipo_descripcion}
+                  </Link>
+                ) : (
+                  <>
+                    {a.equipo_codigo} · {a.equipo_descripcion}
+                  </>
+                )}
+                {a.repite_a && <span className="block text-xs text-aviso">Repite la {a.repite_a}, cerrada menos de 30 días antes</span>}
               </Dato>
               {(a.area || a.equipo_ubicacion) && <Dato titulo="Dónde">{[a.area, a.equipo_ubicacion].filter(Boolean).join(' · ')}</Dato>}
               <Dato titulo="El equipo hoy">{estadoEquipo ? <Insignia tono={estadoEquipo.tono}>{estadoEquipo.etiqueta}</Insignia> : a.equipo_estado}</Dato>
@@ -203,7 +217,11 @@ function QuienLaTiene({ averia: a, atiende }: { averia: DetalleAveria; atiende: 
   } else if (a.estado === 'CERRADA') {
     texto = a.es_mia
       ? 'Mantenimiento la cerró. Prueba el equipo y toca «¿Quedó bien?».'
-      : 'Mantenimiento la cerró: espera que quien la reportó confirme si quedó bien.'
+      : a.puede_confirmar
+        ? 'Mantenimiento la cerró y quien la reportó ya no tiene cuenta: te toca a ti. Prueba el equipo y toca «¿Quedó bien?».'
+        : a.reporto_activo
+          ? 'Mantenimiento la cerró: espera que quien la reportó confirme si quedó bien.'
+          : 'Mantenimiento la cerró y quien la reportó ya no tiene cuenta: la confirma el responsable del área o Mantenimiento.'
   }
   if (!texto) return null
   return (
@@ -215,7 +233,7 @@ function QuienLaTiene({ averia: a, atiende }: { averia: DetalleAveria; atiende: 
       <DiasEnEspera
         dias={a.dias_en_espera}
         desde={a.espera_desde}
-        quien={a.espera_de === 'QUIEN_REPORTO' ? 'quien la reportó' : 'Mantenimiento'}
+        quien={a.espera_de === 'QUIEN_REPORTO' ? (a.reporto_activo ? 'quien la reportó' : 'el responsable del área o Mantenimiento') : 'Mantenimiento'}
       />
     </div>
   )
@@ -249,7 +267,8 @@ function Atencion({
         {a.veces_reabierta > 0 && a.estado === 'EN_ATENCION' && a.nota_de_quien_reporto && (
           <div className="rounded-[var(--radius-base)] border border-aviso/40 bg-aviso-suave px-3 py-2 text-sm" data-no-quedo-bien>
             <p className="font-medium text-texto">
-              No quedó bien{a.veces_reabierta > 1 ? ` (${a.veces_reabierta} veces)` : ''}: lo dijo quien la reportó
+              No quedó bien{a.veces_reabierta > 1 ? ` (${a.veces_reabierta} veces)` : ''}:{' '}
+              {a.devolvio_en_lugar ? `lo dijo ${a.devolvio_en_lugar}, en lugar de quien la reportó` : 'lo dijo quien la reportó'}
             </p>
             <p className="mt-0.5 whitespace-pre-wrap text-texto">{a.nota_de_quien_reporto}</p>
           </div>
@@ -304,7 +323,10 @@ function Atencion({
         )}
 
         {a.estado === 'CONFIRMADA' && (
-          <Bloque titulo="Quien la reportó confirmó que quedó bien" pie={[a.confirmada_en ? fechaHora(a.confirmada_en) : null]}>
+          <Bloque
+            titulo={a.confirmo_en_lugar ? `${a.confirmo_en_lugar} confirmó que quedó bien, en lugar de quien la reportó` : 'Quien la reportó confirmó que quedó bien'}
+            pie={[a.confirmada_en ? fechaHora(a.confirmada_en) : null]}
+          >
             {a.nota_de_quien_reporto ?? 'Sin nota.'}
           </Bloque>
         )}
