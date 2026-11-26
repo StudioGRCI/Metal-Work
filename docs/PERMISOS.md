@@ -392,7 +392,7 @@ administrador; se anula con motivo, quién y cuándo, y queda congelado.
 | --- | --- | --- |
 | Reportar una avería o una posible avería, con hasta 4 fotos | ninguno: cualquier cuenta activa (`averias_reportar`, la única puerta; la tabla no tiene `grant insert`) | Todos los puestos. «Reportar avería» está en el menú de todos |
 | Buscar el equipo al reportar | ninguno (`averias_equipos_para_elegir`, solo los activos y sin «a cargo de») | Todos |
-| Ver un reporte, sus fotos y su recorrido | `averias.atender` o `averias.ver` ven todos; los demás, los que reportaron y los de los equipos de su área (política `ver_averias`, `averias_visibles`, bucket `fotos-averias`). El área es la del equipo al reportar, y la de la cuenta, la de `usuarios.area_id` | Mantenimiento y Gerencia, todos; cada persona, lo suyo y lo de su área |
+| Ver un reporte, sus fotos y su recorrido | `averias.atender` o `averias.ver` ven todos; `ssoma.gestionar`, los que son un riesgo para las personas; los demás, los que reportaron y los de los equipos de su área (política `ver_averias`, `averias_visibles`, `recorrido_de_averias`, bucket `fotos-averias`). El área es la del equipo al reportar; las de la cuenta, la de `usuarios.area_id` y las que tiene a cargo como responsable (`areas.jefe_id`), aunque trabaje en otra: el aviso le llega y lo tiene que poder abrir | Mantenimiento y Gerencia, todos; SSOMA, los de riesgo; cada persona, lo suyo, lo de su área y lo del área que tiene a cargo |
 | Anular un reporte mal hecho, con motivo de 10 a 500 letras | `averias.atender` (`averias_anular`; la pantalla pide el mismo) | Mantenimiento |
 
 - **A quién avisa la campana:** a quien tiene `averias.atender` (Mantenimiento);
@@ -405,7 +405,8 @@ administrador; se anula con motivo, quién y cuándo, y queda congelado.
   con el número en su nota, si no lo estaba ya. La posible avería y la que no
   detiene no cambian su estado. Si Mantenimiento anula el reporte y el equipo
   sigue parado por él (mismo `estado_desde`), vuelve a como estaba; si alguien
-  ya lo cambió, no se toca.
+  ya lo cambió, no se toca; y si otro reporte vigente del mismo equipo dice que
+  detiene el trabajo, sigue parado.
 - **El mismo envío repetido no entra dos veces:** el reporte lleva el id del
   envío (`mismo_envio`, `REPORTE_AVERIA`); tres toques dan un reporte y una
   anulación repetida contesta lo mismo.
