@@ -93,7 +93,7 @@ test('la OS en otra moneda sin su factura: la factura va primero con su porqué,
   const r = faltaDelServicio(servicio({ conComprobante: false, saldoDetraccion: 30, cambioSinFactura: true }))
   assert.deepEqual(quien(r), ['Logística', 'Tesorería', 'Tesorería'])
   assert.match(r[0].que, /^la factura del proveedor, adjunta a la OS con su fecha de emisión: el tipo de cambio de ese día/)
-  assert.match(r[1].que, /queda con el tipo de cambio del día en que se emitió la OS$/)
+  assert.match(r[1].que, /queda con el tipo de cambio con que se emitió la OS$/)
   // Con un recibo adjunto la factura sigue faltando: es la que trae la fecha del cambio.
   assert.equal(faltaDelServicio(servicio({ cambioSinFactura: true })).length, 2)
   // La factura que se adjuntó sin fecha no «falta»: se pide adjuntarla de nuevo con su fecha.

@@ -55,9 +55,10 @@ export type DetraccionDeServicio = {
    */
   origen_del_cambio?: OrigenDelCambio | null
   /**
-   * Con el día de su factura (`FACTURA`), el día del cambio registrado que lleva de verdad: es
-   * anterior al de la factura mientras el de ese día no se registre (la factura de hoy llega antes
-   * que el cambio de hoy). Null o ausente: no se leyó.
+   * El día del cambio registrado del que sale de verdad su monto en soles. Con factura es anterior
+   * al de la factura mientras el de ese día no se registre (la factura de hoy llega antes que el
+   * cambio de hoy); sin factura es el último que había al emitirla, que puede no ser el de su día.
+   * Null o ausente: no se leyó, o no sale de ninguno de los que se leyeron.
    */
   cambio_registrado_el?: string | null
 }
@@ -76,7 +77,7 @@ export function diaDelCambio(d: Pick<DetraccionDeServicio, 'dia_del_cambio' | 'o
  */
 export function cambioDeLaVispera(d: Pick<DetraccionDeServicio, 'dia_del_cambio' | 'origen_del_cambio' | 'cambio_registrado_el'>): { usado: string; factura: string } | null {
   if (d.origen_del_cambio !== 'FACTURA' || !d.dia_del_cambio || !d.cambio_registrado_el) return null
-  if (d.cambio_registrado_el === d.dia_del_cambio.slice(0, 10)) return null
+  if (d.cambio_registrado_el === d.dia_del_cambio) return null
   return { usado: fecha(d.cambio_registrado_el), factura: fecha(d.dia_del_cambio) }
 }
 
@@ -88,6 +89,13 @@ export function cambioDeLaVispera(d: Pick<DetraccionDeServicio, 'dia_del_cambio'
 function conQueCambio(d: DetraccionDeServicio): string {
   if (!d.dia_del_cambio || !d.origen_del_cambio) return ''
   const dia = `con el tipo de cambio del ${fecha(d.dia_del_cambio)}`
+  // La OS sin factura se emitió con el último cambio que había: se nombra ese día, no el suyo, y
+  // si no se sabe cuál fue no se nombra ninguno (decía «del 26/11» con la cifra del 25/11).
+  const alEmitir = !d.cambio_registrado_el
+    ? 'con el tipo de cambio con que se emitió'
+    : d.cambio_registrado_el === d.dia_del_cambio
+      ? `${dia}, el día en que se emitió`
+      : `con el tipo de cambio del ${fecha(d.cambio_registrado_el)}, el último registrado cuando se emitió`
   if (d.origen_del_cambio === 'FACTURA') {
     // El cambio del día de la factura todavía no está: va con el último registrado, y se dice cuál.
     const vispera = cambioDeLaVispera(d)
@@ -96,14 +104,14 @@ function conQueCambio(d: DetraccionDeServicio): string {
   // Lo que fija el cambio es el depósito de la detracción o el pago que canceló la OS: la que no
   // deposita nada (no pasa del mínimo) solo pudo quedar fija por estar pagada.
   const fija = d.monto === null ? 'la orden ya estaba pagada' : 'su detracción ya estaba depositada'
-  if (d.origen_del_cambio === 'DEPOSITADA_ANTES') return ` · ${dia}, el día en que se emitió: ${fija} cuando llegó su factura`
+  if (d.origen_del_cambio === 'DEPOSITADA_ANTES') return ` · ${alEmitir}: ${fija} cuando llegó su factura`
   // La factura de ese día ya no es la vigente: nombrarla como «su factura» apuntaba a una anulada.
   if (d.origen_del_cambio === 'DEPOSITADA_CON_OTRA') return ` · ${dia}: ${fija} cuando se anuló o se cambió su factura`
   if (d.origen_del_cambio === 'DEPOSITADA_CON_OTRO_CAMBIO') {
     return ` · con el tipo de cambio que había cuando ${d.monto === null ? 'se pagó la orden' : 'se depositó su detracción'}, no el que hoy tiene el ${fecha(d.dia_del_cambio)}, la fecha de su factura`
   }
-  if (d.origen_del_cambio === 'FACTURA_SIN_FECHA') return ` · ${dia}, el día en que se emitió: su factura se adjuntó sin fecha de emisión`
-  return ` · ${dia}, el día en que se emitió: falta su factura`
+  if (d.origen_del_cambio === 'FACTURA_SIN_FECHA') return ` · ${alEmitir}: su factura se adjuntó sin fecha de emisión`
+  return ` · ${alEmitir}: falta su factura`
 }
 
 /** Lo que la OS dice de su detracción, en una línea y su detalle. */

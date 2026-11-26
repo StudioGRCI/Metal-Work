@@ -186,7 +186,7 @@ export function AdjuntarDocumentoServicio({
                 htmlFor={campo('fecha-emision')}
                 requerido
                 error={deLaFecha ?? undefined}
-                ayuda="La que dice la factura. La orden toma el tipo de cambio de ese día para su monto en soles y su detracción, salvo que la detracción ya esté depositada."
+                ayuda="La que dice la factura. La orden toma el tipo de cambio de ese día para su monto en soles y su detracción, salvo que la detracción ya esté depositada o la orden ya esté pagada."
               >
                 <Entrada id={campo('fecha-emision')} name="fecha_emision" type="date" required max={hoyLima()} className="tabular" />
               </Campo>
@@ -251,7 +251,7 @@ function AnularDocumentoServicio({
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo={`Anular ${etiqueta}`}
-        descripcion={`No se borra: queda con su archivo, el motivo, quién y cuándo, y deja de contar para el pago.${mueveElCambio ? ' La orden vuelve al tipo de cambio del día en que se emitió, salvo que su detracción ya esté depositada.' : ''}`}
+        descripcion={`No se borra: queda con su archivo, el motivo, quién y cuándo, y deja de contar para el pago.${mueveElCambio ? ' La orden vuelve al tipo de cambio del día en que se emitió, salvo que su detracción ya esté depositada o la orden ya esté pagada.' : ''}`}
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">

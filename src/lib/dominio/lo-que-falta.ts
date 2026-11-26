@@ -142,7 +142,7 @@ export function faltaDelServicio(s: {
   cambioDel?: string | null
   /**
    * Está en otra moneda, lleva detracción y todavía no tiene su factura: el monto en soles y la
-   * detracción salen del tipo de cambio del día en que se emitió, y la fecha de la factura los cambia
+   * detracción salen del tipo de cambio con que se emitió, y la fecha de la factura los cambia
    * mientras la detracción no esté depositada (20261126947000). Quien la deposita antes lo tiene que saber.
    */
   cambioSinFactura?: boolean
@@ -196,7 +196,7 @@ export function faltaDelServicio(s: {
       // Sin la factura el depósito sale con el cambio del día en que se emitió, y lo deja fijo.
       que:
         s.cambioSinFactura || s.facturaSinFecha
-          ? 'depositar la detracción en el Banco de la Nación, con su constancia: si la depositas antes de que llegue la factura con su fecha, queda con el tipo de cambio del día en que se emitió la OS'
+          ? 'depositar la detracción en el Banco de la Nación, con su constancia: si la depositas antes de que llegue la factura con su fecha, queda con el tipo de cambio con que se emitió la OS'
           : s.cambioDeLaVispera
             ? `depositar la detracción en el Banco de la Nación, con su constancia: el tipo de cambio del ${s.cambioDeLaVispera.factura}, la fecha de su factura, todavía no está registrado; si la depositas ahora, queda con el del ${s.cambioDeLaVispera.usado}`
             : 'depositar la detracción en el Banco de la Nación, con su constancia',

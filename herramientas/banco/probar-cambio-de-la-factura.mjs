@@ -13,7 +13,10 @@
  *      cambio registrado: la OS queda sin monto en soles.
  *   4. La OS en soles no pide fecha.
  *   5. Tesorería ve de qué día falta el cambio y que es el de la factura.
- *   6. Ventas no entra.
+ *   6. La factura de un día cuyo cambio todavía no está: la OS va con el último
+ *      registrado; Contabilidad registra el de ese día con su pantalla y la OS
+ *      lo toma sola.
+ *   7. Ventas no entra.
  *
  * Cada corrida emite sus propias OS: se puede repetir. Solo en el banco.
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), BANCO_BASE (mw_demo),
@@ -73,8 +76,8 @@ async function como(cuenta, sql, v = []) {
 }
 
 // 1. La siembra ---------------------------------------------------------------
-const [{ hoy, hace3, sin_cambio, hace2anios }] = await q(
-  `select to_char(h, 'YYYY-MM-DD') as hoy, to_char(h - 3, 'YYYY-MM-DD') as hace3, to_char(h - 40, 'YYYY-MM-DD') as sin_cambio,
+const [{ hoy, hace3, hace2, sin_cambio, hace2anios }] = await q(
+  `select to_char(h, 'YYYY-MM-DD') as hoy, to_char(h - 3, 'YYYY-MM-DD') as hace3, to_char(h - 2, 'YYYY-MM-DD') as hace2, to_char(h - 40, 'YYYY-MM-DD') as sin_cambio,
           to_char(h - 730, 'YYYY-MM-DD') as hace2anios
      from (select (now() at time zone 'America/Lima')::date as h) x`,
 )
@@ -169,8 +172,12 @@ async function adjuntarFactura(pagina, os, numeroFactura, fecha, toques = 1) {
   const tes = await entrar('tesoreria', 1440)
   await ir(tes, '/tesoreria/pagos-de-servicio')
   const tarjeta = limpio(await tes.locator(`[data-servicio="${a.numero}"]`).innerText())
-  comprobar(tarjeta.includes(`con el tipo de cambio del ${dma(hoy)}, el día en que se emitió: falta su factura`),
-    `antes de la factura, Tesorería ve que la ${a.numero} va con el cambio del día en que se emitió y que falta su factura`)
+  // Si hoy ya tiene su cambio, la OS nació con él; si no, con el último registrado, y se dice cuál.
+  const [{ con_cual }] = await q(`select to_char(max(fecha), 'YYYY-MM-DD') as con_cual from public.tipos_de_cambio where fecha <= $1::date`, [hoy])
+  const provisional = con_cual === hoy
+    ? `con el tipo de cambio del ${dma(hoy)}, el día en que se emitió: falta su factura`
+    : `con el tipo de cambio del ${dma(con_cual)}, el último registrado cuando se emitió: falta su factura`
+  comprobar(tarjeta.includes(provisional), `antes de la factura, Tesorería lee en la ${a.numero}: «${provisional}»`)
   comprobar(tarjeta.includes('la factura del proveedor, adjunta a la OS con su fecha de emisión: el tipo de cambio de ese día decide el monto en soles y la detracción'),
     'y lo que falta dice que la factura decide el monto en soles y la detracción')
   const enSoles = limpio(await tes.locator(`[data-servicio="${c.numero}"]`).innerText())
@@ -182,7 +189,7 @@ const log = await entrar('logistica', 1440)
 await ir(log, '/compras/servicios')
 {
   const fila = limpio(await log.locator('tr, article, li').filter({ has: log.locator(`[data-adjuntar-documento-servicio="${a.numero}"]`) }).first().innerText())
-  comprobar(fila.includes('el día en que se emitió: falta su factura'), 'Logística también ve que el cambio es el del día en que se emitió mientras falta la factura')
+  comprobar(/(el día en que se emitió|el último registrado cuando se emitió): falta su factura/.test(fila), 'Logística también ve con qué cambio va la orden mientras falta la factura')
   // Una fecha de más de un año antes de la OS: la base la rechaza, y se dice en el campo.
   const rechazo = await adjuntarFactura(log, a, `F001-${SELLO}0`, hace2anios)
   const v = log.locator(VENTANA)
@@ -224,6 +231,15 @@ comprobar(!errorA, `Logística adjuntó la factura de la ${a.numero} sin error${
   comprobar(fila.includes(`con el tipo de cambio del ${dma(hace3)}, la fecha de su factura`), 'y que la detracción va con el tipo de cambio de ese día')
   comprobar(!(await desborda(log)), 'Compras › Servicios no desborda a 1440')
   await captura(log, 'logistica-servicios-1440')
+}
+// Otra factura del mismo día no mueve nada, y no se dice que se calculó de nuevo.
+{
+  const errorOtra = await adjuntarFactura(log, a, `F001-${SELLO}5`, hace3)
+  const aviso = limpio(await log.locator(`[data-aviso-documento-servicio="${a.numero}"]`).first().textContent())
+  comprobar(!errorOtra && aviso.includes(`La orden ya iba con el tipo de cambio del ${dma(hace3)}: su monto en soles no cambió`),
+    `una segunda factura del mismo día dice que el monto no cambió («${errorOtra || aviso}»)`)
+  const [os] = await q(`select monto_pen from public.ordenes_servicio where id = $1`, [a.id])
+  comprobar(Number(os.monto_pen) === Math.round(1000 * Number(tc3) * 100) / 100, 'y la OS sigue con el mismo monto en soles')
 }
 // 4. La OS en soles no pide fecha.
 {
@@ -269,50 +285,67 @@ if (tc_sin !== null) {
   }
 }
 
-// 6. La factura de hoy llega antes que el cambio de hoy: toma el de ayer, y el de hoy cuando se registra.
+// 6. La factura llega antes que el cambio de su día: toma el último registrado, y el suyo cuando
+//    Contabilidad lo registra, con clic, en Tesorería › Tipo de cambio. Se hace con el día de hace
+//    dos días, que la siembra deja sin cambio: no depende de que hoy tenga o no el suyo.
 {
-  const [{ de_hoy }] = await q(`select (select venta from public.tipos_de_cambio where fecha = $1::date) as de_hoy`, [hoy])
-  if (de_hoy !== null) {
-    console.log(`  (el banco ya tiene el cambio de hoy: no se prueba la factura que llega antes que su cambio)`)
+  const [{ ya }] = await q(`select (select venta from public.tipos_de_cambio where fecha = $1::date) as ya`, [hace2])
+  if (ya !== null) {
+    console.log(`  (el banco ya tiene el cambio del ${dma(hace2)}: no se prueba la factura que llega antes que su cambio; rehacer el banco)`)
   } else {
     const log2 = await entrar('logistica', 1440)
     await ir(log2, '/compras/servicios')
-    const errorD = await adjuntarFactura(log2, d, `F001-${SELLO}4`, hoy)
-    comprobar(!errorD, `Logística adjuntó a la ${d.numero} una factura de hoy${errorD ? ` («${errorD}»)` : ''}`)
-    const [{ ayer, dia_ayer }] = await q(
-      `select public.cambio_del_dia($1::date, 'VENTA') as ayer,
-              (select to_char(max(fecha), 'YYYY-MM-DD') from public.tipos_de_cambio where fecha <= $1::date) as dia_ayer`, [hoy])
+    const errorD = await adjuntarFactura(log2, d, `F001-${SELLO}4`, hace2)
+    comprobar(!errorD, `Logística adjuntó a la ${d.numero} una factura del ${dma(hace2)}, un día sin cambio registrado${errorD ? ` («${errorD}»)` : ''}`)
+    const [{ vispera, dia_vispera }] = await q(
+      `select public.cambio_del_dia($1::date, 'VENTA') as vispera,
+              (select to_char(max(fecha), 'YYYY-MM-DD') from public.tipos_de_cambio where fecha <= $1::date) as dia_vispera`, [hace2])
     const avisoD = limpio(await log2.locator(`[data-aviso-documento-servicio="${d.numero}"]`).first().textContent())
-    comprobar(avisoD.includes(`El tipo de cambio del ${dma(hoy)} todavía no está registrado: la orden va con el del ${dma(dia_ayer)}`),
-      `junto al botón dice que el cambio de hoy no está y con cuál va («${avisoD}»)`)
+    comprobar(avisoD.includes(`El tipo de cambio del ${dma(hace2)} todavía no está registrado: la orden va con el del ${dma(dia_vispera)}`),
+      `junto al botón dice que el cambio de ese día no está y con cuál va («${avisoD}»)`)
     await log2.context().close()
+    const [antes] = await q(`select monto_pen, detraccion_monto, to_char(fecha_cambio, 'YYYY-MM-DD') as f from public.ordenes_servicio where id = $1`, [d.id])
+    comprobar(antes.f === hace2 && Number(antes.monto_pen) === Math.round(2000 * Number(vispera) * 100) / 100,
+      `sin el cambio de ese día, la OS va con el último registrado (${vispera}): S/ ${antes.monto_pen}`)
     {
       const tes = await entrar('tesoreria', 390)
       await ir(tes, '/tesoreria/pagos-de-servicio')
       const tarjeta = limpio(await tes.locator(`[data-servicio="${d.numero}"]`).innerText())
-      comprobar(tarjeta.includes(`con el tipo de cambio del ${dma(dia_ayer)}, el último registrado hasta el ${dma(hoy)}, la fecha de su factura`),
-        `Tesorería lee que la ${d.numero} va con el cambio del ${dma(dia_ayer)}, el último registrado, y no con el de hoy`)
+      comprobar(tarjeta.includes(`con el tipo de cambio del ${dma(dia_vispera)}, el último registrado hasta el ${dma(hace2)}, la fecha de su factura`),
+        `Tesorería lee que la ${d.numero} va con el cambio del ${dma(dia_vispera)}, el último registrado, y no con el del día de su factura`)
+      comprobar(tarjeta.includes(`S/ ${Number(antes.detraccion_monto).toFixed(2)}`), `con su detracción de S/ ${antes.detraccion_monto}`)
       comprobar(!(await desborda(tes)), 'y no desborda a 390')
       await captura(tes, 'tesoreria-cambio-de-la-vispera-390')
       await tes.context().close()
     }
-    const [antes] = await q(`select monto_pen, detraccion_monto, to_char(fecha_cambio, 'YYYY-MM-DD') as f from public.ordenes_servicio where id = $1`, [d.id])
-    comprobar(antes.f === hoy && Number(antes.monto_pen) === Math.round(2000 * Number(ayer) * 100) / 100,
-      `sin el cambio de hoy, la OS va con el último registrado (${ayer}): S/ ${antes.monto_pen}`)
-    const nuevo = (Number(ayer) + 0.2).toFixed(3)
-    await como('contabilidad', `insert into public.tipos_de_cambio (fecha, compra, venta, fuente, registrado_por)
-                                values ($1::date, $2::numeric - 0.05, $2::numeric, 'SUNAT', public.usuario_actual())`, [hoy, nuevo])
+    // Contabilidad registra el cambio de ese día con su pantalla, no por SQL.
+    const nuevo = (Number(vispera) + 0.2).toFixed(3)
+    const con = await entrar('contabilidad', 1440)
+    await ir(con, '/tesoreria/tipo-de-cambio')
+    comprobar(new URL(con.url()).pathname === '/tesoreria/tipo-de-cambio', 'Contabilidad entra a Tesorería › Tipo de cambio')
+    await con.locator('#tc-fecha').fill(hace2)
+    await con.locator('#tc-compra').fill((Number(nuevo) - 0.05).toFixed(3))
+    await con.locator('#tc-venta').fill(nuevo)
+    await con.locator('form:has(#tc-fecha) button[type="submit"]').click()
+    await con.waitForLoadState('networkidle')
+    let registrado = null
+    for (let i = 0; i < 40 && registrado === null; i += 1) {
+      ;[{ registrado }] = await q(`select (select venta from public.tipos_de_cambio where fecha = $1::date) as registrado`, [hace2])
+      if (registrado === null) await con.waitForTimeout(250)
+    }
+    comprobar(Number(registrado) === Number(nuevo), `Contabilidad registró con su pantalla el cambio del ${dma(hace2)} (${registrado})`)
+    await con.context().close()
     const [despues] = await q(`select monto_pen, detraccion_monto from public.ordenes_servicio where id = $1`, [d.id])
     comprobar(Number(despues.monto_pen) === Math.round(2000 * Number(nuevo) * 100) / 100 && Number(despues.detraccion_monto) > Number(antes.detraccion_monto),
-      `Contabilidad registra el cambio de hoy (${nuevo}) y la OS lo toma: S/ ${despues.monto_pen}, detracción S/ ${despues.detraccion_monto} (antes S/ ${antes.detraccion_monto})`)
+      `y la OS lo tomó sola: S/ ${despues.monto_pen}, detracción S/ ${despues.detraccion_monto} (antes S/ ${antes.monto_pen} y S/ ${antes.detraccion_monto})`)
     const [otra] = await q(`select monto_pen from public.ordenes_servicio where id = $1`, [a.id])
     comprobar(Number(otra.monto_pen) === Math.round(1000 * Number(tc3) * 100) / 100, `la ${a.numero}, con factura de otro día, no se mueve`)
     const tes = await entrar('tesoreria', 1440)
     await ir(tes, '/tesoreria/pagos-de-servicio')
     const tarjeta = limpio(await tes.locator(`[data-servicio="${d.numero}"]`).innerText())
-    comprobar(tarjeta.includes(`con el tipo de cambio del ${dma(hoy)}, la fecha de su factura`) && tarjeta.includes(`S/ ${Number(despues.detraccion_monto).toFixed(2)}`),
-      `Tesorería ve la ${d.numero} con el cambio de hoy y su detracción nueva`)
-    await captura(tes, 'tesoreria-cambio-de-hoy-1440')
+    comprobar(tarjeta.includes(`con el tipo de cambio del ${dma(hace2)}, la fecha de su factura`) && tarjeta.includes(`S/ ${Number(despues.detraccion_monto).toFixed(2)}`),
+      `Tesorería ve la ${d.numero} con el cambio del día de su factura y su detracción nueva`)
+    await captura(tes, 'tesoreria-cambio-registrado-1440')
     await tes.context().close()
   }
 }

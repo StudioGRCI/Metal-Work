@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { cambiosDeLosDias, COLUMNAS_DETRACCION, cargarTiposDetraccion, detraccionDeFila, documentosDeServicios, type DocumentoDeServicio } from '@/lib/datos/logistica'
+import { cambiosDeLosDias, COLUMNAS_DETRACCION, diaQueLeToca, cargarTiposDetraccion, detraccionDeFila, documentosDeServicios, type DocumentoDeServicio } from '@/lib/datos/logistica'
 import { bajarComo } from '@/lib/descarga'
 import type { DetraccionDeServicio, SaldoDeServicio } from '@/lib/dominio/detraccion'
 import { BUCKET_COBROS_VENTA, BUCKET_FACTURAS_VENTA, BUCKET_PAGOS_SERVICIO, comoVaLaFactura, totalConIgv, type ComoVaLaFactura } from '@/lib/dominio/finanzas'
@@ -367,7 +367,7 @@ export async function serviciosPorPagar(verCuentas: boolean): Promise<ServicioPo
   if (detracciones.error) throw new Error(`No se pudo leer la detracción de los servicios: ${detracciones.error.message}`)
   const detraccionDe = new Map((detracciones.data ?? []).map((d) => [d.id, d]))
   // Con qué cambio va de verdad cada OS con factura: Tesorería deposita con esa cifra.
-  const cambios = await cambiosDeLosDias((detracciones.data ?? []).map((d) => d.fecha_cambio))
+  const cambios = await cambiosDeLosDias((detracciones.data ?? []).filter((d) => d.moneda !== 'PEN').map(diaQueLeToca))
   const urls = await enlaces(BUCKET_PAGOS_SERVICIO, (pagos.data ?? []).map((p) => p.archivo_ruta))
   return filas.map((f) => ({
     ...f,

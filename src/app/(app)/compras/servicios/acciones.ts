@@ -253,6 +253,9 @@ export async function adjuntarDocumentoServicio(_previo: unknown, formulario: Fo
   if (comprobante && d.numero.length < 3) return { ok: false, error: 'Escribe el número del comprobante con su serie, como F001-123.' }
 
   const supabase = await createClient()
+  const conFecha = d.tipo === 'FACTURA' && d.fecha_emision !== ''
+  // Cómo estaba la OS, para decir después si la factura la movió.
+  const antes = conFecha ? (await leerOsDelCambio(supabase, d.orden_servicio_id)).data : null
   const { data, error } = await supabase.rpc('adjuntar_documento_servicio', {
     p_id: d.id,
     p_orden_servicio: d.orden_servicio_id,
@@ -274,31 +277,42 @@ export async function adjuntarDocumentoServicio(_previo: unknown, formulario: Fo
   if (data !== d.id) return { ok: false, error: 'El documento no se anotó. Recarga la pantalla.' }
   repintarDocumentos()
   const adjunto = 'Documento adjunto a la orden de servicio.'
-  if (d.tipo !== 'FACTURA' || !d.fecha_emision) return { ok: true, mensaje: adjunto }
+  if (!conFecha) return { ok: true, mensaje: adjunto }
   // Qué hizo la base con esa fecha: sin decirlo, el monto en soles y la detracción cambiaban a la
   // vista sin que nada lo contara (auditoría de diseño del 2026-11-26). Si no se pudo leer, el
   // documento ya entró: se dice solo eso.
-  const { data: os } = await supabase.from('ordenes_servicio').select('moneda, monto_pen, fecha_cambio, detraccion_afecta').eq('id', d.orden_servicio_id).maybeSingle()
+  const { data: os } = await leerOsDelCambio(supabase, d.orden_servicio_id)
   if (!os || os.moneda === 'PEN') return { ok: true, mensaje: adjunto }
   const dia = fecha(d.fecha_emision)
-  if (os.fecha_cambio !== d.fecha_emision) {
-    // La fijó el depósito de su detracción o el pago que la canceló: desde aquí no se sabe cuál.
-    return { ok: true, mensaje: 'Factura adjunta. La orden ya tiene depositada su detracción o ya está pagada: su monto en soles sigue con el tipo de cambio de antes.' }
-  }
+  // La fijó el depósito de su detracción o el pago que la canceló: desde aquí no se sabe cuál.
+  const fija = { ok: true as const, mensaje: 'Factura adjunta. La orden ya tiene depositada su detracción o ya está pagada: su monto en soles sigue con el tipo de cambio de antes.' }
+  if (os.fecha_cambio !== d.fecha_emision) return fija
   if (os.monto_pen === null) {
     // En pasado lo que puede cambiar: el aviso sigue puesto cuando Contabilidad ya lo registró.
     return { ok: true, mensaje: `Factura adjunta. El tipo de cambio del ${dia} no estaba registrado: la orden queda sin monto en soles hasta que lo registren Contabilidad o Administración.` }
   }
+  // El cambio que le toca a ese día: el último registrado hasta él (`cambio_del_dia`).
+  const { data: toca } = await supabase.from('tipos_de_cambio').select('fecha, venta').lte('fecha', d.fecha_emision).order('fecha', { ascending: false }).limit(1).maybeSingle()
+  // Su monto no sale de ese cambio: ya iba con el día de esta factura y quedó fija con otra cifra.
+  if (toca && os.monto !== null && Math.abs(Number(os.monto) * Number(toca.venta) - Number(os.monto_pen)) >= 0.011) return fija
   // La factura de hoy llega antes que el cambio de hoy: la OS va con el último registrado, y se dice.
-  const { data: ultimo } = await supabase.from('tipos_de_cambio').select('fecha').lte('fecha', d.fecha_emision).order('fecha', { ascending: false }).limit(1).maybeSingle()
-  if (ultimo && ultimo.fecha !== d.fecha_emision) {
+  if (toca && toca.fecha !== d.fecha_emision) {
     return {
       ok: true,
-      mensaje: `Factura adjunta. El tipo de cambio del ${dia} todavía no está registrado: la orden va con el del ${fecha(ultimo.fecha)}, el último registrado, y tomará el del ${dia} cuando lo registren Contabilidad o Administración.`,
+      mensaje: `Factura adjunta. El tipo de cambio del ${dia} todavía no está registrado: la orden va con el del ${fecha(toca.fecha)}, el último registrado, y tomará el del ${dia} cuando lo registren Contabilidad o Administración.`,
     }
+  }
+  // Ya iba con ese día (otra factura de la misma fecha): no decir «se calculó de nuevo» sin cuenta nueva.
+  if (antes && antes.fecha_cambio === os.fecha_cambio && antes.monto_pen !== null && Number(antes.monto_pen) === Number(os.monto_pen)) {
+    return { ok: true, mensaje: `Factura adjunta. La orden ya iba con el tipo de cambio del ${dia}: su monto en soles no cambió.` }
   }
   const queCambio = os.detraccion_afecta ? 'su monto en soles y su detracción se calcularon de nuevo' : 'su monto en soles se calculó de nuevo'
   return { ok: true, mensaje: `Factura adjunta. La orden tomó el tipo de cambio del ${dia}: ${queCambio}.` }
+}
+
+/** Lo que se mira de la OS antes y después de adjuntar su factura, para decir qué cambió. */
+function leerOsDelCambio(supabase: Awaited<ReturnType<typeof createClient>>, id: string) {
+  return supabase.from('ordenes_servicio').select('moneda, monto, monto_pen, fecha_cambio, detraccion_afecta').eq('id', id).maybeSingle()
 }
 
 /** Anular con su motivo un documento adjunto por error: queda como evidencia. Mismo permiso que `anular_documento_servicio`. */
