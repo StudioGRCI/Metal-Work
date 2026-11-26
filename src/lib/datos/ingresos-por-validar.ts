@@ -119,7 +119,7 @@ export async function ingresosPorValidar(): Promise<{
     sinLeer.push('No se pudo leer la fecha esperada de algunas OC.')
   }
   if (corregidas === null && entregas.length > 0) sinLeer.push('No se pudo leer si Logística corrigió la fecha esperada de cada OC.')
-  const porId = new Map((fechas?.data ?? []).map((f) => [f.id, corregidas?.get(f.id) ?? f.fecha_estimada]))
+  const porId = new Map((fechas?.data ?? []).map((f) => [f.id, corregidas?.get(f.id)?.fecha ?? f.fecha_estimada]))
   if (dias === null && entregas.length > 0) sinLeer.push('No se pudieron contar los días que espera cada compra.')
   entregas.forEach((e, i) => {
     e.fechaEsperada = porId.get(e.compraId) ?? null

@@ -53,12 +53,12 @@ export function resumenDetraccion(d: DetraccionDeServicio): { texto: string; det
   const tipo = [d.codigo, d.descripcion].filter(Boolean).join(' · ')
   const porcentaje = porcentajeCorto(d.porcentaje)
   if (d.total_con_igv_pen === null) {
-    // Tesorería, que lo ve, no registra el cambio: el aviso dice de qué día y quién (DKS, 2026-11-26).
-    // Día y mes: la insignia no se parte, y con el año salía de la tarjeta en el teléfono.
-    const dia = d.emitida_en ? ` del ${fecha(d.emitida_en).slice(0, 5)}` : ''
+    // Tesorería, que lo ve, no registra el cambio: el detalle dice de qué día y quién (DKS,
+    // 2026-11-26). La insignia no lleva la fecha: no se parte y salía de la tarjeta en el teléfono.
+    const dia = d.emitida_en ? ` del ${fecha(d.emitida_en)}` : ''
     return {
-      texto: `Detracción ${porcentaje}: falta el tipo de cambio${dia}`,
-      detalle: [tipo, 'Lo registran Contabilidad o Administración en Tipo de cambio.'].filter(Boolean).join(' · '),
+      texto: `Detracción ${porcentaje}: falta el tipo de cambio`,
+      detalle: `${tipo ? `${tipo}. ` : ''}Falta el tipo de cambio${dia}: lo registran Contabilidad o Administración.`,
       tono: 'aviso',
     }
   }

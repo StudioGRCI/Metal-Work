@@ -92,11 +92,18 @@ export async function plazosDeServicios(ids: readonly string[]): Promise<Map<str
  * Si la base no contesta, lanza: mostrar la fecha vieja como si fuera la buena
  * es justo lo que esto arregla.
  */
+export type FechaCorregida = {
+  /** La que vale hoy: la última corregida. */
+  fecha: string
+  /** La que salió en el documento: la de antes de la primera corrección. */
+  antes: string | null
+}
+
 export async function fechasCorregidas(
   supabase: Awaited<ReturnType<typeof createClient>>,
   ids: { oc?: readonly string[]; os?: readonly string[] },
-): Promise<Map<string, string>> {
-  const porId = new Map<string, string>()
+): Promise<Map<string, FechaCorregida>> {
+  const porId = new Map<string, FechaCorregida>()
   const pedidos = [
     ...tandasDe(ids.oc ?? []).map((t) => ['orden_compra_id', t] as const),
     ...tandasDe(ids.os ?? []).map((t) => ['orden_servicio_id', t] as const),
@@ -106,7 +113,7 @@ export async function fechasCorregidas(
     pedidos.map(([columna, t]) =>
       supabase
         .from('seguimiento_de_compras')
-        .select('orden_compra_id, orden_servicio_id, fecha_nueva')
+        .select('orden_compra_id, orden_servicio_id, fecha_anterior, fecha_nueva')
         .eq('tipo', 'FECHA_ESPERADA')
         .in(columna, t)
         // La que vale es la última: el mismo orden que `fecha_prometida_de_compra`.
@@ -120,7 +127,10 @@ export async function fechasCorregidas(
     if (error) throw new Error(`No se pudo leer la fecha corregida de las compras: ${error.message}`)
     for (const f of data ?? []) {
       const documento = f.orden_compra_id ?? f.orden_servicio_id
-      if (documento && f.fecha_nueva && !porId.has(documento)) porId.set(documento, f.fecha_nueva)
+      if (!documento || !f.fecha_nueva) continue
+      // Vienen de la última a la primera: la primera fija la que vale; cada una de antes, la del documento.
+      const ya = porId.get(documento)
+      porId.set(documento, { fecha: ya?.fecha ?? f.fecha_nueva, antes: f.fecha_anterior ?? ya?.antes ?? null })
     }
   }
   return porId

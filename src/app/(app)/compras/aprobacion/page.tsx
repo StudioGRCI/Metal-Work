@@ -305,7 +305,12 @@ function CompraPorAprobar({ compra: c, aprueba, dias }: { compra: CompraParaApro
           </div>
           <div>
             <dt className="text-xs text-texto-suave">{c.tipo === 'OS' ? 'Entrega del servicio' : 'Entrega estimada'}</dt>
-            <dd className="text-texto">{fecha(c.fecha_estimada)}</dd>
+            <dd className="text-texto">
+              {fecha(c.fecha_estimada)}
+              {c.fecha_del_documento && c.fecha_del_documento !== c.fecha_estimada && (
+                <span className="block text-xs text-texto-suave">Corregida; el documento dice {fecha(c.fecha_del_documento)}</span>
+              )}
+            </dd>
           </div>
           <div>
             <dt className="text-xs text-texto-suave">Para</dt>

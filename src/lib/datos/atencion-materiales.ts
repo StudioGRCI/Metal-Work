@@ -178,7 +178,7 @@ export async function cargarAtencionMateriales(permisos: {
     catalogoAlmacen: catalogo.data ?? [],
     compras: (compras.data ?? []).map((compra) => ({
       ...compra,
-      fecha_estimada: corregidas.get(compra.orden_compra_id ?? '') ?? compra.fecha_estimada,
+      fecha_estimada: corregidas.get(compra.orden_compra_id ?? '')?.fecha ?? compra.fecha_estimada,
       entregado_almacen_en: entregaPorCompra.get(compra.orden_compra_id ?? '')?.entregado_almacen_en ?? null,
       condicion_pago: entregaPorCompra.get(compra.orden_compra_id ?? '')?.condicion_pago ?? 'CONTADO',
       dias_credito: entregaPorCompra.get(compra.orden_compra_id ?? '')?.dias_credito ?? 0,

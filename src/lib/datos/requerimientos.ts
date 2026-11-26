@@ -192,7 +192,7 @@ export async function cargarRequerimientos(
   // Supervisión no lee el kardex, así que también lo da la base (migración 20261020191000).
   const entregados = new Map<string, { entregado: number; llegado: number | null }>()
   // Si Logística corrigió la fecha de la OC, vale la corregida (quien no lee la OC no la recibe).
-  let corregidas = new Map<string, string>()
+  let corregidas: Awaited<ReturnType<typeof fechasCorregidas>> = new Map()
   if (data && data.length > 0) {
     const ids = data.map((r) => r.id)
     const idsOc = data.flatMap((r) => r.lineas.flatMap((l) => (l.orden_compra?.id ? [l.orden_compra.id] : [])))
@@ -267,7 +267,7 @@ export async function cargarRequerimientos(
             entregado: opciones.conEntregado ? (entregados.get(`${r.id}:${l.item}`)?.entregado ?? 0) : null,
             llegado: entregados.get(`${r.id}:${l.item}`)?.llegado ?? null,
             sin_salida: l.sin_salida_al_entregar == null ? null : Number(l.sin_salida_al_entregar),
-            fecha_esperada: l.orden_compra && !['RECHAZADA', 'ANULADA'].includes(l.orden_compra.aprobacion ?? '') ? (corregidas.get(l.orden_compra.id) ?? l.orden_compra.fecha_estimada) : null,
+            fecha_esperada: l.orden_compra && !['RECHAZADA', 'ANULADA'].includes(l.orden_compra.aprobacion ?? '') ? (corregidas.get(l.orden_compra.id)?.fecha ?? l.orden_compra.fecha_estimada) : null,
           }
         })
         .sort((a, b) => a.item - b.item),
