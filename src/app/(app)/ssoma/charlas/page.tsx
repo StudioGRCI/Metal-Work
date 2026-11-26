@@ -18,8 +18,8 @@ import { EstadoDeLaCharla, RegistrarCharla } from './controles'
 export const metadata = { title: 'Seguridad: charlas e inducciones' }
 
 /**
- * Las charlas de seguridad y las inducciones del mes, y quién del personal
- * activo de RR. HH. no asistió a ninguna. SSOMA las registra; Gerencia las
+ * Las charlas de seguridad y las inducciones del mes, y quién de los que
+ * estaban en la planta ese mes, según RR. HH., no asistió a ninguna. SSOMA las registra; Gerencia las
  * consulta. De RR. HH. llega solo nombre, cargo y área: lo decide la base.
  */
 export default async function PaginaCharlasSsoma({ searchParams }: PageProps<'/ssoma/charlas'>) {
@@ -145,7 +145,7 @@ function TablaDeFaltas({ faltaron, activos, mes, enCurso }: { faltaron: FaltoEnE
       {/* Al empezar el mes falta casi todo el personal: el resto, plegado, para que las charlas no queden al fondo. */}
       {resto.length > 0 && (
         <div className="border-t border-borde px-4">
-          <Pliegue titulo={`Ver las otras ${resto.length} personas`} data-otras-faltas="">
+          <Pliegue titulo={resto.length === 1 ? 'Ver a la otra persona' : `Ver a las otras ${resto.length} personas`} data-otras-faltas="">
             <div className="-mx-4 border-t border-borde">
               <FilasDeFaltas gente={resto} />
             </div>

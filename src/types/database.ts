@@ -19045,6 +19045,17 @@ export type Database = {
         }
         Returns: string
       }
+      ssoma_estuvo_en_la_planta: {
+        Args: {
+          p_trabajador: string | null
+          p_activo: boolean | null
+          p_ingreso: string | null
+          p_baja: string | null
+          p_desde: string | null
+          p_hasta: string | null
+        }
+        Returns: boolean
+      }
       ssoma_foto_anotada: {
         Args: {
           p_ruta: string | null
@@ -19106,6 +19117,7 @@ export type Database = {
           nombre: string | null
           cargo: string | null
           area: string | null
+          en_planta: boolean | null
         }[]
       }
       ssoma_personal_para_elegir: {

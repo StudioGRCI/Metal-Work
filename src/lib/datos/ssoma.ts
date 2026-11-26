@@ -448,6 +448,8 @@ export async function listarCharlasDelMes(mes: string): Promise<CharlaSsoma[]> {
 
 export type PersonaDeLaLista = { id: string; nombre: string; cargo: string | null; area: string | null }
 export type FaltoEnElMes = PersonaDeLaLista & { ultima: string | null }
+/** En la lista para marcar va también quien se fue en los últimos 60 días: pudo estar en una charla de antes. */
+export type PersonaParaMarcar = PersonaDeLaLista & { enPlanta: boolean }
 
 /**
  * Quien estaba en la planta ese mes (no la lista de hoy: quien entró después no faltó) y no asistió a
@@ -469,12 +471,17 @@ export async function noAsistieronEnElMes(mes: string): Promise<{ faltaron: Falt
   }
 }
 
-/** La lista de RR. HH. para marcar asistentes: solo nombre, cargo y área. Pide `ssoma.gestionar`. */
-export async function personalParaCharla(): Promise<PersonaDeLaLista[]> {
+/**
+ * La lista de RR. HH. para marcar asistentes: solo nombre, cargo, área y si sigue en la planta (quien se
+ * fue en los últimos 60 días también va). Si estaba ese día lo decide la base al registrar. Pide `ssoma.gestionar`.
+ */
+export async function personalParaCharla(): Promise<PersonaParaMarcar[]> {
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('ssoma_personal_para_charla')
   if (error) throw new Error(`No se pudo leer la lista del personal: ${error.message}`)
-  return (data ?? []).flatMap((p) => (p.id && p.nombre ? [{ id: p.id, nombre: p.nombre, cargo: p.cargo, area: p.area }] : []))
+  return (data ?? []).flatMap((p) =>
+    p.id && p.nombre ? [{ id: p.id, nombre: p.nombre, cargo: p.cargo, area: p.area, enPlanta: p.en_planta !== false }] : [],
+  )
 }
 
 export type DetalleCharlaSsoma = {

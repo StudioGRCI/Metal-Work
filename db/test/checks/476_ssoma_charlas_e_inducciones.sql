@@ -110,7 +110,7 @@ begin
     'RR. HH. tiene la lista pero no registra charlas', 'la registra SSOMA');
   reset role;
 
-  -- SSOMA: la lista trae solo nombre, cargo y área, de los activos.
+  -- SSOMA: la lista trae solo nombre, cargo y área, de los activos (y de quien se fue hace poco, en 3b).
   perform test.como_usuario(current_setting('prueba.ssoma')::uuid);
   set local role authenticated;
   perform test.afirmar(
@@ -119,8 +119,8 @@ begin
     and not exists (select 1 from public.ssoma_personal_para_charla() p where p.id = current_setting('prueba.t4')::uuid),
     'la lista para marcar trae a los activos y no al dado de baja');
   perform test.afirmar(
-    (select string_agg(x, ',') from unnest((select proargnames from pg_proc where proname = 'ssoma_personal_para_charla')) as x) = 'id,nombre,cargo,area',
-    'de RR. HH. sale solo id, nombre, cargo y área (nunca el DNI)');
+    (select string_agg(x, ',') from unnest((select proargnames from pg_proc where proname = 'ssoma_personal_para_charla')) as x) = 'id,nombre,cargo,area,en_planta',
+    'de RR. HH. sale solo id, nombre, cargo, área y si sigue en la planta (nunca el DNI)');
   perform test.debe_fallar('select dni from public.trabajadores limit 1', 'SSOMA no lee el DNI de la tabla de RR. HH.', 'permission denied');
 
   -- Lo que falta se dice.
@@ -138,7 +138,7 @@ begin
     'una de hace más de 60 días no entra', 'últimos 60 días');
   perform test.debe_fallar(pg_temp.registrar(current_setting('prueba.c1'), 'CHARLA', 'Uso de guantes de corte', 'Sara Seguridad',
       current_setting('prueba.hoy'), format('{%s}', current_setting('prueba.t4')), format('["%s"]', current_setting('prueba.f1'))),
-    'alguien dado de baja no se marca', 'ya no está activo');
+    'alguien dado de baja sin fecha no se marca, y se dice quién', 'Inactivo Charla Iván no estaba en la planta el');
   perform test.debe_fallar(pg_temp.registrar(current_setting('prueba.c1'), 'CHARLA', 'Uso de guantes de corte', 'Sara Seguridad',
       current_setting('prueba.hoy'), format('{%s}', current_setting('prueba.t1')), format('["%s"]', current_setting('prueba.f2'))),
     'la foto de otra carpeta no entra', 'Vuelve a poner las fotos');
@@ -183,7 +183,7 @@ do $$
 declare
   -- Quienes estaban en la planta este mes, con la misma regla de la base.
   v_activos integer := (select count(*)::integer from public.trabajadores t
-     where public.ssoma_vigente_en_el_mes(t.activo, t.fecha_ingreso, t.fecha_baja,
+     where public.ssoma_estuvo_en_la_planta(t.id, t.activo, t.fecha_ingreso, t.fecha_baja,
              date_trunc('month', current_setting('prueba.hoy')::date)::date,
              (date_trunc('month', current_setting('prueba.hoy')::date) + interval '1 month')::date));
 begin
@@ -242,7 +242,7 @@ do $$
 declare
   -- Quienes estaban en la planta este mes, con la misma regla de la base.
   v_activos integer := (select count(*)::integer from public.trabajadores t
-     where public.ssoma_vigente_en_el_mes(t.activo, t.fecha_ingreso, t.fecha_baja,
+     where public.ssoma_estuvo_en_la_planta(t.id, t.activo, t.fecha_ingreso, t.fecha_baja,
              date_trunc('month', current_setting('prueba.hoy')::date)::date,
              (date_trunc('month', current_setting('prueba.hoy')::date) + interval '1 month')::date));
 begin
@@ -273,7 +273,8 @@ begin
   perform test.afirmar(public.ssoma_anular_charla(current_setting('prueba.c1')::uuid, 'Se registró en la fecha equivocada') = current_setting('prueba.c1')::uuid,
     'el mismo pedido repetido (se perdió la respuesta) entra sin error');
   perform test.debe_fallar(format('select public.ssoma_anular_charla(%L, %L)', current_setting('prueba.c1'), 'Otra vez la misma charla'),
-    'otro motivo sobre una ya anulada se rechaza diciendo el que quedó', 'Se registró en la fecha equivocada');
+    'otro motivo de quien ya la anuló dice que quedó la primera vez, con el motivo que quedó',
+    'la primera vez que la enviaste, con este motivo: «Se registró en la fecha equivocada»');
   reset role;
 
   perform test.como_usuario(current_setting('prueba.gerente')::uuid);
@@ -302,7 +303,18 @@ begin
   values ('Bruno', 'Baja Charla', '47647606', 'Ayudante', (select id from public.areas where codigo = 'PRD'), false, v_antes - 200, v_antes + 14)
   returning id into v;
   perform set_config('prueba.t6', v::text, true);
+  -- Rita trabajó hasta el día 10 del mes pasado y volvió este mes, por las funciones de RR. HH.
+  insert into public.trabajadores (nombres, apellidos, dni, cargo, area_id, fecha_ingreso)
+  values ('Rita', 'Reingreso Charla', '47647607', 'Ayudante', (select id from public.areas where codigo = 'PRD'), v_antes - 300)
+  returning id into v;
+  -- RR. HH. lo da de baja y de alta: el administrador ve, pero no cambia.
+  perform test.como_usuario(current_setting('prueba.rrhh')::uuid);
+  perform public.rrhh_dar_de_baja_trabajador(v, v_antes + 10);
+  perform public.rrhh_dar_de_alta_trabajador(v, v_este);
+  perform set_config('prueba.t7', v::text, true);
   perform set_config('prueba.antes', v_antes::text, true);
+  perform set_config('prueba.c3', gen_random_uuid()::text, true);
+  perform set_config('prueba.f3', current_setting('prueba.ssoma') || '/' || current_setting('prueba.c3') || '/' || gen_random_uuid() || '.jpg', true);
 end $$;
 select set_config('request.jwt.claim.sub', '', true);
 
@@ -313,9 +325,10 @@ declare
   v_t4    uuid := current_setting('prueba.t4')::uuid;
   v_t5    uuid := current_setting('prueba.t5')::uuid;
   v_t6    uuid := current_setting('prueba.t6')::uuid;
+  v_t7    uuid := current_setting('prueba.t7')::uuid;
   -- Se cuenta antes de cambiar de rol: el ayudante no lo ejecuta `authenticated`.
   v_esperado integer := (select count(*) from public.trabajadores t
-    where public.ssoma_vigente_en_el_mes(t.activo, t.fecha_ingreso, t.fecha_baja, current_setting('prueba.antes')::date,
+    where public.ssoma_estuvo_en_la_planta(t.id, t.activo, t.fecha_ingreso, t.fecha_baja, current_setting('prueba.antes')::date,
             (current_setting('prueba.antes')::date + interval '1 month')::date));
 begin
   perform test.como_usuario(current_setting('prueba.ssoma')::uuid);
@@ -333,9 +346,28 @@ begin
     and not exists (select 1 from public.ssoma_no_asistieron(v_hoy) where id = v_t4),
     'el inactivo sin fecha de baja no cuenta en ningún mes');
   perform test.afirmar(
+    exists (select 1 from public.ssoma_no_asistieron(v_antes) where id = v_t7)
+    and exists (select 1 from public.ssoma_no_asistieron(v_hoy) where id = v_t7),
+    'quien volvió a entrar cuenta en el mes de su periodo anterior, y en este');
+  perform test.afirmar(
     public.ssoma_personal_del_mes(v_antes) = v_esperado
     and public.ssoma_personal_del_mes(v_antes) >= 1,
     'el «de cuántos» del mes pasado cuenta a quien estaba entonces');
+
+  -- Se marca a quien estaba en la planta el día de la charla, con la misma regla.
+  perform test.afirmar(
+    (select not en_planta from public.ssoma_personal_para_charla() where id = v_t6),
+    'quien se fue hace menos de 60 días sigue en la lista para marcar, dicho que ya no está');
+  insert into storage.objects (bucket_id, name, owner_id, metadata) values
+    ('fotos-ssoma', current_setting('prueba.f3'), current_setting('prueba.ssoma'), '{"mimetype": "image/jpeg", "size": 120000}');
+  perform test.debe_fallar(pg_temp.registrar(current_setting('prueba.c3'), 'CHARLA', 'Orden y limpieza en la zona de corte', 'Sara Seguridad',
+      (v_antes + 5)::text, format('{%s,%s}', v_t6, v_t5), format('["%s"]', current_setting('prueba.f3'))),
+    'quien entró después de la charla no se marca en ella, y se dice quién', 'Nueva Charla Nora no estaba en la planta el');
+  perform public.ssoma_registrar_charla(current_setting('prueba.c3')::uuid, 'CHARLA', 'Orden y limpieza en la zona de corte', 'Sara Seguridad',
+    v_antes + 5, array[v_t6, v_t7], jsonb_build_array(current_setting('prueba.f3')));
+  perform test.afirmar(
+    not exists (select 1 from public.ssoma_no_asistieron(v_antes) where id in (v_t6, v_t7)),
+    'quien se fue después de la charla, o volvió a entrar después, se marca en ella y deja de faltar ese mes');
   reset role;
 end $$;
 

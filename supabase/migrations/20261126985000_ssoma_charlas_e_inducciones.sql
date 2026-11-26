@@ -13,9 +13,11 @@
 --   * NO SE BORRA. Una charla mal registrada se anula con su motivo, quién y
 --     cuándo, y se registra otra. No se corrige por debajo: lo que se registró
 --     es la evidencia de quién estuvo.
---   * QUIÉN NO ASISTIÓ EN EL MES: el personal activo de RR. HH. que no figura en
---     ninguna charla ni inducción vigente de ese mes (fecha de Lima), con la
---     última vez que asistió a una.
+--   * QUIÉN NO ASISTIÓ EN EL MES: quien estaba en la planta ese mes según
+--     RR. HH. (fecha de ingreso y de baja) y no figura en ninguna charla ni
+--     inducción vigente de ese mes (fecha de Lima), con la última vez que asistió
+--     a una. Por la misma regla se marca a alguien en una charla: quien estaba en
+--     la planta ese día, aunque hoy ya se haya ido.
 --   * QUIÉN VE: SSOMA registra y anula (`ssoma.gestionar`); SSOMA y Gerencia
 --     consultan (`ssoma.ver`). Nadie más: la lista de asistencia nombra a
 --     personas.
@@ -199,22 +201,24 @@ alter policy ssoma_ver_foto on storage.objects using (
 
 -- 5. La lista de RR. HH. para marcar asistentes: solo nombre, cargo y área ----------------------
 create or replace function public.ssoma_personal_para_charla()
-returns table (id uuid, nombre text, cargo text, area text)
+returns table (id uuid, nombre text, cargo text, area text, en_planta boolean)
 language plpgsql stable security definer set search_path to 'public' rows 200 as $$
 begin
   if public.usuario_actual() is null or not (public.es_admin() or public.tiene_permiso('ssoma.gestionar')) then
     raise exception 'La asistencia a una charla la registra SSOMA.' using errcode = 'insufficient_privilege';
   end if;
+  -- También quien se fue en los 60 días en que se puede registrar una charla:
+  -- pudo estar en una de antes de irse. Se dice que ya no está, sin la fecha.
   return query
-    select t.id, btrim(t.apellidos || ' ' || t.nombres), t.cargo, a.nombre
+    select t.id, btrim(t.apellidos || ' ' || t.nombres), t.cargo, a.nombre, t.activo
       from public.trabajadores t
       left join public.areas a on a.id = t.area_id
-     where t.activo
+     where t.activo or t.fecha_baja >= public.ssoma_hoy() - 60
      order by a.nombre nulls last, t.apellidos, t.nombres;
 end;
 $$;
 comment on function public.ssoma_personal_para_charla() is
-  'El personal activo de RR. HH. para marcar quién asistió a una charla: solo nombre, cargo y área. Exige ssoma.gestionar.';
+  'El personal de RR. HH. para marcar quién asistió a una charla (el activo y quien se fue en los últimos 60 días): solo nombre, cargo, área y si sigue en la planta. Exige ssoma.gestionar.';
 revoke all on function public.ssoma_personal_para_charla() from public, anon;
 grant execute on function public.ssoma_personal_para_charla() to authenticated;
 
@@ -277,15 +281,23 @@ begin
   if cardinality(v_personas) > 500 then
     raise exception 'Van hasta 500 asistentes por charla.' using errcode = 'check_violation';
   end if;
-  -- Quien RR. HH. dio de baja mientras se llenaba la lista: se dice quién, para desmarcarlo.
-  select btrim(t.apellidos || ' ' || t.nombres) into v_inactivo
+  -- Se marca a quien estaba en la planta ese día, con la misma regla que cuenta
+  -- quién no asistió en el mes: quien se fue después sí; quien entró después, o
+  -- se fue antes, no. Se dice quiénes, todos de una vez, para desmarcarlos.
+  select string_agg(coalesce(btrim(t.apellidos || ' ' || t.nombres), 'Alguien de la lista'), ', '
+                    order by t.apellidos nulls last, t.nombres),
+         count(*)
+    into v_inactivo, v_n
     from unnest(v_personas) as x left join public.trabajadores t on t.id = x
-   where t.id is null or not t.activo
-   limit 1;
-  if found then
-    raise exception '% ya no está activo en RR. HH.: desmárcalo y vuelve a registrar.', coalesce(v_inactivo, 'Alguien de la lista')
+   where t.id is null
+      or not public.ssoma_estuvo_en_la_planta(t.id, t.activo, t.fecha_ingreso, t.fecha_baja, p_fecha, p_fecha + 1);
+  if v_n > 0 then
+    raise exception '% %, según RR. HH.: %.', v_inactivo,
+      case when v_n = 1 then 'no estaba en la planta el ' else 'no estaban en la planta el ' end || to_char(p_fecha, 'DD/MM/YYYY'),
+      case when v_n = 1 then 'desmárcalo y vuelve a registrar' else 'desmárcalos y vuelve a registrar' end
       using errcode = 'check_violation';
   end if;
+  v_n := 0;
 
   if jsonb_typeof(v_fotos) <> 'array' then
     raise exception 'Vuelve a poner las fotos de la charla.' using errcode = 'check_violation';
@@ -346,10 +358,16 @@ begin
   select * into v_charla from public.ssoma_charlas where id = p_id for update;
   if not found then raise exception 'Esa charla no existe.' using errcode = 'check_violation'; end if;
   if v_charla.anulado_en is not null then
-    -- El mismo pedido repetido (se perdió la respuesta) ya quedó; otro motivo no cambia el que quedó.
+    -- La anuló otra persona: se dice con qué motivo, y no se cambia.
+    if v_charla.anulado_por is distinct from public.usuario_actual() then
+      raise exception 'Esta charla ya estaba anulada, con este motivo: «%». No se cambia.', v_charla.motivo_anulacion
+        using errcode = 'check_violation';
+    end if;
+    -- La misma persona con el mismo pedido (se perdió la respuesta): ya quedó.
     if v_charla.motivo_anulacion = v_motivo then return p_id; end if;
-    raise exception 'Esta charla ya estaba anulada, con este motivo: «%». No se cambia.', v_charla.motivo_anulacion
-      using errcode = 'check_violation';
+    -- La misma persona con otro motivo: quedó el de la primera vez.
+    raise exception 'Esta charla ya quedó anulada la primera vez que la enviaste, con este motivo: «%». El motivo nuevo no se guardó.',
+      v_charla.motivo_anulacion using errcode = 'check_violation';
   end if;
   update public.ssoma_charlas set motivo_anulacion = v_motivo where id = p_id;
   return p_id;
@@ -428,6 +446,21 @@ comment on function public.ssoma_vigente_en_el_mes(boolean, date, date, date, da
   'Si una persona de RR. HH. estaba en la planta entre p_desde y p_hasta (sin incluir): entró antes del fin y no se fue antes del inicio. Ayudante de las charlas de SSOMA.';
 revoke all on function public.ssoma_vigente_en_el_mes(boolean, date, date, date, date) from public, anon, authenticated;
 
+-- Quien volvió a entrar: RR. HH. guarda su periodo anterior en `trabajador_periodos`
+-- al darlo de alta otra vez (`rrhh_dar_de_alta_trabajador`) y reescribe su ingreso.
+-- Estuvo en la planta en los meses de ese periodo, y ahí también pudo faltar.
+create or replace function public.ssoma_estuvo_en_la_planta(
+  p_trabajador uuid, p_activo boolean, p_ingreso date, p_baja date, p_desde date, p_hasta date
+) returns boolean language sql stable set search_path to 'public' as $$
+  select public.ssoma_vigente_en_el_mes(p_activo, p_ingreso, p_baja, p_desde, p_hasta)
+      or exists (select 1 from public.trabajador_periodos q
+                  where q.trabajador_id = p_trabajador
+                    and (q.ingreso is null or q.ingreso < p_hasta) and q.baja >= p_desde);
+$$;
+comment on function public.ssoma_estuvo_en_la_planta(uuid, boolean, date, date, date, date) is
+  'Si una persona de RR. HH. estaba en la planta entre p_desde y p_hasta (sin incluir), en su periodo de hoy o en uno anterior (reingreso). Ayudante de las charlas de SSOMA.';
+revoke all on function public.ssoma_estuvo_en_la_planta(uuid, boolean, date, date, date, date) from public, anon, authenticated;
+
 -- Quién no asistió en el mes: el personal que estaba en la planta ese mes, sin
 -- ninguna charla ni inducción vigente en él, con la última vez que asistió a una
 -- (vigente) hasta ese mes, si alguna vez.
@@ -445,7 +478,7 @@ language sql stable security definer set search_path to 'public' rows 100 as $$
     cross join mes m
     left join public.areas a on a.id = t.area_id
    where public.puede_ver_reportes_ssoma()
-     and public.ssoma_vigente_en_el_mes(t.activo, t.fecha_ingreso, t.fecha_baja, m.desde, m.hasta)
+     and public.ssoma_estuvo_en_la_planta(t.id, t.activo, t.fecha_ingreso, t.fecha_baja, m.desde, m.hasta)
      and not exists (select 1 from public.ssoma_charla_asistentes s
                        join public.ssoma_charlas c on c.id = s.charla_id
                       where s.trabajador_id = t.id and c.anulado_en is null
@@ -462,7 +495,7 @@ create or replace function public.ssoma_personal_del_mes(p_mes date)
 returns integer language sql stable security definer set search_path to 'public' as $$
   select case when public.puede_ver_reportes_ssoma()
               then (select count(*)::integer from public.trabajadores t
-                     where public.ssoma_vigente_en_el_mes(t.activo, t.fecha_ingreso, t.fecha_baja,
+                     where public.ssoma_estuvo_en_la_planta(t.id, t.activo, t.fecha_ingreso, t.fecha_baja,
                              date_trunc('month', p_mes)::date, (date_trunc('month', p_mes) + interval '1 month')::date))
               else 0 end;
 $$;

@@ -20,7 +20,7 @@ import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
-import type { PersonaDeLaLista } from '@/lib/datos/ssoma'
+import type { PersonaParaMarcar } from '@/lib/datos/ssoma'
 import {
   BUCKET_FOTOS_SSOMA,
   DIAS_PARA_REGISTRAR_CHARLA,
@@ -72,8 +72,8 @@ export function EstadoDeLaCharla() {
  */
 export function RegistrarCharla({ cuentaId, personal, hoy, expositor }: {
   cuentaId: string
-  /** El personal activo de RR. HH.: solo nombre, cargo y área. */
-  personal: PersonaDeLaLista[]
+  /** El personal de RR. HH. (el activo y quien se fue en los últimos 60 días): solo nombre, cargo y área. */
+  personal: PersonaParaMarcar[]
   /** El día de hoy en Lima, para los límites de la fecha. */
   hoy: string
   /** Quien registra, para proponerlo como quien dio la charla. */
@@ -157,7 +157,10 @@ const RADIO = 'mt-0.5 size-4 shrink-0 accent-[var(--acento)]'
 
 /** Los rechazos de la base que son de un campo: se dicen junto a él y el cursor va ahí. */
 const DE_LA_FECHA = /posterior a hoy|últimos 60 días|fecha de la charla/
-const DE_ASISTENTES = /asistieron|asistentes|activo en RR\. HH\.|lista del personal/
+const DE_ASISTENTES = /asistieron|asistentes|en la planta|lista del personal/
+
+const SIN_AREA = 'Sin área'
+const SE_FUERON = 'Ya no están en la planta'
 
 /** Sin tildes ni mayúsculas, para buscar «nunez» y encontrar «Núñez». */
 const llano = (texto: string) =>
@@ -181,7 +184,7 @@ function FormularioCharla({
 }: {
   id: string
   cuentaId: string
-  personal: PersonaDeLaLista[]
+  personal: PersonaParaMarcar[]
   hoy: string
   expositor: string
   fotos: FotoLista[]
@@ -210,16 +213,18 @@ function FormularioCharla({
     ),
   )
 
-  // Por área, como se pasa lista en la planta; quien no tiene área, al final.
+  // Por área, como se pasa lista en la planta; quien no tiene área, al final, y después quien ya se fue:
+  // aparte, para que «Marcar el área» no lo marque en la charla de hoy (la base lo rechazaría).
   const porArea = useMemo(() => {
     const q = llano(busqueda.trim())
-    const grupos = new Map<string, PersonaDeLaLista[]>()
+    const grupos = new Map<string, PersonaParaMarcar[]>()
     for (const p of personal) {
       if (q && !llano([p.nombre, p.cargo, p.area].filter(Boolean).join(' ')).includes(q)) continue
-      const area = p.area ?? 'Sin área'
+      const area = p.enPlanta ? (p.area ?? SIN_AREA) : SE_FUERON
       grupos.set(area, [...(grupos.get(area) ?? []), p])
     }
-    return [...grupos.entries()].sort(([a], [b]) => (a === 'Sin área' ? 1 : b === 'Sin área' ? -1 : a.localeCompare(b, 'es')))
+    const peso = (a: string) => (a === SE_FUERON ? 2 : a === SIN_AREA ? 1 : 0)
+    return [...grupos.entries()].sort(([a], [b]) => peso(a) - peso(b) || a.localeCompare(b, 'es'))
   }, [personal, busqueda])
 
   function cambiar(ids: string[], marcar: boolean) {
@@ -343,14 +348,17 @@ function FormularioCharla({
                           <p id={`charla-area-${i}`} className="text-xs font-medium text-texto">
                             {area} <span className="tabular text-texto-suave">· {gente.length}</span>
                           </p>
-                          <button
-                            type="button"
-                            className="inline-flex min-h-11 items-center text-xs font-medium text-acento hover:underline sm:min-h-0"
-                            onClick={() => cambiar(gente.map((p) => p.id), !todos)}
-                            aria-label={`${todos ? 'Desmarcar' : 'Marcar'} a ${gente.length === 1 ? 'la persona' : `las ${gente.length} personas`} de ${area}`}
-                          >
-                            {todos ? 'Desmarcar el área' : 'Marcar el área'}
-                          </button>
+                          {/* Quien ya se fue se marca de a uno: solo si estuvo en una charla de antes de irse. */}
+                          {area !== SE_FUERON && (
+                            <button
+                              type="button"
+                              className="inline-flex min-h-11 items-center text-xs font-medium text-acento hover:underline sm:min-h-0"
+                              onClick={() => cambiar(gente.map((p) => p.id), !todos)}
+                              aria-label={`${todos ? 'Desmarcar' : 'Marcar'} a ${gente.length === 1 ? 'la persona' : `las ${gente.length} personas`} de ${area}`}
+                            >
+                              {todos ? 'Desmarcar el área' : 'Marcar el área'}
+                            </button>
+                          )}
                         </div>
                         <ul>
                           {gente.map((p) => (
@@ -365,7 +373,11 @@ function FormularioCharla({
                                 />
                                 <span className="min-w-0">
                                   <span className="block truncate text-texto">{p.nombre}</span>
-                                  {p.cargo && <span className="block truncate text-xs text-texto-suave">{p.cargo}</span>}
+                                  {(p.cargo || (!p.enPlanta && p.area)) && (
+                                    <span className="block truncate text-xs text-texto-suave">
+                                      {[p.cargo, p.enPlanta ? null : p.area].filter(Boolean).join(' · ')}
+                                    </span>
+                                  )}
                                 </span>
                               </label>
                             </li>

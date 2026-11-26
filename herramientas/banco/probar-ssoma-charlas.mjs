@@ -142,12 +142,14 @@ const [{ hoy, manana }] = await consulta(
   `select (now() at time zone 'America/Lima')::date::text as hoy, ((now() at time zone 'America/Lima')::date + 1)::text as manana`,
 )
 const mes = hoy.slice(0, 7)
-const activos = Number((await consulta(`select count(*)::int as n from public.trabajadores where activo`))[0].n)
+// La misma regla de la base: quien estaba en la planta ese mes, por su ingreso y su baja.
+const VIGENTE = `public.ssoma_estuvo_en_la_planta(t.id, t.activo, t.fecha_ingreso, t.fecha_baja, to_date($1, 'YYYY-MM'), (to_date($1, 'YYYY-MM') + interval '1 month')::date)`
+const activos = Number((await consulta(`select count(*)::int as n from public.trabajadores t where ${VIGENTE}`, [mes]))[0].n)
 const faltanEnLaBase = async () =>
   Number(
     (
       await consulta(
-        `select count(*)::int as n from public.trabajadores t where t.activo and not exists (
+        `select count(*)::int as n from public.trabajadores t where ${VIGENTE} and not exists (
            select 1 from public.ssoma_charla_asistentes a join public.ssoma_charlas c on c.id = a.charla_id
             where a.trabajador_id = t.id and c.anulado_en is null and to_char(c.fecha, 'YYYY-MM') = $1)`,
         [mes],
@@ -272,11 +274,37 @@ let charla = null
   await ventana.waitFor()
   await ventana.getByText('Inducción', { exact: true }).click()
   await ventana.locator('#charla-tema').fill(TEMA2)
-  await ventana.getByRole('searchbox').fill('vargas')
-  await ventana.locator('[data-asistente]').first().check()
   await ventana.locator('input[type="file"]:not([capture])').setInputFiles(foto)
   await pagina.waitForFunction(() => !document.body.innerText.includes('subiendo…'), null, { timeout: 60000 })
   const registrar = ventana.getByRole('button', { name: 'Registrar', exact: true })
+
+  // Quien se fue hace poco va aparte, sin «Marcar el área»; marcarlo en la charla de hoy se rechaza nombrándolo.
+  await ventana.getByRole('searchbox').fill('rojas vera')
+  const seFue = ventana.locator('fieldset[aria-labelledby^="charla-area-"]').filter({ hasText: 'ROJAS VERA' })
+  const textoSeFue = limpio(await seFue.innerText())
+  comprobar(
+    /Ya no están en la planta/.test(textoSeFue) && (await seFue.getByRole('button').count()) === 0,
+    `[SSOMA 390] quien se fue va aparte y sin «Marcar el área»: «${textoSeFue.slice(0, 90)}»`,
+  )
+  await seFue.locator('[data-asistente]').check()
+  await pagina.screenshot({ path: join(CAPTURAS, 'ssoma-registrar-se-fue-390.png') })
+  await hasta(() => registrar.isEnabled(), Boolean, 30000)
+  const antesDelRechazo = envios.n
+  await registrar.click()
+  const rechazo = await hasta(
+    () => ventana.locator('#charla-asistentes-error').innerText().catch(() => ''),
+    (t) => /no estaba en la planta/.test(t),
+    30000,
+  )
+  const [{ n: entraron }] = await consulta(`select count(*)::int as n from public.ssoma_charlas where tema = $1`, [TEMA2])
+  comprobar(
+    /ROJAS VERA ELSA no estaba en la planta el \d\d\/\d\d\/\d{4}/.test(rechazo) && entraron === 0 && envios.n - antesDelRechazo === 1,
+    `[SSOMA 390] marcarla en la charla de hoy se rechaza junto a la lista, nombrándola: «${limpio(rechazo)}»`,
+  )
+  await seFue.locator('[data-asistente]').uncheck()
+
+  await ventana.getByRole('searchbox').fill('vargas')
+  await ventana.locator('[data-asistente]').first().check()
   await hasta(() => registrar.isEnabled(), Boolean, 30000)
   await pagina.screenshot({ path: join(CAPTURAS, 'ssoma-registrar-induccion-390.png') })
   const antes = envios.n

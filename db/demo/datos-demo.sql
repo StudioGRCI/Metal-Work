@@ -617,6 +617,11 @@ begin
         ('WILMER',  'CHOQUE APAZA',    '70000009', 'Electricista',         'MNT'),
         ('JULIO',   'PARI CONDORI',    '70000010', 'Ayudante',             'PRD')
       ) as t(nombres, apellidos, dni, cargo, area);
+    -- Alguien que se fue hace veinte días: en la lista para marcar va aparte, y
+    -- cuenta en «No asistieron» del mes en que estuvo.
+    insert into public.trabajadores (nombres, apellidos, dni, cargo, area_id, activo, fecha_ingreso, fecha_baja)
+    values ('ELSA', 'ROJAS VERA', '70000011', 'Ayudante', (select id from public.areas where codigo = 'PRD'),
+            false, v_hoy - 400, v_hoy - 20);
   end if;
 
   insert into public.ssoma_charlas (id, tipo, tema, expositor, fecha, creado_por)
