@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import { Download, FileText } from 'lucide-react'
 
 import { LineaDeDiseno } from '@/components/codigo-interno/linea-diseno'
+import { LineaLoQueDebeDiseno } from '@/components/codigo-interno/lo-que-debe-diseno'
 import { DelDocumento } from '@/components/estructura/del-documento'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { SeccionesDelDocumento } from '@/components/estructura/secciones-del-documento'
@@ -31,6 +32,7 @@ import {
   type ResumenCodigo,
 } from '@/lib/datos/codigos-internos'
 import { etapasDeCodigo } from '@/lib/datos/diseno-codigos'
+import { loQueDebeDiseno } from '@/lib/datos/lo-que-debe-diseno'
 import { cotizacionesAprobadas, facturadoDelCodigo, facturasDelCodigo, type FacturadoDelCodigo } from '@/lib/datos/facturacion'
 import { mesesSinPagosDeOficina, mesesSinPlanillaDeTaller, repartoDelMes } from '@/lib/datos/gastos-generales'
 import { PERMISOS_BAJAR_COTIZACION, rutaParaBajarCotizacion } from '@/lib/descarga'
@@ -49,6 +51,7 @@ import {
   faltaElPrecio,
   faltaParaCerrar,
   montoMixto,
+  esUnidadDeDiseno,
   noEsUnidad,
   normalizarCodigo,
   origenDelAvance,
@@ -95,7 +98,7 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
   const pedida = vistaValida(params.vista)
   const vista = vistas.some((v) => v.valor === pedida) ? pedida : 'avance'
 
-  const [{ codigos: conDocumentos, diseno: deDiseno, avances }, facturado, reparto, horasDelMes, faltaOficina, faltaPlanilla, lineas] = await Promise.all([
+  const [{ codigos: conDocumentos, diseno: deDiseno, avances }, facturado, reparto, horasDelMes, faltaOficina, faltaPlanilla, lineas, debe] = await Promise.all([
     leerListaDeCodigos(),
     veFacturas && !aTodos ? facturadoDelCodigo(codigo) : Promise.resolve(null),
     aTodos ? repartoATodosLosActivos() : Promise.resolve<RepartoATodosFila[]>([]),
@@ -106,6 +109,15 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
     cierra && !aTodos && !noEsUnidad(codigo) ? mesesSinPlanillaDeTaller(codigo) : Promise.resolve<string[]>([]),
     // El resumen dice cuánto de la mano de obra es el ajuste de la planilla (la vista de costeo reusa la lectura).
     aTodos ? Promise.resolve([]) : costeoDelCodigo(codigo),
+    // Lo que Diseño le debe a la unidad (plan 6.1), en lectura; si no se lee, se dice.
+    !esUnidadDeDiseno(codigo)
+      ? Promise.resolve(undefined)
+      : loQueDebeDiseno([codigo])
+          .then((m) => m.get(codigo))
+          .catch((e: unknown) => {
+            console.error('[codigos-internos/detalle] lo que debe Diseño:', e)
+            return null
+          }),
   ])
   const ajuste = ajusteDePlanilla(lineas)
   const esperaElMes = horasDelMes.some((r) => r.codigo === codigo)
@@ -208,7 +220,12 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
                   faltaPlanilla={faltaPlanilla}
                   ajuste={ajuste}
                 />
-                <LineaDeDiseno d={diseno} />
+                {esUnidadDeDiseno(codigo) && (
+                  <div className="space-y-1">
+                    <LineaDeDiseno d={diseno} />
+                    <LineaLoQueDebeDiseno d={debe} />
+                  </div>
+                )}
               </>
             )}
 

@@ -532,12 +532,14 @@ function Ficha({
   ]
   if (llevaElPersonal) {
     datos.push(
-      [
+      // La cuenta bancaria la lee solo RR. HH. (migración 20261126620000): al administrador
+      // la base no se la da, y diría «Sin cuenta».
+      ...(corrige ? ([[
         'Cuenta',
         t.cuenta
           ? `${t.cuenta.banco} · ${TIPO_CUENTA[t.cuenta.tipo_cuenta]?.etiqueta ?? t.cuenta.tipo_cuenta} · ${t.cuenta.numero_cuenta}${t.cuenta.cci ? ` · CCI ${t.cuenta.cci}` : ''}`
           : 'Sin cuenta',
-      ],
+      ]] as [string, ReactNode][]) : []),
       ['Gana al mes', t.remuneracion_mensual ? `${moneda(t.remuneracion_mensual)} · ${moneda(t.remuneracion_mensual / HORAS_DEL_MES)} la hora` : 'Sin remuneración'],
       ['Cuesta al mes', t.costo_mensual ? `${moneda(t.costo_mensual)} · ${moneda(t.costo_mensual / HORAS_DEL_MES)} la hora` : 'Sin costo mensual'],
     )

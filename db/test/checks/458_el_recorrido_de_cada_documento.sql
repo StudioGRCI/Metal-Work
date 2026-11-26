@@ -7,7 +7,8 @@
 --      revisión de Almacén, compra, listo, entrega y anulación. La vuelta a
 --      compra sale de la bitácora.
 --   3. El de la cotización: subida, revisión, corrección, código y OT, factura
---      y anulación.
+--      y anulación; desde la 20261126470000, también la factura de lo que falta
+--      y el cobro, que Ventas no ve (lo prueba a fondo el check 472).
 --   4. Lo lee quien ve el documento y nadie más: la función de la cotización
 --      devuelve exactamente las que la política deja ver a cada puesto; el
 --      número de la OT, solo a quien lee las órdenes.
@@ -476,7 +477,7 @@ do $$
 declare v record;
 begin
   update public.cotizaciones_pdf set estado = 'RECHAZADA', observacion = 'Falta el plazo de entrega' where id = pg_temp.id('cot1');
-  perform test.afirmar(pg_temp.camino_cot('cot1') = 'SUBIDA:HECHO > REVISION:HECHO > CORRECCION:AHORA > REVISION:PENDIENTE > CODIGO_Y_OT:PENDIENTE > FACTURA:PENDIENTE',
+  perform test.afirmar(pg_temp.camino_cot('cot1') = 'SUBIDA:HECHO > REVISION:HECHO > CORRECCION:AHORA > REVISION:PENDIENTE > CODIGO_Y_OT:PENDIENTE > FACTURA:PENDIENTE > COBRO:PENDIENTE',
     'rechazada: vuelve a quien la subió, y después Gerencia revisa la corrección (' || pg_temp.camino_cot('cot1') || ')');
   select * into v from pg_temp.paso_cot('cot1', 'CORRECCION', 'AHORA');
   perform test.afirmar(v.puesto = 'Agente de Ventas' and v.espera = 'CORRECCION', 'la tiene Ventas');
@@ -487,7 +488,7 @@ begin
   update public.cotizaciones_pdf set estado = 'ANULADA', observacion = 'El cliente desistió de la compra' where id = pg_temp.id('cot3');
   perform test.afirmar(pg_temp.camino_cot('cot3') = 'SUBIDA:HECHO > ANULACION:HECHO',
     'anulada: queda lo hecho, sin nadie esperando (' || pg_temp.camino_cot('cot3') || ')');
-  perform test.afirmar(pg_temp.camino_cot('cot2') = 'SUBIDA:HECHO > REVISION:HECHO > CODIGO_Y_OT:AHORA > FACTURA:PENDIENTE',
+  perform test.afirmar(pg_temp.camino_cot('cot2') = 'SUBIDA:HECHO > REVISION:HECHO > CODIGO_Y_OT:AHORA > FACTURA:PENDIENTE > COBRO:PENDIENTE',
     'aprobada sin OT: la tiene Administración (' || pg_temp.camino_cot('cot2') || ')');
   select * into v from pg_temp.paso_cot('cot2', 'CODIGO_Y_OT', 'AHORA');
   perform test.afirmar(v.puesto = 'Administración' and v.espera = 'CODIGO_Y_OT', 'Administración le da su código y sube su OT');
@@ -520,7 +521,7 @@ declare v record;
 begin
   perform public.cargar_codigo_y_ot_de_cotizacion(pg_temp.id('cot1'), pg_temp.id('ot1'), 'qa-ci 458', '9458', 'SEMIRREMOLQUE',
     current_setting('prueba.hoy')::date + 30, 'ot/' || current_setting('prueba.ot1') || '/orden.pdf', 'orden.pdf', 100);
-  perform test.afirmar(pg_temp.camino_cot('cot1') = 'SUBIDA:HECHO > REVISION:HECHO > CORRECCION:HECHO > REVISION:HECHO > CODIGO_Y_OT:HECHO > FACTURA:AHORA',
+  perform test.afirmar(pg_temp.camino_cot('cot1') = 'SUBIDA:HECHO > REVISION:HECHO > CORRECCION:HECHO > REVISION:HECHO > CODIGO_Y_OT:HECHO > FACTURA:AHORA > COBRO:PENDIENTE',
     'con su código y su OT, la tiene Contabilidad (' || pg_temp.camino_cot('cot1') || ')');
   select * into v from pg_temp.paso_cot('cot1', 'CODIGO_Y_OT', 'HECHO');
   perform test.afirmar(v.puesto = 'Administración' and v.detalle like 'OT 9458-%',
@@ -540,10 +541,11 @@ begin
     ('facturas-venta', current_setting('prueba.f1_ruta'), current_setting('prueba.contabilidad'), '{"mimetype": "application/pdf", "size": 900}');
   perform public.registrar_factura_venta(pg_temp.id('f1'), pg_temp.id('cot1'), 'E001-458',
     current_setting('prueba.hoy')::date, current_setting('prueba.hoy')::date, 'PEN', 22900, 'Inicial 50 %', current_setting('prueba.f1_ruta'), 'f.pdf');
-  perform test.afirmar(pg_temp.camino_cot('cot1') = 'SUBIDA:HECHO > REVISION:HECHO > CORRECCION:HECHO > REVISION:HECHO > CODIGO_Y_OT:HECHO > FACTURA:HECHO',
-    'facturada: todo hecho (' || pg_temp.camino_cot('cot1') || ')');
+  perform test.afirmar(pg_temp.camino_cot('cot1') = 'SUBIDA:HECHO > REVISION:HECHO > CORRECCION:HECHO > REVISION:HECHO > CODIGO_Y_OT:HECHO > FACTURA:HECHO > FACTURA_RESTO:AHORA > COBRO:AHORA',
+    'facturada la mitad: espera la factura del resto y su cobro (migración 20261126470000) (' || pg_temp.camino_cot('cot1') || ')');
   select * into v from pg_temp.paso_cot('cot1', 'FACTURA', 'HECHO');
-  perform test.afirmar(v.puesto = 'Contabilidad' and v.detalle is null, 'la factura sale con su puesto, sin número ni monto');
+  perform test.afirmar(v.puesto = 'Contabilidad' and v.detalle = 'EN_PARTE',
+    'la factura sale con su puesto, sin número ni monto; a Contabilidad le dice que es una parte (migración 20261126470000)');
 end $$;
 reset role;
 

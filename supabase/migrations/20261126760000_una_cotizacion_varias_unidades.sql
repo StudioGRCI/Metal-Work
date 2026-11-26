@@ -46,9 +46,9 @@
 -- (la OT se carga sin fecha; está en el PR de Administración y ya en
 -- producción); `fn_cotizacion_pdf_revision`, a la de la `20261027200000`;
 -- `margen_ot`, a la de la `20261001170000`; `codigos_internos_costo_calculado`,
--- a la de la `20261017300000`; `fn_cotizacion_pdf_avisa` y
--- `recorrido_de_cotizaciones`, a las de la `20261126450000`; y
--- `pendientes_de_las_ot`, a la de la `20261126330000`. Cada una se reemplaza solo si sigue siendo esa (la guarda
+-- a la de la `20261017300000`; `fn_cotizacion_pdf_avisa`, a la de la
+-- `20261126450000`; `recorrido_de_cotizaciones`, a la de la `20261126470000`;
+-- y `pendientes_de_las_ot`, a la de la `20261126330000`. Cada una se reemplaza solo si sigue siendo esa (la guarda
 -- de la huella, abajo). La vista `v_cotizaciones_pdf` conserva sus columnas en
 -- el mismo orden y suma las nuevas al final.
 --
@@ -77,9 +77,8 @@ begin
       ('public.margen_ot(uuid)', array['428f4a211325f86f7ab1b25a00987245', '0a852aba120e59362ad6ba63c6ab53de', '088e295d4723fba20ca7236eb322de0d']),
       ('public.codigos_internos_costo_calculado(text)', array['e2fe09bb42d5872932489360fe533d20', '22510d6d4ab2a8494ee1488ca425f88f']),
       ('public.fn_cotizacion_pdf_avisa()', array['899ecdee38949ebf55c6c4979e53b796', '17d327b8fcd95d8d051823d840c5e34f', '2239fc0bedd8f52a7dd5dd356a062a2e']),
-      -- La de la 20261126450000 (producción) y esta. El PR 206 también la cambia:
-      -- el que se una segundo parte del otro.
-      ('public.recorrido_de_cotizaciones(uuid[])', array['2387f7bbd95c071e866c7b7da5659a1a', '4f719f937160443906de4ba214d1897a']),
+      -- La de la 20261126470000 (PR 206; repositorio y producción) y esta.
+      ('public.recorrido_de_cotizaciones(uuid[])', array['a1d4192f42b2d6b1e567676788b41357', '693851facf796c541733982b26b70db3']),
       -- La de la 20261126330000 (PR 220; repositorio y producción) y esta.
       ('public.pendientes_de_las_ot()', array['0c8f069b73c8232b4669bdf95403bc8c', '718a8eb5034228fcc1d284adadff9e21'])
     ) as t(firma, conocidas)
@@ -1021,10 +1020,11 @@ revoke all on function public.fn_cotizacion_pdf_avisa() from public, anon, authe
 -- 11. El recorrido espera a Administración hasta la OT de la última unidad ----------
 -- Con la primera OT, la ficha del cliente y la tarjeta decían «La tiene
 -- Contabilidad» aunque faltaran las de las otras unidades (lo vio el auditor de
--- diseño). Igual que la 20261126450000, salvo el paso del código y la OT: queda
--- hecho cuando hay tantas OT vigentes como unidades; antes, Administración la
--- sigue teniendo y el detalle dice cuántas lleva («1/3»). La factura espera
--- desde la última OT. Con una unidad, todo queda igual.
+-- diseño). Igual que la 20261126470000 (PR 206, hasta el cobro), salvo el paso
+-- del código y la OT: queda hecho cuando hay tantas OT vigentes como unidades;
+-- antes, Administración la sigue teniendo y el detalle dice cuántas lleva
+-- («1/3»). Con varias unidades, la factura espera desde la última OT. Con una
+-- unidad, todo queda igual.
 create or replace function public.recorrido_de_cotizaciones(p_ids uuid[])
 returns table (
   documento uuid,
@@ -1050,6 +1050,8 @@ declare
   v_tesoreria constant boolean := public.tiene_permiso('tesoreria.ver_documentos');
   -- El número de la OT lo lee quien lee las órdenes (`puede_ver_orden`); los demás ven el paso sin número.
   v_ordenes   constant boolean := public.es_admin() or public.tiene_permiso('ordenes.ver');
+  -- El cobro lo ve quien lee los cobros: la política `ver_cobros_factura_venta`, tal cual.
+  v_cobros    constant boolean := v_admin or public.tiene_permiso('contabilidad.facturar') or v_aprobadas or v_tesoreria;
 begin
   if not (v_admin or v_comercial or v_aprobadas or v_tesoreria) then
     raise exception 'No tienes permiso para ver las cotizaciones.' using errcode = 'insufficient_privilege';
@@ -1064,9 +1066,14 @@ begin
   return query
   with cot as (
     select c.id, c.estado::text as estado, c.registrado_por, c.creado_en, c.revisado_por, c.revisado_en,
-           c.archivo_subido_en, c.version, c.anulado_por, c.anulado_en,
-           coalesce(c.cantidad_unidades, 1) as unidades
+           c.archivo_subido_en, c.version, c.anulado_por, c.anulado_en, c.moneda::text as moneda,
+           coalesce(c.cantidad_unidades, 1) as unidades,
+           -- El total con IGV, como lo cuenta Facturación (`totalConIgv`): sin IGV, se le suma el 18 %.
+           case when c.monto_venta is null then null
+                when ig.incluye_igv = false then round(c.monto_venta::numeric * 1.18, 2)
+                else c.monto_venta::numeric end as total
       from public.cotizaciones_pdf c
+      left join public.cotizaciones_pdf_igv ig on ig.cotizacion_id = c.id
      where c.id = any(p_ids)
        -- La política `ver_cotizaciones_pdf`, tal cual.
        and (v_admin or v_comercial
@@ -1081,10 +1088,12 @@ begin
       from public.cotizaciones_pdf_versiones v
       join cot c on c.id = v.cotizacion_id
   ),
-  -- La primera OT vigente que salió de ella, y cuántas vigentes tiene: con
-  -- varias unidades, el paso queda hecho cuando están todas.
+  -- La primera OT vigente que salió de ella, desde cuándo tiene código interno,
+  -- y cuántas vigentes tiene: con varias unidades, el paso queda hecho cuando
+  -- están todas (migración 20261126760000).
   ot as (
     select distinct on (o.cotizacion_pdf_id) o.cotizacion_pdf_id as cot, o.numero, o.creado_por, o.creado_en,
+           public.codigo_interno_de_cotizacion_desde(o.cotizacion_pdf_id) as con_codigo_en,
            (count(*) over (partition by o.cotizacion_pdf_id))::integer as vigentes,
            max(o.creado_en) over (partition by o.cotizacion_pdf_id) as ultima_en
       from public.ordenes_trabajo o
@@ -1100,9 +1109,47 @@ begin
      where f.anulada_en is null
      order by f.cotizacion_pdf_id, f.creado_en
   ),
+  -- Cada factura vigente con su cobro, como lo cuenta `v_facturas_venta`:
+  -- cobrada si un cobro vigente la cancela o si lo cobrado alcanza su total.
+  facturas as (
+    select f.cotizacion_pdf_id as cot, f.id, f.moneda::text as moneda, f.total, f.creado_en,
+           coalesce(bool_or(b.cancela) filter (where b.anulado_en is null), false)
+             or coalesce(sum(b.monto) filter (where b.anulado_en is null), 0) >= f.total as cobrada,
+           count(b.id) filter (where b.anulado_en is null) as cobros
+      from public.facturas_venta f
+      join cot c on c.id = f.cotizacion_pdf_id
+      left join public.cobros_factura_venta b on b.factura_id = f.id
+     where f.anulada_en is null
+     group by f.id
+  ),
+  -- Lo facturado de cada cotización en su moneda, y si alguna factura va en otra.
+  facturado as (
+    select c.id as cot,
+           coalesce(sum(x.total) filter (where x.moneda = c.moneda), 0) as en_su_moneda,
+           bool_or(x.moneda <> c.moneda) as en_otra_moneda
+      from cot c join facturas x on x.cot = c.id
+     group by c.id
+  ),
+  -- Facturada en parte: le falta facturar lo que no cubren sus facturas, esté
+  -- aprobada o en corrección. Con una factura en otra moneda no se compara, como
+  -- en Facturación.
+  falta_resto as (
+    select c.id as cot
+      from cot c
+      join facturado x on x.cot = c.id
+     where c.estado <> 'ANULADA' and c.total is not null
+       and not x.en_otra_moneda and x.en_su_moneda < c.total - 0.005
+  ),
+  -- El último cobro vigente, el que la dejó cobrada: quién y cuándo, sin monto.
+  ultimo_cobro as (
+    select distinct on (x.cot) x.cot, b.registrado_por, b.creado_en
+      from facturas x
+      join public.cobros_factura_venta b on b.factura_id = x.id and b.anulado_en is null
+     order by x.cot, b.fecha desc, b.creado_en desc
+  ),
   pasos as (
     -- `canon` desempata lo que pasó a la misma hora: cada versión con su revisión
-    -- y su corrección, en ese orden, antes que la OT y la factura.
+    -- y su corrección, en ese orden, antes que la OT, la factura y el cobro.
     -- Ventas la subió
     select c.id as cot, 10 as canon, 'SUBIDA' as paso, 'HECHO' as situacion, c.registrado_por as quien, null::text as puesto_fijo,
            c.creado_en as en, null::text as espera, null::text as detalle
@@ -1157,12 +1204,15 @@ begin
       from cot c left join ot o on o.cot = c.id
      where c.estado in ('POR_REVISAR', 'RECHAZADA') and coalesce(o.vigentes, 0) < c.unidades
     union all
-    -- Contabilidad la facturó
-    select f.cot, 100010, 'FACTURA', 'HECHO', f.registrado_por, null, f.creado_en, null, null
+    -- Contabilidad la facturó. A quien lee las facturas le dice si fue solo una parte.
+    select f.cot, 100010, 'FACTURA', 'HECHO', f.registrado_por, null, f.creado_en, null,
+           case when v_cobros and exists (select 1 from falta_resto r where r.cot = f.cot) then 'EN_PARTE' end
       from factura f
     union all
-    -- Le toca a Contabilidad cuando están todas las OT, desde la última.
-    select c.id, 100010, 'FACTURA', 'AHORA', null, 'Contabilidad', o.ultima_en, 'FACTURA', null
+    -- Espera su factura desde que la OT tiene código interno (DKS, Plan 10). Con
+    -- varias unidades, cuando están todas sus OT, desde la última.
+    select c.id, 100010, 'FACTURA', 'AHORA', null, 'Contabilidad',
+           case when c.unidades > 1 then o.ultima_en else coalesce(o.con_codigo_en, o.creado_en) end, 'FACTURA', null
       from cot c join ot o on o.cot = c.id
      where c.estado = 'APROBADA' and o.vigentes >= c.unidades
        and not exists (select 1 from factura f where f.cot = c.id)
@@ -1171,6 +1221,36 @@ begin
       from cot c
      where c.estado <> 'ANULADA' and not exists (select 1 from factura f where f.cot = c.id)
        and not (c.estado = 'APROBADA' and exists (select 1 from ot o where o.cot = c.id and o.vigentes >= c.unidades))
+    union all
+    -- Facturada en parte: espera la factura de lo que falta, desde la misma hora.
+    -- Cuánto se facturó solo lo ve quien lee las facturas: Ventas no.
+    select r.cot, 100015, 'FACTURA_RESTO', 'AHORA', null, 'Contabilidad', coalesce(o.con_codigo_en, o.creado_en), 'FACTURA_RESTO', null
+      from falta_resto r
+      join cot c on c.id = r.cot
+      join ot o on o.cot = r.cot
+     where v_cobros and c.estado = 'APROBADA'
+    union all
+    -- Tesorería la cobró: todas sus facturas vigentes quedaron cobradas y no falta
+    -- facturar nada. Cobrado el adelanto, el cobro del resto sigue pendiente.
+    select u.cot, 100018, 'COBRO', 'HECHO', u.registrado_por, null, u.creado_en, null, null
+      from ultimo_cobro u
+     where v_cobros and not exists (select 1 from facturas x where x.cot = u.cot and not x.cobrada)
+       and not exists (select 1 from falta_resto r where r.cot = u.cot)
+    union all
+    select r.cot, 100018, 'COBRO', 'PENDIENTE', null, null, null, null, null
+      from falta_resto r
+     where v_cobros and not exists (select 1 from facturas x where x.cot = r.cot and not x.cobrada)
+    union all
+    -- Alguna factura vigente espera su cobro: desde la más vieja de las que faltan.
+    select x.cot, 100018, 'COBRO', 'AHORA', null, 'Tesorería', min(x.creado_en), 'COBRO',
+           case when sum(x.cobros) > 0 then 'EN_PARTE' end
+      from facturas x
+     where v_cobros and not x.cobrada
+     group by x.cot
+    union all
+    select c.id, 100018, 'COBRO', 'PENDIENTE', null, null, null, null, null
+      from cot c
+     where v_cobros and c.estado <> 'ANULADA' and not exists (select 1 from facturas x where x.cot = c.id)
     union all
     -- Anulada
     select c.id, 100020, 'ANULACION', 'HECHO', c.anulado_por, null, c.anulado_en, null, null
@@ -1207,7 +1287,7 @@ end;
 $$;
 
 comment on function public.recorrido_de_cotizaciones(uuid[]) is
-  'El recorrido de cada cotización, un paso por fila: lo hecho con el puesto de quien lo hizo, su fecha y los días (fecha de Lima) desde el paso hecho anterior; quién la tiene ahora y hace cuántos días; y lo que falta. Devuelve solo las que la política ver_cotizaciones_pdf deja ver a quien llama. Sin importes ni datos de RR. HH.';
+  'El recorrido de cada cotización, un paso por fila, de la subida al cobro: lo hecho con el puesto de quien lo hizo y su fecha; quién la tiene ahora y hace cuántos días (fecha de Lima); y lo que falta. Devuelve solo las que la política ver_cotizaciones_pdf deja ver a quien llama; el cobro, solo a quien lee los cobros. Sin importes ni datos de RR. HH.';
 
 revoke all on function public.recorrido_de_cotizaciones(uuid[]) from public, anon;
 grant execute on function public.recorrido_de_cotizaciones(uuid[]) to authenticated;

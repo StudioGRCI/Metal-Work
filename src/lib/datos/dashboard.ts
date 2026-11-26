@@ -35,6 +35,7 @@ import type { TonoIndicador } from '@/components/ui/indicador'
 import { leerListaDeCodigos, sumarCodigosDeDiseno } from '@/lib/datos/codigos-internos'
 import { codigosDeDiseno, etapasDeCodigo, planosDeCodigo } from '@/lib/datos/diseno-codigos'
 import { listarGastoPorCodigo } from '@/lib/datos/gasto-por-codigo'
+import { pendientesGlobales } from '@/lib/datos/pendientes-globales'
 import { consolidado, sumaEnLaCaja } from '@/lib/dominio/caja'
 import { CODIGO_SIN_AVANCE, costoDelCodigo, enlaceCodigo } from '@/lib/dominio/codigos-internos'
 import { faltaDelServicio } from '@/lib/dominio/detraccion'
@@ -208,10 +209,30 @@ const CIFRAS = {
     ruta: '/requerimientos',
     calcular: async (c) => {
       const mios = rqDelPuesto(c, await rqAbiertos(c))
+      // Al supervisor, lo que puede recoger se cuenta como su pendiente y como
+      // la lista `?ver=recoger`: los RQ con algún insumo ya en almacén, aunque
+      // el resto siga en compra. Contarlo por el estado del RQ daba otra cifra.
+      if (c.perfil.rol.codigo === 'SUPERVISOR') {
+        const { tareas, clavesSinComprobar } = await c.una('pendientes', () => pendientesGlobales(c.perfil))
+        const recoger = tareas.find((t) => t.clave === 'rq_por_recoger')?.cantidad ?? 0
+        const sinLeer = clavesSinComprobar.includes('rq_por_recoger')
+        return {
+          titulo: 'Requerimientos de tu área',
+          valor: String(mios.length),
+          pie: sinLeer
+            ? 'no se pudo saber qué hay para recoger'
+            : recoger > 0
+              ? `${recoger} con algo para recoger en almacén`
+              : 'nada para recoger en almacén',
+          ...(recoger > 0 ? { href: '/requerimientos?ver=recoger' } : {}),
+          icono: ClipboardList,
+          tono: mios.length > 0 ? 'acento' : 'neutro',
+        }
+      }
       const listos = mios.filter((r) => r.estado === 'LISTO_EN_ALMACEN').length
       return {
         // La administradora lleva solo el RQA: que la cifra lo diga, o «0» con tres RQ en Atención se leía como un error.
-        titulo: c.perfil.rol.codigo === 'SUPERVISOR' ? 'Requerimientos de tu área' : c.perfil.rol.codigo === 'ADMINISTRACION' ? 'Requerimientos de Administración' : 'Requerimientos abiertos',
+        titulo: c.perfil.rol.codigo === 'ADMINISTRACION' ? 'Requerimientos de Administración' : 'Requerimientos abiertos',
         valor: String(mios.length),
         pie: listos > 0 ? `${plural(listos, 'listo', 'listos')} en almacén` : 'ninguno listo en almacén',
         icono: ClipboardList,
