@@ -1113,7 +1113,8 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
     contar: async () => {
       const { data, error } = await supabase.rpc('averias_por_confirmar')
       if (error) throw new Error('No se pudo consultar el pendiente.')
-      return typeof data === 'number' ? data : 0
+      if (typeof data !== 'number') throw new Error('No se pudo consultar el pendiente.')
+      return data
     },
   })
 

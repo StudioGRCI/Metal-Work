@@ -279,6 +279,15 @@ begin
     raise exception 'Cuenta qué sigue fallando, en al menos 10 caracteres: vuelve a Mantenimiento con eso.' using errcode = 'check_violation';
   end if;
   select * into v_av from public.averias v where v.id = p_id for update;
+  -- El mismo «quedó bien» otra vez, de quien lo dio, se contesta antes de mirar
+  -- si hoy le toca: si entretanto reactivaron la cuenta de quien la reportó, su
+  -- confirmación ya quedó y no se le dice que no puede.
+  if found and p_quedo_bien and v_av.estado = 'CONFIRMADA' and v_av.nota_de_quien_reporto is not distinct from v_nota
+     and (select s.hecho_por from public.averia_pasos s
+           where s.averia_id = p_id and s.paso = 'CONFIRMACION' order by s.hecho_en desc limit 1) = v_yo then
+    return query select p_id, v_av.estado, false, null::text;
+    return;
+  end if;
   if not found or not public.averias_puede_confirmar(v_av.registrado_por, v_av.area_id) then
     raise exception 'Si quedó bien lo confirma quien reportó la avería; si ya no tiene cuenta, el responsable del área o Mantenimiento.'
       using errcode = 'insufficient_privilege';
@@ -291,12 +300,13 @@ begin
      and (select s.hecho_por from public.averia_pasos s
            where s.averia_id = p_id and s.paso in ('CONFIRMACION', 'REAPERTURA')
            order by s.hecho_en desc limit 1) <> v_yo then
-    raise exception 'El reporte % ya lo % %.', v_av.numero,
-      case when v_av.estado = 'CONFIRMADA' then 'confirmó' else 'devolvió a Mantenimiento' end,
-      (select coalesce(nullif(btrim(concat_ws(' ', u.nombres, u.apellidos)), ''), 'otra persona')
+    raise exception '% ya % el reporte %.',
+      (select coalesce(nullif(btrim(concat_ws(' ', u.nombres, u.apellidos)), ''), 'Otra persona')
          from public.averia_pasos s join public.usuarios u on u.id = s.hecho_por
         where s.averia_id = p_id and s.paso in ('CONFIRMACION', 'REAPERTURA')
-        order by s.hecho_en desc limit 1)
+        order by s.hecho_en desc limit 1),
+      case when v_av.estado = 'CONFIRMADA' then 'confirmó' else 'devolvió' end,
+      v_av.numero || case when v_av.estado = 'CONFIRMADA' then '' else ' a Mantenimiento' end
       using errcode = 'check_violation';
   end if;
   if p_quedo_bien and v_av.estado = 'CONFIRMADA' and v_av.nota_de_quien_reporto is not distinct from v_nota then
@@ -334,7 +344,7 @@ begin
   select * into v_equipo from public.equipos where id = v_av.equipo_id for update;
   if v_av.detiene_trabajo and v_equipo.activo and v_equipo.estado <> 'PARADO' then
     update public.equipos
-       set estado = 'PARADO', estado_nota = left('Avería ' || v_av.numero || ': sigue fallando. ' || v_nota, 300)
+       set estado = 'PARADO', estado_nota = 'Avería ' || v_av.numero || ': sigue fallando.'
      where id = v_av.equipo_id
      returning estado_desde into v_desde;
     v_paro := true;
@@ -607,6 +617,230 @@ comment on function public.recorrido_de_averias(uuid[]) is
   'El recorrido de cada reporte de avería, un paso por fila: lo hecho (de averia_pasos) con el puesto de quien lo hizo y su fecha; quién lo tiene ahora (Mantenimiento o quien la reportó, para confirmar) y hace cuántos días (fecha de Lima); y lo que falta. Devuelve solo los que la política ver_averias deja ver a quien llama.';
 revoke all on function public.recorrido_de_averias(uuid[]) from public, anon;
 grant execute on function public.recorrido_de_averias(uuid[]) to authenticated;
+
+-- 7b. La nota del paro no copia lo que escribió quien reportó -------------------------------
+-- La avería que detiene el trabajo deja el equipo parado con una nota. Hasta
+-- aquí la nota copiaba la descripción del reporte («Avería AV-…: lo que
+-- escribió»), y el padrón lo leen puestos que no ven ese reporte (Almacén, con
+-- `equipos.ver`): la tabla les daba el texto que `averias_visibles` les tapa.
+-- Desde aquí la nota dice solo el número y que detiene el trabajo (o que sigue
+-- fallando); lo que dice el reporte, en el reporte. Se copian las dos funciones
+-- que la escriben (de la 20261126100100 y la 20261126950000, iguales en
+-- producción al 2026-11-26) con esa línea cambiada, y las notas ya escritas se
+-- acortan igual. Idempotente: una nota ya corta no cambia.
+create or replace function public.averias_reportar(
+  p_id uuid, p_equipo uuid, p_tipo text, p_detiene boolean, p_riesgo boolean, p_descripcion text, p_fotos jsonb
+) returns table (averia uuid, numero_averia text, codigo_equipo text, equipo_parado boolean,
+                 aviso_mantenimiento boolean, aviso_responsable boolean, aviso_ssoma boolean, aviso_gerencia boolean)
+language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_yo      uuid := public.usuario_actual();
+  v_envio   constant jsonb := jsonb_build_array(p_equipo, p_tipo, p_detiene, p_riesgo, p_descripcion, p_fotos);
+  v_que     text := btrim(coalesce(p_descripcion, ''));
+  v_actual  public.averias%rowtype;
+  v_equipo  public.equipos%rowtype;
+  v_numero  text;
+  v_detiene boolean := coalesce(p_detiene, false);
+  v_paro    boolean := false;
+  v_desde   timestamptz;
+  v_jefe    uuid;
+  v_titulo  text;
+  v_cuerpo  text;
+  v_ruta    text := '/averias/' || p_id::text;
+begin
+  if v_yo is null or not public.es_usuario_activo() then
+    raise exception 'Entra con tu cuenta para reportar.' using errcode = 'insufficient_privilege';
+  end if;
+  if p_id is null then
+    raise exception 'Vuelve a abrir el formulario del reporte.' using errcode = 'check_violation';
+  end if;
+  -- Dos pedidos con el mismo id a la vez (un reintento que se cruza con el
+  -- primero): el segundo espera aquí y después lee el que ya entró, en vez de
+  -- chocar con la llave y decir «ya existe».
+  perform pg_advisory_xact_lock(hashtextextended('averias_reportar:' || p_id::text, 0));
+  select * into v_actual from public.averias where id = p_id;
+  if found then
+    if v_actual.registrado_por = v_yo and public.mismo_envio(p_id, 'REPORTE_AVERIA', v_envio) then
+      return query select v_actual.id, v_actual.numero, (select e.codigo from public.equipos e where e.id = v_actual.equipo_id),
+                          v_actual.paro_el_equipo, q.mantenimiento, q.responsable, q.ssoma, q.gerencia
+                     from public.averias_a_quien_se_aviso(v_actual.id) q;
+      return;
+    end if;
+    if v_actual.registrado_por = v_yo then
+      raise exception 'El reporte % ya quedó registrado la primera vez que lo enviaste: lo que cambiaste después no se guardó. Si está mal, pídele a Mantenimiento que lo anule y repórtalo de nuevo.', v_actual.numero
+        using errcode = 'check_violation';
+    end if;
+    raise exception 'Ese reporte ya existe con otros datos: vuelve a abrir el formulario.' using errcode = 'unique_violation';
+  end if;
+
+  select * into v_equipo from public.equipos where id = p_equipo for update;
+  if not found then
+    raise exception 'Elige el equipo de la lista: si no está, pídele a Mantenimiento que lo agregue al padrón.' using errcode = 'check_violation';
+  end if;
+  if not v_equipo.activo then
+    raise exception 'El equipo % está dado de baja: ya no se usa. Si lo siguen usando, avísale a Mantenimiento.', v_equipo.codigo using errcode = 'check_violation';
+  end if;
+  if p_tipo is null or p_tipo not in ('AVERIA', 'POSIBLE_AVERIA') then
+    raise exception 'Elige si es una avería o una posible avería.' using errcode = 'check_violation';
+  end if;
+  if p_tipo = 'AVERIA' and p_detiene is null then
+    raise exception 'Marca si la avería detiene el trabajo.' using errcode = 'check_violation';
+  end if;
+  if p_tipo = 'POSIBLE_AVERIA' and v_detiene then
+    raise exception 'Si ya detiene el trabajo, es una avería: elige «Avería».' using errcode = 'check_violation';
+  end if;
+  if p_riesgo is null then
+    raise exception 'Marca si es un riesgo para las personas.' using errcode = 'check_violation';
+  end if;
+  if char_length(v_que) not between 10 and 2000 then
+    raise exception 'Cuenta qué le pasa al equipo, en al menos 10 caracteres.' using errcode = 'check_violation';
+  end if;
+
+  v_numero := public.siguiente_correlativo('REPORTE_AVERIA', '001', null);
+
+  -- La avería que detiene el trabajo deja el equipo parado, con el número en su
+  -- nota. Si ya estaba parado, no se toca: lo paró otra cosa.
+  if p_tipo = 'AVERIA' and v_detiene and v_equipo.estado <> 'PARADO' then
+    update public.equipos
+       set estado = 'PARADO', estado_nota = 'Avería ' || v_numero || ': detiene el trabajo.'
+     where id = p_equipo
+     returning estado_desde into v_desde;
+    v_paro := true;
+  end if;
+
+  insert into public.averias (id, numero, equipo_id, tipo, detiene_trabajo, riesgo_personas, descripcion, area_id,
+                              paro_el_equipo, equipo_estado_antes, equipo_nota_antes, equipo_parado_desde, registrado_por)
+  values (p_id, v_numero, p_equipo, p_tipo, v_detiene, p_riesgo, v_que, v_equipo.area_id,
+          v_paro, case when v_paro then v_equipo.estado end, case when v_paro then v_equipo.estado_nota end,
+          case when v_paro then v_desde end, v_yo);
+  perform public.averias_anotar_fotos(p_id, p_fotos);
+  perform public.anotar_envio(p_id, 'REPORTE_AVERIA', v_envio);
+
+  -- Los avisos. Lo urgente va primero en el título, para leerlo en la campana.
+  v_titulo := case when p_tipo = 'AVERIA' then 'Avería' else 'Posible avería' end
+              || ' ' || v_numero || ': ' || v_equipo.codigo || ' ' || v_equipo.descripcion;
+  v_cuerpo := concat_ws(' ',
+                case when v_detiene then 'Detiene el trabajo.' end,
+                case when p_riesgo then 'Es un riesgo para las personas.' end,
+                left(v_que, 300));
+  perform public.avisar_a_permiso('averias.atender', v_titulo, v_cuerpo, v_ruta, 'averias', p_id);
+
+  -- El responsable del área del equipo, si tiene cuenta activa y no es quien
+  -- reporta ni ya recibió el de Mantenimiento.
+  -- `responsable_del_area` (migración 20261125205000): la cuenta activa de un área activa.
+  select public.responsable_del_area(a.codigo) into v_jefe from public.areas a where a.id = v_equipo.area_id;
+  if v_jefe is not null and v_jefe <> v_yo
+     and not exists (select 1 from public.notificaciones n where n.origen_tabla = 'averias' and n.origen_id = p_id and n.usuario_id = v_jefe) then
+    insert into public.notificaciones (usuario_id, titulo, cuerpo, ruta, origen_tabla, origen_id)
+    values (v_jefe, left(v_titulo || ' (en tu área)', 200), left(v_cuerpo, 500), v_ruta, 'averias', p_id);
+  end if;
+
+  -- La que es un riesgo para las personas, también a SSOMA.
+  if p_riesgo then
+    perform public.avisar_a_permiso('ssoma.gestionar', 'Riesgo para las personas: ' || v_titulo, v_cuerpo, v_ruta, 'averias', p_id);
+  end if;
+
+  -- Sin nadie de Mantenimiento con cuenta activa, o sin SSOMA para la de riesgo,
+  -- el aviso no puede perderse en el aire: le llega a Gerencia.
+  if (not public.tiene_permiso('averias.atender')
+      and not exists (select 1 from public.notificaciones n
+                        join public.usuarios u on u.id = n.usuario_id
+                        join public.roles_permisos rp on rp.rol_id = u.rol_id and rp.permiso_codigo = 'averias.atender'
+                       where n.origen_tabla = 'averias' and n.origen_id = p_id))
+     or (p_riesgo and not public.tiene_permiso('ssoma.gestionar')
+         and not exists (select 1 from public.notificaciones n
+                           join public.usuarios u on u.id = n.usuario_id
+                           join public.roles_permisos rp on rp.rol_id = u.rol_id and rp.permiso_codigo = 'ssoma.gestionar'
+                          where n.origen_tabla = 'averias' and n.origen_id = p_id)) then
+    perform public.avisar_a_permiso('averias.ver',
+      v_titulo || case when not public.tiene_permiso('averias.atender')
+                            and not exists (select 1 from public.notificaciones n
+                                              join public.usuarios u on u.id = n.usuario_id
+                                              join public.roles_permisos rp on rp.rol_id = u.rol_id and rp.permiso_codigo = 'averias.atender'
+                                             where n.origen_tabla = 'averias' and n.origen_id = p_id)
+                       then ' (no hay cuenta de Mantenimiento que la reciba)'
+                       else ' (no hay cuenta de SSOMA que reciba el riesgo)' end,
+      v_cuerpo, v_ruta, 'averias', p_id);
+  end if;
+
+  return query select p_id, v_numero, v_equipo.codigo, v_paro, q.mantenimiento, q.responsable, q.ssoma, q.gerencia
+                 from public.averias_a_quien_se_aviso(p_id) q;
+end;
+$$;
+
+create or replace function public.averias_soltar_el_equipo(p_id uuid, p_vuelve_a text)
+returns table (vuelve_a text, sigue_parado_por text)
+language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_av     public.averias%rowtype;
+  v_equipo public.equipos%rowtype;
+  v_otro   public.averias%rowtype;
+  v_estado text;
+begin
+  select * into v_av from public.averias where id = p_id;
+  if not found or not v_av.paro_el_equipo then
+    return query select null::text, null::text;
+    return;
+  end if;
+  select * into v_equipo from public.equipos where id = v_av.equipo_id for update;
+  if not (v_equipo.activo and v_equipo.estado = 'PARADO' and v_equipo.estado_desde = v_av.equipo_parado_desde) then
+    -- Alguien lo cambió después en el padrón: lo que dijo esa persona manda.
+    perform set_config('averias.cambia_el_paro', p_id::text, true);
+    update public.averias
+       set paro_el_equipo = false, equipo_estado_antes = null, equipo_nota_antes = null, equipo_parado_desde = null
+     where id = p_id and estado <> 'ANULADA';
+    perform set_config('averias.cambia_el_paro', '', true);
+    return query select null::text, null::text;
+    return;
+  end if;
+  select o.* into v_otro
+    from public.averias o
+   where o.equipo_id = v_av.equipo_id and o.id <> p_id and o.estado in ('REPORTADA', 'EN_ATENCION') and o.detiene_trabajo
+   order by o.creado_en
+   limit 1
+     for update;
+  if v_otro.id is null then
+    v_estado := coalesce(p_vuelve_a, v_av.equipo_estado_antes);
+    update public.equipos
+       set estado = v_estado, estado_nota = case when p_vuelve_a is null then v_av.equipo_nota_antes end
+     where id = v_av.equipo_id;
+    if v_av.estado <> 'ANULADA' then
+      perform set_config('averias.cambia_el_paro', p_id::text, true);
+      update public.averias
+         set paro_el_equipo = false, equipo_estado_antes = null, equipo_nota_antes = null, equipo_parado_desde = null
+       where id = p_id;
+      perform set_config('averias.cambia_el_paro', '', true);
+    end if;
+    return query select v_estado, null::text;
+    return;
+  end if;
+  -- El otro reporte se queda con el paro y con cómo estaba el equipo antes.
+  perform set_config('averias.cambia_el_paro', v_otro.id::text, true);
+  update public.averias
+     set paro_el_equipo = true, equipo_estado_antes = v_av.equipo_estado_antes,
+         equipo_nota_antes = v_av.equipo_nota_antes, equipo_parado_desde = v_av.equipo_parado_desde
+   where id = v_otro.id;
+  if v_av.estado <> 'ANULADA' then
+    perform set_config('averias.cambia_el_paro', p_id::text, true);
+    update public.averias
+       set paro_el_equipo = false, equipo_estado_antes = null, equipo_nota_antes = null, equipo_parado_desde = null
+     where id = p_id;
+  end if;
+  perform set_config('averias.cambia_el_paro', '', true);
+  update public.equipos
+     set estado_nota = 'Avería ' || v_otro.numero || ': detiene el trabajo.'
+   where id = v_av.equipo_id;
+  return query select null::text, v_otro.numero;
+end;
+$$;
+
+update public.equipos
+   set estado_nota = substring(estado_nota from '^Avería AV-[0-9]+-[0-9]+') || ': sigue fallando.'
+ where estado_nota ~ '^Avería AV-[0-9]+-[0-9]+: sigue fallando\. .';
+update public.equipos
+   set estado_nota = substring(estado_nota from '^Avería AV-[0-9]+-[0-9]+') || ': detiene el trabajo.'
+ where estado_nota ~ '^Avería AV-[0-9]+-[0-9]+: '
+   and estado_nota !~ '^Avería AV-[0-9]+-[0-9]+: (detiene el trabajo|sigue fallando)\.$';
 
 -- 8. La historia de cada equipo ------------------------------------------------------------
 -- Las cifras de cada equipo, para quien ve el padrón. Corre por encima del RLS

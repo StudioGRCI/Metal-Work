@@ -10,10 +10,10 @@ import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabl
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { averiasDelEquipo, type Averia } from '@/lib/datos/averias'
 import { cargarEquipo, historiaDeEquipo } from '@/lib/datos/equipos'
-import { ESTADO_AVERIA, horas, horasParadoSugeridas, notaDelParo, TIPO_AVERIA, tiempoParado } from '@/lib/dominio/averias'
+import { ESTADO_AVERIA, horas, horasParadoSugeridas, TIPO_AVERIA, tiempoParado } from '@/lib/dominio/averias'
 import { ESTADO_EQUIPO, type EstadoEquipo } from '@/lib/dominio/equipos'
 import { fecha, fechaHora } from '@/lib/format'
-import { exigirPermiso, puede } from '@/lib/sesion'
+import { exigirPermiso } from '@/lib/sesion'
 
 export const metadata = { title: 'Historia del equipo' }
 
@@ -27,7 +27,7 @@ const FORMA_DE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
  */
 export default async function PaginaEquipo({ params }: PageProps<'/equipos/[id]'>) {
   // Los mismos permisos que el padrón y la política `ver_equipos`.
-  const perfil = await exigirPermiso(['equipos.ver', 'equipos.gestionar', 'equipos.asignar'])
+  await exigirPermiso(['equipos.ver', 'equipos.gestionar', 'equipos.asignar'])
   const { id } = await params
   if (!FORMA_DE_ID.test(id)) notFound()
   const [equipo, historia, averias] = await Promise.all([cargarEquipo(id), historiaDeEquipo(id), averiasDelEquipo(id)])
@@ -95,7 +95,7 @@ export default async function PaginaEquipo({ params }: PageProps<'/equipos/[id]'
               {equipo.activo && equipo.estado !== 'OPERATIVO' && (
                 <span className="mt-1 block max-w-md text-xs text-texto">
                   {/* Si lo paró un reporte, la nota repite su número: va al lado, en «Lo tiene parado». */}
-                  {!h.paradoPor && notaDelParo(equipo.estado_nota, puede(perfil, 'averias.atender') || puede(perfil, 'averias.ver'))}
+                  {!h.paradoPor && equipo.estado_nota}
                   <span className="block text-texto-suave">Desde el {fecha(equipo.estado_desde)}</span>
                 </span>
               )}
@@ -165,10 +165,10 @@ export default async function PaginaEquipo({ params }: PageProps<'/equipos/[id]'
                     vistas < h.averias
                       ? `Ves ${vistas} de las ${h.averias} averías: las demás son de otras áreas`
                       : `${vistas} ${vistas === 1 ? 'avería' : 'averías'}, de la más reciente a la más antigua`,
-                    anuladas.length > 0 ? `y ${anuladas.length} ${anuladas.length === 1 ? 'reporte anulado' : 'reportes anulados'}, al final` : null,
+                    anuladas.length > 0 ? `${anuladas.length} ${anuladas.length === 1 ? 'anulada' : 'anuladas'}, al final` : null,
                   ]
                     .filter(Boolean)
-                    .join(' ')
+                    .join(' · ')
             }
           />
           <Tabla>

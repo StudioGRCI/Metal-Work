@@ -55,7 +55,8 @@ export function LecturaDeEquipos({
                     <span className="px-1 text-texto-suave">·</span>
                     {e.descripcion}
                   </Link>
-                  {e.estado_nota && <p className="mt-0.5 line-clamp-2 text-texto">{e.estado_nota}</p>}
+                  {/* Si lo paró un reporte, la nota solo repite su número: va abajo, con «por el reporte». */}
+                  {e.estado_nota && !h?.paradoPor && <p className="mt-0.5 line-clamp-2 text-texto">{e.estado_nota}</p>}
                   <p className="mt-0.5 text-xs text-texto-suave">
                     {[
                       `Desde el ${fecha(e.estado_desde)}`,

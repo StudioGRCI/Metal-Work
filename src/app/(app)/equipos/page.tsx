@@ -16,7 +16,6 @@ import {
   historiaDeEquipos,
   listarEquipos,
 } from '@/lib/datos/equipos'
-import { notaDelParo } from '@/lib/dominio/averias'
 import { palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { cuantosEquipos, ESTADO_EQUIPO, FILTRO_DE_ESTADO } from '@/lib/dominio/equipos'
 import { paginaPedida } from '@/lib/dominio/paginas'
@@ -68,13 +67,7 @@ export default async function PaginaEquipos({ searchParams }: PageProps<'/equipo
     pideLectura ? historiaDeEquipos() : null,
     pideLectura ? listarEquipos({ estado: 'PARADO' }) : null,
   ])
-  // Quien no ve todas las averías (Almacén) no lee en la nota del paro lo que
-  // escribió quien la reportó: solo su número. Se limpia antes de pintar, y
-  // también lo que va al navegador con «Acciones».
-  const veTodasLasAverias = puede(perfil, 'averias.atender') || puede(perfil, 'averias.ver')
-  const sinTextoAjeno = <T extends { estado_nota: string | null }>(e: T): T => ({ ...e, estado_nota: notaDelParo(e.estado_nota, veTodasLasAverias) })
-  const { total, pagina, paginas } = lista
-  const equipos = lista.equipos.map(sinTextoAjeno)
+  const { equipos, total, pagina, paginas } = lista
   const conLectura = pideLectura && cuenta.enUso > 0 && historia !== null && historia.size > 0
 
   const resumen = deBaja
@@ -108,7 +101,7 @@ export default async function PaginaEquipos({ searchParams }: PageProps<'/equipo
 
       {(gestiona || asigna) && <AvisoDelPadron />}
       {conLectura && historia && (
-        <LecturaDeEquipos parados={(parados?.equipos ?? []).map(sinTextoAjeno)} totalParados={parados?.total ?? 0} historia={historia} />
+        <LecturaDeEquipos parados={parados?.equipos ?? []} totalParados={parados?.total ?? 0} historia={historia} />
       )}
       <div className="space-y-3">
         <BuscadorSimple ruta="/equipos" etiqueta="Buscar equipos" marcador="Código, nombre, marca o serie" />

@@ -491,7 +491,11 @@ administrador; se anula con motivo, quién y cuándo, y queda congelado.
   riesgo y nadie con `ssoma.gestionar`, el aviso va a Gerencia (`averias.ver`)
   para que no se pierda. El verde de la pantalla dice a quién se avisó.
 - **La avería que detiene el trabajo** deja el equipo **parado** en el padrón,
-  con el número en su nota, si no lo estaba ya. La posible avería y la que no
+  con el número en su nota, si no lo estaba ya. Desde la `20261126995000` la
+  nota dice solo «Avería AV-…: detiene el trabajo.» (o «sigue fallando.» si
+  volvió): el padrón lo lee Almacén, que no ve los reportes de otras áreas, y
+  antes la nota copiaba lo que escribió quien la reportó. Las notas ya escritas
+  se acortaron en la misma migración. La posible avería y la que no
   detiene no cambian su estado. Si Mantenimiento anula el reporte y el equipo
   sigue parado por él (mismo `estado_desde`), vuelve a como estaba; si alguien
   ya lo cambió, no se toca; y si otro reporte vigente del mismo equipo dice que
@@ -675,7 +679,8 @@ SSOMA a su cargo y, desde la `20261126950000`, las averías que reportó y
 Mantenimiento cerró, que esperan que diga si quedaron bien (globo en «Averías»
 o «Reportar avería», y una línea en «Te toca»). Desde la `20261126995000`
 cuentan también las cerradas de quien ya no tiene cuenta, al responsable de su
-área o a Mantenimiento (las que `averias_visibles` le da con `puede_confirmar`).
+área o a Mantenimiento (`averias_por_confirmar()`, que cuenta solo las cerradas
+con la regla de la función que confirma).
 
 | Puesto | Globos del menú | Cifras |
 | --- | --- | --- |

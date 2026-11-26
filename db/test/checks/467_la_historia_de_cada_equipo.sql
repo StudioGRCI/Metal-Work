@@ -173,11 +173,26 @@ set local role authenticated;
 do $$ begin
   -- Mantenimiento, con la pantalla de antes, no recibe «queda confirmado» de lo que hizo otro.
   perform test.debe_fallar(format('select * from public.averias_confirmar(%L, true, null)', current_setting('prueba.av2')),
-    'a otra persona no le dice que la confirmó ella', 'ya lo confirmó Jaime Jefe');
+    'a otra persona no le dice que la confirmó ella', 'Jaime Jefe ya confirmó el reporte');
   perform test.debe_fallar(format('select * from public.averias_confirmar(%L, true, %L)', current_setting('prueba.av2'), 'Lo probé yo: arranca y no se apaga.'),
-    'ni con el mismo texto', 'ya lo confirmó Jaime Jefe');
+    'ni con el mismo texto', 'Jaime Jefe ya confirmó el reporte');
 end $$;
 reset role;
+-- Si reactivan la cuenta de quien la reportó y al responsable se le perdió la
+-- respuesta, su reintento contesta lo mismo: su confirmación ya quedó.
+select test.como_usuario(:'admin_id');
+update public.usuarios set activo = true where id = :'rep_id';
+select test.como_usuario(:'jefe_id');
+set local role authenticated;
+do $$
+declare r record;
+begin
+  select * into r from public.averias_confirmar(pg_temp.id('av2'), true, 'Lo probé yo: arranca y no se apaga.');
+  perform test.afirmar(r.estado = 'CONFIRMADA', 'el reintento del responsable contesta que quedó, aunque ya no le tocaría');
+end $$;
+reset role;
+select test.como_usuario(:'admin_id');
+update public.usuarios set activo = false where id = :'rep_id';
 
 -- 4. Al cerrar sin la cuenta de quien reportó: se le avisa al responsable, o confirma Mantenimiento --
 select pg_temp.reportar('av3', 'e2', 'rep2', false);
@@ -269,6 +284,10 @@ set local role authenticated;
 do $$ begin
   perform test.afirmar((select averias = 2 and horas_parado = 10 from public.equipos_historia(pg_temp.id('e1'))), 'Almacén ve las cifras del equipo');
   perform test.afirmar((select count(*) from public.averias_visibles(pg_temp.id('av1'))) = 0, 'pero no lo que dice cada reporte de otra área');
+  -- Ni por la nota del paro en el padrón, que lee entera: dice solo el número.
+  perform test.afirmar((select estado_nota from public.equipos where id = pg_temp.id('e2'))
+                         ~ '^Avería AV-[0-9]+-[0-9]+: detiene el trabajo\.$',
+    'la nota del paro no copia lo que escribió quien reportó: ' || coalesce((select estado_nota from public.equipos where id = pg_temp.id('e2')), 'nada'));
 end $$;
 reset role;
 -- Quien no ve el padrón no ve la historia.

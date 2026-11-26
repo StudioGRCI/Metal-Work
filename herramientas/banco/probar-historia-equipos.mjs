@@ -271,7 +271,7 @@ try {
     const html = await pagina.content()
     comprobar(!html.includes(`hace un chasquido (${sello})`), '[Almacén 1440] el padrón no trae lo que escribió Ventas en su reporte, ni en la página ni en lo que va al navegador')
     comprobar(
-      limpio(await pagina.locator(`[data-parados-hoy] [data-parado="${EQUIPO}"]`).innerText().catch(() => '')).includes(`Lo paró el reporte de avería ${numeroC}`),
+      limpio(await pagina.locator(`[data-parados-hoy] [data-parado="${EQUIPO}"]`).innerText().catch(() => '')).includes(`por el reporte ${numeroC}`),
       '[Almacén 1440] «Parados hoy» dice solo el número del reporte',
     )
     comprobar(errores.length === 0, `[Almacén 1440] sin errores en la consola${errores.length ? `: ${errores[0]}` : ''}`)

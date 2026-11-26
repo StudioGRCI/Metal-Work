@@ -161,15 +161,3 @@ export type QuienConfirma = 'QUIEN_REPORTO' | 'RESPONSABLE' | 'MANTENIMIENTO'
 export function quienConfirma(c: QuienConfirma): string {
   return c === 'QUIEN_REPORTO' ? 'quien la reportó' : c === 'RESPONSABLE' ? 'el responsable del área o Mantenimiento' : 'Mantenimiento'
 }
-
-/**
- * La nota del equipo parado, para quien no ve todas las averías. Un reporte que
- * detiene el trabajo deja en el padrón «Avería AV-…: lo que escribió quien la
- * reportó», y el padrón lo leen puestos que no ven ese reporte (Almacén): a
- * ellos se les dice solo el número.
- */
-export function notaDelParo(nota: string | null, veTodasLasAverias: boolean): string | null {
-  if (!nota || veTodasLasAverias) return nota
-  const reporte = /^Avería (AV-\d+-\d+)\b/.exec(nota)
-  return reporte ? `Lo paró el reporte de avería ${reporte[1]}.` : nota
-}
