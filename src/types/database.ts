@@ -15978,6 +15978,12 @@ export type Database = {
           saldo: number | null
         }[]
       }
+      fecha_de_lima: {
+        Args: {
+          p_en: string | null
+        }
+        Returns: string
+      }
       fijar_condicion_pago_compra: {
         Args: {
           p_compra: string | null
@@ -17208,6 +17214,33 @@ export type Database = {
           p_tipo: string | null
         }
         Returns: string
+      }
+      plazos_de_compras: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          documento: string | null
+          esperada: string | null
+          llego_en: string | null
+          completa_en: string | null
+          dias_atraso: number | null
+          atrasada: boolean | null
+          por_llegar: Json | null
+          por_validar: boolean | null
+        }[]
+      }
+      plazos_de_servicios: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          documento: string | null
+          esperada: string | null
+          completa_en: string | null
+          dias_atraso: number | null
+          atrasada: boolean | null
+        }[]
       }
       poner_cliente_a_orden: {
         Args: {
