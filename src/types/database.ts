@@ -542,6 +542,8 @@ export type Database = {
           veces_reabierta: number
           reabierta_en: string | null
           paro_al_reportar: boolean
+          diagnostico_por: string | null
+          diagnostico_en: string | null
         }
         Insert: {
           id?: string
@@ -575,6 +577,8 @@ export type Database = {
           veces_reabierta?: number
           reabierta_en?: string | null
           paro_al_reportar?: boolean
+          diagnostico_por?: string | null
+          diagnostico_en?: string | null
         }
         Update: {
           id?: string
@@ -608,6 +612,8 @@ export type Database = {
           veces_reabierta?: number
           reabierta_en?: string | null
           paro_al_reportar?: boolean
+          diagnostico_por?: string | null
+          diagnostico_en?: string | null
         }
         Relationships: [
           {
@@ -634,6 +640,13 @@ export type Database = {
           {
             foreignKeyName: "averias_cerrada_por_fkey"
             columns: ["cerrada_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "averias_diagnostico_por_fkey"
+            columns: ["diagnostico_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
             referencedColumns: ["id"]
@@ -13113,6 +13126,7 @@ export type Database = {
           equipo_vuelve_a: string | null
           sigue_parado_por: string | null
           avisada: boolean | null
+          equipo_estado: string | null
         }[]
       }
       averias_confirmar: {
@@ -13125,6 +13139,7 @@ export type Database = {
           averia: string | null
           estado: string | null
           equipo_parado: boolean | null
+          avisado_a: string | null
         }[]
       }
       averias_enlazar_rq: {
@@ -13281,6 +13296,8 @@ export type Database = {
           paro_al_reportar: boolean | null
           equipo_parado_desde: string | null
           rq_enlazados: number | null
+          diagnostico_de: string | null
+          diagnostico_en: string | null
         }[]
       }
       avisar_a_diseno: {

@@ -46,6 +46,9 @@ export type Averia = {
   diagnostico: string | null
   atendida_en: string | null
   atendio: string | null
+  /** Quién escribió el diagnóstico que se ve, y cuándo: otra persona de Mantenimiento puede corregirlo. */
+  diagnostico_de: string | null
+  diagnostico_en: string | null
   trabajo_hecho: string | null
   horas_parado: number | null
   cerrada_en: string | null
@@ -96,6 +99,8 @@ function aAveria(f: Fila): Averia | null {
     diagnostico: f.diagnostico,
     atendida_en: f.atendida_en,
     atendio: f.atendio,
+    diagnostico_de: f.diagnostico_de ?? f.atendio,
+    diagnostico_en: f.diagnostico_en ?? f.atendida_en,
     trabajo_hecho: f.trabajo_hecho,
     horas_parado: f.horas_parado == null ? null : Number(f.horas_parado),
     cerrada_en: f.cerrada_en,

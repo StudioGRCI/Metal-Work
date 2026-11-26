@@ -240,7 +240,7 @@ function Atencion({
         {!a.diagnostico ? (
           <SinDatos compacto titulo="Todavía sin diagnóstico" descripcion="Mantenimiento anota aquí qué tiene el equipo cuando lo revisa." />
         ) : (
-          <Bloque titulo="Diagnóstico" pie={[a.atendio, a.atendida_en ? fechaHora(a.atendida_en) : null]}>
+          <Bloque titulo="Diagnóstico" pie={[a.diagnostico_de, a.diagnostico_en ? fechaHora(a.diagnostico_en) : null]}>
             {a.diagnostico}
           </Bloque>
         )}

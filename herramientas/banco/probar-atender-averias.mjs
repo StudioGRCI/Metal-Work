@@ -299,7 +299,7 @@ await como(mantenimiento, `select * from public.averias_cerrar($1, 'Se cambió t
   comprobar(e.estado === 'CONFIRMADA' && e.equipo === 'OPERATIVO', '[Ventas 1440] confirma que quedó bien; el equipo sigue operativo')
   await pagina.reload({ waitUntil: 'networkidle' })
   const pasos = await pagina.locator('li[data-recorrido-paso]').evaluateAll((lis) => lis.map((l) => l.textContent ?? ''))
-  comprobar(pasos.some((t) => /No quedó bien/.test(t)) && pasos.some((t) => /confirmó que quedó bien/.test(t)), '[Ventas 1440] el recorrido cuenta que no quedó bien y que después lo confirmó')
+  comprobar(pasos.some((t) => /No quedó bien/.test(t) && /Se volvió a apagar/.test(t)) && pasos.some((t) => /confirmó que quedó bien/.test(t)), '[Ventas 1440] el recorrido cuenta que no quedó bien, con lo que dijo, y que después lo confirmó')
   await pagina.screenshot({ path: join(CAPTURAS, '16.3-ficha-confirmada-1440.png'), fullPage: true })
   comprobar(errores.length === 0, `[Ventas 1440] sin errores en la consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()

@@ -261,7 +261,9 @@ export async function cerrarAveria(_previo: unknown, formulario: FormData): Prom
     ? ' El equipo vuelve a operativo.'
     : data.sigue_parado_por
       ? ` El equipo sigue parado: el reporte ${data.sigue_parado_por} dice que detiene el trabajo.`
-      : ''
+      : data.equipo_estado === 'PARADO'
+        ? ' El equipo sigue parado en el padrón: si ya funciona, cámbialo en Equipos.'
+        : ''
   const aviso = data.avisada ? ' Le avisamos a quien la reportó para que confirme si quedó bien.' : ''
   return { ok: true, mensaje: `Avería cerrada.${equipo}${aviso}` }
 }
@@ -298,6 +300,12 @@ export async function confirmarAveria(_previo: unknown, formulario: FormData): P
   revalidatePath('/equipos')
   return {
     ok: true,
-    mensaje: `Vuelve a Mantenimiento con lo que contaste; ya le avisamos.${data.equipo_parado ? ' El equipo quedó parado otra vez.' : ''}`,
+    mensaje: `Vuelve a Mantenimiento con lo que contaste${
+      data.avisado_a === 'MANTENIMIENTO'
+        ? '; ya le avisamos.'
+        : data.avisado_a === 'GERENCIA'
+          ? '. No hay cuenta de Mantenimiento activa: le avisamos a Gerencia.'
+          : '. No hay ninguna cuenta activa que reciba el aviso: díselo a Mantenimiento en persona.'
+    }${data.equipo_parado ? ' El equipo quedó parado otra vez.' : ''}`,
   }
 }

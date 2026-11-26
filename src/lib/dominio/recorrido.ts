@@ -184,7 +184,8 @@ const PASOS_DE_LA_AVERIA: Record<string, Frases> = {
     // Las horas que estuvo parado, como las anotó Mantenimiento.
     nota: (h) => (h && Number.isFinite(Number(h)) ? `Parado: ${horasParado(Number(h))}` : null),
   },
-  REAPERTURA: { hecho: 'No quedó bien: volvió a Mantenimiento', falta: 'Reapertura' },
+  // Lo que dijo quien la reportó: la ficha muestra solo la última vez.
+  REAPERTURA: { hecho: 'No quedó bien: volvió a Mantenimiento', falta: 'Reapertura', nota: (t) => (t ? `«${t}»` : null) },
   CONFIRMACION: { hecho: 'Quien la reportó confirmó que quedó bien', falta: 'Quien la reportó confirma que quedó bien' },
   ANULACION: { hecho: 'Anulada por Mantenimiento', falta: 'Anulación' },
 }

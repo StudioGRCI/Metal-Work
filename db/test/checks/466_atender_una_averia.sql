@@ -284,9 +284,10 @@ begin
   perform test.debe_fallar(format('select * from public.averias_confirmar(%L, false, ''mal'')', current_setting('prueba.av1')),
     'para devolverla dice qué sigue fallando', 'qué sigue fallando');
   select * into r from public.averias_confirmar(pg_temp.id('av1'), false, 'Se volvió a apagar a la media hora.');
-  perform test.afirmar(r.estado = 'EN_ATENCION' and r.equipo_parado, 'no quedó bien: vuelve a Mantenimiento y el equipo, a parado');
+  perform test.afirmar(r.estado = 'EN_ATENCION' and r.equipo_parado and r.avisado_a = 'MANTENIMIENTO',
+    'no quedó bien: vuelve a Mantenimiento (y le llega el aviso) y el equipo, a parado');
   select * into r from public.averias_confirmar(pg_temp.id('av1'), false, 'Se volvió a apagar a la media hora.');
-  perform test.afirmar(r.estado = 'EN_ATENCION', 'el mismo envío otra vez no falla');
+  perform test.afirmar(r.estado = 'EN_ATENCION' and r.avisado_a = 'MANTENIMIENTO', 'el mismo envío otra vez no falla y dice lo mismo');
   perform test.afirmar(
     (select veces_reabierta = 1 and nota_de_quien_reporto = 'Se volvió a apagar a la media hora.' and diagnostico is not null
             and trabajo_hecho is null and horas_parado is null and espera_de = 'MANTENIMIENTO' and paro_el_equipo
@@ -324,8 +325,8 @@ begin
   perform test.afirmar(
     (select string_agg(paso || ':' || situacion || coalesce(':' || detalle, ''), ' ' order by orden)
        from public.recorrido_de_averias(array[pg_temp.id('av1')]))
-    = 'REPORTE:HECHO:PARADO ATENCION:HECHO CIERRE:HECHO:26.5 REAPERTURA:HECHO CIERRE:HECHO:3.0 CONFIRMACION:HECHO',
-    'el recorrido cuenta todo, en orden: reportada, atendida, cerrada (26.5 h), no quedó bien, cerrada (3 h) y confirmada');
+    = 'REPORTE:HECHO:PARADO ATENCION:HECHO CIERRE:HECHO:26.5 REAPERTURA:HECHO:Se volvió a apagar a la media hora. CIERRE:HECHO:3.0 CONFIRMACION:HECHO',
+    'el recorrido cuenta todo, en orden: reportada, atendida, cerrada (26.5 h), no quedó bien (con lo que dijo), cerrada (3 h) y confirmada');
   perform test.afirmar(
     not exists (select 1 from public.recorrido_de_averias(array[pg_temp.id('av1')]) where puesto is null),
     'cada paso dice el puesto de quien lo hizo');
@@ -401,6 +402,76 @@ select test.afirmar(
 select test.afirmar(
   (select count(*) = 2 from public.averia_pasos where averia_id = pg_temp.id('av6') and paso in ('ATENCION', 'ANULACION')),
   'la anulación de la que se atendía queda en sus pasos');
+
+-- 11. Los casos de borde que vio la auditoría ---------------------------------------------------
+-- Otra persona de Mantenimiento corrige el diagnóstico: la ficha la nombra a ella.
+-- Quien reportó ya no tiene cuenta activa: el cierre no dice «le avisamos».
+-- Sin nadie de Mantenimiento activo, «no quedó bien» le llega a Gerencia.
+-- El equipo que Mantenimiento paró a mano sigue parado al cerrar, y se dice.
+select test.crear_usuario('Mara', 'Mantenimiento', 'mnt466b@demo.pe', 'MANTENIMIENTO', :'sede_id') as mnt2_id \gset
+select set_config('prueba.mnt2', :'mnt2_id', true);
+select test.como_usuario(:'mnt_id');
+set local role authenticated;
+select public.averias_atender(pg_temp.id('av4'), 'La guarda tiene los pernos sueltos.');
+reset role;
+select test.como_usuario(:'mnt2_id');
+set local role authenticated;
+do $$ begin
+  perform public.averias_atender(pg_temp.id('av4'), 'La guarda tiene los pernos sueltos y la rosca barrida.');
+  perform test.afirmar(
+    (select atendio = 'Manu Mantenimiento' and diagnostico_de = 'Mara Mantenimiento' and diagnostico_en is not null
+       from public.averias_visibles(pg_temp.id('av4'))),
+    'el diagnóstico corregido lleva el nombre de quien lo corrigió; la atención, el de quien la tomó');
+end $$;
+reset role;
+select test.como_usuario(:'admin_id');
+update public.usuarios set activo = false where id = :'rep_id';
+select test.como_usuario(:'mnt_id');
+set local role authenticated;
+do $$
+declare r record;
+begin
+  select * into r from public.averias_cerrar(pg_temp.id('av4'), 'Se cambiaron los pernos y se repasó la rosca.', 0);
+  perform test.afirmar(not r.avisada, 'quien la reportó ya no tiene cuenta activa: el cierre no dice que le avisó');
+end $$;
+reset role;
+select test.afirmar(
+  not exists (select 1 from public.notificaciones where origen_id = pg_temp.id('av4') and titulo like 'Mantenimiento cerró tu reporte%'),
+  'y no le deja un aviso que nadie va a leer');
+-- Vuelve la cuenta; Mantenimiento se queda sin nadie activo (también las cuentas que traiga la base).
+select test.como_usuario(:'admin_id');
+update public.usuarios set activo = true where id = :'rep_id';
+create temp table mnt_activos as
+  select u.id from public.usuarios u join public.roles ro on ro.id = u.rol_id where ro.codigo = 'MANTENIMIENTO' and u.activo;
+update public.usuarios set activo = false where id in (select id from mnt_activos);
+select test.como_usuario(:'rep_id');
+set local role authenticated;
+do $$
+declare r record;
+begin
+  select * into r from public.averias_confirmar(pg_temp.id('av4'), false, 'La guarda se volvió a soltar al usarla.');
+  perform test.afirmar(r.estado = 'EN_ATENCION' and r.avisado_a = 'GERENCIA', 'sin Mantenimiento activo, «no quedó bien» le llega a Gerencia, y lo dice');
+end $$;
+reset role;
+select test.afirmar(
+  exists (select 1 from public.notificaciones where origen_id = pg_temp.id('av4') and usuario_id = pg_temp.id('ger')
+                                                and titulo like 'No quedó bien: %(no hay cuenta de Mantenimiento que la reciba)'),
+  'a Gerencia le llega con el porqué');
+select test.como_usuario(:'admin_id');
+update public.usuarios set activo = true where id in (select id from mnt_activos);
+-- El equipo 2 lo para Mantenimiento a mano; la avería av5 no lo detenía.
+select test.como_usuario(:'mnt_id');
+set local role authenticated;
+update public.equipos set estado = 'PARADO', estado_nota = 'Parado para revisarlo entero.' where id = pg_temp.id('e2');
+do $$
+declare r record;
+begin
+  perform public.averias_atender(pg_temp.id('av5'), 'El motor recalienta por el ventilador sucio.');
+  select * into r from public.averias_cerrar(pg_temp.id('av5'), 'Se limpió el ventilador y se cambiaron los carbones.', 1);
+  perform test.afirmar(r.equipo_vuelve_a is null and r.sigue_parado_por is null and r.equipo_estado = 'PARADO',
+    'el equipo que Mantenimiento paró a mano sigue parado al cerrar, y el cierre lo dice para que lo cambie en Equipos');
+end $$;
+reset role;
 
 -- 10. Nadie borra ni corrige por debajo ----------------------------------------------------------
 select test.como_usuario(:'admin_id');

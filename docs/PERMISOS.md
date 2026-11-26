@@ -428,10 +428,18 @@ administrador; se anula con motivo, quién y cuándo, y queda congelado.
   gravedad (la que detiene el trabajo y es un riesgo, la que detiene, la de
   riesgo, la avería, la posible avería) y, dentro de cada una, por días en
   espera. «Por confirmar» trae las que esperan a quien las reportó.
-- **A quién avisa al cerrar:** a quien la reportó, «confirma si quedó bien». Si
-  dice que no, a quien tiene `averias.atender`: «No quedó bien: … vuelve a
-  Mantenimiento». Quien no es de Mantenimiento ve arriba de su lista «¿Quedaron
-  bien?» con las suyas por confirmar.
+- **A quién avisa al cerrar:** a quien la reportó, «confirma si quedó bien», si
+  su cuenta sigue activa (si no, el cierre no dice «le avisamos» y la avería
+  queda por confirmar). Si dice que no, a quien tiene `averias.atender`: «No
+  quedó bien: … vuelve a Mantenimiento»; sin nadie de Mantenimiento activo, a
+  Gerencia (`averias.ver`), y la pantalla dice a quién llegó. Quien reportó ve
+  arriba de su lista «¿Quedaron bien?» con las suyas por confirmar (también
+  Mantenimiento o Gerencia, si reportaron una), y en «Te toca» del inicio;
+  Mantenimiento ve ahí las que tiene por atender.
+- **Al cerrar, el equipo** vuelve a operativo si seguía parado por esa avería;
+  si sigue parado por otra razón (Mantenimiento lo paró a mano en Equipos), el
+  cierre lo dice para que lo cambie en Equipos. El diagnóstico lleva el nombre
+  de quien lo escribió o lo corrigió (`diagnostico_por`, sellado por la base).
 - Gerencia consulta: ve la lista de todos y cada ficha, sin «Atender», «Cerrar»
   ni «Anular». Los demás no ven los botones de Mantenimiento.
 

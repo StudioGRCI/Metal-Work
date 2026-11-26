@@ -55,6 +55,10 @@ alter table public.averias add column if not exists confirmada_en timestamptz;
 alter table public.averias add column if not exists nota_de_quien_reporto text;
 alter table public.averias add column if not exists veces_reabierta integer not null default 0;
 alter table public.averias add column if not exists reabierta_en timestamptz;
+-- Quién escribió el diagnóstico que se ve y cuándo: lo puede corregir otra
+-- persona de Mantenimiento, y la ficha no debe firmarlo con el nombre de la primera.
+alter table public.averias add column if not exists diagnostico_por uuid references public.usuarios(id);
+alter table public.averias add column if not exists diagnostico_en timestamptz;
 -- Si la avería dejó el equipo parado al reportarla. `paro_el_equipo` dice si lo
 -- tiene parado AHORA (se suelta al cerrar o al pasarle el paro a otro reporte);
 -- esta queda como se reportó, para el recorrido y la historia del equipo.
@@ -70,6 +74,15 @@ do $$ begin
     alter table public.averias disable trigger trg_averia_guardia;
     update public.averias set paro_al_reportar = true
      where paro_el_equipo and not paro_al_reportar and equipo_parado_desde = creado_en;
+    alter table public.averias enable trigger trg_averia_guardia;
+  end if;
+end $$;
+
+do $$ begin
+  if exists (select 1 from public.averias where diagnostico is not null and diagnostico_por is null) then
+    alter table public.averias disable trigger trg_averia_guardia;
+    update public.averias set diagnostico_por = atendida_por, diagnostico_en = atendida_en
+     where diagnostico is not null and diagnostico_por is null;
     alter table public.averias enable trigger trg_averia_guardia;
   end if;
 end $$;
@@ -214,9 +227,19 @@ begin
       using errcode = 'check_violation';
   end if;
 
+  -- Quién escribió el diagnóstico y cuándo los pone la base, cada vez que cambia.
+  if new.diagnostico is distinct from old.diagnostico then
+    new.diagnostico_por := coalesce(public.usuario_actual(), new.diagnostico_por);
+    new.diagnostico_en := now();
+  else
+    new.diagnostico_por := old.diagnostico_por;
+    new.diagnostico_en := old.diagnostico_en;
+  end if;
+
   if new.estado = old.estado then
     -- Sin cambiar de paso, solo se corrige el diagnóstico mientras se atiende.
-    if (to_jsonb(new) - v_paro - 'diagnostico' - 'actualizado_en') is distinct from (to_jsonb(old) - v_paro - 'diagnostico' - 'actualizado_en')
+    if (to_jsonb(new) - v_paro - 'diagnostico' - 'diagnostico_por' - 'diagnostico_en' - 'actualizado_en')
+       is distinct from (to_jsonb(old) - v_paro - 'diagnostico' - 'diagnostico_por' - 'diagnostico_en' - 'actualizado_en')
        or (new.diagnostico is distinct from old.diagnostico and old.estado <> 'EN_ATENCION') then
       raise exception 'El reporte % no se cambia así: sigue su camino (atender, cerrar, confirmar).', old.numero using errcode = 'check_violation';
     end if;
@@ -671,14 +694,17 @@ revoke all on function public.averias_rq_enlazados(uuid[]) from public, anon;
 grant execute on function public.averias_rq_enlazados(uuid[]) to authenticated;
 
 -- 11. Cerrar -----------------------------------------------------------------------------------
+-- Cambia lo que devuelve (cómo quedó el equipo): se quita y se vuelve a crear.
+drop function if exists public.averias_cerrar(uuid, text, numeric);
 create or replace function public.averias_cerrar(p_id uuid, p_trabajo text, p_horas numeric)
-returns table (averia uuid, equipo_vuelve_a text, sigue_parado_por text, avisada boolean)
+returns table (averia uuid, equipo_vuelve_a text, sigue_parado_por text, avisada boolean, equipo_estado text)
 language plpgsql security definer set search_path to 'public' as $$
 declare
   v_yo      uuid := public.usuario_actual();
   v_trabajo text := btrim(coalesce(p_trabajo, ''));
   v_av      public.averias%rowtype;
   r         record;
+  v_activo  boolean;
 begin
   perform public.averias_exigir_mantenimiento();
   if char_length(v_trabajo) not between 10 and 2000 then
@@ -691,7 +717,9 @@ begin
   if not found then raise exception 'Ese reporte no existe.' using errcode = 'check_violation'; end if;
   if v_av.estado = 'CERRADA' and v_av.trabajo_hecho = v_trabajo and v_av.horas_parado = round(p_horas, 1) and v_av.cerrada_por = v_yo then
     -- El mismo cierre otra vez: ya quedó.
-    return query select p_id, null::text, null::text, v_av.registrado_por <> v_yo;
+    return query select p_id, null::text, null::text,
+                        v_av.registrado_por <> v_yo and exists (select 1 from public.usuarios u where u.id = v_av.registrado_por and u.activo),
+                        (select e.estado from public.equipos e where e.id = v_av.equipo_id);
     return;
   end if;
   if v_av.estado = 'REPORTADA' then
@@ -709,24 +737,30 @@ begin
      set estado = 'CERRADA', trabajo_hecho = v_trabajo, horas_parado = round(p_horas, 1), nota_de_quien_reporto = null
    where id = p_id;
 
-  if v_av.registrado_por <> v_yo then
+  -- A quien la reportó, si su cuenta sigue activa: si no, nadie lo va a leer y la
+  -- pantalla no dice «le avisamos».
+  select u.activo into v_activo from public.usuarios u where u.id = v_av.registrado_por;
+  if v_av.registrado_por <> v_yo and coalesce(v_activo, false) then
     insert into public.notificaciones (usuario_id, titulo, cuerpo, ruta, origen_tabla, origen_id)
     values (v_av.registrado_por, left('Mantenimiento cerró tu reporte ' || v_av.numero || ': confirma si quedó bien', 200),
             left(v_trabajo, 500), '/averias/' || p_id::text, 'averias', p_id);
   end if;
-  return query select p_id, r.vuelve_a, r.sigue_parado_por, v_av.registrado_por <> v_yo;
+  return query select p_id, r.vuelve_a, r.sigue_parado_por, v_av.registrado_por <> v_yo and coalesce(v_activo, false),
+                      (select e.estado from public.equipos e where e.id = v_av.equipo_id);
 end;
 $$;
 comment on function public.averias_cerrar(uuid, text, numeric) is
-  'Mantenimiento cierra una avería en atención con el trabajo hecho y las horas parado; si el equipo sigue parado por ella vuelve a operativo (o sigue parado por el otro reporte que detiene el trabajo) y avisa a quien la reportó para que confirme. Exige averias.atender.';
+  'Mantenimiento cierra una avería en atención con el trabajo hecho y las horas parado; si el equipo sigue parado por ella vuelve a operativo (o sigue parado por el otro reporte que detiene el trabajo) y avisa a quien la reportó para que confirme, si su cuenta sigue activa (avisada). equipo_estado: cómo quedó el equipo en el padrón. Exige averias.atender.';
 revoke all on function public.averias_cerrar(uuid, text, numeric) from public, anon;
 grant execute on function public.averias_cerrar(uuid, text, numeric) to authenticated;
 
 -- 12. Confirmar ----------------------------------------------------------------------------------
 -- Solo quien la reportó. «No quedó bien» la devuelve a Mantenimiento con lo que
 -- sigue fallando; si la avería detiene el trabajo, el equipo vuelve a quedar parado.
+-- Cambia lo que devuelve (a quién le llegó el aviso): se quita y se vuelve a crear.
+drop function if exists public.averias_confirmar(uuid, boolean, text);
 create or replace function public.averias_confirmar(p_id uuid, p_quedo_bien boolean, p_nota text)
-returns table (averia uuid, estado text, equipo_parado boolean)
+returns table (averia uuid, estado text, equipo_parado boolean, avisado_a text)
 language plpgsql security definer set search_path to 'public' as $$
 declare
   v_yo     uuid := public.usuario_actual();
@@ -736,6 +770,7 @@ declare
   v_desde  timestamptz;
   v_paro   boolean := false;
   v_titulo text;
+  v_a_quien text;
 begin
   if v_yo is null or not public.es_usuario_activo() then
     raise exception 'Entra con tu cuenta para confirmar.' using errcode = 'insufficient_privilege';
@@ -755,12 +790,17 @@ begin
   end if;
   -- El mismo pedido otra vez (se perdió la respuesta): ya quedó.
   if p_quedo_bien and v_av.estado = 'CONFIRMADA' and v_av.nota_de_quien_reporto is not distinct from v_nota then
-    return query select p_id, v_av.estado, false;
+    return query select p_id, v_av.estado, false, null::text;
     return;
   end if;
   if not p_quedo_bien and v_av.estado = 'EN_ATENCION' and v_av.veces_reabierta > 0
      and v_av.nota_de_quien_reporto is not distinct from v_nota then
-    return query select p_id, v_av.estado, v_av.paro_el_equipo;
+    -- A quién le llegó la primera vez.
+    return query select p_id, v_av.estado, v_av.paro_el_equipo,
+      (select case when n.titulo like '% (%' then 'GERENCIA' else 'MANTENIMIENTO' end
+         from public.notificaciones n
+        where n.origen_tabla = 'averias' and n.origen_id = p_id and n.titulo like 'No quedó bien: %' and n.creado_en >= v_av.reabierta_en
+        order by n.creado_en desc limit 1);
     return;
   end if;
   if v_av.estado <> 'CERRADA' then
@@ -774,7 +814,7 @@ begin
 
   if p_quedo_bien then
     update public.averias set estado = 'CONFIRMADA', nota_de_quien_reporto = v_nota where id = p_id;
-    return query select p_id, 'CONFIRMADA'::text, false;
+    return query select p_id, 'CONFIRMADA'::text, false, null::text;
     return;
   end if;
 
@@ -798,9 +838,21 @@ begin
    where id = p_id;
   perform set_config('averias.cambia_el_paro', '', true);
 
+  -- A Mantenimiento; sin nadie de Mantenimiento con cuenta activa, a Gerencia,
+  -- para que no se pierda (como al reportar). La pantalla dice a quién llegó.
   v_titulo := 'No quedó bien: ' || v_av.numero || ' vuelve a Mantenimiento';
   perform public.avisar_a_permiso('averias.atender', v_titulo, v_nota, '/averias/' || p_id::text, 'averias', p_id);
-  return query select p_id, 'EN_ATENCION'::text, v_paro;
+  if exists (select 1 from public.notificaciones n
+              where n.origen_tabla = 'averias' and n.origen_id = p_id and n.titulo = v_titulo and n.creado_en = now()) then
+    v_a_quien := 'MANTENIMIENTO';
+  else
+    perform public.avisar_a_permiso('averias.ver', v_titulo || ' (no hay cuenta de Mantenimiento que la reciba)', v_nota,
+                                    '/averias/' || p_id::text, 'averias', p_id);
+    v_a_quien := case when exists (select 1 from public.notificaciones n
+                                    where n.origen_tabla = 'averias' and n.origen_id = p_id and n.creado_en = now()
+                                      and n.titulo like v_titulo || ' (%') then 'GERENCIA' end;
+  end if;
+  return query select p_id, 'EN_ATENCION'::text, v_paro, v_a_quien;
 end;
 $$;
 comment on function public.averias_confirmar(uuid, boolean, text) is
@@ -826,7 +878,8 @@ returns table (
   diagnostico text, atendida_en timestamptz, atendio text,
   trabajo_hecho text, horas_parado numeric, cerrada_en timestamptz, cerro text,
   confirmada_en timestamptz, nota_de_quien_reporto text, veces_reabierta integer,
-  paro_al_reportar boolean, equipo_parado_desde timestamptz, rq_enlazados integer)
+  paro_al_reportar boolean, equipo_parado_desde timestamptz, rq_enlazados integer,
+  diagnostico_de text, diagnostico_en timestamptz)
 language sql stable security definer set search_path to 'public' rows 200 as $$
   with yo as (
     select u.id, public.averias_areas_de_la_cuenta() as areas, public.puede_ver_todas_las_averias() as todo,
@@ -874,7 +927,8 @@ language sql stable security definer set search_path to 'public' rows 200 as $$
          v.paro_al_reportar,
          -- Desde cuándo está parado el equipo por este reporte, para proponer las horas al cerrar.
          case when v.paro_el_equipo and e.estado = 'PARADO' and e.estado_desde = v.equipo_parado_desde then v.equipo_parado_desde end,
-         (select count(*)::integer from public.averia_requerimientos q where q.averia_id = v.id and q.quitado_en is null)
+         (select count(*)::integer from public.averia_requerimientos q where q.averia_id = v.id and q.quitado_en is null),
+         btrim(dg.nombres || ' ' || dg.apellidos), v.diagnostico_en
     from visibles v
     join public.equipos e on e.id = v.equipo_id
     left join public.areas a on a.id = v.area_id
@@ -883,6 +937,7 @@ language sql stable security definer set search_path to 'public' rows 200 as $$
     left join public.usuarios an on an.id = v.anulado_por
     left join public.usuarios ate on ate.id = v.atendida_por
     left join public.usuarios ce on ce.id = v.cerrada_por
+    left join public.usuarios dg on dg.id = v.diagnostico_por
    order by v.creado_en desc;
 $$;
 comment on function public.averias_visibles(uuid) is
@@ -945,7 +1000,9 @@ begin
     -- Lo hecho después, en el orden en que pasó. El cierre dice las horas parado;
     -- la reapertura, que no quedó bien.
     select p.averia_id, 20, p.paso, 'HECHO', p.hecho_por, null, p.hecho_en, null,
-           case when p.paso = 'CIERRE' then trim(to_char(p.horas_parado, 'FM9999990.0')) end
+           case when p.paso = 'CIERRE' then trim(to_char(p.horas_parado, 'FM9999990.0'))
+                -- Lo que dijo quien la reportó al devolverla: la ficha solo guarda la última.
+                when p.paso = 'REAPERTURA' then left(p.texto, 300) end
       from public.averia_pasos p
       join av a on a.id = p.averia_id
     union all
