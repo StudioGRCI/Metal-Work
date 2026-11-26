@@ -38,16 +38,17 @@
 -- Fuera de esta entrega (van en la siguiente, con Contabilidad): la factura por
 -- unidad y el recorrido con un paso por OT. Mientras tanto, una factura de una
 -- cotización de varias unidades se cuelga del código de su última OT, como hoy,
--- y el recorrido de la cotización la deja en Administración hasta que estén
--- todas sus OT (sección 11).
+-- y el recorrido de la cotización y los pendientes de Administración la dejan
+-- esperando a Administración hasta que estén todas sus OT (secciones 11 y 12).
 --
 -- Las funciones que se reescriben aquí se compararon con las de producción el
 -- 2026-11-26: `cargar_codigo_y_ot_de_cotizacion`, a la de la `20261126330000`
 -- (la OT se carga sin fecha; está en el PR de Administración y ya en
 -- producción); `fn_cotizacion_pdf_revision`, a la de la `20261027200000`;
 -- `margen_ot`, a la de la `20261001170000`; `codigos_internos_costo_calculado`,
--- a la de la `20261017300000`; y `fn_cotizacion_pdf_avisa` y
--- `recorrido_de_cotizaciones`, a las de la `20261126450000`. Cada una se reemplaza solo si sigue siendo esa (la guarda
+-- a la de la `20261017300000`; `fn_cotizacion_pdf_avisa` y
+-- `recorrido_de_cotizaciones`, a las de la `20261126450000`; y
+-- `pendientes_de_las_ot`, a la de la `20261126330000`. Cada una se reemplaza solo si sigue siendo esa (la guarda
 -- de la huella, abajo). La vista `v_cotizaciones_pdf` conserva sus columnas en
 -- el mismo orden y suma las nuevas al final.
 --
@@ -55,7 +56,7 @@
 -- =============================================================================
 
 -- 0. La guarda de la huella -----------------------------------------------------
--- Seis funciones se reemplazan enteras. Si en producción alguna se cambió a
+-- Siete funciones se reemplazan enteras. Si en producción alguna se cambió a
 -- mano después del 2026-11-26, reemplazarla borraría ese cambio sin que nadie
 -- lo note: la migración se detiene antes de tocar nada. Cada una acepta la
 -- huella de la versión que conoce el repositorio y la de esta migración, para
@@ -75,10 +76,12 @@ begin
       -- La de la 20261001170000 con y sin sus comentarios (producción los perdió) y esta.
       ('public.margen_ot(uuid)', array['428f4a211325f86f7ab1b25a00987245', '0a852aba120e59362ad6ba63c6ab53de', '088e295d4723fba20ca7236eb322de0d']),
       ('public.codigos_internos_costo_calculado(text)', array['e2fe09bb42d5872932489360fe533d20', '22510d6d4ab2a8494ee1488ca425f88f']),
-      ('public.fn_cotizacion_pdf_avisa()', array['899ecdee38949ebf55c6c4979e53b796', '17d327b8fcd95d8d051823d840c5e34f']),
+      ('public.fn_cotizacion_pdf_avisa()', array['899ecdee38949ebf55c6c4979e53b796', '17d327b8fcd95d8d051823d840c5e34f', '2239fc0bedd8f52a7dd5dd356a062a2e']),
       -- La de la 20261126450000 (producción) y esta. El PR 206 también la cambia:
       -- el que se una segundo parte del otro.
-      ('public.recorrido_de_cotizaciones(uuid[])', array['2387f7bbd95c071e866c7b7da5659a1a', '4f719f937160443906de4ba214d1897a'])
+      ('public.recorrido_de_cotizaciones(uuid[])', array['2387f7bbd95c071e866c7b7da5659a1a', '4f719f937160443906de4ba214d1897a']),
+      -- La de la 20261126330000 (PR 220; repositorio y producción) y esta.
+      ('public.pendientes_de_las_ot()', array['0c8f069b73c8232b4669bdf95403bc8c', '718a8eb5034228fcc1d284adadff9e21'])
     ) as t(firma, conocidas)
   loop
     select md5(replace(p.prosrc, E'\r', '')) into huella from pg_proc p where p.oid = to_regprocedure(f.firma);
@@ -199,6 +202,10 @@ begin
      and o.estado <> 'ANULADA'
      and o.id <> new.id;
 
+  if coalesce(new.numero_de_unidad, 1) > v_cantidad then
+    raise exception 'La cotización % es de % unidades: no tiene unidad %.', v_numero, v_cantidad, new.numero_de_unidad
+      using errcode = 'check_violation';
+  end if;
   if v_vigentes >= v_cantidad then
     if v_cantidad = 1 then
       raise exception 'La cotización % ya tiene su OT %.', v_numero, v_otra using errcode = 'unique_violation';
@@ -230,6 +237,30 @@ create or replace trigger trg_ot_cabe_en_su_cotizacion
   for each row execute function public.fn_ot_cabe_en_su_cotizacion();
 
 drop index if exists public.uq_orden_por_cotizacion_pdf;
+
+-- Qué unidad es una OT lo pone la carga y no se cambia después: con un UPDATE
+-- por la API, la unidad 4 pasaba a ser la «unidad 9» de una cotización de 4, y
+-- la cantidad ya no se podía corregir a 5 (lo vio el auditor de funcionamiento).
+create or replace function public.fn_ot_unidad_no_cambia()
+returns trigger
+language plpgsql
+security definer
+set search_path to 'public'
+as $$
+begin
+  if new.numero_de_unidad is distinct from old.numero_de_unidad then
+    raise exception 'La OT % es la unidad % de su cotización: eso no se cambia. Si es otra unidad, se anula y se carga la que corresponde.',
+      old.numero, coalesce(old.numero_de_unidad, 1) using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.fn_ot_unidad_no_cambia() from public, anon, authenticated;
+
+create or replace trigger trg_ot_unidad_no_cambia
+  before update of numero_de_unidad on public.ordenes_trabajo
+  for each row execute function public.fn_ot_unidad_no_cambia();
 
 -- 4. La cantidad no baja de las OT que ya tiene -----------------------------------
 create or replace function public.fn_cotizacion_pdf_unidades_alcanzan()
@@ -957,7 +988,18 @@ begin
     case new.estado when 'APROBADA' then 'Gerencia aprobó tu cotización'
                     when 'ANULADA'  then 'Gerencia anuló tu cotización'
                     else 'Gerencia rechazó tu cotización' end,
-    case when new.estado = 'APROBADA' and v_codigo is not null
+    -- Con varias unidades no hay un solo código que nombrar: se dice cuántas OT tiene.
+    case when new.estado = 'APROBADA' and new.cantidad_unidades > 1 and v_con_ot >= new.cantidad_unidades
+         then format('La %s de %s Sus %s unidades ya tienen su código interno y su OT.',
+                     new.numero, public.con_punto_final(coalesce(v_cliente, 'un cliente')), new.cantidad_unidades)
+         when new.estado = 'APROBADA' and new.cantidad_unidades > 1 and v_con_ot = 0
+         then format('La %s de %s Lleva %s unidades: Administración le da a cada una su código interno y sube su OT.',
+                     new.numero, public.con_punto_final(coalesce(v_cliente, 'un cliente')), new.cantidad_unidades)
+         when new.estado = 'APROBADA' and new.cantidad_unidades > 1
+         then format('La %s de %s Lleva %s unidades y tiene %s OT: Administración carga %s, cada una con su código interno.',
+                     new.numero, public.con_punto_final(coalesce(v_cliente, 'un cliente')), new.cantidad_unidades, v_con_ot,
+                     case when new.cantidad_unidades - v_con_ot = 1 then 'la que falta' else format('las %s que faltan', new.cantidad_unidades - v_con_ot) end)
+         when new.estado = 'APROBADA' and v_codigo is not null
          then public.con_punto_final(format('La %s de %s, con el código interno %s', new.numero, coalesce(v_cliente, 'un cliente'), v_codigo))
          when new.estado = 'APROBADA'
          then format('La %s de %s Administración le da su código interno y sube su OT.',
@@ -1169,3 +1211,109 @@ comment on function public.recorrido_de_cotizaciones(uuid[]) is
 
 revoke all on function public.recorrido_de_cotizaciones(uuid[]) from public, anon;
 grant execute on function public.recorrido_de_cotizaciones(uuid[]) to authenticated;
+
+-- 12. Los pendientes de Administración cuentan las OT que faltan ---------------------
+-- `pendientes_de_las_ot` (20261126330000, PR 220) sacaba la cotización de la
+-- lista con su primera OT: una de 3 camabajas con 1 OT dejaba de esperar a
+-- Administración aunque le faltaran 2. Igual que la de la 20261126330000, salvo
+-- que sale mientras tenga menos OT vigentes que unidades, y con varias el
+-- `trabajo` dice cuántas faltan. Con una unidad, todo queda igual.
+create or replace function public.pendientes_de_las_ot()
+returns table (
+  clase            text,         -- COTIZACION u OT
+  documento        uuid,         -- la cotización o la OT
+  numero           text,
+  cliente          text,
+  trabajo          text,         -- la carrocería o la descripción
+  falta_ot         boolean,
+  falta_codigo     boolean,
+  falta_fecha      boolean,
+  ot_anulada       text,         -- de la cotización: el N.º de su OT anulada
+  venta_anterior_de text,        -- de la cotización: la OT que pasó a otro comprador
+  codigo_bloqueado text,         -- de la OT: SIN_UNIDAD o UNIDAD_COMPARTIDA
+  desde            timestamptz,  -- desde cuándo espera
+  dias             integer,      -- por fecha de Lima, hoy = 0
+  total            integer       -- cuántas hay, aunque se muestren 500
+)
+language plpgsql
+stable
+security invoker
+set search_path to 'public'
+as $$
+#variable_conflict use_column
+begin
+  if not (public.es_admin() or public.tiene_permiso('ordenes.crear')) then
+    raise exception 'Los pendientes de las OT los ve quien carga las OT.' using errcode = 'insufficient_privilege';
+  end if;
+
+  return query
+  with pendientes as (
+    select 'COTIZACION'::text as clase, c.id as documento, c.numero, cl.razon_social as cliente,
+           -- Con varias unidades, cuántas OT le faltan («Cama baja · faltan 2 de 3 OT»).
+           case when coalesce(c.cantidad_unidades, 1) > 1
+                then concat_ws(' · ', tc.nombre,
+                       case when coalesce(c.cantidad_unidades, 1) - vi.vigentes = 1 then 'falta 1'
+                            else 'faltan ' || (coalesce(c.cantidad_unidades, 1) - vi.vigentes) end
+                       || ' de ' || c.cantidad_unidades || ' OT')
+                else tc.nombre end as trabajo,
+           true as falta_ot, false as falta_codigo, false as falta_fecha,
+           an.numero as ot_anulada,
+           (select o.numero from public.ot_ventas_anteriores va
+              join public.ordenes_trabajo o on o.id = va.orden_id
+             where va.cotizacion_pdf_id = c.id
+             order by va.creado_en desc limit 1) as venta_anterior_de,
+           null::text as codigo_bloqueado,
+           -- La OT anulada no cambia después de anularse (20261020207000): su
+           -- `actualizado_en` es cuándo se anuló.
+           greatest(coalesce(c.revisado_en, c.creado_en), an.actualizado_en) as desde
+      from public.cotizaciones_pdf c
+      left join public.clientes cl on cl.id = c.cliente_id
+      left join public.tipos_carroceria tc on tc.id = c.tipo_carroceria_id
+      left join lateral (
+        select o.numero, o.actualizado_en from public.ordenes_trabajo o
+         where o.cotizacion_pdf_id = c.id and o.estado = 'ANULADA'
+         order by o.actualizado_en desc limit 1
+      ) an on true
+      cross join lateral (
+        select count(*)::integer as vigentes from public.ordenes_trabajo o
+         where o.cotizacion_pdf_id = c.id and o.estado <> 'ANULADA'
+      ) vi
+     -- Le falta alguna OT: una por unidad (cantidad_unidades).
+     where c.estado = 'APROBADA'
+       and vi.vigentes < coalesce(c.cantidad_unidades, 1)
+    union all
+    select 'OT', o.id, o.numero, cl.razon_social, o.descripcion, false,
+           s.sin_codigo,
+           o.fecha_entrega_comprometida is null,
+           null::text,
+           null::text,
+           case when not s.sin_codigo then null
+                when o.unidad_id is null then 'SIN_UNIDAD'
+                when exists (select 1 from public.ordenes_trabajo o2
+                              where o2.unidad_id = o.unidad_id and o2.id <> o.id) then 'UNIDAD_COMPARTIDA'
+           end,
+           o.creado_en
+      from public.ordenes_trabajo o
+      left join public.unidades u on u.id = o.unidad_id
+      left join public.clientes cl on cl.id = o.cliente_id
+      cross join lateral (
+        select (o.tipo_trabajo not in ('MANTENIMIENTO', 'GARANTIA')
+                and nullif(btrim(coalesce(u.codigo_interno, '')), '') is null) as sin_codigo
+      ) s
+     where o.estado not in ('ENTREGADA', 'FACTURADA', 'ANULADA')
+       and (s.sin_codigo or o.fecha_entrega_comprometida is null)
+  )
+  select p.clase, p.documento, p.numero, p.cliente, p.trabajo, p.falta_ot, p.falta_codigo, p.falta_fecha,
+         p.ot_anulada, p.venta_anterior_de, p.codigo_bloqueado, p.desde, public.dias_en_espera(p.desde),
+         (count(*) over ())::integer
+    from pendientes p
+   order by p.desde, p.numero
+   limit 500;
+end;
+$$;
+
+comment on function public.pendientes_de_las_ot() is
+  'Lo que Administración tiene por completar en las OT, lo más viejo primero (hasta 500, con el total): cotización aprobada a la que le falta alguna OT vigente, una por unidad, con cuántas faltan en `trabajo` (desde su aprobación o la anulación de su OT; dice si su OT se anuló o si fue la venta anterior de una OT que pasó a otro comprador), y OT abierta sin código interno (fabricación, reparación o repotenciación; mantenimiento y garantía van por su N.º; dice si no tiene unidad o si la comparte con otra OT) o sin fecha de entrega comprometida (desde que se creó). Días por fecha de Lima. Corre como quien llama y la pide ordenes.crear. Sin importes. Migraciones 20261126330000 y 20261126700000.';
+
+revoke all on function public.pendientes_de_las_ot() from public, anon;
+grant execute on function public.pendientes_de_las_ot() to authenticated;

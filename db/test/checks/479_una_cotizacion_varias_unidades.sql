@@ -125,6 +125,9 @@ begin
     'Con la primera OT, la cotización de tres espera dos más');
   perform test.afirmar(pg_temp.camino(v_cot) = 'CODIGO_Y_OT:AHORA:Administración:1/3 > FACTURA:PENDIENTE',
     'Con 1 de 3 OT el recorrido sigue en Administración, no en Contabilidad: ' || coalesce(pg_temp.camino(v_cot), 'nada'));
+  perform test.afirmar(
+    (select p.trabajo from public.pendientes_de_las_ot() p where p.documento = v_cot::uuid and p.clase = 'COTIZACION') like '% · faltan 2 de 3 OT',
+    'Con 1 de 3 OT sigue en los pendientes de Administración, con cuántas faltan');
 
   perform test.debe_fallar(format('select pg_temp.cargar(%L, %L, %L, %L)', v_cot, current_setting('prueba.ot2'), 'qa-474  a', '47402'),
     'Dos unidades de la misma cotización no comparten código', 'cada unidad lleva su propio código');
@@ -132,6 +135,9 @@ begin
   perform pg_temp.cargar(v_cot, current_setting('prueba.ot3'), 'QA-474 C', '47403');
   perform test.afirmar(pg_temp.camino(v_cot) = 'CODIGO_Y_OT:HECHO:Administración:3 OT > FACTURA:AHORA:Contabilidad',
     'Con las 3 OT el paso queda hecho y le toca a Contabilidad: ' || coalesce(pg_temp.camino(v_cot), 'nada'));
+  perform test.afirmar(
+    not exists (select 1 from public.pendientes_de_las_ot() p where p.documento = v_cot::uuid),
+    'Con las 3 OT sale de los pendientes de Administración');
   perform test.debe_fallar(format('select pg_temp.cargar(%L, %L, %L, %L)', v_cot, current_setting('prueba.ot4'), 'QA-474 D', '47404'),
     'No entra una cuarta OT en una cotización de tres', 'es de 3 unidades y ya tiene sus 3 OT');
   -- La misma carga otra vez (la respuesta se perdió): se dice como duplicado,
@@ -233,6 +239,13 @@ begin
         and n.titulo = 'Cotización aprobada: le faltan OT')
       = 'Gerencia aprobó la QA-474-3 de QA CLIENTE 474. Lleva 4 unidades y tiene 3 OT: carga la que falta.',
     'Aprobada la corrección que suma una unidad, a Administración le llega que falta una OT');
+  perform test.afirmar(
+    (select string_agg(n.cuerpo, ' | ' order by n.cuerpo desc) from public.notificaciones n
+      where n.usuario_id = current_setting('prueba.vendedor')::uuid and n.origen_id = current_setting('prueba.cot3')::uuid
+        and n.titulo = 'Gerencia aprobó tu cotización')
+      = 'La QA-474-3 de QA CLIENTE 474. Lleva 4 unidades y tiene 3 OT: Administración carga la que falta, cada una con su código interno.'
+        || ' | La QA-474-3 de QA CLIENTE 474. Lleva 3 unidades: Administración le da a cada una su código interno y sube su OT.',
+    'Ventas sabe cuántas OT espera su cotización aprobada, no un solo código');
 
   perform test.como_usuario(current_setting('prueba.oficina')::uuid);
   set local role authenticated;
@@ -314,6 +327,16 @@ begin
     'update public.cotizaciones_pdf set cantidad_unidades = 3, ruta_storage = %L, nombre_archivo = %L, motivo_correccion = %L, estado = %L where id = %L',
     'cot/' || current_setting('prueba.cot3') || '/v3.pdf', 'v3.pdf', 'Al final son tres', 'POR_REVISAR', current_setting('prueba.cot3')),
     'No queda con menos unidades que la mayor que ya tiene OT', 'es la unidad 4 de la cotización QA-474-3: no puede quedar con 3 unidades');
+  reset role;
+end $$;
+
+-- 7b. Qué unidad es cada OT no se cambia por la API --------------------------------
+do $$
+begin
+  perform test.como_usuario(current_setting('prueba.oficina')::uuid);
+  set local role authenticated;
+  perform test.debe_fallar(format('update public.ordenes_trabajo set numero_de_unidad = 9 where id = %L', current_setting('prueba.ot3')),
+    'Administración no cambia qué unidad es una OT', 'eso no se cambia');
   reset role;
 end $$;
 
