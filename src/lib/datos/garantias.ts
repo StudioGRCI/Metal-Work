@@ -231,6 +231,17 @@ export async function otsParaEnlazar(reclamo: string): Promise<OtParaEnlazar[]> 
  * su cliente, su unidad y lo que reclama. `null` si no existe, si quien mira no
  * lo ve o si ya no espera su OT.
  */
+/**
+ * Si la base deja ver los reclamos a quien mira: los cuatro permisos, o ser del
+ * área de Garantías o su responsable (`puede_ver_los_reclamos_de_garantia`).
+ */
+export async function puedeVerLosReclamos(): Promise<boolean> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('puede_ver_los_reclamos_de_garantia')
+  if (error) throw new Error(`No se pudo saber si ves los reclamos: ${error.message}`)
+  return data === true
+}
+
 export async function reclamoParaAbrirSuOt(id: string) {
   const reclamo = await cargarReclamo(id)
   if (!reclamo || !reclamo.puede_enlazar) return null

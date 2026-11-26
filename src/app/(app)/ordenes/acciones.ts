@@ -67,13 +67,20 @@ export async function crearOrden(
   // es de garantía: si no, la base no la enlaza, y una OT numerada ya no se
   // borra. Se mira antes de registrarla, no después.
   if (v.reclamo_id) {
-    const { data: rec, error: errorRec } = await supabase
-      .from('garantia_reclamos')
-      .select('numero, cliente_id, unidad_id')
-      .eq('id', v.reclamo_id)
-      .maybeSingle()
-    if (errorRec) return { ok: false, error: mensajeDeError(errorRec) }
-    if (!rec) return { ok: false, error: 'Ese reclamo de garantía ya no está a la vista: ábrelo otra vez desde Garantías.' }
+    const [{ data: rec, error: errorRec }, { data: aqui, error: errorAqui }] = await Promise.all([
+      supabase.from('garantia_reclamos').select('numero, cliente_id, unidad_id, orden_id').eq('id', v.reclamo_id).maybeSingle(),
+      supabase.rpc('garantias_reclamos_visibles', { p_id: v.reclamo_id }).select('puede_enlazar, situacion').maybeSingle(),
+    ])
+    if (errorRec || errorAqui) return { ok: false, error: mensajeDeError((errorRec ?? errorAqui)!) }
+    if (!rec || !aqui) return { ok: false, error: 'Ese reclamo de garantía ya no está a la vista: ábrelo otra vez desde Garantías.' }
+    // Si el reclamo se cerró o se anuló mientras se llenaba, la OT no nace: nacía
+    // numerada y sin enlazar. El mismo envío repetido (ya enlazada a esta OT) sí sigue.
+    if (!aqui.puede_enlazar && rec.orden_id !== v.orden_id) {
+      return {
+        ok: false,
+        error: `El reclamo ${rec.numero} ya no espera su OT (se cerró, se anuló o ya tiene otra). La orden no se registró: vuelve al reclamo.`,
+      }
+    }
     if (v.tipo_trabajo !== 'GARANTIA' || rec.cliente_id !== v.cliente_id || rec.unidad_id !== (v.unidad_id || null)) {
       return {
         ok: false,

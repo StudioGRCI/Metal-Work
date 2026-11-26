@@ -23,6 +23,7 @@ select test.crear_usuario('Gera', 'Gerencia', 'ger495@demo.pe', 'GERENTE', :'sed
 select test.crear_usuario('Teo', 'Tesoro', 'tes495@demo.pe', 'TESORERIA', :'sede_id') as tes_id \gset
 select test.crear_usuario('Dino', 'Garantías', 'grt495@demo.pe', 'OPERARIO', :'sede_id') as grt_id \gset
 select test.crear_usuario('Gus', 'Jefe', 'jgrt495@demo.pe', 'SUPERVISOR', :'sede_id') as jefe_id \gset
+select test.crear_usuario('Sergio', 'General', 'sg495@demo.pe', 'SUPERVISOR_GENERAL', :'sede_id') as sg_id \gset
 
 select test.como_usuario(:'admin_id');
 -- Dino trabaja en Garantías; Gus es su responsable. Las otras cuentas de estos
@@ -463,6 +464,27 @@ begin
 end $$;
 reset role;
 select test.afirmar(pg_temp.avisos('ger', 'rg5') = 1, 'Gerencia recibió ese aviso');
+
+-- 9. La auditoría del reclamo se lee con lo mismo que el reclamo -------------------------
+-- Supervisor General tiene `auditoria.ver` y no ve reclamos: la copia de la fila
+-- (qué reclama, quién lo trae, su contacto) tampoco (lo vio el auditor).
+select test.afirmar(exists (select 1 from public.roles r join public.roles_permisos rp on rp.rol_id = r.id
+                             where r.codigo = 'SUPERVISOR_GENERAL' and rp.permiso_codigo = 'auditoria.ver'),
+  'Supervisor General lee la auditoría');
+select test.como_usuario(:'sg_id');
+set local role authenticated;
+do $$ begin
+  perform test.afirmar((select count(*) from public.garantias_reclamos_visibles(null)) = 0, 'Supervisor General no ve los reclamos');
+  perform test.afirmar((select count(*) from public.audit_log where tabla = 'garantia_reclamos') = 0, 'ni su copia en la auditoría');
+end $$;
+reset role;
+select test.como_usuario(:'ger_id');
+set local role authenticated;
+do $$ begin
+  perform test.afirmar((select count(*) from public.audit_log where tabla = 'garantia_reclamos') > 0,
+    'Gerencia, que los ve, sí lee su auditoría');
+end $$;
+reset role;
 
 select test.afirmar(true, 'fin del check 495');
 rollback;

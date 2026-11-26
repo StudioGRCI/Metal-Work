@@ -1,6 +1,6 @@
 import { FilePlus2 } from 'lucide-react'
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { DiasEnEspera } from '@/components/ui/dias-en-espera'
@@ -8,11 +8,11 @@ import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { cargarReclamo, otsParaEnlazar } from '@/lib/datos/garantias'
+import { cargarReclamo, otsParaEnlazar, puedeVerLosReclamos } from '@/lib/datos/garantias'
 import { definir, ESTADO_OT } from '@/lib/dominio/estados'
 import { CAUSA_GARANTIA, PERMISOS_GARANTIAS, SITUACION_RECLAMO } from '@/lib/dominio/garantias'
 import { fechaHora } from '@/lib/format'
-import { exigirPermiso, puede } from '@/lib/sesion'
+import { exigirSesion, puede } from '@/lib/sesion'
 
 import { AnotarCausa, AnularReclamo, AvisoDelReclamo, EnlazarOt, NoProcede } from './controles'
 
@@ -26,7 +26,10 @@ const FORMA_DE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
  * la base (`puede_*`), con el mismo permiso que la función que escribe.
  */
 export default async function PaginaReclamo({ params }: PageProps<'/garantias/[id]'>) {
-  const perfil = await exigirPermiso([...PERMISOS_GARANTIAS])
+  // Quien la base no deja ver va a «Sin permiso», no a una lista vacía que promete
+  // reclamos. Los ven los cuatro permisos y, sin ellos, el área de Garantías.
+  const perfil = await exigirSesion()
+  if (!puede(perfil, [...PERMISOS_GARANTIAS]) && !(await puedeVerLosReclamos())) redirect('/sin-permiso')
   const { id } = await params
   if (!FORMA_DE_ID.test(id)) notFound()
   const r = await cargarReclamo(id)

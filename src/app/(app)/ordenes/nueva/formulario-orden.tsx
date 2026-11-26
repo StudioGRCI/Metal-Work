@@ -394,9 +394,13 @@ export function FormularioOrden({ catalogos, reclamo = null }: { catalogos: Cata
         listo = true
         entro()
         const ida = r.datos?.reclamo
-          ? idaAlReclamo(r.datos.reclamo.id, r.datos.reclamo.numero, r.datos.reclamo.noSeEnlazo)
+          ? idaAlReclamo(r.datos.reclamo.id, r.datos.reclamo.numero, r.datos.reclamo.noSeEnlazo, r.datos.id ?? ordenId)
           : idaALaOrden(r.datos?.id ?? ordenId)
         setQuedo(ida)
+        // Registrada y sin enlazar (el reclamo se cerró mientras se llenaba): no
+        // se va a ningún lado, que al irse el aviso se perdía. Lo dice junto al
+        // botón, con el enlace a la OT para anularla si no hace falta.
+        if (r.datos?.reclamo?.noSeEnlazo) return
         const { url, ...dicho } = ida
         navegarSiEsDeLaPestana(router, url, desde, { ...dicho, juntoAlBoton: true })
       } catch (e) {
@@ -760,15 +764,16 @@ export function FormularioOrden({ catalogos, reclamo = null }: { catalogos: Cata
 }
 
 const idaALaOrden = (id: string) => ({ url: `/ordenes/${id}?creada=1`, dice: 'La orden quedó registrada.', enlace: 'Ver la orden' })
-// Desde un reclamo de garantía se vuelve a él: ahí se ve la OT enlazada, o por
-// qué no se enlazó y el botón para enlazarla.
-const idaAlReclamo = (id: string, numero: string, noSeEnlazo: string | null) => ({
-  url: `/garantias/${id}`,
-  dice: noSeEnlazo
-    ? `La orden quedó registrada, pero no se enlazó al reclamo ${numero}: ${noSeEnlazo} Enlázala desde el reclamo.`
-    : `La orden quedó registrada y enlazada al reclamo ${numero}.`,
-  enlace: `Ver el reclamo ${numero}`,
-})
+// Desde un reclamo de garantía se vuelve a él: ahí se ve la OT enlazada. Si no
+// se enlazó, el enlace es a la OT, que ya está registrada y sin reclamo.
+const idaAlReclamo = (id: string, numero: string, noSeEnlazo: string | null, orden: string) =>
+  noSeEnlazo
+    ? {
+        url: `/ordenes/${orden}`,
+        dice: `La orden quedó registrada, pero no se enlazó al reclamo ${numero}: ${noSeEnlazo} Si ya no hace falta, anúlala desde su ficha.`,
+        enlace: 'Ver la orden',
+      }
+    : { url: `/garantias/${id}`, dice: `La orden quedó registrada y enlazada al reclamo ${numero}.`, enlace: `Ver el reclamo ${numero}` }
 // Si su rechazo vuelve cuando la persona ya pidió otra pantalla, lo dice arriba (`decirElRechazoSiSeFue`).
 const SI_SE_VA: SiSeVa = { que: 'la orden', enlace: 'Volver a la orden nueva' }
 

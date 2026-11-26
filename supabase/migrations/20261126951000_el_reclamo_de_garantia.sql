@@ -251,6 +251,15 @@ do $$ begin
       using (exists (select 1 from public.garantia_reclamos r where r.id = reclamo_id));
   end if;
 end $$;
+-- La auditoría copia la fila entera (qué reclama, quién lo trae, su contacto):
+-- se lee con lo mismo que el reclamo, no solo con `auditoria.ver`. Restrictiva,
+-- como `cuentas_solo_rrhh`, para no reescribir la política general.
+do $$ begin
+  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'audit_log' and policyname = 'reclamos_de_garantia_con_su_permiso') then
+    create policy reclamos_de_garantia_con_su_permiso on public.audit_log as restrictive for select to authenticated
+      using (tabla <> 'garantia_reclamos' or (select public.puede_ver_los_reclamos_de_garantia()));
+  end if;
+end $$;
 -- Se escriben solo por las funciones de abajo: sin políticas de escritura ni grant.
 revoke all on public.garantia_reclamos from public, anon, authenticated;
 revoke all on public.garantia_reclamo_fotos from public, anon, authenticated;

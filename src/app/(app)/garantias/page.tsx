@@ -1,5 +1,6 @@
 import { Camera } from 'lucide-react'
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
@@ -8,10 +9,10 @@ import { DiasEnEspera } from '@/components/ui/dias-en-espera'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { listarReclamos, MAXIMO_ABIERTOS, MAXIMO_RECLAMOS, unidadesParaReclamar, type ReclamoGarantia } from '@/lib/datos/garantias'
+import { listarReclamos, MAXIMO_ABIERTOS, MAXIMO_RECLAMOS, puedeVerLosReclamos, unidadesParaReclamar, type ReclamoGarantia } from '@/lib/datos/garantias'
 import { CAUSA_GARANTIA, PERMISOS_GARANTIAS, SITUACION_RECLAMO, SITUACIONES_ABIERTAS } from '@/lib/dominio/garantias'
 import { fechaHora } from '@/lib/format'
-import { exigirPermiso, puede } from '@/lib/sesion'
+import { exigirSesion, puede } from '@/lib/sesion'
 
 import { EstadoDelReclamo, RegistrarReclamo } from './formulario'
 
@@ -36,8 +37,10 @@ const leToca = (r: ReclamoGarantia) => r.puede_causa || r.puede_enlazar
  * hacer en cada uno lo decide la base (`garantias_reclamos_visibles`).
  */
 export default async function PaginaGarantias({ searchParams }: PageProps<'/garantias'>) {
-  // Quien no tiene ninguno de los cuatro no ve ningún reclamo: va a «Sin permiso», no a una lista vacía que promete.
-  const perfil = await exigirPermiso([...PERMISOS_GARANTIAS])
+  // Quien la base no deja ver va a «Sin permiso», no a una lista vacía que promete
+  // reclamos. Los ven los cuatro permisos y, sin ellos, el área de Garantías.
+  const perfil = await exigirSesion()
+  if (!puede(perfil, [...PERMISOS_GARANTIAS]) && !(await puedeVerLosReclamos())) redirect('/sin-permiso')
   // El mismo permiso que pide `garantias_registrar`.
   const registra = puede(perfil, 'garantias.registrar')
   const soloConsulta = !puede(perfil, ['garantias.registrar', 'garantias.atender', 'garantias.causa'])
