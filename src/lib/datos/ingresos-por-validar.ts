@@ -91,9 +91,10 @@ export async function ingresosPorValidar(): Promise<{
   // La que más espera, arriba: desde que el conductor la dejó (plan 2, entrega 2.3).
   const entregas = [...porCompra.values()].sort((a, b) => Date.parse(a.dejadoEn) - Date.parse(b.dejadoEn))
   const sinLeer: string[] = []
-  // La fecha esperada de cada OC, sin precios (decisión del plan 2). La lee quien
-  // valida (`almacen.recibir`) o compra (`compras.ver`), de toda área: quien abre
-  // el kardex tiene `almacen.ver`, que ve todas (`puede_ver_area_material`).
+  // La fecha esperada de cada OC, sin precios (decisión del plan 2). La política
+  // de las OC pide `compras.ver`, `almacen.recibir` o `tesoreria.ver_documentos`
+  // y, si la OC viene de un RQ, que se vea su área; quien abre el kardex tiene
+  // `almacen.ver`, que las ve todas. Si aun así vuelven menos, se dice.
   // Los días los cuenta la base con la fecha de Lima (`diasEnEspera`).
   const [fechas, dias] = await Promise.all([
     entregas.length > 0
@@ -106,10 +107,12 @@ export async function ingresosPorValidar(): Promise<{
   ])
   if (fechas?.error) {
     console.error('Ingresos por validar: no se pudo leer la fecha esperada de las compras.', fechas.error.message)
-    sinLeer.push('la fecha esperada de cada OC')
+    sinLeer.push('No se pudo leer la fecha esperada de cada OC.')
+  } else if (fechas && (fechas.data ?? []).length < entregas.length) {
+    sinLeer.push('No se pudo leer la fecha esperada de algunas OC.')
   }
   const porId = new Map((fechas?.data ?? []).map((f) => [f.id, f.fecha_estimada]))
-  if (dias === null && entregas.length > 0) sinLeer.push('los días que lleva esperando cada una')
+  if (dias === null && entregas.length > 0) sinLeer.push('No se pudieron contar los días que espera cada compra.')
   entregas.forEach((e, i) => {
     e.fechaEsperada = porId.get(e.compraId) ?? null
     e.dias = dias?.[i] ?? null

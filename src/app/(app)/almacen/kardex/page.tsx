@@ -15,7 +15,7 @@ import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabl
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cargarAtencionMateriales } from '@/lib/datos/atencion-materiales'
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
-import { conteosFisicos, type ConteoFisico } from '@/lib/datos/conteos'
+import { CONTEOS_POR_PAGINA, conteosFisicos, type ConteoFisico } from '@/lib/datos/conteos'
 import { ingresosPorValidar } from '@/lib/datos/ingresos-por-validar'
 import { cargarKardex, devolucionesPorReponer, FILAS_POR_PAGINA, filtrosDeKardex, ingresosParaDevolver, lineasDeRequerimientoParaSalida, materialesDelKardex, minimosDeStock, requerimientosConSalidaCargada, salidasPorCerrar, unidadesParaSalida } from '@/lib/datos/kardex'
 import { separadoEnAlmacen, stockEnAlmacen } from '@/lib/datos/stock-almacen'
@@ -256,7 +256,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
           <TarjetaCuerpo>
             {porValidarSinLeer.length > 0 && (
               <p role="status" className="mb-3 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-por-validar-sin-leer>
-                No se pudo leer {porValidarSinLeer.join(' ni ')}: la bandeja sigue sin eso. Vuelve a cargar la pantalla en un momento.
+                {porValidarSinLeer.join(' ')} La bandeja sigue sin eso. Vuelve a cargar la pantalla en un momento.
               </p>
             )}
             <BandejaPorValidar entregas={porValidar} puedeValidar={puedeIngreso} abreOt={abreOt} />
@@ -633,7 +633,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
 function resumenDeConteos(conteos: ConteoFisico[] | null, almacen: string | undefined) {
   if (conteos === null) return 'No se pudieron leer.'
   if (conteos.length === 0) return 'Todavía no hay conteos.'
-  const cuantos = conteos.length === 30 ? 'Los últimos 30' : conteos.length === 1 ? '1 conteo' : `${conteos.length} conteos`
+  const cuantos = conteos.length === CONTEOS_POR_PAGINA ? `Los últimos ${CONTEOS_POR_PAGINA}` : conteos.length === 1 ? '1 conteo' : `${conteos.length} conteos`
   const descuadres = conteos.filter((c) => c.diferencia !== 0).length
   return [
     cuantos,

@@ -24,6 +24,9 @@ export type ConteoFisico = {
   en: string
 }
 
+/** Cuántos conteos trae la lista: el resumen dice «Los últimos N» cuando llega al tope. */
+export const CONTEOS_POR_PAGINA = 30
+
 /**
  * Los últimos conteos físicos, el más nuevo primero; con `material`, solo los de
  * ese material. Los lee quien ve el kardex (`almacen.ver`, la política de
@@ -37,7 +40,7 @@ export async function conteosFisicos(opciones: { material?: string; limite?: num
       'id, material_id, cantidad_fisica, ajuste, motivo, registrado_en, material:materiales(codigo, descripcion, unidad:unidades_medida(codigo)), contador:usuarios!conteos_inventario_registrado_por_fkey(nombres, apellidos)',
     )
   if (opciones.material) consulta = consulta.eq('material_id', opciones.material)
-  const { data, error } = await consulta.order('registrado_en', { ascending: false }).limit(opciones.limite ?? 30)
+  const { data, error } = await consulta.order('registrado_en', { ascending: false }).limit(opciones.limite ?? CONTEOS_POR_PAGINA)
   if (error) throw new Error(`No se pudieron leer los conteos físicos: ${error.message}`)
   return (data ?? []).map((c) => {
     const contado = Number(c.cantidad_fisica)
