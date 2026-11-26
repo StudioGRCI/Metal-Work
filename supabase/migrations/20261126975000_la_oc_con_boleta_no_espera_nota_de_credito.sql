@@ -92,10 +92,11 @@ create or replace function public.devolucion_reembolsada(p_devolucion uuid)
 returns boolean
 language sql stable security definer set search_path to 'public' as $$
   -- Lo que el proveedor ya devolvió en dinero de esa OC (las devoluciones vigentes, en la moneda de lo
-  -- devuelto) alcanza para cubrir, en el orden en que Almacén devolvió, esta devolución y las de antes
-  -- que todavía esperaban su nota: cada una a su precio en la OC, por lo que no se repuso.
+  -- devuelto) alcanza para cubrir esta devolución y las de antes que todavía esperaban su nota: cada una
+  -- a su precio en la OC, por lo que no se repuso. «Antes» es desde cuándo espera, como en «Lo que falta»:
+  -- la que se iba a reponer, desde que se dejó de esperar; si no, el dinero de otra la cubriría.
   with esta as (
-    select m.id, m.registrado_en, d.orden_compra_id as compra, coalesce(m.moneda, c.moneda)::text as moneda
+    select m.id, coalesce(m.reposicion_cancelada_en, m.registrado_en) as desde, d.orden_compra_id as compra, coalesce(m.moneda, c.moneda)::text as moneda
       from public.movimientos_materiales m
       join public.orden_compra_material_detalles d on d.id = m.orden_compra_detalle_id
       join public.ordenes_compra_materiales c on c.id = d.orden_compra_id
@@ -110,7 +111,7 @@ language sql stable security definer set search_path to 'public' as $$
       join public.ordenes_compra_materiales c on c.id = d.orden_compra_id
      where m.tipo = 'DEVOLUCION_PROVEEDOR' and coalesce(m.moneda, c.moneda)::text = e.moneda
        and (m.id = e.id
-            or (not m.se_repone and (m.registrado_en, m.id) < (e.registrado_en, e.id)
+            or (not m.se_repone and (coalesce(m.reposicion_cancelada_en, m.registrado_en), m.id) < (e.desde, e.id)
                 and not exists (select 1 from public.notas_credito_compra n where n.devolucion_id = m.id and n.anulado_en is null))))
   select coalesce((select h.vale > 0
                           and (select coalesce(sum(r.monto), 0) from public.devoluciones_orden_compra r
@@ -148,13 +149,18 @@ begin
     perform public.avisar_a_permiso('tesoreria.registrar_pagos', 'Pide el reembolso: ' || p_nombre,
       v_vale || '. La OC se paga por partes, en «Boletas de una parte»: si ya pagaste la parte de lo devuelto, pídele al proveedor que te lo devuelva. ' || p_texto,
       '/tesoreria/por-pagar', 'ordenes_compra_materiales', p_compra);
+  elsif exists (select 1 from public.comprobante_en_camino(p_compra)) then
+    -- Su factura ya llegó y espera que Contabilidad la registre: se paga por ella, y registrada pide la nota.
+    perform public.avisar_a_permiso('tesoreria.registrar_pagos', 'Devuelto al proveedor: ' || p_nombre,
+      v_vale || '. La factura de esta OC está por registrarse: se paga por ella, y Contabilidad pide la nota de crédito por lo devuelto. ' || p_texto,
+      '/tesoreria/por-pagar', 'ordenes_compra_materiales', p_compra);
   elsif exists (select 1 from public.pagos_orden_compra x where x.orden_compra_id = p_compra and x.anulado_en is null) then
     perform public.avisar_a_permiso('tesoreria.registrar_pagos', 'Pide el reembolso: ' || p_nombre,
       v_vale || ': pídele al proveedor que te lo devuelva y regístralo como devolución de la OC. ' || p_texto,
       '/tesoreria/por-pagar#compra-' || p_compra, 'ordenes_compra_materiales', p_compra);
   else
     perform public.avisar_a_permiso('tesoreria.registrar_pagos', 'Págala sin lo devuelto: ' || p_nombre,
-      v_vale || ': todavía no se la pagas, así que págale sin eso. ' || p_texto,
+      v_vale || ': todavía no se la has pagado: págale sin eso. ' || p_texto,
       '/tesoreria/por-pagar#compra-' || p_compra, 'ordenes_compra_materiales', p_compra);
   end if;
 end $$;

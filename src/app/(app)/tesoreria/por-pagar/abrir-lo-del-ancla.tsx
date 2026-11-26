@@ -46,15 +46,22 @@ export function AbrirLoDelAncla() {
       cuadro = requestAnimationFrame(abrir)
     }
     abrir()
+    // Next reescribe la entrada del historial (`replaceState`) cada vez que la pantalla se pone al día,
+    // tras un pago o cualquier acción: eso no es llegar de nuevo, y llevar la pantalla a la OC del `#`
+    // dejaba fuera de la vista la tarjeta recién pagada. Solo cuenta una ida nueva o volver atrás.
+    const alCambiarLaEntrada = (e: Event) => {
+      if ((e as Event & { navigationType?: string }).navigationType === 'replace') return
+      alCambiar()
+    }
     const navegacion = (window as unknown as { navigation?: EventTarget }).navigation
     window.addEventListener('hashchange', alCambiar)
     window.addEventListener('popstate', alCambiar)
-    navegacion?.addEventListener('currententrychange', alCambiar)
+    navegacion?.addEventListener('currententrychange', alCambiarLaEntrada)
     return () => {
       cancelAnimationFrame(cuadro)
       window.removeEventListener('hashchange', alCambiar)
       window.removeEventListener('popstate', alCambiar)
-      navegacion?.removeEventListener('currententrychange', alCambiar)
+      navegacion?.removeEventListener('currententrychange', alCambiarLaEntrada)
     }
   }, [])
   return null
