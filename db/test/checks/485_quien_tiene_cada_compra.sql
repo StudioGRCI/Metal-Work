@@ -289,8 +289,45 @@ select test.afirmar((select count(*) from public.seguimiento_de_compras where or
 select test.debe_fallar(format('select public.anotar_motivo_atraso(%L, ''OC'', %L, ''PAGO'', null)', gen_random_uuid(), pg_temp.id('oc1')),
   'Gerencia no anota el motivo', 'permiso');
 reset role;
--- Administración tiene compras.crear solo para la OC de su RQA: la OC directa y
--- la OS las sigue Logística, aunque la acción las mande.
+-- Administración tiene compras.crear solo para la OC de su RQA: esa sí la sigue.
+-- Arma su RQA, Almacén no tiene stock y Administración emite la OC. Antes, las
+-- reglas que esperan al cierre se corren con la sesión que hizo lo anterior.
+set constraints all immediate;
+set constraints all deferred;
+select set_config('prueba.rqa', gen_random_uuid()::text, true), set_config('prueba.oca', gen_random_uuid()::text, true);
+select pg_temp.como('administracion');
+set local role authenticated;
+select public.emitir_requerimiento(pg_temp.id('rqa'), 'ADMINISTRACION', (select id from public.areas where codigo = 'RRH'),
+  'OFICINA', 'Discos para la oficina, prueba 485', null,
+  format('[{"material_id": "%s", "cantidad": 1}]', pg_temp.id('disco'))::jsonb);
+reset role;
+select pg_temp.como('almacenero');
+set local role authenticated;
+select public.rq_revisar_stock(pg_temp.id('rqa'), '[{"item": 1, "en_stock": 0}]', null);
+reset role;
+select pg_temp.como('administracion');
+set local role authenticated;
+select public.emitir_compra_de_requerimientos(pg_temp.id('oca'),
+  format('[{"material_id": "%s", "cantidad": 1, "precio": 8, "insumos": ["%s"]}]', pg_temp.id('disco'),
+         (select id from public.requerimiento_lineas where requerimiento_id = pg_temp.id('rqa') and item = 1))::jsonb,
+  pg_temp.id('proveedor'), 'COT-485-RQA', pg_temp.hoy() + 3, 'CONTADO', 0, 'PEN', true);
+reset role;
+set constraints all immediate;
+set constraints all deferred;
+-- La fecha pasa, como dueño, con la sesión de Logística (la regla de Administración mira quién está).
+select pg_temp.como('comprador');
+update public.ordenes_compra_materiales set fecha_estimada = pg_temp.hoy() - 2 where id = pg_temp.id('oca');
+set constraints all immediate;
+set constraints all deferred;
+select pg_temp.como('administracion');
+set local role authenticated;
+select public.anotar_motivo_atraso(gen_random_uuid(), 'OC', pg_temp.id('oca'), 'PROVEEDOR', 'No tenía discos');
+select public.corregir_fecha_esperada(gen_random_uuid(), 'OC', pg_temp.id('oca'), pg_temp.hoy() + 20, 'PROVEEDOR', null);
+select test.afirmar((select count(*) from public.seguimiento_de_compras where orden_compra_id = pg_temp.id('oca')) = 2,
+  'Administración anota el motivo y corrige la fecha de la OC de su RQA');
+reset role;
+
+-- La OC directa y la OS las sigue Logística, aunque la acción las mande.
 select pg_temp.como('administracion');
 set local role authenticated;
 select test.debe_fallar(format('select public.anotar_motivo_atraso(%L, ''OC'', %L, ''PAGO'', null)', gen_random_uuid(), pg_temp.id('oc1')),
@@ -308,6 +345,29 @@ select test.debe_fallar(format('select * from public.recorrido_de_ordenes_servic
   'Ventas no lee el recorrido de las OS', 'permiso');
 select test.afirmar((select count(*) from public.seguimiento_de_compras) = 0,
   'Ventas no ve ninguna fila del seguimiento: no ve las compras');
+reset role;
+-- El recojo que no se pudo: el paso lo ven todos los que ven la OC; el motivo,
+-- quien lee su tabla (Logística, que programa, y Gerencia, que sigue la gestión).
+insert into public.recojos_no_logrados (id, orden_compra_id, motivo, salio_en, registrado_por)
+values (gen_random_uuid(), pg_temp.id('oc1'), 'El proveedor estaba cerrado', now(), pg_temp.id('conductor'));
+select pg_temp.como('gerente');
+set local role authenticated;
+select test.afirmar((select r.detalle from public.recorrido_de_ordenes_compra(array[pg_temp.id('oc1')]) r
+                      where r.paso = 'NO_SE_PUDO_RECOGER') = 'El proveedor estaba cerrado',
+  'Gerencia lee el motivo del recojo que no se pudo, como en su tabla');
+reset role;
+select pg_temp.como('comprador');
+set local role authenticated;
+select test.afirmar((select r.detalle from public.recorrido_de_ordenes_compra(array[pg_temp.id('oc1')]) r
+                      where r.paso = 'NO_SE_PUDO_RECOGER') = 'El proveedor estaba cerrado',
+  'Logística lee el motivo del recojo que no se pudo');
+reset role;
+select pg_temp.como('almacenero');
+set local role authenticated;
+select test.afirmar((select count(*) filter (where r.detalle is null) from public.recorrido_de_ordenes_compra(array[pg_temp.id('oc1')]) r
+                      where r.paso = 'NO_SE_PUDO_RECOGER') = 1,
+  'Almacén ve el paso del recojo que no se pudo, sin el motivo');
+select test.afirmar((select count(*) from public.recojos_no_logrados) = 0, 'Almacén no lee la tabla de recojos no logrados');
 reset role;
 do $$
 begin

@@ -730,9 +730,10 @@ begin
     select n.oc, 50, 'SALIDA', 'HECHO', n.registrado_por, null, n.salio_en, null, null
       from no_logrados n where n.salio_en is not null
     union all
-    -- El motivo lo lee quien lee la tabla (Logística, que programa); los demás ven el paso sin él.
+    -- El motivo lo lee quien lee la tabla (Logística, que programa, y Gerencia, que sigue la gestión); los demás ven el paso sin él.
     select n.oc, 55, 'NO_SE_PUDO_RECOGER', 'HECHO', n.registrado_por, null, n.registrado_en, null,
-           case when public.es_admin() or public.tiene_permiso('compras.programar_recojo') then n.motivo end
+           case when public.es_admin() or public.tiene_permiso('compras.programar_recojo')
+                     or public.tiene_permiso('compras.ver_gestion') then n.motivo end
       from no_logrados n
     union all
     -- 45 · Contabilidad cargó la guía de remisión
