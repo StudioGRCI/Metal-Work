@@ -36,6 +36,8 @@ export const CLAVES_DEL_ENVIO = [
   'tareo',
   'uso_saldo',
   'cuenta_caja',
+  // El reporte de avería (Plan 16.2): reabrir tras «No llegó la respuesta» no da otro número AV a la misma falla.
+  'reporte_averia',
 ] as const
 
 export type ClaveDelEnvio = (typeof CLAVES_DEL_ENVIO)[number]

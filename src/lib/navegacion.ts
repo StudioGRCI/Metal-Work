@@ -48,6 +48,7 @@ import {
   Users,
   Wallet,
   Warehouse,
+  TriangleAlert,
   Wrench,
 } from 'lucide-react'
 
@@ -581,6 +582,31 @@ export const NAVEGACION = [
         descripcion: 'El padrón de máquinas y herramientas de la planta',
         disponible: true,
       },
+      // Los reportes de avería (Plan 16.2): Mantenimiento los atiende y Gerencia
+      // los consulta, todos. La misma pantalla está otra vez en «Reportar», sin
+      // permiso: ahí reporta cualquier puesto y ve los suyos y los de su área.
+      {
+        titulo: 'Averías',
+        ruta: '/averias',
+        icono: TriangleAlert,
+        permiso: ['averias.atender', 'averias.ver'],
+        descripcion: 'Cada avería o posible avería reportada, con su número y cómo va',
+        disponible: true,
+      },
+    ],
+  },
+  // Lo que reporta cualquier puesto, sin permiso: va al final del menú de todos
+  // (`RUTAS_PARA_TODOS`). Reportar una avería no puede depender de un permiso.
+  {
+    titulo: 'Reportar',
+    items: [
+      {
+        titulo: 'Reportar avería',
+        ruta: '/averias',
+        icono: TriangleAlert,
+        descripcion: 'Una máquina o herramienta que falla o está por fallar: le llega a Mantenimiento al instante',
+        disponible: true,
+      },
     ],
   },
   {
@@ -717,7 +743,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     principal: ['/codigos-internos'],
     grupos: [
       { titulo: 'Por aprobar', rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'] },
-      { titulo: 'Consultas', rutas: ['/rrhh/tiempos-de-entrega', '/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales'] },
+      { titulo: 'Consultas', rutas: ['/rrhh/tiempos-de-entrega', '/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales', '/averias'] },
     ],
     telefono: ['/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios'],
   },
@@ -855,8 +881,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // planta. Las averías y el mantenimiento de las unidades de los clientes se
   // suman a este mismo menú en sus entregas, sin reemplazar este grupo.
   MANTENIMIENTO: {
-    grupos: [{ titulo: 'Mantenimiento', rutas: ['/equipos'] }],
-    telefono: ['/equipos', '/'],
+    grupos: [{ titulo: 'Mantenimiento', rutas: ['/averias', '/equipos'] }],
+    telefono: ['/averias', '/equipos', '/'],
   },
   // Sube su reporte diario, que es su trabajo de cada día. Desde el 2026-10-15,
   // los planos que Diseño carga para su área y las etapas que hace su área van
@@ -920,6 +946,13 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
 // catálogo completo, con Configuración, y en el teléfono sin Planos ni Etapas.
 MENU_POR_PUESTO.DISENO_LIDER = MENU_POR_PUESTO.DISENO
 
+/**
+ * Lo que va en el menú de todos los puestos, al final y en el grupo «Reportar»:
+ * no se repite en cada entrada de `MENU_POR_PUESTO`. Una pantalla que cualquier
+ * puesto usa para avisar de algo (una avería, un incidente) se suma aquí.
+ */
+const RUTAS_PARA_TODOS: readonly RutaDeModulo[] = ['/averias']
+
 function lePermite(item: ItemNavegacion, permisos: readonly string[], esAdmin: boolean) {
   if (!item.permiso || esAdmin) return true
   const pide: readonly string[] = typeof item.permiso === 'string' ? [item.permiso] : item.permiso
@@ -935,7 +968,11 @@ function lePermite(item: ItemNavegacion, permisos: readonly string[], esAdmin: b
 export function menuDe(permisos: readonly string[], esAdmin: boolean, rolCodigo: string): GrupoNavegacion[] {
   const propio = esAdmin ? undefined : MENU_POR_PUESTO[rolCodigo]
   const grupos: GrupoNavegacion[] = propio
-    ? [{ titulo: 'Principal', rutas: ['/', ...(propio.principal ?? [])], pliegue: 'fijo' as const }, ...propio.grupos].map((g) => ({
+    ? [
+        { titulo: 'Principal', rutas: ['/', ...(propio.principal ?? [])], pliegue: 'fijo' as const },
+        ...propio.grupos,
+        { titulo: 'Reportar', rutas: RUTAS_PARA_TODOS },
+      ].map((g) => ({
         titulo: g.titulo,
         pliegue: g.pliegue,
         // Una pantalla compartida está en el catálogo una vez por cada área que
@@ -1008,6 +1045,7 @@ export function rutaActiva(ruta: string, rutas: string[]) {
  */
 export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/cotizaciones/pdf', corto: 'Cotizar' },
+  { ruta: '/averias', corto: 'Averías' },
   { ruta: '/ordenes', corto: 'Órdenes' },
   { ruta: '/almacen/kardex', corto: 'Kardex' },
   { ruta: '/diseno/informe-semanal', corto: 'Informe' },

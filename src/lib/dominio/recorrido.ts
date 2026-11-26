@@ -130,6 +130,21 @@ const ESPERAS_DE_LA_COTIZACION: Record<string, (detalle: string | null) => strin
   FACTURA: () => 'Registra su factura.',
 }
 
+const PASOS_DE_LA_AVERIA: Record<string, Frases> = {
+  REPORTE: {
+    hecho: (d) => (d === 'PARADO' ? 'Reportada: el equipo quedó parado' : 'Reportada'),
+    falta: 'Reporte',
+  },
+  ATENCION: { hecho: 'Mantenimiento la atendió', falta: 'Atención de Mantenimiento' },
+  CIERRE: { hecho: 'Mantenimiento la cerró', falta: 'Cierre: el equipo vuelve a operativo' },
+  CONFIRMACION: { hecho: 'Quien la reportó confirmó que quedó bien', falta: 'Quien la reportó confirma que quedó bien' },
+  ANULACION: { hecho: 'Anulada por Mantenimiento', falta: 'Anulación' },
+}
+
+const ESPERAS_DE_LA_AVERIA: Record<string, (detalle: string | null) => string> = {
+  ATENCION: () => 'La revisa, anota qué tiene y qué se hizo.',
+}
+
 function describir(
   pasos: readonly PasoDelRecorrido[],
   frases: Record<string, Frases>,
@@ -157,3 +172,7 @@ export const describirRecorridoDelRequerimiento = (pasos: readonly PasoDelRecorr
 /** El recorrido de una cotización, en palabras. */
 export const describirRecorridoDeLaCotizacion = (pasos: readonly PasoDelRecorrido[]) =>
   describir(pasos, PASOS_DE_LA_COTIZACION, ESPERAS_DE_LA_COTIZACION)
+
+/** El recorrido de un reporte de avería, en palabras. */
+export const describirRecorridoDeLaAveria = (pasos: readonly PasoDelRecorrido[]) =>
+  describir(pasos, PASOS_DE_LA_AVERIA, ESPERAS_DE_LA_AVERIA)
