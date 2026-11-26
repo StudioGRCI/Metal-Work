@@ -126,8 +126,8 @@ async function esperarVentana(pagina) {
 // El globo de pendientes va pegado al nombre del módulo («Facturación1»): se quita.
 const menu = async (pagina) => (await pagina.locator('nav[aria-label="Menú principal"] a').allTextContents()).map((t) => limpio(t).replace(/\d+\+?$/, ''))
 const franja = async (pagina) => limpio(await pagina.locator('main').textContent())
-// Lo que espera en un módulo ya no se lista en el Dashboard (2026-10-19): se lee
-// del globo del menú, que lleva la cantidad en su etiqueta accesible.
+// Lo que espera en un módulo se lee del globo del menú, que lleva la cantidad en
+// su etiqueta accesible (el Dashboard lo lista en «Te toca», con el mismo número).
 const globo = async (pagina, ruta) => (await pagina.locator(`nav a[href="${ruta}"]`).first().getAttribute('aria-label')) ?? ''
 const ruta = (pagina) => new URL(pagina.url()).pathname
 

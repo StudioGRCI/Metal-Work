@@ -29,6 +29,7 @@ import {
   Handshake,
   Hash,
   IdCard,
+  Inbox,
   Landmark,
   Layers,
   LayoutDashboard,
@@ -55,8 +56,16 @@ import {
   Users,
   Wallet,
   Warehouse,
+  TriangleAlert,
   Wrench,
 } from 'lucide-react'
+
+/**
+ * Quién entra a «Por decidir» (plan 12): la Gerencia General, que revisa las
+ * cotizaciones y cierra el costeo de los códigos. El menú y la puerta de la
+ * pantalla piden lo mismo; los grupos de adentro, cada uno el suyo.
+ */
+export const PERMISOS_POR_DECIDIR = ['cotizaciones.revisar', 'codigos_internos.cerrar']
 
 export type ItemNavegacion = {
   titulo: string
@@ -138,6 +147,16 @@ export const NAVEGACION = [
         icono: Hash,
         permiso: 'codigos_internos.ver',
         descripcion: 'Cada código con sus etapas, planos, materiales, avance y lo que lleva costado',
+        disponible: true,
+      },
+      // Lo que espera la decisión de Gerencia, reunido de sus pantallas (plan 12,
+      // entrega 12.1). No se aprueba ahí: cada fila salta a la suya.
+      {
+        titulo: 'Por decidir',
+        ruta: '/por-decidir',
+        icono: Inbox,
+        permiso: PERMISOS_POR_DECIDIR,
+        descripcion: 'Lo que espera tu decisión en cada pantalla, lo más antiguo primero',
         disponible: true,
       },
       {
@@ -639,6 +658,17 @@ export const NAVEGACION = [
         descripcion: 'El padrón de máquinas y herramientas de la planta',
         disponible: true,
       },
+      // Los reportes de avería (Plan 16.2): Mantenimiento los atiende y Gerencia
+      // los consulta, todos. La misma pantalla está otra vez en «Reportar», sin
+      // permiso: ahí reporta cualquier puesto y ve los suyos y los de su área.
+      {
+        titulo: 'Averías',
+        ruta: '/averias',
+        icono: TriangleAlert,
+        permiso: ['averias.atender', 'averias.ver'],
+        descripcion: 'Cada avería o posible avería reportada, con su número y cómo va',
+        disponible: true,
+      },
     ],
   },
   {
@@ -663,7 +693,8 @@ export const NAVEGACION = [
     ],
   },
   // Lo que reporta cualquier puesto, sin permiso: va al final del menú de todos
-  // (`RUTAS_PARA_TODOS`). Reportar un incidente no puede depender de un permiso.
+  // (`RUTAS_PARA_TODOS`). Reportar un incidente o una avería no puede depender
+  // de un permiso.
   {
     titulo: 'Reportar',
     items: [
@@ -672,6 +703,13 @@ export const NAVEGACION = [
         ruta: '/ssoma',
         icono: ShieldAlert,
         descripcion: 'Un accidente, un incidente o algo inseguro que viste: le llega a SSOMA al instante',
+        disponible: true,
+      },
+      {
+        titulo: 'Reportar avería',
+        ruta: '/averias',
+        icono: TriangleAlert,
+        descripcion: 'Una máquina o herramienta que falla o está por fallar: le llega a Mantenimiento al instante',
         disponible: true,
       },
     ],
@@ -811,7 +849,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
         // Las OT por aprobar (`ordenes.aprobar`, solo Gerencia) van aquí y no en
         // Administración, que es de consulta y no cuenta pendientes: su globo no
         // las contaba (StudioGRCI, 2026-11-26).
-        rutas: ['/cotizaciones/pdf', '/ordenes', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'],
+        rutas: ['/por-decidir', '/cotizaciones/pdf', '/ordenes', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'],
       },
       { titulo: 'Ventas', consulta: true, rutas: ['/clientes', '/unidades', '/carrocerias'] },
       {
@@ -832,6 +870,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
           '/equipos',
         ],
       },
+      // Las averías que reporta la gente (Plan 16.2): las consulta, sin anular.
+      { titulo: 'Mantenimiento', consulta: true, rutas: ['/averias'] },
       {
         titulo: 'Logística',
         consulta: true,
@@ -870,7 +910,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       // Los reportes de seguridad, en consulta y sin anular (Plan 15).
       { titulo: 'SSOMA', consulta: true, rutas: ['/ssoma'] },
     ],
-    telefono: ['/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios'],
+    // «Por decidir» en lugar de «Aprobar»: lo eligió DKS el 2026-11-26 (plan 12, entrega 12.1).
+    telefono: ['/codigos-internos', '/cotizaciones/pdf', '/por-decidir', '/reportes-diarios'],
     // Lo que consultaba desde su menú antes del 2026-11-25 sigue en su inicio.
     alInicio: ['/rrhh/tiempos-de-entrega', '/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales'],
   },
@@ -1014,8 +1055,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // planta. Las averías y el mantenimiento de las unidades de los clientes se
   // suman a este mismo menú en sus entregas, sin reemplazar este grupo.
   MANTENIMIENTO: {
-    grupos: [{ titulo: 'Mantenimiento', rutas: ['/equipos'] }],
-    telefono: ['/equipos', '/'],
+    grupos: [{ titulo: 'Mantenimiento', rutas: ['/averias', '/equipos'] }],
+    telefono: ['/averias', '/equipos', '/'],
   },
   // Sube su reporte diario, que es su trabajo de cada día. Desde el 2026-10-15,
   // los planos que Diseño carga para su área y las etapas que hace su área van
@@ -1091,7 +1132,7 @@ MENU_POR_PUESTO.DISENO_LIDER = MENU_POR_PUESTO.DISENO
  * no se repite en cada entrada de `MENU_POR_PUESTO`. Una pantalla que cualquier
  * puesto usa para avisar de algo (un incidente, una avería) se suma aquí.
  */
-const RUTAS_PARA_TODOS: readonly RutaDeModulo[] = ['/ssoma']
+const RUTAS_PARA_TODOS: readonly RutaDeModulo[] = ['/ssoma', '/averias']
 
 const comoLista = (p: string | readonly string[] | undefined): readonly string[] => (p === undefined ? [] : typeof p === 'string' ? [p] : p)
 
@@ -1257,6 +1298,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/recojos', corto: 'Recojos' },
   { ruta: '/compras/ordenes', corto: 'OC' },
   { ruta: '/compras/aprobacion', corto: 'Aprobar' },
+  { ruta: '/por-decidir', corto: 'Por decidir' },
   { ruta: '/compras/gestion', corto: 'Gestión' },
   { ruta: '/compras/servicios', corto: 'OS' },
   { ruta: '/requerimientos', corto: 'RQ' },
@@ -1295,4 +1337,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/almacen/stock', corto: 'Stock' },
   { ruta: '/almacen/reposicion', corto: 'Reposición' },
   { ruta: '/equipos', corto: 'Equipos' },
+  // Al final: solo el nombre corto. Antes quitaba una de las cuatro pestañas a
+  // los puestos sin menú propio (Operario, Calidad, Costos…).
+  { ruta: '/averias', corto: 'Averías' },
 ]
