@@ -1021,6 +1021,38 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
     break
   }
 
+  // SSOMA (15.2): las acciones correctivas a cargo de quien mira, que puede ser
+  // cualquier cuenta; la política de `ssoma_acciones` le deja contar las suyas.
+  // Las vencidas aparte y en rojo: son las que la pantalla pone arriba.
+  for (const de of [
+    { clave: 'ssoma_acciones_vencidas', tono: 'peligro' as const, vencidas: true, uno: 'acción correctiva vencida a tu cargo', varios: 'acciones correctivas vencidas a tu cargo' },
+    { clave: 'ssoma_acciones_abiertas', tono: 'aviso' as const, vencidas: false, uno: 'acción correctiva a tu cargo', varios: 'acciones correctivas a tu cargo' },
+  ]) {
+    tareas.push({
+      clave: de.clave, ruta: '/ssoma', tono: de.tono,
+      texto: n => plural(n, de.uno, de.varios),
+      contar: () => {
+        const q = supabase.from('ssoma_acciones').select('id', { count: 'exact', head: true })
+          .eq('responsable_id', perfil.id).eq('estado', 'ABIERTA')
+        return cabeza(de.vencidas ? q.lt('fecha_limite', hoy) : q.gte('fecha_limite', hoy))
+      },
+    })
+  }
+  // SSOMA: los reportes por clasificar y las acciones de otros que pasaron su fecha.
+  if (puede(perfil, 'ssoma.gestionar')) {
+    tareas.push({
+      clave: 'ssoma_por_clasificar', ruta: '/ssoma', tono: 'aviso',
+      texto: n => plural(n, 'reporte de seguridad por clasificar', 'reportes de seguridad por clasificar'),
+      contar: () => cabeza(supabase.from('ssoma_reportes').select('id', { count: 'exact', head: true }).eq('estado', 'REPORTADO')),
+    })
+    tareas.push({
+      clave: 'ssoma_vencidas_de_otros', ruta: '/ssoma?vista=acciones', tono: 'peligro',
+      texto: n => plural(n, 'acción correctiva vencida por seguir', 'acciones correctivas vencidas por seguir'),
+      contar: () => cabeza(supabase.from('ssoma_acciones').select('id', { count: 'exact', head: true })
+        .eq('estado', 'ABIERTA').lt('fecha_limite', hoy).neq('responsable_id', perfil.id)),
+    })
+  }
+
   // Un pendiente se cuenta solo si su pantalla está en el menú del puesto: lo
   // que se resuelve donde el puesto ya no entra no es suyo. Así Supervisión,
   // Almacén y Requerimientos dejaron de ver lo que se resolvía en la OT (desde

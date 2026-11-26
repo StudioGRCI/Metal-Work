@@ -321,6 +321,28 @@ e incidentes de la R.M. 050-2013-TR (Ley 29783), con número de la casa
 reportó a `audit_log`, que lee Gerencia y el área no debe ver. Una cuenta sin
 `area_id` no tiene alcance de área: ve solo lo suyo.
 
+### Clasificar y las acciones correctivas
+
+Entrega 15.2. Migración `20261126150000_ssoma_clasifica_y_acciones_correctivas`,
+comprobada con los roles reales en la base local (check 475) y con clic real en
+el banco (`herramientas/banco/probar-ssoma-acciones.mjs`). Las acciones no
+llevan número propio: van dentro del reporte `RI-…`, que es el documento
+numerado. Ni la clasificación, ni la acción, ni su historia se borran.
+
+| Qué | Quién | Cómo lo exige la base |
+| --- | --- | --- |
+| Clasificar el reporte (accidente incapacitante o leve, incidente peligroso, incidente o condición insegura), si hubo atención médica y los días perdidos (nunca el diagnóstico) y la causa (10 a 2000 caracteres); corregir la clasificación | `ssoma.gestionar`: SSOMA | `ssoma_clasificar`; la acción exige el mismo permiso (`clasificarReporteSsoma`). Cada corrección se agrega a `ssoma_clasificaciones` (no se cambia ni se borra: `fn_ssoma_solo_se_agrega`); vale la última. El mismo pedido repetido no agrega otra. Un reporte anulado no se clasifica |
+| Encargar una acción correctiva: qué hacer (10 a 500), responsable (una cuenta activa) y fecha límite (de hoy a un año) | `ssoma.gestionar`: SSOMA, solo en un reporte ya clasificado | `ssoma_crear_accion` (`ssoma_cuentas_para_asignar` da las cuentas activas con nombre, puesto y área). La acción exige el mismo permiso (`crearAccionSsoma`). Un reenvío con el mismo id devuelve la misma (`useIdDelEnvio('accion_ssoma')`). Al responsable le llega el aviso con el enlace a la acción |
+| Ver sus acciones y el hecho que corrigen, sin quién lo reportó, la clasificación, la causa ni las fotos del reporte | El responsable de la acción (cualquier cuenta) | Política `ver_ssoma_acciones` (`responsable_id = usuario_actual()`); el reporte, por `ssoma_reportes_visibles` con alcance `ACCION`. El menú le cuenta las abiertas y las vencidas en «Reportar incidente» |
+| Cerrar la acción con una nota (10 a 1000) y de 1 a 4 fotos de lo que se hizo | El responsable; SSOMA también | `ssoma_cerrar_accion`, que decide quién puede (la acción de Next no lo adelanta: `cerrarAccionSsoma`). Las fotos van a `fotos-ssoma` en `{cuenta}/{evento}/{foto}` y las anota `ssoma_anotar_evidencia`. El mismo cierre repetido entra; otro sobre una ya cerrada dice quién la cerró y cuándo. Avisa a SSOMA; si era la última abierta, el reporte pasa a «Corregido» y a quien lo reportó le llega el aviso |
+| Reabrir una cerrada (motivo y fecha nueva), reasignar (otra cuenta u otra fecha) y anular una abierta con motivo | `ssoma.gestionar`: SSOMA | `ssoma_reabrir_accion`, `ssoma_reasignar_accion`, `ssoma_anular_accion`; cada acción de Next exige el mismo permiso. Reasignar avisa al nuevo y al anterior; reabrir, al responsable. Una cerrada no se anula: se reabre. Un reporte con acciones vivas no se anula |
+| Ver la clasificación, la causa, todas las acciones y su evidencia | SSOMA y Gerencia (`ssoma.ver`, en consulta, sin botones) | `ssoma_seguimiento_de_reportes`, `ssoma_acciones_visibles` (alcance `TODOS`) y `ssoma_historia_de_accion`; políticas por `puede_ver_reportes_ssoma()` |
+| Ver qué se corrige en su reporte o en su área, y cómo va, sin la evidencia ni la clasificación | Quien reportó y el área del reporte | `ssoma_acciones_visibles` con alcance `REPORTE`: sin las anuladas, sin fotos ni motivos |
+
+`ssoma_clasificaciones` no lleva `activar_auditoria` (la causa no la debe leer
+quien lee `audit_log`); `ssoma_acciones` sí. Las acciones vencidas no mandan un
+aviso aparte: salen arriba en cada lista y en rojo en el globo del menú.
+
 ## Responsables de área
 
 Migración `20261125205000_el_responsable_de_cada_area_es_una_cuenta`,
@@ -416,7 +438,7 @@ punto y coma con su nombre delante.
 | Agente de Ventas | Cotización, Clientes, Unidades, Carrocerías | — | Cotizar, Clientes, Unidades, Dashboard |
 | Gerencia Comercial (desde el 2026-11-25) | — | Ventas: Cotización (cada una lleva a su OT), Clientes, Unidades, Órdenes de trabajo | Cotizar, Clientes, Órdenes, Dashboard |
 | Gerencia de Producción (desde el 2026-11-25) | Por validar: Reporte diario (da el visto de Gerencia); Avance: Seguimiento por código y Tiempos de entrega (de RR. HH., en consulta) | — | Reporte, Seguimiento, Entregas, Dashboard |
-| SSOMA | Reportes de seguridad (desde el 2026-11-25; las acciones correctivas, las charlas, las inspecciones y el EPP se suman con sus entregas) | — | Seguridad, Dashboard |
+| SSOMA | Reportes de seguridad (desde el 2026-11-25, con «Acciones correctivas» desde la entrega 15.2; las charlas, las inspecciones y el EPP se suman con sus entregas) | — | Seguridad, Dashboard |
 
 Una pantalla nueva no aparece sola en estos menús: se suma al del puesto que la
 usa. Si la ruta está mal escrita, TypeScript no compila.
@@ -474,7 +496,7 @@ la OT en su menú.
 | Agente de Ventas | Cotizaciones rechazadas por corregir | En revisión de Gerencia, Aprobadas este mes, Clientes |
 | Gerencia Comercial | — | En revisión de Gerencia y Aprobadas este mes, de todo Ventas; Clientes |
 | Gerencia de Producción | Reportes diarios que esperan el visto de Gerencia | Reportes diarios del mes (con cuántos esperan el visto de Gerencia, y lleva a «Falta Gerencia»), Códigos en curso |
-| SSOMA | — (el aviso de cada reporte llega a la campana; el globo de lo que espera por SSOMA llega con las acciones correctivas, entrega 15.2) | Reportes en SSOMA (vigentes, sin anular), Reportados este mes (cuántos accidentes) |
+| SSOMA | Reportes por clasificar, Acciones vencidas de otros (lleva a «Acciones correctivas») | Por clasificar, Acciones vencidas, Reportados este mes (cuántos accidentes) |
 
 ADMIN ve las cifras de Gerencia y todos los globos. Una cifra que no se pudo
 leer sale con «—» y lo dice; nunca como si fuera cero.

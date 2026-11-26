@@ -486,6 +486,43 @@ begin
 end;
 $$;
 
+-- SSOMA 15.2 (migración 20261126150000): la condición insegura de Almacén ya
+-- clasificada, con su causa y dos acciones correctivas a cargo de Almacén, una
+-- de ellas vencida, para que la lista las ponga arriba. Las encarga la cuenta
+-- de administrador de la demostración: aquí todavía no están las del banco.
+do $$
+declare
+  v_admin uuid;
+  v_alm   uuid;
+  v_rep   uuid;
+  v_acc   uuid := gen_random_uuid();
+  v_hoy   date := (now() at time zone 'America/Lima')::date;
+begin
+  if exists (select 1 from public.ssoma_acciones) then
+    return;
+  end if;
+  select u.id into v_admin from public.usuarios u join public.roles r on r.id = u.rol_id where r.codigo = 'ADMIN' and u.activo limit 1;
+  select u.id into v_alm from public.usuarios u where u.correo = 'almacen@metalworkperusac.com' and u.activo;
+  select id into v_rep from public.ssoma_reportes where tipo = 'CONDICION_INSEGURA' and estado = 'REPORTADO' order by creado_en limit 1;
+  if v_admin is null or v_alm is null or v_rep is null then
+    return;
+  end if;
+
+  perform set_config('request.jwt.claim.sub', v_admin::text, true);
+  perform public.ssoma_clasificar(v_rep, 'CONDICION_INSEGURA', null, null,
+    'Las planchas se apilan sobre la altura del estante porque falta espacio, y nadie revisa el piso al empezar el turno.');
+  perform public.ssoma_crear_accion(gen_random_uuid(), v_rep,
+    'Limpiar el aceite del pasillo de planchas y dejar arena absorbente junto al estante 3.', v_alm, v_hoy);
+  perform public.ssoma_crear_accion(v_acc, v_rep,
+    'Reacomodar las planchas para que no pasen la altura del estante y marcar en el piso el límite de apilado.', v_alm, v_hoy + 5);
+  -- Solo en la demostración: la primera acción quedó vencida hace dos días.
+  perform set_config('session_replication_role', 'replica', true);
+  update public.ssoma_acciones set fecha_limite = v_hoy - 2 where reporte_id = v_rep and id <> v_acc;
+  perform set_config('session_replication_role', 'origin', true);
+  perform set_config('request.jwt.claim.sub', '', true);
+end;
+$$;
+
 -- -----------------------------------------------------------------------------
 -- El padrón de equipos de la planta (Plan 16). Códigos con la forma de la hoja
 -- de máquinas del taller y personas inventadas: unos operativos, uno con
