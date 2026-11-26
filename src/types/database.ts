@@ -21076,6 +21076,13 @@ export type Database = {
         }
         Returns: string
       }
+      ssoma_epp_por_atender: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          por_asignar: number | null
+          vencidos: number | null
+        }[]
+      }
       ssoma_epp_por_persona: {
         Args: {
           p_trabajador: string | null
@@ -21399,6 +21406,8 @@ export type Database = {
           sin_reparto: boolean | null
           motivo_sin_reparto: string | null
           dijo_sin_reparto: string | null
+          a_quien: Json | null
+          no_estaban: string[] | null
         }[]
       }
       ssoma_seguimiento_de_reportes: {

@@ -44,6 +44,23 @@ const llano = (texto: string) =>
 /** «2,5» o «2.5» → 2.5; lo que no es un número, NaN. */
 const numero = (texto: string) => (texto.trim() === '' ? Number.NaN : Number(texto.trim().replace(',', '.')))
 
+/**
+ * Lleva el cursor a un mando cuando la pantalla puesta al día lo pinta, si para entonces el cursor se
+ * quedó sin dueño (el botón que lo tenía se fue). Si la persona ya lo movió, no se le quita.
+ */
+function cursorCuandoAparezca(selector: string) {
+  const vigia = new MutationObserver(() => {
+    const mando = document.querySelector<HTMLElement>(selector)
+    if (!mando) return
+    vigia.disconnect()
+    const activo = document.activeElement
+    if (!activo || activo === document.body || !activo.isConnected) mando.focus()
+  })
+  vigia.observe(document.body, { childList: true, subtree: true })
+  // La pantalla al día llega en segundos; después, quien mueve el cursor es la persona.
+  window.setTimeout(() => vigia.disconnect(), 8000)
+}
+
 /** «1 mes», «6 meses», «1 año». */
 const duracion = (meses: number) => (meses % 12 === 0 ? `${meses / 12} ${meses === 12 ? 'año' : 'años'}` : `${meses} ${meses === 1 ? 'mes' : 'meses'}`)
 
@@ -55,7 +72,7 @@ const duracion = (meses: number) => (meses % 12 === 0 ? `${meses / 12} ${meses =
  */
 export function AsignarEpp({ salida, personal }: {
   salida: SalidaDeEpp
-  /** El personal de RR. HH. (el activo y quien se fue en los últimos 60 días): solo nombre, cargo y área. */
+  /** El personal de RR. HH. (el activo y quien se fue en los últimos 180 días): solo nombre, cargo y área. */
   personal: PersonaParaMarcar[]
 }) {
   const [abierta, setAbierta] = useState(false)
@@ -151,6 +168,12 @@ function FormularioEpp({
   const [marcados, setMarcados] = useState<Record<string, string>>({})
   const [busqueda, setBusqueda] = useState('')
   const unidad = salida.unidad ?? ''
+  // Quien no estaba en la planta el día de la salida no se ofrece: la base lo rechazaría.
+  const disponibles = useMemo(() => {
+    const fuera = new Set(salida.no_estaban)
+    return personal.filter((p) => !fuera.has(p.id))
+  }, [personal, salida.no_estaban])
+  const noEstaban = personal.length - disponibles.length
 
   const errorFecha = error && DE_LA_FECHA.test(error) ? error : null
   const errorPersonas = !errorFecha && error && DE_LAS_PERSONAS.test(error) ? error : null
@@ -159,7 +182,9 @@ function FormularioEpp({
     enviando,
     error,
     useCallback(
-      () => document.getElementById(errorFecha ? 'epp-renovar' : errorPersonas ? 'epp-personas' : 'epp-error'),
+      // El rechazo de las personas lleva el cursor al aviso mismo: con la lista ya a la vista, enfocar
+      // la sección no desplazaba nada y en el teléfono el aviso quedaba arriba, fuera de la pantalla.
+      () => document.getElementById(errorFecha ? 'epp-renovar' : errorPersonas ? 'epp-personas-error' : 'epp-error'),
       [errorFecha, errorPersonas],
     ),
   )
@@ -169,14 +194,14 @@ function FormularioEpp({
   const porArea = useMemo(() => {
     const q = llano(busqueda.trim())
     const grupos = new Map<string, PersonaParaMarcar[]>()
-    for (const p of personal) {
+    for (const p of disponibles) {
       if (q && !llano([p.nombre, p.cargo, p.area].filter(Boolean).join(' ')).includes(q)) continue
       const area = p.enPlanta ? (p.area ?? SIN_AREA) : SE_FUERON
       grupos.set(area, [...(grupos.get(area) ?? []), p])
     }
     const peso = (a: string) => (a === SE_FUERON ? 2 : a === SIN_AREA ? 1 : 0)
     return [...grupos.entries()].sort(([a], [b]) => peso(a) - peso(b) || a.localeCompare(b, 'es'))
-  }, [personal, busqueda])
+  }, [disponibles, busqueda])
 
   // El rechazo de la base seguía en rojo junto al campo ya corregido, hasta el envío siguiente.
   function ponerFecha(dia: string) {
@@ -305,13 +330,15 @@ function FormularioEpp({
             </p>
           </div>
           {errorPersonas && (
-            <p id="epp-personas-error" className="text-sm text-peligro">
+            <p id="epp-personas-error" tabIndex={-1} className="scroll-my-4 text-sm text-peligro outline-none">
               {errorPersonas}
             </p>
           )}
-          {personal.length === 0 ? (
+          {disponibles.length === 0 ? (
             <p className="rounded-[var(--radius-base)] border border-borde px-3 py-2 text-sm text-texto-suave">
-              RR. HH. todavía no tiene a nadie activo en su lista: sin ella no hay a quién anotar.
+              {personal.length === 0
+                ? 'RR. HH. todavía no tiene a nadie activo en su lista: sin ella no hay a quién anotar.'
+                : `Nadie de la lista de RR. HH. estaba en la planta el ${fecha(salida.fecha)}, el día de la salida.`}
             </p>
           ) : (
             <>
@@ -350,15 +377,27 @@ function FormularioEpp({
                         <ul>
                           {gente.map((p) => {
                             const marcado = p.id in marcados
+                            // La base nombra a quien rechaza: su fila se marca, para no buscarla en la lista.
+                            const rechazada = marcado && Boolean(errorPersonas?.includes(p.nombre))
+                            const cantidadMala = marcado && !(numero(marcados[p.id]) > 0 && numero(marcados[p.id]) <= 999)
                             return (
                               // El margen de arriba y abajo le deja sitio al anillo de foco de la cantidad: sin él lo tapaba la cabecera del área.
-                              <li key={p.id} className={cn('flex items-center gap-2 py-1 pr-3', marcado ? 'bg-acento-suave' : 'hover:bg-superficie-2')}>
+                              <li
+                                key={p.id}
+                                className={cn(
+                                  'flex items-center gap-2 py-1 pr-3',
+                                  rechazada ? 'bg-peligro-suave' : marcado ? 'bg-acento-suave' : 'hover:bg-superficie-2',
+                                )}
+                                data-rechazada={rechazada || undefined}
+                              >
                                 <label className="flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-3 py-1.5 pl-3 text-sm">
                                   <input
                                     type="checkbox"
                                     checked={marcado}
                                     onChange={(e) => cambiar([p.id], e.target.checked)}
                                     className="size-4 shrink-0 accent-[var(--acento)]"
+                                    aria-invalid={rechazada || undefined}
+                                    aria-describedby={rechazada ? 'epp-personas-error' : undefined}
                                     data-persona-epp={p.id}
                                   />
                                   <span className="min-w-0">
@@ -370,10 +409,12 @@ function FormularioEpp({
                                     )}
                                   </span>
                                 </label>
-                                {/* Cuánto se llevó: solo si de la salida queda más de lo que se da por persona. */}
-                                {marcado && queda > porPersona && (
+                                {/* Cuánto se llevó: siempre, salvo cuando queda justo 1 (un casco, una persona). Con 0,7 por
+                                    asignar y dos personas, sin el campo no había cómo darle 0,35 a cada una. */}
+                                {marcado && queda !== 1 && (
                                   <Entrada
                                     aria-label={`Cantidad para ${p.nombre}`}
+                                    aria-invalid={cantidadMala || sePasa || undefined}
                                     inputMode="decimal"
                                     value={marcados[p.id]}
                                     onChange={(e) => {
@@ -394,6 +435,12 @@ function FormularioEpp({
                 )}
               </div>
             </>
+          )}
+          {noEstaban > 0 && (
+            <p className="text-xs text-texto-suave" data-no-estaban={noEstaban}>
+              {noEstaban === 1 ? 'No sale 1 persona de la lista' : `No salen ${noEstaban} personas de la lista`}: según RR. HH., no{' '}
+              {noEstaban === 1 ? 'estaba' : 'estaban'} en la planta el {fecha(salida.fecha)}, el día de la salida.
+            </p>
           )}
         </section>
       </fieldset>
@@ -417,9 +464,10 @@ type DeQuien = { id: string; persona: string; material: string }
 export function AnularEntrega({ entrega }: { entrega: DeQuien }) {
   const [abierta, setAbierta] = useState(false)
   const [, setEntro] = useEstadoCompartido<string | null>(`${CLAVE}:aviso`, null)
-  const { alEnviar, enviando, error, limpiar } = useEnvio(anularEntregaEpp, (r) => {
+  const { alEnviar, enviando, error, limpiar } = useEnvio(anularEntregaEpp, () => {
     setAbierta(false)
-    setEntro(r.mensaje ?? 'Entrega anulada.')
+    // El aviso nombra la entrega: la fila cambia de sitio, y «entrega anulada» a secas no decía cuál.
+    setEntro(`Entrega anulada: ${entrega.material}, de ${entrega.persona}. Lo que tenía asignado vuelve a quedar por asignar en su salida.`)
   })
   return (
     <>
@@ -470,9 +518,9 @@ export function AnularEntrega({ entrega }: { entrega: DeQuien }) {
 export function NoSeRenueva({ entrega }: { entrega: DeQuien }) {
   const [abierta, setAbierta] = useState(false)
   const [, setEntro] = useEstadoCompartido<string | null>(`${CLAVE}:aviso`, null)
-  const { alEnviar, enviando, error, limpiar } = useEnvio(eppNoSeRenueva, (r) => {
+  const { alEnviar, enviando, error, limpiar } = useEnvio(eppNoSeRenueva, () => {
     setAbierta(false)
-    setEntro(r.mensaje ?? 'Listo.')
+    setEntro(`Listo: ${entrega.material}, de ${entrega.persona}, ya no sale en «Por renovar».`)
   })
   return (
     <>
@@ -529,9 +577,9 @@ type DeSalida = Pick<SalidaDeEpp, 'movimiento_id' | 'numero' | 'fecha' | 'materi
 export function NoVaPorPersona({ salida }: { salida: DeSalida }) {
   const [abierta, setAbierta] = useState(false)
   const [, setEntro] = useEstadoCompartido<string | null>(`${CLAVE}:aviso`, null)
-  const { alEnviar, enviando, error, limpiar } = useEnvio(eppSalidaSinReparto, (r) => {
+  const { alEnviar, enviando, error, limpiar } = useEnvio(eppSalidaSinReparto, () => {
     setAbierta(false)
-    setEntro(r.mensaje ?? 'Listo.')
+    setEntro(`Listo: lo que queda de ${salida.material} (${nombreDeSalidaEpp(salida)}) ya no espera reparto.`)
   })
   const queda = `${cantidad(salida.por_asignar)} ${salida.unidad ?? ''}`.trim()
   return (
@@ -541,6 +589,8 @@ export function NoVaPorPersona({ salida }: { salida: DeSalida }) {
         variante="fantasma"
         tamano="sm"
         data-no-va-por-persona={salida.movimiento_id}
+        // Al guardarse, este botón se va y en su fila queda «Repartir», con la misma marca: el cursor va ahí.
+        data-cursor-vuelve={`epp-reparto:${salida.movimiento_id}`}
         aria-label={`No va por persona: ${salida.material}, ${nombreDeSalidaEpp(salida)}`}
         onClick={() => {
           limpiar()
@@ -581,7 +631,11 @@ export function NoVaPorPersona({ salida }: { salida: DeSalida }) {
 /** Deshace «no va por persona»: la salida vuelve a esperar que se anote a quién le tocó. */
 export function RepartirSalida({ salida }: { salida: DeSalida }) {
   const [, setEntro] = useEstadoCompartido<string | null>(`${CLAVE}:aviso`, null)
-  const { alEnviar, enviando, error } = useEnvio(eppSalidaSeReparte, (r) => setEntro(r.mensaje ?? 'Listo.'))
+  const { alEnviar, enviando, error } = useEnvio(eppSalidaSeReparte, () => {
+    setEntro(`Listo: ${salida.material} (${nombreDeSalidaEpp(salida)}) vuelve a esperar que anotes a quién le tocó.`)
+    // «Repartir» se va de la fila y vuelve «Anotar a quién»: el cursor lo sigue, no cae a la página.
+    cursorCuandoAparezca(`[data-asignar-epp="${salida.movimiento_id}"]`)
+  })
   return (
     <form
       onSubmit={(e) => {
@@ -597,6 +651,7 @@ export function RepartirSalida({ salida }: { salida: DeSalida }) {
         tamano="sm"
         cargando={enviando}
         data-repartir-salida={salida.movimiento_id}
+        data-cursor-vuelve={`epp-reparto:${salida.movimiento_id}`}
         aria-label={`Repartir entre personas: ${salida.material}, ${nombreDeSalidaEpp(salida)}`}
       >
         Repartir

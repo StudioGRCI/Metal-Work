@@ -1227,6 +1227,25 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       contar: () => cabeza(supabase.from('ssoma_acciones').select('id', { count: 'exact', head: true })
         .eq('estado', 'ABIERTA').lt('fecha_limite', hoy).neq('responsable_id', perfil.id)),
     })
+    // SSOMA (15.5): el equipo que Almacén ya entregó y nadie anotó a quién, y el EPP ya vencido.
+    // Sin esto solo se veía entrando a la pantalla. Las dos cuentas salen de una sola consulta.
+    let eppPorAtender: Promise<{ por_asignar: number; vencidos: number }> | null = null
+    const contarEpp = () =>
+      (eppPorAtender ??= (async () => {
+        const { data, error } = await supabase.rpc('ssoma_epp_por_atender').single()
+        if (error) throw new Error('No se pudo consultar el pendiente.')
+        return { por_asignar: data?.por_asignar ?? 0, vencidos: data?.vencidos ?? 0 }
+      })())
+    tareas.push({
+      clave: 'ssoma_epp_por_asignar', ruta: '/ssoma/epp?vista=salidas', tono: 'aviso',
+      texto: n => plural(n, 'salida de EPP por anotar a quién le tocó', 'salidas de EPP por anotar a quién les tocó'),
+      contar: async () => (await contarEpp()).por_asignar,
+    })
+    tareas.push({
+      clave: 'ssoma_epp_vencidos', ruta: '/ssoma/epp', tono: 'peligro',
+      texto: n => plural(n, 'equipo de protección vencido por renovar', 'equipos de protección vencidos por renovar'),
+      contar: async () => (await contarEpp()).vencidos,
+    })
   }
 
   // Un pendiente se cuenta solo si su pantalla está en el menú del puesto: lo

@@ -8,10 +8,12 @@ import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
 import {
   entregasDeEpp,
   eppPorPersona,
+  MAXIMO_ENTREGAS_EPP,
   personalParaEpp,
   salidasDeEpp,
   type EntregaDeEpp,
   type PersonaConEpp,
+  type PersonaDeLaSalida,
   type PersonaParaMarcar,
   type SalidaDeEpp,
 } from '@/lib/datos/ssoma'
@@ -45,9 +47,6 @@ export default async function PaginaEppSsoma({ searchParams }: PageProps<'/ssoma
     vista === 'personas' ? eppPorPersona() : Promise.resolve([]),
     gestiona && vista === 'salidas' ? personalParaEpp() : Promise.resolve([]),
   ])
-  // A quién le tocó lo de cada salida de la lista: las entregas desde la salida más antigua que se ve.
-  const desde = salidas.reduce<string | null>((min, s) => (min === null || s.fecha < min ? s.fecha : min), null)
-  const deLasSalidas = vista === 'salidas' && desde ? await entregasDeEpp({ desde }) : []
 
   const vencidas = porRenovar.filter((e) => e.situacion === 'VENCIDA').length
   // Lo que espera por SSOMA: equipo fuera de Almacén sin dueño anotado, salvo lo que ya dijo que no va por persona.
@@ -99,6 +98,11 @@ export default async function PaginaEppSsoma({ searchParams }: PageProps<'/ssoma
             ayuda={`El equipo vigente de quien sigue en la planta que ya venció o vence en los próximos ${DIAS_DE_AVISO_EPP} días, lo más atrasado primero. Sale de la lista cuando se le anota una entrega nueva del mismo equipo, o cuando SSOMA dice que ya no se renueva.`}
           />
           <TablaPorRenovar entregas={porRenovar} gestiona={gestiona} />
+          {porRenovar.length >= MAXIMO_ENTREGAS_EPP && (
+            <p className="border-t border-borde px-4 py-3 text-xs text-texto-suave" data-tope-por-renovar>
+              Se ven las {MAXIMO_ENTREGAS_EPP} más atrasadas: hay más por renovar que no entran en esta lista.
+            </p>
+          )}
         </Tarjeta>
       )}
 
@@ -117,10 +121,10 @@ export default async function PaginaEppSsoma({ searchParams }: PageProps<'/ssoma
         <Tarjeta className="overflow-hidden">
           <TarjetaCabecera
             titulo="Salidas del almacén de EPP"
-            descripcion="Las de los últimos 60 días; las que esperan que se anote a quién, primero"
+            descripcion="Las de los últimos 60 días, y hasta 180 las que tienen algo por asignar; las que esperan que se anote a quién, primero"
             ayuda="Cada salida la registra Almacén, con su número y quién recibió. Aquí no se cambia: SSOMA anota a qué personas les tocó. Lo que vuelve a Almacén deja de contar, y lo que no es de nadie en particular (las lunas del área, un polo para una visita) se marca «No va por persona» con su motivo."
           />
-          <TablaDeSalidas salidas={salidas} entregas={deLasSalidas} personal={personal} gestiona={gestiona} />
+          <TablaDeSalidas salidas={salidas} personal={personal} gestiona={gestiona} />
         </Tarjeta>
       )}
     </>
@@ -248,7 +252,11 @@ function TablaDePersonas({ personas }: { personas: PersonaConEpp[] }) {
   if (personas.length === 0) {
     return (
       <div className="px-4 pb-4">
-        <SinDatos compacto titulo="RR. HH. no tiene a nadie activo en su lista" descripcion="Sin la lista del personal no hay a quién anotarle una entrega." />
+        <SinDatos
+          compacto
+          titulo="RR. HH. no tiene a nadie activo en su lista"
+          descripcion="Sin la lista del personal no hay a quién anotarle una entrega: pídele a RR. HH. que registre a su gente."
+        />
       </div>
     )
   }
@@ -276,6 +284,7 @@ function TablaDePersonas({ personas }: { personas: PersonaConEpp[] }) {
                   <span>·</span>
                   <span>{p.vigentes === 0 ? 'sin EPP anotado' : `${p.vigentes} ${p.vigentes === 1 ? 'equipo vigente' : 'equipos vigentes'}`}</span>
                   <PorRenovarDe p={p} />
+                  {p.proxima && <span className="tabular">· próxima renovación el {fecha(p.proxima)}</span>}
                 </p>
               </DetalleEnTelefono>
             </TD>
@@ -330,9 +339,8 @@ function EstadoDeSalida({ s }: { s: SalidaDeEpp }) {
   return <Insignia tono="neutro">Volvió a Almacén</Insignia>
 }
 
-function TablaDeSalidas({ salidas, entregas, personal, gestiona }: {
+function TablaDeSalidas({ salidas, personal, gestiona }: {
   salidas: SalidaDeEpp[]
-  entregas: EntregaDeEpp[]
   personal: PersonaParaMarcar[]
   gestiona: boolean
 }) {
@@ -351,12 +359,6 @@ function TablaDeSalidas({ salidas, entregas, personal, gestiona }: {
       </div>
     )
   }
-  // A quién le tocó cada salida; las anuladas no cuentan.
-  const porSalida = new Map<string, EntregaDeEpp[]>()
-  for (const e of entregas) {
-    if (e.estado === 'ANULADA') continue
-    porSalida.set(e.movimiento_id, [...(porSalida.get(e.movimiento_id) ?? []), e])
-  }
   // Apilada: en el teléfono cada salida es una ficha y «Anotar a quién» se pinta una sola vez.
   return (
     <Tabla apilada>
@@ -374,7 +376,9 @@ function TablaDeSalidas({ salidas, entregas, personal, gestiona }: {
       </TablaCabecera>
       <tbody>
         {salidas.map((s) => {
-          const quienes = porSalida.get(s.movimiento_id) ?? []
+          // A quién le tocó viene con la salida misma (sin las anuladas): leído aparte y con tope, las
+          // salidas más antiguas decían «Todavía nadie» junto a «Asignada».
+          const quienes = s.a_quien
           const unidad = s.unidad ?? ''
           const aQuien = <AQuienLeToco entregas={quienes} unidad={unidad} />
           const sinReparto = s.sin_reparto && s.por_asignar > 0
@@ -429,7 +433,7 @@ function TablaDeSalidas({ salidas, entregas, personal, gestiona }: {
                 {porQue}
               </TD>
               <TD className="hidden align-top text-sm xl:table-cell">
-                {quienes.length === 0 ? <p className="text-texto-suave">Todavía nadie</p> : aQuien}
+                {quienes.length === 0 ? <p className="text-texto-suave">{sinReparto ? 'Nadie en particular' : 'Todavía nadie'}</p> : aQuien}
                 {deMas}
               </TD>
               {gestiona && (
@@ -457,12 +461,16 @@ function TablaDeSalidas({ salidas, entregas, personal, gestiona }: {
 }
 
 /** Las personas de una salida, cada una con el enlace a su hoja y cuánto se llevó. */
-function AQuienLeToco({ entregas, unidad }: { entregas: EntregaDeEpp[]; unidad: string }) {
+function AQuienLeToco({ entregas, unidad }: { entregas: PersonaDeLaSalida[]; unidad: string }) {
   return (
-    <ul className="space-y-0.5">
+    <ul className="xl:space-y-0.5">
       {entregas.map((e) => (
         <li key={e.id}>
-          <Link href={`/ssoma/epp/${e.trabajador_id}`} className="text-texto hover:text-acento hover:underline">
+          {/* Subrayado, para que se lea como enlace; en el teléfono, con el alto de un dedo. */}
+          <Link
+            href={`/ssoma/epp/${e.trabajador_id}`}
+            className="inline-flex min-h-11 items-center text-texto underline decoration-borde-fuerte underline-offset-2 hover:text-acento xl:min-h-0"
+          >
             {e.persona}
           </Link>
           {e.cantidad !== 1 && (

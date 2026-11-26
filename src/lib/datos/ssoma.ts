@@ -741,11 +741,30 @@ export type SalidaDeEpp = {
   sin_reparto: boolean
   motivo_sin_reparto: string | null
   dijo_sin_reparto: string | null
+  /** A quién le tocó: las entregas que valen (sin las anuladas), por nombre. Viene con la salida, sin tope. */
+  a_quien: PersonaDeLaSalida[]
+  /** De la lista para marcar, quién no estaba en la planta el día de la salida. Solo le llega a quien anota. */
+  no_estaban: string[]
+}
+
+/** Una persona a la que le tocó parte de una salida. */
+export type PersonaDeLaSalida = { id: string; trabajador_id: string; persona: string; cantidad: number }
+
+/** `a_quien` llega como JSON: solo se toma lo que tiene la forma esperada. */
+function personasDeLaSalida(json: unknown): PersonaDeLaSalida[] {
+  if (!Array.isArray(json)) return []
+  return json.flatMap((x) => {
+    if (!x || typeof x !== 'object') return []
+    const { id, trabajador_id, persona, cantidad } = x as Record<string, unknown>
+    return typeof id === 'string' && typeof trabajador_id === 'string' && typeof persona === 'string'
+      ? [{ id, trabajador_id, persona, cantidad: Number(cantidad ?? 0) }]
+      : []
+  })
 }
 
 /**
- * Las salidas del almacén de EPP: las de los últimos 60 días y, hasta 180 días atrás, las que esperan por
- * SSOMA; con algo por asignar, primero. Con `movimiento`, esa sola, de cualquier fecha.
+ * Las salidas del almacén de EPP: las de los últimos 60 días y, hasta 180 días atrás, las que tienen algo
+ * por asignar; las que esperan por SSOMA, primero. Con `movimiento`, esa sola, de cualquier fecha.
  */
 export async function salidasDeEpp(movimiento: string | null = null): Promise<SalidaDeEpp[]> {
   const supabase = await createClient()
@@ -770,6 +789,8 @@ export async function salidasDeEpp(movimiento: string | null = null): Promise<Sa
             sin_reparto: s.sin_reparto === true,
             motivo_sin_reparto: s.motivo_sin_reparto,
             dijo_sin_reparto: s.dijo_sin_reparto,
+            a_quien: personasDeLaSalida(s.a_quien),
+            no_estaban: Array.isArray(s.no_estaban) ? s.no_estaban.filter((i): i is string => typeof i === 'string') : [],
           },
         ]
       : [],
@@ -777,8 +798,9 @@ export async function salidasDeEpp(movimiento: string | null = null): Promise<Sa
 }
 
 /**
- * La lista de RR. HH. para anotar una entrega: solo nombre, cargo, área y si sigue en la planta. Si estaba
- * el día de la salida lo decide la base al anotar. Pide `ssoma.gestionar`.
+ * La lista de RR. HH. para anotar una entrega (los activos y quien se fue en los últimos 180 días): solo
+ * nombre, cargo, área y si sigue en la planta. Quién no estaba el día de cada salida lo dice la salida
+ * (`no_estaban`), y la base lo vuelve a comprobar al anotar. Pide `ssoma.gestionar`.
  */
 export async function personalParaEpp(): Promise<PersonaParaMarcar[]> {
   const supabase = await createClient()
@@ -823,25 +845,20 @@ export type EntregaDeEpp = {
 export const MAXIMO_ENTREGAS_EPP = 500
 
 /**
- * Las entregas de EPP: las de una persona, las de una salida, las que están por renovar (vigentes, de
- * quien sigue en la planta, vencidas o por vencer en 15 días) o las entregadas desde un día.
+ * Las entregas de EPP de una persona, o las que están por renovar (vigentes, de quien sigue en la planta,
+ * vencidas o por vencer en 15 días). A quién le tocó cada salida no sale de aquí: viene con la salida.
  */
 export async function entregasDeEpp({
   trabajador = null,
-  movimiento = null,
   porRenovar = false,
-  desde = null,
 }: {
   trabajador?: string | null
-  movimiento?: string | null
   porRenovar?: boolean
-  /** Solo las entregadas ese día o después («2026-11-01»). */
-  desde?: string | null
 } = {}): Promise<EntregaDeEpp[]> {
   const supabase = await createClient()
-  let consulta = supabase.rpc('ssoma_epp_entregas_a_la_vista', { p_trabajador: trabajador, p_movimiento: movimiento, p_por_renovar: porRenovar })
-  if (desde) consulta = consulta.gte('entregado_el', desde)
-  const { data, error } = await consulta.range(0, MAXIMO_ENTREGAS_EPP - 1)
+  const { data, error } = await supabase
+    .rpc('ssoma_epp_entregas_a_la_vista', { p_trabajador: trabajador, p_movimiento: null, p_por_renovar: porRenovar })
+    .range(0, MAXIMO_ENTREGAS_EPP - 1)
   if (error) throw new Error(`No se pudieron leer las entregas de EPP: ${error.message}`)
   return (data ?? []).flatMap((e) =>
     e.id && e.trabajador_id && e.persona && e.movimiento_id && e.material && e.entregado_el && e.renovar_el && e.estado && e.creado_en

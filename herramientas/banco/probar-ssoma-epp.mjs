@@ -151,7 +151,7 @@ const huella = async () =>
 const antesDeTodo = await huella()
 
 const SALIDAS = `select movimiento_id, numero, material, cantidad::float8 as cantidad, por_asignar::float8 as por_asignar, asignado::float8 as asignado,
-                        sin_reparto, dias_sugeridos, fecha::text as fecha
+                        sin_reparto, dias_sugeridos, fecha::text as fecha, a_quien, no_estaban
                    from public.ssoma_salidas_de_epp(null)`
 const POR_RENOVAR = `select id, trabajador_id, persona, material, situacion from public.ssoma_epp_entregas_a_la_vista(null, null, true)`
 const esperan = (salidas) => salidas.filter((s) => s.por_asignar > 0 && !s.sin_reparto)
@@ -172,7 +172,7 @@ const yaTienen = async (movimiento) =>
   (
     await consulta(`select trabajador_id from public.ssoma_epp_entregas where movimiento_id = $1 and anulado_en is null`, [movimiento])
   ).map((r) => r.trabajador_id)
-const libresDeA = personal.filter((p) => p.en_planta && p.area === 'Maestranza')
+const libresDeA = personal.filter((p) => p.en_planta && p.area === 'Maestranza' && !salidaA.no_estaban.includes(p.id))
 const [oscar, carlos] = libresDeA
 if (!oscar || !carlos) {
   console.error('Faltan dos personas de Maestranza en la lista de RR. HH. del banco.')
@@ -185,6 +185,23 @@ if (!oscar || !carlos) {
   const T = '[SSOMA 1440]'
   await ir(pagina, `${BASE}/ssoma`)
   comprobar((await pagina.locator('nav a[href="/ssoma/epp"]').count()) >= 1, `${T} el menú lleva «EPP por persona»`)
+
+  // --- En el inicio, entre lo que le toca: sin entrar a la pantalla ya sabe que hay equipo por anotar.
+  const [atender] = await como(CUENTAS.ssoma, `select por_asignar, vencidos from public.ssoma_epp_por_atender()`)
+  await ir(pagina, `${BASE}/`)
+  const inicio = limpio(await pagina.locator('main').innerText())
+  const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`
+  comprobar(
+    atender.por_asignar === esperan(alEmpezar).length &&
+      inicio.includes(plural(atender.por_asignar, 'salida de EPP por anotar a quién le tocó', 'salidas de EPP por anotar a quién les tocó')) &&
+      (await pagina.locator('main a[href="/ssoma/epp?vista=salidas"]').count()) >= 1,
+    `${T} el inicio le dice que ${atender.por_asignar} salidas de EPP esperan, con el enlace a esa lista`,
+  )
+  comprobar(
+    atender.vencidos >= 1 &&
+      inicio.includes(plural(atender.vencidos, 'equipo de protección vencido por renovar', 'equipos de protección vencidos por renovar')),
+    `${T} y que hay ${atender.vencidos} equipos de protección vencidos`,
+  )
 
   // --- Por renovar
   await ir(pagina, `${BASE}/ssoma/epp`)
@@ -200,7 +217,7 @@ if (!oscar || !carlos) {
   const resumen = limpio(await pagina.locator('[data-resumen-epp]').innerText())
   const nEsperan = esperan(alEmpezar).length
   comprobar(
-    resumen.includes(`${porRenovar.length} por renovar`) && resumen.includes(`${vencidas} vencido`) && resumen.includes(`${nEsperan} salida`),
+    resumen.includes(`${porRenovar.length} por renovar`) && resumen.includes(`${vencidas} vencido`) && resumen.includes(`${nEsperan} salida`) && atender.vencidos === vencidas,
     `${T} el encabezado lo resume: «${resumen}»`,
   )
   comprobar(
@@ -284,6 +301,16 @@ if (!oscar || !carlos) {
   const anotar = ventana.getByRole('button', { name: 'Anotar', exact: true })
   comprobar(await anotar.isDisabled(), `${T} sin personas ni fecha, «Anotar» no se puede tocar`)
   comprobar((await ventana.locator('#epp-renovar').inputValue()) === '', `${T} sin entregas anteriores de ese equipo, no propone fecha`)
+  // Quien no estaba en la planta el día de la salida no se ofrece: la base lo rechazaría.
+  const ofrecidas = await ventana.locator('[data-persona-epp]').evaluateAll((c) => c.map((e) => e.dataset.personaEpp))
+  const deLaLista = personal.filter((p) => !salidaA.no_estaban.includes(p.id)).map((p) => p.id)
+  comprobar(
+    salidaA.no_estaban.length >= 1 &&
+      ofrecidas.length === deLaLista.length &&
+      deLaLista.every((i) => ofrecidas.includes(i)) &&
+      Number(await ventana.locator('[data-no-estaban]').getAttribute('data-no-estaban')) === salidaA.no_estaban.length,
+    `${T} la ventana ofrece a ${ofrecidas.length} de ${personal.length} y dice que ${salidaA.no_estaban.length} no estaba en la planta ese día`,
+  )
   await ventana.getByRole('searchbox').fill('nunez')
   await ventana.locator(`[data-persona-epp="${oscar.id}"]`).check()
   await ventana.getByRole('searchbox').fill('')
@@ -358,6 +385,11 @@ if (!oscar || !carlos) {
     (await filaA.locator(`a[href="/ssoma/epp/${oscar.id}"]:visible`).count()) === 1 && (await filaA.locator(`a[href="/ssoma/epp/${carlos.id}"]:visible`).count()) === 1,
     `${T} «A quién le tocó» nombra a las dos, con el enlace a su hoja`,
   )
+  const [deLaBase] = (await como(CUENTAS.ssoma, SALIDAS)).filter((s) => s.movimiento_id === salidaA.movimiento_id)
+  comprobar(
+    deLaBase?.a_quien?.length === 2 && [oscar.id, carlos.id].every((i) => deLaBase.a_quien.some((q) => q.trabajador_id === i && q.cantidad === 1)),
+    `${T} y sale de la misma lectura de la salida, sin tope de filas`,
+  )
   await captura(pagina, 'ssoma-epp-salida-asignada-1440.png')
 
   // --- No va por persona, y de vuelta con «Repartir»
@@ -383,6 +415,16 @@ if (!oscar || !carlos) {
       limpio(await filaB.innerText()).includes('Quedan de repuesto en el pañol del área.'),
     `${T} la salida deja de esperar, con su motivo a la vista, y solo ofrece «Repartir»`,
   )
+  dicho = limpio(await verde(pagina).innerText())
+  comprobar(
+    dicho.includes(`lo que queda de ${salidaB.material} (`) && dicho.includes(salidaB.numero) && /ya no espera reparto/.test(dicho),
+    `${T} el verde nombra el equipo y la salida: «${dicho}»`,
+  )
+  comprobar(
+    (await hasta(() => pagina.evaluate(() => document.activeElement?.getAttribute('data-repartir-salida')), (v) => v === salidaB.movimiento_id, 8000)) ===
+      salidaB.movimiento_id,
+    `${T} el cursor queda en «Repartir» de esa fila, no cae a la página`,
+  )
   await captura(pagina, 'ssoma-epp-no-va-por-persona-1440.png')
   antes = envios.n
   await tresToques(filaB.locator('[data-repartir-salida]'))
@@ -400,6 +442,13 @@ if (!oscar || !carlos) {
   comprobar(
     (await filaB.getAttribute('data-sin-reparto')) === null && (await filaB.locator('[data-asignar-epp]').count()) === 1,
     `${T} la salida vuelve a esperar que se anote a quién`,
+  )
+  dicho = limpio(await verde(pagina).innerText())
+  comprobar(dicho.includes(salidaB.material) && /vuelve a esperar/.test(dicho), `${T} el verde lo dice con el equipo: «${dicho}»`)
+  comprobar(
+    (await hasta(() => pagina.evaluate(() => document.activeElement?.getAttribute('data-asignar-epp')), (v) => v === salidaB.movimiento_id, 10000)) ===
+      salidaB.movimiento_id,
+    `${T} el cursor sigue a «Anotar a quién» de esa fila`,
   )
 
   // --- Por persona, y la hoja de una
@@ -449,6 +498,10 @@ if (!oscar || !carlos) {
     anulada?.anulada && anulada.quien === CUENTAS.ssoma && /lo recibió su compañero/.test(anulada.motivo) && envios.n - antes === 1,
     `${T} tres toques en «Anular»: la entrega sigue en la base, anulada con motivo y quién; ${envios.n - antes} envío`,
   )
+  comprobar(
+    limpio(dicho).includes(`Entrega anulada: ${salidaA.material}, de `) && /vuelve a quedar por asignar/.test(dicho),
+    `${T} el verde nombra el equipo y a la persona: «${limpio(dicho)}»`,
+  )
   const estado = await hasta(() => filaSuya.getAttribute('data-estado'), (v) => v === 'ANULADA', 15000)
   comprobar(
     estado === 'ANULADA' && (await filaSuya.locator(BOTONES).count()) === 0 && /lo recibió su compañero/.test(limpio(await filaSuya.innerText())),
@@ -484,12 +537,16 @@ if (!oscar || !carlos) {
 
   await ir(pagina, `${BASE}/ssoma/epp?vista=salidas`)
   comprobar(await sinDesborde(pagina), `${T} «Salidas de Almacén» tampoco`)
+  const altos = await pagina
+    .locator('tr[data-salida-epp] a[href^="/ssoma/epp/"]:visible')
+    .evaluateAll((a) => a.map((e) => Math.round(e.getBoundingClientRect().height)))
+  comprobar(altos.length >= 1 && altos.every((h) => h >= 44), `${T} los ${altos.length} nombres de «A quién le tocó» se tocan con el dedo (${Math.min(...altos)} px el menor)`)
   await captura(pagina, 'ssoma-epp-salidas-390.png')
 
   // La salida B: tiene gente anotada y propone la duración de la vez anterior.
   const filaB = pagina.locator(`tr[data-salida-epp="${salidaB.movimiento_id}"]`)
   const [conB] = await yaTienen(salidaB.movimiento_id)
-  const nuevo = personal.find((p) => p.en_planta && p.area === 'Mantenimiento')
+  const nuevo = personal.find((p) => p.en_planta && p.area === 'Mantenimiento' && !salidaB.no_estaban.includes(p.id))
   await filaB.locator('[data-asignar-epp]').click()
   const ventana = pagina.getByRole('dialog')
   await ventana.waitFor()
@@ -504,7 +561,18 @@ if (!oscar || !carlos) {
   await anotar.click()
   const rechazo = await hasta(() => ventana.locator('#epp-personas-error').innerText().catch(() => ''), (t) => t !== '', 15000)
   comprobar(/ya tiene anotada su entrega/.test(rechazo), `${T} la base rechaza a quien ya la tiene y lo dice junto a la lista: «${limpio(rechazo)}»`)
-  comprobar(await pagina.evaluate(() => document.activeElement?.id === 'epp-personas'), `${T} el cursor vuelve a la lista de personas`)
+  comprobar(await pagina.evaluate(() => document.activeElement?.id === 'epp-personas-error'), `${T} el cursor va al rechazo mismo`)
+  const aLaVista = await ventana.locator('#epp-personas-error').evaluate((e) => {
+    const c = e.getBoundingClientRect()
+    return c.top >= 0 && c.bottom <= window.innerHeight
+  })
+  comprobar(aLaVista, `${T} y el rechazo queda a la vista en el teléfono, sin tener que subir`)
+  comprobar(
+    (await ventana.locator('li[data-rechazada]').count()) === 1 &&
+      (await ventana.locator(`li[data-rechazada] [data-persona-epp="${conB}"]`).getAttribute('aria-invalid')) === 'true',
+    `${T} la fila de esa persona queda marcada, para no buscarla en la lista`,
+  )
+  await captura(pagina, 'ssoma-epp-rechazo-390.png', false)
   comprobar(
     envios.n - antes === 1 &&
       (await yaTienen(salidaB.movimiento_id)).length === salidaB.asignado &&
@@ -537,6 +605,10 @@ if (!oscar || !carlos) {
 
   await ir(pagina, `${BASE}/ssoma/epp?vista=personas`)
   comprobar(await sinDesborde(pagina), `${T} «Por persona» no se desliza de costado`)
+  comprobar(
+    /próxima renovación el/.test(limpio(await pagina.locator('tr[data-persona-con-epp]').first().locator('xpath=..').innerText())),
+    `${T} cada ficha dice cuándo le toca la próxima renovación`,
+  )
   await captura(pagina, 'ssoma-epp-por-persona-390.png')
   await ir(pagina, `${BASE}/ssoma/epp/${nuevo.id}`)
   comprobar(
@@ -558,6 +630,9 @@ for (const [viewport, tam] of [
   if (tam === '1440') {
     await ir(pagina, `${BASE}/ssoma`)
     comprobar((await pagina.locator('nav a[href="/ssoma/epp"]').count()) >= 1, `${T} el menú lleva «EPP por persona»`)
+    // Gerencia consulta: el EPP por anotar no se le suma entre lo que le toca.
+    await ir(pagina, `${BASE}/`)
+    comprobar(!/EPP por anotar|protección vencido/.test(await pagina.locator('main').innerText()), `${T} el inicio no le carga los pendientes de EPP, que son de SSOMA`)
   }
   await ir(pagina, `${BASE}/ssoma/epp`)
   const porRenovar = await como(CUENTAS.gerencia, POR_RENOVAR)

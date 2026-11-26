@@ -272,7 +272,7 @@ begin
   perform test.afirmar(public.ssoma_registrar_entregas_epp(v_e1::uuid, v_casco::uuid, v_d + 180, v_dos) = v_e1::uuid
     and (select count(*) from public.ssoma_epp_entregas) = 2, 'el mismo envío repetido devuelve lo que ya entró');
   perform test.debe_fallar(pg_temp.anotar(v_e1, v_casco, (v_d + 365)::text, v_dos),
-    'el mismo envío con otra fecha no se finge guardado', 'ya quedó anotada la primera vez');
+    'el mismo envío con otra fecha no se finge guardado, y dice a quiénes quedó', 'la primera vez que la enviaste, a Operario Epp Óscar, Pintora Epp Pía:');
   perform test.debe_fallar(pg_temp.anotar(gen_random_uuid()::text, v_casco, (v_d + 180)::text, jsonb_build_array(pg_temp.persona(v_t1))),
     'la misma persona no figura dos veces en una salida', 'Operario Epp Óscar ya tiene anotada su entrega');
   perform test.debe_fallar(pg_temp.anotar(gen_random_uuid()::text, v_casco, (v_d + 180)::text, jsonb_build_array(pg_temp.persona(v_t3, 2))),
@@ -519,7 +519,7 @@ begin
   perform test.afirmar(public.ssoma_epp_salida_sin_reparto(v_casco, 'Ese casco fue para una visita') = v_id
     and (select count(*) from public.ssoma_epp_sin_reparto) = 1, 'el mismo pedido repetido no agrega otro');
   perform test.debe_fallar(format('select public.ssoma_epp_salida_sin_reparto(%L, %L)', v_casco, 'Otro motivo distinto'),
-    'el motivo no se cambia', 'ya se dijo');
+    'el reenvío de la misma cuenta con otro motivo dice que ya quedó la primera vez, y con cuál', 'la primera vez que lo enviaste, con este motivo: «Ese casco fue para una visita»');
   perform test.debe_fallar(pg_temp.anotar(gen_random_uuid()::text, v_casco::text, (current_setting('prueba.hoy')::date + 90)::text,
       jsonb_build_array(pg_temp.persona(current_setting('prueba.t3')))),
     'lo que no va por persona no se reparte sin deshacerlo', 'no va por persona');
@@ -593,6 +593,106 @@ begin
   perform set_config('request.jwt.claim.sub', '', true);
 end $$;
 
+-- ============================================================ 5b. Lo que encontraron los auditores de la 15.5
+-- Una salida de hace 100 días, que todavía espera, y dos personas que ya se
+-- fueron: Lía hace 70 días (estaba ese día) y Hugo hace 200.
+select test.como_usuario(:'admin_id');
+do $$
+declare
+  v     uuid;
+  v_hoy constant date := current_setting('prueba.hoy')::date;
+begin
+  v := gen_random_uuid();
+  insert into public.movimientos_materiales (id, tipo, origen, material_id, cantidad, documento_referencia, recibido_por_nombre, codigo_unidad, registrado_por, registrado_en)
+  values (v, 'SALIDA', 'SALIDA_GENERAL', current_setting('prueba.casco')::uuid, 2, 'Vale del check 493', 'Julio Ramírez', 'CHK493',
+          current_setting('prueba.almacen')::uuid, now() - interval '100 days');
+  perform set_config('prueba.s_cien', v::text, true);
+  insert into public.trabajadores (nombres, apellidos, dni, cargo, area_id, activo, fecha_ingreso, fecha_baja)
+  values ('Lía', 'Lejana Epp', '49349306', 'Ayudante', (select id from public.areas where codigo = 'PRD'), false, v_hoy - 300, v_hoy - 70)
+  returning id into v;
+  perform set_config('prueba.t6', v::text, true);
+  insert into public.trabajadores (nombres, apellidos, dni, cargo, area_id, activo, fecha_ingreso, fecha_baja)
+  values ('Hugo', 'Hace Mucho Epp', '49349307', 'Ayudante', (select id from public.areas where codigo = 'PRD'), false, v_hoy - 500, v_hoy - 200)
+  returning id into v;
+  perform set_config('prueba.t7', v::text, true);
+end $$;
+select set_config('request.jwt.claim.sub', '', true);
+
+do $$
+declare
+  v_cien  constant uuid := current_setting('prueba.s_cien')::uuid;
+  v_hoy   constant date := current_setting('prueba.hoy')::date;
+  v_t5    constant uuid := current_setting('prueba.t5')::uuid;
+  v_t6    constant uuid := current_setting('prueba.t6')::uuid;
+  v_t7    constant uuid := current_setting('prueba.t7')::uuid;
+  v_antes record;
+  v_ahora record;
+begin
+  perform test.como_usuario(current_setting('prueba.ssoma')::uuid);
+  set local role authenticated;
+  -- La lista para marcar llega tan atrás como las salidas que esperan: 180 días.
+  perform test.afirmar(
+    (select not en_planta from public.ssoma_personal_para_epp() where id = v_t6)
+    and not exists (select 1 from public.ssoma_personal_para_epp() where id = v_t7),
+    'la lista trae a quien se fue hace 70 días y no a quien se fue hace 200');
+  -- Cada salida dice quién de la lista no estaba ese día: la ventana no los ofrece.
+  perform test.afirmar(
+    (select por_asignar = 2 and v_t5 = any (no_estaban) and not v_t6 = any (no_estaban)
+       from public.ssoma_salidas_de_epp(null) where movimiento_id = v_cien),
+    'la salida de hace 100 días espera en la lista y dice que Nora, que entró hoy, no estaba; Lía sí');
+  perform test.afirmar(
+    (select v_t6 = any (no_estaban) and not v_t5 = any (no_estaban)
+       from public.ssoma_salidas_de_epp(current_setting('prueba.s_casco_hoy')::uuid)),
+    'la de hoy dice lo contrario: Lía ya no estaba y Nora sí');
+  -- A quién le tocó viene con la salida misma, sin las anuladas.
+  perform test.afirmar(
+    (select bool_and((select coalesce(array_agg(x.id order by x.id), '{}') from jsonb_to_recordset(s.a_quien) as x(id uuid))
+                     = (select coalesce(array_agg(e.id order by e.id), '{}') from public.ssoma_epp_entregas e
+                         where e.movimiento_id = s.movimiento_id and e.anulado_en is null))
+            and bool_or(jsonb_array_length(s.a_quien) > 0)
+       from public.ssoma_salidas_de_epp(null) s)
+    and exists (select 1 from public.ssoma_salidas_de_epp(null) s, jsonb_to_recordset(s.a_quien) as x(trabajador_id uuid, persona text, cantidad numeric)
+                 where x.persona like '% Epp %' and x.cantidad > 0 and x.trabajador_id is not null),
+    'cada salida trae a quién le tocó (persona y cantidad), sin las entregas anuladas');
+  -- A Lía sí se le anota la de hace 100 días: estaba ese día.
+  perform public.ssoma_registrar_entregas_epp(gen_random_uuid(), v_cien, v_hoy + 90, jsonb_build_array(pg_temp.persona(v_t6::text)));
+  perform test.afirmar(
+    (select asignado = 1 and por_asignar = 1 and a_quien -> 0 ->> 'persona' = 'Lejana Epp Lía' from public.ssoma_salidas_de_epp(v_cien)),
+    'a quien se fue hace 70 días se le anota la salida de antes de irse');
+  -- Marcada «no va por persona», sigue en la lista: si no, no habría dónde deshacerlo.
+  perform public.ssoma_epp_salida_sin_reparto(v_cien, 'El otro casco quedó de repuesto');
+  perform test.afirmar(
+    (select sin_reparto and por_asignar = 1 from public.ssoma_salidas_de_epp(null) where movimiento_id = v_cien),
+    'una salida de hace 100 días marcada «no va por persona» sigue en la lista, para poder deshacerlo');
+  select * into v_antes from public.ssoma_epp_por_atender();
+  perform public.ssoma_epp_salida_se_reparte(v_cien);
+  select * into v_ahora from public.ssoma_epp_por_atender();
+  perform test.afirmar(
+    v_ahora.por_asignar = v_antes.por_asignar + 1
+    and v_ahora.por_asignar = (select count(*) from public.ssoma_salidas_de_epp(null) where por_asignar > 0 and not sin_reparto)
+    and v_ahora.vencidos = (select count(*) from public.ssoma_epp_entregas_a_la_vista(null, null, true) where situacion = 'VENCIDA'),
+    'los pendientes de SSOMA cuentan las salidas que esperan reparto y lo vencido, como la pantalla');
+  -- «Repartir» no contesta «listo» a lo que no es una salida de EPP.
+  perform test.debe_fallar(format('select public.ssoma_epp_salida_se_reparte(%L)', current_setting('prueba.s_disco')),
+    '«Repartir» no acepta una salida que no es de EPP', 'no es de EPP');
+  perform test.debe_fallar(format('select public.ssoma_epp_salida_se_reparte(%L)', gen_random_uuid()),
+    '«Repartir» no acepta una salida que no existe', 'no es de EPP');
+  reset role;
+
+  -- Gerencia lee a quién le tocó, pero no la lista de quién no estaba: no anota.
+  perform test.como_usuario(current_setting('prueba.gerente')::uuid);
+  set local role authenticated;
+  perform test.afirmar(
+    (select jsonb_array_length(a_quien) = 1 and no_estaban = '{}' from public.ssoma_salidas_de_epp(v_cien)),
+    'Gerencia ve a quién le tocó y no recibe quién no estaba en la planta');
+  reset role;
+  perform test.como_usuario(current_setting('prueba.vendedor')::uuid);
+  set local role authenticated;
+  perform test.afirmar((select por_asignar = 0 and vencidos = 0 from public.ssoma_epp_por_atender()), 'a Ventas los pendientes de EPP le dan cero');
+  reset role;
+  perform set_config('request.jwt.claim.sub', '', true);
+end $$;
+
 -- ============================================================ 6. Un lote de prueba se limpia entero
 select test.crear_usuario('Lote', 'Prueba', 'lote493@demo.pe', 'SSOMA', (select id from public.sedes limit 1)) as lote_usuario \gset
 insert into public.pruebas_cuentas (usuario_id, motivo) values (:'lote_usuario', 'check 493');
@@ -617,7 +717,9 @@ begin
     not exists (select 1 from public.ssoma_epp_entregas where envio_id = v_e)
     and (select count(*) from public.ssoma_epp_entregas) = v_antes
     and (select md5(string_agg(to_jsonb(k)::text, '|' order by k.id)) from public.movimientos_materiales k
-          where k.devolucion_de is distinct from current_setting('prueba.s_guante')::uuid or k.cantidad::numeric <> 3) = current_setting('prueba.kardex'),
+          where (k.devolucion_de is distinct from current_setting('prueba.s_guante')::uuid or k.cantidad::numeric <> 3)
+            -- la salida de hace 100 días la agregó la sección 5b, después de tomar la huella
+            and k.id <> current_setting('prueba.s_cien')::uuid) = current_setting('prueba.kardex'),
     'el lote de prueba se lleva su entrega y deja las reales y el kardex');
 end $$;
 

@@ -247,7 +247,8 @@ returns table (
   movimiento_id uuid, numero text, fecha date, material_id uuid, material text, unidad text,
   cantidad numeric, devuelto numeric, asignado numeric, por_asignar numeric, asignado_de_mas numeric,
   recibio text, dias_sugeridos integer,
-  sin_reparto boolean, motivo_sin_reparto text, dijo_sin_reparto text)
+  sin_reparto boolean, motivo_sin_reparto text, dijo_sin_reparto text,
+  a_quien jsonb, no_estaban uuid[])
 language sql stable security definer set search_path to 'public' rows 50 as $$
   with s as (
     select k.id, k.numero_salida, (k.registrado_en at time zone 'America/Lima')::date as fecha, k.registrado_en,
@@ -275,18 +276,34 @@ language sql stable security definer set search_path to 'public' rows 50 as $$
          (select (e.renovar_el - e.entregado_el)::integer from public.ssoma_epp_entregas e
            where e.material_id = s.material_id and e.anulado_en is null
            order by e.entregado_el desc, e.creado_en desc limit 1),
-         s.motivo_sin_reparto is not null, s.motivo_sin_reparto, public.ssoma_nombre_de(s.dijo)
+         s.motivo_sin_reparto is not null, s.motivo_sin_reparto, public.ssoma_nombre_de(s.dijo),
+         -- A quién le tocó: las entregas que valen, con la salida misma. Leídas aparte y con
+         -- tope, las salidas más antiguas de la lista se quedaban sin sus nombres.
+         coalesce((select jsonb_agg(jsonb_build_object(
+                            'id', e.id, 'trabajador_id', e.trabajador_id,
+                            'persona', btrim(t.apellidos || ' ' || t.nombres), 'cantidad', e.cantidad)
+                          order by t.apellidos, t.nombres, e.id)
+                     from public.ssoma_epp_entregas e join public.trabajadores t on t.id = e.trabajador_id
+                    where e.movimiento_id = s.id and e.anulado_en is null), '[]'::jsonb),
+         -- De la lista para marcar (`ssoma_personal_para_epp`), quién no estaba en la planta el día
+         -- de la salida: la ventana no los ofrece. Solo para quien anota y si queda algo por asignar.
+         case when (public.es_admin() or public.tiene_permiso('ssoma.gestionar')) and s.cantidad - s.devuelto - s.asignado > 0
+              then coalesce((select array_agg(t.id) from public.trabajadores t
+                              where (t.activo or t.fecha_baja >= public.ssoma_hoy() - 180)
+                                and not public.ssoma_estuvo_en_la_planta(t.id, t.activo, t.fecha_ingreso, t.fecha_baja, s.fecha, s.fecha + 1)),
+                            '{}'::uuid[])
+              else '{}'::uuid[] end
     from s
    where p_movimiento is not null
       or s.fecha >= public.ssoma_hoy() - 60
-      -- Lo que espera por SSOMA no se pierde a los 60 días: sigue hasta los 180.
+      -- Lo que le queda algo por asignar no se pierde a los 60 días: sigue hasta los 180. También lo
+      -- que se marcó «no va por persona»: fuera de la lista no habría dónde deshacerlo con «Repartir».
       or (s.fecha >= public.ssoma_hoy() - 180
-          and (s.asignado > s.cantidad - s.devuelto
-               or (s.cantidad - s.devuelto - s.asignado > 0 and s.motivo_sin_reparto is null)))
+          and (s.asignado > s.cantidad - s.devuelto or s.cantidad - s.devuelto - s.asignado > 0))
    order by (s.cantidad - s.devuelto - s.asignado > 0 and s.motivo_sin_reparto is null) desc, s.registrado_en desc, s.id;
 $$;
 comment on function public.ssoma_salidas_de_epp(uuid) is
-  'Las salidas del almacén de EPP que SSOMA reparte entre personas: las de los últimos 60 días y, hasta 180 días atrás, las que esperan (con equipo por asignar que no se dijo que no va por persona, o con más asignado de lo que quedó fuera de Almacén); o una sola, de cualquier fecha. Número, día, equipo, cantidad, devuelto, asignado y quién recibió; sin precio. La ven SSOMA y Gerencia.';
+  'Las salidas del almacén de EPP que SSOMA reparte entre personas: las de los últimos 60 días y, hasta 180 días atrás, las que tienen equipo por asignar (también las marcadas «no va por persona», para poder deshacerlo) o más asignado de lo que quedó fuera de Almacén; o una sola, de cualquier fecha. Número, día, equipo, cantidad, devuelto, asignado, quién recibió, a quién le tocó y, para quien anota, quién de la lista no estaba en la planta ese día; sin precio. La ven SSOMA y Gerencia.';
 revoke all on function public.ssoma_salidas_de_epp(uuid) from public, anon;
 grant execute on function public.ssoma_salidas_de_epp(uuid) to authenticated;
 
@@ -299,17 +316,18 @@ begin
   if public.usuario_actual() is null or not (public.es_admin() or public.tiene_permiso('ssoma.gestionar')) then
     raise exception 'La entrega de EPP la anota SSOMA.' using errcode = 'insufficient_privilege';
   end if;
-  -- También quien se fue hace poco: pudo recibir un equipo de una salida de antes de irse.
+  -- También quien se fue en los últimos 180 días, que es lo que una salida espera en la lista:
+  -- pudo recibir un equipo de una salida de antes de irse.
   return query
     select t.id, btrim(t.apellidos || ' ' || t.nombres), t.cargo, a.nombre, t.activo
       from public.trabajadores t
       left join public.areas a on a.id = t.area_id
-     where t.activo or t.fecha_baja >= public.ssoma_hoy() - 60
+     where t.activo or t.fecha_baja >= public.ssoma_hoy() - 180
      order by a.nombre nulls last, t.apellidos, t.nombres;
 end;
 $$;
 comment on function public.ssoma_personal_para_epp() is
-  'El personal de RR. HH. al que SSOMA puede anotarle una entrega de EPP: el activo y quien se fue en los últimos 60 días. Solo nombre, cargo y área. Exige ssoma.gestionar.';
+  'El personal de RR. HH. al que SSOMA puede anotarle una entrega de EPP: el activo y quien se fue en los últimos 180 días. Solo nombre, cargo y área. Exige ssoma.gestionar.';
 revoke all on function public.ssoma_personal_para_epp() from public, anon;
 grant execute on function public.ssoma_personal_para_epp() to authenticated;
 
@@ -348,7 +366,14 @@ begin
       raise exception 'Vuelve a abrir la ventana de la entrega.' using errcode = 'check_violation';
     end if;
     if public.mismo_envio(p_envio, 'EPP_SSOMA', v_envio) then return p_envio; end if;
-    raise exception 'Esa entrega ya quedó anotada la primera vez que la enviaste: lo que cambiaste después no se guardó.'
+    -- Dice a quiénes quedó: la ventana sigue con lo que se marcó después, que no entró.
+    select string_agg(btrim(t.apellidos || ' ' || t.nombres)
+                        || case when e.cantidad <> 1 then ' (' || public.ssoma_cantidad_en_texto(e.cantidad) || ')' else '' end,
+                      ', ' order by t.apellidos, t.nombres)
+      into v_nombres
+      from public.ssoma_epp_entregas e join public.trabajadores t on t.id = e.trabajador_id
+     where e.envio_id = p_envio;
+    raise exception 'Esa entrega ya quedó anotada la primera vez que la enviaste, a %: lo que cambiaste después no se guardó.', v_nombres
       using errcode = 'check_violation';
   end if;
 
@@ -406,7 +431,7 @@ begin
   if v_n > 0 then
     raise exception '% %, según RR. HH.: %.', v_nombres,
       case when v_n = 1 then 'no estaba en la planta el ' else 'no estaban en la planta el ' end || public.ssoma_dia(v_mov.fecha),
-      case when v_n = 1 then 'quítalo y vuelve a anotar' else 'quítalos y vuelve a anotar' end
+      case when v_n = 1 then 'quita su nombre y vuelve a anotar' else 'quita sus nombres y vuelve a anotar' end
       using errcode = 'check_violation';
   end if;
 
@@ -418,7 +443,7 @@ begin
   if v_n > 0 then
     raise exception '% ya % de %: %.', v_nombres,
       case when v_n = 1 then 'tiene anotada su entrega' else 'tienen anotada su entrega' end, v_salida,
-      case when v_n = 1 then 'quítalo de la lista' else 'quítalos de la lista' end
+      case when v_n = 1 then 'quita su nombre de la lista' else 'quita sus nombres de la lista' end
       using errcode = 'check_violation';
   end if;
 
@@ -554,6 +579,10 @@ begin
   if found then
     -- El mismo pedido repetido de la misma persona (se perdió la respuesta) entra; otro no se finge.
     if v_x.creado_por = v_yo and v_x.motivo = v_motivo then return v_x.id; end if;
+    if v_x.creado_por = v_yo then
+      raise exception 'Eso ya quedó dicho la primera vez que lo enviaste, con este motivo: «%». El motivo nuevo no se guardó.', v_x.motivo
+        using errcode = 'check_violation';
+    end if;
     raise exception 'De esa salida ya se dijo que lo que queda no va por persona, con este motivo: «%». No se cambia: deshazlo y dilo otra vez.', v_x.motivo
       using errcode = 'check_violation';
   end if;
@@ -593,8 +622,12 @@ begin
   if p_movimiento is null then
     raise exception 'Vuelve a cargar la pantalla.' using errcode = 'check_violation';
   end if;
+  if not exists (select 1 from public.movimientos_materiales k
+                  where k.id = p_movimiento and k.tipo = 'SALIDA' and public.almacen_de_material(k.material_id) = 'EPP') then
+    raise exception 'Esa salida de Almacén no es de EPP: vuelve a cargar la pantalla.' using errcode = 'check_violation';
+  end if;
   perform pg_advisory_xact_lock(hashtext('ssoma_epp:' || p_movimiento::text));
-  -- Si ya estaba deshecho no hay nada que cambiar: la salida ya espera su reparto.
+  -- Si ya estaba deshecho no hay nada que cambiar: la salida ya espera su reparto, que es lo que se pidió.
   update public.ssoma_epp_sin_reparto set deshecho_por = v_yo, deshecho_en = now()
    where movimiento_id = p_movimiento and deshecho_en is null;
   return p_movimiento;
@@ -681,3 +714,17 @@ comment on function public.ssoma_epp_por_persona(uuid) is
   'El personal de RR. HH. en la planta (o una persona) con su EPP: cuántos equipos vigentes, cuántos vencidos o por vencer en 15 días y cuándo le toca el próximo. Solo nombre, cargo y área. La ven SSOMA y Gerencia.';
 revoke all on function public.ssoma_epp_por_persona(uuid) from public, anon;
 grant execute on function public.ssoma_epp_por_persona(uuid) to authenticated;
+
+-- 10. Lo que espera por SSOMA, para sus pendientes ---------------------------------------------------
+-- Lo mismo que cuenta la pantalla: las salidas con equipo por asignar que no se
+-- marcaron «no va por persona», y lo vencido de quien sigue en la planta.
+create or replace function public.ssoma_epp_por_atender()
+returns table (por_asignar integer, vencidos integer)
+language sql stable security definer set search_path to 'public' rows 1 as $$
+  select (select count(*)::integer from public.ssoma_salidas_de_epp(null) s where s.por_asignar > 0 and not s.sin_reparto),
+         (select count(*)::integer from public.ssoma_epp_entregas_a_la_vista(null, null, true) e where e.situacion = 'VENCIDA');
+$$;
+comment on function public.ssoma_epp_por_atender() is
+  'Cuántas salidas del almacén de EPP esperan que se anote a quién le tocó y cuántos equipos vigentes ya vencieron. Solo para SSOMA y Gerencia; a los demás, ceros.';
+revoke all on function public.ssoma_epp_por_atender() from public, anon;
+grant execute on function public.ssoma_epp_por_atender() to authenticated;

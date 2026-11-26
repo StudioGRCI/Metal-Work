@@ -248,7 +248,7 @@ export function rutaDeAccion(a: { id: string; reporte_id: string | null; inspecc
 /** En qué quedó una entrega: lo calcula la base (`ssoma_epp_estado`). */
 export const ESTADO_ENTREGA_EPP: Record<string, Def> = {
   VIGENTE: { etiqueta: 'Vigente', tono: 'exito', descripcion: 'Es el que la persona tiene ahora.' },
-  RENOVADA: { etiqueta: 'Renovado', tono: 'neutro', descripcion: 'Después se le entregó otro igual.' },
+  RENOVADA: { etiqueta: 'Renovada', tono: 'neutro', descripcion: 'Después se le entregó otro igual.' },
   SIN_RENOVACION: { etiqueta: 'No se renueva', tono: 'neutro', descripcion: 'SSOMA lo sacó de «Por renovar» con su motivo.' },
   ANULADA: { etiqueta: 'Anulada', tono: 'neutro', descripcion: 'Estaba mal anotada: no cuenta.' },
 }
