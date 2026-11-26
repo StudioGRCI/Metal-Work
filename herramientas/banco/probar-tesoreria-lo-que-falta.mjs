@@ -14,9 +14,11 @@
  *      Tesorería. La que tiene factura anexada: su comprobante, de Contabilidad.
  *   5. La compra a crédito sin comprobante: la factura, de Contabilidad.
  *   6. Pagos de servicio: la OS sin factura ni conformidad dice las dos cosas
- *      de Logística y el pago de Tesorería; a Tesorería le dice que también la
- *      puede adjuntar ella, a Gerencia no.
- *   7. Almacén no entra a ninguna de las dos pantallas.
+ *      de Logística, y el pago todavía no le toca a Tesorería.
+ *   7. Almacén no entra a ninguna de las dos pantallas: lo manda a /sin-permiso.
+ *   La factura que Logística anexó a una OC con boleta por aprobar espera a
+ *   Gerencia por esa OC, en la pantalla y en la base. Al terminar deja la regla
+ *   de aprobación como estaba.
  *   8. Sin desborde a 390 px y sin errores de consola; capturas en CAPTURAS.
  *
  * Siembra sus datos con un sufijo nuevo. Variables: BANCO_CLAVE, BASE
@@ -104,7 +106,8 @@ const [{ id: proveedor }] = await consulta(
   `insert into proveedores (numero_documento, razon_social, direccion, telefono) values ($1, $2, 'Av. Argentina 421, Lima', '999 421 421') returning id`,
   [ruc.n, PROVEEDOR],
 )
-// Como en producción: toda compra la aprueba Gerencia (regla activa desde S/ 0).
+// Como en producción: toda compra la aprueba Gerencia (regla activa desde S/ 0). Al final se deja como estaba.
+const [reglaAntes] = await consulta(`select activa, monto_desde, rol_aprobador_id from regla_aprobacion_compras`)
 await consulta(`update regla_aprobacion_compras set activa = true, monto_desde = 0, rol_aprobador_id = (select id from roles where codigo = 'GERENTE')`)
 const [regla] = await consulta(`select r.nombre as puesto from regla_aprobacion_compras g join roles r on r.id = g.rol_aprobador_id`)
 
@@ -343,7 +346,7 @@ for (const puesto of ['tesoreria', 'gerencia']) {
     const fOs = await loQueFalta(pagina.locator(`[data-servicio="${NUMERO_OS}"]`))
     comprobar(tiene(fOs, 'Logística', 'la factura o el recibo del proveedor') && tiene(fOs, 'Logística', 'la conformidad del servicio'),
       `${t} · la OS: la factura y la conformidad, de Logística (${JSON.stringify(fOs)})`)
-    comprobar(tiene(fOs, 'Tesorería', 'el pago al proveedor, con su voucher'), `${t} · la OS: el pago al proveedor, de Tesorería`)
+    comprobar(!fOs.some((f) => f.quien === 'Tesorería'), `${t} · la OS sin conformidad: el pago todavía no le toca a Tesorería`)
     const anchoOs = await pagina.evaluate(() => document.documentElement.scrollWidth)
     comprobar(anchoOs <= ancho, `${t} · pagos de servicio entra en ${ancho} px (mide ${anchoOs})`)
     await pagina.locator(`[data-servicio="${NUMERO_OS}"]`).scrollIntoViewIfNeeded()
@@ -359,13 +362,13 @@ for (const puesto of ['tesoreria', 'gerencia']) {
   const { contexto, pagina } = await entrar('almacen', 390)
   for (const ruta of ['/tesoreria/por-pagar', '/tesoreria/pagos-de-servicio']) {
     await pagina.goto(`${BASE}${ruta}`, { waitUntil: 'networkidle' })
-    const fuera = new URL(pagina.url()).pathname !== ruta || (await pagina.locator('[data-lo-que-falta]').count()) === 0
-    comprobar(fuera, `almacén no entra a ${ruta} (queda en ${new URL(pagina.url()).pathname})`)
+    comprobar(new URL(pagina.url()).pathname === '/sin-permiso', `almacén no entra a ${ruta} (queda en ${new URL(pagina.url()).pathname})`)
   }
   await contexto.close()
 }
 
 await navegador.close()
+await consulta(`update regla_aprobacion_compras set activa = $1, monto_desde = $2, rol_aprobador_id = $3`, [reglaAntes.activa, reglaAntes.monto_desde, reglaAntes.rol_aprobador_id])
 await base.end()
 console.log(fallas.length === 0 ? '\nTodo pasa.' : `\n${fallas.length} fallas`)
 process.exit(fallas.length === 0 ? 0 : 1)

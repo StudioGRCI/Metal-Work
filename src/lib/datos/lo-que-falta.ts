@@ -45,7 +45,7 @@ export async function ocsQueTrabanLasFacturas(ids: string[]): Promise<Map<string
   const unicos = [...new Set(ids)]
   if (unicos.length === 0) return mapa
   const supabase = await createClient()
-  const filas: { adquisicion_id: string | null; nombre: string | null; aprobacion: string | null; pedida_en: string | null }[] = []
+  const filas: { adquisicion_id: string | null; orden_compra_id: string | null; nombre: string | null; aprobacion: string | null; pedida_en: string | null }[] = []
   for (let i = 0; i < unicos.length; i += 500) {
     const { data, error } = await supabase.rpc('ocs_que_traban_las_facturas', { p_ids: unicos.slice(i, i + 500) })
     if (error) {
@@ -60,7 +60,7 @@ export async function ocsQueTrabanLasFacturas(ids: string[]): Promise<Map<string
   })
   filas.forEach((f, i) => {
     if (f.adquisicion_id) {
-      mapa.set(f.adquisicion_id, { nombre: f.nombre ?? 'OC', aprobacion: f.aprobacion, desde: f.aprobacion === 'POR_APROBAR' ? f.pedida_en : null, dias: dias[i] ?? null })
+      mapa.set(f.adquisicion_id, { id: f.orden_compra_id, nombre: f.nombre ?? 'OC', aprobacion: f.aprobacion, desde: f.aprobacion === 'POR_APROBAR' ? f.pedida_en : null, dias: dias[i] ?? null })
     }
   })
   return mapa

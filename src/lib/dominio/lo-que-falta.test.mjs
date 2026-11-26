@@ -69,7 +69,9 @@ const servicio = (mas = {}) => ({ cancelada: false, conComprobante: true, confor
 
 test('la orden de servicio: Logística da la factura y la conformidad; Tesorería paga y deposita', () => {
   assert.deepEqual(quien(faltaDelServicio(servicio())), ['Tesorería'])
-  assert.deepEqual(quien(faltaDelServicio(servicio({ conComprobante: false, conforme: false }))), ['Logística', 'Logística', 'Tesorería'])
+  // Sin conformidad, el pago todavía no le toca a Tesorería.
+  assert.deepEqual(quien(faltaDelServicio(servicio({ conComprobante: false, conforme: false }))), ['Logística', 'Logística'])
+  assert.deepEqual(quien(faltaDelServicio(servicio({ conComprobante: false }))), ['Logística', 'Tesorería'])
   assert.deepEqual(
     faltaDelServicio(servicio({ saldoDetraccion: 30 })).map((f) => f.que),
     ['depositar la detracción en el Banco de la Nación, con su constancia', 'el pago al proveedor, con su voucher'],
@@ -78,12 +80,11 @@ test('la orden de servicio: Logística da la factura y la conformidad; Tesorerí
   assert.deepEqual(faltaDelServicio(servicio({ cancelada: true })), [])
 })
 
-test('la OS en dólares sin tipo de cambio no se da por pagada: espera el cambio de Contabilidad', () => {
-  // Pagado al proveedor todo lo que se sabe, la detracción sin monto: no propone «Sí, queda pagada».
+test('la OS en dólares sin monto en soles no se paga ni se da por pagada, y no le toca a Tesorería', () => {
   const r = faltaDelServicio(servicio({ sinTipoDeCambio: true, todoPagado: true, saldoProveedor: 0 }))
-  assert.deepEqual(quien(r), ['Contabilidad!'])
-  assert.match(r[0].que, /tipo de cambio/)
-  assert.deepEqual(quien(faltaDelServicio(servicio({ sinTipoDeCambio: true }))), ['Contabilidad!', 'Tesorería'])
+  assert.deepEqual(quien(r), ['Administrador del sistema!'])
+  assert.match(r[0].que, /sin tipo de cambio/)
+  assert.deepEqual(quien(faltaDelServicio(servicio({ sinTipoDeCambio: true }))), ['Administrador del sistema!'])
 })
 
 test('la OS sin decir si lleva detracción se lo pide a Logística', () => {

@@ -32,7 +32,7 @@ export type LoQueFalta = {
  * La OC que traba el pago de la factura, como la dice la base
  * (`ocs_que_traban_las_facturas`, la misma regla que rechaza el pago).
  */
-export type OcQueTraba = { nombre: string; aprobacion: string | null; desde?: string | null; dias?: number | null }
+export type OcQueTraba = { id?: string | null; nombre: string; aprobacion: string | null; desde?: string | null; dias?: number | null }
 
 /** Las OC de una factura que Gerencia todavía no aprueba, rechazó o se anularon. */
 export function ocsQueTraban<T extends { aprobacion: string | null }>(ordenes: readonly T[]): T[] {
@@ -133,7 +133,10 @@ export function faltaDelServicio(s: {
   saldoDetraccion: number
   /** Logística no dijo si la OS lleva detracción (`afecta` vacío). */
   detraccionSinDefinir?: boolean
-  /** Lleva detracción y es en dólares, pero no hay tipo de cambio del día: no se sabe cuánto va al Banco de la Nación. */
+  /**
+   * Lleva detracción y es en dólares, pero se emitió sin tipo de cambio (`monto_pen` vacío): no se
+   * sabe cuánto va al Banco de la Nación, y ninguna función lo vuelve a calcular. No se paga.
+   */
   sinTipoDeCambio?: boolean
 }): LoQueFalta[] {
   if (s.cancelada) return []
@@ -144,9 +147,13 @@ export function faltaDelServicio(s: {
   if (!s.conforme) falta.push({ que: 'la conformidad del servicio', quien: 'Logística', traba: false })
   if (s.detraccionSinDefinir) falta.push({ que: 'decir en la OS si lleva detracción', quien: 'Logística', traba: false })
   if (s.sinTipoDeCambio) {
-    // Sin el cambio, la detracción no tiene monto: el saldo no dice cuánto falta y nada se da por pagado.
-    falta.push({ que: 'el tipo de cambio del día, para saber cuánto va de detracción', quien: 'Contabilidad', traba: true })
-    if (s.saldoProveedor > 0) falta.push({ que: 'el pago al proveedor, con su voucher', quien: 'Tesorería', traba: false })
+    // Sin su monto en soles, la detracción no tiene monto: ni se paga ni se da por pagada. Registrar el
+    // cambio de hoy no lo arregla (se toma solo al emitir): lo corrige el administrador del sistema.
+    falta.push({
+      que: 'el monto en soles de la OS: se emitió sin tipo de cambio y sin él no se sabe la detracción, así que no se paga',
+      quien: 'Administrador del sistema',
+      traba: true,
+    })
     return falta
   }
   if (s.todoPagado) {
@@ -154,6 +161,8 @@ export function faltaDelServicio(s: {
     falta.push({ que: 'anular el último pago y registrarlo otra vez con «Sí, queda pagada»: se pagó todo, pero ningún pago la canceló', quien: 'Tesorería', traba: true })
     return falta
   }
+  // El pago va después de la conformidad: antes, lo que falta es de Logística y a Tesorería no le toca.
+  if (!s.conforme) return falta
   if (s.saldoDetraccion > 0) falta.push({ que: 'depositar la detracción en el Banco de la Nación, con su constancia', quien: 'Tesorería', traba: false })
   if (s.saldoProveedor > 0) falta.push({ que: 'el pago al proveedor, con su voucher', quien: 'Tesorería', traba: false })
   return falta

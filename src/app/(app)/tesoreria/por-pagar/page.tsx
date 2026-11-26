@@ -153,7 +153,11 @@ export default async function PaginaPorPagar() {
   const partesPagadas = partes.filter((x) => Number(x.saldo ?? 0) <= 0)
   // La factura que espera a Contabilidad pudo pagarse fuera: no suma hasta que lo diga.
   // La que espera a Gerencia tampoco: no se puede pagar todavía.
-  const esperanGerencia = porPagar.filter((c) => !c.enEspera && trabaDe(c))
+  // Las que esperan a quien aprueba, aparte de las de una OC rechazada o anulada, que no se pagan y
+  // las ve Contabilidad: en el encabezado no se cuentan juntas.
+  const rechazadaOAnulada = (c: CuentaPorPagar) => ['RECHAZADA', 'ANULADA'].includes(trabaDe(c)?.aprobacion ?? '')
+  const esperanGerencia = porPagar.filter((c) => !c.enEspera && trabaDe(c) && !rechazadaOAnulada(c))
+  const conOcRechazada = porPagar.filter((c) => !c.enEspera && rechazadaOAnulada(c))
   const exigibles = porPagar.filter((c) => !c.enEspera && !trabaDe(c))
   const vencidas =
     exigibles.filter((c) => c.fecha_vencimiento && c.fecha_vencimiento < hoy).length +
@@ -185,9 +189,16 @@ export default async function PaginaPorPagar() {
       : null,
     esperanGerencia.length > 0
       ? {
-          texto: esperanGerencia.length === 1 ? 'una espera a Gerencia' : `${esperanGerencia.length} esperan a Gerencia`,
+          texto: esperanGerencia.length === 1 ? `una espera a ${quienAprueba}` : `${esperanGerencia.length} esperan a ${quienAprueba}`,
           href: `#factura-${esperanGerencia[0].id}`,
           tono: 'text-aviso',
+        }
+      : null,
+    conOcRechazada.length > 0
+      ? {
+          texto: conOcRechazada.length === 1 ? 'una con la OC rechazada o anulada' : `${conOcRechazada.length} con la OC rechazada o anulada`,
+          href: `#factura-${conOcRechazada[0].id}`,
+          tono: 'text-peligro',
         }
       : null,
     primeraEnEspera
@@ -271,7 +282,17 @@ export default async function PaginaPorPagar() {
       <Tarjeta>
         <TarjetaCabecera
           titulo="Facturas por pagar"
-          descripcion={regla === 'error' ? 'No se pudo leer la regla de aprobación de compras: recarga la pantalla para verla.' : regla ? textoDeLaRegla(regla) : undefined}
+          descripcion={
+            <>
+              {regla === 'error' ? 'No se pudo leer la regla de aprobación de compras: recarga la pantalla para verla.' : regla ? textoDeLaRegla(regla) : null}
+              {/* Sin la lista de la base, cada factura mira solo sus OC: la que la anexó a otra no se ve. */}
+              {trabasLeidas === 'error' && (
+                <span role="alert" className="mt-1 block font-medium text-peligro">
+                  No se pudo comprobar qué OC traba cada factura: alguna que dice «Te toca» puede esperar a {quienAprueba}. Recarga la pantalla antes de pagar.
+                </span>
+              )}
+            </>
+          }
           ayuda="Cada factura con sus OC y su saldo, por vencimiento: lo vencido, lo que vence hoy, lo que vence esta semana (hasta el domingo) y lo de después, con los días de cada una contados con la fecha de Lima. El total de cada grupo va en soles y en dólares por separado: no se suman. Al final, aparte, las que esperan a Contabilidad o a Gerencia: no se pueden pagar todavía."
         />
         <TarjetaCuerpo className="space-y-3">
@@ -1272,8 +1293,12 @@ function Factura({
         ) : traba ? (
           // Qué falta y de quién ya lo dice la línea de arriba, con sus días; aquí queda solo el camino de quien aprueba.
           apruebaCompras && (
-            <a href="/compras/aprobacion" className="inline-flex min-h-11 items-center text-xs font-medium text-aviso underline-offset-2 hover:underline sm:min-h-0">
-              Ir a Aprobación de compras
+            // Directo a la tarjeta de la OC que la traba, que puede no ser una de las de la factura (la que la anexó).
+            <a
+              href={traba.id ? `/compras/aprobacion#OC-${traba.id}` : '/compras/aprobacion'}
+              className="inline-flex min-h-11 items-center text-xs font-medium text-aviso underline-offset-2 hover:underline sm:min-h-0"
+            >
+              Aprobar la <span className="ml-1 whitespace-nowrap">{traba.nombre}</span>
             </a>
           )
         ) : espera ? (

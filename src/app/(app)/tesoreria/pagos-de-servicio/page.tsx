@@ -123,6 +123,10 @@ function Servicio({
   const conDetraccion = saldo.detraccion > 0
   // Pagada entera a cuenta: un pago más no la cancela, se rehace el último.
   const todoPagado = !s.cancelada && pagado && saldo.saldoProveedor <= 0 && saldo.saldoDetraccion <= 0
+  // En dólares, con detracción y sin su monto en soles: no se sabe cuánto va al Banco de la Nación.
+  // La base no la deja cancelar, y un pago a cuenta por el saldo le pagaría al proveedor también la
+  // detracción: no se ofrece pagar hasta que la OS tenga su monto en soles (auditoría del 2026-11-26).
+  const sinTipoDeCambio = Boolean(s.detraccion.afecta) && s.detraccion.total_con_igv_pen === null
   const estado = ESTADO_SERVICIO[s.estado ?? ''] ?? { etiqueta: s.estado ?? '—', tono: 'neutro' as const }
   const detraccion = resumenDetraccion(s.detraccion)
   // La factura y el contrato de la OS, con las cuentas del proveedor: lo que se mira para pagar.
@@ -214,14 +218,14 @@ function Servicio({
             saldoProveedor: saldo.saldoProveedor,
             saldoDetraccion: saldo.saldoDetraccion,
             detraccionSinDefinir: s.detraccion.afecta === null,
-            sinTipoDeCambio: Boolean(s.detraccion.afecta) && s.detraccion.total_con_igv_pen === null,
+            sinTipoDeCambio,
           })}
         />
         <ParaPagar documentos={documentos} cuentas={s.cancelada ? [] : s.cuentas} monedaDocumento={m} sinCuentas={s.cancelada ? null : sinCuentas} />
         {/* El pago, encima de los pagos anteriores como en Cuentas por pagar y por cobrar. */}
-        {s.id && !s.cancelada && ((paga && !todoPagado) || adjunta) && (
+        {s.id && !s.cancelada && ((paga && !todoPagado && !sinTipoDeCambio) || adjunta) && (
           <div className="flex flex-wrap items-center gap-2">
-            {paga && !todoPagado && (
+            {paga && !todoPagado && !sinTipoDeCambio && (
               <PagarServicio
                 ordenServicioId={s.id}
                 numero={s.numero ?? 'orden de servicio'}
