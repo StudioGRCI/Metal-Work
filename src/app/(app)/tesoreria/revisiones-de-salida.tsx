@@ -7,6 +7,7 @@ import { AreaTexto, Campo, Seleccion } from '@/components/ui/campos'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import type { RevisionPendiente } from '@/lib/datos/vehiculos'
 import { useEnvio } from '@/lib/envio'
+import { nombreMoneda } from '@/lib/dominio/caja'
 import { fechaHora, moneda, parteDe, porcentaje, type CodigoMoneda } from '@/lib/format'
 
 import { responderRevisionSalida } from '../vehiculos/acciones-ficha'
@@ -21,8 +22,11 @@ export type CobroDelCodigo = {
   cotizaciones: number
   /** El código tiene cotizaciones en monedas distintas: lo de arriba es solo de la primera moneda. */
   monedasDistintas: boolean
-  /** Alguna factura va en otra moneda que su cotización: no se suma a lo cobrado de arriba. */
-  facturasEnOtraMoneda: boolean
+  /**
+   * Lo facturado y cobrado en la otra moneda que la cotización (20261126960000): no se suma a lo
+   * de arriba ni se compara con el total. Null si todas las facturas van en la moneda de la cotización.
+   */
+  otraMoneda: { facturado: number; cobrado: number } | null
 }
 
 /**
@@ -65,7 +69,10 @@ export function RevisionesDeSalida({
 
 function RevisionPorResponder({ revision: v, cobro, abreVehiculos }: { revision: RevisionPendiente; cobro?: CobroDelCodigo; abreVehiculos: boolean }) {
   const { alEnviar, enviando, error, resultado } = useEnvio(responderRevisionSalida, undefined, { documento: v.id })
-  const porCobrar = cobro?.total === null || cobro === undefined ? null : Math.max(0, cobro.total - cobro.cobrado)
+  // Con facturas en la otra moneda no se dice cuánto falta: parte de lo cobrado está en esa otra moneda.
+  const porCobrar = cobro?.total === null || cobro === undefined || cobro.otraMoneda ? null : Math.max(0, cobro.total - cobro.cobrado)
+  const otra = cobro?.otraMoneda ?? null
+  const mOtra: CodigoMoneda = cobro?.moneda === 'USD' ? 'PEN' : 'USD'
   return (
     <article className="rounded-[var(--radius-base)] border border-borde p-4" data-revision={v.id}>
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -100,18 +107,36 @@ function RevisionPorResponder({ revision: v, cobro, abreVehiculos }: { revision:
         <p className="mt-1 tabular text-xs text-texto-suave" data-cobro-del-codigo>
           {cobro.total === null ? (
             'La cotización del código no tiene total registrado.'
-          ) : cobro.facturado === 0 ? (
+          ) : cobro.facturado === 0 && !otra ? (
             <>
               Cotización de <span className="text-texto">{moneda(cobro.total, cobro.moneda)}</span>: Contabilidad todavía no la factura y no hay nada cobrado.
+            </>
+          ) : cobro.facturado === 0 && otra ? (
+            // Facturada solo en la otra moneda: decir «no la factura» era falso, y la tarjeta decide si el vehículo sale.
+            <>
+              {cobro.cotizaciones > 1 ? `Las ${cobro.cotizaciones} cotizaciones suman` : 'Cotización de'}{' '}
+              <span className="text-texto">{moneda(cobro.total, cobro.moneda)}</span>
+              {cobro.monedasDistintas && ' (las de otra moneda no se suman aquí)'}, facturada en{' '}
+              <span data-otra-moneda>
+                {nombreMoneda(mOtra)}: facturado <span className="font-medium text-texto">{moneda(otra.facturado, mOtra)}</span> · cobrado{' '}
+                <span className="font-medium text-texto">{moneda(otra.cobrado, mOtra)}</span>
+              </span>
+              . En otra moneda no se compara con el total.
             </>
           ) : (
             <>
               Cobrado <span className="font-medium text-texto">{moneda(cobro.cobrado, cobro.moneda)}</span>
-              {parteDe(cobro.cobrado, cobro.total) !== null && ` · ${porcentaje(parteDe(cobro.cobrado, cobro.total))}`}
+              {!otra && parteDe(cobro.cobrado, cobro.total) !== null && ` · ${porcentaje(parteDe(cobro.cobrado, cobro.total))}`}
               {cobro.cotizaciones > 1 ? ` de las ${cobro.cotizaciones} cotizaciones, que suman` : ' de la cotización de'}{' '}
               {moneda(cobro.total, cobro.moneda)}
               {cobro.monedasDistintas && ' (las de otra moneda no se suman aquí)'}
-              {cobro.facturasEnOtraMoneda && ' · hay facturas en otra moneda, que no se suman aquí: míralas en Por cobrar'}
+              {otra && (
+                <span data-otra-moneda>
+                  {' '}
+                  · y en {nombreMoneda(mOtra)}: facturado <span className="font-medium text-texto">{moneda(otra.facturado, mOtra)}</span> · cobrado{' '}
+                  <span className="font-medium text-texto">{moneda(otra.cobrado, mOtra)}</span>, que no se compara con el total
+                </span>
+              )}
               {porCobrar !== null && porCobrar > 0.005 && (
                 <>
                   {' '}

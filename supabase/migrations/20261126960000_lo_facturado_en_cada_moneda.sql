@@ -16,22 +16,22 @@
 -- una factura en otra moneda no se compara con el total.
 --
 -- Cambian las columnas que devuelve, así que la función se suelta y se vuelve a
--- crear, con el mismo permiso y el mismo tope. Antes de soltarla se mira que su
--- cuerpo sea el de 20261015124000: si alguien la cambió en producción, no se pisa.
--- Solo lee. Idempotente.
+-- crear, con el mismo permiso y el mismo tope. Antes de soltarla se mira la
+-- huella de su cuerpo: la de 20261015124000 con el mensaje que le puso la
+-- 20261023140000 (la que tiene producción), o la de esta misma migración si se
+-- vuelve a correr. Si alguien la cambió a mano, no se pisa. Solo lee. Idempotente.
 -- =============================================================================
 
 do $$
 declare
-  v_md5   text;
-  v_nueva boolean;
+  v_md5 text;
 begin
-  select md5(replace(p.prosrc, E'\r', '')), 'facturado_otra_moneda' = any (p.proargnames)
-    into v_md5, v_nueva
+  select md5(replace(p.prosrc, E'\r', ''))
+    into v_md5
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = 'cotizaciones_para_facturar';
-  -- La de 20261015124000, o esta misma si la migración se vuelve a correr.
-  if v_md5 is not null and v_md5 <> '369b4c9cb91462e94afb2bb6c45d09ef' and not v_nueva then
+  -- La de 20261015124000 tras la 20261023140000, o esta misma si la migración se vuelve a correr.
+  if v_md5 is not null and v_md5 not in ('369b4c9cb91462e94afb2bb6c45d09ef', '6437a72aa497bf382ccf4106aacf2349') then
     raise exception 'cotizaciones_para_facturar cambió en la base (huella %): revisa antes de reemplazarla.', v_md5;
   end if;
 end $$;

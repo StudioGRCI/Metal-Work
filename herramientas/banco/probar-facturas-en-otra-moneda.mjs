@@ -9,7 +9,11 @@
  *   2. Tesorería, en Cuentas por cobrar, ve la misma cotización con las dos
  *      líneas separadas.
  *   3. Una cotización con todas sus facturas en su moneda no muestra la línea
- *      de la otra moneda.
+ *      de la otra moneda; la facturada solo en la otra moneda no dice
+ *      «Facturado US$ 0.00», sino en qué moneda se facturó.
+ *   4. En la revisión de salida, Tesorería lee lo de la otra moneda aparte, sin
+ *      «falta» ni porcentaje, y la facturada solo en soles no sale como «todavía
+ *      no la factura».
  *
  * Siembra por SQL, como dueño de la base y con un sello por corrida: una
  * cotización aprobada en dólares con su OT y su código, una factura en dólares
@@ -149,7 +153,26 @@ await factura(D, 'USD', 29500, 10000)
 await factura(D, 'PEN', 1000, null)
 const S = await aprobada('S', 11800, 'PEN') // S/ 11,800 con el IGV dentro, facturada solo en soles
 await factura(S, 'PEN', 11800, 5000)
-console.log(`     sembrado: ${D.codigo} (cotización ${D.numero}, en dólares con una factura en soles), ${S.codigo} (cotización ${S.numero}, solo soles)`)
+const U = await aprobada('U', 29500, 'USD') // en dólares, facturada entera en soles
+await factura(U, 'PEN', 109150, 50000)
+// El vehículo de D y el de U piden salir: Tesorería decide con lo cobrado de su código.
+const salidas = {}
+for (const c of [D, U]) {
+  const { id } = await uno('select gen_random_uuid() as id')
+  salidas[c.codigo] = id
+  await enReplica(async () => {
+    await consulta(
+      `insert into public.registro_vehiculos (id, placa, unidad, empresa, motivo, codigo_interno, ingreso_en, ingreso_por)
+       values ($1, $2, 'CARROCERÍA DE PRUEBA', $3, 'FABRICACION', $4, now() - interval '3 days', $5)`,
+      [id, `Z${c.codigo.slice(4, 5)}${sello.slice(0, 1)}-${sello.slice(3)}`, CLIENTE, c.codigo, ventas],
+    )
+    await consulta(
+      `insert into public.registro_vehiculo_revisiones (registro_id, concepto, solicitado_por) values ($1, 'Salida de la carrocería terminada', $2)`,
+      [id, ventas],
+    )
+  })
+}
+console.log(`     sembrado: ${D.codigo} (cotización ${D.numero}, en dólares con una factura en soles), ${S.codigo} (cotización ${S.numero}, solo soles), ${U.codigo} (cotización ${U.numero}, en dólares facturada solo en soles); los vehículos de ${D.codigo} y ${U.codigo} piden salir`)
 
 // ---------------------------------------------------------------- navegador
 const quieta = (pagina) => pagina.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {})
@@ -210,6 +233,13 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     await pagina.screenshot({ path: join(CAPTURAS, `factura-y-cobro-${w}.png`) })
     await sinCorrerse(pagina, w, 'Factura y cobro')
 
+    await ir(pagina, `${BASE}/codigos-internos/detalle?codigo=${encodeURIComponent(U.codigo)}&vista=facturacion`)
+    const u = await lineas(pagina, 'li', U.numero)
+    comprobar(!/Facturado US\$ 0\.00/.test(u.texto) && !/aún no la factura/.test(u.texto), `Gerencia ${w}: la facturada solo en soles no dice «Facturado US$ 0.00» («${u.texto.slice(0, 160)}»)`)
+    comprobar(u.otra === 'Facturada en soles: facturado S/ 109,150.00 · cobrado S/ 50,000.00', `Gerencia ${w}: dice en qué se facturó («${u.otra}»)`)
+    await u.caja.scrollIntoViewIfNeeded()
+    await pagina.screenshot({ path: join(CAPTURAS, `factura-y-cobro-solo-soles-${w}.png`) })
+
     await ir(pagina, `${BASE}/codigos-internos/detalle?codigo=${encodeURIComponent(S.codigo)}&vista=facturacion`)
     const s = await lineas(pagina, 'li', S.numero)
     comprobar(/Facturado S\/ 11,800\.00 · cobrado S\/ 5,000\.00/.test(s.texto), `Gerencia ${w}: la de soles sigue igual («${s.texto.slice(0, 120)}»)`)
@@ -224,8 +254,27 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     comprobar(/Facturado US\$ 29,500\.00.*cobrado US\$ 10,000\.00/.test(d.texto), `Tesorería ${w}: en dólares, solo lo de dólares («${d.texto.slice(0, 200)}»)`)
     comprobar(!/30,500/.test(d.texto), `Tesorería ${w}: ya no suma los soles a los dólares`)
     comprobar(d.otra === 'Y en soles: facturado S/ 1,000.00 · cobrado S/ 0.00', `Tesorería ${w}: los soles en su línea («${d.otra}»)`)
+    comprobar(!/%/.test(d.texto), `Tesorería ${w}: con una factura en otra moneda no compara con el total (sin porcentajes)`)
+    const alto = async (loc) => (await loc.boundingBox())?.y ?? -1
+    const yPrincipal = await alto(d.caja.locator('span.tabular').filter({ hasText: /^Facturado/ }).first())
+    const yOtra = await alto(d.caja.locator('[data-otra-moneda]'))
+    comprobar(yOtra > yPrincipal + 4, `Tesorería ${w}: la línea en soles va en su propio renglón (${Math.round(yPrincipal)} → ${Math.round(yOtra)})`)
     const s = await lineas(pagina, 'div', S.numero)
     comprobar(s.otra === null, `Tesorería ${w}: la de solo soles no lleva segunda línea`)
+    comprobar(/\(100 % de la cotización\)/.test(s.texto), `Tesorería ${w}: la de solo soles sigue con su porcentaje («${s.texto.slice(0, 160)}»)`)
+    const u = await lineas(pagina, 'div', U.numero)
+    comprobar(!/Facturado US\$ 0\.00/.test(u.texto) && u.otra === 'Facturada en soles: facturado S/ 109,150.00 · cobrado S/ 50,000.00',
+      `Tesorería ${w}: la facturada solo en soles lo dice así («${u.otra}»)`)
+    // La revisión de salida de cada vehículo: con eso decide si sale.
+    const cobroDe = async (codigo) => limpio(await pagina.locator(`[data-revision="${(await uno('select id from public.registro_vehiculo_revisiones where registro_id = $1', [salidas[codigo]])).id}"] [data-cobro-del-codigo]`).innerText())
+    const rd = await cobroDe(D.codigo)
+    comprobar(/^Cobrado US\$ 10,000\.00 de la cotización de US\$ 29,500\.00 · y en soles: facturado S\/ 1,000\.00 · cobrado S\/ 0\.00, que no se compara con el total$/.test(rd),
+      `Tesorería ${w}: la salida de ${D.codigo} dice lo de soles aparte y no dice cuánto falta («${rd}»)`)
+    const ru = await cobroDe(U.codigo)
+    comprobar(/facturada en soles: facturado S\/ 109,150\.00 · cobrado S\/ 50,000\.00/.test(ru) && !/todavía no la factura/.test(ru),
+      `Tesorería ${w}: la salida de ${U.codigo} no dice «todavía no la factura» («${ru}»)`)
+    await pagina.locator('#salidas-por-revisar').scrollIntoViewIfNeeded()
+    await pagina.screenshot({ path: join(CAPTURAS, `salidas-${w}.png`) })
     await d.caja.scrollIntoViewIfNeeded()
     await pagina.screenshot({ path: join(CAPTURAS, `por-cobrar-${w}.png`) })
     await sinCorrerse(pagina, w, 'Cuentas por cobrar')

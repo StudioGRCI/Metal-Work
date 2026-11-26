@@ -280,6 +280,20 @@ do $$ begin
                           from public.cotizaciones_para_facturar() where cotizacion_id = current_setting('prueba.cot1')::uuid),
     'la factura en otra moneda va aparte: lo facturado y lo cobrado son de la moneda de la cotización');
   reset role;
+  -- Tesorería cobra a cuenta la factura en soles: lo cobrado en soles tampoco se suma a lo cobrado en dólares.
+  perform set_config('prueba.c4', gen_random_uuid()::text, true);
+  perform set_config('prueba.c4_ruta', current_setting('prueba.f4') || '/' || gen_random_uuid() || '.pdf', true);
+  perform set_config('prueba.caja_pen', test.crear_caja('PEN')::text, true);
+  insert into storage.objects (bucket_id, name, owner_id, metadata)
+  values ('cobros-venta', current_setting('prueba.c4_ruta'), current_setting('prueba.teso'), '{"mimetype": "application/pdf", "size": 900}');
+  perform test.como_usuario(current_setting('prueba.teso')::uuid);
+  set local role authenticated;
+  perform public.registrar_cobro_factura(current_setting('prueba.c4')::uuid, current_setting('prueba.f4')::uuid,
+    current_setting('prueba.hoy')::date, 400, false, 'OP-357-4', current_setting('prueba.c4_ruta'), current_setting('prueba.caja_pen')::uuid, null);
+  perform test.afirmar((select facturado = 59000 and cobrado = 29500 and facturado_otra_moneda = 1000 and cobrado_otra_moneda = 400
+                          from public.cotizaciones_para_facturar() where cotizacion_id = current_setting('prueba.cot1')::uuid),
+    'y lo cobrado en soles va aparte de lo cobrado en dólares');
+  reset role;
   perform test.afirmar(exists (select 1 from public.notificaciones n
                                 where n.usuario_id = current_setting('prueba.teso')::uuid
                                   and n.origen_id = current_setting('prueba.f2')::uuid and n.titulo like 'Factura anulada%'),
@@ -297,7 +311,7 @@ do $$ begin
   perform test.como_usuario(current_setting('prueba.oficina')::uuid);
   set local role authenticated;
   perform test.afirmar((select count(*) from public.cobros_factura_venta c join public.facturas_venta f on f.id = c.factura_id
-                         where f.cotizacion_pdf_id = current_setting('prueba.cot1')::uuid) = 3,
+                         where f.cotizacion_pdf_id = current_setting('prueba.cot1')::uuid) = 4,  -- con el de la factura en soles
     'Administración ve los cobros');
   perform test.debe_fallar(format('select public.anular_cobro_factura(%L, ''No corresponde a este cliente.'')', current_setting('prueba.c1')),
     'pero no los anula', 'tesoreria.registrar_cobros');
