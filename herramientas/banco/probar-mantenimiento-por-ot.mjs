@@ -182,7 +182,7 @@ let registroId = null
   const fila = pagina.locator('tbody tr', { hasText: CODIGO_OT })
   await fila.first().waitFor({ timeout: 15000 }).catch(() => {})
   comprobar(await fila.getByRole('button', { name: 'Marcar salida' }).isDisabled(), 'en la lista, «Marcar salida» queda apagado')
-  const porque = limpio(await fila.locator('[data-bloqueo-salida]').innerText().catch(() => ''))
+  const porque = limpio(await fila.locator('[data-bloqueo-salida]:visible').innerText().catch(() => ''))
   comprobar(porque.includes('Administración todavía no da por terminado el mantenimiento') && !porque.includes('%'),
     `y dice que espera a Administración, sin hablar del avance: «${porque}»`)
   const situacion = limpio(await fila.locator('[data-garantia-salida]:visible').first().innerText().catch(() => ''))

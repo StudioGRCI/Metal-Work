@@ -5,7 +5,15 @@ import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 import { horaDeLima } from '@/lib/dominio/requerimientos'
-import { CLASIFICACIONES_SSOMA, esAccidente, MAXIMO_FOTOS_EVIDENCIA, MAXIMO_FOTOS_SSOMA, TIPOS_REPORTE_SSOMA } from '@/lib/dominio/ssoma'
+import {
+  CLASIFICACIONES_SSOMA,
+  esAccidente,
+  MAXIMO_FOTOS_CHARLA,
+  MAXIMO_FOTOS_EVIDENCIA,
+  MAXIMO_FOTOS_SSOMA,
+  TIPOS_CHARLA_SSOMA,
+  TIPOS_REPORTE_SSOMA,
+} from '@/lib/dominio/ssoma'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -430,4 +438,82 @@ export async function anularAccionSsoma(_previo: unknown, formulario: FormData):
 
   revalidatePath('/ssoma', 'layout')
   return { ok: true, mensaje: 'Acción anulada. Queda con su motivo.' }
+}
+
+/*
+ * Entrega 15.3: las charlas e inducciones. Las dos acciones exigen el mismo
+ * permiso que sus funciones en la base (`ssoma.gestionar`).
+ */
+
+/** SSOMA registra una charla o inducción con su tema, expositor, fotos y asistentes. Mismo permiso que `ssoma_registrar_charla`. */
+export async function registrarCharlaSsoma(_previo: unknown, formulario: FormData): Promise<ResultadoAccion<{ id: string }>> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'ssoma.gestionar')) return { ok: false, error: 'Una charla la registra SSOMA.' }
+
+  const analisis = z
+    .object({
+      operacion_id: z.guid(),
+      tipo: z.enum(TIPOS_CHARLA_SSOMA, { message: 'Elige si fue una charla o una inducción.' }),
+      tema: z.string().min(5, 'Escribe el tema, en al menos 5 caracteres.').max(200, 'El tema pasa de 200 caracteres.'),
+      expositor: z.string().min(3, 'Escribe quién dio la charla.').max(120, 'El nombre de quien la dio pasa de 120 caracteres.'),
+      fecha: z.string().regex(FECHA, 'Pon la fecha de la charla.'),
+      asistentes: z
+        .array(z.guid('Vuelve a abrir el formulario: la lista del personal cambió.'), 'Marca quiénes asistieron.')
+        .min(1, 'Marca quiénes asistieron.')
+        .max(500, 'Van hasta 500 asistentes por charla.'),
+      fotos: z
+        .array(z.string().min(1).max(300), 'Vuelve a elegir las fotos.')
+        .min(1, 'Pon al menos una foto de la charla.')
+        .max(MAXIMO_FOTOS_CHARLA, `Van hasta ${MAXIMO_FOTOS_CHARLA} fotos por charla.`),
+    })
+    .safeParse({
+      operacion_id: dato(formulario, 'operacion_id'),
+      tipo: dato(formulario, 'tipo'),
+      tema: dato(formulario, 'tema'),
+      expositor: dato(formulario, 'expositor'),
+      fecha: dato(formulario, 'fecha'),
+      asistentes: formulario.getAll('asistentes').filter((v): v is string => typeof v === 'string'),
+      fotos: json(formulario, 'fotos'),
+    })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa la charla.' }
+  const d = analisis.data
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('ssoma_registrar_charla', {
+    p_id: d.operacion_id,
+    p_tipo: d.tipo,
+    p_tema: d.tema,
+    p_expositor: d.expositor,
+    p_fecha: d.fecha,
+    p_asistentes: d.asistentes,
+    p_fotos: d.fotos,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== d.operacion_id) return { ok: false, error: 'La charla no quedó registrada. Recarga la pantalla.' }
+
+  revalidatePath('/ssoma', 'layout')
+  const cuantos = new Set(d.asistentes).size
+  const que = d.tipo === 'INDUCCION' ? 'Inducción registrada' : 'Charla registrada'
+  return { ok: true, mensaje: `${que} con ${cuantos} ${cuantos === 1 ? 'asistente' : 'asistentes'}.`, datos: { id: d.operacion_id } }
+}
+
+/** SSOMA anula una charla mal registrada, con su motivo; no se borra. Mismo permiso que `ssoma_anular_charla`. */
+export async function anularCharlaSsoma(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'ssoma.gestionar')) return { ok: false, error: 'Una charla la anula SSOMA.' }
+  const analisis = z
+    .object({
+      id: z.guid(),
+      motivo: z.string().min(10, 'Cuenta por qué se anula, en al menos 10 caracteres.').max(500, 'El motivo pasa de 500 caracteres.'),
+    })
+    .safeParse({ id: formulario.get('id'), motivo: dato(formulario, 'motivo') })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('ssoma_anular_charla', { p_id: analisis.data.id, p_motivo: analisis.data.motivo })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== analisis.data.id) return { ok: false, error: 'La charla no se anuló. Recarga la pantalla.' }
+
+  revalidatePath('/ssoma', 'layout')
+  return { ok: true, mensaje: 'Charla anulada: ya no cuenta como asistencia y queda con su motivo.' }
 }

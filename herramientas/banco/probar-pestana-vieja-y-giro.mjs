@@ -3717,7 +3717,7 @@ for (const [parte, cerrada] of [['1w-atras-cerrada', true], ['1w-atras-abierta',
     const LINEA = `Se cargó el código y la OT de la cotización ${cot.numero}.`
     await ir(pagina, `${BASE}/cotizaciones/pdf?estado=POR_REVISAR`)
     await marcarDocumento(pagina)
-    await pagina.getByRole('link', { name: /Aprobadas sin código/ }).first().click()
+    await pagina.getByRole('link', { name: /Aprobadas que esperan OT/ }).first().click()
     await pagina.waitForURL((u) => u.search === '?estado=APROBADA_SIN_OT', { timeout: 15000 })
     await quieta(pagina)
     const marca = `QA_W2${cerrada ? 'C' : 'A'}_${sello}`
@@ -4318,7 +4318,7 @@ if (corre('1y-la-ot-se-lleva-la-linea')) {
     await hasta(() => clientePor(razon), (l) => l.length === 1, 30000)
     await pagina.waitForURL((u) => u.pathname === '/ordenes', { timeout: 20000 }).catch(() => {})
     const dice = await hasta(() => idaQueNoSalio(pagina), (t) => t.includes('El cliente quedó registrado.'), 15000)
-    // A Cotización por el menú y a «Aprobadas sin código» por su pastilla: sigue.
+    // A Cotización por el menú y a «Aprobadas que esperan OT» por su pastilla: sigue.
     await porElMenu(pagina, '/cotizaciones/pdf')
     await pagina.locator('a[href="/cotizaciones/pdf?estado=APROBADA_SIN_OT"]').first().click()
     await pagina.waitForURL((u) => u.search === '?estado=APROBADA_SIN_OT', { timeout: 20000 }).catch(() => {})

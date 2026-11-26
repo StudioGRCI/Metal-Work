@@ -23,13 +23,12 @@
 --      «Pago» a hace 2, que tampoco llega: la corrección nuestra perdonaba solo
 --      hasta la fecha nueva; pasada esa, el atraso es del proveedor.
 --   j. OC prometida hace 2 días que llega hoy, y después Logística le anota
---      «Pago»: lo anotado después de llegar no cambia nada, sigue medida y
---      fuera de tiempo.
+--      «Pago»: la enmienda cuenta (20261126945000), no se mide y es nuestra.
 --   OS 1, que vuelve conforme antes de su fin: a tiempo. OS 2, anulada: no
 --   cuenta. OS 3, en ejecución con su fin ayer: atrasada sin llegar.
 -- Total: 11 compras (a, b, c, e, f, g, h, i, j, OS 1, OS 3), 7 llegaron (a, b, e, g, h, j, OS 1),
--- 5 medidas (a, b, h, j, OS 1), 3 a tiempo (a, h, OS 1), 1 con devolución,
--- 3 atrasadas (c, i, OS 3), 1 sin fecha (e), 2 por causa nuestra (f, g).
+-- 4 medidas (a, b, h, OS 1), 3 a tiempo (a, h, OS 1), 1 con devolución,
+-- 3 atrasadas (c, i, OS 3), 1 sin fecha (e), 3 por causa nuestra (f, g, j).
 -- Todo el check corre en una transacción y `now()` es el mismo para todo: la
 -- hora del motivo de la g y del de la j se fija a mano para que quede antes y
 -- después de la llegada, como pasa en dos días distintos.
@@ -190,7 +189,7 @@ select public.marcar_compra_recogida(pg_temp.id('ocj'));
 select public.marcar_compra_dejada_almacen(pg_temp.id('ocj'));
 reset role;
 
--- La j ya llegó tarde; después Logística le anota «Pago». Queda después de la llegada.
+-- La j ya llegó tarde; después Logística le anota «Pago». Queda después de la llegada, y cuenta.
 select pg_temp.como('comprador');
 set local role authenticated;
 select public.anotar_motivo_atraso(pg_temp.id('motb'), 'OC', pg_temp.id('ocj'), 'PAGO', 'Se pagó tarde');
@@ -219,16 +218,16 @@ begin
   perform test.afirmar(r.compras = 11,
     format('cuentan las OC aprobadas y las OS no anuladas; no la que espera a Gerencia ni la anulada (dice %s)', r.compras));
   perform test.afirmar(r.llegaron = 7, format('llegaron a, b, e, g, h, j y la OS 1 (dice %s)', r.llegaron));
-  perform test.afirmar(r.medidas = 5,
-    format('se miden a, b, h, j y la OS 1: no la e, sin fecha, ni la g, atrasada por el pago (dice %s)', r.medidas));
+  perform test.afirmar(r.medidas = 4,
+    format('se miden a, b, h y la OS 1: no la e, sin fecha, ni la g ni la j, atrasadas por el pago (dice %s)', r.medidas));
   perform test.afirmar(r.a_tiempo = 3,
-    format('a tiempo la a, la h (su fecha corregida no la saca) y la OS 1; la b no, ni la j con el «Pago» anotado después (dice %s)', r.a_tiempo));
+    format('a tiempo la a, la h (su fecha corregida no la saca) y la OS 1; la b no (dice %s)', r.a_tiempo));
   perform test.afirmar(r.devueltas = 1, format('una OC con devolución (dice %s)', r.devueltas));
   perform test.afirmar(r.atrasadas = 3,
     format('la c, la i (pasó también la fecha corregida) y la OS 3; la b llegó, la f es nuestra (dice %s)', r.atrasadas));
   perform test.afirmar(r.sin_fecha = 1, format('la e llegó sin fecha prometida (dice %s)', r.sin_fecha));
-  perform test.afirmar(r.nuestras = 2,
-    format('la f (transporte, su último motivo) y la g (pago, antes de llegar) no cuentan contra el proveedor (dice %s)', r.nuestras));
+  perform test.afirmar(r.nuestras = 3,
+    format('la f (transporte, su último motivo), la g (pago, antes de llegar) y la j (pago, enmendado después) no cuentan contra el proveedor (dice %s)', r.nuestras));
 
   select * into r from public.cumplimiento_de_proveedores(array[pg_temp.id('proveedor'), pg_temp.id('proveedor')]);
   perform test.afirmar(r.compras = 11, format('el mismo proveedor pedido dos veces no duplica las cifras (dice %s)', r.compras));
@@ -257,7 +256,7 @@ select test.afirmar((select a_tiempo = 3 and devueltas = 1 from public.cumplimie
 reset role;
 select pg_temp.como('requerimientos');
 set local role authenticated;
-select test.afirmar((select compras = 11 and a_tiempo = 3 and atrasadas = 3 and nuestras = 2
+select test.afirmar((select compras = 11 and a_tiempo = 3 and atrasadas = 3 and nuestras = 3
                        from public.cumplimiento_de_proveedores(array[pg_temp.id('proveedor')])),
   'Requerimientos, que ve el padrón, lee las mismas cifras: el cumplimiento no depende de qué compras ve cada uno');
 reset role;

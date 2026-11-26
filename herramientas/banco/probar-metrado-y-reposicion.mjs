@@ -237,9 +237,13 @@ try {
   await esperar(async () => (await estados())[2] === 'AUTORIZADO')
   e = await estados()
   comprobar(e[1] === 'AUTORIZADO' && e[2] === 'AUTORIZADO', `los dos quedaron autorizados (${JSON.stringify(e)})`)
-  // En regla, sale de la bandeja (el banco puede tener otros RQ de corridas anteriores).
-  await esperar(async () => (await dis.pagina.locator(`[data-rq="${RQ}"]`).count()) === 0)
-  comprobar((await dis.pagina.locator(`[data-rq="${RQ}"]`).count()) === 0, 'el RQ sale de la bandeja de Diseño')
+  // En regla, sale de la bandeja (el banco puede tener otros RQ de corridas anteriores)
+  // y pasa a «Ya autorizados por Diseño», donde sigue su recorrido (plan 6.2).
+  const enBandeja = dis.pagina.locator(`[data-rq="${RQ}"]:not([data-autorizado])`)
+  await esperar(async () => (await enBandeja.count()) === 0)
+  comprobar((await enBandeja.count()) === 0, 'el RQ sale de la bandeja de Diseño')
+  comprobar((await dis.pagina.locator(`[data-ya-autorizados] [data-rq="${RQ}"][data-autorizado]`).count()) === 1,
+    'y aparece en «Ya autorizados por Diseño»')
 
   // ------------------------------------------- 5. Almacén ya revisa
   const [{ n: avisos }] = await consulta(

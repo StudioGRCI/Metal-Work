@@ -40,6 +40,7 @@ import { mesesSinPagosDeOficina, mesesSinPlanillaDeTaller, repartoDelMes } from 
 import { recorridoDeCotizaciones } from '@/lib/datos/recorrido'
 import { PERMISOS_BAJAR_COTIZACION, rutaParaBajarCotizacion } from '@/lib/descarga'
 import { partesDeNombreDeOc } from '@/lib/dominio/adquisiciones'
+import { nombreMoneda } from '@/lib/dominio/caja'
 import {
   CODIGO_SIN_AVANCE,
   CODIGO_TODOS_LOS_ACTIVOS,
@@ -1626,6 +1627,7 @@ async function VistaFacturacion({ codigo, perfil }: { codigo: string; perfil: Pe
   const puedeBajar = puede(perfil, PERMISOS_BAJAR_COTIZACION)
   const [cotizaciones, facturas] = await Promise.all([cotizacionesAprobadas(codigo), facturasDelCodigo(codigo)])
   const deMoneda = (m: string | null): CodigoMoneda => (m === 'USD' ? 'USD' : 'PEN')
+  const otraMoneda = (m: CodigoMoneda): CodigoMoneda => (m === 'USD' ? 'PEN' : 'USD')
   return (
     <>
       <Tarjeta>
@@ -1649,9 +1651,20 @@ async function VistaFacturacion({ codigo, perfil }: { codigo: string; perfil: Pe
                     <div className="min-w-0">
                       <p className="font-medium text-texto">Cotización {c.numero}</p>
                       <p className="text-xs text-texto-suave">{c.cliente ?? 'Cliente sin registrar'}</p>
-                      <p className="tabular text-xs text-texto-suave">
-                        {Number(c.facturas) === 0 ? 'Contabilidad aún no la factura' : `Facturado ${moneda(c.facturado, m)} · cobrado ${moneda(c.cobrado, m)}`}
-                      </p>
+                      {/* Lo facturado en la otra moneda va aparte: sumarlo mezclaba soles con dólares (20261126960000).
+                          Facturada solo en la otra moneda, no se pinta «Facturado US$ 0.00»: diría que no se facturó nada. */}
+                      {(Number(c.facturas) === 0 || Number(c.facturado) > 0 || Number(c.facturado_otra_moneda) === 0) && (
+                        <p className="tabular text-xs text-texto-suave">
+                          {Number(c.facturas) === 0 ? 'Contabilidad aún no la factura' : `Facturado ${moneda(c.facturado, m)} · cobrado ${moneda(c.cobrado, m)}`}
+                        </p>
+                      )}
+                      {Number(c.facturado_otra_moneda) > 0 && (
+                        <p className="tabular text-xs text-texto-suave" data-otra-moneda>
+                          {Number(c.facturado) > 0 ? 'Y en ' : 'Facturada en '}
+                          {nombreMoneda(otraMoneda(m))}: {Number(c.facturado) > 0 && 'facturado '}{moneda(c.facturado_otra_moneda, otraMoneda(m))} · cobrado{' '}
+                          {moneda(c.cobrado_otra_moneda, otraMoneda(m))}
+                        </p>
+                      )}
                       {c.url && (
                         <a
                           href={c.url}

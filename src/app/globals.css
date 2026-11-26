@@ -417,6 +417,12 @@ html:has([data-fila-pegada]) {
     .tabla-apilada > tbody > tr {
       padding-block: 0.5rem;
     }
+    /* La celda de botones de una fila que no tiene ninguno (la orden anulada,
+       el vehículo que ya salió) no deja un renglón en blanco en la ficha. */
+    .tabla-apilada > tbody > tr > td:empty,
+    .tabla-apilada > tbody > tr > td:has(> [data-acciones-fila]:empty:only-child) {
+      display: none;
+    }
     .tabla-apilada > tbody > tr > td[data-rotulo]::before {
       content: attr(data-rotulo);
       display: block;

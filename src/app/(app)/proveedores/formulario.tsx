@@ -310,8 +310,9 @@ export function AccionesProveedor({ proveedor, cuentasVisibles }: { proveedor: P
     estado.ejecutar(datos)
   }
 
+  // `contents`: sus botones entran al renglón de la fila (`AccionesDeFila`).
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="contents">
       <Boton type="button" tamano="sm" variante="contorno" onClick={() => setEditando(true)}>
         <Pencil aria-hidden className="size-3.5" />
         Editar

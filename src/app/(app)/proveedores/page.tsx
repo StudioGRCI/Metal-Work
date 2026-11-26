@@ -4,7 +4,7 @@ import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Paginacion } from '@/components/estructura/paginacion'
 import { Insignia } from '@/components/ui/etiqueta-estado'
-import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
+import { AccionesDeFila, SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { cumplimientoDeProveedores, listarProveedores, PROVEEDORES_POR_PAGINA } from '@/lib/datos/proveedores'
 import { palabrasDeBusqueda } from '@/lib/dominio/busqueda'
@@ -49,7 +49,7 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
         descripcion={busqueda
           ? total === 0 ? `Ningún proveedor con «${busqueda}»` : `${total === 1 ? '1 proveedor' : `${total} proveedores`} con «${busqueda}»`
           : total === 1 ? '1 proveedor en el padrón' : `${total} proveedores en el padrón`}
-        ayuda="La orden de compra elige el proveedor de este padrón. «Cumplimiento» cuenta las OC y OS aprobadas que se le hicieron; de las que llegaron (la OS, cuando volvió conforme), cuántas llegaron a más tardar en la fecha que prometió al emitirlas (no la corregida después); cuántas pasaron esa fecha sin llegar completas, y de cuántas OC Almacén le devolvió algo. La que se atrasó por el pago, el transporte o la aprobación, según el último motivo que anotó Logística antes de que llegara, no cuenta contra el proveedor y se dice aparte; si con ese motivo se corrigió la fecha y tampoco la cumplió, sí cuenta."
+        ayuda="La orden de compra elige el proveedor de este padrón. «Cumplimiento» cuenta las OC y OS aprobadas que se le hicieron; de las que llegaron (la OS, cuando volvió conforme), cuántas llegaron a más tardar en la fecha que prometió al emitirlas (no la corregida después); cuántas pasaron esa fecha sin llegar completas, y de cuántas OC Almacén le devolvió algo. La que se atrasó por el pago, el transporte o la aprobación, según el último motivo que anotó Logística (también si lo cambió después de que llegó), no cuenta contra el proveedor y se dice aparte; si con ese motivo se corrigió la fecha y tampoco la cumplió, sí cuenta."
         acciones={
           <div className="flex flex-wrap items-center gap-3">
             {edita && <NuevoProveedor />}
@@ -65,29 +65,36 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
         }
       />
 
+      {/* 20 px entre el buscador y la lista, como entre bloques (la escala de la skill diseno). */}
+      <div className="space-y-5">
       <BuscadorSimple ruta="/proveedores" etiqueta="Buscar proveedores" marcador="Razón social, RUC o rubro" />
 
       {cumplimiento === null && proveedores.length > 0 && (
-        <p role="status" className="mt-4 text-sm text-aviso">
+        <p role="status" className="text-sm text-aviso">
           No se pudo leer el cumplimiento de los proveedores: el padrón sale sin él. Recarga la página; si continúa, avisa al
           administrador.
         </p>
       )}
 
-      <Tarjeta className="mt-4 overflow-hidden">
-        <Tabla>
+      {/* En el teléfono cada proveedor es una ficha con «Editar» y «Dar de baja»
+          en un renglón (entrega 4 del plan de orden y diseño): en su columna
+          angosta iban uno debajo del otro. */}
+      <Tarjeta className="overflow-hidden">
+        <Tabla apilada>
           <TablaCabecera>
             <tr>
               <TH>Proveedor</TH>
-              <TH className="hidden sm:table-cell">Documento</TH>
+              <TH className="hidden md:table-cell">Documento</TH>
               {/* En el teléfono, contacto y pago bajan a la celda del nombre: así
                   caben el RUC y Editar sin correr la tabla de lado. */}
-              <TH className="hidden sm:table-cell">Contacto</TH>
-              <TH className="hidden sm:table-cell">Pago</TH>
-              {/* Desde 1 280 px: a 1 024, con «Cuentas», la tabla se corría de costado y cortaba «Dar de baja». */}
+              {/* Contacto, cumplimiento y cuentas desde 1280 px: entre 768 y 1279 (una
+                  laptop con el zoom de Windows) la tabla se salía de costado. Hasta
+                  ahí, bajan a la celda del nombre. */}
+              <TH className="hidden xl:table-cell">Contacto</TH>
+              <TH className="hidden md:table-cell">Pago</TH>
               <TH className="hidden xl:table-cell">Cumplimiento</TH>
-              {verCuentas && <TH className="hidden lg:table-cell">Cuentas</TH>}
-              {edita && <TH>Acciones</TH>}
+              {verCuentas && <TH className="hidden xl:table-cell">Cuentas</TH>}
+              {edita && <TH className="md:w-56">Acciones</TH>}
             </tr>
           </TablaCabecera>
           <tbody>
@@ -122,25 +129,43 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
                         <p className="text-xs text-texto-suave">{[p.nombre_comercial, p.rubro].filter(Boolean).join(' · ')}</p>
                       )}
                       {/* En el teléfono el RUC baja aquí: su columna aparte dejaba el nombre en cuatro renglones. */}
-                      <p className="text-xs text-texto-suave sm:hidden">
-                        {[`${p.tipo_documento} ${p.numero_documento}`, pago, contacto].filter(Boolean).join(' · ')}
+                      <p className="text-xs text-texto-suave md:hidden">
+                        {[`${p.tipo_documento} ${p.numero_documento}`, pago].join(' · ')}
                       </p>
+                      {(contacto || p.correo) && (
+                        <p className="text-xs text-texto-suave xl:hidden">{[contacto, p.correo].filter(Boolean).join(' · ')}</p>
+                      )}
+                      {/* Lo mismo que la columna «Cuentas», que no se ve hasta 1280 px. */}
+                      {verCuentas && (
+                        <div className="mt-1 text-xs text-texto-suave xl:hidden" data-cuentas-en-ficha>
+                          {p.cuentas.length === 0 ? (
+                            <p className="text-aviso">Sin cuenta</p>
+                          ) : (
+                            p.cuentas.map((c) => (
+                              <p key={c.id} className="tabular">
+                                {resumenCuenta(c)}
+                              </p>
+                            ))
+                          )}
+                          {p.direccion_recojo && <p>Recojo: {p.direccion_recojo}</p>}
+                        </div>
+                      )}
                       {/* Hasta que cabe su columna (1 280 px), el cumplimiento va aquí, en un renglón. */}
                       {cumplimiento && <Cumplimiento datos={cumplimiento.get(p.id)} enLinea className="mt-1 xl:hidden" />}
                     </TD>
-                    <TD className="hidden whitespace-nowrap sm:table-cell">
+                    <TD className="hidden whitespace-nowrap md:table-cell">
                       <span className="text-texto-suave">{p.tipo_documento} </span><span className="tabular">{p.numero_documento}</span>
                     </TD>
-                    <TD className="hidden text-texto-suave sm:table-cell">
+                    <TD className="hidden text-texto-suave xl:table-cell">
                       {contacto || '—'}
                       {p.correo && <p className="text-xs">{p.correo}</p>}
                     </TD>
-                    <TD className="hidden whitespace-nowrap text-texto-suave sm:table-cell">{pago}</TD>
+                    <TD className="hidden whitespace-nowrap text-texto-suave md:table-cell">{pago}</TD>
                     <TD className="hidden xl:table-cell">
                       {cumplimiento ? <Cumplimiento datos={cumplimiento.get(p.id)} /> : <span className="text-texto-tenue">—</span>}
                     </TD>
                     {verCuentas && (
-                      <TD className="hidden text-texto-suave lg:table-cell">
+                      <TD className="hidden text-texto-suave xl:table-cell">
                         {p.cuentas.length === 0 ? (
                           <span className="text-aviso">Sin cuenta</span>
                         ) : (
@@ -155,7 +180,9 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
                     )}
                     {edita && (
                       <TD>
-                        <AccionesProveedor proveedor={p} cuentasVisibles={verCuentas} />
+                        <AccionesDeFila className="md:justify-start">
+                          <AccionesProveedor proveedor={p} cuentasVisibles={verCuentas} />
+                        </AccionesDeFila>
                       </TD>
                     )}
                   </TR>
@@ -165,6 +192,7 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
           </tbody>
         </Tabla>
       </Tarjeta>
+      </div>
 
       <Paginacion
         ruta="/proveedores"
