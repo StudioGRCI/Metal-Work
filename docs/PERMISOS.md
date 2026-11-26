@@ -301,7 +301,7 @@ sin área hasta que Administración se la pone al corregirlos.
 
 Plan 15, entrega 15.1. Migraciones `20261125150000_el_reporte_de_incidente_tiene_numero`
 y `20261125150100_ssoma_y_el_reporte_de_incidente`, comprobadas con los roles
-reales en la base local (check 473) y con clic real en el banco
+reales en la base local (check 472) y con clic real en el banco
 (`herramientas/banco/probar-ssoma.mjs`). La carpeta «18) SSOMA (SST)» del SIG
 está vacía: el reporte sigue el registro de accidentes, incidentes peligrosos
 e incidentes de la R.M. 050-2013-TR (Ley 29783), con número de la casa
