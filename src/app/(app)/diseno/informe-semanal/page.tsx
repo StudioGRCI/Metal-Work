@@ -4,17 +4,20 @@ import { Download } from 'lucide-react'
 import { DelDocumento } from '@/components/estructura/del-documento'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { BASE_BOTON, Boton, TAMANOS, VARIANTES } from '@/components/ui/boton'
-import { Insignia } from '@/components/ui/etiqueta-estado'
+import { Insignia, type Tono } from '@/components/ui/etiqueta-estado'
+import { Recorrido } from '@/components/ui/recorrido'
 import { Pliegue } from '@/components/ui/seccion-desplegable'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { datosInformeDiseno } from '@/lib/datos/informe-diseno'
+import { datosInformeDiseno, semanasPropiasDiseno } from '@/lib/datos/informe-diseno'
+import { recorridoDeInformesDiseno } from '@/lib/datos/recorrido'
 import {
   AREAS_QUE_RECIBEN, ESTADOS_ENTREGA, FORMATO_INFORME_DISENO, codigoInternoOt, fechaDelInforme, nombreTarea,
   numeroInforme, planosPorArea, siglaCarroceria,
 } from '@/lib/dominio/informe-diseno'
+import { describirRecorridoDelInformeDiseno } from '@/lib/dominio/recorrido'
 import { inicioSemanaDiseno } from '@/lib/dominio/semana-diseno'
-import { fecha, hoyLima } from '@/lib/format'
+import { fecha, fechaHora, hoyLima } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 import { cn } from '@/lib/utils'
@@ -28,6 +31,14 @@ const ESTADOS: Record<string, string> = {
   // RECIBIDO quedó del circuito anterior, cuando el informe iba a Administración.
   APROBADO: 'Aprobado por Diseño', RECIBIDO: 'Recibido por Administración',
 }
+// La insignia de cada semana en «Tus semanas»: corta, con el tono de lo que pide.
+const INSIGNIA_ESTADO: Record<string, { etiqueta: string; tono: Tono }> = {
+  BORRADOR: { etiqueta: 'Borrador', tono: 'neutro' },
+  EN_REVISION: { etiqueta: 'Enviado a Diseño', tono: 'info' },
+  OBSERVADO: { etiqueta: 'Devuelto', tono: 'aviso' },
+  APROBADO: { etiqueta: 'Aprobado', tono: 'exito' },
+  RECIBIDO: { etiqueta: 'Recibido', tono: 'exito' },
+}
 
 export default async function PaginaInformeSemanalDiseno({ searchParams }: {
   searchParams: Promise<{ semana?: string }>
@@ -40,7 +51,7 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
   }
   const puedeEscribir = puede(perfil, 'diseno.preparar_informe')
   const db = await createClient()
-  const [datos, equipo, pendientes] = await Promise.all([
+  const [datos, equipo, pendientes, semanas] = await Promise.all([
     datosInformeDiseno(inicio),
     puedeEscribir
       ? db.from('ot_equipo_diseno').select('id,orden_id,nombre,funcion').eq('funcion', 'COLABORADOR').order('nombre').limit(1000)
@@ -50,6 +61,14 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
         .eq('estado', 'EN_REVISION')
         .order('semana_inicio').limit(100)
       : Promise.resolve({ data: [], error: null }),
+    // Las semanas del colaborador, para abrirlas en lectura. Si no se leen, la
+    // pantalla sigue con la semana elegida y lo dice en su lugar.
+    puedeEscribir
+      ? semanasPropiasDiseno().catch((e: unknown) => {
+          console.error('Informe semanal: no se pudieron leer las semanas propias.', e)
+          return null
+        })
+      : Promise.resolve([]),
   ])
   if (equipo.error || pendientes.error) throw new Error('No se pudieron cargar el equipo o los informes pendientes de Diseño.')
 
@@ -71,6 +90,18 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
   })
 
   const informe = datos.informe
+  // El recorrido de la semana: por dónde pasó, quién lo tiene y hace cuántos
+  // días. Sin él, la tarjeta sigue con todo lo demás y lo dice en su lugar.
+  const recorrido = informe
+    ? await recorridoDeInformesDiseno([informe.id])
+        .then((r) => describirRecorridoDelInformeDiseno(r.get(informe.id) ?? []))
+        .catch((e: unknown) => {
+          console.error('Informe semanal: no se pudo leer el recorrido.', e)
+          return null
+        })
+    : []
+  // La última devolución: quién y cuándo, para el aviso de arriba.
+  const devolucion = informe?.estado === 'OBSERVADO' ? recorrido?.filter((p) => p.paso === 'DEVOLUCION').at(-1) : undefined
   const abierta = !datos.enviado
   const escribe = puedeEscribir && abierta
   const disenadores = [...new Set([...datos.tareas.map((t) => t.responsable), ...datos.entregas.map((e) => e.responsable)])].sort()
@@ -89,6 +120,21 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
         nuevo y dicen de cuál son (X1 y H1, cuadragésima quinta pasada). */}
     <DelDocumento documento={`semana:${inicio}`}>
     <div className="space-y-5">
+      {/* Devuelto: el motivo va arriba de todo, que es lo que hay que corregir. */}
+      {informe?.estado === 'OBSERVADO' && <div role="note" data-motivo-devolucion
+        className="rounded-[var(--radius-base)] border border-aviso/40 bg-aviso-suave p-4 text-sm">
+        <p className="font-semibold text-aviso">
+          {puedeEscribir ? 'Diseño te devolvió este informe para corregir' : 'Devuelto al colaborador para corregir'}
+        </p>
+        <p className="mt-1 whitespace-pre-wrap break-words text-texto">
+          {informe.observacion_revision?.trim() || 'Diseño no dejó escrito el motivo.'}
+        </p>
+        <p className="tabular mt-2 text-xs text-texto-suave">
+          {devolucion?.puesto ?? 'Diseño'}{(devolucion?.en ?? informe.revisado_en) ? ` · ${fechaHora((devolucion?.en ?? informe.revisado_en)!)}` : ''}
+        </p>
+        {puedeEscribir && <p className="mt-2 text-texto">Corrige lo que pide en las tablas o en el contenido de abajo y vuelve a enviarlo con «Enviar a Diseño».</p>}
+      </div>}
+
       {(pendientes.data ?? []).length > 0 && <Tarjeta>
         <TarjetaCabecera titulo={puede(perfil, 'diseno.revisar_informe') ? 'Informes por revisar' : 'Informes aprobados por recibir'} ayuda="Abre la semana correspondiente para completar tu revisión." />
         <TarjetaCuerpo className="flex flex-wrap gap-3">{(pendientes.data ?? []).map((p) =>
@@ -117,7 +163,9 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
           </dl>
           {informe && <div className="mt-4 space-y-3 rounded-[var(--radius-base)] bg-superficie-2 p-4">
             <p className="font-semibold text-texto">{ESTADOS[informe.estado] ?? informe.estado}</p>
-            {informe.observacion_revision && <p className="text-sm text-aviso">{informe.observacion_revision}</p>}
+            {/* El motivo de la devolución va en el aviso de arriba; aquí, el camino entero. */}
+            <Recorrido pasos={recorrido} relleno="px-3"
+              className="rounded-[var(--radius-base)] border border-borde bg-superficie" />
             {puedeEscribir && ['BORRADOR', 'OBSERVADO'].includes(informe.estado) && <DecisionInforme id={informe.id} estado="EN_REVISION" />}
             {puede(perfil, 'diseno.revisar_informe') && informe.estado === 'EN_REVISION' && <div className="space-y-4">
               <DecisionInforme id={informe.id} estado="APROBADO" />
@@ -243,6 +291,35 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
               : <p className="text-sm text-texto-suave">El colaborador todavía no guardó el informe de esta semana.</p>}
         </TarjetaCuerpo>
       </Tarjeta>
+
+      {/* Para consultar, al final: las semanas del colaborador, cada una como quedó. */}
+      {puedeEscribir && <Tarjeta data-tus-semanas>
+        <TarjetaCabecera titulo="Tus semanas"
+          ayuda="Las semanas que empezaste o en las que anotaste una actividad, de la más reciente a la más antigua. Cada una se abre como quedó: enviada o aprobada, solo para leer." />
+        <TarjetaCuerpo>
+          {semanas === null
+            ? <p role="status" className="text-sm text-aviso">No se pudieron leer tus semanas. Recarga la página; si continúa, avisa al administrador.</p>
+            : semanas.length === 0
+              ? <SinDatos compacto titulo="Todavía no tienes semanas"
+                  descripcion="Cuando guardes el contenido de tu primer informe o anotes una actividad, la semana aparecerá aquí." />
+              : <ul className="-mx-2 divide-y divide-borde">{semanas.map((s) => {
+                  const actual = s.semana_inicio === inicio
+                  const insignia = INSIGNIA_ESTADO[s.estado ?? ''] ?? { etiqueta: s.estado ?? 'Sin estado', tono: 'neutro' as const }
+                  return <li key={s.id}>
+                    <Link href={`/diseno/informe-semanal?semana=${s.semana_inicio}`} aria-current={actual ? 'page' : undefined}
+                      className={cn('flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-[var(--radius-base)] px-2 py-2 text-sm hover:bg-superficie-2 focus-visible:outline-2 focus-visible:outline-acento',
+                        actual && 'bg-acento-suave hover:bg-acento-suave')}>
+                      <span className="min-w-0">
+                        <span className="tabular font-semibold text-acento">N.º {numeroInforme(s.numero)}</span>
+                        <span className="tabular text-texto"> · semana del {fecha(s.semana_inicio)}</span>
+                        {actual && <span className="block text-xs text-texto-suave sm:inline"> · la que estás viendo</span>}
+                      </span>
+                      <Insignia tono={insignia.tono}>{insignia.etiqueta}</Insignia>
+                    </Link>
+                  </li>
+                })}</ul>}
+        </TarjetaCuerpo>
+      </Tarjeta>}
     </div>
     </DelDocumento>
   </>

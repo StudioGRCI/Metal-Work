@@ -14816,6 +14816,17 @@ export type Database = {
           por_estado: Json | null
         }[]
       }
+      informes_de_diseno_propios: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          numero: number | null
+          semana_inicio: string | null
+          estado: string | null
+          enviado_en: string | null
+          revisado_en: string | null
+        }[]
+      }
       ingresos_para_devolver: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -15938,6 +15949,22 @@ export type Database = {
         Returns: number
       }
       recorrido_de_cotizaciones: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          documento: string | null
+          orden: number | null
+          paso: string | null
+          situacion: string | null
+          puesto: string | null
+          en: string | null
+          dias: number | null
+          espera: string | null
+          detalle: string | null
+        }[]
+      }
+      recorrido_de_informes_diseno: {
         Args: {
           p_ids: string[] | null
         }
