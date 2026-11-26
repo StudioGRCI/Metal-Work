@@ -27,6 +27,12 @@ export type EntregaPorValidar = {
   dejadoEn: string
   dejadoPor: string | null
   recogidoEn: string | null
+  /**
+   * Los días que lleva esperando la validación desde que el conductor la dejó,
+   * por fecha de Lima (`dias_en_espera_de`, plan 2, entrega 2.3). `null` si no
+   * se pudieron contar: la bandeja sigue sin la insignia.
+   */
+  dias: number | null
   lineas: LineaPorValidar[]
 }
 
@@ -55,6 +61,7 @@ export async function ingresosPorValidar(): Promise<EntregaPorValidar[]> {
       dejadoEn: f.dejado_en ?? '',
       dejadoPor: f.dejado_por_nombre,
       recogidoEn: f.recogido_en,
+      dias: null,
       lineas: [],
     }
     porCompra.set(f.orden_compra_id, entrega)
@@ -69,5 +76,17 @@ export async function ingresosPorValidar(): Promise<EntregaPorValidar[]> {
       ordenNumero: f.orden_numero,
     })
   }
-  return [...porCompra.values()]
+  // La que más espera, arriba: desde que el conductor la dejó (plan 2, entrega 2.3).
+  const entregas = [...porCompra.values()].sort((a, b) => Date.parse(a.dejadoEn) - Date.parse(b.dejadoEn))
+  // Los días los cuenta la base con la fecha de Lima. Sin ellos la bandeja sigue.
+  const conFecha = entregas.filter((e) => e.dejadoEn)
+  if (conFecha.length > 0) {
+    const dias = await db.rpc('dias_en_espera_de', { p_desde: conFecha.map((e) => e.dejadoEn) })
+    if (dias.error) console.error('Ingresos por validar: no se pudieron contar los días en espera.', dias.error.message)
+    for (const d of dias.data ?? []) {
+      const e = d.posicion == null ? undefined : conFecha[d.posicion - 1]
+      if (e && d.dias != null) e.dias = d.dias
+    }
+  }
+  return entregas
 }

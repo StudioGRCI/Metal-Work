@@ -14,6 +14,7 @@ import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabl
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cargarAtencionMateriales } from '@/lib/datos/atencion-materiales'
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
+import { conteosFisicos, type ConteoFisico } from '@/lib/datos/conteos'
 import { ingresosPorValidar } from '@/lib/datos/ingresos-por-validar'
 import { cargarKardex, devolucionesPorReponer, FILAS_POR_PAGINA, filtrosDeKardex, ingresosParaDevolver, lineasDeRequerimientoParaSalida, materialesDelKardex, minimosDeStock, requerimientosConSalidaCargada, salidasPorCerrar, unidadesParaSalida } from '@/lib/datos/kardex'
 import { separadoEnAlmacen, stockEnAlmacen } from '@/lib/datos/stock-almacen'
@@ -25,7 +26,8 @@ import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 import { cn } from '@/lib/utils'
 
-import { ConteoFisico } from './conteo'
+import { ConteoFisico as RegistrarConteo } from './conteo'
+import { ConteosFisicos } from './conteos-fisicos'
 import { ConteoInicial } from './conteo-inicial'
 import { DevolverAlProveedor, EsperanReposicion } from './devolucion-proveedor'
 import { FiltroMaterial } from './filtro-material'
@@ -66,7 +68,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
   const abreOt = seccionesDeOrden(perfil).includes('materiales')
   const db = await createClient()
 
-  const [kardex, materiales, unidades, catalogo, entregas, minimos, unidadesMedida, porValidar, porCerrar, lineasRq, codigos, stock, paraDevolver, porReponer] = await Promise.all([
+  const [kardex, materiales, unidades, catalogo, entregas, minimos, unidadesMedida, porValidar, porCerrar, lineasRq, codigos, stock, paraDevolver, porReponer, conteos] = await Promise.all([
     cargarKardex(filtros),
     materialesDelKardex(),
     puedeSalida ? unidadesParaSalida() : Promise.resolve([]),
@@ -104,6 +106,12 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
     // Lo que llegó de una compra y se puede devolver al proveedor, y lo devuelto que espera reposición.
     puedeIngreso ? ingresosParaDevolver() : Promise.resolve([]),
     devolucionesPorReponer(),
+    // Los últimos conteos físicos, con su diferencia, quién contó y cuándo (plan 2,
+    // entrega 2.3); elegido un material, los suyos. Sin ellos el kardex sigue y lo dice.
+    conteosFisicos({ material: filtros.material }).catch((e: unknown): ConteoFisico[] | null => {
+      console.error('Kardex: no se pudieron leer los conteos físicos.', e instanceof Error ? e.message : e)
+      return null
+    }),
   ])
   if (entregas.error) throw new Error('No se pudieron cargar las entregas que se pueden devolver.')
   if (unidadesMedida.error) throw new Error('No se pudieron cargar las unidades de medida.')
@@ -222,7 +230,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
           )}
           {puedeIngreso && <DevolverAlProveedor ingresos={paraDevolver} />}
           {puedeIngreso && catalogo && (
-            <ConteoFisico materiales={catalogo.catalogoAlmacen.map((m) => ({
+            <RegistrarConteo materiales={catalogo.catalogoAlmacen.map((m) => ({
               ...m, saldo: saldoPorMaterial.get(m.id) ?? 0,
             }))} />
           )}
@@ -300,6 +308,21 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
             </ul>
             {bajoMinimo.length > 30 && <p className="mt-2 text-xs text-texto-suave">Y {bajoMinimo.length - 30} más.</p>}
           </TarjetaCuerpo>
+        </Tarjeta>
+      )}
+
+      {!elegido && (conteos === null || conteos.length > 0 || puedeIngreso) && (
+        <Tarjeta id="conteos" className="mb-4 overflow-hidden">
+          <TarjetaCabecera
+            titulo="Conteos físicos"
+            descripcion={conteos && conteos.length > 0 ? (conteos.length === 30 ? 'Los últimos 30.' : conteos.length === 1 ? '1 conteo.' : `${conteos.length} conteos.`) : undefined}
+            ayuda="Cada conteo físico con lo que contó Almacén, lo que decía el sistema y la diferencia, que quedó como ajuste en el kardex; quién contó, cuándo y por qué. Elige un material para ver todos los suyos."
+          />
+          {conteos === null ? (
+            <p role="status" className="px-4 py-3 text-sm text-aviso">No se pudieron leer los conteos físicos. Vuelve a cargar la pantalla en un momento.</p>
+          ) : (
+            <ConteosFisicos conteos={conteos} conMaterial />
+          )}
         </Tarjeta>
       )}
 
@@ -431,6 +454,20 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
             <p className="mb-4 text-sm text-texto-suave">
               {minimoElegido === null ? 'Sin stock mínimo: no avisa cuando baja.' : `Stock mínimo: ${cantidad(minimoElegido)} ${elegido.unidad ?? ''}.`}
             </p>
+          )}
+          {/* Los conteos de este material, si tiene (plan 2, entrega 2.3). */}
+          {(conteos === null || conteos.length > 0) && (
+            <Tarjeta id="conteos" className="mb-4 overflow-hidden">
+              <TarjetaCabecera
+                titulo="Conteos físicos de este material"
+                ayuda="Lo que contó Almacén, lo que decía el sistema y la diferencia que quedó como ajuste; quién contó, cuándo y por qué."
+              />
+              {conteos === null ? (
+                <p role="status" className="px-4 py-3 text-sm text-aviso">No se pudieron leer los conteos físicos. Vuelve a cargar la pantalla en un momento.</p>
+              ) : (
+                <ConteosFisicos conteos={conteos} conMaterial={false} />
+              )}
+            </Tarjeta>
           )}
         </>
       )}
