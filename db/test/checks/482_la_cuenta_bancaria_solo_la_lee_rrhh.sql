@@ -57,6 +57,12 @@ values ('48200000-0000-4000-8000-0000000000e1', '48200000-0000-4000-8000-0000000
        ('48200000-0000-4000-8000-0000000000e1', '48200000-0000-4000-8000-000000000002', 'Dino Prueba Cuenta', 8, 0, 100, 0, 100);
 set local session_replication_role = origin;
 
+-- La auditoría sí anotó la cuenta: los ceros de abajo son la política, no un vacío.
+select test.afirmar(
+  (select count(*) > 0 from public.audit_log where tabla = 'trabajador_cuentas'
+     and datos_despues ->> 'numero_cuenta' = '000-482-000001'),
+  'la cuenta de Cata quedó en audit_log');
+
 -- ============================================ 1. RR. HH. la lee
 set local role authenticated;
 select test.afirmar(
@@ -96,6 +102,9 @@ set local role authenticated;
 select test.afirmar(
   (select count(*) = 0 from public.trabajador_cuentas where trabajador_id = '48200000-0000-4000-8000-000000000001'),
   'Gerencia no lee la cuenta bancaria');
+select test.afirmar(
+  (select count(*) = 0 from public.audit_log where tabla = 'trabajador_cuentas'),
+  'Gerencia, con auditoria.ver y sin rrhh.personal, no lee la historia de las cuentas');
 reset role;
 
 -- ============================================ 4. Tesorería sigue pagando la planilla diaria

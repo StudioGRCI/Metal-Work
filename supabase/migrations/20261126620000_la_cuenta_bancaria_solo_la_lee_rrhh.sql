@@ -55,6 +55,10 @@ begin
       using (tabla <> 'trabajador_cuentas' or (select public.tiene_permiso('rrhh.personal')));
   end if;
 end $$;
+-- Y si ya existía con otra condición, se la deja como dice aquí (sin `drop policy`,
+-- que cuelga el conector de Supabase: skill `datos` › Trampas).
+alter policy cuentas_solo_rrhh on public.audit_log
+  using (tabla <> 'trabajador_cuentas' or (select public.tiene_permiso('rrhh.personal')));
 
 create or replace function public.planilla_diaria_cuentas(p_planilla_id uuid)
 returns table (persona_id uuid, banco text, tipo_cuenta text, numero_cuenta text, cci text)

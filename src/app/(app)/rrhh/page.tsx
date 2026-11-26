@@ -483,7 +483,8 @@ function LoQueFaltaParaCerrar({
       <p className="flex items-start gap-2 text-sm text-texto-suave" data-lo-que-falta="nada">
         <CheckCircle2 aria-hidden className="mt-0.5 size-4 shrink-0 text-exito" />
         <span>
-          No falta nada para cerrarla: {revisa.join(' y ')} están al día.
+          {/* Sin `veCuentas` (el administrador) no sabe de las cuentas: no dice «no falta nada». */}
+          {veCuentas ? `No falta nada para cerrarla: ${revisa.join(' y ')} están al día.` : `${revisa.join(' y ').replace(/^./, (c) => c.toUpperCase())} están al día.`}
         </span>
       </p>
     )
