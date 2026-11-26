@@ -198,9 +198,11 @@ export async function cambiarEstadoOrden(
 
   // El mismo mapa que fn_ot_permiso_por_estado en la base; facturada la marca
   // la oficina (`ordenes.editar`, migración 110) y el taller que ya cambiaba
-  // estados sigue pudiendo.
+  // estados sigue pudiendo. Pausar lo hace también Administración, con
+  // `ordenes.pausar` (migración 20261126337000); reanudar, abajo.
   const permisosNecesarios =
-    estado === 'APROBADA' ? ['ordenes.aprobar']
+    estado === 'PAUSADA' ? ['ordenes.pausar', 'ordenes.cambiar_estado']
+    : estado === 'APROBADA' ? ['ordenes.aprobar']
     : estado === 'ANULADA' ? ['ordenes.anular']
     : estado === 'ENTREGADA' ? ['ordenes.entregar']
     : estado === 'FACTURADA' ? ['ordenes.editar', 'ordenes.cambiar_estado']
@@ -212,6 +214,34 @@ export async function cambiarEstadoOrden(
   // quien tiene `ordenes.revisar_taller`: es el mismo atajo que tiene el
   // disparador fn_ot_permiso_por_estado (migración 098), y solo para esa.
   let permitido = puede(perfil, permisosNecesarios)
+  // Pausar y reanudar miran antes cómo está la OT: una pestaña vieja (otro ya
+  // la pausó o la reanudó) no pisa el motivo ni se lee como falta de permiso.
+  // Con `ordenes.pausar`, reanudar vale solo desde PAUSADA: iniciar o reabrir
+  // siguen con `ordenes.cambiar_estado`.
+  if ((estado === 'PAUSADA' && permitido) || (estado === 'EN_PROCESO' && !permitido && puede(perfil, 'ordenes.pausar'))) {
+    const { data: actual, error: errorEstado } = await supabase
+      .from('ordenes_trabajo')
+      .select('estado, motivo_pausa')
+      .eq('id', orden_id)
+      .maybeSingle()
+    if (errorEstado) return { ok: false, error: mensajeDeError(errorEstado) }
+    // Sin revalidar: la pantalla quitaría el botón y con él este aviso.
+    if (actual?.estado === estado) {
+      return {
+        ok: false,
+        error:
+          estado === 'PAUSADA'
+            ? `La orden ya está pausada${actual.motivo_pausa ? `: ${actual.motivo_pausa}` : ''}. Recarga la pantalla.`
+            : 'La orden ya estaba en proceso. Recarga la pantalla.',
+      }
+    }
+    if (estado === 'EN_PROCESO' && actual) {
+      if (actual.estado !== 'PAUSADA') {
+        return { ok: false, error: 'La orden ya no está pausada: recarga la pantalla para ver en qué estado está.' }
+      }
+      permitido = true
+    }
+  }
   if (!permitido && (estado === 'APROBADA' || estado === 'ANULADA') && puede(perfil, 'ordenes.revisar_taller')) {
     const { data: actual } = await supabase
       .from('ordenes_trabajo')
@@ -227,8 +257,8 @@ export async function cambiarEstadoOrden(
 
   // Pausar y anular exigen motivo; la base también lo valida, pero avisar aquí
   // evita un viaje al servidor con un mensaje menos claro.
-  if ((estado === 'PAUSADA' || estado === 'ANULADA') && !motivo) {
-    return { ok: false, error: 'Indica el motivo para continuar.' }
+  if ((estado === 'PAUSADA' || estado === 'ANULADA') && (!motivo || motivo.length < 3)) {
+    return { ok: false, error: 'Indica el motivo, con al menos 3 letras, para continuar.' }
   }
 
   const { data, error } = await supabase
