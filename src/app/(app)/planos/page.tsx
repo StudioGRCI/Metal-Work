@@ -8,6 +8,7 @@ import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
+import { limitePorVencer } from '@/lib/datos/limite-por-vencer'
 import {
   areasParaEtapas,
   dxfDeCodigo,
@@ -92,7 +93,8 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
   const hoy = hoyLima()
 
   const veOt = puede(perfil, 'ordenes.ver')
-  const [planos, todasLasEtapas, dxf, ots, codigosConocidos, todasLasAreas] = await Promise.all([
+  const [limite, planos, todasLasEtapas, dxf, ots, codigosConocidos, todasLasAreas] = await Promise.all([
+    limitePorVencer(),
     planosDeCodigo(null),
     etapasDeCodigo(null),
     // La base solo se los da a Maestranza y Producción (`puede_ver_dxf`): para Acabados sale vacío.
@@ -226,6 +228,7 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
                       <ListaEtapas
                         etapas={susEtapas}
                         hoy={hoy}
+                        limite={limite}
                         acciones={(e, lugar) => (
                           <>
                             <MarcarEtapa etapa={e} hoy={hoy} />

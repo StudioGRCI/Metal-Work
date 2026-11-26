@@ -35,6 +35,7 @@ import {
   Route,
   Settings,
   Tag,
+  Timer,
   Truck,
   UserCog,
   Users,
@@ -558,6 +559,7 @@ export const NAVEGACION = [
       { titulo: 'Asistencia', ruta: '/rrhh/asistencia', icono: ClipboardCheck, permiso: ['asistencia.marcar', 'asistencia.ver'], descripcion: 'Ingreso y salida de cada persona, marcados en portería', disponible: true },
       { titulo: 'Tardanzas', ruta: '/rrhh/tardanzas', icono: Clock, permiso: ['asistencia.ver', 'rrhh.personal'], descripcion: 'Tardanzas del mes: cada tres, un descuento del sueldo', disponible: true },
       { titulo: 'Permisos', ruta: '/rrhh/permisos', icono: CalendarClock, permiso: ['rrhh.permisos', 'asistencia.ver'], descripcion: 'Las horas de permiso de cada persona: se justifican con sus horas extras, o se descuentan o reportan', disponible: true },
+      { titulo: 'Tiempos de entrega', ruta: '/rrhh/tiempos-de-entrega', icono: Timer, permiso: 'rrhh.tiempos_entrega', descripcion: 'Cada código interno sin entregar, con sus etapas, sus fechas y su semáforo', disponible: true },
       { titulo: 'Horas extras', ruta: '/rrhh/horas-extras', icono: ClockAlert, permiso: ['planilla_diaria.preparar', 'planilla_diaria.ver'], descripcion: 'Lo que pasa de 8 horas al día: pagarlo o reservarlo', disponible: true },
       { titulo: 'Planilla diaria', ruta: '/planilla-diaria', icono: Banknote, permiso: ['planilla_diaria.preparar', 'planilla_diaria.ver'], descripcion: 'Las horas validadas que se pagan, enviadas a Tesorería', disponible: true },
       { titulo: 'Costeo por código', ruta: '/rrhh/costeo', icono: Calculator, permiso: 'rrhh.personal', descripcion: 'Horas de cada persona por código interno y lo que cuestan', disponible: true },
@@ -703,7 +705,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // sin registrar: Gerencia consulta y aprueba (migración 20261020206000); la
   // única que todavía le deja registrar es Proveedores (`proveedores.editar`). Lo
   // de las áreas no es su trabajo (`consulta`): no le cuenta pendientes, cifras
-  // ni el bloque de OT, y no va en «Tus módulos», salvo las cuatro que ya
+  // ni el bloque de OT, y no va en «Tus módulos», salvo las cinco que ya
   // consultaba desde su menú antes (`alInicio`). Las 25 pantallas que su
   // permiso no abre no están aquí: las que se le abran en lectura, con su
   // migración, se suman a su área. No ve los datos reservados del personal
@@ -750,12 +752,13 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
           '/rrhh/horas-extras',
           '/planilla-diaria',
           '/rrhh/observaciones',
+          '/rrhh/tiempos-de-entrega',
         ],
       },
     ],
     telefono: ['/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios'],
     // Lo que consultaba desde su menú antes del 2026-11-25 sigue en su inicio.
-    alInicio: ['/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales'],
+    alInicio: ['/rrhh/tiempos-de-entrega', '/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales'],
   },
   // Cerrado desde #28, como lo estuvo Gerencia hasta el 2026-11-25.
   // Primero Adquisiciones y después la caja diaria, con la que abre y cierra
@@ -871,6 +874,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   RECURSOS_HUMANOS: {
     grupos: [
       { titulo: 'Recursos Humanos', rutas: ['/reportes-diarios', '/rrhh/horas-extras', '/planilla-diaria'] },
+      // Los tiempos de entrega por código, que RR. HH. lleva con el personal (DKS, 2026-11-25).
+      { titulo: 'Entregas', rutas: ['/rrhh/tiempos-de-entrega'] },
       {
         titulo: 'Control del personal',
         rutas: ['/rrhh/personal', '/rrhh/cuentas', '/rrhh/asistencia', '/rrhh/tardanzas', '/rrhh/permisos', '/rrhh/observaciones'],
@@ -935,9 +940,9 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   GERENTE_PRODUCCION: {
     grupos: [
       { titulo: 'Por validar', rutas: ['/reportes-diarios'] },
-      { titulo: 'Avance', rutas: ['/seguimiento'] },
+      { titulo: 'Avance', rutas: ['/seguimiento', '/rrhh/tiempos-de-entrega'] },
     ],
-    telefono: ['/reportes-diarios', '/seguimiento', '/'],
+    telefono: ['/reportes-diarios', '/seguimiento', '/rrhh/tiempos-de-entrega', '/'],
   },
 }
 // El líder de Diseño hace el trabajo de Diseño y además revisa el de su equipo
@@ -1108,6 +1113,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/seguimiento?vista=materiales', corto: 'Materiales' },
   { ruta: '/planilla-diaria', corto: 'Planilla' },
   { ruta: '/rrhh/horas-extras', corto: 'Extras' },
+  { ruta: '/rrhh/tiempos-de-entrega', corto: 'Entregas' },
   { ruta: '/tesoreria/tipo-de-cambio', corto: 'Cambio' },
   { ruta: '/proveedores', corto: 'Proveedores' },
   { ruta: '/subcontratos', corto: 'Subcontratos' },
