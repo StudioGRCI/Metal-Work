@@ -129,7 +129,7 @@ let oc2 = ''
 
 /**
  * En «Por comprar», con lo marcado, «Generar OC» y la ventana: proveedor y precio.
- * Desde #183 la OC sale de la lista de lo que falta comprar, no de una ventana del RQ.
+ * La OC sale de la lista de lo que falta comprar, no de una ventana del RQ.
  */
 async function emitirOc(pagina, insumos) {
   const boton = pagina.getByRole('button', { name: new RegExp(`Generar OC · ${insumos} insumos?`) })
