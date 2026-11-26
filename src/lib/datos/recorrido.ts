@@ -29,7 +29,11 @@ const SITUACIONES: readonly SituacionDelPaso[] = ['HECHO', 'AHORA', 'PENDIENTE']
 // Una fila por paso: cien documentos rara vez pasan de mil, y si pasan se lee otra tanda.
 const POR_TANDA = 100
 
-async function leer(funcion: 'recorrido_de_requerimientos' | 'recorrido_de_cotizaciones', ids: string[], de: string): Promise<Recorridos> {
+async function leer(
+  funcion: 'recorrido_de_requerimientos' | 'recorrido_de_cotizaciones' | 'recorrido_de_planillas',
+  ids: string[],
+  de: string,
+): Promise<Recorridos> {
   const porDocumento: Recorridos = new Map()
   const unicos = [...new Set(ids)]
   if (unicos.length === 0) return porDocumento
@@ -81,3 +85,6 @@ export const recorridoDeRequerimientos = (ids: string[]) => leer('recorrido_de_r
 
 /** El recorrido de esas cotizaciones: solo de las que quien mira ya puede ver. */
 export const recorridoDeCotizaciones = (ids: string[]) => leer('recorrido_de_cotizaciones', ids, 'las cotizaciones')
+
+/** El recorrido de esas planillas del mes. Lo lee quien ve las planillas (`rrhh.ver_planillas`). */
+export const recorridoDePlanillas = (ids: string[]) => leer('recorrido_de_planillas', ids, 'las planillas')
