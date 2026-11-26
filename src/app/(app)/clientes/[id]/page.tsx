@@ -5,11 +5,12 @@ import { Pencil } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
+import { DiasEnEspera } from '@/components/ui/dias-en-espera'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { SinDatos } from '@/components/ui/tabla'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_COTIZACION, ESTADO_DE_LA_UNIDAD, ESTADO_OT, definir } from '@/lib/dominio/estados'
-import { haceDias } from '@/lib/dominio/recorrido'
 import { nombreDeUnidad, tipoDeVehiculo, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { fecha, puesto } from '@/lib/format'
 import type { UnidadNombrable } from '@/lib/dominio/unidades'
@@ -129,7 +130,7 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
         <Tarjeta className="lg:col-span-2">
           <TarjetaCabecera
             titulo="Unidades"
-            ayuda="De cada unidad con OT: en qué va, en una palabra, y la fecha de entrega que se le prometió al cliente."
+            ayuda={AYUDA_DE_UNIDADES}
             descripcion={`${unidades.length} ${unidades.length === 1 ? 'vehículo registrado' : 'vehículos registrados'}`}
             acciones={registraUnidades && <NuevaUnidad clienteId={id} />}
           />
@@ -161,7 +162,9 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
                 {unidades.map((u) => (
                   <li key={u.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                     <NombreUnidad unidad={u} />
-                    <div className="min-w-0 flex-1">
+                    {/* Con ancho propio: en el teléfono los botones bajan a otro renglón y la
+                        fecha comprometida no se parte palabra por palabra. */}
+                    <div className="min-w-48 flex-1">
                       <p className="text-sm text-texto">
                         {[u.marca, u.modelo, u.anio].filter(Boolean).join(' ') || 'Sin datos'}
                       </p>
@@ -190,17 +193,23 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
             <TarjetaCabecera
               titulo="Cotizaciones"
               ayuda="Cómo va cada cotización de este cliente: quién la tiene ahora y desde hace cuántos días. Ábrela para ver su recorrido completo."
-              descripcion={
+              descripcion={[
                 delCliente.total > delCliente.cotizaciones.length
-                  ? `Las ${delCliente.cotizaciones.length} más recientes de ${delCliente.total}`
-                  : `${delCliente.total} ${delCliente.total === 1 ? 'cotización' : 'cotizaciones'}`
-              }
+                  ? `Las ${delCliente.cotizaciones.length} más recientes de ${delCliente.total} vigentes`
+                  : `${delCliente.total} ${delCliente.total === 1 ? 'vigente' : 'vigentes'}`,
+                delCliente.anuladas > 0
+                  ? `y ${delCliente.anuladas} ${delCliente.anuladas === 1 ? 'anulada' : 'anuladas'}, en Cotización`
+                  : null,
+              ].filter(Boolean).join(' ')}
             />
             <TarjetaCuerpo className="p-0">
               {delCliente.cotizaciones.length === 0 ? (
-                <div className="px-4 py-8 text-center">
-                  <p className="text-sm text-texto-suave">Este cliente todavía no tiene cotizaciones.</p>
-                  <p className="mt-1 text-xs text-texto-tenue">Se suben en Cotización, con «Subir cotización».</p>
+                <div className="px-4 py-4">
+                  <SinDatos
+                    compacto
+                    titulo={delCliente.anuladas > 0 ? 'Este cliente no tiene cotizaciones vigentes.' : 'Este cliente todavía no tiene cotizaciones.'}
+                    descripcion={delCliente.anuladas > 0 ? 'Sus anuladas están en Cotización, con el filtro «Anuladas».' : 'Se suben en Cotización, con «Subir cotización».'}
+                  />
                 </div>
               ) : (
                 <>
@@ -213,8 +222,8 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
                     {delCliente.cotizaciones.map((c) => {
                       const estado = definir(ESTADO_COTIZACION, c.estado)
                       const ahora = (c.id && recorridos?.get(c.id)?.find((p) => p.situacion === 'AHORA')) || null
-                      // La anulada no está entre las vigentes: su tarjeta, en el filtro de anuladas.
-                      const enlace = `/cotizaciones/pdf${c.estado === 'ANULADA' ? '?estado=ANULADA' : ''}#${c.id}`
+                      // La tarjeta de esa cotización; `IrALaTarjetaDelAviso` la trae a la vista y la marca.
+                      const enlace = `/cotizaciones/pdf#${c.id}`
                       return (
                         <li key={c.id}>
                           <Link href={enlace} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 hover:bg-superficie-2">
@@ -229,11 +238,8 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
                               <p className="text-xs text-texto-suave">Subida el {fecha(c.creado_en)}</p>
                             </div>
                             {ahora && (
-                              <span className="flex flex-wrap items-center gap-2 text-xs text-texto-suave" data-cotizacion-ahora>
-                                <span>
-                                  La tiene <span className="font-medium text-texto">{ahora.puesto ?? 'alguien'}</span>
-                                </span>
-                                {ahora.dias !== null && <Insignia>{haceDias(ahora.dias)}</Insignia>}
+                              <span data-cotizacion-ahora>
+                                <DiasEnEspera dias={ahora.dias} desde={ahora.en} quien={ahora.puesto ?? 'alguien'} verQuien />
                               </span>
                             )}
                           </Link>
@@ -331,6 +337,29 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
  * la identifique y se dice que le falta, para que nadie lea un código interno
  * como si fuera una matrícula. El aviso se calla cuando el nombre ya lo trae.
  */
+/**
+ * Qué quiere decir cada palabra del estado de la unidad, y por qué puede no ser
+ * la del estado de la OT en «Órdenes de trabajo»: la unidad mira también el
+ * avance de su código interno (la OT de una cotización se queda «Aprobada»
+ * mientras el taller avanza) y el acta de entrega.
+ */
+const AYUDA_DE_UNIDADES = (
+  <>
+    <p>De cada unidad con OT: en qué va, en una palabra, y la fecha de entrega que se le prometió al cliente.</p>
+    <ul className="mt-2 space-y-1">
+      {Object.values(ESTADO_DE_LA_UNIDAD).map((e) => (
+        <li key={e.etiqueta}>
+          <span className="font-medium">{e.etiqueta}</span>: {e.descripcion?.toLowerCase()}.
+        </li>
+      ))}
+    </ul>
+    <p className="mt-2">
+      Puede no coincidir con el estado de la OT en «Órdenes de trabajo»: aquí cuenta también el avance del taller
+      en su código interno y el acta de entrega.
+    </p>
+  </>
+)
+
 function NombreUnidad({ unidad }: { unidad: UnidadNombrable }) {
   const nombre = nombreDeUnidad(unidad)
   const falta = todaviaSinPlaca(unidad)

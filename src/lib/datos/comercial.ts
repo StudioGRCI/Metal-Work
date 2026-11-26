@@ -134,18 +134,30 @@ export async function entregasDeUnidadesDelCliente(clienteId: string): Promise<M
 export const COTIZACIONES_DE_CLIENTE = 20
 
 /**
- * Las cotizaciones del cliente para su ficha (Plan 9.2): número, estado, cuándo
- * se subió y su código y OT si ya los tiene. Sin el monto: eso está en
- * Cotización. Las lee quien ve las cotizaciones (la política de la vista).
+ * Las cotizaciones vigentes del cliente para su ficha (Plan 9.2): número,
+ * estado, cuándo se subió y su código y OT si ya los tiene. Sin el monto: eso
+ * está en Cotización. Las anuladas solo se cuentan, como en Cotización, que
+ * por defecto tampoco las muestra. Las lee quien ve las cotizaciones (la
+ * política de la vista).
  */
 export async function cotizacionesDelCliente(clienteId: string) {
   const supabase = await createClient()
-  const { data, error, count } = await supabase
-    .from('v_cotizaciones_pdf')
-    .select('id, numero, estado, creado_en, carroceria, version, orden_numero, codigo_interno', { count: 'exact' })
-    .eq('cliente_id', clienteId)
-    .order('creado_en', { ascending: false })
-    .limit(COTIZACIONES_DE_CLIENTE)
+  const [vigentes, anuladas] = await Promise.all([
+    supabase
+      .from('v_cotizaciones_pdf')
+      .select('id, numero, estado, creado_en, carroceria, version, orden_numero, codigo_interno', { count: 'exact' })
+      .eq('cliente_id', clienteId)
+      .neq('estado', 'ANULADA')
+      .order('creado_en', { ascending: false })
+      .limit(COTIZACIONES_DE_CLIENTE),
+    supabase
+      .from('v_cotizaciones_pdf')
+      .select('id', { count: 'exact', head: true })
+      .eq('cliente_id', clienteId)
+      .eq('estado', 'ANULADA'),
+  ])
+  const error = vigentes.error ?? anuladas.error
   if (error) throw new Error(`No se pudieron cargar las cotizaciones del cliente: ${error.message}`)
-  return { cotizaciones: data ?? [], total: count ?? (data ?? []).length }
+  const data = vigentes.data ?? []
+  return { cotizaciones: data, total: vigentes.count ?? data.length, anuladas: anuladas.count ?? 0 }
 }

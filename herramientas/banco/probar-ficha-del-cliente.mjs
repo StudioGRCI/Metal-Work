@@ -10,10 +10,13 @@
  *   2. En /clientes/<id>, cada unidad con OT dice su estado en una palabra, su
  *      OT y la fecha de entrega comprometida, igual que la base con la sesión de
  *      Ventas; la unidad sin OT no dice nada. Ningún porcentaje en la tarjeta.
- *   3. La tarjeta «Cotizaciones» lista las del cliente con su estado y quién la
- *      tiene ahora; su enlace lleva a la tarjeta de esa cotización.
- *   4. Administración ve la ficha igual; Almacén, sin `clientes.ver`, no entra.
- *   5. En el teléfono (390) nada se sale de la pantalla.
+ *   3. La tarjeta «Cotizaciones» lista las vigentes del cliente con su estado y
+ *      quién la tiene ahora (las anuladas solo se cuentan); su enlace lleva a la
+ *      tarjeta de esa cotización, a la vista y marcada.
+ *   4. En el teléfono, la fecha comprometida se lee en un renglón: los botones
+ *      de la unidad bajan, no la aprietan.
+ *   5. Administración ve la ficha igual; Almacén, sin `clientes.ver`, no entra.
+ *   6. En el teléfono (390) nada se sale de la pantalla.
  *
  * Deja capturas en CAPTURAS, en 390 y 1440. Variables: BANCO_CLAVE, BASE
  * (http://localhost:3111), BANCO_BASE (mw_demo), BANCO_CHROMIUM, CAPTURAS.
@@ -108,7 +111,7 @@ if (!(await uno(`select 1 as hay from public.cotizaciones_pdf where cliente_id =
 // Lo que dice la base con la sesión de Ventas.
 const deLaBase = new Map((await comoCuenta('ventas', `select unidad_id, ot_numero, estado, to_char(fecha_entrega, 'DD/MM/YYYY') as fecha from public.unidades_del_cliente_con_su_entrega($1)`, [cliente.id]))
   .map((f) => [f.unidad_id, f]))
-const cotizacionesDeLaBase = await comoCuenta('ventas', `select id, numero, estado from public.cotizaciones_pdf where cliente_id = $1 order by creado_en desc limit 20`, [cliente.id])
+const cotizacionesDeLaBase = await comoCuenta('ventas', `select id, numero, estado from public.cotizaciones_pdf where cliente_id = $1 and estado <> 'ANULADA' order by creado_en desc limit 20`, [cliente.id])
 
 // ============================================ La pantalla
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
@@ -167,7 +170,8 @@ for (const ancho of [1440, 390]) {
   const lista = pagina.locator('[data-cotizaciones-del-cliente] > li')
   comprobar((await lista.count()) === cotizacionesDeLaBase.length, `${ancho}: ${await lista.count()} cotizaciones en la ficha, ${cotizacionesDeLaBase.length} en la base`)
   const conAhora = await pagina.locator('[data-cotizacion-ahora]').allInnerTexts()
-  comprobar(conAhora.every((t) => /La tiene .+/.test(limpio(t))), `${ancho}: quién la tiene (${limpio(conAhora[0] ?? 'ninguna espera')})`)
+  comprobar(conAhora.length > 0 && conAhora.every((t) => /^\S.* · (hace \d+ días?|desde hoy)$/.test(limpio(t))), `${ancho}: quién la tiene y hace cuánto (${limpio(conAhora[0] ?? 'ninguna espera')})`)
+  comprobar(!(await pagina.locator('[data-cotizaciones-del-cliente]').innerText()).includes('Anulada'), `${ancho}: sin anuladas en la lista`)
 
   if (ancho === 1440) {
     await pagina.locator('h1').scrollIntoViewIfNeeded()
@@ -177,7 +181,23 @@ for (const ancho of [1440, 390]) {
     await lista.first().locator('a').click()
     await pagina.waitForURL((u) => u.pathname === '/cotizaciones/pdf', { timeout: 15000 }).catch(() => {})
     comprobar(pagina.url().endsWith(`#${primera.id}`), `el enlace lleva a la tarjeta de la ${primera.numero} (${pagina.url()})`)
+    const aLaVista = await pagina
+      .waitForFunction((id) => {
+        const el = document.getElementById(id)
+        const r = el?.getBoundingClientRect()
+        return Boolean(el?.hasAttribute('data-del-aviso') && r && r.top >= 0 && r.top < window.innerHeight)
+      }, primera.id, { timeout: 15000 })
+      .then(() => true, () => false)
+    comprobar(aLaVista, 'y la deja a la vista y marcada')
   } else {
+    // La fecha comprometida, en un renglón: los botones de la fila bajan.
+    for (const u of sembradas) {
+      const lineas = await filaDeUnidad(pagina, u.placa).locator('[data-entrega-unidad]').evaluate((el) => {
+        const alto = parseFloat(getComputedStyle(el).lineHeight) || 16
+        return Math.round(el.getBoundingClientRect().height / alto)
+      })
+      comprobar(lineas <= 2, `390: lo de ${u.placa} ocupa ${lineas} renglón(es)`)
+    }
     const ancho390 = await pagina.evaluate(() => document.documentElement.scrollWidth)
     comprobar(ancho390 <= 390, `390: nada se sale (ancho ${ancho390})`)
     await pagina.screenshot({ path: `${CAPTURAS}/9-2-ventas-390-ficha.png`, fullPage: true })
