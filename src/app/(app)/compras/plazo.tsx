@@ -71,10 +71,12 @@ export function PlazoDeLaCompra({
       </span>,
     )
   } else if (plazo.llego_en) {
-    // Lo que el conductor dejó y Almacén no valida todavía no falta: está por validar.
+    // Lo que el conductor dejó y Almacén no valida todavía no falta: está por
+    // validar. Lo que falta lo dice el pliegue de abajo: «llegó en parte» mentía
+    // cuando Almacén observó todo y no entró nada.
     partes.push(
       <span key="llego">
-        {plazo.por_validar ? 'Dejada en almacén' : 'Llegó en parte'} <span className="tabular">{fecha(plazo.llego_en)}</span>
+        Dejada en almacén <span className="tabular">{fecha(plazo.llego_en)}</span>
         {plazo.por_validar && ', por validar'}
       </span>,
     )

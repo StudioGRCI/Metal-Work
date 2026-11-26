@@ -18,6 +18,8 @@
 --     lo devuelto que ya no se repone. Lo devuelto que el proveedor repone
 --     todavía falta. Lo que el conductor dejó y Almacén todavía no valida no
 --     falta: está por validar, y la OC no está completa hasta que se valide.
+--     Pero si ya llegó todo y solo falta validarlo, no está atrasada: el plazo
+--     se cuenta hasta que se dejó, porque esa espera es de Almacén.
 --     Su fecha real es cuándo llegó lo último que la completó: lo que trajo el
 --     conductor, cuando lo dejó (no cuando Almacén lo validó, que no es demora
 --     del proveedor); lo recibido a mano y la reposición, cuando se registró.
@@ -119,6 +121,8 @@ begin
            count(*) as n,
            count(*) filter (where l.falta > 0) as con_falta,
            count(*) filter (where l.por_validar > 0) as con_por_validar,
+           (select max(ip.dejado_en) from public.ingresos_pendientes_almacen ip
+             where ip.orden_compra_id = l.oc and ip.estado = 'PENDIENTE') as ultimo_por_validar,
            (select max(coalesce(ip.dejado_en, m.registrado_en)) from public.movimientos_materiales m
               left join public.ingresos_pendientes_almacen ip on ip.movimiento_id = m.id
              where m.tipo = 'INGRESO' and m.orden_compra_detalle_id in (select x.id from lineas x where x.oc = l.oc)) as ultimo_ingreso
@@ -143,7 +147,11 @@ begin
              when a.oc is not null then o.entregado_almacen_en
              when o.entregado_almacen_en is not null and coalesce(c.con_falta, 0) = 0 and coalesce(c.con_por_validar, 0) = 0
                then greatest(o.entregado_almacen_en, c.ultimo_ingreso)
-           end as completa_en
+           end as completa_en,
+           -- Ya llegó todo y falta que Almacén lo valide: la demora de Almacén no es
+           -- del proveedor, así que el plazo se cuenta hasta que se dejó.
+           case when o.entregado_almacen_en is not null and coalesce(c.con_falta, 0) = 0
+                then greatest(o.entregado_almacen_en, c.ultimo_ingreso, c.ultimo_por_validar) end as llego_todo_en
       from oc o
       left join cuenta c on c.oc = o.id
       left join antigua a on a.oc = o.id
@@ -152,9 +160,10 @@ begin
          case
            when e.esperada is null then null
            when e.completa_en is not null then greatest(public.fecha_de_lima(e.completa_en) - e.esperada, 0)
+           when e.llego_todo_en is not null then greatest(public.fecha_de_lima(e.llego_todo_en) - e.esperada, 0)
            when e.vigente then greatest(v_hoy - e.esperada, 0)
          end::integer,
-         (e.vigente and e.completa_en is null and e.esperada is not null and e.esperada < v_hoy),
+         (e.vigente and e.completa_en is null and e.llego_todo_en is null and e.esperada is not null and e.esperada < v_hoy),
          -- Lo que falta, solo de la que llegó a medias: antes de llegar falta todo.
          case when e.llego_en is not null and e.completa_en is null then (
            select coalesce(jsonb_agg(jsonb_build_object(
