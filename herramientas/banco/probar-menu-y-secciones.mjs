@@ -3,7 +3,7 @@
  * menú lateral compacto con grupos que se pliegan y lo recuerdan, y una sola
  * fila de secciones para la OT y el código interno.
  *
- *   1. Con la cuenta de cada uno de los 18 puestos, a 1440 × 760 (lo que
+ *   1. Con la cuenta de cada uno de los 19 puestos, a 1440 × 760 (lo que
  *      deja de alto un monitor de 900 con el navegador), el menú entra entero
  *      sin deslizar, no repite ícono entre dos pantallas y nunca deja un solo
  *      grupo que se pliegue (ese va fijo).
@@ -37,7 +37,7 @@ const CAPTURAS = process.env.CAPTURAS ?? '/tmp/banco-capturas'
 const PUESTOS = [
   'gerencia', 'gerencia.comercial', 'gerencia.produccion', 'administracion', 'almacen', 'logistica',
   'conductor', 'contabilidad', 'diseno', 'colaborador', 'porteria', 'rrhh', 'requerimientos',
-  'sup.prd', 'sup.mtz', 'sup.acb', 'tesoreria', 'ventas',
+  'sup.prd', 'sup.mtz', 'sup.acb', 'tesoreria', 'tramitador', 'ventas',
 ]
 if (!CLAVE) {
   console.error('Falta BANCO_CLAVE.')

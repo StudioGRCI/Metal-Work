@@ -335,6 +335,10 @@ async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo:
       const { data } = await supabase.from('garantia_reclamos').select('numero, registrado_por').eq('id', id).maybeSingle()
       return data && { por: data.registrado_por, lo: dicho('El reclamo', 'Los reclamos', 'otro', data.numero) }
     }
+    case 'tramite': {
+      const { data } = await supabase.from('tramites').select('numero, registrado_por').eq('id', id).maybeSingle()
+      return data && { por: data.registrado_por, lo: dicho('El trámite', 'Los trámites', 'otro', data.numero) }
+    }
     case 'reporte_averia': {
       const { data } = await supabase.from('averias').select('numero, registrado_por').eq('id', id).maybeSingle()
       return data && { por: data.registrado_por, lo: dicho('El reporte', 'Los reportes', 'otro', data.numero) }

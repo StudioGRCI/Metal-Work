@@ -1161,6 +1161,38 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       },
     })
   }
+  // Trámites (plan «El puesto de Tramitador», entrega 1): a Gerencia, las
+  // anulaciones que esperan su visto; a quien los lleva, los que pasaron su
+  // fecha límite y los que la entidad observó. Cuál le toca a quien mira lo
+  // dice la base (`puede_resolver_anulacion`, `puede_actualizar`), con la misma
+  // regla que la función que escribe.
+  const tramites = async (filtro: 'por_resolver' | 'vencidos' | 'observados') => {
+    const consulta = supabase.rpc('tramites_visibles', { p_id: null }).select('id')
+    const { data, error } = await (filtro === 'por_resolver'
+      ? consulta.eq('puede_resolver_anulacion', true)
+      : filtro === 'vencidos'
+        ? consulta.eq('puede_actualizar', true).eq('vencido', true)
+        : consulta.eq('puede_actualizar', true).eq('estado', 'OBSERVADO').eq('vencido', false))
+    if (error) throw new Error('No se pudo consultar el pendiente.')
+    return (data ?? []).length
+  }
+  if (puede(perfil, 'tramites.aprobar_anulacion')) tareas.push({
+    clave: 'tramites_por_anular', ruta: '/tramites?vista=por-anular', tono: 'aviso',
+    texto: n => plural(n, 'anulación de trámite espera tu visto', 'anulaciones de trámite esperan tu visto'),
+    contar: () => tramites('por_resolver'),
+  })
+  if (puede(perfil, 'tramites.gestionar')) {
+    tareas.push({
+      clave: 'tramites_vencidos', ruta: '/tramites', tono: 'peligro',
+      texto: n => plural(n, 'trámite pasó su fecha límite', 'trámites pasaron su fecha límite'),
+      contar: () => tramites('vencidos'),
+    })
+    tareas.push({
+      clave: 'tramites_observados', ruta: '/tramites', tono: 'aviso',
+      texto: n => plural(n, 'trámite observado por la entidad', 'trámites observados por la entidad'),
+      contar: () => tramites('observados'),
+    })
+  }
   // SSOMA (15.2): las acciones correctivas a cargo de quien mira, que puede ser
   // cualquier cuenta; la política de `ssoma_acciones` le deja contar las suyas.
   // Las vencidas aparte y en rojo: son las que la pantalla pone arriba.
