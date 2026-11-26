@@ -149,6 +149,12 @@ select test.afirmar(
     where usuario_id = public.usuario_actual() and titulo = 'Informe de Diseño aprobado'
       and cuerpo not like '%Motivo%'),
   'la campana le avisa que se aprobó');
+select test.como_usuario(:'colab2_id');
+select test.afirmar(
+  (select count(*) = 0 from public.notificaciones
+    where usuario_id = public.usuario_actual() and origen_id = current_setting('prueba.r.informe')::uuid),
+  'al otro colaborador tampoco le llega el aviso de aprobado');
+select test.como_usuario(:'colab_id');
 select test.afirmar(
   (select bool_and(coalesce(puesto, '') not like '%QA472%' and coalesce(detalle, '') not like '%QA472%')
      from public.recorrido_de_informes_diseno(array[current_setting('prueba.r.informe')::uuid])),

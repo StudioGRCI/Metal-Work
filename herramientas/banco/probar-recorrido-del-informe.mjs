@@ -250,6 +250,10 @@ await colab.pagina.screenshot({ path: `${CAPTURAS}/7-1-colaborador-1440-1b-por-t
 const otro = await entrar('colaborador2', 390)
 await ir(otro.pagina, `/diseno/informe-semanal?semana=${semanaAnterior}`)
 comprobar(await otro.pagina.locator('[data-por-terminar]').count() === 0, 'el otro colaborador no la tiene por terminar')
+await ir(otro.pagina, ruta)
+const avisoOtro = limpio(await otro.pagina.locator('[data-motivo-devolucion]').innerText().catch(() => ''))
+comprobar(avisoOtro.startsWith('Diseño devolvió este informe para corregir'),
+  `si abre la semana por su dirección, el aviso no le dice «te devolvió» («${avisoOtro.slice(0, 60)}»)`)
 await ir(otro.pagina, '/avisos')
 comprobar(!(await otro.pagina.locator('body').innerText()).includes(MOTIVO), 'ni la ve en sus avisos')
 await otro.contexto.close()

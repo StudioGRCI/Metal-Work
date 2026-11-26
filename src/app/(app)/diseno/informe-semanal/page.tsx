@@ -110,6 +110,9 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
   const semanaDeHoy = inicioSemanaDiseno(hoyLima())
   const porTerminar = (semanas ?? []).filter((s) => s.semana_inicio !== inicio
     && (s.estado === 'OBSERVADO' || (s.estado === 'BORRADOR' && (s.semana_inicio ?? '') < semanaDeHoy)))
+  // «Te devolvió» solo a quien hizo el informe (lo empezó o anotó en su
+  // semana); otro colaborador que abre la semana por su dirección lo lee neutro.
+  const esMio = puedeEscribir && (semanas === null || semanas.some((s) => s.id === informe?.id))
   const abierta = !datos.enviado
   const escribe = puedeEscribir && abierta
   const disenadores = [...new Set([...datos.tareas.map((t) => t.responsable), ...datos.entregas.map((e) => e.responsable)])].sort()
@@ -132,7 +135,8 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
       {informe?.estado === 'OBSERVADO' && <div role="note" data-motivo-devolucion
         className="rounded-[var(--radius-base)] border border-aviso/40 bg-aviso-suave p-4 text-sm">
         <p className="font-semibold text-aviso">
-          {puedeEscribir ? 'Diseño te devolvió este informe para corregir' : 'Devuelto al colaborador para corregir'}
+          {esMio ? 'Diseño te devolvió este informe para corregir'
+            : puedeEscribir ? 'Diseño devolvió este informe para corregir' : 'Devuelto al colaborador para corregir'}
         </p>
         <p className="mt-1 max-w-prose whitespace-pre-wrap break-words text-texto">
           {informe.observacion_revision?.trim() || 'Diseño no dejó escrito el motivo.'}
