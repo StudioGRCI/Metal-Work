@@ -541,9 +541,9 @@ export type Database = {
           nota_de_quien_reporto: string | null
           veces_reabierta: number
           reabierta_en: string | null
-          paro_al_reportar: boolean
           diagnostico_por: string | null
           diagnostico_en: string | null
+          paro_al_reportar: boolean
         }
         Insert: {
           id?: string
@@ -576,9 +576,9 @@ export type Database = {
           nota_de_quien_reporto?: string | null
           veces_reabierta?: number
           reabierta_en?: string | null
-          paro_al_reportar?: boolean
           diagnostico_por?: string | null
           diagnostico_en?: string | null
+          paro_al_reportar?: boolean
         }
         Update: {
           id?: string
@@ -611,9 +611,9 @@ export type Database = {
           nota_de_quien_reporto?: string | null
           veces_reabierta?: number
           reabierta_en?: string | null
-          paro_al_reportar?: boolean
           diagnostico_por?: string | null
           diagnostico_en?: string | null
+          paro_al_reportar?: boolean
         }
         Relationships: [
           {
