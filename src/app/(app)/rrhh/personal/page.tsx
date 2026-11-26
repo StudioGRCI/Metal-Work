@@ -61,7 +61,8 @@ export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/r
             <tr>
               <TH>Persona</TH>
               <TH className="hidden md:table-cell">Horario</TH>
-              {ve && <TH className="hidden lg:table-cell">Cuenta</TH>}
+              {/* La cuenta bancaria la lee solo RR. HH. (migración 20261126620000); el administrador ve el sueldo. */}
+              {ve && <TH className="hidden lg:table-cell">{gestiona ? 'Cuenta' : 'Sueldo'}</TH>}
               <TH>Estado</TH>
               {gestiona && (
                 <TH className="text-right">
@@ -105,7 +106,7 @@ function FilaTrabajador({
 }: {
   trabajador: Trabajador
   areas: { id: string; codigo: string; nombre: string }[]
-  /** Ve la cuenta bancaria: RR. HH. y el administrador. */
+  /** Ve el sueldo y el costo: RR. HH. y el administrador. La cuenta, solo quien `gestiona`. */
   ve: boolean
   /** Corrige la ficha: solo RR. HH. */
   gestiona: boolean
@@ -151,7 +152,7 @@ function FilaTrabajador({
       </TD>
       {ve && (
         <TD className="hidden align-top lg:table-cell">
-          {t.cuenta ? (
+          {!gestiona ? null : t.cuenta ? (
             <>
               <p className="text-sm text-texto">
                 {t.cuenta.banco} · {TIPO_CUENTA[t.cuenta.tipo_cuenta]?.etiqueta ?? t.cuenta.tipo_cuenta}

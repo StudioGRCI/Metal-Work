@@ -29,10 +29,13 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
   const paga = puede(perfil, 'planilla_diaria.pagar')
   // Registra y anula pagos quien además lleva la caja: el pago sale de una de sus cuentas (la base pide los dos permisos).
   const pagaDeLaCaja = paga && puede(perfil, 'tesoreria.caja')
+  // La cuenta de cada persona la ve quien paga o arma la planilla, no el administrador
+  // (migración 20261126620000): a él la base no se la da, y diría «sin cuenta».
+  const veCuentas = editaComoRrhh(perfil, 'planilla_diaria.preparar') || editaComoRrhh(perfil, 'planilla_diaria.pagar')
   const { id } = await params
   if (!GUID.test(id)) notFound()
   const [p, cuentasCaja] = await Promise.all([
-    planillaDiaria(id, arma || paga),
+    planillaDiaria(id, veCuentas),
     // La cuenta de la que sale cada pago: la caja diaria se mueve sola (20261019100000).
     pagaDeLaCaja ? cuentasParaPagar() : Promise.resolve([]),
   ])
@@ -108,7 +111,7 @@ export default async function PaginaPlanilla({ params }: PageProps<'/planilla-di
                 anulada={anulada}
                 arma={edita}
                 paga={paga}
-                conCuenta={(arma || paga) && !anulada}
+                conCuenta={veCuentas && !anulada}
               />
             ))}
           </ul>
