@@ -5,13 +5,15 @@
  *
  *   1. Diseño ve en «Esperan tu visto» cada RQ con quién lo pidió (el puesto
  *      del paso de registro) y los días que lleva esperándolo, lo mismo que da
- *      la base con su sesión; el que más espera, arriba.
+ *      la base con su sesión; el de sustento más antiguo, arriba. Si otro
+ *      insumo del RQ espera sustento, dice quién lo tiene. La firma del
+ *      sustento va por puesto, sin el nombre de la persona.
  *   2. En «Esperan el sustento», los días y el puesto de quien lo tiene.
- *   3. En «Ya los autorizaste», el RQ autorizado con su recorrido: lo tiene
+ *   3. En «Ya autorizados por Diseño», el RQ autorizado con su recorrido: lo tiene
  *      Almacén, y abierto dice que Diseño lo autorizó.
  *   4. Capturas en 390 y 1440, sin nada fuera de la pantalla.
- *   5. Diseño autoriza con un toque y el RQ pasa a «Ya los autorizaste», con el
- *      recorrido en Almacén.
+ *   5. Diseño autoriza con un toque y el RQ pasa a «Ya autorizados», con el
+ *      recorrido en Almacén. Al final se deshace, para poder repetir la sonda.
  *   6. Logística y el supervisor no entran.
  *
  * Necesita lo que siembran `sembrar-diseno-por-codigo.sql` y
@@ -150,6 +152,19 @@ async function recorridoEnLaBase() {
   return de
 }
 const enBase = await recorridoEnLaBase()
+/** Los RQ que esperan el visto de Diseño, del sustento más antiguo al más nuevo, según la base. */
+const esperanVistoEnLaBase = async () => {
+  const filas = await comoCuenta(
+    'diseno',
+    `select q.numero, min(m.sustentado_en) as desde
+       from public.metrado_de_requerimientos($1::uuid[]) m join public.requerimientos q on q.id = m.requerimiento_id
+      where m.estado = 'POR_AUTORIZAR' group by q.numero order by 2`,
+    [ids],
+  )
+  return filas.map((f) => f.numero)
+}
+const nombres = (await consulta(`select nombres, apellidos from public.usuarios where correo like 'sup.%.local@metalwork.test'`))
+  .map((u) => `${u.nombres} ${u.apellidos}`)
 const porPaso = (paso) => [...enBase].filter(([, r]) => r.paso === paso).sort(([, a], [, b]) => a.en - b.en).map(([n]) => n)
 
 // ------------------------------------------------ 1 a 3. Diseño, en el monitor
@@ -158,20 +173,29 @@ const porPaso = (paso) => [...enBase].filter(([, r]) => r.paso === paso).sort(([
   await ir(pagina, '/requerimientos/metrado')
 
   const visto = await tarjetas(pagina, 'por-autorizar')
-  const esperanVisto = porPaso('VISTO_DISENO')
-  comprobar(esperanVisto.length >= 2, `la base tiene al menos dos RQ que esperan a Diseño (${esperanVisto.join(', ')})`)
+  const esperanVisto = await esperanVistoEnLaBase()
+  comprobar(esperanVisto.length >= 3, `la base tiene al menos tres RQ que esperan a Diseño (${esperanVisto.join(', ')})`)
   comprobar(
     JSON.stringify(visto.map((t) => t.numero)) === JSON.stringify(esperanVisto),
-    `«Esperan tu visto» va del que más espera al que menos: ${visto.map((t) => t.numero).join(', ')} (base: ${esperanVisto.join(', ')})`,
+    `«Esperan tu visto» va del sustento más antiguo al más nuevo: ${visto.map((t) => t.numero).join(', ')} (base: ${esperanVisto.join(', ')})`,
   )
   for (const t of visto) {
     const b = enBase.get(t.numero)
     comprobar(t.pidio === `Pidió: ${b?.pidio}`, `${t.numero}: «${t.pidio}» es el puesto que da la base (${b?.pidio})`)
     comprobar(t.dias === String(b?.dias), `${t.numero}: espera ${t.dias} días, como da la base (${b?.dias})`)
+    // Si lo tiene otro (un insumo espera sustento), se dice quién; si lo tiene Diseño, solo los días.
+    comprobar(
+      b?.paso === 'VISTO_DISENO' ? !t.espera?.includes('·') : t.espera?.startsWith(`${b?.quien} ·`),
+      `${t.numero}: «${t.espera}» (lo tiene ${b?.quien}, paso ${b?.paso})`,
+    )
+    const texto = await pagina.locator(`section[aria-labelledby="por-autorizar"] [data-rq="${t.numero}"]`).textContent()
+    comprobar(!nombres.some((n) => texto.includes(n)), `${t.numero}: ningún nombre de persona en la tarjeta, solo puestos`)
   }
+  comprobar(visto.some((t) => enBase.get(t.numero)?.paso === 'SUSTENTO'), 'hay un RQ con un insumo que espera el visto y otro el sustento (el caso mixto)')
 
   const sustento = await tarjetas(pagina, 'sin-sustento')
-  const esperanSustento = porPaso('SUSTENTO')
+  // Los que esperan sustento y ningún visto: el mixto ya va arriba, en «Esperan tu visto».
+  const esperanSustento = porPaso('SUSTENTO').filter((n) => !esperanVisto.includes(n))
   comprobar(
     JSON.stringify(sustento.map((t) => t.numero)) === JSON.stringify(esperanSustento),
     `«Esperan el sustento» lleva los RQ que da la base: ${sustento.map((t) => t.numero).join(', ')}`,
@@ -196,6 +220,34 @@ const porPaso = (paso) => [...enBase].filter(([, r]) => r.paso === paso).sort(([
     comprobar(abierto.includes('Diseño lo autorizó') && abierto.includes('Registrado'), `${t.numero}: abierto, el recorrido dice que Diseño lo autorizó`)
   }
   await contexto.close()
+}
+
+// ------------------------------------------------ 3b. Si Diseño amplía el metrado, el autorizado sigue ahí
+{
+  const autorizado = [...enBase].find(([, r]) => r.paso === 'REVISION_STOCK')?.[0]
+  const [{ codigo }] = await consulta('select codigo_interno as codigo from public.requerimientos where numero = $1', [autorizado])
+  const ampliar = async (por) => {
+    await base.query('begin')
+    await base.query('set local session_replication_role = replica')
+    await base.query('update public.codigo_materiales set cantidad = cantidad + $2 where codigo_interno = $1 and quitado_en is null', [codigo, por])
+    await base.query('commit')
+  }
+  await ampliar(100)
+  try {
+    const [m] = await comoCuenta('diseno', 'select m.estado, m.decision from public.metrado_de_requerimientos($1::uuid[]) m', [
+      [sembrados.find((r) => r.numero === autorizado).id],
+    ])
+    const { pagina, contexto } = await entrar('diseno')
+    await ir(pagina, '/requerimientos/metrado')
+    const siguen = await tarjetas(pagina, 'ya-autorizados')
+    comprobar(
+      m?.estado === 'EN_METRADO' && m?.decision === 'AUTORIZADO' && siguen.some((t) => t.numero === autorizado),
+      `con el metrado de ${codigo} ampliado, ${autorizado} queda «en el metrado» y sigue en «Ya autorizados» (${m?.estado})`,
+    )
+    await contexto.close()
+  } finally {
+    await ampliar(-100)
+  }
 }
 
 // ------------------------------------------------ 4. Capturas, 390 y 1440
@@ -236,6 +288,16 @@ for (const ancho of [390, 1440]) {
   )
   comprobar(estado?.estado === 'AUTORIZADO', `en la base, el insumo de ${numero} quedó autorizado (${estado?.estado})`)
   await contexto.close()
+  // Se deshace, sin disparadores, para poder repetir la sonda: el visto vuelve a faltar.
+  await base.query('begin')
+  await base.query('set local session_replication_role = replica')
+  await base.query(
+    `update public.requerimiento_sustentos s set decision = null, nota_decision = null, decidido_por = null, decidido_en = null
+       from public.requerimiento_lineas l join public.requerimientos q on q.id = l.requerimiento_id
+      where s.requerimiento_linea_id = l.id and q.numero = $1`,
+    [numero],
+  )
+  await base.query('commit')
 }
 
 // ------------------------------------------------ 6. Quien no autoriza no entra

@@ -56,17 +56,20 @@ export default async function PaginaPorAutorizar({ searchParams }: PageProps<'/r
   const sinSustento = abiertos.filter(
     (r) => de(r, ['POR_AUTORIZAR']).length === 0 && de(r, ['SIN_SUSTENTO', 'RECHAZADO']).length > 0 && busca(r),
   )
-  // Lo que ya autorizaste y sigue abierto: el visto más reciente arriba, hasta
-  // veinte. Lo que no autorizaste vuelve a quien pidió y ya sale arriba.
+  // Lo que Diseño ya autorizó y sigue abierto: el visto más reciente arriba,
+  // hasta veinte. Se mira el visto, no el estado de hoy: si después se amplió el
+  // metrado, el insumo pasa a «en el metrado» y el visto sigue dado. Lo que no se
+  // autorizó vuelve a quien pidió y ya sale arriba.
+  const autorizadas = (r: RequerimientoListado) => r.lineas.filter((l) => metrado.get(l.id)?.decision === 'AUTORIZADO')
   const ultimoVisto = (r: RequerimientoListado) =>
-    de(r, ['AUTORIZADO']).reduce((max, l) => {
+    autorizadas(r).reduce((max, l) => {
       const en = metrado.get(l.id)?.decidido_en ?? ''
       return en > max ? en : max
     }, '')
-  const autorizados = abiertos
-    .filter((r) => de(r, ['AUTORIZADO']).length > 0 && de(r, ['POR_AUTORIZAR', 'SIN_SUSTENTO', 'RECHAZADO']).length === 0 && busca(r))
+  const todosLosAutorizados = abiertos
+    .filter((r) => autorizadas(r).length > 0 && de(r, ['POR_AUTORIZAR', 'SIN_SUSTENTO', 'RECHAZADO']).length === 0 && busca(r))
     .sort((a, b) => ultimoVisto(b).localeCompare(ultimoVisto(a)))
-    .slice(0, AUTORIZADOS_A_LA_VISTA)
+  const autorizados = todosLosAutorizados.slice(0, AUTORIZADOS_A_LA_VISTA)
 
   // Quién pidió cada RQ, quién lo tiene ahora y desde cuándo, con los días que
   // cuenta la base (fecha de Lima). Sin eso la bandeja sigue: sin días ni recorrido.
@@ -79,9 +82,21 @@ export default async function PaginaPorAutorizar({ searchParams }: PageProps<'/r
   const paso = (r: RequerimientoListado, cual: (p: PasoDelRecorrido) => boolean) => recorridos?.get(r.id)?.find(cual)
   const ahora = (r: RequerimientoListado) => paso(r, (p) => p.situacion === 'AHORA')
   const pidio = (r: RequerimientoListado) => paso(r, (p) => p.paso === 'REGISTRO' && p.situacion === 'HECHO')?.puesto ?? null
-  // El que más espera arriba: desde que espera, según el recorrido; sin él, desde que se registró.
+  /** El puesto de quien sustentó a esa hora (del recorrido), nunca su nombre. */
+  const sustento = (r: RequerimientoListado, en: string | null) =>
+    en
+      ? (recorridos?.get(r.id) ?? []).filter((p) => p.paso === 'SUSTENTO' && p.situacion === 'HECHO' && p.en && p.en <= en).at(-1)?.puesto ?? null
+      : null
+  // El que más espera arriba. Lo que espera tu visto, desde el sustento más
+  // antiguo de lo que espera tu visto (si otro insumo del RQ espera sustento, el
+  // recorrido dice que lo tiene quien pidió); lo demás, desde que lo tiene quien
+  // lo tiene. Sin el recorrido, desde que se registró. Solo se comparan fechas.
+  const desdeElSustento = (r: RequerimientoListado) =>
+    de(r, ['POR_AUTORIZAR'])
+      .map((l) => metrado.get(l.id)?.sustentado_en ?? r.creado_en)
+      .sort()[0] ?? r.creado_en
   const desde = (r: RequerimientoListado) => ahora(r)?.en ?? r.creado_en
-  porAutorizar.sort((a, b) => desde(a).localeCompare(desde(b)))
+  porAutorizar.sort((a, b) => desdeElSustento(a).localeCompare(desdeElSustento(b)))
   sinSustento.sort((a, b) => desde(a).localeCompare(desde(b)))
   const hayAlgo = porAutorizar.length + sinSustento.length + autorizados.length > 0
 
@@ -105,8 +120,8 @@ export default async function PaginaPorAutorizar({ searchParams }: PageProps<'/r
 
       {recorridos === null && hayAlgo && (
         <p role="status" className="mb-3 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-dias-sin-leer>
-          No se pudo leer quién pidió cada requerimiento ni cuántos días lleva esperando: la bandeja sigue sin esos datos y sin
-          ordenarse por espera. Vuelve a cargar la pantalla en un momento.
+          No se pudo leer el recorrido de los requerimientos: quién pidió cada uno, cuántos días lleva esperando y, en los ya
+          autorizados, por dónde van. La bandeja sigue sin esos datos. Vuelve a cargar la pantalla en un momento.
         </p>
       )}
 
@@ -134,7 +149,8 @@ export default async function PaginaPorAutorizar({ searchParams }: PageProps<'/r
           ) : (
             porAutorizar.map((r) => (
               <Tarjeta key={r.id} className="overflow-hidden" data-rq={r.numero}>
-                <CabeceraDelRq rq={r} cargaMetrado={cargaMetrado} pidio={pidio(r)} espera={ahora(r)} />
+                {/* Si el recorrido dice que lo tiene otro (un insumo espera sustento), se dice quién. */}
+                <CabeceraDelRq rq={r} cargaMetrado={cargaMetrado} pidio={pidio(r)} espera={ahora(r)} verQuien={ahora(r)?.paso !== 'VISTO_DISENO'} />
                 <OtrosQueFrenan rq={r} items={de(r, ['SIN_SUSTENTO', 'RECHAZADO']).map((l) => l.item)} />
                 <VistoDelRequerimiento
                   id={r.id}
@@ -146,7 +162,8 @@ export default async function PaginaPorAutorizar({ searchParams }: PageProps<'/r
                       pedido: `${cantidad(l.cantidad)} ${l.unidad} ${l.descripcion}`,
                       cuenta: cuentaDelMetrado(m, l.unidad),
                       sustento: m.sustento,
-                      firma: [m.sustentado_por, m.sustentado_en ? fechaHora(m.sustentado_en) : null].filter(Boolean).join(', ') || null,
+                      // Por su puesto, como «Pidió»: nunca el nombre de la persona (decisión del 2026-11-25).
+                      firma: [sustento(r, m.sustentado_en), m.sustentado_en ? fechaHora(m.sustentado_en) : null].filter(Boolean).join(', ') || null,
                     }
                   })}
                 />
@@ -198,18 +215,19 @@ export default async function PaginaPorAutorizar({ searchParams }: PageProps<'/r
         <section aria-labelledby="ya-autorizados" className="mt-8 space-y-3" data-ya-autorizados>
           <div>
             <h2 id="ya-autorizados" className="text-sm font-semibold text-texto">
-              Ya los autorizaste <span className="tabular font-normal text-texto-suave">· {autorizados.length}</span>
+              Ya autorizados por Diseño <span className="tabular font-normal text-texto-suave">· {todosLosAutorizados.length}</span>
             </h2>
             <p className="text-xs text-texto-suave">
-              Siguen abiertos: abre su recorrido para ver por dónde van después de tu visto, quién los tiene y hace cuántos días.
-              {autorizados.length === AUTORIZADOS_A_LA_VISTA && ` Van los ${AUTORIZADOS_A_LA_VISTA} de visto más reciente.`}
+              Siguen abiertos: abre su recorrido para ver por dónde van después del visto, quién los tiene y hace cuántos días.
+              {todosLosAutorizados.length > AUTORIZADOS_A_LA_VISTA &&
+                ` Van los ${AUTORIZADOS_A_LA_VISTA} de visto más reciente; para uno anterior, búscalo por su código.`}
             </p>
           </div>
           {autorizados.map((r) => (
             <Tarjeta key={r.id} className="overflow-hidden" data-rq={r.numero} data-autorizado>
               <CabeceraDelRq rq={r} cargaMetrado={cargaMetrado} pidio={pidio(r)} />
               <ul className="divide-y divide-borde border-t border-borde">
-                {de(r, ['AUTORIZADO']).map((l) => {
+                {autorizadas(r).map((l) => {
                   const m = metrado.get(l.id)!
                   return (
                     <li key={l.item} className="space-y-0.5 px-4 py-3 text-sm">
@@ -221,17 +239,17 @@ export default async function PaginaPorAutorizar({ searchParams }: PageProps<'/r
                       </p>
                       {m.nota_decision && (
                         <p className="text-xs break-words text-texto-suave">
-                          <span className="font-medium text-texto">Tu nota:</span> {m.nota_decision}
+                          <span className="font-medium text-texto">Diseño:</span> {m.nota_decision}
                         </p>
                       )}
                     </li>
                   )
                 })}
               </ul>
-              <Recorrido
-                pasos={recorridos === null ? null : describirRecorridoDelRequerimiento(recorridos.get(r.id) ?? [])}
-                className="border-t border-borde"
-              />
+              {/* Si no se pudo leer, ya lo dice el aviso de arriba: no se repite en cada tarjeta. */}
+              {recorridos !== null && (
+                <Recorrido pasos={describirRecorridoDelRequerimiento(recorridos.get(r.id) ?? [])} className="border-t border-borde" />
+              )}
             </Tarjeta>
           ))}
         </section>
