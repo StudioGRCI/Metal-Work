@@ -3,6 +3,7 @@ import { FileText, Receipt, ShoppingCart } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { AvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
+import { GruposPorVencimiento } from '@/components/finanzas/grupos-por-vencimiento'
 import { ParaPagar, type DocumentoParaPagar } from '@/components/finanzas/para-pagar'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -113,9 +114,15 @@ export default async function PaginaPorPagar() {
   // La que espera su comprobante o ya tiene su factura se paga por ella: no suma al «Por pagar» ni a lo vencido.
   // Tampoco la que el proveedor devolvió entera: no se le debe hasta que la vuelva a cobrar.
   const pagables = boletasPorPagar.filter((b) => !b.comprobante_en_camino && !b.factura && !devueltaEntera(b))
+  // En los grupos por vencimiento, solo lo que de verdad se paga aquí: con saldo y sin pedir otra cosa
+  // (lo pagado de más, la factura en otra moneda). Lo demás va al final, en «No se pagan aquí».
+  const boletasConFecha = pagables.filter((b) => saldoDeLaBoleta(b) > 0 && !pideAlgo(b))
   // Lo que le pide a Tesorería algo que no es pagar: el encabezado lo cuenta y lleva a su tarjeta.
-  const deMas = boletasPorPagar.filter((b) => Number(b.de_mas ?? 0) > 0).length
-  const otraMoneda = boletasPorPagar.filter((b) => b.otra_moneda).length
+  // Cada aviso lleva a la primera OC que lo causa, en el grupo donde haya caído.
+  const pagadasDeMas = boletasPorPagar.filter((b) => Number(b.de_mas ?? 0) > 0)
+  const conOtraMoneda = boletasPorPagar.filter((b) => b.otra_moneda)
+  const deMas = pagadasDeMas.length
+  const otraMoneda = conOtraMoneda.length
   const partesPorPagar = partes.filter((x) => Number(x.saldo ?? 0) > 0)
   const partesPagadas = partes.filter((x) => Number(x.saldo ?? 0) <= 0)
   // La factura que espera a Contabilidad pudo pagarse fuera: no suma hasta que lo diga.
@@ -164,15 +171,49 @@ export default async function PaginaPorPagar() {
           tono: 'text-aviso',
         }
       : null,
-    deMas > 0 ? { texto: deMas === 1 ? 'una OC pagada de más' : `${deMas} OC pagadas de más`, href: '#compras-con-boleta', tono: 'text-peligro' } : null,
+    deMas > 0 ? { texto: deMas === 1 ? 'una OC pagada de más' : `${deMas} OC pagadas de más`, href: `#compra-${pagadasDeMas[0].id}`, tono: 'text-peligro' } : null,
     otraMoneda > 0
       ? {
           texto: otraMoneda === 1 ? 'una OC con factura en otra moneda' : `${otraMoneda} OC con factura en otra moneda`,
-          href: '#compras-con-boleta',
+          href: `#compra-${conOtraMoneda[0].id}`,
           tono: 'text-peligro',
         }
       : null,
   ].filter((a) => a !== null)
+
+  // Cada fila tal como ya se pintaba; los grupos por vencimiento solo la ponen en su lugar.
+  const filaFactura = (c: CuentaPorPagar) => (
+    <Factura
+      cuenta={c}
+      paga={paga}
+      pasa={pasa}
+      verOc={verOc}
+      verCuentas={verCuentas}
+      apruebaCompras={apruebaCompras}
+      hoy={hoy}
+      correcciones={correcciones.get(c.id ?? '')}
+      cuentasCaja={cuentasCaja}
+      cajas={cajas}
+      esperaBoleta={esperanBoleta.get(c.id ?? '')}
+      nombresOc={nombresOc}
+      aFavor={aFavorDe.get(c.id ?? '') ?? []}
+    />
+  )
+  const filaBoleta = (b: CompraConBoleta) => (
+    <CompraConBoletaFila
+      compra={b}
+      paga={paga}
+      pasa={pasa}
+      verOc={verOc}
+      verCuentas={verCuentas}
+      hoy={hoy}
+      cuentasCaja={cuentasCaja}
+      cajas={cajasBoleta}
+      cajasDevolucion={cajasDevolucion}
+      descontables={ventanas.descontables.get(b.id ?? '')}
+      cambios={ventanas.cambios}
+    />
+  )
 
   return (
     <AvisoDeLaCaja>
@@ -198,7 +239,10 @@ export default async function PaginaPorPagar() {
       />
 
       <Tarjeta>
-        <TarjetaCabecera titulo="Facturas por pagar" ayuda="Cada factura con sus OC y su saldo; lo vencido sale en rojo." />
+        <TarjetaCabecera
+          titulo="Facturas por pagar"
+          ayuda="Cada factura con sus OC y su saldo, por vencimiento: lo vencido, lo que vence hoy, lo que vence esta semana (hasta el domingo) y lo de después, con los días de cada una contados con la fecha de Lima. El total de cada grupo va en soles y en dólares por separado: no se suman. Al final, aparte, las que esperan a Contabilidad o a Gerencia: no se pueden pagar todavía."
+        />
         <TarjetaCuerpo className="space-y-3">
           {porPagar.length === 0 ? (
             <div className="flex flex-col items-center py-8 text-center">
@@ -209,24 +253,21 @@ export default async function PaginaPorPagar() {
               <p className="mt-1 max-w-lg text-sm text-texto-suave">Aparecen cuando Contabilidad registra una factura de compra en Adquisiciones.</p>
             </div>
           ) : (
-            porPagar.map((c) => (
-              <Factura
-                key={c.id}
-                cuenta={c}
-                paga={paga}
-                pasa={pasa}
-                verOc={verOc}
-                verCuentas={verCuentas}
-                apruebaCompras={apruebaCompras}
-                hoy={hoy}
-                correcciones={correcciones.get(c.id ?? '')}
-                cuentasCaja={cuentasCaja}
-                cajas={cajas}
-                esperaBoleta={esperanBoleta.get(c.id ?? '')}
-                nombresOc={nombresOc}
-                aFavor={aFavorDe.get(c.id ?? '') ?? []}
-              />
-            ))
+            // Por vencimiento (plan 11.1). Las que esperan a Contabilidad o a Gerencia no se pueden pagar
+            // todavía: van aparte, al final, para que no inflen lo que vence.
+            <GruposPorVencimiento
+              lista="facturas"
+              filas={exigibles}
+              hoy={hoy}
+              dia={(c) => c.fecha_vencimiento}
+              moneda={(c) => c.moneda}
+              monto={(c) => Number(c.saldo)}
+              clave={(c) => c.id ?? ''}
+              nombre={['factura', 'facturas']}
+              fila={filaFactura}
+              // Sin total: las que esperan a Contabilidad pudieron pagarse fuera, y el encabezado tampoco las suma.
+              aparte={{ titulo: 'No se pagan todavía', filas: porPagar.filter((c) => !exigibles.includes(c)), conTotal: false }}
+            />
           )}
         </TarjetaCuerpo>
       </Tarjeta>
@@ -249,22 +290,23 @@ export default async function PaginaPorPagar() {
               <p className="mt-1 max-w-lg text-sm text-texto-suave">Aparecen cuando Logística emite una OC con boleta y queda aprobada.</p>
             </div>
           ) : (
-            boletasPorPagar.map((b) => (
-              <CompraConBoletaFila
-                key={b.id}
-                compra={b}
-                paga={paga}
-                pasa={pasa}
-                verOc={verOc}
-                verCuentas={verCuentas}
-                hoy={hoy}
-                cuentasCaja={cuentasCaja}
-                cajas={cajasBoleta}
-                cajasDevolucion={cajasDevolucion}
-                descontables={ventanas.descontables.get(b.id ?? '')}
-                cambios={ventanas.cambios}
-              />
-            ))
+            // Por vencimiento (plan 11.1): solo las que se pagan aquí. Las que piden una devolución o pasar
+            // lo pagado a su factura van primero; las demás (su comprobante está en camino, ya tienen
+            // factura o el proveedor la devolvió) van al final.
+            <GruposPorVencimiento
+              lista="boletas"
+              filas={boletasConFecha}
+              hoy={hoy}
+              dia={(b) => b.vence}
+              moneda={(b) => b.moneda}
+              monto={saldoDeLaBoleta}
+              clave={(b) => b.id ?? ''}
+              nombre={['OC', 'OC']}
+              fila={filaBoleta}
+              // Lo pagado de más y la factura en otra moneda le piden algo a Tesorería: arriba, como salían antes.
+              primero={{ titulo: pasa ? 'Te piden algo' : 'Le piden algo a Tesorería', filas: boletasPorPagar.filter((b) => !boletasConFecha.includes(b) && pideAlgo(b)) }}
+              aparte={{ titulo: 'No se pagan aquí', filas: boletasPorPagar.filter((b) => !boletasConFecha.includes(b) && !pideAlgo(b)), conTotal: false }}
+            />
           )}
         </TarjetaCuerpo>
       </Tarjeta>
@@ -278,9 +320,18 @@ export default async function PaginaPorPagar() {
             ayuda="Cuando una OC llega en partes, unas con boleta y otras con factura, Logística anexa cada boleta con su monto. Aquí se paga cada boleta, hasta lo que dice; lo demás de la OC se paga por su factura, en «Facturas por pagar», y esa factura no toma lo pagado aquí."
           />
           <TarjetaCuerpo className="space-y-3">
-            {partesPorPagar.map((x) => (
-              <ParteConBoletaFila key={x.documento_id} parte={x} paga={paga} verOc={verOc} verCuentas={verCuentas} hoy={hoy} cuentasCaja={cuentasCaja} cajas={cajasParte} />
-            ))}
+            {/* Por vencimiento (plan 11.1), como las facturas y las OC con boleta. */}
+            <GruposPorVencimiento
+              lista="partes"
+              filas={partesPorPagar}
+              hoy={hoy}
+              dia={(x) => x.vence}
+              moneda={(x) => x.moneda}
+              monto={(x) => Number(x.saldo ?? 0)}
+              clave={(x) => x.documento_id ?? ''}
+              nombre={['boleta', 'boletas']}
+              fila={(x) => <ParteConBoletaFila parte={x} paga={paga} verOc={verOc} verCuentas={verCuentas} hoy={hoy} cuentasCaja={cuentasCaja} cajas={cajasParte} />}
+            />
             {partesPagadas.length > 0 && (
               <SeccionDesplegable titulo={`Boletas de una parte pagadas (${partesPagadas.length})`}>
                 <div className="space-y-3">

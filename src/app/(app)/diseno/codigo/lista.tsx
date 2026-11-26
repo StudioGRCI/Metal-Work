@@ -1,13 +1,16 @@
 import Link from 'next/link'
 
+import { ListaDxf } from '@/components/codigo-interno/dxf'
+import { LineaLoQueDebeDiseno } from '@/components/codigo-interno/lo-que-debe-diseno'
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { codigosDeDiseno, dxfDeCodigo, otPorCodigo, type CodigoDeDiseno, type OtDeCodigo } from '@/lib/datos/diseno-codigos'
+import { codigosDeDiseno, dxfDeCodigo, otPorCodigo, type CodigoDeDiseno, type DxfDeCodigo, type OtDeCodigo } from '@/lib/datos/diseno-codigos'
+import { loQueDebeDiseno } from '@/lib/datos/lo-que-debe-diseno'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
-import { llaveParecido } from '@/lib/dominio/codigos-internos'
+import { esUnidadDeDiseno, llaveParecido } from '@/lib/dominio/codigos-internos'
 import { VISTAS_DISENO, VISTAS_SEGUIMIENTO, enlaceDisenoCodigo, enlaceSeguimientoCodigo, type VistaDiseno } from '@/lib/dominio/diseno-codigos'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
 import { nombreDeUnidadOCodigo, nombreVaTenue } from '@/lib/dominio/unidades'
@@ -49,7 +52,7 @@ const DESCRIPCION: Record<VistaDiseno, string> = {
     'Lo que lleva cada unidad según Diseño, por código interno: contra esa lista se mira lo que Logística compró y lo que salió del almacén. No genera requerimientos: los sigue pidiendo cada área.',
   etapas:
     'Por cada juego de planos, Diseño pone dos etapas: Habilitado para Maestranza y Ensamblaje para Producción, con su fecha comprometida. Cada supervisor les agrega sus subetapas, y Acabados y las demás áreas agregan las suyas.',
-  dxf: 'Los DXF de cada unidad para el corte en plasma, sueltos o comprimidos. Los sube Diseño y los descargan Maestranza y Producción; nadie más los ve.',
+  dxf: 'Los DXF de cada unidad para el corte en plasma, sueltos o comprimidos. Los sube Diseño y los descargan Maestranza y Producción; Gerencia los consulta. Nadie más los ve.',
 }
 
 const DESCRIPCION_SEGUIMIENTO =
@@ -61,15 +64,21 @@ const DESCRIPCION_SEGUIMIENTO =
  * `seguimiento` es la de Supervisión general y Almacén: una sola pantalla con
  * las tres secciones, sin abrir códigos nuevos, y cada fila lleva a la ficha de
  * solo lectura.
+ *
+ * Con `soloLectura` (Gerencia en Archivos DXF, migración 20261126310000) es la
+ * misma lista sin abrir códigos y sin entrar a la pantalla de trabajo de
+ * Diseño: cada código trae debajo sus DXF para descargarlos.
  */
 export async function ListaDeCodigosDeDiseno({
   vista,
   params,
   seguimiento = false,
+  soloLectura = false,
 }: {
   vista: VistaDiseno
   params: Record<string, string | string[] | undefined>
   seguimiento?: boolean
+  soloLectura?: boolean
 }) {
   // Almacén entra por «Materiales por código» del menú: el título dice lo mismo que el menú.
   const titulo = seguimiento
@@ -91,6 +100,9 @@ export async function ListaDeCodigosDeDiseno({
   ])
   const dxfPorCodigo = new Map<string, number>()
   for (const d of dxf) dxfPorCodigo.set(d.codigo, (dxfPorCodigo.get(d.codigo) ?? 0) + 1)
+  const archivosDe = (codigo: string): DxfDeCodigo[] => dxf.filter((d) => d.codigo === codigo)
+  // Quien solo consulta no abre códigos nuevos ni entra a la pantalla de Diseño.
+  const consulta = seguimiento || soloLectura
   const todos = ordenarPorIngresoDeOt(codigosSueltos.map((c) => ({ ...c, ot: ots.get(c.codigo) ?? null, dxf: dxfPorCodigo.get(c.codigo) ?? 0 })))
   const llave = llaveParecido(q)
   const palabras = palabrasDeBusqueda(q)
@@ -105,6 +117,16 @@ export async function ListaDeCodigosDeDiseno({
       )
     : todos
   const codigos = filtro ? buscados.filter(filtro.cumple) : buscados
+  // Lo que Diseño le debe a cada unidad (plan 6.1), solo en sus propias listas:
+  // el seguimiento es de Almacén y del Gerente de producción, que el plan no
+  // nombra, y Gerencia en Archivos DXF solo descarga. Si no se puede leer, cada
+  // fila lo dice y la lista sigue.
+  const debe = !consulta
+    ? await loQueDebeDiseno(codigos.filter((c) => esUnidadDeDiseno(c.codigo)).map((c) => c.codigo)).catch((e: unknown) => {
+        console.error('[diseno] lo que debe Diseño:', e)
+        return 'sin-leer' as const
+      })
+    : null
 
   return (
     <>
@@ -124,7 +146,7 @@ export async function ListaDeCodigosDeDiseno({
           opciones={VISTAS_SEGUIMIENTO.map((v) => ({ valor: v.valor === 'etapas' ? null : v.valor, etiqueta: v.etiqueta }))}
           className="mb-4"
         />
-      ) : (
+      ) : soloLectura ? null : (
         <Tarjeta className="mb-4">
           <TarjetaCabecera titulo="Abrir un código" ayuda="Para una unidad nueva, escribe su código interno tal cual: aparece en la lista apenas cargues algo." />
           <TarjetaCuerpo>
@@ -154,10 +176,10 @@ export async function ListaDeCodigosDeDiseno({
             <p className="text-sm font-medium text-texto">{todos.length === 0 ? 'Todavía no hay códigos internos' : 'Ningún código con esta búsqueda o filtro'}</p>
             <p className="text-sm text-texto-suave">
               {todos.length === 0
-                ? seguimiento
+                ? consulta
                   ? 'Aparecen aquí apenas Diseño cargue algo para una unidad o un área pida con su código.'
                   : 'Escribe el código de la unidad arriba y ábrelo para empezar.'
-                : seguimiento
+                : consulta
                   ? 'Borra la búsqueda o quita el filtro con «Todos».'
                   : 'Borra la búsqueda o quita el filtro con «Todos». Si es una unidad nueva, ábrela con su código arriba.'}
             </p>
@@ -167,16 +189,39 @@ export async function ListaDeCodigosDeDiseno({
         <ul className="space-y-2">
           {codigos.map((c) => (
             <li key={c.codigo}>
-              <Link
-                href={enlace(c.codigo, vista)}
-                className="block rounded-[var(--radius-base)] border border-borde bg-superficie p-3 hover:border-acento"
-                data-codigo={c.codigo}
-              >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <Nombre c={c} veOt={veOt} />
-                  <Resumen c={c} vista={vista} />
+              {soloLectura ? (
+                <div className="rounded-[var(--radius-base)] border border-borde bg-superficie p-3" data-codigo={c.codigo}>
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <Nombre c={c} veOt={veOt} />
+                    <Resumen c={c} vista={vista} />
+                  </div>
+                  {vista === 'dxf' && c.dxf > 0 && (
+                    <div className="mt-3">
+                      <ListaDxf archivos={archivosDe(c.codigo)} />
+                    </div>
+                  )}
+                  {/* La ficha de Diseño no es suya: lo del código lo consulta en Seguimiento. */}
+                  <Link
+                    href={enlaceSeguimientoCodigo(c.codigo)}
+                    className="mt-2 inline-flex min-h-11 items-center text-sm font-medium text-acento hover:underline sm:min-h-0"
+                  >
+                    Ver el seguimiento de {c.codigo}
+                  </Link>
                 </div>
-              </Link>
+              ) : (
+                <div className="rounded-[var(--radius-base)] border border-borde bg-superficie p-3 has-[a:hover]:border-acento">
+                  <Link href={enlace(c.codigo, vista)} className="block" data-codigo={c.codigo}>
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <Nombre c={c} veOt={veOt} />
+                      <Resumen c={c} vista={vista} />
+                    </div>
+                  </Link>
+                  {/* Fuera del enlace: dentro, el lector leía los cinco puntos como parte de su nombre. */}
+                  {debe !== null && esUnidadDeDiseno(c.codigo) && (
+                    <LineaLoQueDebeDiseno className="mt-2" d={debe === 'sin-leer' ? null : debe.get(c.codigo)} />
+                  )}
+                </div>
+              )}
             </li>
           ))}
         </ul>

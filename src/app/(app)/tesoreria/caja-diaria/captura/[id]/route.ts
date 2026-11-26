@@ -10,10 +10,10 @@ import { createClient } from '@/lib/supabase/server'
  * 20261020174500). El enlace firmado se pide al tocar y no al pintar la lista:
  * la caja se deja abierta toda la mañana, y uno de hace una hora ya no abriría.
  * Quién la ve lo deciden la política de `cajas` y la del bucket: quien lleva la
- * caja (`tesoreria.caja`).
+ * caja (`tesoreria.caja`) y Gerencia, que la consulta (`tesoreria.ver_caja`).
  */
 export async function GET(_request: Request, context: RouteContext<'/tesoreria/caja-diaria/captura/[id]'>) {
-  await exigirPermiso('tesoreria.caja')
+  await exigirPermiso(['tesoreria.caja', 'tesoreria.ver_caja'])
   const { id } = await context.params
   if (!z.guid().safeParse(id).success) return NextResponse.json({ error: 'La cuenta no está disponible.' }, { status: 404 })
   const supabase = await createClient()

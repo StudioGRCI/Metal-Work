@@ -6,11 +6,12 @@ import { fecha } from '@/lib/format'
  * En una línea, lo que Diseño lleva en el código: la etapa en curso con su
  * fecha comprometida, las vencidas y los planos que el área no recibió. Va en
  * la fila de la lista de Gerencia y debajo de las cifras del detalle.
+ *
+ * Sin nada de Diseño no dice nada: desde el plan 6.1 lo que falta lo dice la
+ * lista de los cinco puntos (`LineaLoQueDebeDiseno`), que va debajo.
  */
 export function LineaDeDiseno({ d }: { d: CodigoDeDiseno | undefined }) {
-  if (!d || d.planos + d.etapas + d.materiales === 0) {
-    return <p className="text-xs text-texto-suave">Diseño todavía no cargó planos ni etapas.</p>
-  }
+  if (!d || d.planos + d.etapas + d.materiales === 0) return null
   return (
     <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-texto-suave">
       {d.etapas > 0 && (
