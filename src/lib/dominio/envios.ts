@@ -36,6 +36,8 @@ export const CLAVES_DEL_ENVIO = [
   'tareo',
   'uso_saldo',
   'cuenta_caja',
+  // El reporte a SSOMA (Plan 15.1): reabrir tras «No llegó la respuesta» no da otro número RI al mismo hecho.
+  'reporte_ssoma',
   // El seguimiento de cada compra (Plan 4.2, 20261126210000).
   'motivo_atraso',
   'fecha_prometida',

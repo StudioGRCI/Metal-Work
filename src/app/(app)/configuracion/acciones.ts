@@ -5,7 +5,8 @@ import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion, NO_TOCO_NADA } from '@/lib/acciones'
 import { exigirSesion, puede } from '@/lib/sesion'
-import { codigoDeCarroceria } from '@/lib/dominio/medidas-carroceria'
+import { CUENTA_YA_NO_ACTIVA } from '@/lib/dominio/areas'
+import { codigoDeCarroceria, nombreDeCarroceria } from '@/lib/dominio/medidas-carroceria'
 import { createClient } from '@/lib/supabase/server'
 
 async function exigirEdicion() {
@@ -134,7 +135,12 @@ export async function alternarFeriadoLaborable(_previo: unknown, datos: FormData
 
 const esquemaCarroceria = z
   .object({
-    nombre: z.string().trim().min(3, 'Ponle nombre al tipo de carrocería'),
+    // Las mismas reglas que al editar: un nombre que el alta dejaba pasar
+    // (130 caracteres, solo signos) después no dejaba ni desactivarla.
+    nombre: z.string('Ponle nombre al tipo de carrocería.').trim()
+      .min(3, 'Ponle nombre al tipo de carrocería, de al menos 3 letras.')
+      .max(120, 'El nombre va en 120 caracteres como máximo.')
+      .regex(/[\p{L}\p{N}]/u, 'El nombre debe incluir letras o números.'),
     descripcion: z.string().trim().optional(),
     // Semirremolque o carrocería montada: el SR/CM de su código de producto.
     // «Sin definir» llega vacío: es lo que trae la ventana y la carrocería
@@ -173,23 +179,31 @@ export async function crearCarroceria(
   const v = analisis.data
   const supabase = await createClient()
 
-  // El código sale del nombre: mayúsculas, sin tildes, con guiones bajos.
-  const codigo = codigoDeCarroceria(v.nombre)
-
-  // Si ya existe uno con ese nombre se devuelve el que estaba para no duplicar el catálogo.
-  const { data: existente } = await supabase
+  // «Ya estaba» se decide por el nombre, no por el código: el código es el de
+  // la empresa (TOL, C34…) y no cambia al renombrar, así que buscarlo armado
+  // del nombre daba por existente otra carrocería, o ninguna.
+  const comoNombre = nombreDeCarroceria(v.nombre)
+  const { data: catalogo, error: alLeer } = await supabase
     .from('tipos_carroceria')
-    .select('id, nombre')
-    .eq('codigo', codigo)
-    .maybeSingle()
+    .select('id, nombre, codigo, activo')
+  if (alLeer) return { ok: false, error: mensajeDeError(alLeer) }
+  const iguales = (catalogo ?? []).filter((t) => nombreDeCarroceria(t.nombre) === comoNombre)
+  const existente = iguales.find((t) => t.activo) ?? iguales[0]
 
   if (existente) {
     return {
       ok: true,
       mensaje: `Ese tipo ya estaba en el catálogo: ${existente.nombre}. Quedó elegido.`,
-      datos: existente,
+      datos: { id: existente.id, nombre: existente.nombre },
     }
   }
+
+  // El código nuevo sale del nombre; si otra carrocería ya lo usa con otro
+  // nombre, lleva un número para no chocar con ella.
+  const usados = new Set((catalogo ?? []).map((t) => t.codigo))
+  const armado = codigoDeCarroceria(v.nombre)
+  let codigo = armado
+  for (let n = 2; usados.has(codigo); n++) codigo = `${armado}_${n}`
 
   const { data, error } = await supabase
     .from('tipos_carroceria')
@@ -211,12 +225,32 @@ export async function crearCarroceria(
   return { ok: true, mensaje: 'Tipo de carrocería agregado. Diseño e Ingeniería completa sus medidas en Carrocerías.', datos: data }
 }
 
+// Cada regla lleva su aviso: sin él, zod contesta en inglés («Too small:
+// expected string to have >=3 characters») y eso es lo que leía la persona.
+// Si está activa no lo decide esta ventana: el campo oculto traía lo que había
+// al pintarse la página, y guardar el nombre reactivaba la carrocería que otro
+// había desactivado mientras tanto. Llega todavía de las pestañas de antes.
 const esquemaEditarCarroceria = z.object({
-  id: z.guid(),
-  nombre: z.string().trim().min(3).max(120),
-  descripcion: z.string().trim().max(1000).optional(),
-  activo: z.enum(['true', 'false']).transform((v) => v === 'true'),
+  id: z.guid('No se reconoció la carrocería: vuelve a cargar la pantalla.'),
+  nombre: z.string('Escribe un nombre de al menos 3 letras.').trim()
+    .min(3, 'Escribe un nombre de al menos 3 letras.')
+    .max(120, 'El nombre va en 120 caracteres como máximo.')
+    .regex(/[\p{L}\p{N}]/u, 'El nombre debe incluir letras o números.'),
+  descripcion: z.string().trim().max(1000, 'La descripción va en 1000 caracteres como máximo.').optional(),
 })
+
+/**
+ * Ventas corrige por su función, que pide también si está activa: se manda la
+ * que tiene ahora, leída con su sesión, para no deshacer lo que otro cambió.
+ */
+async function editarComoVentas(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  v: z.infer<typeof esquemaEditarCarroceria>,
+) {
+  const { data: actual, error } = await supabase.from('tipos_carroceria').select('activo').eq('id', v.id).maybeSingle()
+  if (error || !actual) return { data: null, error }
+  return supabase.rpc('editar_carroceria_ventas', { p_id: v.id, p_nombre: v.nombre, p_descripcion: v.descripcion ?? '', p_activo: actual.activo })
+}
 
 export async function editarCarroceria(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
@@ -231,7 +265,7 @@ export async function editarCarroceria(_previo: unknown, datos: FormData): Promi
   // Ventas, solo nombre, descripción y si está activa, por su función.
   const resultado = puede(perfil, 'diseno.carrocerias')
     ? await supabase.from('tipos_carroceria').update({ nombre: v.nombre, descripcion: nuloSiVacio(v.descripcion) }).eq('id', v.id).select('id').maybeSingle()
-    : await supabase.rpc('editar_carroceria_ventas', { p_id: v.id, p_nombre: v.nombre, p_descripcion: v.descripcion ?? '', p_activo: v.activo })
+    : await editarComoVentas(supabase, v)
   if (resultado.error) return { ok: false, error: mensajeDeError(resultado.error) }
   if (!resultado.data) return { ok: false, error: NO_TOCO_NADA }
   revalidatePath('/carrocerias')
@@ -318,6 +352,74 @@ export async function guardarMedidasCarroceria(
   return {
     ok: true,
     mensaje: 'Medidas técnicas guardadas en el catálogo.',
+  }
+}
+
+/**
+ * La cuenta responsable de un área (`areas.jefe_id`), o ninguna. Solo el
+ * administrador del sistema: la política `editar_areas` pide lo mismo que
+ * `exigirEdicion` (`es_admin()` o `configuracion.editar`, que solo tiene el
+ * puesto ADMIN). Que la cuenta esté activa lo exige la base
+ * (`fn_area_responsable_activo`, migración 20261125205000).
+ */
+export async function asignarResponsableDeArea(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
+  const problema = await exigirEdicion()
+  if (problema) return { ok: false, error: 'Asignar el responsable de un área es del administrador del sistema.' }
+
+  const analisis = z
+    .object({ area_id: z.guid(), jefe_id: z.union([z.literal(''), z.guid()]) })
+    .safeParse(Object.fromEntries(datos))
+  if (!analisis.success) return { ok: false, error: 'Elige una cuenta de la lista.' }
+  const v = analisis.data
+
+  const supabase = await createClient()
+  // Una cuenta dada de baja no se guarda, tampoco la que ya estaba: se mira
+  // antes de escribir. El disparador cubre la que se da de baja entretanto.
+  if (v.jefe_id) {
+    const { data: elegida, error: errorCuenta } = await supabase
+      .from('usuarios')
+      .select('activo')
+      .eq('id', v.jefe_id)
+      .maybeSingle()
+    if (errorCuenta) return { ok: false, error: mensajeDeError(errorCuenta) }
+    if (!elegida?.activo) {
+      revalidatePath('/configuracion')
+      return { ok: false, error: CUENTA_YA_NO_ACTIVA }
+    }
+  }
+  const { data, error } = await supabase
+    .from('areas')
+    .update({ jefe_id: v.jefe_id || null })
+    .eq('id', v.area_id)
+    // Una fila que el RLS esconde no es un error: sin esto diría «listo» sin
+    // haber guardado nada.
+    // La cuenta, para saber si sigue activa: el disparador no vuelve a juzgar
+    // la que no cambió, y «Guardar» con la dada de baja no es «listo».
+    .select('nombre, responsable:usuarios!areas_jefe_id_fkey(activo)')
+    .maybeSingle()
+
+  if (error) {
+    // La cuenta se dio de baja con la ventana abierta (el disparador de la
+    // migración 20261125205000): la lista se pone al día y deja de ofrecerla.
+    if (error.code === '23514') {
+      revalidatePath('/configuracion')
+      return { ok: false, error: CUENTA_YA_NO_ACTIVA }
+    }
+    return { ok: false, error: mensajeDeError(error) }
+  }
+  if (!data) return { ok: false, error: NO_TOCO_NADA }
+  const cuenta = data.responsable as unknown as { activo: boolean } | null
+  if (v.jefe_id && !cuenta?.activo) {
+    revalidatePath('/configuracion')
+    return { ok: false, error: CUENTA_YA_NO_ACTIVA }
+  }
+
+  revalidatePath('/configuracion')
+  return {
+    ok: true,
+    mensaje: v.jefe_id
+      ? `${data.nombre} ya tiene su cuenta responsable.`
+      : `${data.nombre} quedó sin cuenta responsable.`,
   }
 }
 

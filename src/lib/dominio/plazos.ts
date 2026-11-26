@@ -40,7 +40,8 @@ export function dias(n: number): string {
 export function estadoDelPlazo(p: PlazoDeCompra | undefined, { servicio = false } = {}): { etiqueta: string; tono: Tono } | null {
   if (!p || !p.esperada || p.dias_atraso == null) return null
   if (p.atrasada) return { etiqueta: `Atrasada ${dias(p.dias_atraso)}`, tono: 'peligro' }
-  if (p.completa_en) {
+  // Llegó todo: completa, o entero y solo falta que Almacén lo valide (esa espera no es del proveedor).
+  if (p.completa_en || (p.por_validar && !p.por_llegar?.length)) {
     const llego = servicio ? 'Volvió' : 'Llegó'
     return p.dias_atraso > 0
       ? { etiqueta: `${llego} con ${dias(p.dias_atraso)} de atraso`, tono: 'aviso' }

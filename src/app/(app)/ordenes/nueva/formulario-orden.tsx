@@ -18,7 +18,7 @@ import { camposDe, decirElRechazoSiSeFue, type DeFormulario, laPestanaEsDeLaVers
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { createClient } from '@/lib/supabase/client'
-import { codigoDeCarroceria } from '@/lib/dominio/medidas-carroceria'
+import { nombreDeCarroceria } from '@/lib/dominio/medidas-carroceria'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { etiquetasDePuesto } from '@/lib/format'
 import { NuevaUnidad } from '@/app/(app)/clientes/nueva-unidad'
@@ -277,13 +277,15 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
   async function carroceriaEnDuda({ nombre }: { nombre: string }) {
     const duda = `No llegó la respuesta de la carrocería ${nombre}: puede haber quedado. Regístrala otra vez con el mismo nombre: si ya estaba, no se repite y queda elegida.`
     setAparte((a) => ({ ...a, carroceria: duda }))
-    const codigo = codigoDeCarroceria(nombre)
-    if (!codigo) return
-    const { data, status } = await createClient().from('tipos_carroceria').select('id, nombre').eq('codigo', codigo).eq('activo', true).maybeSingle()
+    // Por el nombre, como el alta: el código no sigue al nombre cuando se renombra.
+    const comoNombre = nombreDeCarroceria(nombre)
+    if (!comoNombre) return
+    const { data: activas, status } = await createClient().from('tipos_carroceria').select('id, nombre').eq('activo', true)
     if (sinSesion(status)) {
       setAparte((a) => (a.carroceria === duda ? { ...a, carroceria: `No se sabe si quedó la carrocería ${nombre}: la sesión terminó. ${VOLVER_A_ENTRAR}, y regístrala otra vez aquí con el mismo nombre: si ya estaba, no se repite y queda elegida.` } : a))
       return
     }
+    const data = (activas ?? []).find((t) => nombreDeCarroceria(t.nombre) === comoNombre)
     if (!data) return
     setCarroceriasNuevas((lista) => (lista.some((x) => x.id === data.id) ? lista : [data, ...lista]))
     setAparte((a) => (a.carroceria === duda ? { ...a, carroceria: `La carrocería ${data.nombre} ya está en el catálogo, aunque no llegó la respuesta. Está en la lista, sin elegir.` } : a))

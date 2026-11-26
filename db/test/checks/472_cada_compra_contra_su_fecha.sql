@@ -144,7 +144,8 @@ begin
   perform test.afirmar(r.llego_en is not null and r.completa_en is null and r.por_validar
                        and jsonb_array_length(coalesce(r.por_llegar, '[]'::jsonb)) = 0,
     format('la OC dejada y sin validar está por validar, sin nada que falte (por_llegar %s, por_validar %s)', r.por_llegar, r.por_validar));
-  perform test.afirmar(r.atrasada, 'la OC dejada sin validar y vencida sigue atrasada hasta que Almacén la valida');
+  perform test.afirmar(not r.atrasada and r.dias_atraso = 5,
+    format('la OC dejada entera y sin validar no está atrasada: llegó con 5 días, y la espera de Almacén no cuenta (dice %s)', r.dias_atraso));
 end $$;
 reset role;
 
