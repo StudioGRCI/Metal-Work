@@ -122,6 +122,8 @@ export type FilaParaFiltrar = {
   en_lista: boolean
   peso_kg: number | null
   guia: unknown
+  /** Cuántos de sus documentos faltan o están en parte (`documentos_de_las_compras`, Plan 10). */
+  incompletos?: number
 }
 
 /**
@@ -136,6 +138,7 @@ export function guiaPorCargar(f: FilaParaFiltrar): boolean {
 
 /** Los filtros de «En qué va»: la clave va en la URL como `situacion`. */
 export const SITUACIONES = [
+  { valor: 'incompletas', etiqueta: 'Incompletas' },
   { valor: 'por-aprobar', etiqueta: 'Esperan a Gerencia' },
   { valor: 'por-facturar', etiqueta: 'Esperan su factura' },
   { valor: 'por-pagar', etiqueta: 'Por pagar' },
@@ -147,6 +150,8 @@ export type Situacion = (typeof SITUACIONES)[number]['valor']
 
 export function enSituacion(f: FilaParaFiltrar, situacion: Situacion): boolean {
   switch (situacion) {
+    case 'incompletas':
+      return (f.incompletos ?? 0) > 0
     case 'por-aprobar':
       return f.pago === 'ESPERA_APROBACION'
     case 'por-facturar':
@@ -220,4 +225,69 @@ export function anexoPorRevisarAlAnular(
     return `${base} Si la factura sí incluía esta OC, anúlalo igual: Tesorería recibe el aviso, paga por la boleta solo lo que la factura no cubrió o pide la devolución si ya la pagó. El sistema no deja ligar una OC con boleta a una factura ya registrada.`
   }
   return `${base} Si es de otra OC, después la anexas a la buena; si Contabilidad escribió mal su total, que lo corrija y el anexo deja de estar por revisar.`
+}
+
+/**
+ * Los documentos que lleva cada OC y cada OS, como los da
+ * `documentos_de_las_compras()` (migración 20261126220000, Plan 10). Cada uno
+ * dice cómo se nombra cuando falta, cuando está a medias y cuando ya está.
+ */
+export const DOCUMENTO_DE_COMPRA: Record<string, { nombre: string; falta: string; enParte: string; esta: string }> = {
+  FACTURA: { nombre: 'Factura', falta: 'Falta la factura', enParte: 'Facturada en parte', esta: 'Factura' },
+  BOLETA: {
+    nombre: 'Boleta, nota de venta o recibo',
+    falta: 'Falta la boleta, nota de venta o recibo',
+    enParte: 'Boleta en parte',
+    esta: 'Boleta o factura',
+  },
+  COMPROBANTE: {
+    nombre: 'Factura, boleta o recibo',
+    falta: 'Falta la factura, boleta o recibo',
+    enParte: 'Comprobante en parte',
+    esta: 'Comprobante',
+  },
+  GUIA: { nombre: 'Guía de remisión', falta: 'Falta la guía de remisión', enParte: 'Guía de remisión en parte', esta: 'Guía de remisión' },
+  DETRACCION: {
+    nombre: 'Detracción',
+    falta: 'Falta depositar la detracción',
+    enParte: 'Detracción depositada en parte',
+    esta: 'Detracción depositada',
+  },
+  NOTA_CREDITO: {
+    nombre: 'Nota de crédito',
+    falta: 'Falta la nota de crédito de lo devuelto',
+    enParte: 'Falta la nota de crédito de otra devolución',
+    esta: 'Nota de crédito',
+  },
+}
+
+/** El orden en que se leen, el mismo en la pantalla y en el Excel. */
+export const ORDEN_DE_DOCUMENTOS = ['FACTURA', 'BOLETA', 'COMPROBANTE', 'GUIA', 'DETRACCION', 'NOTA_CREDITO'] as const
+
+export type SituacionDeDocumento = 'ESTA' | 'EN_PARTE' | 'FALTA'
+export type DocumentoDeLaCompra = {
+  documento: string
+  situacion: SituacionDeDocumento
+  desde: string | null
+  dias: number | null
+  numeros: string | null
+}
+
+/** Lo que dice un documento en una línea: «Falta la factura», «Guía de remisión T001-12». */
+export function textoDelDocumento(d: Pick<DocumentoDeLaCompra, 'documento' | 'situacion' | 'numeros'>): string {
+  const def = DOCUMENTO_DE_COMPRA[d.documento] ?? { nombre: d.documento, falta: `Falta: ${d.documento}`, enParte: d.documento, esta: d.documento }
+  if (d.situacion === 'FALTA') return def.falta
+  if (!d.numeros) return d.situacion === 'EN_PARTE' ? def.enParte : def.esta
+  // La detracción no tiene número propio: lo que se anota es la operación del depósito.
+  const numeros = d.documento === 'DETRACCION' ? `(operación ${d.numeros})` : d.numeros
+  if (d.situacion === 'ESTA') return `${def.esta} ${numeros}`
+  // La nota a medias es la de otra devolución de la misma OC: lo que ya está va entre paréntesis.
+  return d.documento === 'NOTA_CREDITO' ? `${def.enParte} (ya está la ${numeros})` : `${def.enParte} · ${numeros}`
+}
+
+/** Los que faltan o están a medias, el más antiguo primero. */
+export function documentosQueFaltan<T extends DocumentoDeLaCompra>(docs: readonly T[]): T[] {
+  return docs
+    .filter((d) => d.situacion !== 'ESTA')
+    .sort((a, b) => (b.dias ?? -1) - (a.dias ?? -1) || ORDEN_DE_DOCUMENTOS.indexOf(a.documento as never) - ORDEN_DE_DOCUMENTOS.indexOf(b.documento as never))
 }

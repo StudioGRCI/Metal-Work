@@ -14213,6 +14213,18 @@ export type Database = {
           vinculos_ot: Json | null
         }[]
       }
+      documentos_de_las_compras: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          tipo: string | null
+          compra: string | null
+          documento: string | null
+          situacion: string | null
+          desde: string | null
+          dias: number | null
+          numeros: string | null
+        }[]
+      }
       documentos_por_aprobar: {
         Args: Record<PropertyKey, never>
         Returns: {
