@@ -247,8 +247,12 @@ console.log('4. Una cuenta que no se puede leer no sale como «nada»')
 {
   // Solo para la cuenta de RR. HH.: leer los reportes diarios le da error.
   const { rows: [u] } = await base.query(`select id from public.usuarios where correo = 'rrhh.local@metalwork.test'`)
+  // Si una corrida anterior se cortó con la política puesta, se quita antes.
+  await base.query('drop policy if exists prb_te_toca_falla on public.reportes_diarios')
   await base.query(`create policy prb_te_toca_falla on public.reportes_diarios as restrictive for select to authenticated
-    using (case when auth.uid() = '${u.id}' then (1 / 0) = 1 else true end)`)
+    using (auth.uid() is distinct from '${u.id}'::uuid or (auth.uid()::text || 'x')::int = 0)`)
+  // El error sale solo al evaluarse con esa cuenta: un \`1 / 0\` lo calcula
+  // Postgres al planear la consulta y fallaba para todas.
   try {
     const { pagina, contexto } = await entrar('rrhh', { width: 1440, height: 900 })
     const te = await leerTeToca(pagina)
@@ -257,6 +261,11 @@ console.log('4. Una cuenta que no se puede leer no sale como «nada»')
     comprobar(/1 sin comprobar/.test(te?.cabecera ?? ''), `la cabecera dice que falta comprobar una (${te?.cabecera})`)
     await pagina.screenshot({ path: join(CAPTURAS, 'te-toca-sin-comprobar-1440.png') })
     await contexto.close()
+    // Otra cuenta que también lee los reportes diarios no se entera.
+    const otra = await entrar('sup.prd', { width: 1440, height: 900 })
+    const suya = await leerTeToca(otra.pagina)
+    comprobar(suya && suya.sinComprobar === 0, 'la falla es solo de RR. HH.: Supervisión de Producción cuenta sus reportes sin problema')
+    await otra.contexto.close()
   } finally {
     await base.query('drop policy if exists prb_te_toca_falla on public.reportes_diarios')
   }
