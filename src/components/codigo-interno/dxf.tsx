@@ -44,19 +44,27 @@ export function ListaDxf({
         return (
         <li key={grupo[0].envio} className="p-3" data-envio={grupo[0].envio}>
           <div className="flex items-start gap-3">
-            <div className={`min-w-0 flex-1${lecturas ? ' space-y-1' : ''}`}>
+            <div className="min-w-0 flex-1">
               <p className="text-sm font-medium wrap-anywhere text-texto">{grupo[0].descripcion}</p>
-              <p className="text-xs text-texto-suave">
-                {grupo.length === 1 ? '1 archivo' : `${grupo.length} archivos`} · {v ? subidoPor(v, grupo.length === 1 ? 'subido' : 'subidos') : fechaHora(llegada(grupo))}
-              </p>
-              {v && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <LecturaDelAviso areas={v.areas} />
-                </div>
+              {!v && (
+                <p className="text-xs text-texto-suave">
+                  {grupo.length === 1 ? '1 archivo' : `${grupo.length} archivos`} · {fechaHora(llegada(grupo))}
+                </p>
               )}
             </div>
             {accionesDeEnvio?.(grupo)}
           </div>
+          {/* Con quién subió y quién leyó, a todo el ancho de la fila: al lado de «Quitar los N» no cabe en el teléfono. */}
+          {v && (
+            <div className="mt-1 space-y-1">
+              <p className="text-xs text-texto-suave">
+                {grupo.length === 1 ? '1 archivo' : `${grupo.length} archivos`} · {subidoPor(v, grupo.length === 1 ? 'subido' : 'subidos')}
+              </p>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <LecturaDelAviso areas={v.areas} />
+              </div>
+            </div>
+          )}
           <ul className="mt-2 grid gap-1">
             {grupo.map((d) => {
               const Icono = /\.dxf$/i.test(d.nombre_archivo) ? FileCode : FileArchive
