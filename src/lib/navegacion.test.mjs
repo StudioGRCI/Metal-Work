@@ -5,9 +5,10 @@ import { menuDe, modulosDelInicio, pestanasDe, rutaActiva, rutasDeTrabajo } from
 // Los 32 permisos de Gerencia en producción el 2026-11-25 (leídos de `roles_permisos`), más
 // `rrhh.tiempos_entrega`, que le da la migración 20261125100000 (Semáforo de entregas, #186), y
 // `equipos.ver`, que le da la 20261125160000 (padrón de equipos, #191). Desde la 20261126310000
-// tiene además los diez de lectura de las once pantallas que le faltaban, y ya no `proveedores.editar`.
+// tiene además los diez de lectura de las once pantallas que le faltaban, y ya no `proveedores.editar`;
+// desde la 20261126100100, `averias.ver` (reportar una avería, Plan 16.2).
 const GERENCIA = [
-  'adquisiciones.ver', 'almacen.ver', 'asistencia.ver', 'auditoria.ver', 'clientes.ver', 'codigos_internos.cerrar',
+  'adquisiciones.ver', 'almacen.ver', 'averias.ver', 'asistencia.ver', 'auditoria.ver', 'clientes.ver', 'codigos_internos.cerrar',
   'codigos_internos.ver', 'compras.configurar_aprobacion', 'compras.ver', 'costos.ver', 'cotizaciones.revisar',
   'cotizaciones.ver_aprobadas', 'cotizaciones.ver_pdf_comercial', 'diseno.revisar', 'equipos.ver', 'ordenes.anular', 'ordenes.aprobar',
   'ordenes.listar', 'ordenes.ver', 'planilla_diaria.ver', 'produccion.aprobar_sin_orden', 'produccion.cualquier_area',
@@ -22,15 +23,20 @@ const GERENCIA = [
 
 const rutas = (grupos) => grupos.flatMap((g) => g.items.map((i) => i.ruta))
 
-test('Gerencia ve por área las 48 pantallas que su permiso le abre, cada una una vez', () => {
+test('Gerencia ve por área las 51 pantallas que su permiso le abre, cada una una vez', () => {
   const grupos = menuDe(GERENCIA, false, 'GERENTE')
   assert.deepEqual(grupos.map((g) => g.titulo), [
-    'Principal', 'Por aprobar', 'Ventas', 'Diseño e Ingeniería', 'Requerimientos', 'Almacén', 'Logística', 'Administración', 'Finanzas',
-    'Recursos Humanos', 'SSOMA',
+    'Principal', 'Por aprobar', 'Ventas', 'Diseño e Ingeniería', 'Requerimientos', 'Almacén', 'Mantenimiento', 'Logística', 'Administración',
+    'Finanzas', 'Recursos Humanos', 'SSOMA',
   ])
   const todas = rutas(grupos)
-  assert.equal(todas.length, 48)
-  assert.equal(new Set(todas).size, 48)
+  // 49 en main el 2026-11-26 (con Averías), más Por decidir (plan 12, entrega 12.1) y el Control de compras de Almacén.
+  assert.equal(todas.length, 51)
+  assert.equal(new Set(todas).size, 51)
+  // Las averías y los reportes de seguridad, en lo que consulta: no se repiten en «Reportar», que va al final para todos.
+  assert.deepEqual(rutas(grupos.filter((g) => g.titulo === 'Mantenimiento')), ['/averias'])
+  assert.deepEqual(rutas(grupos.filter((g) => g.titulo === 'SSOMA')), ['/ssoma'])
+  assert.ok(!grupos.some((g) => g.titulo === 'Reportar'))
   // Las once que se le abrieron en lectura el 2026-11-26, y Proveedores sin `proveedores.editar`.
   for (const r of [
     '/carrocerias', '/seguimiento', '/requerimientos/metrado', '/materiales', '/diseno/informe-semanal', '/diseno/dxf',
@@ -57,18 +63,19 @@ test('Gerencia ve por área las 48 pantallas que su permiso le abre, cada una un
 test('lo que Gerencia consulta no es su trabajo; lo que ya tenía en su menú, sí', () => {
   const grupos = menuDe(GERENCIA, false, 'GERENTE')
   assert.deepEqual(grupos.filter((g) => !g.consulta).map((g) => g.titulo), ['Principal', 'Por aprobar'])
-  // Las mismas once rutas que su menú tiene en main: ni un pendiente ni una cifra de más o de menos.
+  // Las once rutas que su menú tenía en main, más «Por decidir» (plan 12.1), que no lleva
+  // pendiente propio: ni un pendiente ni una cifra de más o de menos.
   assert.deepEqual([...rutasDeTrabajo(GERENCIA, false, 'GERENTE')].sort(), [
     '/', '/adquisiciones', '/avance/trabajos', '/codigos-internos', '/compras/aprobacion', '/costos/gastos-generales',
-    '/cotizaciones/pdf', '/reportes-diarios', '/rrhh/tiempos-de-entrega', '/tesoreria/por-cobrar', '/tesoreria/por-pagar',
+    '/cotizaciones/pdf', '/por-decidir', '/reportes-diarios', '/rrhh/tiempos-de-entrega', '/tesoreria/por-cobrar', '/tesoreria/por-pagar',
   ])
   assert.ok(!rutasDeTrabajo(GERENCIA, false, 'GERENTE').has('/ordenes'))
   assert.deepEqual(rutas(modulosDelInicio(GERENCIA, false, 'GERENTE')), [
-    '/', '/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos',
+    '/', '/codigos-internos', '/por-decidir', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos',
     '/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales', '/rrhh/tiempos-de-entrega',
   ])
   assert.deepEqual(pestanasDe(GERENCIA, false, 'GERENTE').map((p) => p.ruta), [
-    '/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios',
+    '/codigos-internos', '/cotizaciones/pdf', '/por-decidir', '/reportes-diarios',
   ])
 })
 
@@ -106,7 +113,7 @@ test('en Gerencia, lo que espera su visto va siempre abierto y cada área nace p
     grupos.map((g) => [g.titulo, g.pliegue]),
     [
       ['Principal', 'fijo'], ['Por aprobar', 'fijo'], ['Ventas', 'plegado'], ['Diseño e Ingeniería', 'plegado'], ['Requerimientos', 'plegado'],
-      ['Almacén', 'plegado'],
+      ['Almacén', 'plegado'], ['Mantenimiento', 'plegado'],
       ['Logística', 'plegado'], ['Administración', 'plegado'], ['Finanzas', 'plegado'], ['Recursos Humanos', 'plegado'],
       ['SSOMA', 'plegado'],
     ],
@@ -120,4 +127,21 @@ test('«Materiales por código» se marca a sí mismo, no a «Seguimiento por c�
   assert.equal(rutaActiva('/seguimiento', rutas, new URLSearchParams()), '/seguimiento')
   assert.equal(rutaActiva('/seguimiento', ['/seguimiento?vista=materiales'], new URLSearchParams()), undefined)
   assert.equal(rutaActiva('/requerimientos/atencion', rutas, new URLSearchParams()), '/requerimientos')
+})
+
+test('«Reportar incidente» y «Reportar avería» están al final del menú de todo puesto, también del que no tiene ningún permiso', () => {
+  for (const [rol, permisos] of [['VENDEDOR', ['cotizaciones.crear']], ['PORTERO', []], ['SUPERVISOR', ['reporte_diario.crear']]]) {
+    const grupos = menuDe(permisos, false, rol)
+    const ultimo = grupos.at(-1)
+    assert.equal(ultimo?.titulo, 'Reportar', rol)
+    assert.equal(ultimo?.pliegue, 'fijo', rol)
+    assert.deepEqual(ultimo.items.map((i) => [i.ruta, i.titulo]), [['/ssoma', 'Reportar incidente'], ['/averias', 'Reportar avería']], rol)
+    // Es su trabajo, no una consulta.
+    assert.ok(rutasDeTrabajo(permisos, false, rol).has('/averias'), rol)
+  }
+  // Mantenimiento la tiene arriba, como «Averías», y no otra vez abajo.
+  const mantenimiento = menuDe(['averias.atender', 'equipos.gestionar'], false, 'MANTENIMIENTO')
+  assert.deepEqual(mantenimiento.map((g) => g.titulo), ['Principal', 'Mantenimiento', 'Reportar'])
+  assert.deepEqual(mantenimiento[1].items.map((i) => i.titulo), ['Averías', 'Equipos'])
+  assert.deepEqual(mantenimiento[2].items.map((i) => i.titulo), ['Reportar incidente'])
 })
