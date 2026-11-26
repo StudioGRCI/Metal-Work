@@ -5,7 +5,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Paginacion } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
-import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
+import { AccionesDeFila, SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import {
   areasDeEquipo,
@@ -103,6 +103,8 @@ export default async function PaginaEquipos({ searchParams }: PageProps<'/equipo
       {conLectura && historia && (
         <LecturaDeEquipos parados={parados?.equipos ?? []} totalParados={parados?.total ?? 0} historia={historia} />
       )}
+      {/* 20 px entre los filtros y la lista, como entre bloques (la escala de la skill diseno). */}
+      <div className="space-y-5">
       <div className="space-y-3">
         <BuscadorSimple ruta="/equipos" etiqueta="Buscar equipos" marcador="Código, nombre, marca o serie" />
         {(cuenta.deBaja > 0 || deBaja) && (
@@ -148,18 +150,22 @@ export default async function PaginaEquipos({ searchParams }: PageProps<'/equipo
         )}
       </div>
 
-      <Tarjeta className="mt-4 overflow-hidden">
-        <Tabla>
+      {/* En el teléfono cada equipo es una ficha con sus botones en un renglón
+          (la lista común, entrega 4 del plan de orden y diseño): iban de a dos
+          en una rejilla, con «A cargo de» solo en el renglón de abajo. */}
+      <Tarjeta className="overflow-hidden">
+        <Tabla apilada>
           <TablaCabecera>
             <tr>
-              <TH>Equipo</TH>
+              {/* Su ancho: a 1024 el nombre quedaba en 94 px, seis renglones. */}
+              <TH className="md:w-1/4">Equipo</TH>
               {/* En el teléfono, categoría, área, quién lo tiene y el estado bajan
                   a la celda del equipo: así caben sin correr la tabla de lado. */}
               <TH className="hidden md:table-cell">Categoría</TH>
               <TH className="hidden md:table-cell">Área y ubicación</TH>
-              <TH className="hidden lg:table-cell">A cargo de</TH>
-              <TH className="hidden sm:table-cell">{deBaja ? 'Baja' : 'Estado'}</TH>
-              {(gestiona || asigna) && <TH>Acciones</TH>}
+              <TH className="hidden xl:table-cell">A cargo de</TH>
+              <TH className="hidden md:table-cell">{deBaja ? 'Baja' : 'Estado'}</TH>
+              {(gestiona || asigna) && <TH className="md:w-80">Acciones</TH>}
             </tr>
           </TablaCabecera>
           <tbody>
@@ -221,16 +227,18 @@ export default async function PaginaEquipos({ searchParams }: PageProps<'/equipo
                       </Link>
                       {(e.marca || series) && <p className="text-xs text-texto-suave">{[e.marca, series].filter(Boolean).join(' · ')}</p>}
                       <p className="text-xs text-texto-suave md:hidden">{[e.categoria?.nombre, donde].filter(Boolean).join(' · ')}</p>
-                      {e.a_cargo_de && <p className="text-xs text-texto-suave lg:hidden">A cargo de {e.a_cargo_de}</p>}
-                      <div className="mt-1.5 sm:hidden">{estadoODeBaja}</div>
+                      {e.a_cargo_de && <p className="text-xs text-texto-suave xl:hidden">A cargo de {e.a_cargo_de}</p>}
+                      <div className="mt-1.5 md:hidden">{estadoODeBaja}</div>
                     </TD>
                     <TD className="hidden text-texto-suave md:table-cell">{e.categoria?.nombre ?? '—'}</TD>
                     <TD className="hidden text-texto-suave md:table-cell">{donde || <span className="text-aviso">Sin área</span>}</TD>
-                    <TD className="hidden text-texto-suave lg:table-cell">{e.a_cargo_de ?? '—'}</TD>
-                    <TD className="hidden sm:table-cell">{estadoODeBaja}</TD>
+                    <TD className="hidden text-texto-suave xl:table-cell">{e.a_cargo_de ?? '—'}</TD>
+                    <TD className="hidden md:table-cell">{estadoODeBaja}</TD>
                     {(gestiona || asigna) && (
                       <TD>
-                        <AccionesEquipo equipo={e} gestiona={gestiona} asigna={asigna} categorias={categorias} areas={areas} />
+                        <AccionesDeFila className="md:justify-start">
+                          <AccionesEquipo equipo={e} gestiona={gestiona} asigna={asigna} categorias={categorias} areas={areas} />
+                        </AccionesDeFila>
                       </TD>
                     )}
                   </TR>
@@ -240,6 +248,7 @@ export default async function PaginaEquipos({ searchParams }: PageProps<'/equipo
           </tbody>
         </Tabla>
       </Tarjeta>
+      </div>
 
       <Paginacion ruta="/equipos" pagina={pagina} paginas={paginas} total={total} porPagina={EQUIPOS_POR_PAGINA} params={params} />
     </>
