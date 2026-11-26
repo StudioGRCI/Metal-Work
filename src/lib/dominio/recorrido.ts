@@ -120,6 +120,10 @@ const PASOS_DE_LA_COTIZACION: Record<string, Frases> = {
   // El número de la OT llega solo a quien lee las órdenes.
   CODIGO_Y_OT: { hecho: 'Código interno y OT cargados', falta: 'Código interno y OT', nota: (ot) => ot },
   FACTURA: { hecho: 'Facturada', falta: 'Factura' },
+  // Facturada en parte: la factura de lo que falta del total (migración 20261126210000). Solo espera, nunca se dice hecha.
+  FACTURA_RESTO: { hecho: 'Facturado lo que faltaba', falta: 'Factura de lo que falta' },
+  // El cobro lo ve quien lee los cobros; a Ventas la base no se lo da.
+  COBRO: { hecho: 'Cobrada', falta: 'Cobro' },
   ANULACION: { hecho: 'Anulada', falta: 'Anulación' },
 }
 
@@ -128,6 +132,8 @@ const ESPERAS_DE_LA_COTIZACION: Record<string, (detalle: string | null) => strin
   CORRECCION: () => 'Sube la corrección con el mismo número.',
   CODIGO_Y_OT: () => 'Le da el código interno de la unidad y sube la OT.',
   FACTURA: () => 'Registra su factura.',
+  FACTURA_RESTO: () => 'Registra la factura de lo que falta del total.',
+  COBRO: (detalle) => (detalle === 'EN_PARTE' ? 'Cobra lo que falta: ya cobró una parte.' : 'Cobra sus facturas.'),
 }
 
 function describir(

@@ -1,12 +1,18 @@
 import { Download, FileText, Hourglass, ReceiptText } from 'lucide-react'
+import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { FacturaDeVenta } from '@/components/finanzas/factura-de-venta'
+import { DiasEnEspera } from '@/components/ui/dias-en-espera'
 import { Insignia } from '@/components/ui/etiqueta-estado'
-import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { bandejaDeFacturacion, type CotizacionParaFacturar } from '@/lib/datos/facturacion'
+import { Recorrido } from '@/components/ui/recorrido'
+import { DetalleEnTelefono, SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
+import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { bandejaDeFacturacion, esperaDeFacturacion, type CotizacionParaFacturar, type EsperaDeFacturacion } from '@/lib/datos/facturacion'
+import { recorridoDeCotizaciones } from '@/lib/datos/recorrido'
 import { PERMISOS_BAJAR_COTIZACION, rutaParaBajarCotizacion } from '@/lib/descarga'
 import { totalConIgv } from '@/lib/dominio/finanzas'
+import { describirRecorridoDeLaCotizacion, haceDias } from '@/lib/dominio/recorrido'
 import { fecha, hoyLima, moneda, parteDe, porcentaje, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -41,6 +47,15 @@ function estadoDe(c: CotizacionParaFacturar): { etiqueta: string; tono: 'aviso' 
   return { etiqueta: 'Facturada', tono: 'exito' }
 }
 
+/** Lo que espera factura: con código interno, sin factura vigente o facturada en parte (Plan 10.1). */
+const porFacturar = (c: CotizacionParaFacturar) => estadoDe(c).tono === 'aviso'
+
+/** Cuánto falta facturar, en la moneda de la cotización; nulo si no tiene total. */
+function faltaDe(c: CotizacionParaFacturar): number | null {
+  const total = totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
+  return total === null ? null : Math.max(0, total - facturadoDe(c))
+}
+
 /**
  * La factura de venta cuelga del código interno (migración 20261015124000):
  * cada cotización que Gerencia aprobó llega aquí con el cliente, su RUC y su
@@ -52,9 +67,25 @@ export default async function PaginaFacturacion() {
   const perfil = await exigirPermiso(['contabilidad.facturar', 'cotizaciones.ver_aprobadas'])
   const puedeBajar = puede(perfil, PERMISOS_BAJAR_COTIZACION)
   const factura = puede(perfil, 'contabilidad.facturar')
-  const cotizaciones = await bandejaDeFacturacion()
+  const bandeja = await bandejaDeFacturacion()
   const hoy = hoyLima()
-  const porFacturar = cotizaciones.filter((c) => estadoDe(c).etiqueta === 'Por facturar').length
+  const ids = bandeja.flatMap((c) => (c.cotizacion_id ? [c.cotizacion_id] : []))
+  // Los días y el recorrido van aparte: si uno no se puede leer, la pantalla sigue con lo demás y lo dice en su lugar.
+  const [espera, recorridos] = await Promise.all([
+    esperaDeFacturacion(bandeja.filter(porFacturar).flatMap((c) => (c.cotizacion_id ? [c.cotizacion_id] : []))).catch((e: unknown) => {
+      console.error('Facturación: no se pudieron contar los días en espera.', e)
+      return null
+    }),
+    recorridoDeCotizaciones(ids).catch((e: unknown) => {
+      console.error('Facturación: no se pudo leer el recorrido.', e)
+      return null
+    }),
+  ])
+  const diasDe = (c: CotizacionParaFacturar) => (c.cotizacion_id ? (espera?.get(c.cotizacion_id)?.dias ?? null) : null)
+  // Lo que espera factura va primero, de lo más antiguo a lo más nuevo; después lo facturado y al final lo que espera su OT.
+  const turno = (c: CotizacionParaFacturar) => (!c.codigo_interno ? 2 : porFacturar(c) ? 0 : 1)
+  const cotizaciones = [...bandeja].sort((a, b) => turno(a) - turno(b) || (turno(a) === 0 ? (diasDe(b) ?? -1) - (diasDe(a) ?? -1) : 0))
+  const pendientes = cotizaciones.filter(porFacturar)
 
   return (
     <>
@@ -63,11 +94,8 @@ export default async function PaginaFacturacion() {
         ayuda="Las cotizaciones aprobadas, por código interno: registra la factura que emitiste en SUNAT y Tesorería la tiene por cobrar."
       />
 
-      {porFacturar > 0 && (
-        <p className="mb-4 text-sm text-texto-suave">
-          {porFacturar} {porFacturar === 1 ? 'cotización espera' : 'cotizaciones esperan'} su factura.
-        </p>
-      )}
+      <div className="space-y-5">
+      {cotizaciones.length > 0 && <PorFacturar pendientes={pendientes} espera={espera} />}
 
       {cotizaciones.length === 0 ? (
         <Tarjeta>
@@ -82,6 +110,10 @@ export default async function PaginaFacturacion() {
           </TarjetaCuerpo>
         </Tarjeta>
       ) : (
+        <section aria-labelledby="todas-las-aprobadas" className="space-y-3">
+        <h2 id="todas-las-aprobadas" className="text-[15px] font-semibold text-texto">
+          Cotizaciones aprobadas
+        </h2>
         <ul className="space-y-3">
           {cotizaciones.map((c) => {
             const estado = estadoDe(c)
@@ -102,6 +134,13 @@ export default async function PaginaFacturacion() {
                             {c.codigo_interno ? `Código ${c.codigo_interno}` : 'Sin código interno'}
                           </span>
                           <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
+                          {porFacturar(c) && c.cotizacion_id && (
+                            <DiasEnEspera
+                              dias={espera?.get(c.cotizacion_id)?.dias}
+                              desde={espera?.get(c.cotizacion_id)?.desde}
+                              quien="Contabilidad"
+                            />
+                          )}
                         </p>
                         <p className="mt-0.5 text-sm text-texto">
                           {c.cliente ?? 'Cliente sin registrar'}
@@ -205,13 +244,118 @@ export default async function PaginaFacturacion() {
                         facturado={facturado}
                       />
                     )}
+
+                    {/* Para consultar: de la cotización a la factura y al cobro, quién hizo cada paso y quién la tiene ahora. */}
+                    <Recorrido
+                      pasos={recorridos ? describirRecorridoDeLaCotizacion((c.cotizacion_id && recorridos.get(c.cotizacion_id)) || []) : null}
+                      className="rounded-[var(--radius-base)] border border-borde"
+                      relleno="px-2.5"
+                      femenino
+                    />
                   </TarjetaCuerpo>
                 </Tarjeta>
               </li>
             )
           })}
         </ul>
+        </section>
       )}
+      </div>
     </>
+  )
+}
+
+/**
+ * Lo que Contabilidad tiene por facturar, arriba y en una tabla: cada
+ * cotización aprobada con su OT y su código interno que no tiene factura o la
+ * tiene por una parte, con lo que falta y los días que lleva esperando desde
+ * que la OT tiene código (DKS, Plan 10). Cada fila baja a su tarjeta.
+ */
+function PorFacturar({ pendientes, espera }: { pendientes: CotizacionParaFacturar[]; espera: Map<string, EsperaDeFacturacion> | null }) {
+  const masAntigua = pendientes.reduce<number | null>((max, c) => {
+    const d = c.cotizacion_id ? (espera?.get(c.cotizacion_id)?.dias ?? null) : null
+    return d === null ? max : Math.max(max ?? 0, d)
+  }, null)
+  const descripcion =
+    pendientes.length === 0
+      ? null
+      : `${pendientes.length === 1 ? 'Una cotización espera' : `${pendientes.length} cotizaciones esperan`} su factura${
+          masAntigua !== null && masAntigua > 0 ? `; la más antigua, ${haceDias(masAntigua)}` : ''
+        }.`
+  return (
+    <Tarjeta id="por-facturar" className="overflow-hidden">
+      <TarjetaCabecera
+        titulo="Por facturar"
+        descripcion={descripcion}
+        ayuda="Las cotizaciones aprobadas que ya tienen su OT con código interno y no tienen factura, o la tienen por una parte del total. Los días se cuentan desde que la OT tiene código interno, con la fecha de Lima. Toca una para ir a su tarjeta y registrar la factura."
+      />
+      {espera === null && pendientes.length > 0 && (
+        <p role="status" className="border-b border-borde px-4 py-2 text-xs text-aviso">
+          No se pudieron contar los días en espera. Recarga la página; si continúa, avisa al administrador.
+        </p>
+      )}
+      {pendientes.length === 0 ? (
+        <div className="px-4 py-4">
+          <SinDatos
+            compacto
+            titulo="Nada por facturar"
+            descripcion="Cuando Administración cargue la OT con su código interno de una cotización aprobada, aparece aquí."
+          />
+        </div>
+      ) : (
+        <Tabla aria-label="Cotizaciones por facturar, de la que más espera a la que menos">
+          <TablaCabecera>
+            <tr>
+              <TH>Código interno</TH>
+              <TH className="hidden sm:table-cell">Cliente y cotización</TH>
+              <TH className="hidden text-right sm:table-cell">Falta facturar</TH>
+              <TH className="text-right">Espera</TH>
+            </tr>
+          </TablaCabecera>
+          <tbody>
+            {pendientes.map((c) => {
+              const m = codigo(c.moneda)
+              const falta = faltaDe(c)
+              const enParte = c.facturas.some((f) => !f.anulada_en)
+              const e = c.cotizacion_id ? espera?.get(c.cotizacion_id) : undefined
+              const faltaTexto = falta === null ? 'Sin total' : moneda(falta, m)
+              return (
+                <TR key={c.cotizacion_id} data-por-facturar={c.codigo_interno ?? undefined}>
+                  <TD className="align-top">
+                    <Link href={`#${c.cotizacion_id}`} className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0">
+                      <span className="tabular">{c.codigo_interno}</span>
+                    </Link>
+                    {(enParte || c.en_correccion) && (
+                      <p className="mt-0.5 flex flex-wrap gap-1">
+                        {enParte && <Insignia tono="aviso">En parte</Insignia>}
+                        {c.en_correccion && <Insignia>En corrección</Insignia>}
+                      </p>
+                    )}
+                    <DetalleEnTelefono>
+                      <p className="text-sm break-words text-texto">{c.cliente ?? 'Cliente sin registrar'}</p>
+                      <p className="text-xs text-texto-suave">
+                        Cotización {c.numero} · falta <span className="tabular whitespace-nowrap text-texto">{faltaTexto}</span>
+                      </p>
+                    </DetalleEnTelefono>
+                  </TD>
+                  <TD className="hidden align-top sm:table-cell">
+                    <p className="break-words">{c.cliente ?? 'Cliente sin registrar'}</p>
+                    <p className="text-xs text-texto-suave">Cotización {c.numero}</p>
+                  </TD>
+                  <TD className="tabular hidden text-right align-top whitespace-nowrap sm:table-cell">{faltaTexto}</TD>
+                  <TD className="text-right align-top">
+                    {e?.dias != null ? (
+                      <DiasEnEspera dias={e.dias} desde={e.desde} quien="Contabilidad" />
+                    ) : (
+                      <span className="text-xs text-texto-tenue">—</span>
+                    )}
+                  </TD>
+                </TR>
+              )
+            })}
+          </tbody>
+        </Tabla>
+      )}
+    </Tarjeta>
   )
 }

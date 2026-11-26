@@ -185,6 +185,32 @@ export async function bandejaDeFacturacion(): Promise<CotizacionParaFacturar[]> 
   return lista.sort((a, b) => turno(a) - turno(b))
 }
 
+/** Desde cuándo espera su factura cada cotización y cuántos días van, por fecha de Lima. */
+export type EsperaDeFacturacion = { desde: string | null; dias: number | null }
+
+/**
+ * Desde que la OT de cada cotización tiene código interno, que es cuando se
+ * puede facturar (DKS, Plan 10), y los días que van contados por la base con
+ * la fecha de Lima (migración 20261126210000). Lo lee quien lee las
+ * cotizaciones aprobadas. Si la base no contesta, lanza: la pantalla sigue sin
+ * los días y lo dice.
+ */
+export async function esperaDeFacturacion(ids: string[]): Promise<Map<string, EsperaDeFacturacion>> {
+  const mapa = new Map<string, EsperaDeFacturacion>()
+  const unicos = [...new Set(ids)]
+  if (unicos.length === 0) return mapa
+  const supabase = await createClient()
+  // De a 500, el tope de la función.
+  for (let i = 0; i < unicos.length; i += 500) {
+    const { data, error } = await supabase.rpc('facturacion_en_espera', { p_ids: unicos.slice(i, i + 500) })
+    if (error) throw new Error(`No se pudieron contar los días que esperan su factura: ${error.message}`)
+    for (const f of data ?? []) {
+      if (f.cotizacion) mapa.set(f.cotizacion, { desde: f.desde, dias: f.dias == null ? null : Number(f.dias) })
+    }
+  }
+  return mapa
+}
+
 /** Lo facturado de un código, en cada moneda: la línea de arriba en Códigos internos. Sin las anuladas. */
 export type FacturadoDelCodigo = { facturas: number; total: Record<CodigoMoneda, number>; cobrado: Record<CodigoMoneda, number>; saldo: Record<CodigoMoneda, number> }
 
