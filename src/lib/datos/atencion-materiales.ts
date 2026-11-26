@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { fechasCorregidas } from '@/lib/datos/plazos-compras'
 import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { validacionDeCompra, type ValidacionIngreso } from '@/lib/dominio/logistica'
 import { createClient } from '@/lib/supabase/server'
@@ -142,7 +143,7 @@ export async function cargarAtencionMateriales(permisos: {
   }
   const idsCompra = (compras.data ?? []).map((compra) => compra.orden_compra_id).filter((id): id is string => Boolean(id))
   const idsLineaCompra = (compras.data ?? []).map((compra) => compra.id).filter((id): id is string => Boolean(id))
-  const [entregas, precios, facturas, pendientesAlmacen] = await Promise.all([
+  const [entregas, precios, facturas, pendientesAlmacen, corregidas] = await Promise.all([
     idsCompra.length > 0
       ? supabase.from('ordenes_compra_materiales').select('id, numero, entregado_almacen_en, condicion_pago, dias_credito, moneda, aprobacion, recojo, con_factura').in('id', idsCompra)
       : Promise.resolve({ data: [], error: null }),
@@ -156,6 +157,8 @@ export async function cargarAtencionMateriales(permisos: {
     idsCompra.length > 0 && (permisos.verCompras || permisos.recibir)
       ? supabase.from('ingresos_pendientes_almacen').select('orden_compra_id, estado').in('orden_compra_id', idsCompra)
       : Promise.resolve({ data: [], error: null }),
+    // Si Logística corrigió la fecha, vale la corregida, como en Compras.
+    fechasCorregidas(supabase, { oc: idsCompra }),
   ])
   if (entregas.error || precios.error || facturas.error || pendientesAlmacen.error) throw new Error('No se pudieron leer la entrega, facturas o precios de compra.')
   const estadosPorCompra = new Map<string, string[]>()
@@ -175,6 +178,7 @@ export async function cargarAtencionMateriales(permisos: {
     catalogoAlmacen: catalogo.data ?? [],
     compras: (compras.data ?? []).map((compra) => ({
       ...compra,
+      fecha_estimada: corregidas.get(compra.orden_compra_id ?? '') ?? compra.fecha_estimada,
       entregado_almacen_en: entregaPorCompra.get(compra.orden_compra_id ?? '')?.entregado_almacen_en ?? null,
       condicion_pago: entregaPorCompra.get(compra.orden_compra_id ?? '')?.condicion_pago ?? 'CONTADO',
       dias_credito: entregaPorCompra.get(compra.orden_compra_id ?? '')?.dias_credito ?? 0,

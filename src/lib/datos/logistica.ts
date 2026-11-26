@@ -289,6 +289,7 @@ export async function cargarRecojos(): Promise<CompraParaRecojo[]> {
     en_recojo_en: c.en_recojo_en,
     recogido_en: c.recogido_en,
     dejado_en: c.dejado_en,
+    // La que vale hoy: la corregida, si Logística la corrigió (20261126946000).
     fecha_estimada: c.fecha_estimada,
     creado_en: c.creado_en,
     ordenes: c.ordenes ?? [],

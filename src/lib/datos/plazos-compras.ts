@@ -79,3 +79,57 @@ export async function plazosDeServicios(ids: readonly string[]): Promise<Map<str
   }
   return porId
 }
+
+/**
+ * La fecha corregida de cada OC u OS que la tiene: la última que Logística
+ * anotó en el seguimiento (migración 20261126462000), por id del documento. La
+ * que nunca se corrigió no sale, y vale la del documento. Es la misma regla de
+ * `fecha_prometida_de_compra`, que no se ejecuta desde la sesión: aquí se lee
+ * con el RLS de quien mira, que ve el seguimiento de la compra que ve. Así el
+ * conductor, Almacén, Atención de RQ y Gerencia esperan la compra el mismo día
+ * que Logística (DKS, 2026-11-26).
+ *
+ * Si la base no contesta, lanza: mostrar la fecha vieja como si fuera la buena
+ * es justo lo que esto arregla.
+ */
+export async function fechasCorregidas(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ids: { oc?: readonly string[]; os?: readonly string[] },
+): Promise<Map<string, string>> {
+  const porId = new Map<string, string>()
+  const pedidos = [
+    ...tandasDe(ids.oc ?? []).map((t) => ['orden_compra_id', t] as const),
+    ...tandasDe(ids.os ?? []).map((t) => ['orden_servicio_id', t] as const),
+  ]
+  if (pedidos.length === 0) return porId
+  const respuestas = await Promise.all(
+    pedidos.map(([columna, t]) =>
+      supabase
+        .from('seguimiento_de_compras')
+        .select('orden_compra_id, orden_servicio_id, fecha_nueva')
+        .eq('tipo', 'FECHA_ESPERADA')
+        .in(columna, t)
+        // La que vale es la última: el mismo orden que `fecha_prometida_de_compra`.
+        .order('registrado_en', { ascending: false })
+        .order('creado_en', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(1000),
+    ),
+  )
+  for (const { data, error } of respuestas) {
+    if (error) throw new Error(`No se pudo leer la fecha corregida de las compras: ${error.message}`)
+    for (const f of data ?? []) {
+      const documento = f.orden_compra_id ?? f.orden_servicio_id
+      if (documento && f.fecha_nueva && !porId.has(documento)) porId.set(documento, f.fecha_nueva)
+    }
+  }
+  return porId
+}
+
+// En la URL de PostgREST: 150 ids caben holgados.
+function tandasDe(ids: readonly string[]) {
+  const unicos = [...new Set(ids.filter(Boolean))]
+  const lista: string[][] = []
+  for (let i = 0; i < unicos.length; i += 150) lista.push(unicos.slice(i, i + 150))
+  return lista
+}
