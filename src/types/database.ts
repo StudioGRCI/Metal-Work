@@ -8995,6 +8995,90 @@ export type Database = {
         }
         Relationships: []
       }
+      recepcion_documentos_compra: {
+        Row: {
+          id: string
+          orden_compra_id: string | null
+          orden_servicio_id: string | null
+          factura_numero: string | null
+          factura_recibida_en: string | null
+          factura_recibida_por: string | null
+          guia_numero: string | null
+          guia_recibida_en: string | null
+          guia_recibida_por: string | null
+          observacion: string | null
+          actualizado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_compra_id?: string | null
+          orden_servicio_id?: string | null
+          factura_numero?: string | null
+          factura_recibida_en?: string | null
+          factura_recibida_por?: string | null
+          guia_numero?: string | null
+          guia_recibida_en?: string | null
+          guia_recibida_por?: string | null
+          observacion?: string | null
+          actualizado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_compra_id?: string | null
+          orden_servicio_id?: string | null
+          factura_numero?: string | null
+          factura_recibida_en?: string | null
+          factura_recibida_por?: string | null
+          guia_numero?: string | null
+          guia_recibida_en?: string | null
+          guia_recibida_por?: string | null
+          observacion?: string | null
+          actualizado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recepcion_documentos_compra_actualizado_por_fkey"
+            columns: ["actualizado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recepcion_documentos_compra_factura_recibida_por_fkey"
+            columns: ["factura_recibida_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recepcion_documentos_compra_guia_recibida_por_fkey"
+            columns: ["guia_recibida_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recepcion_documentos_compra_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: true
+            referencedRelation: "ordenes_compra_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recepcion_documentos_compra_orden_servicio_id_fkey"
+            columns: ["orden_servicio_id"]
+            isOneToOne: true
+            referencedRelation: "ordenes_servicio"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       recibos_honorarios: {
         Row: {
           id: string
@@ -11070,6 +11154,7 @@ export type Database = {
           avisados: number
           creado_en: string
           actualizado_en: string
+          codigo: string | null
         }
         Insert: {
           id?: string
@@ -11080,6 +11165,7 @@ export type Database = {
           avisados?: number
           creado_en?: string
           actualizado_en?: string
+          codigo?: string | null
         }
         Update: {
           id?: string
@@ -11090,6 +11176,7 @@ export type Database = {
           avisados?: number
           creado_en?: string
           actualizado_en?: string
+          codigo?: string | null
         }
         Relationships: [
           {
@@ -12634,6 +12721,17 @@ export type Database = {
           documento_id: string | null
           orden_compra_id: string | null
         }[]
+      }
+      anotar_documentos_recibidos: {
+        Args: {
+          p_orden_compra: string | null
+          p_orden_servicio: string | null
+          p_factura: string | null
+          p_guia: string | null
+          p_observacion: string | null
+          p_mostrado: string | null
+        }
+        Returns: string
       }
       anotar_envio: {
         Args: {
@@ -14582,6 +14680,36 @@ export type Database = {
         }
         Returns: null
       }
+      control_de_compras_almacen: {
+        Args: {
+          p_desde: string | null
+          p_hasta: string | null
+        }
+        Returns: {
+          tipo: string | null
+          id: string | null
+          numero: string | null
+          referencia: string | null
+          fecha: string | null
+          descripcion: string | null
+          proveedor: string | null
+          destino: string | null
+          moneda: string | null
+          total: number | null
+          peso_kg: number | null
+          aprobacion: string | null
+          material: string | null
+          material_en: string | null
+          factura_numero: string | null
+          factura_recibida_en: string | null
+          guia_numero: string | null
+          guia_recibida_en: string | null
+          observacion: string | null
+          recibio: string | null
+          recepcion_actualizada_en: string | null
+          comprobante_registrado: string | null
+        }[]
+      }
       corregir_factura_compra: {
         Args: {
           p_correccion: string | null
@@ -15711,6 +15839,17 @@ export type Database = {
           por_estado: Json | null
         }[]
       }
+      informes_de_diseno_propios: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          numero: number | null
+          semana_inicio: string | null
+          estado: string | null
+          enviado_en: string | null
+          revisado_en: string | null
+        }[]
+      }
       ingresos_para_devolver: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -16424,6 +16563,25 @@ export type Database = {
         }
         Returns: string
       }
+      pendientes_de_las_ot: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          clase: string | null
+          documento: string | null
+          numero: string | null
+          cliente: string | null
+          trabajo: string | null
+          falta_ot: boolean | null
+          falta_codigo: boolean | null
+          falta_fecha: boolean | null
+          ot_anulada: string | null
+          venta_anterior_de: string | null
+          codigo_bloqueado: string | null
+          desde: string | null
+          dias: number | null
+          total: number | null
+        }[]
+      }
       permisos_por_dia: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -16507,6 +16665,20 @@ export type Database = {
           horas_tramo1: number | null
           horas_tramo2: number | null
           remuneracion_mensual: number | null
+        }[]
+      }
+      planilla_lo_que_falta: {
+        Args: {
+          p_planilla: string | null
+        }
+        Returns: {
+          clase: string | null
+          documento: string | null
+          fecha: string | null
+          nombre: string | null
+          detalle: string | null
+          desde: string | null
+          dias: number | null
         }[]
       }
       plano_pdf_subido: {
@@ -16908,6 +17080,38 @@ export type Database = {
         }[]
       }
       recorrido_de_cotizaciones: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          documento: string | null
+          orden: number | null
+          paso: string | null
+          situacion: string | null
+          puesto: string | null
+          en: string | null
+          dias: number | null
+          espera: string | null
+          detalle: string | null
+        }[]
+      }
+      recorrido_de_informes_diseno: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          documento: string | null
+          orden: number | null
+          paso: string | null
+          situacion: string | null
+          puesto: string | null
+          en: string | null
+          dias: number | null
+          espera: string | null
+          detalle: string | null
+        }[]
+      }
+      recorrido_de_planillas: {
         Args: {
           p_ids: string[] | null
         }
@@ -17615,6 +17819,16 @@ export type Database = {
           periodo: string | null
           moneda: string | null
           monto: number | null
+        }[]
+      }
+      revisar_entregas_al_cliente: {
+        Args: {
+          p_hoy: string | null
+        }
+        Returns: {
+          tipo: string | null
+          avisos: number | null
+          cuentas: number | null
         }[]
       }
       revisar_stock_requerimiento: {

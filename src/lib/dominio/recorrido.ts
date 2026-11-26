@@ -2,8 +2,9 @@
  * El recorrido de un documento numerado: por dónde pasó, quién hizo cada paso y
  * cuándo, quién lo tiene ahora y hace cuántos días (migración 20261125130000).
  * La base da las claves (`recorrido_de_requerimientos`,
- * `recorrido_de_cotizaciones`); las frases viven aquí. Un documento nuevo suma
- * su función con la misma forma y su mapa de pasos en este archivo.
+ * `recorrido_de_cotizaciones`, `recorrido_de_informes_diseno`, `recorrido_de_planillas`);
+ * las frases viven aquí. Un documento nuevo suma su función con la misma forma y
+ * su mapa de pasos en este archivo.
  */
 
 /** HECHO: alguien lo hizo. AHORA: alguien lo tiene. PENDIENTE: todavía no le toca a nadie. */
@@ -153,6 +154,24 @@ function horasParado(valor: number): string {
   return `${texto} ${valor === 1 ? 'hora' : 'horas'}`
 }
 
+const PASOS_DEL_INFORME_DISENO: Record<string, Frases> = {
+  REGISTRO: { hecho: 'Borrador empezado', falta: 'Borrador' },
+  ENVIO: { hecho: 'Enviado a Diseño', falta: 'Envío a Diseño' },
+  // El motivo va entero: es lo que el colaborador tiene que corregir.
+  DEVOLUCION: { hecho: 'Devuelto para corregir', falta: 'Devolución', nota: (motivo) => `Motivo: ${motivo}` },
+  CORRECCION: { hecho: 'Corregido', falta: 'Corrección' },
+  APROBACION: { hecho: 'Aprobado por Diseño', falta: 'Aprobación' },
+  // Del circuito anterior, cuando el informe pasaba a Administración (migración 20261001213000).
+  RECEPCION: { hecho: 'Recibido por Administración', falta: 'Recepción de Administración' },
+  REVISION: { hecho: 'Revisado por Diseño', falta: 'Revisión de Diseño' },
+}
+
+const ESPERAS_DEL_INFORME_DISENO: Record<string, () => string> = {
+  ENVIO: () => 'Completa la semana y envía el informe a Diseño.',
+  CORRECCION: () => 'Corrige lo que Diseño observó y vuelve a enviarlo.',
+  REVISION: () => 'Lo aprueba o lo devuelve con su motivo.',
+}
+
 const PASOS_DE_LA_AVERIA: Record<string, Frases> = {
   REPORTE: {
     hecho: (d) => (d === 'PARADO' ? 'Reportada: el equipo quedó parado' : 'Reportada'),
@@ -208,6 +227,32 @@ export function describirRecorridoDeLaCotizacion(pasos: readonly PasoDelRecorrid
     ? descritos.map((p) => (p.paso === 'REVISION' && p.detalle === 'APROBADA' ? { ...p, nota: null } : p))
     : descritos
 }
+
+/** El recorrido de un informe semanal de Diseño, en palabras. */
+export const describirRecorridoDelInformeDiseno = (pasos: readonly PasoDelRecorrido[]) =>
+  describir(pasos, PASOS_DEL_INFORME_DISENO, ESPERAS_DEL_INFORME_DISENO)
+
+/** «1 persona», «12 personas». */
+const personas = (n: string) => (Number(n) === 1 ? '1 persona' : `${n} personas`)
+
+// La planilla del mes (migración 20261126610000): no es un documento numerado,
+// pero RR. HH. la sigue igual, paso a paso, hasta cerrarla.
+const PASOS_DE_LA_PLANILLA: Record<string, Frases> = {
+  CREADA: { hecho: 'Creada', falta: 'Creación' },
+  IMPORTACION: { hecho: 'Excel importado', falta: 'Excel', nota: (n) => `Entraron ${personas(n)}` },
+  A_MANO: { hecho: 'Agregadas a mano', falta: 'Agregadas a mano', nota: (n) => `${personas(n)} fuera del Excel. La hora es la de la última que se agregó.` },
+  QUITADAS: { hecho: 'Quitadas de la planilla', falta: 'Quitadas', nota: (n) => `${personas(n)}. La hora es la de la última que se quitó.` },
+  CIERRE: { hecho: 'Cerrada', falta: 'Cierre' },
+}
+
+const ESPERAS_DE_LA_PLANILLA: Record<string, (detalle: string | null) => string> = {
+  IMPORTAR: () => 'Importa el Excel del mes o agrega a la primera persona.',
+  CERRAR: () => 'Revisa lo que falta y la cierra.',
+}
+
+/** El recorrido de una planilla del mes, en palabras. */
+export const describirRecorridoDeLaPlanilla = (pasos: readonly PasoDelRecorrido[]) =>
+  describir(pasos, PASOS_DE_LA_PLANILLA, ESPERAS_DE_LA_PLANILLA)
 
 /** El recorrido de un reporte de avería, en palabras. */
 export const describirRecorridoDeLaAveria = (pasos: readonly PasoDelRecorrido[]) =>

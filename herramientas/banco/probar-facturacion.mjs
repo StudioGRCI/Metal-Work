@@ -501,7 +501,9 @@ console.log(`     sembrado: ${COT} con la OT del código ${CODIGO}, ${COT_SIN} s
 {
   const { pagina, contexto } = await entrar(CUENTAS.gerencia)
   const items = await menu(pagina)
-  comprobar(!items.includes('Órdenes de trabajo') && items.includes('Códigos internos'), 'Gerencia sigue cada trabajo en Códigos internos, sin la OT en su menú')
+  // Sigue cada trabajo en Códigos internos; la OT está en su menú desde el #190 y,
+  // desde el #222, en «Por aprobar», para que su globo cuente las que esperan su aprobación.
+  comprobar(items.includes('Códigos internos') && items.includes('Órdenes de trabajo'), 'Gerencia sigue cada trabajo en Códigos internos, y aprueba la OT desde «Por aprobar»')
   await ir(pagina, `${BASE}/cotizaciones/pdf`)
   const fila = limpio(await pagina.locator('li', { hasText: COT }).first().textContent())
   comprobar(fila.includes(`Factura ${FACTURA}`) && fila.includes('cobro a cuenta'), 'en la cotización, Gerencia ve la factura y en qué va su cobro')
