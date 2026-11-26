@@ -2873,6 +2873,71 @@ export type Database = {
           }
         ]
       }
+      etapa_responsables: {
+        Row: {
+          id: string
+          etapa_id: string
+          trabajador_id: string
+          asignado_por: string
+          asignado_en: string
+          quitado_por: string | null
+          quitado_en: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          etapa_id: string
+          trabajador_id: string
+          asignado_por?: string
+          asignado_en?: string
+          quitado_por?: string | null
+          quitado_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          etapa_id?: string
+          trabajador_id?: string
+          asignado_por?: string
+          asignado_en?: string
+          quitado_por?: string | null
+          quitado_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "etapa_responsables_asignado_por_fkey"
+            columns: ["asignado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "etapa_responsables_etapa_id_fkey"
+            columns: ["etapa_id"]
+            isOneToOne: true
+            referencedRelation: "codigo_etapas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "etapa_responsables_quitado_por_fkey"
+            columns: ["quitado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "etapa_responsables_trabajador_id_fkey"
+            columns: ["trabajador_id"]
+            isOneToOne: false
+            referencedRelation: "trabajadores"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       etapas_catalogo: {
         Row: {
           id: string
@@ -8719,6 +8784,108 @@ export type Database = {
           }
         ]
       }
+      recojo_fotos: {
+        Row: {
+          id: string
+          orden_compra_id: string
+          orden: number
+          ruta: string
+          mime_type: string
+          tamano_bytes: number
+          subida_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_compra_id: string
+          orden: number
+          ruta: string
+          mime_type: string
+          tamano_bytes: number
+          subida_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_compra_id?: string
+          orden?: number
+          ruta?: string
+          mime_type?: string
+          tamano_bytes?: number
+          subida_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recojo_fotos_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_compra_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recojo_fotos_subida_por_fkey"
+            columns: ["subida_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      recojos_no_logrados: {
+        Row: {
+          id: string
+          orden_compra_id: string
+          motivo: string
+          salio_en: string | null
+          programado_en: string | null
+          registrado_por: string
+          registrado_en: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id: string
+          orden_compra_id: string
+          motivo: string
+          salio_en?: string | null
+          programado_en?: string | null
+          registrado_por?: string
+          registrado_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_compra_id?: string
+          motivo?: string
+          salio_en?: string | null
+          programado_en?: string | null
+          registrado_por?: string
+          registrado_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recojos_no_logrados_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_compra_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recojos_no_logrados_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       reembolsos_nota_credito: {
         Row: {
           id: string
@@ -10152,6 +10319,133 @@ export type Database = {
             columns: ["sede_id"]
             isOneToOne: false
             referencedRelation: "sedes"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ssoma_reporte_fotos: {
+        Row: {
+          id: string
+          reporte_id: string
+          orden: number
+          ruta: string
+          mime_type: string
+          tamano_bytes: number
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          reporte_id: string
+          orden: number
+          ruta: string
+          mime_type: string
+          tamano_bytes: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          reporte_id?: string
+          orden?: number
+          ruta?: string
+          mime_type?: string
+          tamano_bytes?: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ssoma_reporte_fotos_reporte_id_fkey"
+            columns: ["reporte_id"]
+            isOneToOne: false
+            referencedRelation: "ssoma_reportes"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ssoma_reportes: {
+        Row: {
+          id: string
+          numero: string
+          tipo: string
+          area_id: string
+          lugar: string
+          descripcion: string
+          ocurrido_en: string
+          hubo_atencion: boolean | null
+          trabajador_id: string | null
+          estado: string
+          registrado_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          numero: string
+          tipo: string
+          area_id: string
+          lugar: string
+          descripcion: string
+          ocurrido_en: string
+          hubo_atencion?: boolean | null
+          trabajador_id?: string | null
+          estado?: string
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          numero?: string
+          tipo?: string
+          area_id?: string
+          lugar?: string
+          descripcion?: string
+          ocurrido_en?: string
+          hubo_atencion?: boolean | null
+          trabajador_id?: string | null
+          estado?: string
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ssoma_reportes_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_reportes_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_reportes_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_reportes_trabajador_id_fkey"
+            columns: ["trabajador_id"]
+            isOneToOne: false
+            referencedRelation: "trabajadores"
             referencedColumns: ["id"]
           }
         ]
@@ -12256,6 +12550,13 @@ export type Database = {
           p_responsables: Json | null
         }
         Returns: null
+      }
+      asignar_responsable_de_etapa: {
+        Args: {
+          p_etapa: string | null
+          p_trabajador: string | null
+        }
+        Returns: string
       }
       asignar_responsables_ot: {
         Args: {
@@ -14615,6 +14916,12 @@ export type Database = {
         }
         Returns: null
       }
+      foto_de_recojo_anotada: {
+        Args: {
+          p_ruta: string | null
+        }
+        Returns: boolean
+      }
       gastos_del_mes_oficina: {
         Args: {
           p_periodo: string | null
@@ -14981,6 +15288,13 @@ export type Database = {
         }
         Returns: string
       }
+      marcar_compra_recogida_con_fotos: {
+        Args: {
+          p_compra: string | null
+          p_fotos: Json | null
+        }
+        Returns: string
+      }
       marcar_etapa_codigo: {
         Args: {
           p_id: string | null
@@ -14995,6 +15309,14 @@ export type Database = {
           p_id: string | null
           p_inicio: string | null
           p_fin: string | null
+        }
+        Returns: string
+      }
+      marcar_recojo_no_logrado: {
+        Args: {
+          p_id: string | null
+          p_compra: string | null
+          p_motivo: string | null
         }
         Returns: string
       }
@@ -15793,7 +16115,15 @@ export type Database = {
         }
         Returns: boolean
       }
+      puede_ver_reportes_ssoma: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
       puede_ver_requerimientos: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      puede_ver_responsables_de_etapa: {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
@@ -15866,6 +16196,12 @@ export type Database = {
         }
         Returns: string
       }
+      quitar_responsable_de_etapa: {
+        Args: {
+          p_etapa: string | null
+        }
+        Returns: boolean
+      }
       reabrir_costeo_codigo: {
         Args: {
           p_codigo: string | null
@@ -15929,6 +16265,32 @@ export type Database = {
           p_id: string | null
         }
         Returns: string
+      }
+      recojo_anotar_fotos: {
+        Args: {
+          p_compra: string | null
+          p_fotos: Json | null
+        }
+        Returns: null
+      }
+      recojo_fotos_en_gestion: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          orden_compra_id: string | null
+          orden: number | null
+          ruta: string | null
+        }[]
+      }
+      recojos_no_logrados_en_gestion: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          orden_compra_id: string | null
+          motivo: string | null
+          registrado_en: string | null
+          salio_en: string | null
+          registrado_por_nombre: string | null
+        }[]
       }
       recomprar_lo_devuelto: {
         Args: {
@@ -16598,6 +16960,25 @@ export type Database = {
           p_respuesta: string | null
         }
         Returns: string
+      }
+      responsable_del_area: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: string
+      }
+      responsables_de_etapas: {
+        Args: {
+          p_codigo?: string | null
+        }
+        Returns: {
+          etapa_id: string | null
+          codigo: string | null
+          trabajador_id: string | null
+          nombre: string | null
+          area: string | null
+          asignado_en: string | null
+        }[]
       }
       restar_dias_habiles: {
         Args: {
@@ -17316,6 +17697,88 @@ export type Database = {
         }
         Returns: string
       }
+      ssoma_a_quien_se_aviso: {
+        Args: {
+          p_reporte: string | null
+        }
+        Returns: string
+      }
+      ssoma_anotar_fotos: {
+        Args: {
+          p_reporte: string | null
+          p_fotos: Json | null
+        }
+        Returns: null
+      }
+      ssoma_anular_reporte: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
+      ssoma_foto_anotada: {
+        Args: {
+          p_ruta: string | null
+        }
+        Returns: boolean
+      }
+      ssoma_personal_para_elegir: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          nombre: string | null
+          cargo: string | null
+          area: string | null
+        }[]
+      }
+      ssoma_reportar: {
+        Args: {
+          p_id: string | null
+          p_tipo: string | null
+          p_area: string | null
+          p_lugar: string | null
+          p_descripcion: string | null
+          p_ocurrido_en: string | null
+          p_hubo_atencion: boolean | null
+          p_trabajador: string | null
+          p_fotos: Json | null
+        }
+        Returns: {
+          reporte: string | null
+          numero_reporte: string | null
+          avisado: string | null
+        }[]
+      }
+      ssoma_reportes_visibles: {
+        Args: {
+          p_id: string | null
+        }
+        Returns: {
+          id: string | null
+          numero: string | null
+          tipo: string | null
+          area_id: string | null
+          area_codigo: string | null
+          area: string | null
+          lugar: string | null
+          descripcion: string | null
+          ocurrido_en: string | null
+          hubo_atencion: boolean | null
+          estado: string | null
+          creado_en: string | null
+          dias_en_espera: number | null
+          alcance: string | null
+          reporto: string | null
+          reporto_puesto: string | null
+          a_nombre_de: string | null
+          a_nombre_de_cargo: string | null
+          fotos: number | null
+          anulado_en: string | null
+          anulo: string | null
+          motivo_anulacion: string | null
+        }[]
+      }
       stock_al_aprobar_compras: {
         Args: {
           p_compras: string[] | null
@@ -17621,6 +18084,38 @@ export type Database = {
           dias_habiles: number | null
         }[]
       }
+      tiempos_de_entrega_por_persona: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          trabajador_id: string | null
+          nombre: string | null
+          area: string | null
+          codigo: string | null
+          etapa_id: string | null
+          etapa: string | null
+          area_etapa: string | null
+          fin_plan: string | null
+          inicio_real: string | null
+          semaforo: string | null
+          dias_habiles: number | null
+        }[]
+      }
+      tiempos_de_entrega_por_persona_calculado: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          trabajador_id: string | null
+          nombre: string | null
+          area: string | null
+          codigo: string | null
+          etapa_id: string | null
+          etapa: string | null
+          area_etapa: string | null
+          fin_plan: string | null
+          inicio_real: string | null
+          semaforo: string | null
+          dias_habiles: number | null
+        }[]
+      }
       tiene_permiso: {
         Args: {
           p_codigo: string | null
@@ -17885,7 +18380,7 @@ export type Database = {
       magnitud_medida: "UNIDAD" | "MASA" | "LONGITUD" | "AREA" | "VOLUMEN"
       moneda: "PEN" | "USD"
       prioridad_ot: "BAJA" | "NORMAL" | "ALTA" | "URGENTE"
-      tipo_correlativo: "ORDEN_TRABAJO" | "REQUERIMIENTO" | "ORDEN_COMPRA" | "INGRESO_ALMACEN" | "SALIDA_ALMACEN" | "DEVOLUCION_ALMACEN" | "AJUSTE_INVENTARIO" | "PARTE_DIARIO" | "ACTA_CONFORMIDAD" | "INSPECCION_CALIDAD" | "TRANSFERENCIA_ALMACEN" | "RECEPCION_COMPRA" | "ORDEN_SERVICIO" | "PLANILLA_DIARIA" | "SUBCONTRATO"
+      tipo_correlativo: "ORDEN_TRABAJO" | "REQUERIMIENTO" | "ORDEN_COMPRA" | "INGRESO_ALMACEN" | "SALIDA_ALMACEN" | "DEVOLUCION_ALMACEN" | "AJUSTE_INVENTARIO" | "PARTE_DIARIO" | "ACTA_CONFORMIDAD" | "INSPECCION_CALIDAD" | "TRANSFERENCIA_ALMACEN" | "RECEPCION_COMPRA" | "ORDEN_SERVICIO" | "PLANILLA_DIARIA" | "SUBCONTRATO" | "REPORTE_INCIDENTE"
       tipo_documento_cliente: "RUC" | "DNI" | "CE" | "PASAPORTE"
       tipo_evento_ot: "CREACION" | "CAMBIO_ESTADO" | "AVANCE" | "MATERIAL" | "DOCUMENTO" | "INSPECCION" | "PAUSA" | "REANUDACION" | "COMENTARIO" | "ENTREGA"
       tipo_trabajo_ot: "FABRICACION" | "REPARACION" | "REPOTENCIACION" | "MANTENIMIENTO" | "GARANTIA"

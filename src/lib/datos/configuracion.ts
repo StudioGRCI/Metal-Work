@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { etiquetasDePuesto, puesto } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 
 export type Feriado = {
@@ -80,5 +81,62 @@ export async function catalogosDelTaller() {
       carroceria: (f.tipo as unknown as { nombre: string } | null)?.nombre ?? null,
     })),
     verificaciones: [...porTipo.values()],
+  }
+}
+
+export type AreaConResponsable = {
+  id: string
+  codigo: string
+  nombre: string
+  /** El nombre del organigrama: se conserva hasta que todas tengan cuenta. */
+  encargado: string | null
+  /** La cuenta responsable, nombrada por su puesto (migración 109). */
+  responsable: { id: string; etiqueta: string; activo: boolean } | null
+}
+
+/** Una cuenta activa que se puede asignar: `etiqueta` es su puesto (`etiquetasDePuesto`). */
+export type CuentaParaResponsable = { id: string; etiqueta: string; area_id: string | null }
+
+/**
+ * Las áreas del organigrama con su cuenta responsable (`areas.jefe_id`) y las
+ * cuentas activas que se pueden asignar. Solo para el administrador del
+ * sistema: la pantalla no lo pide para nadie más.
+ */
+export async function areasConResponsable() {
+  const supabase = await createClient()
+
+  const [areas, cuentas] = await Promise.all([
+    supabase
+      .from('areas')
+      // Entre `areas` y `usuarios` hay dos llaves, una por lado: se nombra la del responsable.
+      .select('id, codigo, nombre, encargado, responsable:usuarios!areas_jefe_id_fkey(id, puesto, correo, activo)')
+      .eq('activo', true)
+      .order('orden_secuencia'),
+    // Por puesto (migración 109); el correo distingue dos cuentas con el mismo.
+    supabase.from('usuarios').select('id, puesto, correo, area_id').eq('activo', true).order('cargo'),
+  ])
+
+  if (areas.error) throw new Error(`No se pudieron leer las áreas: ${areas.error.message}`)
+  if (cuentas.error) throw new Error(`No se pudieron leer las cuentas: ${cuentas.error.message}`)
+
+  type Cuenta = { id: string; puesto: string | null; correo: string | null; area_id: string | null }
+  const activas = (cuentas.data ?? []) as unknown as Cuenta[]
+  const etiquetas = etiquetasDePuesto(activas)
+
+  return {
+    areas: (areas.data ?? []).map((a): AreaConResponsable => {
+      const r = a.responsable as unknown as (Omit<Cuenta, 'area_id'> & { activo: boolean }) | null
+      return {
+        id: a.id as string,
+        codigo: a.codigo as string,
+        nombre: a.nombre as string,
+        encargado: (a.encargado as string | null)?.trim() || null,
+        // La dada de baja no está entre las activas: se nombra por su puesto a secas.
+        responsable: r && { id: r.id, etiqueta: etiquetas.get(r.id) ?? puesto(r), activo: r.activo },
+      }
+    }),
+    cuentas: activas
+      .map((c): CuentaParaResponsable => ({ id: c.id, etiqueta: etiquetas.get(c.id) ?? puesto(c), area_id: c.area_id }))
+      .sort((a, b) => a.etiqueta.localeCompare(b.etiqueta, 'es')),
   }
 }
