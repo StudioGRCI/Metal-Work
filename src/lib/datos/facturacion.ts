@@ -134,6 +134,37 @@ async function enTandas<T>(ids: string[], leer: (tanda: string[]) => Promise<T[]
   return filas
 }
 
+/**
+ * Lo que falta cobrar de las facturas de cada código, por moneda, sin las anuladas: para quien
+ * responde las salidas de vehículos sin leer las cotizaciones aprobadas (Costos). Cuenta todas
+ * las facturas del código, no solo las que la lista de Cuentas por cobrar trae a la vista.
+ */
+export async function saldoDeFacturasPorCodigo(
+  codigos: string[],
+): Promise<Record<string, { saldo: Record<CodigoMoneda, number>; facturas: number; conSaldo: number }>> {
+  const unicos = [...new Set(codigos)]
+  if (unicos.length === 0) return {}
+  const supabase = await createClient()
+  const filas = await enTandas(unicos, async (tanda) => {
+    const r = await supabase.from('v_facturas_venta').select('codigo_interno, moneda, saldo, cancelada')
+      .in('codigo_interno', tanda).is('anulada_en', null)
+    if (r.error) throw new Error(`No se pudieron leer las facturas de los códigos: ${r.error.message}`)
+    return r.data ?? []
+  })
+  const porCodigo: Record<string, { saldo: Record<CodigoMoneda, number>; facturas: number; conSaldo: number }> = {}
+  for (const f of filas) {
+    if (!f.codigo_interno) continue
+    const fila = (porCodigo[f.codigo_interno] ??= { saldo: { PEN: 0, USD: 0 }, facturas: 0, conSaldo: 0 })
+    fila.facturas += 1
+    // Por cobrar es lo mismo que en la lista: no cancelada y con saldo.
+    if (!f.cancelada && Number(f.saldo) > 0.005) {
+      fila.saldo[f.moneda === 'USD' ? 'USD' : 'PEN'] += Number(f.saldo)
+      fila.conSaldo += 1
+    }
+  }
+  return porCodigo
+}
+
 /** Las facturas de un código interno, anuladas incluidas, de la más vieja a la más nueva: Gerencia en Códigos internos. */
 export async function facturasDelCodigo(codigo: string): Promise<FacturaVenta[]> {
   const supabase = await createClient()

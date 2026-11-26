@@ -134,10 +134,12 @@ export function faltaDelServicio(s: {
   /** Logística no dijo si la OS lleva detracción (`afecta` vacío). */
   detraccionSinDefinir?: boolean
   /**
-   * Lleva detracción y es en dólares, pero se emitió sin tipo de cambio (`monto_pen` vacío): no se
-   * sabe cuánto va al Banco de la Nación, y ninguna función lo vuelve a calcular. No se paga.
+   * Lleva detracción y es en dólares, pero no tiene monto en soles: falta el tipo de cambio del día en
+   * que se emitió. No se sabe cuánto va al Banco de la Nación, así que no se paga.
    */
   sinTipoDeCambio?: boolean
+  /** Ese día, ya escrito como fecha (DD/MM/AAAA): Tesorería no ve la pantalla del tipo de cambio. */
+  cambioDel?: string | null
 }): LoQueFalta[] {
   if (s.cancelada) return []
   const falta: LoQueFalta[] = []
@@ -147,11 +149,12 @@ export function faltaDelServicio(s: {
   if (!s.conforme) falta.push({ que: 'la conformidad del servicio', quien: 'Logística', traba: false })
   if (s.detraccionSinDefinir) falta.push({ que: 'decir en la OS si lleva detracción', quien: 'Logística', traba: false })
   if (s.sinTipoDeCambio) {
-    // Sin su monto en soles, la detracción no tiene monto: ni se paga ni se da por pagada. Registrar el
-    // cambio de hoy no lo arregla (se toma solo al emitir): lo corrige el administrador del sistema.
+    // Sin su monto en soles, la detracción no tiene monto: ni se paga ni se da por pagada. Desde la
+    // 20261126626000, registrar el cambio del día en que se emitió se lo pone solo; lo registran
+    // Contabilidad o Administración, y Tesorería tiene que saber cuál pedir (DKS, 2026-11-26).
     falta.push({
-      que: 'el monto en soles de la OS: se emitió sin tipo de cambio y sin él no se sabe la detracción, así que no se paga',
-      quien: 'Administrador del sistema',
+      que: `el tipo de cambio del ${s.cambioDel ?? 'día en que se emitió la OS'}: sin él la OS no tiene monto en soles ni se sabe la detracción, así que no se paga`,
+      quien: 'Contabilidad o Administración',
       traba: true,
     })
     return falta

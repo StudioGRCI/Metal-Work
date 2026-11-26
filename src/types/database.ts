@@ -11270,6 +11270,143 @@ export type Database = {
           }
         ]
       }
+      ssoma_charla_asistentes: {
+        Row: {
+          id: string
+          charla_id: string
+          trabajador_id: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          charla_id: string
+          trabajador_id: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          charla_id?: string
+          trabajador_id?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ssoma_charla_asistentes_charla_id_fkey"
+            columns: ["charla_id"]
+            isOneToOne: false
+            referencedRelation: "ssoma_charlas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_charla_asistentes_trabajador_id_fkey"
+            columns: ["trabajador_id"]
+            isOneToOne: false
+            referencedRelation: "trabajadores"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ssoma_charla_fotos: {
+        Row: {
+          id: string
+          charla_id: string
+          orden: number
+          ruta: string
+          mime_type: string
+          tamano_bytes: number
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          charla_id: string
+          orden: number
+          ruta: string
+          mime_type: string
+          tamano_bytes: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          charla_id?: string
+          orden?: number
+          ruta?: string
+          mime_type?: string
+          tamano_bytes?: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ssoma_charla_fotos_charla_id_fkey"
+            columns: ["charla_id"]
+            isOneToOne: false
+            referencedRelation: "ssoma_charlas"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ssoma_charlas: {
+        Row: {
+          id: string
+          tipo: string
+          tema: string
+          expositor: string
+          fecha: string
+          creado_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          tipo: string
+          tema: string
+          expositor: string
+          fecha: string
+          creado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          tipo?: string
+          tema?: string
+          expositor?: string
+          fecha?: string
+          creado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ssoma_charlas_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_charlas_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       ssoma_clasificaciones: {
         Row: {
           id: string
@@ -13702,6 +13839,14 @@ export type Database = {
         }
         Returns: boolean
       }
+      averia_que_repite: {
+        Args: {
+          p_equipo: string | null
+          p_averia: string | null
+          p_creado: string | null
+        }
+        Returns: string
+      }
       averias_a_quien_se_aviso: {
         Args: {
           p_averia: string | null
@@ -13757,6 +13902,7 @@ export type Database = {
           sigue_parado_por: string | null
           avisada: boolean | null
           equipo_estado: string | null
+          confirma: string | null
         }[]
       }
       averias_confirmar: {
@@ -13805,6 +13951,17 @@ export type Database = {
       averias_foto_anotada: {
         Args: {
           p_ruta: string | null
+        }
+        Returns: boolean
+      }
+      averias_por_confirmar: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      averias_puede_confirmar: {
+        Args: {
+          p_registrado_por: string | null
+          p_area: string | null
         }
         Returns: boolean
       }
@@ -13883,6 +14040,7 @@ export type Database = {
       averias_visibles: {
         Args: {
           p_id: string | null
+          p_equipo?: string | null
         }
         Returns: {
           id: string | null
@@ -13928,6 +14086,12 @@ export type Database = {
           rq_enlazados: number | null
           diagnostico_de: string | null
           diagnostico_en: string | null
+          puede_confirmar: boolean | null
+          reporto_activo: boolean | null
+          confirmo_en_lugar: string | null
+          devolvio_en_lugar: string | null
+          repite_a: string | null
+          confirma: string | null
         }[]
       }
       avisar_a_diseno: {
@@ -15266,6 +15430,13 @@ export type Database = {
           moneda: string | null
         }[]
       }
+      compra_paso_su_primera_fecha: {
+        Args: {
+          p_tipo: string | null
+          p_documento: string | null
+        }
+        Returns: boolean
+      }
       compra_solo_su_rqa: {
         Args: Record<PropertyKey, never>
         Returns: boolean
@@ -15430,6 +15601,22 @@ export type Database = {
           ordenes: string[] | null
           lineas: Json | null
         }[]
+      }
+      compras_que_aceptan_motivo: {
+        Args: {
+          p_tipo: string | null
+          p_ids: string[] | null
+        }
+        Returns: {
+          documento: string | null
+        }[]
+      }
+      compras_que_pasaron_su_primera_fecha: {
+        Args: {
+          p_tipo: string | null
+          p_ids: string[] | null
+        }
+        Returns: string[]
       }
       compras_que_se_pueden_anular: {
         Args: Record<PropertyKey, never>
@@ -16285,6 +16472,27 @@ export type Database = {
         Returns: {
           categoria_id: string | null
           codigo: string | null
+        }[]
+      }
+      equipos_historia: {
+        Args: {
+          p_equipo: string | null
+        }
+        Returns: {
+          equipo_id: string | null
+          averias: number | null
+          averias_90: number | null
+          repetidas: number | null
+          repetidas_90: number | null
+          no_quedo_bien: number | null
+          horas_parado: number | null
+          horas_parado_90: number | null
+          abiertas: number | null
+          parado_por: string | null
+          parado_desde: string | null
+          ultima_en: string | null
+          codigo: string | null
+          descripcion: string | null
         }[]
       }
       es_admin: {
@@ -19799,12 +20007,30 @@ export type Database = {
         }
         Returns: string
       }
+      ssoma_anular_charla: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       ssoma_anular_reporte: {
         Args: {
           p_id: string | null
           p_motivo: string | null
         }
         Returns: string
+      }
+      ssoma_asistentes_de_charla: {
+        Args: {
+          p_charla: string | null
+        }
+        Returns: {
+          id: string | null
+          nombre: string | null
+          cargo: string | null
+          area: string | null
+        }[]
       }
       ssoma_avisar_a: {
         Args: {
@@ -19825,6 +20051,41 @@ export type Database = {
           p_fotos: Json | null
         }
         Returns: string
+      }
+      ssoma_charla: {
+        Args: {
+          p_id: string | null
+        }
+        Returns: {
+          id: string | null
+          tipo: string | null
+          tema: string | null
+          expositor: string | null
+          fecha: string | null
+          registro: string | null
+          creado_en: string | null
+          anulado_en: string | null
+          anulo: string | null
+          motivo_anulacion: string | null
+        }[]
+      }
+      ssoma_charlas_del_mes: {
+        Args: {
+          p_mes: string | null
+        }
+        Returns: {
+          id: string | null
+          tipo: string | null
+          tema: string | null
+          expositor: string | null
+          fecha: string | null
+          asistentes: number | null
+          fotos: number | null
+          registro: string | null
+          anulado_en: string | null
+          anulo: string | null
+          motivo_anulacion: string | null
+        }[]
       }
       ssoma_clasificar: {
         Args: {
@@ -19861,6 +20122,17 @@ export type Database = {
         }
         Returns: string
       }
+      ssoma_estuvo_en_la_planta: {
+        Args: {
+          p_trabajador: string | null
+          p_activo: boolean | null
+          p_ingreso: string | null
+          p_baja: string | null
+          p_desde: string | null
+          p_hasta: string | null
+        }
+        Returns: boolean
+      }
       ssoma_foto_anotada: {
         Args: {
           p_ruta: string | null
@@ -19891,11 +20163,39 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
+      ssoma_no_asistieron: {
+        Args: {
+          p_mes: string | null
+        }
+        Returns: {
+          id: string | null
+          nombre: string | null
+          cargo: string | null
+          area: string | null
+          ultima: string | null
+        }[]
+      }
       ssoma_nombre_de: {
         Args: {
           p_usuario: string | null
         }
         Returns: string
+      }
+      ssoma_personal_del_mes: {
+        Args: {
+          p_mes: string | null
+        }
+        Returns: number
+      }
+      ssoma_personal_para_charla: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          nombre: string | null
+          cargo: string | null
+          area: string | null
+          en_planta: boolean | null
+        }[]
       }
       ssoma_personal_para_elegir: {
         Args: Record<PropertyKey, never>
@@ -19934,6 +20234,18 @@ export type Database = {
           p_reporte: string | null
         }
         Returns: boolean
+      }
+      ssoma_registrar_charla: {
+        Args: {
+          p_id: string | null
+          p_tipo: string | null
+          p_tema: string | null
+          p_expositor: string | null
+          p_fecha: string | null
+          p_asistentes: string[] | null
+          p_fotos: Json | null
+        }
+        Returns: string
       }
       ssoma_reportar: {
         Args: {
@@ -20000,6 +20312,16 @@ export type Database = {
           vencidas: number | null
           cerradas: number | null
         }[]
+      }
+      ssoma_vigente_en_el_mes: {
+        Args: {
+          p_activo: boolean | null
+          p_ingreso: string | null
+          p_baja: string | null
+          p_desde: string | null
+          p_hasta: string | null
+        }
+        Returns: boolean
       }
       stock_al_aprobar_compras: {
         Args: {
