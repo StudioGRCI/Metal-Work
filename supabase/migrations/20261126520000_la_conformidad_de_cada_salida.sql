@@ -312,7 +312,7 @@ begin
     from public.materiales mat left join public.unidades_medida um on um.id = mat.unidad_medida_id
    where mat.id = v_mov.material_id;
   if p_tipo = 'LLEGO_INCOMPLETO'
-     and (p_cantidad_recibida is null or p_cantidad_recibida <= 0 or p_cantidad_recibida >= v_mov.cantidad) then
+     and (p_cantidad_recibida is null or round(p_cantidad_recibida, 3) <= 0 or round(p_cantidad_recibida, 3) >= v_mov.cantidad) then
     raise exception 'Indica cuánto llegó: más de 0 y menos de los % % que salieron. Si no llegó nada, marca «No llegó».',
       rtrim(to_char(v_mov.cantidad, 'FM999999990.999'), '.'), coalesce(v_unidad, '') using errcode = 'check_violation';
   end if;

@@ -87,6 +87,8 @@ select test.debe_fallar(format($q$insert into public.conformidad_salidas (movimi
 -- 3. «Llegó incompleto» pide cuánto llegó, menos de lo que salió.
 select test.debe_fallar(format($q$select public.anotar_conformidad_salida(gen_random_uuid(), %L, 'LLEGO_INCOMPLETO', 4, 'Llegaron menos discos')$q$,
   current_setting('prueba.mov')), 'Llegó incompleto con lo mismo que salió no pasa');
+select test.debe_fallar(format($q$select public.anotar_conformidad_salida(gen_random_uuid(), %L, 'LLEGO_INCOMPLETO', 3.9999, 'Llegaron casi todos los discos')$q$,
+  current_setting('prueba.mov')), 'Ni con una cifra que guardada a tres decimales es lo mismo que salió');
 
 -- 4. Requerimientos lo anota, y el mismo envío repetido no anota dos veces.
 do $$
