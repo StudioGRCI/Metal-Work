@@ -252,7 +252,7 @@ function FilaCompra({
   const sinCurso = c.aprobacion === 'RECHAZADA' || c.aprobacion === 'ANULADA'
   return (
     // La OC sin número se encuentra por su referencia: es lo que cita el proveedor.
-    <TR data-compra={c.numero ?? c.referencia}>
+    <TR id={`oc-${c.id}`} data-compra={c.numero ?? c.referencia} className="scroll-mt-20 target:bg-acento-suave">
       <TD>
         <div className="flex flex-wrap items-center gap-2">
           <span className={c.numero ? 'tabular font-semibold whitespace-nowrap text-texto' : 'font-semibold text-texto'}>{c.numero ?? 'OC sin número'}</span>
