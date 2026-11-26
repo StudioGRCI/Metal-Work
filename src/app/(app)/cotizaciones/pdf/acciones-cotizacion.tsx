@@ -117,6 +117,8 @@ export function CorregirCotizacion({
   version,
   clienteId,
   carroceriaId,
+  unidades,
+  conOrdenes,
   clientes,
   carrocerias,
 }: {
@@ -130,12 +132,17 @@ export function CorregirCotizacion({
   version: number
   clienteId: string
   carroceriaId: string
+  /** Cuántas unidades lleva hoy (migración 20261126700000). */
+  unidades: number
+  /** Las OT que ya tiene: la cantidad no baja de ahí. */
+  conOrdenes: number
   clientes: { id: string; razon_social: string }[]
   carrocerias: { id: string; nombre: string }[]
 }) {
   const router = useRouter()
   const [abierto, setAbierto] = useState(false)
   const [archivo, setArchivo] = useState<File | null>(null)
+  const [cantidad, setCantidad] = useState(String(unidades))
   const [dice, setDice] = useState<string | null>(null)
   const [leyendo, setLeyendo] = useState(false)
   const [total, setTotal] = useState<TotalCotizacion>({ monto: null, moneda: null })
@@ -186,6 +193,7 @@ export function CorregirCotizacion({
     setIncluyeIgv('')
     setCliente(clienteId)
     setCarroceria(carroceriaId)
+    setCantidad(String(unidades))
     setMotivo('')
     setProgreso('')
     setAbierto(true)
@@ -287,6 +295,7 @@ export function CorregirCotizacion({
         datos.set('version', String(version))
         datos.set('cliente_id', cliente)
         datos.set('tipo_carroceria_id', carroceria)
+        datos.set('cantidad_unidades', cantidad.trim())
         datos.set('motivo_correccion', motivo.trim())
         datos.set('nombre_archivo', archivo.name.slice(0, 200))
         datos.set('ruta_storage', ruta)
@@ -449,6 +458,29 @@ export function CorregirCotizacion({
                 <option value="si">Sí, incluye IGV</option>
                 <option value="no">No, es sin IGV</option>
               </Seleccion>
+            </Campo>
+            <Campo
+              etiqueta="Unidades"
+              htmlFor="corregir-unidades"
+              ayuda={
+                conOrdenes > 0
+                  ? `Ya tiene ${conOrdenes === 1 ? 'una OT' : `${conOrdenes} OT`}: no baja de ${conOrdenes}.`
+                  : 'Cuántas unidades cotiza: Administración carga una OT por cada una.'
+              }
+              requerido
+            >
+              <Entrada
+                id="corregir-unidades"
+                type="number"
+                inputMode="numeric"
+                min={Math.max(conOrdenes, 1)}
+                max={50}
+                step={1}
+                value={cantidad}
+                onChange={(e) => setCantidad(e.target.value)}
+                required
+                className="tabular"
+              />
             </Campo>
           </div>
 
@@ -644,11 +676,18 @@ export function CargarCodigoYOt({
   cotizacionId,
   numero,
   tipoUnidad,
+  unidad,
 }: {
   cotizacionId: string
   numero: string
   tipoUnidad?: string | null
+  /**
+   * La unidad que se carga y cuántas lleva la cotización (migración
+   * 20261126700000): con más de una, el botón y la ventana dicen cuál es.
+   */
+  unidad?: { cual: number; de: number }
 }) {
+  const varias = unidad && unidad.de > 1 ? unidad : null
   const router = useRouter()
   const [abierto, setAbierto] = useState(false)
   const [archivo, setArchivo] = useState<File | null>(null)
@@ -678,7 +717,7 @@ export function CargarCodigoYOt({
   const campoNumero = useRef<HTMLInputElement>(null)
   const campoCodigo = useRef<HTMLInputElement>(null)
   const errorNumero = error && /^(Ya hay una OT|El número de la OT)/.test(error) ? error : null
-  const errorCodigo = error && /^(Escribe el código interno|El código interno|PLANTA no es una unidad)/.test(error) ? error : null
+  const errorCodigo = error && /^(Escribe el código interno|El código|PLANTA no es una unidad)/.test(error) ? error : null
   useCursorAlRechazo(enviando, error, () => (errorNumero ? campoNumero.current : errorCodigo ? campoCodigo.current : avisoError.current))
   // Lo que la persona escribió a mano: la lectura del PDF, aunque termine
   // después o sea de otro PDF, no lo pisa.
@@ -869,7 +908,7 @@ export function CargarCodigoYOt({
       <span className="inline-flex flex-wrap items-center gap-2">
         <Boton type="button" tamano="sm" onClick={abrir} ocupado={ocupado} aria-describedby={fuera.sigue ? fuera.idDelEstado : undefined}>
           {!ocupado && <Hash aria-hidden className="size-3.5" />}
-          Dar código y cargar la OT
+          {varias ? `Cargar la OT ${varias.cual} de ${varias.de}` : 'Dar código y cargar la OT'}
         </Boton>
         <EstadoDelEnvio id={fuera.idDelEstado} sigue={fuera.sigue} desenlace={fuera.desenlace} registro="La OT" femenino />
       </span>
@@ -877,8 +916,12 @@ export function CargarCodigoYOt({
       <Ventana
         abierta={abierto}
         alCerrar={cerrar}
-        titulo={`Código interno y OT de la ${numero}`}
-        descripcion="Gerencia ya la aprobó. El cliente y la carrocería salen de la cotización; el código y la OT se guardan juntos."
+        titulo={varias ? `Unidad ${varias.cual} de ${varias.de} de la ${numero}` : `Código interno y OT de la ${numero}`}
+        descripcion={
+          varias
+            ? `Gerencia ya la aprobó. Lleva ${varias.de} unidades: cada una con su código interno y su OT. El cliente y la carrocería salen de la cotización; el código y la OT se guardan juntos.`
+            : 'Gerencia ya la aprobó. El cliente y la carrocería salen de la cotización; el código y la OT se guardan juntos.'
+        }
         ancho="panoramico"
       >
         <form onSubmit={enviar} className="space-y-4 lg:grid lg:h-full lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-5 lg:space-y-0">

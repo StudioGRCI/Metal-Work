@@ -116,6 +116,8 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   const aMano = useRef(new Set<'numero' | 'monto' | 'moneda' | 'igv' | 'cliente' | 'carroceria'>())
 
   const [numero, setNumero] = useState('')
+  // Cuántas unidades lleva: Administración carga una OT por cada una (migración 20261126700000).
+  const [unidades, setUnidades] = useState('1')
 
   const [listaClientes, setListaClientes] = useState(clientes)
   const [clienteNuevo, setClienteNuevo] = useState(false)
@@ -149,6 +151,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
     setAvisoArchivo(null)
     setAviso(null)
     setNumero('')
+    setUnidades('1')
     setListaClientes(clientes)
     setClienteNuevo(false)
     setClienteId('')
@@ -342,6 +345,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
         const datos = new FormData()
         datos.set('id', id)
         datos.set('numero', numero.trim())
+        datos.set('cantidad_unidades', unidades.trim())
         datos.set('cliente_id', cliente)
         datos.set('tipo_carroceria_id', carroceria)
         datos.set('ruta_storage', ruta)
@@ -468,22 +472,43 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
             </div>
           )}
 
-          <Campo etiqueta="Número de la cotización" htmlFor="cot-numero" ayuda="El que dice la cotización" error={errorNumero ?? undefined} requerido>
-            <Entrada
-              ref={campoNumero}
-              id="cot-numero"
-              value={numero}
-              onChange={(e) => {
-                aMano.current.add('numero')
-                if (errorNumero) setError(null)
-                setNumero(e.target.value)
-              }}
-              required
-              maxLength={40}
-              placeholder="3522-2025"
-              autoComplete="off"
-            />
-          </Campo>
+          <div className="grid gap-3 sm:grid-cols-[1fr_9rem]">
+            <Campo etiqueta="Número de la cotización" htmlFor="cot-numero" ayuda="El que dice la cotización" error={errorNumero ?? undefined} requerido>
+              <Entrada
+                ref={campoNumero}
+                id="cot-numero"
+                value={numero}
+                onChange={(e) => {
+                  aMano.current.add('numero')
+                  if (errorNumero) setError(null)
+                  setNumero(e.target.value)
+                }}
+                required
+                maxLength={40}
+                placeholder="3522-2025"
+                autoComplete="off"
+              />
+            </Campo>
+            <Campo
+              etiqueta="Unidades"
+              htmlFor="cot-unidades"
+              ayuda="Cuántas unidades cotiza: tres camabajas son 3. Administración carga una OT por cada una."
+              requerido
+            >
+              <Entrada
+                id="cot-unidades"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={50}
+                step={1}
+                value={unidades}
+                onChange={(e) => setUnidades(e.target.value)}
+                required
+                className="tabular"
+              />
+            </Campo>
+          </div>
 
           <div className="grid gap-3 sm:grid-cols-[1fr_9rem_11rem]">
             {/* El aviso va pegado al monto: a 390 las columnas se apilan y abajo quedaría lejos. */}

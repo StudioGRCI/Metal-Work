@@ -31,9 +31,18 @@ const mimeCotizacion = z.enum(Object.keys(EXTENSION_DE) as [string, ...string[]]
   message: 'La cotización se sube en PDF o en Word.',
 })
 
+// Cuántas unidades lleva la cotización: Administración carga una OT por cada una
+// (migración 20261126700000). La base pone el mismo tope.
+const cantidadUnidades = z.coerce
+  .number({ error: 'Escribe cuántas unidades lleva la cotización.' })
+  .int('Las unidades se cuentan enteras: 1, 2, 3…')
+  .min(1, 'La cotización lleva al menos una unidad.')
+  .max(50, 'Una cotización lleva hasta 50 unidades.')
+
 const esquemaSubir = z.object({
   id: z.guid(),
   numero: z.string().trim().min(3, 'Escribe el número que dice la cotización').max(40),
+  cantidad_unidades: cantidadUnidades,
   cliente_id: z.guid('Elige el cliente'),
   tipo_carroceria_id: z.guid('Elige qué se fabrica'),
   monto_venta: z.string().trim().regex(/^\d{1,12}(?:\.\d{1,2})?$/, 'Escribe un monto válido, con hasta dos decimales.'),
@@ -68,6 +77,7 @@ export async function registrarCotizacionPdf(_previo: unknown, datos: FormData):
     .insert({
       id: v.id,
       numero: v.numero,
+      cantidad_unidades: v.cantidad_unidades,
       cliente_id: v.cliente_id,
       tipo_carroceria_id: v.tipo_carroceria_id,
       monto_venta: Number(v.monto_venta),
@@ -156,6 +166,7 @@ const esquemaCorregir = z.object({
   cliente_id: z.guid(),
   tipo_carroceria_id: z.guid(),
   motivo_correccion: z.string().trim().min(5, 'Explica por qué corriges la cotización').max(500),
+  cantidad_unidades: cantidadUnidades,
   nombre_archivo: z.string().trim().min(1).max(200),
   ruta_storage: z.string().min(1),
   mime_type: mimeCotizacion,
@@ -189,6 +200,7 @@ export async function corregirCotizacionPdf(_previo: unknown, datos: FormData): 
       cliente_id: v.cliente_id,
       tipo_carroceria_id: v.tipo_carroceria_id,
       motivo_correccion: v.motivo_correccion,
+      cantidad_unidades: v.cantidad_unidades,
       nombre_archivo: v.nombre_archivo,
       ruta_storage: v.ruta_storage,
       mime_type: v.mime_type,

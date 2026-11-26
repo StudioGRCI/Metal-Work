@@ -14,7 +14,22 @@ import type { Vistas } from '@/types/database'
  * sube la OT: `codigo_interno` es el de la unidad de su OT.
  */
 export type VersionCotizacion = Vistas<'v_cotizaciones_pdf_versiones'> & { url: string | null }
-export type CotizacionPdf = Vistas<'v_cotizaciones_pdf'> & {
+
+/**
+ * Una OT vigente de la cotización (migración 20261126700000): el código
+ * interno lo ve quien ve la cotización; el id, el número y el estado, solo
+ * quien ve las órdenes.
+ */
+export type OrdenDeCotizacion = {
+  id: string | null
+  numero: string | null
+  estado: string | null
+  codigo_interno: string | null
+}
+
+export type CotizacionPdf = Omit<Vistas<'v_cotizaciones_pdf'>, 'ordenes'> & {
+  /** Sus OT vigentes, en el orden en que Administración las cargó: una por unidad. */
+  ordenes: OrdenDeCotizacion[]
   url: string | null
   urlAprobada: string | null
   versiones: VersionCotizacion[]
@@ -77,7 +92,7 @@ export async function listarCotizacionesPdf(limite = 200): Promise<CotizacionPdf
   const { data, error } = await supabase
     .from('v_cotizaciones_pdf')
     .select(
-      'id, numero, estado, observacion, cliente_id, cliente, tipo_carroceria_id, carroceria, nombre_archivo, ruta_storage, tamano_bytes, creado_en, registrado_por, registrado_por_nombre, revisado_en, revisado_por_nombre, orden_id, orden_numero, orden_estado, tuvo_orden, version, mime_type, archivo_subido_en, monto_venta, moneda, codigo_interno',
+      'id, numero, estado, observacion, cliente_id, cliente, tipo_carroceria_id, carroceria, nombre_archivo, ruta_storage, tamano_bytes, creado_en, registrado_por, registrado_por_nombre, revisado_en, revisado_por_nombre, orden_id, orden_numero, orden_estado, tuvo_orden, version, mime_type, archivo_subido_en, monto_venta, moneda, codigo_interno, cantidad_unidades, ordenes, ordenes_vigentes, ordenes_faltantes',
     )
     .order('creado_en', { ascending: false })
     .limit(limite)
@@ -128,6 +143,7 @@ export async function listarCotizacionesPdf(limite = 200): Promise<CotizacionPdf
     const ultimaAprobada = versiones.find((v) => v.cotizacion_id === f.id && v.estado_al_archivar === 'APROBADA')
     return {
       ...f,
+      ordenes: Array.isArray(f.ordenes) ? (f.ordenes as OrdenDeCotizacion[]) : [],
       cliente: f.cliente ?? (f.id && clientes.get(f.id)) ?? null,
       facturas: (facturas.data ?? []).filter((x) => x.cotizacion_pdf_id === f.id),
       facturada: facturadas.has(f.id),
@@ -167,11 +183,21 @@ async function clientesReservados(filas: Vistas<'v_cotizaciones_pdf'>[]): Promis
  */
 export async function cotizacionPdfDeOrden(ordenId: string) {
   const supabase = await createClient()
+  // Por la cotización de la OT, no por `orden_id` de la vista: una cotización
+  // de varias unidades tiene varias OT y la vista nombra solo una (migración
+  // 20261126700000).
+  const { data: orden, error: errorOrden } = await supabase
+    .from('ordenes_trabajo')
+    .select('cotizacion_pdf_id')
+    .eq('id', ordenId)
+    .maybeSingle()
+  if (errorOrden) throw new Error(`No se pudo leer la cotización de la orden: ${errorOrden.message}`)
+  if (!orden?.cotizacion_pdf_id) return null
+
   const { data, error } = await supabase
     .from('v_cotizaciones_pdf')
     .select('id, numero, estado, nombre_archivo, ruta_storage, mime_type')
-    .eq('orden_id', ordenId)
-    .limit(1)
+    .eq('id', orden.cotizacion_pdf_id)
     .maybeSingle()
 
   if (error) throw new Error(`No se pudo leer la cotización de la orden: ${error.message}`)

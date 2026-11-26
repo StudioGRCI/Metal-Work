@@ -1595,6 +1595,7 @@ export type Database = {
           anulado_por: string | null
           anulado_en: string | null
           motivo_correccion: string | null
+          cantidad_unidades: number
         }
         Insert: {
           id?: string
@@ -1620,6 +1621,7 @@ export type Database = {
           anulado_por?: string | null
           anulado_en?: string | null
           motivo_correccion?: string | null
+          cantidad_unidades?: number
         }
         Update: {
           id?: string
@@ -1645,6 +1647,7 @@ export type Database = {
           anulado_por?: string | null
           anulado_en?: string | null
           motivo_correccion?: string | null
+          cantidad_unidades?: number
         }
         Relationships: [
           {
@@ -5198,7 +5201,7 @@ export type Database = {
           {
             foreignKeyName: "ordenes_trabajo_cotizacion_pdf_id_fkey"
             columns: ["cotizacion_pdf_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "cotizaciones_pdf"
             referencedColumns: ["id"]
           },
@@ -11661,6 +11664,10 @@ export type Database = {
           monto_venta: number | null
           moneda: Database["public"]["Enums"]["moneda"] | null
           codigo_interno: string | null
+          cantidad_unidades: number | null
+          ordenes: Json | null
+          ordenes_vigentes: number | null
+          ordenes_faltantes: number | null
         }
         Relationships: []
       }
@@ -15651,6 +15658,12 @@ export type Database = {
           pdf_nombre: string | null
           creado_en: string | null
         }[]
+      }
+      ordenes_de_cotizacion: {
+        Args: {
+          p_cotizacion: string | null
+        }
+        Returns: Json
       }
       ordenes_servicio_listado: {
         Args: Record<PropertyKey, never>
