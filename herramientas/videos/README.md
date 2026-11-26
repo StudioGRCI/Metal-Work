@@ -173,10 +173,7 @@ queda como `DATO-…png` en `generado/<formato>/revision/`. Queda como
 - un número suelto que las capturas muestran con un guion, una barra o un
   espacio que el OCR se comió («9001-2026» leído «90012026», «1. 10 KG» leído
   «1.10»). Ocho cifras partidas por un espacio no entran aquí: se marcan como
-  DNI en la propia captura;
-- un número suelto, sin moneda, leído en un cuadro en movimiento y que no está
-  medio segundo antes ni medio segundo después (un fundido dura 0,5 s como
-  mucho).
+  DNI en la propia captura.
 
 Unos y otros se miran antes de entregar: nada se da por bueno sin mirarlo.
 

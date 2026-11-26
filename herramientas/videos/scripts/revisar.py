@@ -360,22 +360,6 @@ def revisar(carpeta: Path, formato: str) -> bool:
     en_cuadros = []
     dudosos = []
 
-    def se_mueve(i: int) -> bool:
-        return any(0 <= j < total - 1 and float(np.mean(np.abs(chicos[j + 1] - chicos[j]))) >= 0.05 for j in (i - 1, i))
-
-    def lecturas_a_medio_segundo(i: int, paso: int) -> set:
-        """Lo que se lee, a los tres tamaños, medio segundo antes o después de `i`: un fundido dura 0,5 s como mucho, y lo que está en pantalla un segundo entero sigue ahí a un lado o al otro."""
-        j = i + paso * round(0.5 * fps)
-        if not 0 <= j < total:
-            return set()
-        png = correr('ffmpeg', '-v', 'error', '-ss', f'{j / fps:.4f}', '-i', str(video), '-frames:v', '1', '-f', 'image2pipe', '-c:v', 'png', '-', binario=True)
-        gris = Image.open(io.BytesIO(png)).convert('L')
-        leidos = set()
-        for veces in (1, 2, 3):
-            imagen = gris if veces == 1 else gris.resize((gris.width * veces, gris.height * veces), Image.LANCZOS)
-            leidos |= {mismo_dato(h) for h in datos_en(leer_texto(imagen), inventados)}
-        return leidos
-
     for archivo, numero, t in zip(cuadros, elegidos, textos):
         hallados = datos_en(t, inventados, vistos)
         if not hallados:
@@ -400,13 +384,6 @@ def revisar(carpeta: Path, formato: str) -> bool:
             and not es_texto_pegado(h)
             and any(mismo_dato(h) in lectura for lectura in otras)
         ]
-        # A medio fundido hay dos pantallas encimadas y de dos letras cruzadas sale un «08.24» que
-        # se repite al agrandar. Un número suelto (sin moneda) leído en un cuadro en movimiento
-        # cuenta solo si sigue ahí medio segundo antes o medio segundo después.
-        sueltos = [h for h in confirmados if h[0] == 'DNI' or (h[0] == 'monto' and not moneda_del_monto(h[1]))]
-        if sueltos and se_mueve(numero):
-            quietos = lecturas_a_medio_segundo(numero, -1) | lecturas_a_medio_segundo(numero, 1)
-            confirmados = [h for h in confirmados if h not in sueltos or mismo_dato(h) in quietos]
         if confirmados:
             en_cuadros.append((numero, confirmados))
             archivo.rename(trabajo / f'DATO-{numero / fps:07.2f}s.png')
@@ -423,7 +400,7 @@ def revisar(carpeta: Path, formato: str) -> bool:
     for numero, hallados in en_cuadros[:20]:
         inf.nota(f"{numero / fps:.2f} s: {', '.join(f'{n} «{v}»' for n, v in hallados)}")
     for numero, hallados in dudosos[:20]:
-        inf.nota(f"lectura dudosa en {numero / fps:.2f} s ({', '.join(f'{n} «{v}»' for n, v in hallados)}): trozo de un monto inventado, texto de las capturas leído sin su guion o su espacio, número suelto que solo se lee a medio fundido, o lectura que no se repite al leer el cuadro otra vez al doble y al triple de tamaño; queda en generado/{formato}/revision/ para mirarlo")
+        inf.nota(f"lectura dudosa en {numero / fps:.2f} s ({', '.join(f'{n} «{v}»' for n, v in hallados)}): trozo de un monto inventado, texto de las capturas leído sin su guion o su espacio, o lectura que no se repite al leer el cuadro otra vez al doble y al triple de tamaño; queda en generado/{formato}/revision/ para mirarlo")
 
     if inventados:
         dicho = lambda d: f'{d[0]} {d[1]:,.2f}'  # noqa: E731
