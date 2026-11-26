@@ -163,6 +163,8 @@ export async function cargarRequerimientos(
     area?: string
     codigo?: string
     conEntregado?: boolean
+    /** Para contar, sin la fecha esperada: no lee si Logística la corrigió. */
+    sinFechaCorregida?: boolean
     /** Solo los que se necesitan entre estas fechas (YYYY-MM-DD, inclusive), del que vence primero al último. */
     necesitadoDesde?: string | null
     necesitadoHasta?: string
@@ -202,7 +204,7 @@ export async function cargarRequerimientos(
       opciones.conEntregado
         ? todasLasFilas(() => supabase.rpc('entregado_de_requerimientos', { p_ids: ids }), ['requerimiento_id', 'item'])
         : null,
-      fechasCorregidas(supabase, { oc: idsOc }),
+      opciones.sinFechaCorregida ? new Map() : fechasCorregidas(supabase, { oc: idsOc }),
     ])
     if (avance.error) throw new Error(`No se pudo calcular el avance de los requerimientos: ${avance.error.message}`)
     corregidas = fechas

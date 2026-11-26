@@ -8,7 +8,6 @@
 --        con un motivo equivocado y volvió hoy: entre las dos fechas. Ahora
 --        acepta otro motivo.
 --   os2: debía volver en 5 días y volvió hoy: no está atrasada, sigue sin motivo.
--- Pago:
 --   oc:  prometida hace 3 días; llegó una parte hace 5 y el resto ayer; la
 --        fecha se había corregido a pasado mañana. Llegó completa tarde: acepta
 --        otro motivo, y la pantalla ofrece «Anotar motivo» (compras_que_aceptan_motivo).

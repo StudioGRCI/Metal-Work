@@ -47,6 +47,12 @@ export type PasoDescrito = PasoDelRecorrido & {
    * recorrido cerrado no la usa (DKS, 2026-11-26).
    */
   alMargen?: boolean
+  /**
+   * Un final que corta el circuito (la OC o la OS anulada o rechazada): la
+   * marca lleva una X roja en vez del visto (DKS, 2026-11-26). Solo lo ponen
+   * la OC y la OS: la cotización, el RQ y la avería siguen como estaban.
+   */
+  corta?: boolean
 }
 
 /** «desde hoy», «hace 1 día», «hace 3 días». Los días los cuenta la base, por fecha de Lima. */
@@ -85,6 +91,8 @@ type Frases = {
   nota?: (detalle: string) => string | null
   /** Una anotación que no avanza el documento (ver `PasoDescrito.alMargen`). */
   alMargen?: boolean
+  /** Un final que corta el circuito (ver `PasoDescrito.corta`). */
+  corta?: boolean
 }
 
 const PASOS_DEL_REQUERIMIENTO: Record<string, Frases> = {
@@ -222,7 +230,7 @@ function describir(
       const llano = p.paso.replaceAll('_', ' ').toLowerCase()
       if (p.situacion === 'HECHO') {
         const titulo = f ? (typeof f.hecho === 'function' ? f.hecho(p.detalle) : f.hecho) : llano
-        return { ...p, titulo, nota: p.detalle && f?.nota ? f.nota(p.detalle) : null, ...(f?.alMargen ? { alMargen: true } : {}) }
+        return { ...p, titulo, nota: p.detalle && f?.nota ? f.nota(p.detalle) : null, ...(f?.alMargen ? { alMargen: true } : {}), ...(f?.corta ? { corta: true } : {}) }
       }
       const nota = p.situacion === 'AHORA' && p.espera ? (esperas[p.espera]?.(p.detalle) ?? null) : null
       return { ...p, titulo: f?.falta ?? llano, nota }
@@ -317,7 +325,7 @@ const SEGUIMIENTO: Record<string, Frases> = {
 const PASOS_DE_LA_ORDEN_DE_COMPRA: Record<string, Frases> = {
   EMISION: { hecho: 'Emitida', falta: 'Emisión' },
   APROBACION: { hecho: 'Gerencia la aprobó', falta: 'Aprobación de Gerencia' },
-  RECHAZO: { hecho: 'Gerencia la rechazó', falta: 'Aprobación de Gerencia' },
+  RECHAZO: { hecho: 'Gerencia la rechazó', falta: 'Aprobación de Gerencia', corta: true },
   MANDADA_A_RECOJO: { hecho: 'Mandada a recojo', falta: 'Mandarla a recojo' },
   PROGRAMACION: { hecho: 'Recojo programado con el conductor', falta: 'Programar el recojo' },
   GUIA: { hecho: 'Contabilidad cargó la guía de remisión', falta: 'Guía de remisión' },
@@ -331,7 +339,7 @@ const PASOS_DE_LA_ORDEN_DE_COMPRA: Record<string, Frases> = {
   },
   DEVOLUCION: { hecho: 'Almacén devolvió parte al proveedor', falta: 'Devolución al proveedor' },
   COMPLETA: { hecho: 'Completa: llegó todo lo pedido', falta: 'Completa' },
-  ANULACION: { hecho: 'Anulada', falta: 'Anulación' },
+  ANULACION: { hecho: 'Anulada', falta: 'Anulación', corta: true },
   ...SEGUIMIENTO,
 }
 
@@ -352,11 +360,11 @@ const ESPERAS_DE_LA_ORDEN_DE_COMPRA: Record<string, () => string> = {
 const PASOS_DE_LA_ORDEN_DE_SERVICIO: Record<string, Frases> = {
   EMISION: { hecho: 'Emitida', falta: 'Emisión' },
   APROBACION: { hecho: 'Gerencia la aprobó', falta: 'Aprobación de Gerencia' },
-  RECHAZO: { hecho: 'Gerencia la rechazó', falta: 'Aprobación de Gerencia' },
+  RECHAZO: { hecho: 'Gerencia la rechazó', falta: 'Aprobación de Gerencia', corta: true },
   INICIO: { hecho: 'Iniciada', falta: 'Inicio del trabajo' },
   EJECUCION: { hecho: 'En ejecución', falta: 'Trabajo del proveedor' },
   CONFORMIDAD: { hecho: 'Volvió conforme', falta: 'Conformidad' },
-  ANULACION: { hecho: 'Anulada', falta: 'Anulación' },
+  ANULACION: { hecho: 'Anulada', falta: 'Anulación', corta: true },
   ...SEGUIMIENTO,
 }
 

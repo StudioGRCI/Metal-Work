@@ -98,7 +98,7 @@ export function Recorrido({
           <li key={p.orden} className="relative flex gap-3 pb-3 last:pb-0" data-recorrido-paso={p.paso} data-situacion={p.situacion}>
             {/* La línea que une este paso con el siguiente. */}
             {i < pasos.length - 1 && <span aria-hidden className="absolute top-5 bottom-0 left-[9px] w-px bg-borde" />}
-            <Marca situacion={p.situacion} corta={p.paso === 'ANULACION' || p.paso === 'RECHAZO'} />
+            <Marca situacion={p.situacion} corta={p.corta === true} />
             <div className="min-w-0 flex-1">
               {p.situacion === 'HECHO' && (
                 <>

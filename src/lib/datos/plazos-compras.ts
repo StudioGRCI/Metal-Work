@@ -35,17 +35,14 @@ function loQueFalta(valor: unknown): LoQueFalta[] | null {
 
 /**
  * De esas OC u OS, las que pasaron la fecha del documento y aceptan el motivo del atraso aunque no
- * pasen la corregida (20261126945000). La base solo se las dice a quien anota. Si no contesta, el
- * botón sale solo en las atrasadas contra la fecha corregida, como antes: no se cae la lista.
+ * pasen la corregida (20261126945000). La base solo se las dice a quien anota. Si no contesta, se
+ * dice, igual que el plazo: sin esto el botón desaparecería sin que nadie sepa por qué.
  */
 async function aceptanMotivo(supabase: Awaited<ReturnType<typeof createClient>>, tipo: 'OC' | 'OS', ids: readonly string[]) {
   const aceptan = new Set<string>()
   const respuestas = await Promise.all(tandas(ids).map((t) => supabase.rpc('compras_que_aceptan_motivo', { p_tipo: tipo, p_ids: t })))
   for (const { data, error } of respuestas) {
-    if (error) {
-      console.error('Plazos: no se pudo leer qué compras aceptan el motivo del atraso.', error.message)
-      continue
-    }
+    if (error) throw new Error(`No se pudo leer qué compras aceptan el motivo del atraso: ${error.message}`)
     for (const f of data ?? []) if (f.documento) aceptan.add(f.documento)
   }
   return aceptan
@@ -156,9 +153,10 @@ export async function fechasCorregidas(
     for (const f of data ?? []) {
       const documento = f.orden_compra_id ?? f.orden_servicio_id
       if (!documento || !f.fecha_nueva) continue
-      // Vienen de la última a la primera: la primera fija la que vale; cada una de antes, la del documento.
+      // Vienen de la última a la primera: la primera fija la que vale; la más vieja, la del documento
+      // (su fecha anterior, que es nula si el documento salió sin fecha).
       const ya = porId.get(documento)
-      porId.set(documento, { fecha: ya?.fecha ?? f.fecha_nueva, antes: f.fecha_anterior ?? ya?.antes ?? null })
+      porId.set(documento, { fecha: ya?.fecha ?? f.fecha_nueva, antes: f.fecha_anterior ?? null })
     }
   }
   return porId

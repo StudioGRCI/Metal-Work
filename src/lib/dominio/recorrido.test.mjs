@@ -153,3 +153,10 @@ test('la OC cerrada dice en qué terminó, no la anotación del atraso (DKS, 202
   const enQueTermino = pasos.filter((p) => p.situacion === 'HECHO' && !p.alMargen).at(-1)
   assert.equal(enQueTermino?.titulo, 'Completa: llegó todo lo pedido')
 })
+
+test('la X roja la llevan solo la OC y la OS que terminaron cortadas, no la cotización anulada', () => {
+  const oc = describirRecorridoDeLaOrdenDeCompra([paso(1, 'EMISION', 'HECHO'), paso(2, 'RECHAZO', 'HECHO'), paso(3, 'ANULACION', 'HECHO')])
+  assert.deepEqual(oc.map((p) => p.corta === true), [false, true, true])
+  const cotizacion = describirRecorridoDeLaCotizacion([paso(1, 'SUBIDA', 'HECHO'), paso(2, 'ANULACION', 'HECHO')])
+  assert.deepEqual(cotizacion.map((p) => p.corta === true), [false, false])
+})
