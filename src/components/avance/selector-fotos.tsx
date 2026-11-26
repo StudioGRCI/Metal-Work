@@ -557,7 +557,10 @@ function explicarFalla(mensaje: string) {
  *
  * Con `comprimir`, la foto se achica en el teléfono antes de subirla (ver
  * `comprimirFoto`) y sube siempre como JPEG; `maximoMb` es entonces lo que puede
- * pesar ya achicada.
+ * pesar ya achicada. Con `comprimir="siempre"` se vuelve a guardar también la
+ * JPEG chica que no hace falta achicar: así sale sin lo que la cámara anota
+ * dentro (la ubicación, entre otras cosas). Lo pide el recojo del conductor,
+ * cuya ubicación no se sigue.
  */
 export function SelectorFotos({
   fotos,
@@ -574,7 +577,7 @@ export function SelectorFotos({
   prefijoRuta: string
   maximo?: number
   bucket?: string
-  comprimir?: boolean
+  comprimir?: boolean | 'siempre'
   maximoMb?: number
   /** `null` cuando el formulario ya le pone su propio título a la sección. */
   titulo?: string | null
@@ -635,7 +638,7 @@ export function SelectorFotos({
       // Mientras se achica, la miniatura ya está con «subiendo…» encima.
       let achicada: File | null = null
       try {
-        achicada = await comprimirFoto(foto.archivo)
+        achicada = await comprimirFoto(foto.archivo, { siempre: comprimir === 'siempre' })
       } catch {
         achicada = null
       }
