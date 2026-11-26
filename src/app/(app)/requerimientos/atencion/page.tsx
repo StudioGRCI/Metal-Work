@@ -305,7 +305,7 @@ function loQueTeToca(rq: number, notas: number) {
   const deRq = `${rq} ${rq === 1 ? 'espera' : 'esperan'} por ti`
   const deNotas = `${notas} ${notas === 1 ? 'nota de entrega' : 'notas de entrega'} por responder`
   if (notas === 0) return rq === 0 ? 'Ninguno espera por ti.' : `${deRq}.`
-  return rq === 0 ? `${deNotas[0].toUpperCase()}${deNotas.slice(1)}.` : `${deRq} y ${deNotas}.`
+  return rq === 0 ? `${deNotas}.` : `${deRq} y ${deNotas}.`
 }
 
 function sistemaDe(m: MaterialEnStock): StockDelSistema {
