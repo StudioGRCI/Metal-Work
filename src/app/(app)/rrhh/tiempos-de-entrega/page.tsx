@@ -21,7 +21,7 @@ export const metadata = { title: 'Tiempos de entrega' }
 const POR_PAGINA = 50
 
 const AYUDA =
-  'Cada código interno que todavía no se entrega, con la fecha de entrega al cliente de su OT, la etapa en que va y su semáforo: rojo si una etapa o la entrega ya venció, ámbar si vence hoy o en 3 días hábiles o menos, verde si va a tiempo. Las fechas de cada etapa las pone Diseño y las marca el supervisor del área; aquí se consultan.'
+  'Cada código interno que todavía no se entrega, con la fecha de entrega al cliente de su OT, la etapa en que va y su semáforo: rojo si una etapa o la entrega ya venció, ámbar si vence hoy o en 3 días hábiles o menos, verde si va a tiempo. Las fechas de cada etapa las pone Diseño y las marca el supervisor del área; aquí se consultan. Cada día laborable a las 7:00 a. m. el sistema avisa en la campana a Recursos Humanos y al supervisor del área cuando una etapa pasa a ámbar y cuando vence, y la recuerda cada 2 días hábiles mientras siga vencida; a Gerencia, cuando vence y con un resumen los lunes.'
 
 /**
  * El tablero de tiempos de entrega que lleva Recursos Humanos (DKS,
