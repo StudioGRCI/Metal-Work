@@ -1,3 +1,5 @@
+import Link from 'next/link'
+
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Vistas } from '@/components/estructura/vistas'
 import { Insignia } from '@/components/ui/etiqueta-estado'
@@ -115,9 +117,9 @@ function FilaTrabajador({
   return (
     <TR className={t.activo ? undefined : 'opacity-60'}>
       <TD className="align-top">
-        <p className="font-semibold text-texto">
+        <Link href={`/rrhh/personal/${t.id}`} className="inline-flex min-h-11 items-center font-semibold text-acento underline-offset-2 hover:underline sm:min-h-0" data-hoja={t.id}>
           {t.apellidos}, {t.nombres}
-        </p>
+        </Link>
         {t.dni && <p className="tabular text-xs text-texto-suave">DNI {t.dni}</p>}
         {(t.cargo || t.area) && (
           <p className="text-xs text-texto">

@@ -30,34 +30,52 @@ export type RegistroVehiculo = {
   /** Cuántas fotos se tomaron al entrar y al salir (las de antes del 2026-10-15 entraron sin fotos). */
   fotos_ingreso: number
   fotos_salida: number
+  /**
+   * El puesto de la cuenta que registró el ingreso y la salida (plan 3, entrega
+   * 3.2): solo el puesto, nunca el nombre, como en todo el sistema (`puesto`).
+   */
+  ingreso_puesto: string | null
+  salida_puesto: string | null
 }
 
+// Quién registró cada momento: dos llaves hacia `usuarios`, así que cada embebido nombra la suya.
 const COLUMNAS =
-  'id, placa, chasis, codigo_interno, unidad, empresa, motivo, ingreso_en, observacion_ingreso, salida_en, observacion_salida, sale_al_arenado, anulado_en, motivo_anulacion, unidad_id, orden_id'
+  'id, placa, chasis, codigo_interno, unidad, empresa, motivo, ingreso_en, observacion_ingreso, salida_en, observacion_salida, sale_al_arenado, anulado_en, motivo_anulacion, unidad_id, orden_id, ' +
+  'registro_ingreso:usuarios!registro_vehiculos_ingreso_por_fkey(puesto), registro_salida:usuarios!registro_vehiculos_salida_por_fkey(puesto)'
 
-type FilaConFotos = Omit<RegistroVehiculo, 'fotos_ingreso' | 'fotos_salida'> & { fotos: { momento: string }[] | null }
+type Cuenta = { puesto: string | null } | null
+type FilaConFotos = Omit<RegistroVehiculo, 'fotos_ingreso' | 'fotos_salida' | 'ingreso_puesto' | 'salida_puesto'> & {
+  fotos: { momento: string }[] | null
+  registro_ingreso: Cuenta
+  registro_salida: Cuenta
+}
 
-function conConteo({ fotos, ...r }: FilaConFotos): RegistroVehiculo {
+function conConteo({ fotos, registro_ingreso, registro_salida, ...r }: FilaConFotos): RegistroVehiculo {
   const lista = fotos ?? []
   return {
     ...r,
     fotos_ingreso: lista.filter((f) => f.momento === 'INGRESO').length,
     fotos_salida: lista.filter((f) => f.momento === 'SALIDA').length,
+    ingreso_puesto: registro_ingreso?.puesto?.trim() || null,
+    salida_puesto: registro_salida?.puesto?.trim() || null,
   }
 }
 
-/** `en_planta`: lo que está adentro ahora. `historial`: los últimos 300 ingresos. */
+/**
+ * `en_planta`: lo que está adentro ahora, primero el que lleva más tiempo (plan 3,
+ * entrega 3.2, como las bandejas del plan 0). `historial`: los últimos 300 ingresos.
+ */
 export async function cargarVehiculos(vista: 'en_planta' | 'historial'): Promise<RegistroVehiculo[]> {
   const supabase = await createClient()
   let consulta = supabase
     .from('registro_vehiculos')
     .select(`${COLUMNAS}, fotos:registro_vehiculo_fotos!registro_vehiculo_fotos_registro_id_fkey(momento)`)
-    .order('ingreso_en', { ascending: false })
+    .order('ingreso_en', { ascending: vista === 'en_planta' })
     .limit(300)
   if (vista === 'en_planta') consulta = consulta.is('salida_en', null).is('anulado_en', null)
   const { data, error } = await consulta
   if (error) throw new Error(`No se pudo leer el registro de vehículos: ${error.message}`)
-  return (data ?? []).map((f) => conConteo(f as FilaConFotos))
+  return (data ?? []).map((f) => conConteo(f as unknown as FilaConFotos))
 }
 
 /**
@@ -204,7 +222,8 @@ export async function cargarVehiculo(id: string): Promise<DetalleVehiculo | null
   if (!data) return null
 
   type Foto = { id: string; momento: string; orden: number; ruta: string }
-  const fila = data as Omit<FilaConFotos, 'fotos'> & { fotos: Foto[] | null }
+  // `puesto` es columna calculada de `usuarios`: los tipos generados no la conocen.
+  const fila = data as unknown as Omit<FilaConFotos, 'fotos'> & { fotos: Foto[] | null }
   const fotos = [...(fila.fotos ?? [])].sort((a, b) => a.momento.localeCompare(b.momento) || a.orden - b.orden)
   const enlaces = await enlacesDeFotos(fotos.map((f) => f.ruta))
   return {
