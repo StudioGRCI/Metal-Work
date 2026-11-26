@@ -112,3 +112,52 @@ export async function ordenesDeCliente(clienteId: string) {
   const ordenes = await conAvanceDelCodigo(data ?? [])
   return { ordenes, total: count ?? ordenes.length }
 }
+
+/**
+ * Cómo va cada unidad del cliente con OT vigente: el número de la OT, su estado
+ * en una palabra y la fecha de entrega comprometida (Plan 9.2). Sale de
+ * `unidades_del_cliente_con_su_entrega`, que no da costo, margen, avance ni el
+ * id de la OT: Ventas no gana nada sobre la orden. Por unidad.
+ */
+export type EntregaDeUnidad = { ot: string | null; estado: string; fecha: string | null }
+
+export async function entregasDeUnidadesDelCliente(clienteId: string): Promise<Map<string, EntregaDeUnidad>> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('unidades_del_cliente_con_su_entrega', { p_cliente: clienteId })
+  if (error) throw new Error(`No se pudo leer cómo va cada unidad: ${error.message}`)
+  return new Map(
+    (data ?? []).flatMap((f) => (f.unidad_id && f.estado ? [[f.unidad_id, { ot: f.ot_numero, estado: f.estado, fecha: f.fecha_entrega }] as const] : [])),
+  )
+}
+
+/** Hasta cuántas cotizaciones del cliente muestra su ficha; las demás, en Cotización. */
+export const COTIZACIONES_DE_CLIENTE = 20
+
+/**
+ * Las cotizaciones vigentes del cliente para su ficha (Plan 9.2): número,
+ * estado, cuándo se subió y su código y OT si ya los tiene. Sin el monto: eso
+ * está en Cotización. Las anuladas solo se cuentan, como en Cotización, que
+ * por defecto tampoco las muestra. Las lee quien ve las cotizaciones (la
+ * política de la vista).
+ */
+export async function cotizacionesDelCliente(clienteId: string) {
+  const supabase = await createClient()
+  const [vigentes, anuladas] = await Promise.all([
+    supabase
+      .from('v_cotizaciones_pdf')
+      .select('id, numero, estado, creado_en, carroceria, orden_numero, codigo_interno', { count: 'exact' })
+      .eq('cliente_id', clienteId)
+      .neq('estado', 'ANULADA')
+      .order('creado_en', { ascending: false })
+      .limit(COTIZACIONES_DE_CLIENTE),
+    supabase
+      .from('v_cotizaciones_pdf')
+      .select('id', { count: 'exact', head: true })
+      .eq('cliente_id', clienteId)
+      .eq('estado', 'ANULADA'),
+  ])
+  const error = vigentes.error ?? anuladas.error
+  if (error) throw new Error(`No se pudieron cargar las cotizaciones del cliente: ${error.message}`)
+  const data = vigentes.data ?? []
+  return { cotizaciones: data, total: vigentes.count ?? data.length, anuladas: anuladas.count ?? 0 }
+}

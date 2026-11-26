@@ -20,6 +20,7 @@ import {
   DraftingCompass,
   Drill,
   FileArchive,
+  FileCheck2,
   FilePenLine,
   FileSpreadsheet,
   FileText,
@@ -38,11 +39,15 @@ import {
   ListOrdered,
   MessageSquareWarning,
   NotebookPen,
+  NotebookText,
   Receipt,
   ReceiptText,
   Route,
+  ScanSearch,
   ScrollText,
   Settings,
+  ShieldAlert,
+  ShieldCheck,
   Tag,
   Timer,
   Truck,
@@ -203,6 +208,7 @@ export const NAVEGACION = [
         ruta: '/diseno/dxf',
         icono: FileArchive,
         permiso: 'diseno.codigos',
+        lectura: 'diseno.ver_dxf',
         descripcion: 'Los DXF de cada unidad para el corte, para Maestranza y Producción',
         disponible: true,
       },
@@ -211,8 +217,9 @@ export const NAVEGACION = [
       {
         titulo: 'Insumos por autorizar',
         ruta: '/requerimientos/metrado',
-        icono: BadgeCheck,
+        icono: FileCheck2,
         permiso: 'requerimientos.autorizar_metrado',
+        lectura: 'requerimientos.ver_metrado',
         descripcion: 'Lo que un requerimiento pide de más sobre el metrado del código, con el sustento de quien lo pidió',
         disponible: true,
       },
@@ -223,16 +230,18 @@ export const NAVEGACION = [
         ruta: '/materiales',
         icono: Boxes,
         permiso: 'diseno.planos',
+        lectura: 'diseno.ver_materiales',
         descripcion: 'El catálogo del que Diseño arma el desglose',
         disponible: true,
       },
       {
         titulo: 'Informe semanal de Diseño',
         ruta: '/diseno/informe-semanal',
-        icono: FileText,
+        icono: NotebookText,
         // Lo llena el colaborador y lo aprueba Diseño; ahí termina (migración
         // 20261001213000). Administración ya no lo recibe.
         permiso: ['diseno.planos', 'diseno.subir_pdf', 'supervision.general'],
+        lectura: 'diseno.ver_informes',
         descripcion: 'Las actividades del día de los colaboradores, en el Word del formato',
         disponible: true,
       },
@@ -393,14 +402,16 @@ export const NAVEGACION = [
         disponible: true,
       },
       // Logística decide qué OC recoge el conductor, en qué orden y con qué
-      // peso. Es de Logística y del conductor, nada más (DKS, 2026-10-20):
-      // Contabilidad carga la guía de remisión desde Adquisiciones, y quien
-      // solo emite compras —Gerencia, Administración— no la abre.
+      // peso. Es de Logística y del conductor (DKS, 2026-10-20): Contabilidad
+      // carga la guía de remisión desde Adquisiciones, y quien solo emite
+      // compras —Administración— no la abre. Gerencia la consulta sin programar
+      // desde el 2026-11-26 (`compras.ver_gestion`).
       {
         titulo: 'Gestión de compras',
         ruta: '/compras/gestion',
         icono: Route,
         permiso: 'compras.programar_recojo',
+        lectura: 'compras.ver_gestion',
         descripcion: 'Qué órdenes de compra recoge el conductor, en qué orden y con qué peso',
         disponible: true,
       },
@@ -416,13 +427,15 @@ export const NAVEGACION = [
       },
       // Lo ven también Almacén, Costos y Supervisión (`proveedores.ver`), pero
       // en el menú solo de quienes llevan el padrón: Logística y Contabilidad.
-      // Gerencia también lo edita y, desde el 2026-11-25, lo tiene en su menú
-      // entre las pantallas de Logística que consulta.
+      // Gerencia lo tiene en su menú desde el 2026-11-25, entre las pantallas de
+      // Logística que consulta, y desde el 2026-11-26 sin editarlo (migración
+      // 20261126310000).
       {
         titulo: 'Proveedores',
         ruta: '/proveedores',
         icono: Building2,
         permiso: 'proveedores.editar',
+        lectura: 'proveedores.ver',
         descripcion: 'El padrón del que se elige en la orden de compra',
         disponible: true,
       },
@@ -499,7 +512,7 @@ export const NAVEGACION = [
       {
         titulo: 'Seguimiento por código',
         ruta: '/seguimiento',
-        icono: Hash,
+        icono: ScanSearch,
         permiso: 'codigos_internos.seguimiento',
         descripcion: 'Cada unidad por su código interno: etapas con su avance, materiales contra lo pedido y lo salido, y planos de cada área',
         disponible: true,
@@ -562,11 +575,12 @@ export const NAVEGACION = [
         ruta: '/tesoreria/caja-diaria',
         icono: Landmark,
         permiso: 'tesoreria.caja',
+        lectura: 'tesoreria.ver_caja',
         descripcion: 'El saldo de cada cuenta día por día: ingresos, egresos y el cierre contra el estado de cuenta',
         disponible: true,
       },
       { titulo: 'Gastos del mes', ruta: '/costos/gastos-generales', icono: Wallet, permiso: ['costos.gastos_generales', 'costos.ver'], descripcion: 'Servicios del local y gastos de operación', disponible: true },
-      { titulo: 'Tipo de cambio', ruta: '/tesoreria/tipo-de-cambio', icono: ArrowLeftRight, permiso: 'tesoreria.tipo_cambio', descripcion: 'El cambio del dólar de cada día, para el costo en soles', disponible: true },
+      { titulo: 'Tipo de cambio', ruta: '/tesoreria/tipo-de-cambio', icono: ArrowLeftRight, permiso: 'tesoreria.tipo_cambio', lectura: 'tesoreria.ver_tipo_cambio', descripcion: 'El cambio del dólar de cada día, para el costo en soles', disponible: true },
     ],
   },
   // Recursos Humanos lleva la ficha del personal y su horario; la portería, con
@@ -591,6 +605,23 @@ export const NAVEGACION = [
       { titulo: 'Pagos de la oficina', ruta: '/rrhh/pagos-oficina', icono: Wallet, permiso: 'rrhh.personal', descripcion: 'Lo que se le paga a cada persona de la oficina, semana, quincena o mes', disponible: true },
       { titulo: 'Observaciones', ruta: '/rrhh/observaciones', icono: MessageSquareWarning, permiso: ['rrhh.personal', 'asistencia.ver'], descripcion: 'Observaciones, amonestaciones y suspensiones del personal', disponible: true },
       { titulo: 'Planillas', ruta: '/rrhh', icono: UserCog, permiso: 'rrhh.ver_planillas', descripcion: 'Planillas del mes y su distribución por unidad', disponible: true },
+    ],
+  },
+  // SSOMA lleva los reportes de seguridad (Plan 15, migración 20261125150100):
+  // los ve enteros, con quién reportó; Gerencia los consulta. La misma pantalla
+  // está otra vez en «Reportar», sin permiso: ahí reporta cualquier puesto y ve
+  // los suyos. Vale la primera que la persona puede ver.
+  {
+    titulo: 'SSOMA',
+    items: [
+      {
+        titulo: 'Reportes de seguridad',
+        ruta: '/ssoma',
+        icono: ShieldCheck,
+        permiso: ['ssoma.gestionar', 'ssoma.ver'],
+        descripcion: 'Cada accidente, incidente o condición insegura reportada, con su número y cómo va',
+        disponible: true,
+      },
     ],
   },
   // El padrón de equipos de la planta (Plan 16). Lo lleva Mantenimiento; Almacén
@@ -627,6 +658,20 @@ export const NAVEGACION = [
         icono: Settings,
         permiso: 'configuracion.ver',
         descripcion: 'Calendario laboral y catálogos del taller',
+        disponible: true,
+      },
+    ],
+  },
+  // Lo que reporta cualquier puesto, sin permiso: va al final del menú de todos
+  // (`RUTAS_PARA_TODOS`). Reportar un incidente no puede depender de un permiso.
+  {
+    titulo: 'Reportar',
+    items: [
+      {
+        titulo: 'Reportar incidente',
+        ruta: '/ssoma',
+        icono: ShieldAlert,
+        descripcion: 'Un accidente, un incidente o algo inseguro que viste: le llega a SSOMA al instante',
         disponible: true,
       },
     ],
@@ -747,15 +792,16 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // leer, por área y en el orden del circuito (StudioGRCI: «en gerencia
   // general verdad quieren ver todo todas las pantallas aunque sean
   // diferentes en slide bar»). Las consulta
-  // sin registrar: Gerencia consulta y aprueba (migración 20261020206000); la
-  // única que todavía le deja registrar es Proveedores (`proveedores.editar`). Lo
-  // de las áreas no es su trabajo (`consulta`): no le cuenta pendientes, cifras
-  // ni el bloque de OT, y no va en «Tus módulos», salvo las cinco que ya
-  // consultaba desde su menú antes (`alInicio`). Las 25 pantallas que su
-  // permiso no abre no están aquí: las que se le abran en lectura, con su
-  // migración, se suman a su área. No ve los datos reservados del personal
-  // (planillas, costeo, pagos de la oficina, DNI), la evaluación de desempeño
-  // ni la administración del sistema.
+  // sin registrar: Gerencia consulta y aprueba (migraciones 20261020206000 y
+  // 20261126310000, que le abrió once más en lectura y le quitó editar
+  // proveedores). Lo de las áreas no es su trabajo (`consulta`): no le cuenta
+  // pendientes, cifras ni el bloque de OT, y no va en «Tus módulos», salvo las
+  // cinco que ya consultaba desde su menú antes (`alInicio`). No ve los datos
+  // reservados del personal (planillas, costeo, pagos de la oficina, DNI), la
+  // evaluación de desempeño ni la administración del sistema, ni las pantallas
+  // de trabajo de un solo puesto o área que repiten lo que ya ve de todas
+  // (los planos, materiales y etapas de Diseño, Planos y etapas, Subcontratos
+  // del área, RQ por unidad y Recojos).
   GERENTE: {
     principal: ['/codigos-internos'],
     grupos: [
@@ -764,17 +810,29 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
         pliegue: 'fijo',
         rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'],
       },
-      { titulo: 'Ventas', consulta: true, rutas: ['/clientes', '/unidades'] },
-      { titulo: 'Requerimientos', consulta: true, rutas: ['/requerimientos', '/vehiculos'] },
+      { titulo: 'Ventas', consulta: true, rutas: ['/clientes', '/unidades', '/carrocerias'] },
+      {
+        titulo: 'Diseño e Ingeniería',
+        consulta: true,
+        rutas: ['/seguimiento', '/requerimientos/metrado', '/materiales', '/diseno/informe-semanal', '/diseno/dxf'],
+      },
+      { titulo: 'Requerimientos', consulta: true, rutas: ['/requerimientos', '/vehiculos', '/requerimientos/gasto-por-codigo'] },
       {
         titulo: 'Almacén',
         consulta: true,
-        rutas: ['/requerimientos/atencion', '/almacen/kardex', '/almacen/stock', '/almacen/reposicion', '/equipos'],
+        rutas: [
+          '/requerimientos/atencion',
+          '/almacen/kardex',
+          '/almacen/stock',
+          '/seguimiento?vista=materiales',
+          '/almacen/reposicion',
+          '/equipos',
+        ],
       },
       {
         titulo: 'Logística',
         consulta: true,
-        rutas: ['/compras/ordenes', '/compras/servicios', '/proveedores', '/compras/valorizacion'],
+        rutas: ['/compras/ordenes', '/compras/servicios', '/compras/gestion', '/proveedores', '/compras/valorizacion'],
       },
       { titulo: 'Administración', consulta: true, rutas: ['/ordenes', '/subcontratos'] },
       {
@@ -787,6 +845,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
           '/tesoreria/por-pagar',
           '/tesoreria/pagos-de-servicio',
           '/tesoreria/recibos-por-honorarios',
+          '/tesoreria/caja-diaria',
+          '/tesoreria/tipo-de-cambio',
           '/costos/gastos-generales',
         ],
       },
@@ -804,6 +864,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
           '/rrhh/tiempos-de-entrega',
         ],
       },
+      // Los reportes de seguridad, en consulta y sin anular (Plan 15).
+      { titulo: 'SSOMA', consulta: true, rutas: ['/ssoma'] },
     ],
     telefono: ['/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios'],
     // Lo que consultaba desde su menú antes del 2026-11-25 sigue en su inicio.
@@ -876,7 +938,10 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       { titulo: 'Por autorizar', rutas: ['/requerimientos/metrado'] },
       { titulo: 'Por código interno', rutas: ['/diseno/planos', '/diseno/materiales', '/diseno/etapas', '/diseno/dxf'] },
       { titulo: 'Diseño e Ingeniería', rutas: ['/ordenes', '/materiales', '/diseno/informe-semanal', '/diseno/evaluaciones'] },
-      { titulo: 'Catálogos', rutas: ['/carrocerias', '/unidades'] },
+      // Nace plegado desde el 2026-11-26: con «Reportar» al final, el menú de
+      // Diseño no entraba a 760 px. Los catálogos se tocan poco y se abre solo
+      // si la pantalla que se abre está dentro.
+      { titulo: 'Catálogos', pliegue: 'plegado', rutas: ['/carrocerias', '/unidades'] },
       { titulo: 'Consultas', rutas: ['/requerimientos', '/clientes'] },
     ],
     telefono: ['/requerimientos/metrado', '/diseno/planos', '/diseno/materiales', '/ordenes'],
@@ -931,7 +996,10 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
         titulo: 'Control del personal',
         rutas: ['/rrhh/personal', '/rrhh/cuentas', '/rrhh/asistencia', '/rrhh/tardanzas', '/rrhh/permisos', '/rrhh/observaciones'],
       },
-      { titulo: 'Planillas y costeo', rutas: ['/rrhh', '/rrhh/costeo', '/rrhh/pagos-oficina'] },
+      // Nace plegado desde el 2026-11-26: con «Reportar» al final, el menú de
+      // RR. HH. no entraba a 760 px. Es trabajo de fin de mes y se abre solo si
+      // la pantalla que se abre está dentro.
+      { titulo: 'Planillas y costeo', pliegue: 'plegado', rutas: ['/rrhh', '/rrhh/costeo', '/rrhh/pagos-oficina'] },
     ],
     telefono: ['/reportes-diarios', '/planilla-diaria', '/rrhh/personal', '/rrhh/asistencia'],
   },
@@ -1002,11 +1070,25 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     ],
     telefono: ['/reportes-diarios', '/seguimiento', '/rrhh/tiempos-de-entrega', '/'],
   },
+  // Seguridad y salud en el trabajo (Plan 15): lo que la gente reporta es lo
+  // que espera por SSOMA cada día. Las acciones correctivas, las charlas, las
+  // inspecciones y la entrega de EPP se suman aquí con sus entregas.
+  SSOMA: {
+    grupos: [{ titulo: 'SSOMA', rutas: ['/ssoma'] }],
+    telefono: ['/ssoma', '/'],
+  },
 }
 // El líder de Diseño hace el trabajo de Diseño y además revisa el de su equipo
 // (`docs/PERMISOS.md`): lleva su mismo menú. Sin esta línea le salía el
 // catálogo completo, con Configuración, y en el teléfono sin Planos ni Etapas.
 MENU_POR_PUESTO.DISENO_LIDER = MENU_POR_PUESTO.DISENO
+
+/**
+ * Lo que va en el menú de todos los puestos, al final y en el grupo «Reportar»:
+ * no se repite en cada entrada de `MENU_POR_PUESTO`. Una pantalla que cualquier
+ * puesto usa para avisar de algo (un incidente, una avería) se suma aquí.
+ */
+const RUTAS_PARA_TODOS: readonly RutaDeModulo[] = ['/ssoma']
 
 const comoLista = (p: string | readonly string[] | undefined): readonly string[] => (p === undefined ? [] : typeof p === 'string' ? [p] : p)
 
@@ -1026,7 +1108,12 @@ function lePermite(item: ItemNavegacion, permisos: readonly string[], esAdmin: b
 export function menuDe(permisos: readonly string[], esAdmin: boolean, rolCodigo: string): GrupoNavegacion[] {
   const propio = esAdmin ? undefined : MENU_POR_PUESTO[rolCodigo]
   const grupos: GrupoNavegacion[] = propio
-    ? [{ titulo: 'Principal', rutas: ['/', ...(propio.principal ?? [])], pliegue: 'fijo' as const }, ...propio.grupos].map((g) => ({
+    ? [
+        { titulo: 'Principal', rutas: ['/', ...(propio.principal ?? [])], pliegue: 'fijo' as const },
+        ...propio.grupos,
+        // «Reportar» va siempre abierto: reportar un incidente no puede quedar escondido en un pliegue.
+        { titulo: 'Reportar', rutas: RUTAS_PARA_TODOS, pliegue: 'fijo' as const },
+      ].map((g) => ({
         titulo: g.titulo,
         pliegue: g.pliegue,
         ...('consulta' in g && g.consulta ? { consulta: true } : {}),
@@ -1117,12 +1204,24 @@ export function pestanasDe(permisos: readonly string[], esAdmin: boolean, rolCod
 /**
  * Cuál de los módulos es el que se está mirando: gana el de ruta más larga que
  * encaje y comparando por segmento, así `/cotizaciones-viejas` no encaja en
- * `/cotizaciones`.
+ * `/cotizaciones`. Un módulo con búsqueda (`/seguimiento?vista=materiales`)
+ * encaja solo si la dirección la trae, y gana al de su misma ruta sin ella:
+ * Gerencia tiene los dos y «Materiales por código» marcaba «Seguimiento por
+ * código».
  */
-export function rutaActiva(ruta: string, rutas: string[]) {
-  const encaja = (base: string) =>
-    base === '/' ? ruta === '/' : ruta === base || ruta.startsWith(`${base}/`)
-  return rutas.filter(encaja).sort((a, b) => b.length - a.length)[0]
+export function rutaActiva(ruta: string, rutas: string[], busqueda?: { get(nombre: string): string | null }) {
+  const partes = (r: string) => {
+    const [base, consulta = ''] = r.split('?')
+    return { base, consulta: new URLSearchParams(consulta) }
+  }
+  const encaja = (r: string) => {
+    const { base, consulta } = partes(r)
+    const porRuta = base === '/' ? ruta === '/' : ruta === base || ruta.startsWith(`${base}/`)
+    return porRuta && [...consulta].every(([k, v]) => busqueda?.get(k) === v)
+  }
+  return rutas
+    .filter(encaja)
+    .sort((a, b) => partes(b).base.length - partes(a).base.length || b.length - a.length)[0]
 }
 
 /**
@@ -1170,6 +1269,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/rrhh/costeo', corto: 'Costeo' },
   { ruta: '/rrhh/pagos-oficina', corto: 'Pagos' },
   { ruta: '/rrhh/observaciones', corto: 'Observaciones' },
+  { ruta: '/ssoma', corto: 'Seguridad' },
   { ruta: '/reportes-diarios', corto: 'Reporte' },
   { ruta: '/codigos-internos', corto: 'Códigos' },
   { ruta: '/diseno/planos', corto: 'Planos' },

@@ -287,7 +287,8 @@ comprobar(avisoAdministracion?.titulo === 'Cotización aprobada: falta su códig
 {
   const { pagina, contexto } = await entrar('administracion')
   const tablero = limpio(await pagina.locator('main').textContent())
-  comprobar(/Aprobadas sin código/.test(tablero), 'su dashboard cuenta las aprobadas sin código')
+  // Desde el 2026-11-26 lo cuenta «Te toca» y no una cifra aparte.
+  comprobar(/cotizaci(ón|ones) aprobadas? sin código ni OT/.test(tablero), 'su dashboard («Te toca») cuenta las aprobadas sin código')
 
   await pagina.goto(`${BASE}${avisoAdministracion?.ruta ?? '/cotizaciones/pdf?estado=APROBADA_SIN_OT'}`, { waitUntil: 'networkidle' })
   const v = pagina.locator('[role="dialog"]')
