@@ -101,6 +101,20 @@ test('lo de hoy sale en el orden en que pasó, y lo de otro día no', () => {
   assert.deepEqual(pasosDelDia(compras, '2026-11-26', diaDe), [])
 })
 
+// «No se pudo recoger» saca la compra de la lista: el intento de hoy queda en el día.
+test('el «No se pudo recoger» de hoy sale con su hora; el de ayer, no', () => {
+  const diaDe = (t) => t.slice(0, 10)
+  const compras = [
+    { id: 'a', nombre: 'OC-1', proveedor: 'ACEROS', recogido_en: '2026-11-25T09:10:00Z', dejado_en: null, no_logrado: null },
+    { id: 'b', nombre: 'OC-2', proveedor: 'PERNOS', recogido_en: null, dejado_en: null, no_logrado: { registrado_en: '2026-11-25T08:30:00Z' } },
+    { id: 'c', nombre: 'OC-3', proveedor: 'PINTURAS', recogido_en: null, dejado_en: null, no_logrado: { registrado_en: '2026-11-24T17:00:00Z' } },
+  ]
+  assert.deepEqual(
+    pasosDelDia(compras, '2026-11-25', diaDe).map((p) => `${p.nombre} ${p.paso}`),
+    ['OC-2 NO_LOGRADO', 'OC-1 RECOGIDO'],
+  )
+})
+
 // El día es el del taller, no el de UTC: a las 8 de la noche en Lima ya es mañana en UTC.
 test('lo de hoy cuenta por el día de Lima, también de noche', () => {
   const compras = [
