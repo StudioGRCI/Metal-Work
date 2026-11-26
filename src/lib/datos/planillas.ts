@@ -50,10 +50,10 @@ export async function loQueFaltaDePlanillas(ids: string[]): Promise<Map<string, 
     if (error) throw new Error(`No se pudo leer lo que falta para cerrar la planilla: ${error.message}`)
     const filas: LoQueFalta[] = []
     for (const f of (data ?? []) as Fila[]) {
-      // Una clase que la pantalla no conoce no se esconde ni se inventa: se avisa en el registro.
+      // Una clase que la pantalla no conoce no se esconde: con ella la lista quedaría
+      // incompleta, o diría «no falta nada». La pantalla dice que no se pudo leer.
       if (!f.clase || !CLASES.includes(f.clase as ClaseDeLoQueFalta) || !f.documento) {
-        console.error(`[planillas] planilla_lo_que_falta devolvió una fila que la pantalla no conoce: ${f.clase ?? 'sin clase'}`)
-        continue
+        throw new Error(`planilla_lo_que_falta devolvió una fila que la pantalla no conoce: ${f.clase ?? 'sin clase'}`)
       }
       filas.push({
         clase: f.clase as ClaseDeLoQueFalta,

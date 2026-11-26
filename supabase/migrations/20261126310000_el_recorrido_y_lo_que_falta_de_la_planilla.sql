@@ -240,8 +240,10 @@ begin
   end if;
 
   -- Quien está en la planilla y no tiene dónde cobrar: sin cuenta en su ficha, o
-  -- sin ficha. La de subcontratos no: no son personal de planta.
-  if v.tipo in ('TALLER', 'ADMINISTRATIVA') then
+  -- sin ficha. La de subcontratos no: no son personal de planta. Solo a quien
+  -- lee las cuentas (`rrhh.personal`, como la política de `trabajador_cuentas`):
+  -- aunque no se muestre la cuenta, decir quién no la tiene es leerla.
+  if v.tipo in ('TALLER', 'ADMINISTRATIVA') and (public.es_admin() or public.tiene_permiso('rrhh.personal')) then
     return query
     with gente as (
       select x.id, x.nombre, public.trabajador_de_planilla(x.nombre, x.documento) as trabajador
@@ -261,7 +263,7 @@ end;
 $$;
 
 comment on function public.planilla_lo_que_falta(uuid) is
-  'Lo que falta para cerrar una planilla en preparación: de la de taller, los reportes diarios del mes sin el visto de RR. HH. u observados (con reporte_diario.ver), con los días que esperan; de la de taller y la administrativa, quien no tiene cuenta bancaria en su ficha o no tiene ficha (sin la cuenta: solo que falta). Avisa; no frena cerrar_planilla. Lo lee quien ve las planillas.';
+  'Lo que falta para cerrar una planilla en preparación: de la de taller, los reportes diarios del mes sin el visto de RR. HH. u observados (con reporte_diario.ver), con los días que esperan; de la de taller y la administrativa, quien no tiene cuenta bancaria en su ficha o no tiene ficha (con rrhh.personal, sin la cuenta: solo que falta). Avisa; no frena cerrar_planilla. Lo lee quien ve las planillas.';
 
 revoke all on function public.planilla_lo_que_falta(uuid) from public, anon;
 grant execute on function public.planilla_lo_que_falta(uuid) to authenticated;

@@ -91,6 +91,8 @@ export default async function PaginaRRHH() {
   // Los reportes del mes que faltan los lee quien lee los reportes; «tu visto» y
   // «Darles el visto» son solo para quien lo da (no el administrador, que mira).
   const veReportes = puede(perfil, 'reporte_diario.ver')
+  // Quién no tiene cuenta lo lee quien lee las cuentas, como en la base.
+  const veCuentas = puede(perfil, 'rrhh.personal')
   const daElVisto = editaComoRrhh(perfil, 'reporte_diario.validar_rrhh')
   const restadoDe = new Map(restados)
   const comoEntra = new Map<string, PersonaAlCosto>(alCosto.flatMap((m) => [...m]))
@@ -182,6 +184,7 @@ export default async function PaginaRRHH() {
                     deTaller={p.tipo === 'TALLER'}
                     mes={p.periodo.slice(0, 7)}
                     veReportes={veReportes}
+                    veCuentas={veCuentas}
                     daElVisto={daElVisto}
                     conGente={deEsta.length > 0}
                   />
@@ -445,6 +448,7 @@ function LoQueFaltaParaCerrar({
   deTaller,
   mes,
   veReportes,
+  veCuentas,
   daElVisto,
   conGente,
 }: {
@@ -454,6 +458,7 @@ function LoQueFaltaParaCerrar({
   /** `YYYY-MM`, para abrir los reportes del mes. */
   mes: string
   veReportes: boolean
+  veCuentas: boolean
   daElVisto: boolean
   conGente: boolean
 }) {
@@ -468,7 +473,7 @@ function LoQueFaltaParaCerrar({
   const observados = faltas.filter((f) => f.clase === 'REPORTE_OBSERVADO')
   const sinCuenta = faltas.filter((f) => f.clase === 'SIN_CUENTA')
   const sinFicha = faltas.filter((f) => f.clase === 'SIN_FICHA')
-  const revisa = [deTaller && veReportes ? 'los reportes del mes' : null, conGente ? 'las cuentas de su gente' : null].filter(Boolean)
+  const revisa = [deTaller && veReportes ? 'los reportes del mes' : null, conGente && veCuentas ? 'las cuentas de su gente' : null].filter(Boolean)
 
   if (faltas.length === 0) {
     // Sin gente todavía no se puede cerrar: lo dice la tarjeta («Sin personas todavía»), no «no falta nada».
@@ -495,7 +500,11 @@ function LoQueFaltaParaCerrar({
           <AlertTriangle aria-hidden className="size-4 shrink-0 text-aviso" />
           Lo que falta para cerrar
         </h3>
-        <p className="text-xs text-texto-suave">Se puede cerrar igual: lo que quede pendiente queda así en la planilla cerrada.</p>
+        <p className="text-xs text-texto-suave">
+          {conGente
+            ? 'Se puede cerrar igual: lo que quede pendiente queda así en la planilla cerrada.'
+            : 'Para cerrarla hace falta al menos una persona o un subcontrato.'}
+        </p>
       </div>
 
       {sinVisto.length > 0 && (
@@ -527,7 +536,7 @@ function LoQueFaltaParaCerrar({
         <Pliegue titulo={`${cuantos(sinCuenta.length, 'persona', 'personas')} sin cuenta bancaria`} data-falta="SIN_CUENTA">
           <p className="pb-2 text-xs text-texto-suave">
             Su cuenta se pone en su ficha, en{' '}
-            <Link href="/rrhh/personal" className={enlace}>
+            <Link href="/rrhh/personal?estado=todos" className={enlace}>
               Personal
             </Link>
             .
@@ -539,7 +548,7 @@ function LoQueFaltaParaCerrar({
         <Pliegue titulo={`${cuantos(sinFicha.length, 'persona', 'personas')} sin ficha en Personal`} data-falta="SIN_FICHA">
           <p className="pb-2 text-xs text-texto-suave">
             No se encontró su ficha por su DNI ni por su nombre. Si es de la empresa, revisa que su nombre o su DNI sean los de su ficha en{' '}
-            <Link href="/rrhh/personal" className={enlace}>
+            <Link href="/rrhh/personal?estado=todos" className={enlace}>
               Personal
             </Link>
             .

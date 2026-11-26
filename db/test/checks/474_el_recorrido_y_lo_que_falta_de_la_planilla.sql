@@ -9,11 +9,11 @@ begin;
 do $$
 declare v text; v_id uuid;
 begin
-  foreach v in array array['RECURSOS_HUMANOS:RRH', 'GERENTE:GGE', 'ALMACENERO:ALM', 'ADMIN:GGE'] loop
+  foreach v in array array['RECURSOS_HUMANOS:RRH', 'GERENTE:GGE', 'ALMACENERO:ALM', 'ADMINISTRACION:ADM', 'ADMIN:GGE'] loop
     v_id := gen_random_uuid();
-    insert into auth.users (id, email) values (v_id, lower(split_part(v, ':', 1)) || '.472@prueba.local');
+    insert into auth.users (id, email) values (v_id, lower(split_part(v, ':', 1)) || '.474@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
-    select v_id, split_part(v, ':', 1), 'Check 472', lower(split_part(v, ':', 1)) || '.472@prueba.local', r.id,
+    select v_id, split_part(v, ':', 1), 'Check 474', lower(split_part(v, ':', 1)) || '.474@prueba.local', r.id,
            (select id from public.areas where codigo = split_part(v, ':', 2))
       from public.roles r where r.codigo = split_part(v, ':', 1);
     perform set_config('prueba.' || lower(split_part(v, ':', 1)), v_id::text, true);
@@ -33,7 +33,7 @@ begin
   insert into public.reportes_diarios (id, fecha, codigo_interno, asunto, descripcion, area_id, registrado_por,
                                        visto_rrhh_por, visto_rrhh_en, observado_por, observado_en, observacion_area, observacion,
                                        anulado_por, anulado_en, motivo_anulacion, creado_en)
-  select x.id, x.fecha, 'CHK472', x.asunto, 'Reporte del check 474', (select id from public.areas where codigo = 'PRD'),
+  select x.id, x.fecha, 'CHK474', x.asunto, 'Reporte del check 474', (select id from public.areas where codigo = 'PRD'),
          current_setting('prueba.gerente')::uuid,
          case when x.visto then current_setting('prueba.recursos_humanos')::uuid end, case when x.visto then now() end,
          case when x.observado then current_setting('prueba.recursos_humanos')::uuid end, case when x.observado then now() end,
@@ -135,7 +135,7 @@ select test.afirmar(
 
 reset role;
 
--- ============================================ 3. Gerencia y Almacén no leen las planillas
+-- ============================================ 3. Gerencia, Almacén y Administración no leen las planillas
 select pg_temp.como('gerente');
 set local role authenticated;
 select test.debe_fallar($$select * from public.recorrido_de_planillas(array['47200000-0000-4000-8000-0000000000b1'::uuid])$$,
@@ -148,6 +148,14 @@ select pg_temp.como('almacenero');
 set local role authenticated;
 select test.debe_fallar($$select * from public.planilla_lo_que_falta('47200000-0000-4000-8000-0000000000b1')$$,
   'Almacén no lee lo que falta de la planilla', 'permiso');
+reset role;
+
+select pg_temp.como('administracion');
+set local role authenticated;
+select test.debe_fallar($$select * from public.recorrido_de_planillas(array['47200000-0000-4000-8000-0000000000b1'::uuid])$$,
+  'Administración no lee el recorrido de la planilla', 'permiso');
+select test.debe_fallar($$select * from public.planilla_lo_que_falta('47200000-0000-4000-8000-0000000000b1')$$,
+  'Administración no lee lo que falta de la planilla', 'permiso');
 reset role;
 
 -- ============================================ 4. El administrador mira, no cierra

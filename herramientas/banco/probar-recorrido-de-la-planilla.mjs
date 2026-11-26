@@ -138,7 +138,10 @@ try {
       CUENTAS.rrhh,
       `insert into planilla_personas (planilla_id, nombre, documento, monto, registrado_por) values ($1, $2, $3, 2500, public.usuario_actual())`,
       [administrativa.id, `${rosa.nombres} ${rosa.apellidos}`, rosa.dni],
-    ).catch(() => {}) // una persona por mes entre las tres: si ya estaba de otra corrida, basta
+    ).catch((e) => {
+      // Una persona por mes entre las tres: si ya estaba de otra corrida, basta. Lo demás, no.
+      if (!/una sola vez/.test(String(e?.message ?? e))) throw e
+    })
     await comoPuesto(CUENTAS.rrhh, `select public.cerrar_planilla($1)`, [administrativa.id])
   }
 
