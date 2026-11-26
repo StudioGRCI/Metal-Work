@@ -114,9 +114,9 @@ function RevisionPorResponder({ revision: v, cobro, abreVehiculos }: { revision:
           ) : cobro.facturado === 0 && otra ? (
             // Facturada solo en la otra moneda: decir «no la factura» era falso, y la tarjeta decide si el vehículo sale.
             <>
-              {cobro.cotizaciones > 1 ? `Las ${cobro.cotizaciones} cotizaciones suman` : 'Cotización de'}{' '}
+              {cobro.cotizaciones > 1 ? `Las ${cobro.cotizaciones} cotizaciones, que suman` : 'Cotización de'}{' '}
               <span className="text-texto">{moneda(cobro.total, cobro.moneda)}</span>
-              {cobro.monedasDistintas && ' (las de otra moneda no se suman aquí)'}, facturada en{' '}
+              {cobro.monedasDistintas && ' sin las de otra moneda'}, {cobro.cotizaciones > 1 ? 'facturadas' : 'facturada'} en{' '}
               <span data-otra-moneda>
                 {nombreMoneda(mOtra)}: <span className="font-medium text-texto">{moneda(otra.facturado, mOtra)}</span> · cobrado{' '}
                 <span className="font-medium text-texto">{moneda(otra.cobrado, mOtra)}</span>

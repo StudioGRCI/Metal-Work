@@ -10,7 +10,8 @@
 -- la cotización.
 --
 -- Ahora `facturado` y `cobrado` son solo lo de la moneda de la cotización, que es
--- con lo que se comparan, y lo de la otra moneda va aparte
+-- con lo que se comparan (la cotización sin moneda, que la base admite, cuenta
+-- como en soles, igual que la pantalla), y lo de la otra moneda va aparte
 -- (`facturado_otra_moneda`, `cobrado_otra_moneda`) para que la pantalla lo diga
 -- sin sumarlo. Es la misma regla de `facturacion_pendientes` (20261126470000):
 -- una factura en otra moneda no se compara con el total.
@@ -31,7 +32,7 @@ begin
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = 'cotizaciones_para_facturar';
   -- La de 20261015124000 tras la 20261023140000, o esta misma si la migración se vuelve a correr.
-  if v_md5 is not null and v_md5 not in ('369b4c9cb91462e94afb2bb6c45d09ef', '6437a72aa497bf382ccf4106aacf2349') then
+  if v_md5 is not null and v_md5 not in ('369b4c9cb91462e94afb2bb6c45d09ef', '788067b4d73552ecbc9eef10d2e122a9') then
     raise exception 'cotizaciones_para_facturar cambió en la base (huella %): revisa antes de reemplazarla.', v_md5;
   end if;
 end $$;
@@ -72,10 +73,10 @@ begin
          order by v.version desc limit 1) va on true
       left join lateral (
         select count(*)::integer as facturas,
-               sum(f.total) filter (where f.moneda::text = c.moneda::text)::numeric as facturado,
-               sum(f.cobrado) filter (where f.moneda::text = c.moneda::text)::numeric as cobrado,
-               sum(f.total) filter (where f.moneda::text <> c.moneda::text)::numeric as facturado_otra,
-               sum(f.cobrado) filter (where f.moneda::text <> c.moneda::text)::numeric as cobrado_otra
+               sum(f.total) filter (where f.moneda::text = coalesce(c.moneda::text, 'PEN'))::numeric as facturado,
+               sum(f.cobrado) filter (where f.moneda::text = coalesce(c.moneda::text, 'PEN'))::numeric as cobrado,
+               sum(f.total) filter (where f.moneda::text <> coalesce(c.moneda::text, 'PEN'))::numeric as facturado_otra,
+               sum(f.cobrado) filter (where f.moneda::text <> coalesce(c.moneda::text, 'PEN'))::numeric as cobrado_otra
           from (select f.moneda, f.total,
                        (select coalesce(sum(b.monto), 0) from public.cobros_factura_venta b
                          where b.factura_id = f.id and b.anulado_en is null) as cobrado
