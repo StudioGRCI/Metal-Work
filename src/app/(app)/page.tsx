@@ -47,8 +47,11 @@ export default async function PaginaDashboard() {
   const esAdmin = perfil.rol.codigo === 'ADMIN'
   // La OT es desde el 2026-10-15 un documento de Diseño: su bloque sale solo a
   // quien la tiene en su menú (Diseño, su colaborador y Administración); no a
-  // Gerencia, que la consulta desde su barra pero no la trabaja.
-  const llevaOrdenes = rutasDeTrabajo(perfil.permisos, esAdmin, perfil.rol.codigo).has('/ordenes')
+  // Gerencia, que la consulta desde su barra pero no la trabaja. Desde el
+  // 2026-11-26 su «Por aprobar» lleva las OT para que su globo cuente las que
+  // esperan su aprobación, y eso no le trae el bloque del taller.
+  const llevaOrdenes =
+    perfil.rol.codigo !== 'GERENTE' && rutasDeTrabajo(perfil.permisos, esAdmin, perfil.rol.codigo).has('/ordenes')
   // «Te toca» nombra y ordena cada fila con los módulos de su trabajo, los
   // mismos de «Tus módulos»: lo que solo consulta no le trae pendientes.
   const modulos = modulosDelInicio(perfil.permisos, esAdmin, perfil.rol.codigo).flatMap((g) => g.items)

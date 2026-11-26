@@ -29,6 +29,12 @@ update public.usuarios set area_id = (select id from public.areas where codigo =
 update public.areas set jefe_id = :'jefe_id' where codigo = 'MTZ';
 -- SSOMA entra recién en la sección 11: hasta entonces, la de riesgo va a Gerencia.
 update public.usuarios set activo = false where id = :'ssoma_id';
+-- Las cuentas de SSOMA y de Mantenimiento que traen las migraciones (las de
+-- producción, 20261126600000) se apagan aquí: si no, los avisos les llegaban a
+-- esas y no a las del check, ni a Gerencia cuando las del check se apagan.
+update public.usuarios u set activo = false
+ where u.id not in (:'ssoma_id', :'mnt_id') and u.activo
+   and u.rol_id in (select id from public.roles where codigo in ('SSOMA', 'MANTENIMIENTO'));
 
 select set_config('prueba.mnt', :'mnt_id', true);
 select set_config('prueba.ger', :'ger_id', true);
