@@ -169,9 +169,27 @@ const B = await aprobada('B', 20000, 2) // facturada en parte, con un cobro a cu
 const C = await aprobada('C', 5000, 1) // sin factura
 const D = await aprobada('D', 7000, 9) // facturada entera y cobrada: no espera
 const E = await aprobada('E', 9000, null) // sin OT: espera a Administración
+const F = await aprobada('F', 8000, 3) // facturada la mitad y esa factura cobrada: el resto no está cobrado
+const G = await aprobada('G', 6000, 8) // aprobada, con su OT, y vuelta a revisar: la tiene Gerencia
 await factura(B, 10000, { monto: 4000, cancela: false })
 await factura(D, 7000, { monto: 7000, cancela: true })
-console.log(`     sembrado: ${A.codigo} (6 días), ${B.codigo} (en parte, 2), ${C.codigo} (1), ${D.codigo} (facturada), ${E.numero} sin OT`)
+await factura(F, 4000, { monto: 4000, cancela: true })
+// G pasa a corrección: su versión aprobada queda archivada y la vigente espera a Gerencia.
+await base.query('begin')
+try {
+  await base.query('set local session_replication_role = replica')
+  await consulta(
+    `insert into public.cotizaciones_pdf_versiones (cotizacion_id, version, nombre_archivo, ruta_storage, subido_en, observacion, estado_al_archivar)
+     values ($1::uuid, 1, 'v1.pdf', 'cot/' || $1::text || '/v1.pdf', now() - interval '13 days', 'Cambia el precio', 'APROBADA')`,
+    [G.id],
+  )
+  await consulta(`update public.cotizaciones_pdf set estado = 'POR_REVISAR', revisado_por = null, revisado_en = null where id = $1`, [G.id])
+  await base.query('commit')
+} catch (e) {
+  await base.query('rollback')
+  throw e
+}
+console.log(`     sembrado: ${A.codigo} (6 días), ${B.codigo} (en parte, 2), ${C.codigo} (1), ${D.codigo} (facturada), ${E.numero} sin OT, ${F.codigo} (adelanto cobrado), ${G.codigo} (en corrección)`)
 
 // ---------------------------------------------------------------- navegador
 const quieta = (pagina) => pagina.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {})
@@ -205,7 +223,7 @@ async function entrar(correo, viewport = { width: 1440, height: 900 }) {
   return { pagina, contexto }
 }
 
-const sembradas = [A, B, C, D].map((c) => c.codigo)
+const sembradas = [A, B, C, D, F, G].map((c) => c.codigo)
 /** Las filas de «Por facturar» de esta corrida, en orden: código y texto. */
 async function filasPorFacturar(pagina) {
   const filas = pagina.locator('#por-facturar tbody tr[data-por-facturar]')
@@ -224,22 +242,25 @@ const tarjeta = (pagina, cot) => pagina.locator(`li[id="${cot.id}"]`)
   await ir(pagina, `${BASE}/contabilidad/facturacion`)
   const filas = await filasPorFacturar(pagina)
   console.log('     por facturar:', filas.map((f) => `${f.codigo} → ${f.texto}`).join(' | '))
-  comprobar(filas.map((f) => f.codigo).join(',') === [A, B, C].map((c) => c.codigo).join(','),
-    'arriba, por facturar: la de 6 días, la facturada en parte y la de 1 día, en ese orden; sin la facturada entera')
+  comprobar(filas.map((f) => f.codigo).join(',') === [A, F, B, C, G].map((c) => c.codigo).join(','),
+    `arriba, por facturar: de la que más espera a la que menos, sin la facturada entera, y la que está en corrección al final (${filas.map((f) => f.codigo).join(', ')})`)
   comprobar(/hace 6 días/.test(filas[0]?.texto ?? '') && /S\/\s?11,800\.00/.test(filas[0]?.texto ?? ''),
     'la primera dice lo que falta (todo el total) y hace 6 días desde que su OT tiene código')
-  comprobar(/En parte/.test(filas[1]?.texto ?? '') && /S\/\s?10,000\.00/.test(filas[1]?.texto ?? '') && /hace 2 días/.test(filas[1]?.texto ?? ''),
+  comprobar(/En parte/.test(filas[2]?.texto ?? '') && /S\/\s?10,000\.00/.test(filas[2]?.texto ?? '') && /hace 2 días/.test(filas[2]?.texto ?? ''),
     'la facturada en parte dice «En parte», lo que falta y hace 2 días')
-  comprobar(/hace 1 día\b/.test(filas[2]?.texto ?? ''), 'la de ayer, hace 1 día')
+  comprobar(/hace 1 día\b/.test(filas[3]?.texto ?? ''), 'la de ayer, hace 1 día')
+  comprobar(/En corrección/.test(filas[4]?.texto ?? '') && /Gerencia · hace 8 días/.test(filas[4]?.texto ?? '') && !/Contabilidad/.test(filas[4]?.texto ?? ''),
+    `la que está en corrección dice que la tiene Gerencia, no Contabilidad («${filas[4]?.texto}»)`)
   comprobar(await pagina.locator('#por-facturar tbody tr', { hasText: E.numero }).count() === 0, 'la que espera su OT no está por facturar')
   const todas = await pagina.locator('#por-facturar tbody tr[data-por-facturar]').count()
   const globo = (await pagina.locator('nav a[href="/contabilidad/facturacion"]').first().getAttribute('aria-label')) ?? ''
   comprobar(Number(globo.match(/(\d+) pendientes?$/)?.[1] ?? 0) === todas, `el globo del menú cuenta lo mismo que la lista (${todas}; «${globo}»)`)
   const cabecera = limpio(await pagina.locator('#por-facturar').locator('p').first().textContent())
-  comprobar(/esperan su factura; la más antigua, hace \d+ días/.test(cabecera), `la cabecera cuenta cuántas y la más antigua («${cabecera}»)`)
+  comprobar(/esperan su factura; la que más espera, desde hace \d+ días/.test(cabecera), `la cabecera cuenta cuántas y la que más espera («${cabecera}»)`)
 
-  // La fila baja a su tarjeta, con los mismos días junto al estado y su recorrido.
-  await pagina.locator('#por-facturar a', { hasText: A.codigo }).click()
+  // La fila entera baja a su tarjeta: se toca el cliente, no el código.
+  // `force`: el `::after` del enlace cubre la celda, y Playwright lo llama «intercepta»; es lo que se busca.
+  await pagina.locator(`#por-facturar tbody tr[data-por-facturar="${A.codigo}"] td`).nth(1).click({ force: true })
   await pagina.waitForFunction((id) => location.hash === `#${id}`, A.id, { timeout: 5000 }).catch(() => {})
   comprobar(new URL(pagina.url()).hash === `#${A.id}`, 'tocar la fila lleva a su tarjeta')
   const ta = tarjeta(pagina, A)
@@ -261,6 +282,14 @@ const tarjeta = (pagina, cot) => pagina.locator(`li[id="${cot.id}"]`)
   comprobar(/Registra la factura de lo que falta/.test(textoB) && /Ahora la tiene Tesorería/.test(textoB) && /ya cobró una parte/.test(textoB),
     `en palabras: la factura de lo que falta, y Tesorería que ya cobró una parte («${textoB.slice(-260)}»)`)
   comprobar(!/10,000|4,000|20,000/.test(textoB), 'el recorrido no lleva importes')
+
+  const tf = tarjeta(pagina, F)
+  await tf.locator('[data-recorrido] summary').click()
+  const pasosF = await tf.locator('[data-recorrido-paso]').evaluateAll((l) => l.map((e) => `${e.dataset.recorridoPaso}:${e.dataset.situacion}`))
+  comprobar(pasosF.join(' > ') === 'SUBIDA:HECHO > REVISION:HECHO > CODIGO_Y_OT:HECHO > FACTURA:HECHO > FACTURA_RESTO:AHORA > COBRO:PENDIENTE',
+    `cobrado el adelanto, el cobro no está hecho: falta facturar el resto (${pasosF.join(' > ')})`)
+  const textoF = limpio(await tf.locator('[data-recorrido]').textContent())
+  comprobar(/Facturada en parte/.test(textoF) && !/Cobrada/.test(textoF), `dice «Facturada en parte» y no «Cobrada» («${textoF.slice(0, 200)}»)`)
 
   const td = tarjeta(pagina, D)
   comprobar(/Facturada/.test(limpio(await td.textContent())) && (await td.locator('[data-dias-en-espera]').count()) === 0,

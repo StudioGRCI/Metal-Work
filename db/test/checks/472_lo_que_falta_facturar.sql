@@ -32,11 +32,11 @@ begin
     v_id := test.crear_usuario(initcap(v), 'Check 472', lower(v) || '.472@prueba.local', v, (select id from public.sedes where codigo = 'QA472'));
     perform set_config('prueba.' || lower(v), v_id::text, true);
   end loop;
-  foreach v in array array['cot1', 'cot2', 'ot1', 'ot2', 'f1', 'f2', 'c1', 'c2', 'c3'] loop
+  foreach v in array array['cot1', 'cot2', 'ot1', 'ot2', 'f1', 'f2', 'f3', 'c1', 'c2', 'c3', 'c4'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
   -- El archivo de la factura va en la carpeta de la factura; el voucher del cobro, en la de la factura que cobra.
-  foreach v in array array['f1:f1', 'f2:f2', 'c1:f1', 'c2:f2', 'c3:f1'] loop
+  foreach v in array array['f1:f1', 'f2:f2', 'f3:f3', 'c1:f1', 'c2:f2', 'c3:f1', 'c4:f3'] loop
     perform set_config('prueba.' || split_part(v, ':', 1) || '_ruta',
                        current_setting('prueba.' || split_part(v, ':', 2), true) || '/' || gen_random_uuid() || '.pdf', true);
   end loop;
@@ -248,6 +248,38 @@ begin
 end $$;
 reset role;
 
+-- El adelanto cobrado no es la cotización cobrada: la segunda se factura por la mitad
+-- (2 500 de 5 000 con IGV) y Tesorería cancela esa factura. Falta facturar y cobrar el resto.
+insert into storage.objects (bucket_id, name, owner_id, metadata)
+values ('facturas-venta', current_setting('prueba.f3_ruta'), current_setting('prueba.contabilidad'), '{"mimetype": "application/pdf", "size": 900}');
+select pg_temp.como('contabilidad');
+set local role authenticated;
+select public.registrar_factura_venta(pg_temp.id('f3'), pg_temp.id('cot2'), 'E001-4723',
+  current_setting('prueba.hoy')::date, current_setting('prueba.hoy')::date + 30, 'PEN', 2500, 'Adelanto 50 %',
+  current_setting('prueba.f3_ruta'), 'f.pdf');
+reset role;
+insert into storage.objects (bucket_id, name, owner_id, metadata)
+values ('cobros-venta', current_setting('prueba.c4_ruta'), current_setting('prueba.tesoreria'), '{"mimetype": "application/pdf", "size": 900}');
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select public.registrar_cobro_factura(pg_temp.id('c4'), pg_temp.id('f3'), current_setting('prueba.hoy')::date, 2500, true,
+  'OP-4724', current_setting('prueba.c4_ruta'), current_setting('prueba.caja')::uuid, null);
+reset role;
+select pg_temp.como('contabilidad');
+set local role authenticated;
+select test.afirmar(pg_temp.camino('cot2') = 'SUBIDA:HECHO > REVISION:HECHO > CODIGO_Y_OT:HECHO > FACTURA:HECHO > FACTURA_RESTO:AHORA > COBRO:PENDIENTE',
+  'cobrado el adelanto, el cobro no está hecho: falta facturar y cobrar el resto (' || pg_temp.camino('cot2') || ')');
+select test.afirmar((select detalle from pg_temp.paso('cot2', 'FACTURA', 'HECHO')) = 'EN_PARTE',
+  'a Contabilidad la factura hecha le dice que fue solo una parte');
+reset role;
+select pg_temp.como('vendedor');
+set local role authenticated;
+select test.afirmar(pg_temp.camino('cot2') = 'SUBIDA:HECHO > REVISION:HECHO > CODIGO_Y_OT:HECHO > FACTURA:HECHO',
+  'Ventas, que no lee las facturas, no se entera de que está facturada en parte (' || pg_temp.camino('cot2') || ')');
+select test.afirmar((select detalle from pg_temp.paso('cot2', 'FACTURA', 'HECHO')) is null,
+  'ni por el detalle de la factura hecha');
+reset role;
+
 -- ============================================ 4. El cobro, solo a quien lee los cobros
 do $$
 declare v_puesto text; v_ve boolean; v_cobros integer;
@@ -275,7 +307,7 @@ set local role authenticated;
 select test.afirmar(
   not exists (
     select 1 from public.recorrido_de_cotizaciones(array[pg_temp.id('cot1'), pg_temp.id('cot2')]) r
-     where to_jsonb(r)::text ~ '11800|5900|3900|2000|10000|E001-47|OP-472|prueba\.local|Check 472'),
+     where concat_ws(' ', r.detalle, r.puesto, r.espera) ~ '11800|5900|3900|2500|2000|10000|E001-47|OP-472|prueba\.local|Check 472'),
   'en ningún paso sale un importe, un número de factura u operación, un correo ni el nombre de la cuenta');
 reset role;
 

@@ -544,7 +544,8 @@ begin
   perform test.afirmar(pg_temp.camino_cot('cot1') = 'SUBIDA:HECHO > REVISION:HECHO > CORRECCION:HECHO > REVISION:HECHO > CODIGO_Y_OT:HECHO > FACTURA:HECHO > FACTURA_RESTO:AHORA > COBRO:AHORA',
     'facturada la mitad: espera la factura del resto y su cobro (migración 20261126210000) (' || pg_temp.camino_cot('cot1') || ')');
   select * into v from pg_temp.paso_cot('cot1', 'FACTURA', 'HECHO');
-  perform test.afirmar(v.puesto = 'Contabilidad' and v.detalle is null, 'la factura sale con su puesto, sin número ni monto');
+  perform test.afirmar(v.puesto = 'Contabilidad' and v.detalle = 'EN_PARTE',
+    'la factura sale con su puesto, sin número ni monto; a Contabilidad le dice que es una parte (migración 20261126210000)');
 end $$;
 reset role;
 

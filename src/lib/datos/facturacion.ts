@@ -174,7 +174,8 @@ async function conCobros(filas: FilaFactura[]): Promise<FacturaVenta[]> {
 /**
  * Lo que Contabilidad tiene por facturar: cada cotización aprobada con sus
  * facturas. Primero las que tienen código interno y ninguna factura vigente;
- * al final, las que esperan que Administración cargue la OT.
+ * al final, las que esperan que Administración cargue la OT. La pantalla de
+ * Facturación las vuelve a ordenar con los días que llevan esperando (Plan 10.1).
  */
 export async function bandejaDeFacturacion(): Promise<CotizacionParaFacturar[]> {
   const cotizaciones = await cotizacionesAprobadas()

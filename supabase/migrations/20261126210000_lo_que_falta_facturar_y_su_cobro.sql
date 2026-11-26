@@ -39,13 +39,17 @@ create or replace function public.codigo_interno_de_cotizacion_desde(p_cotizacio
 returns timestamptz
 language sql
 stable
-security definer
+security invoker
 set search_path to 'public'
 as $$
   select greatest(o.creado_en,
                   coalesce((select min(b.creado_en) from public.audit_log b
                              where b.tabla = 'unidades' and b.registro_id = u.id
-                               and public.normalizar_codigo_interno(b.datos_despues ->> 'codigo_interno') is not null),
+                               and public.normalizar_codigo_interno(b.datos_despues ->> 'codigo_interno') is not null
+                               -- La fila que lo trae nuevo: el alta, o el cambio que se lo puso. Si no,
+                               -- la unidad cargada sin bitácora tomaría la fecha de cualquier cambio.
+                               and (b.accion = 'INSERT'
+                                    or public.normalizar_codigo_interno(b.datos_antes ->> 'codigo_interno') is null)),
                            u.creado_en))
     from public.ordenes_trabajo o
     join public.unidades u on u.id = o.unidad_id
@@ -166,7 +170,7 @@ declare v_md5 text;
 begin
   select md5(replace(p.prosrc, E'\r', '')) into v_md5
     from pg_proc p where p.oid = 'public.recorrido_de_cotizaciones(uuid[])'::regprocedure;
-  if v_md5 not in ('b2ad46d40d0b717f394402e5e5ced606', '84ae1ff043d349f21096f37c773ab0fc') then
+  if v_md5 not in ('b2ad46d40d0b717f394402e5e5ced606', '3bd46859513f590a62a6fc4db477bec0') then
     raise exception 'recorrido_de_cotizaciones no está como la conoce el repositorio (md5 %): revísala antes de aplicar esta migración.', v_md5;
   end if;
 end $$;
@@ -274,6 +278,16 @@ begin
       from cot c join facturas x on x.cot = c.id
      group by c.id
   ),
+  -- Facturada en parte: le falta facturar lo que no cubren sus facturas, esté
+  -- aprobada o en corrección. Con una factura en otra moneda no se compara, como
+  -- en Facturación.
+  falta_resto as (
+    select c.id as cot
+      from cot c
+      join facturado x on x.cot = c.id
+     where c.estado <> 'ANULADA' and c.total is not null
+       and not x.en_otra_moneda and x.en_su_moneda < c.total - 0.005
+  ),
   -- El último cobro vigente, el que la dejó cobrada: quién y cuándo, sin monto.
   ultimo_cobro as (
     select distinct on (x.cot) x.cot, b.registrado_por, b.creado_en
@@ -329,8 +343,9 @@ begin
     select c.id, 100000, 'CODIGO_Y_OT', 'PENDIENTE', null, null, null, null, null
       from cot c where c.estado in ('POR_REVISAR', 'RECHAZADA') and not exists (select 1 from ot o where o.cot = c.id)
     union all
-    -- Contabilidad la facturó
-    select f.cot, 100010, 'FACTURA', 'HECHO', f.registrado_por, null, f.creado_en, null, null
+    -- Contabilidad la facturó. A quien lee las facturas le dice si fue solo una parte.
+    select f.cot, 100010, 'FACTURA', 'HECHO', f.registrado_por, null, f.creado_en, null,
+           case when v_cobros and exists (select 1 from falta_resto r where r.cot = f.cot) then 'EN_PARTE' end
       from factura f
     union all
     -- Espera su factura desde que la OT tiene código interno (DKS, Plan 10).
@@ -344,18 +359,23 @@ begin
        and not (c.estado = 'APROBADA' and exists (select 1 from ot o where o.cot = c.id))
     union all
     -- Facturada en parte: espera la factura de lo que falta, desde la misma hora.
-    -- Con una factura en otra moneda no se compara, como en Facturación.
-    select c.id, 100015, 'FACTURA_RESTO', 'AHORA', null, 'Contabilidad', coalesce(o.con_codigo_en, o.creado_en), 'FACTURA_RESTO', null
-      from cot c
-      join ot o on o.cot = c.id
-      join facturado x on x.cot = c.id
-     where c.estado = 'APROBADA' and c.total is not null
-       and not x.en_otra_moneda and x.en_su_moneda < c.total - 0.005
+    -- Cuánto se facturó solo lo ve quien lee las facturas: Ventas no.
+    select r.cot, 100015, 'FACTURA_RESTO', 'AHORA', null, 'Contabilidad', coalesce(o.con_codigo_en, o.creado_en), 'FACTURA_RESTO', null
+      from falta_resto r
+      join cot c on c.id = r.cot
+      join ot o on o.cot = r.cot
+     where v_cobros and c.estado = 'APROBADA'
     union all
-    -- Tesorería la cobró: todas sus facturas vigentes quedaron cobradas.
+    -- Tesorería la cobró: todas sus facturas vigentes quedaron cobradas y no falta
+    -- facturar nada. Cobrado el adelanto, el cobro del resto sigue pendiente.
     select u.cot, 100018, 'COBRO', 'HECHO', u.registrado_por, null, u.creado_en, null, null
       from ultimo_cobro u
      where v_cobros and not exists (select 1 from facturas x where x.cot = u.cot and not x.cobrada)
+       and not exists (select 1 from falta_resto r where r.cot = u.cot)
+    union all
+    select r.cot, 100018, 'COBRO', 'PENDIENTE', null, null, null, null, null
+      from falta_resto r
+     where v_cobros and not exists (select 1 from facturas x where x.cot = r.cot and not x.cobrada)
     union all
     -- Alguna factura vigente espera su cobro: desde la más vieja de las que faltan.
     select x.cot, 100018, 'COBRO', 'AHORA', null, 'Tesorería', min(x.creado_en), 'COBRO',

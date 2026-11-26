@@ -9,7 +9,7 @@ import { Recorrido } from '@/components/ui/recorrido'
 import { DetalleEnTelefono, SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { bandejaDeFacturacion, esperaDeFacturacion, type CotizacionParaFacturar, type EsperaDeFacturacion } from '@/lib/datos/facturacion'
-import { recorridoDeCotizaciones } from '@/lib/datos/recorrido'
+import { recorridoDeCotizaciones, type Recorridos } from '@/lib/datos/recorrido'
 import { PERMISOS_BAJAR_COTIZACION, rutaParaBajarCotizacion } from '@/lib/descarga'
 import { totalConIgv } from '@/lib/dominio/finanzas'
 import { describirRecorridoDeLaCotizacion, haceDias } from '@/lib/dominio/recorrido'
@@ -50,6 +50,16 @@ function estadoDe(c: CotizacionParaFacturar): { etiqueta: string; tono: 'aviso' 
 /** Lo que espera factura: con código interno, sin factura vigente o facturada en parte (Plan 10.1). */
 const porFacturar = (c: CotizacionParaFacturar) => estadoDe(c).tono === 'aviso'
 
+/**
+ * Quién tiene la cotización que espera factura: Contabilidad; la que está en
+ * corrección la tiene quien dice su recorrido (Gerencia o Ventas), y mientras
+ * tanto Contabilidad no puede facturarla.
+ */
+function quienLaTiene(c: CotizacionParaFacturar, recorridos: Recorridos | null): string | null {
+  if (!c.en_correccion) return 'Contabilidad'
+  return (c.cotizacion_id ? recorridos?.get(c.cotizacion_id)?.find((p) => p.situacion === 'AHORA')?.puesto : null) ?? null
+}
+
 /** Cuánto falta facturar, en la moneda de la cotización; nulo si no tiene total. */
 function faltaDe(c: CotizacionParaFacturar): number | null {
   const total = totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
@@ -82,8 +92,10 @@ export default async function PaginaFacturacion() {
     }),
   ])
   const diasDe = (c: CotizacionParaFacturar) => (c.cotizacion_id ? (espera?.get(c.cotizacion_id)?.dias ?? null) : null)
-  // Lo que espera factura va primero, de lo más antiguo a lo más nuevo; después lo facturado y al final lo que espera su OT.
-  const turno = (c: CotizacionParaFacturar) => (!c.codigo_interno ? 2 : porFacturar(c) ? 0 : 1)
+  // Lo que espera factura va primero, de lo más antiguo a lo más nuevo, y la que está en
+  // corrección después, porque no se puede facturar todavía; luego lo facturado y al final
+  // lo que espera su OT.
+  const turno = (c: CotizacionParaFacturar) => (!c.codigo_interno ? 3 : porFacturar(c) ? (c.en_correccion ? 1 : 0) : 2)
   const cotizaciones = [...bandeja].sort((a, b) => turno(a) - turno(b) || (turno(a) === 0 ? (diasDe(b) ?? -1) - (diasDe(a) ?? -1) : 0))
   const pendientes = cotizaciones.filter(porFacturar)
 
@@ -95,7 +107,7 @@ export default async function PaginaFacturacion() {
       />
 
       <div className="space-y-5">
-      {cotizaciones.length > 0 && <PorFacturar pendientes={pendientes} espera={espera} />}
+      {cotizaciones.length > 0 && <PorFacturar pendientes={pendientes} espera={espera} recorridos={recorridos} />}
 
       {cotizaciones.length === 0 ? (
         <Tarjeta>
@@ -138,7 +150,8 @@ export default async function PaginaFacturacion() {
                             <DiasEnEspera
                               dias={espera?.get(c.cotizacion_id)?.dias}
                               desde={espera?.get(c.cotizacion_id)?.desde}
-                              quien="Contabilidad"
+                              quien={quienLaTiene(c, recorridos)}
+                              verQuien={Boolean(c.en_correccion)}
                             />
                           )}
                         </p>
@@ -271,23 +284,32 @@ export default async function PaginaFacturacion() {
  * tiene por una parte, con lo que falta y los días que lleva esperando desde
  * que la OT tiene código (DKS, Plan 10). Cada fila baja a su tarjeta.
  */
-function PorFacturar({ pendientes, espera }: { pendientes: CotizacionParaFacturar[]; espera: Map<string, EsperaDeFacturacion> | null }) {
+function PorFacturar({
+  pendientes,
+  espera,
+  recorridos,
+}: {
+  pendientes: CotizacionParaFacturar[]
+  espera: Map<string, EsperaDeFacturacion> | null
+  recorridos: Recorridos | null
+}) {
+  // La que más espera, entre las que Contabilidad puede facturar ya.
   const masAntigua = pendientes.reduce<number | null>((max, c) => {
-    const d = c.cotizacion_id ? (espera?.get(c.cotizacion_id)?.dias ?? null) : null
+    const d = c.cotizacion_id && !c.en_correccion ? (espera?.get(c.cotizacion_id)?.dias ?? null) : null
     return d === null ? max : Math.max(max ?? 0, d)
   }, null)
   const descripcion =
     pendientes.length === 0
       ? null
       : `${pendientes.length === 1 ? 'Una cotización espera' : `${pendientes.length} cotizaciones esperan`} su factura${
-          masAntigua !== null && masAntigua > 0 ? `; la más antigua, ${haceDias(masAntigua)}` : ''
+          masAntigua !== null && masAntigua > 0 ? `; la que más espera, desde ${haceDias(masAntigua)}` : ''
         }.`
   return (
     <Tarjeta id="por-facturar" className="overflow-hidden">
       <TarjetaCabecera
         titulo="Por facturar"
         descripcion={descripcion}
-        ayuda="Las cotizaciones aprobadas que ya tienen su OT con código interno y no tienen factura, o la tienen por una parte del total. Los días se cuentan desde que la OT tiene código interno, con la fecha de Lima. Toca una para ir a su tarjeta y registrar la factura."
+        ayuda="Las cotizaciones aprobadas que ya tienen su OT con código interno y no tienen factura, o la tienen por una parte del total. Los días se cuentan desde que la OT tiene código interno, con la fecha de Lima, también los de la que está facturada en parte. La que está en corrección va al final: la tiene Gerencia o Ventas y no se factura hasta que vuelva aprobada. Toca una para ir a su tarjeta y registrar la factura."
       />
       {espera === null && pendientes.length > 0 && (
         <p role="status" className="border-b border-borde px-4 py-2 text-xs text-aviso">
@@ -318,11 +340,16 @@ function PorFacturar({ pendientes, espera }: { pendientes: CotizacionParaFactura
               const falta = faltaDe(c)
               const enParte = c.facturas.some((f) => !f.anulada_en)
               const e = c.cotizacion_id ? espera?.get(c.cotizacion_id) : undefined
-              const faltaTexto = falta === null ? 'Sin total' : moneda(falta, m)
+              const faltaTexto = falta === null ? null : moneda(falta, m)
+              const quien = quienLaTiene(c, recorridos)
               return (
-                <TR key={c.cotizacion_id} data-por-facturar={c.codigo_interno ?? undefined}>
+                // Toda la fila lleva a su tarjeta: el enlace del código la cubre con su `::after`.
+                <TR key={c.cotizacion_id} data-por-facturar={c.codigo_interno ?? undefined} className="relative">
                   <TD className="align-top">
-                    <Link href={`#${c.cotizacion_id}`} className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0">
+                    <Link
+                      href={`#${c.cotizacion_id}`}
+                      className="font-medium text-acento after:absolute after:inset-0 after:content-[''] hover:underline"
+                    >
                       <span className="tabular">{c.codigo_interno}</span>
                     </Link>
                     {(enParte || c.en_correccion) && (
@@ -334,7 +361,14 @@ function PorFacturar({ pendientes, espera }: { pendientes: CotizacionParaFactura
                     <DetalleEnTelefono>
                       <p className="text-sm break-words text-texto">{c.cliente ?? 'Cliente sin registrar'}</p>
                       <p className="text-xs text-texto-suave">
-                        Cotización {c.numero} · falta <span className="tabular whitespace-nowrap text-texto">{faltaTexto}</span>
+                        Cotización {c.numero} ·{' '}
+                        {faltaTexto === null ? (
+                          'sin total registrado'
+                        ) : (
+                          <>
+                            falta <span className="tabular whitespace-nowrap text-texto">{faltaTexto}</span>
+                          </>
+                        )}
                       </p>
                     </DetalleEnTelefono>
                   </TD>
@@ -342,10 +376,10 @@ function PorFacturar({ pendientes, espera }: { pendientes: CotizacionParaFactura
                     <p className="break-words">{c.cliente ?? 'Cliente sin registrar'}</p>
                     <p className="text-xs text-texto-suave">Cotización {c.numero}</p>
                   </TD>
-                  <TD className="tabular hidden text-right align-top whitespace-nowrap sm:table-cell">{faltaTexto}</TD>
+                  <TD className="tabular hidden text-right align-top whitespace-nowrap sm:table-cell">{faltaTexto ?? 'Sin total registrado'}</TD>
                   <TD className="text-right align-top">
                     {e?.dias != null ? (
-                      <DiasEnEspera dias={e.dias} desde={e.desde} quien="Contabilidad" />
+                      <DiasEnEspera dias={e.dias} desde={e.desde} quien={quien} verQuien={Boolean(c.en_correccion)} className="relative" />
                     ) : (
                       <span className="text-xs text-texto-tenue">—</span>
                     )}
