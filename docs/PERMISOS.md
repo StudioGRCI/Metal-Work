@@ -419,6 +419,42 @@ administrador; se anula con motivo, quién y cuándo, y queda congelado.
   entrega 16.3.
 - Gerencia consulta: ve la lista de todos y cada ficha, sin «Anular».
 
+## El control de compras de Almacén
+
+Migración `20261126160000_el_control_de_compras_de_almacen`, comprobada con los
+roles reales en la base local (check 472) y con clic real en el banco
+(`herramientas/banco/probar-control-de-compras.mjs`). Reemplaza el Excel
+«CONTROL DE FACTURAS» de Almacén: cada OC y OS no rechazada ni anulada sale sola
+el día de su emisión, con lo que se compró, el proveedor, el destino, el peso y
+el monto con IGV. Almacén anota la factura y la guía que trae el proveedor.
+
+| Qué | Permiso | Quién lo tiene |
+| --- | --- | --- |
+| Ver el control y descargarlo en Excel (`control_de_compras_almacen`, `/almacen/compras`) | `almacen.ver`, `adquisiciones.ver` o `tesoreria.ver_documentos` | Almacén, Contabilidad, Tesorería y Gerencia, en su menú; también lo abren Logística, Costos, Costos y Materiales y Supervisión general, que ya leen las OC |
+| Anotar o corregir la factura, la guía y la observación (`anotar_documentos_recibidos`) | `almacen.recibir`, el mismo que exige la acción | Almacén |
+| Leer `recepcion_documentos_compra` | los mismos tres que leen el control (política `ver_recepcion_documentos_compra`) | Los mismos puestos que leen el control |
+
+- Nadie escribe `recepcion_documentos_compra` directo: no tiene `grant` de
+  insert ni update, y la función valida la orden, el número y la persona.
+- Es una marca, no un documento numerado: se corrige, y vaciar un número quita
+  su marca. La auditoría guarda cada cambio.
+- Una pantalla vieja no pisa lo que anotó otra: la pantalla manda cuándo
+  cambió la fila que mostró (`p_mostrado`) y, si cambió después, la base lo
+  rechaza con «Lo recibido de … cambió después de que lo abriste…»; la ventana
+  ofrece «Ver lo de ahora» sin perder lo escrito. El mismo envío repetido no falla.
+- El material se cuenta por línea con `cuenta_de_la_linea_de_compra` (el
+  ingreso verificado y la recepción directa, menos lo devuelto; lo devuelto con
+  nota de crédito, sin reposición, ya no se espera): «Llegó» solo con todo,
+  «Llegó una parte» si falta, «Observado» si Almacén la observó sin que entrara
+  nada, y «Por aprobar» la que Gerencia no aprobó todavía.
+- La OC con boleta cuenta como registrado solo el comprobante que registró
+  Contabilidad, no el que Logística adjuntó a la OC.
+- No dice el estado del pago: ese es de `trazabilidad_de_compras`
+  (Adquisiciones). Sí dice el comprobante de la OC que Contabilidad ya registró
+  (`facturas_de_la_compra`) o el que se adjuntó a la OS.
+- En el menú: Almacén y Gerencia, en su grupo «Almacén»; Contabilidad y
+  Tesorería, en «Consultas».
+
 ## El menú de cada puesto
 
 Desde el 2026-10-14 cada puesto tiene su propio menú (`MENU_POR_PUESTO` en

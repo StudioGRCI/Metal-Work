@@ -378,6 +378,17 @@ export const NAVEGACION = [
         descripcion: 'Lo que está bajo su stock de seguridad y cuánto comprar, con lo que ya viene en camino',
         disponible: true,
       },
+      // El CONTROL DE FACTURAS de Almacén, ya sin Excel (25/11/2026): cada OC y
+      // OS del día sale sola y Almacén anota la factura y la guía que le llegan.
+      {
+        titulo: 'Control de compras',
+        ruta: '/almacen/compras',
+        icono: FileCheck2,
+        // Lo anota Almacén; lo leen Contabilidad y Tesorería, como en el Excel.
+        permiso: ['almacen.ver', 'adquisiciones.ver', 'tesoreria.ver_documentos'],
+        descripcion: 'Cada OC y OS del día con su destino, peso y monto; la factura y la guía que llegaron',
+        disponible: true,
+      },
     ],
   },
   {
@@ -795,7 +806,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       { titulo: 'Por atender', rutas: ['/requerimientos/atencion', '/seguimiento?vista=materiales'] },
       // Al final, el padrón de equipos: Almacén entrega la herramienta y anota
       // ahí quién se la lleva (Plan 16.1).
-      { titulo: 'Almacén', rutas: ['/almacen/kardex', '/almacen/reposicion', '/almacen/stock', '/equipos'] },
+      { titulo: 'Almacén', rutas: ['/almacen/kardex', '/almacen/compras', '/almacen/reposicion', '/almacen/stock', '/equipos'] },
     ],
     telefono: ['/requerimientos/atencion', '/seguimiento?vista=materiales', '/almacen/kardex', '/'],
   },
@@ -861,6 +872,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
         rutas: [
           '/requerimientos/atencion',
           '/almacen/kardex',
+          '/almacen/compras',
           '/almacen/stock',
           '/seguimiento?vista=materiales',
           '/almacen/reposicion',
@@ -934,7 +946,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
           '/planilla-diaria',
         ],
       },
-      { titulo: 'Consultas', rutas: ['/cotizaciones/pdf'] },
+      { titulo: 'Consultas', rutas: ['/cotizaciones/pdf', '/almacen/compras'] },
     ],
     // En el teléfono, en el mismo orden; los pagos de servicio pasan a «Más» (2026-10-17).
     telefono: ['/adquisiciones', '/tesoreria/caja-diaria', '/tesoreria/por-cobrar', '/tesoreria/por-pagar'],
@@ -959,7 +971,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
         titulo: 'Consultas',
         // Abierto: el tipo de cambio lo registra cada día, aunque viva aquí.
         pliegue: 'abierto',
-        rutas: ['/almacen/kardex', '/tesoreria/recibos-por-honorarios', '/proveedores', '/tesoreria/tipo-de-cambio'],
+        rutas: ['/almacen/kardex', '/almacen/compras', '/tesoreria/recibos-por-honorarios', '/proveedores', '/tesoreria/tipo-de-cambio'],
       },
     ],
     telefono: ['/adquisiciones', '/contabilidad/facturacion', '/compras/servicios', '/almacen/kardex'],
@@ -1333,6 +1345,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   // Al final: así no le quita la pestaña a nadie que no tenga menú propio.
   { ruta: '/almacen/stock', corto: 'Stock' },
   { ruta: '/almacen/reposicion', corto: 'Reposición' },
+  { ruta: '/almacen/compras', corto: 'Control' },
   { ruta: '/equipos', corto: 'Equipos' },
   // Al final: solo el nombre corto. Antes quitaba una de las cuatro pestañas a
   // los puestos sin menú propio (Operario, Calidad, Costos…).
