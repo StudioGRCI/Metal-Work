@@ -29,8 +29,14 @@ const TEXTO: Record<Tono, string> = {
 /** Lo que se espera de la compra mientras no llega al almacén. */
 const ESPERA_COMPRA: readonly PasoDelInsumo[] = ['EN_COMPRA', 'EN_CAMINO']
 
-/** Cómo se cuenta cada paso en el resumen del pliegue: «2 en compra». */
-const EN_EL_RESUMEN: Record<PasoDelInsumo, string> = {
+/**
+ * Cómo se cuenta cada paso en el resumen del pliegue: «2 en compra». El visto
+ * de Diseño se parte en dos: si espera el sustento, no espera a Diseño.
+ */
+type EnElResumen = PasoDelInsumo | 'SUSTENTO'
+const ORDEN_DEL_RESUMEN: readonly EnElResumen[] = ['SUSTENTO', ...PASOS_DEL_INSUMO]
+const EN_EL_RESUMEN: Record<EnElResumen, string> = {
+  SUSTENTO: 'esperando el sustento',
   VISTO_DISENO: 'esperando a Diseño',
   POR_ATENDER: 'por atender',
   EN_COMPRA: 'en compra',
@@ -80,27 +86,48 @@ export function InsumosDelRequerimiento({
     const llega = paso !== null && ESPERA_COMPRA.includes(paso.actual) ? (s?.fecha_esperada ?? null) : null
     return { linea: l, seguimiento: s, paso, llega, porAprobar: l.etapa === 'OC_POR_APROBAR' }
   })
-  const faltaSustento = insumos.some((i) => i.paso?.frenado && VISTO_QUE_PIDE_SUSTENTO.includes(i.seguimiento?.visto_diseno ?? ''))
+  // Lo que espera el sustento, antes de la revisión o ya revisado (no sale sin él).
+  const sinSustento = insumos.filter(
+    (i) => (i.paso?.frenado || i.paso?.frenaLaSalida) && VISTO_QUE_PIDE_SUSTENTO.includes(i.seguimiento?.visto_diseno ?? ''),
+  )
+  const faltaSustento = sinSustento.length > 0
+  const rechazado = sinSustento.some((i) => i.seguimiento?.visto_diseno === 'RECHAZADO')
   const pideSustento = faltaSustento && rq.creado_por === yo
 
   return (
     <Pliegue
       enCaja
-      titulo={<TituloDelPliegue insumos={insumos} faltaSustento={faltaSustento} pideSustento={pideSustento} terminado={rq.estado === 'ENTREGADO'} />}
+      titulo={
+        <TituloDelPliegue
+          insumos={insumos}
+          faltaSustento={faltaSustento}
+          rechazado={rechazado}
+          pideSustento={pideSustento}
+          terminado={rq.estado === 'ENTREGADO'}
+          hoy={hoy}
+        />
+      }
       className="mt-1"
       data-insumos-del-rq={rq.id}
     >
       {pideSustento ? (
-        <p className="mb-2 text-sm text-aviso" data-pide-sustento>
-          Se pasa del metrado de Diseño y espera tu sustento.{' '}
-          <Link href={`/requerimientos?rq=${rq.id}`} className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0">
-            Escribe el sustento en el RQ
+        <p className={cn('mb-2 text-sm', rechazado ? 'text-peligro' : 'text-aviso')} data-pide-sustento>
+          {rechazado
+            ? 'Diseño no autorizó lo que se pasa del metrado: corrige tu sustento o pide solo lo que dice el metrado.'
+            : 'Se pasa del metrado de Diseño y espera tu sustento.'}
+          <Link
+            href={`/requerimientos?rq=${rq.id}`}
+            className="mt-1 flex min-h-11 w-fit items-center font-medium text-acento hover:underline sm:min-h-0 sm:pointer-coarse:min-h-11"
+          >
+            {rechazado ? 'Corrige el sustento en el RQ' : 'Escribe el sustento en el RQ'}
           </Link>
         </p>
       ) : (
         faltaSustento && (
-          <p className="mb-2 text-sm text-aviso" data-espera-sustento>
-            Se pasa del metrado de Diseño y espera el sustento de quien registró el RQ.
+          <p className={cn('mb-2 text-sm', rechazado ? 'text-peligro' : 'text-aviso')} data-espera-sustento>
+            {rechazado
+              ? 'Diseño no autorizó lo que se pasa del metrado: espera que quien registró el RQ corrija el sustento.'
+              : 'Se pasa del metrado de Diseño y espera el sustento de quien registró el RQ.'}
           </p>
         )
       )}
@@ -109,7 +136,7 @@ export function InsumosDelRequerimiento({
           const visto = s?.visto_diseno ?? null
           const etapa = l.etapa ? ETAPA_AVANCE_RQ[l.etapa] : undefined
           // El visto solo se dice si sigue valiendo: autorizado, o frenando ahora.
-          const vistoDice = visto && (paso?.frenado || visto === 'AUTORIZADO') ? VISTO_DEL_INSUMO[visto] : undefined
+          const vistoDice = visto && (paso?.frenado || paso?.frenaLaSalida || visto === 'AUTORIZADO') ? VISTO_DEL_INSUMO[visto] : undefined
           const atrasada = llega !== null && llega < hoy
           const salio = l.entregado !== null && l.entregado > 0 ? l.entregado : null
           const parte = salio !== null && salio < l.cantidad
@@ -150,15 +177,22 @@ export function InsumosDelRequerimiento({
                   <span className={atrasada ? 'text-aviso' : undefined} data-llega={llega}>
                     {' · '}
                     {porAprobar
-                      ? `Si Gerencia aprueba la compra, llega aprox. el ${fecha(llega)}`
+                      ? atrasada
+                        ? `Logística lo esperaba el ${fecha(llega)}`
+                        : `Si Gerencia aprueba la compra, llega aprox. el ${fecha(llega)}`
                       : atrasada
                         ? `Se esperaba el ${fecha(llega)}`
                         : `Llega aprox. el ${fecha(llega)}`}
                   </span>
                 )}
               </p>
-              {/* El visto ya dado se dice aparte: el insumo siguió su camino. */}
-              {vistoDice && !paso?.frenado && <p className={cn('text-xs', TEXTO[vistoDice.tono])}>{vistoDice.etiqueta}</p>}
+              {/* El visto se dice aparte si el insumo siguió su camino: ya dado, o que le falta para salir del almacén. */}
+              {vistoDice && !paso?.frenado && (
+                <p className={cn('text-xs', TEXTO[vistoDice.tono])} data-frena-la-salida={paso?.frenaLaSalida || undefined}>
+                  {vistoDice.etiqueta}
+                  {paso?.frenaLaSalida && '. No sale del almacén hasta que Diseño lo autorice.'}
+                </p>
+              )}
               {s?.recibido_por && (
                 <p className="text-xs break-words text-texto-suave" data-recibio>
                   {parte && (
@@ -186,18 +220,27 @@ export function InsumosDelRequerimiento({
 function TituloDelPliegue({
   insumos,
   faltaSustento,
+  rechazado,
   pideSustento,
   terminado,
+  hoy,
 }: {
   insumos: Insumo[]
   faltaSustento: boolean
+  rechazado: boolean
   pideSustento: boolean
   terminado: boolean
+  hoy: string
 }) {
-  const cuenta = new Map<PasoDelInsumo, number>()
-  for (const i of insumos) if (i.paso) cuenta.set(i.paso.actual, (cuenta.get(i.paso.actual) ?? 0) + 1)
+  const cuenta = new Map<EnElResumen, number>()
+  for (const i of insumos) {
+    if (!i.paso) continue
+    const p: EnElResumen =
+      i.paso.actual === 'VISTO_DISENO' && VISTO_QUE_PIDE_SUSTENTO.includes(i.seguimiento?.visto_diseno ?? '') ? 'SUSTENTO' : i.paso.actual
+    cuenta.set(p, (cuenta.get(p) ?? 0) + 1)
+  }
   // Con un solo insumo, el número sobra: «en compra».
-  const enPasos = PASOS_DEL_INSUMO.filter((p) => cuenta.has(p)).map((p) => {
+  const enPasos = ORDEN_DEL_RESUMEN.filter((p) => cuenta.has(p)).map((p) => {
     const n = cuenta.get(p) ?? 0
     return insumos.length === 1 ? EN_EL_RESUMEN[p] : `${n} ${n > 1 && p === 'ENTREGADO' ? 'entregados' : EN_EL_RESUMEN[p]}`
   })
@@ -206,14 +249,32 @@ function TituloDelPliegue({
     .map((i) => i.llega)
     .filter((d): d is string => d !== null)
     .sort()
-  const resumen = [...enPasos, llegan.length > 0 ? `llega aprox. el ${fecha(llegan[0])}` : null].filter(Boolean).join(', ')
+  const resumen = enPasos.join(', ')
+  // La fecha más cercana; si ya pasó, no se promete: se dice que se esperaba.
+  const primera = llegan[0] ?? null
+  const atrasada = primera !== null && primera < hoy
+  const sustento = rechazado
+    ? pideSustento
+      ? 'Diseño no autorizó: corrige tu sustento'
+      : 'Diseño no autorizó: espera otro sustento'
+    : pideSustento
+      ? 'Falta tu sustento para Diseño'
+      : 'Espera el sustento para Diseño'
   return (
     <span className="block py-1.5" data-resumen-de-insumos>
-      {faltaSustento && (
-        <span className="block font-semibold text-aviso">{pideSustento ? 'Falta tu sustento para Diseño' : 'Espera el sustento para Diseño'}</span>
-      )}
+      {faltaSustento && <span className={cn('block font-semibold', rechazado ? 'text-peligro' : 'text-aviso')}>{sustento}</span>}
       <span className="block">{insumos.length === 1 ? 'Cómo va su insumo' : `Cómo va cada insumo (${insumos.length})`}</span>
-      {resumen && !terminado && <span className="block text-xs font-normal text-texto-suave first-letter:uppercase">{resumen}</span>}
+      {(resumen || primera) && !terminado && (
+        <span className="block text-xs font-normal text-texto-suave first-letter:uppercase">
+          {resumen}
+          {primera && (
+            <span className={atrasada ? 'text-aviso' : undefined} data-resumen-llega={primera}>
+              {resumen ? ', ' : ''}
+              {atrasada ? `se esperaba el ${fecha(primera)}` : `llega aprox. el ${fecha(primera)}`}
+            </span>
+          )}
+        </span>
+      )}
     </span>
   )
 }

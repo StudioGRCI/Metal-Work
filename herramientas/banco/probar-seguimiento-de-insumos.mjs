@@ -161,9 +161,20 @@ await armazon(
    select 'Q1A-124', 'VOLVO', 'FMX 440 (prueba 1.2)', 'QA-SEGUIMIENTO'
     where not exists (select 1 from public.unidades where codigo_interno = 'QA-SEGUIMIENTO')`,
 )
-const codigos = await comoCuenta('sup.mtz', `select codigo from public.codigos_internos_para_elegir() where registrada and not cerrado and codigo = 'QA-SEGUIMIENTO'`)
-if (codigos.length === 0) throw new Error('El banco no tiene ninguna unidad en el padrón: corre preparar.sh.')
+// Otra para el insumo que se revisó antes de que cambiara el metrado: la
+// tarjeta enseña tres RQ en camino y la primera ya tiene los suyos.
+await armazon(
+  `insert into public.unidades (placa, marca, modelo, codigo_interno)
+   select 'Q1A-125', 'VOLVO', 'FMX 440 (prueba 1.2, revisado)', 'QA-SEGUIMIENTO-B'
+    where not exists (select 1 from public.unidades where codigo_interno = 'QA-SEGUIMIENTO-B')`,
+)
+const codigos = await comoCuenta(
+  'sup.mtz',
+  `select codigo from public.codigos_internos_para_elegir() where registrada and not cerrado and codigo in ('QA-SEGUIMIENTO', 'QA-SEGUIMIENTO-B') order by codigo`,
+)
+if (codigos.length < 2) throw new Error('El banco no tiene las unidades de prueba en el padrón: corre preparar.sh.')
 const codigo = codigos[0].codigo
+const codigoB = codigos[1].codigo
 const material = async (sql, cual = 0) =>
   (await consulta(`select m.id from public.materiales m join public.categorias_material c on c.id = m.categoria_id where m.activo and ${sql} order by m.codigo limit 1 offset ${cual}`))[0]?.id
 const plancha = await material(`c.almacen = 'MATERIA_PRIMA' and m.descripcion ilike 'plancha%'`)
@@ -177,17 +188,21 @@ if (![plancha, tubo, conos, disco, guantes].every(Boolean)) throw new Error('El 
 const yaMetrado = await consulta(`select 1 from public.codigo_materiales where codigo_interno = $1 and material_id = $2 and quitado_en is null`, [codigo, plancha])
 if (yaMetrado.length === 0)
   await comoCuenta('diseno', `select public.guardar_material_codigo(null, $1, $2, 10, null, $3)`, [codigo, plancha, `Metrado de prueba ${sello}`])
+const yaMetradoB = await consulta(`select 1 from public.codigo_materiales where codigo_interno = $1 and material_id = $2 and quitado_en is null`, [codigoB, plancha])
+if (yaMetradoB.length === 0)
+  await comoCuenta('diseno', `select public.guardar_material_codigo(null, $1, $2, 10, null, $3)`, [codigoB, plancha, `Metrado de prueba ${sello}`])
 
-const ids = { compra: randomUUID(), metrado: randomUUID(), ajeno: randomUUID(), entregado: randomUUID(), faltante: randomUUID() }
+const ids = { compra: randomUUID(), metrado: randomUUID(), ajeno: randomUUID(), entregado: randomUUID(), faltante: randomUUID(), revisado: randomUUID() }
 const linea = (material_id, cantidad) => ({ material_id, cantidad })
-const emitir = (id, justificacion, lineas) =>
+const emitir = (id, justificacion, lineas, delCodigo = codigo) =>
   comoCuenta('sup.mtz', `select public.emitir_requerimiento($1, 'OPERACION', $2, $3, $4, null, $5::jsonb)`, [
-    id, mtz.area_id, codigo, justificacion, JSON.stringify(lineas),
+    id, mtz.area_id, delCodigo, justificacion, JSON.stringify(lineas),
   ])
 await emitir(ids.compra, `${sello} Tubos, conos y discos para el armado`, [linea(tubo, 6), linea(conos, 4), linea(disco, 10), linea(guantes, 2)])
 await emitir(ids.metrado, `${sello} Planchas para el refuerzo del piso`, [linea(plancha, 500)])
 await emitir(ids.entregado, `${sello} Conos para delimitar la zona`, [linea(conos, 2)])
 await emitir(ids.faltante, `${sello} Conos y guantes para el pintado`, [linea(conos, 2), linea(guantes, 3)])
+await emitir(ids.revisado, `${sello} Planchas revisadas antes del metrado`, [linea(plancha, 300)], codigoB)
 // Requerimientos registra para Maestranza uno que se pasa del metrado: el
 // sustento lo escribe quien lo registró, no el supervisor.
 await comoCuenta('requerimientos', `select public.emitir_requerimiento($1, 'OPERACION', $2, $3, $4, null, $5::jsonb)`, [
@@ -198,6 +213,7 @@ const numeros = Object.fromEntries(
 )
 const hoy = (await consulta(`select (now() at time zone 'America/Lima')::date::text as d`))[0].d
 const llega = (await consulta(`select ((now() at time zone 'America/Lima')::date + 4)::text as d`))[0].d
+const seEsperaba = (await consulta(`select ((now() at time zone 'America/Lima')::date - 2)::text as d`))[0].d
 
 // El RQ en compra: Almacén revisó (tenía los discos), Logística compró los
 // tubos en una OC aprobada que llega en cuatro días, los conos siguen por
@@ -222,6 +238,45 @@ await armazon(
   `update public.requerimiento_lineas set orden_compra_id = $2, atendida_en = now(), atendida_por = $3 where requerimiento_id = $1 and item = 1`,
   [ids.compra, oc, logistica.id],
 )
+// Los conos ya van en una OC que Gerencia no aprueba todavía, y Logística la
+// esperaba hace dos días: no se promete una fecha que pasó.
+const ocPorAprobar = randomUUID()
+await armazon(
+  `insert into public.ordenes_compra_materiales (id, requerimiento_id, proveedor, referencia, aprobacion, creado_por, fecha_estimada)
+   values ($1, $2, $3, $4, 'POR_APROBAR', $5, $6::date)`,
+  [ocPorAprobar, ids.compra, proveedor, `REF-${sello}-2`, logistica.id, seEsperaba],
+)
+await armazon(
+  `update public.requerimiento_lineas set orden_compra_id = $2, atendida_en = now(), atendida_por = $3 where requerimiento_id = $1 and item = 2`,
+  [ids.compra, ocPorAprobar, logistica.id],
+)
+
+// Las planchas de la otra unidad: Almacén las revisó y Logística las compró,
+// y después el RQ pasó a este código (`codigo_desde`), donde se pasan del
+// metrado sin sustento: la revisión ya no las cubre (`metrado_por_linea`).
+// Siguen su camino, no salen del almacén sin el visto, y su OC se esperaba
+// hace dos días.
+const ocRevisado = randomUUID()
+await armazon(
+  `update public.requerimientos set estado = 'EN_ATENCION', revision_stock_en = now() - interval '1 hour',
+          en_atencion_en = now() - interval '1 hour', codigo_desde = now()
+    where id = $1`,
+  [ids.revisado],
+)
+await armazon(
+  `update public.requerimiento_lineas set cantidad_en_stock = 0, stock_revisado_en = now(), stock_revisado_por = $2 where requerimiento_id = $1`,
+  [ids.revisado, almacen.id],
+)
+await armazon(
+  `insert into public.ordenes_compra_materiales (id, requerimiento_id, proveedor, referencia, aprobacion, aprobado_por, aprobado_en, creado_por, fecha_estimada)
+   values ($1, $2, $3, $4, 'APROBADA', $5, now(), $5, $6::date)`,
+  [ocRevisado, ids.revisado, proveedor, `REF-${sello}-3`, logistica.id, seEsperaba],
+)
+await armazon(
+  `update public.requerimiento_lineas set orden_compra_id = $2, atendida_en = now(), atendida_por = $3 where requerimiento_id = $1`,
+  [ids.revisado, ocRevisado, logistica.id],
+)
+
 const salida = (rq, item, material_id, cantidad, quien) =>
   armazon(
     `insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, recibido_por_nombre,
@@ -268,7 +323,8 @@ const desde = async (puesto) =>
   ])
 const delSupervisor = await desde('sup.mtz')
 const fila = (rq, item) => delSupervisor.find((f) => f.requerimiento_id === rq && f.item === item)
-comprobar(delSupervisor.length === 9, `la base le da al supervisor sus 9 insumos, también los del RQ que registró Requerimientos (${delSupervisor.length})`)
+comprobar(delSupervisor.length === 10, `la base le da al supervisor sus 10 insumos, también los del RQ que registró Requerimientos (${delSupervisor.length})`)
+comprobar(fila(ids.revisado, 1)?.visto_diseno === 'SIN_SUSTENTO', `las planchas ya revisadas siguen sin su sustento: ${fila(ids.revisado, 1)?.visto_diseno}`)
 comprobar(fila(ids.compra, 1)?.fecha_esperada === llega, `el tubo se espera el ${llega}: ${fila(ids.compra, 1)?.fecha_esperada}`)
 comprobar(fila(ids.compra, 3)?.recibido_por === `Juan Quispe ${sello}`, 'los discos los recibió Juan')
 comprobar(fila(ids.metrado, 1)?.visto_diseno === 'SIN_SUSTENTO', `las planchas se pasan del metrado y esperan su sustento: ${fila(ids.metrado, 1)?.visto_diseno}`)
@@ -287,7 +343,8 @@ for (const ancho of [390, 1440]) {
   const { pagina, contexto } = await entrar('sup.mtz', ancho)
   await ir(pagina, ruta)
   const rq = (id) => pagina.locator(`[data-rq-de-la-unidad="${numeros[id]}"]`)
-  for (const id of Object.values(ids)) comprobar((await rq(id).count()) === 1, `${ancho}: ${numeros[id]} sale en la tarjeta de ${codigo}`)
+  for (const id of Object.values(ids).filter((x) => x !== ids.revisado))
+    comprobar((await rq(id).count()) === 1, `${ancho}: ${numeros[id]} sale en la tarjeta de ${codigo}`)
   // Se abre cada «Cómo va cada insumo».
   for (const id of Object.values(ids)) {
     const pliegue = rq(id).locator('[data-insumos-del-rq] > summary')
@@ -300,6 +357,8 @@ for (const ancho of [390, 1440]) {
   comprobar((await paso(ids.compra, 1)) === 'EN_CAMINO', `${ancho}: el tubo va en camino (${await paso(ids.compra, 1)})`)
   comprobar((await texto(ids.compra, 1)).includes(`Llega aprox. el ${ddmm(llega)}`), `${ancho}: el tubo dice cuándo llega: «${await texto(ids.compra, 1)}»`)
   comprobar((await paso(ids.compra, 2)) === 'EN_COMPRA', `${ancho}: los conos van en compra (${await paso(ids.compra, 2)})`)
+  comprobar((await texto(ids.compra, 2)).includes(`Logística lo esperaba el ${ddmm(seEsperaba)}`) && !(await texto(ids.compra, 2)).includes('llega aprox.'),
+    `${ancho}: la OC por aprobar con la fecha pasada no promete un día que ya pasó: «${await texto(ids.compra, 2)}»`)
   comprobar((await paso(ids.compra, 3)) === 'EN_ALMACEN', `${ancho}: los discos están en almacén (${await paso(ids.compra, 3)})`)
   const pasosDisco = await insumo(ids.compra, 3).locator('[data-paso-del-insumo]').evaluateAll((e) => e.map((x) => x.getAttribute('data-paso-del-insumo')))
   comprobar(!pasosDisco.includes('EN_COMPRA') && !pasosDisco.includes('EN_CAMINO'), `${ancho}: los discos que tenía Almacén no pasan por la compra: ${pasosDisco.join(' > ')}`)
@@ -349,6 +408,22 @@ for (const ancho of [390, 1440]) {
   // Con la tarjeta a la vista, para la captura.
   await rq(ids.compra).scrollIntoViewIfNeeded()
   await capturar(pagina, `1-2-supervisor-${ancho}-rq-por-unidad.png`)
+
+  // La otra unidad: las planchas ya revisadas y compradas que se pasan del metrado.
+  await ir(pagina, `/requerimientos/unidades?q=${encodeURIComponent(codigoB)}`)
+  comprobar((await rq(ids.revisado).count()) === 1, `${ancho}: ${numeros[ids.revisado]} sale en la tarjeta de ${codigoB}`)
+  const pliegueB = rq(ids.revisado).locator('[data-insumos-del-rq] > summary')
+  const resumenB = limpio(await rq(ids.revisado).locator('[data-resumen-de-insumos]').innerText())
+  comprobar(resumenB.includes('Falta tu sustento para Diseño') && resumenB.includes(`se esperaba el ${ddmm(seEsperaba)}`) && !resumenB.includes('llega aprox.'),
+    `${ancho}: cerrado, dice que falta su sustento y que se esperaba, sin prometer una fecha pasada: «${resumenB}»`)
+  if ((await pliegueB.count()) === 1) await pliegueB.click()
+  const pasoB = await insumo(ids.revisado, 1).getAttribute('data-paso')
+  comprobar(pasoB !== 'VISTO_DISENO' && pasoB !== 'EN_COMPRA', `${ancho}: las planchas siguen su camino, no vuelven al visto (${pasoB})`)
+  comprobar((await insumo(ids.revisado, 1).locator('[data-frena-la-salida]').count()) === 1 && (await texto(ids.revisado, 1)).includes('No sale del almacén hasta que Diseño lo autorice'),
+    `${ancho}: y dicen que no salen sin el visto: «${await texto(ids.revisado, 1)}»`)
+  comprobar((await rq(ids.revisado).locator(`[data-pide-sustento] a[href="/requerimientos?rq=${ids.revisado}"]`).count()) === 1, `${ancho}: y le piden su sustento con el enlace`)
+  await sinDesborde(pagina, `${ancho} ${codigoB}`)
+  await capturar(pagina, `1-2-supervisor-${ancho}-revisado-sin-sustento.png`)
   await contexto.close()
 }
 

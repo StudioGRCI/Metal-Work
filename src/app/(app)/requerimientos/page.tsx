@@ -10,12 +10,12 @@ import { recorridoDeRequerimientos } from '@/lib/datos/recorrido'
 import { esperaSuSustento } from '@/lib/dominio/metrado-rq'
 import { describirRecorridoDelRequerimiento } from '@/lib/dominio/recorrido'
 import { cargarRequerimientos, catalogosDelRequerimiento } from '@/lib/datos/requerimientos'
-import { TIPO_REQUERIMIENTO, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
+import { tieneParaRecoger, TIPO_REQUERIMIENTO, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { esUuid } from '@/lib/utils'
 
 import { NuevoRequerimiento } from './formulario'
-import { ResumenDeRequerimientos, TarjetaRequerimiento, tieneParaRecoger } from './tarjeta'
+import { ResumenDeRequerimientos, TarjetaRequerimiento } from './tarjeta'
 
 export const metadata = { title: 'Requerimientos' }
 

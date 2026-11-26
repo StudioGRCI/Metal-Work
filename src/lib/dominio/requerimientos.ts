@@ -184,6 +184,17 @@ export function partesDelInsumo(
   }
 }
 
+/**
+ * ¿Tiene algún insumo que ya se puede recoger en Almacén? Es la lista
+ * `?ver=recoger` y el pendiente del supervisor: los dos cuentan lo mismo.
+ */
+export function tieneParaRecoger(rq: {
+  estado: string
+  lineas: { cantidad: number; en_stock: number | null; etapa: string | null; entregado: number | null; llegado: number | null; sin_salida?: number | null }[]
+}): boolean {
+  return rq.lineas.some((l) => (partesDelInsumo(l, rq.estado)?.recoger ?? 0) > 0)
+}
+
 /** Quién trae lo que falta: Logística en el RQ de operación, la administradora en el de Administración. */
 export const quienCompra = (rq: { tipo: string | null }) => (tipoDeRequerimiento(rq) === 'ADMINISTRACION' ? 'Administración' : 'Logística')
 
@@ -286,7 +297,7 @@ const VISTO_QUE_FRENA = ['SIN_SUSTENTO', 'POR_AUTORIZAR', 'RECHAZADO']
 
 /** Lo que dice el visto de Diseño debajo del insumo. */
 export const VISTO_DEL_INSUMO: Record<string, { etiqueta: string; tono: Tono }> = {
-  SIN_SUSTENTO: { etiqueta: 'Se pasa del metrado: falta el sustento de quien lo pidió', tono: 'aviso' },
+  SIN_SUSTENTO: { etiqueta: 'Se pasa del metrado: falta el sustento de quien registró el RQ', tono: 'aviso' },
   POR_AUTORIZAR: { etiqueta: 'Se pasa del metrado: Diseño revisa el sustento', tono: 'aviso' },
   RECHAZADO: { etiqueta: 'Diseño no autorizó lo que se pasa del metrado', tono: 'peligro' },
   AUTORIZADO: { etiqueta: 'Diseño autorizó lo que se pasa del metrado', tono: 'exito' },
@@ -299,8 +310,10 @@ export const VISTO_QUE_PIDE_SUSTENTO = ['SIN_SUSTENTO', 'RECHAZADO']
  * En qué paso va el insumo y cuáles le tocan. `null` si no se sabe (el RQ
  * anulado no tiene etapa).
  *
- * - El visto de Diseño sale si Diseño lo autorizó, o mientras lo frena; si el
- *   insumo ya siguió sin él (Almacén lo revisó en regla), no se pinta.
+ * - El visto de Diseño es un paso si Diseño lo autorizó, o mientras frena la
+ *   revisión de Almacén (`frenado`). Si el metrado cambió después de revisado,
+ *   el insumo sigue su camino sin ese paso, pero no sale del almacén hasta el
+ *   visto (`frenaLaSalida`).
  * - La compra y el camino no le tocan si Almacén ya lo tenía entero.
  * - Entregado es por insumo: el que ya salió entero va entregado aunque otro
  *   del mismo RQ siga en compra (`entregado`, de `entregado_de_requerimientos`).
@@ -310,19 +323,31 @@ export const VISTO_QUE_PIDE_SUSTENTO = ['SIN_SUSTENTO', 'RECHAZADO']
 export function pasoDelInsumo(
   l: { etapa: string | null; cantidad: number; en_stock: number | null; entregado: number | null; sin_salida?: number | null },
   visto: string | null,
-): { pasos: PasoDelInsumo[]; actual: PasoDelInsumo; terminado: boolean; frenado: boolean; faltante: number | null } | null {
+): {
+  pasos: PasoDelInsumo[]
+  actual: PasoDelInsumo
+  terminado: boolean
+  frenado: boolean
+  frenaLaSalida: boolean
+  faltante: number | null
+} | null {
   const segun = l.etapa ? PASO_DE_LA_ETAPA[l.etapa] : undefined
   if (!segun) return null
-  const frenado = visto !== null && VISTO_QUE_FRENA.includes(visto) && segun === 'POR_ATENDER'
+  const sinVisto = visto !== null && VISTO_QUE_FRENA.includes(visto)
+  const salioEntero = l.entregado !== null && l.cantidad > 0 && l.entregado >= l.cantidad
+  // Sin el visto, Almacén no lo revisa (migración 20261120400000): espera ahí.
+  const frenado = sinVisto && segun === 'POR_ATENDER'
+  // Si el metrado cambió después de la revisión, sigue su camino (se compra,
+  // llega), pero no sale del almacén hasta el visto (migración 20261120410000).
+  const frenaLaSalida = sinVisto && !frenado && segun !== 'ENTREGADO' && !salioEntero
   const conVisto = visto === 'AUTORIZADO' || frenado
   const deStock = l.etapa === 'EN_STOCK' || (l.en_stock !== null && l.en_stock >= l.cantidad)
-  const salioEntero = l.entregado !== null && l.cantidad > 0 && l.entregado >= l.cantidad
   const actual: PasoDelInsumo = frenado ? 'VISTO_DISENO' : salioEntero ? 'ENTREGADO' : segun
   // El RQ se entregó con faltante y de este insumo no salió todo: no se pinta
   // como entregado entero (`sin_salida_al_entregar`, lo que no salió del kardex).
   const faltante = segun === 'ENTREGADO' && !salioEntero && l.sin_salida != null && l.sin_salida > 0 ? l.sin_salida : null
   const pasos = PASOS_DEL_INSUMO.filter((p) => (p !== 'VISTO_DISENO' || conVisto) && ((p !== 'EN_COMPRA' && p !== 'EN_CAMINO') || !deStock))
-  return { pasos, actual, terminado: actual === 'ENTREGADO' && faltante === null, frenado, faltante }
+  return { pasos, actual, terminado: actual === 'ENTREGADO' && faltante === null, frenado, frenaLaSalida, faltante }
 }
 
 /** Las dos etapas del recojo que Gerencia quiere distinguir de un vistazo. */

@@ -172,7 +172,7 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
         descripcion={`${areaFija.nombre} · ${enElArea.length} ${enElArea.length === 1 ? 'unidad' : 'unidades'}${
           conRqAbierto > 0 ? `, ${conRqAbierto} con requerimientos en camino` : ''
         }`}
-        ayuda="Cada unidad que tiene trabajo en tu área, con sus etapas y sus requerimientos. Pide el material de una unidad con «Nuevo RQ» en su tarjeta: el código y el área ya van puestos y le llega a Almacén. En cada requerimiento, «Cómo va cada insumo» dice en qué paso va cada uno, cuándo llega lo que se compra y quién lo recibió del almacén. Una unidad sale de aquí una semana después de que tu área termina sus etapas, recibe sus planos y le entregan todo lo pedido. Debajo están las demás unidades del taller, para pedir aunque Diseño todavía no cargue el trabajo de tu área. Lo que no es de una unidad, pídelo en PLANTA, al final."
+        ayuda="Cada unidad que tiene trabajo en tu área, con sus etapas y sus requerimientos. Pide el material de una unidad con «Nuevo RQ» en su tarjeta: el código y el área ya van puestos y le llega a Almacén. En cada requerimiento, «Cómo va cada insumo» dice en qué paso va cada uno, cuándo llega lo que se compra y quién lo recibió del almacén. Los RQ entregados en los últimos 7 días siguen a la vista, con quién recibió cada insumo. Una unidad sale de aquí cuando tu área terminó sus etapas, recibió sus planos y no tiene RQ en camino ni entregados en esos 7 días. Debajo están las demás unidades del taller, para pedir aunque Diseño todavía no cargue el trabajo de tu área. Lo que no es de una unidad, pídelo en PLANTA, al final."
         migas={[{ titulo: 'Requerimientos', ruta: '/requerimientos' }, { titulo: 'Por unidad' }]}
         acciones={<BotonPedirParaUnidad codigo={null}>Nuevo RQ con otro código</BotonPedirParaUnidad>}
         estado={<AvisoDeLaUnidad codigo={null} />}
@@ -362,7 +362,11 @@ function RequerimientosDeLaUnidad({
   const enCaminoTodos = rqs.filter(abierto)
   const enCamino = enCaminoTodos.slice(0, MAS_EN_LA_TARJETA)
   const sinVer = enCaminoTodos.length - enCamino.length
-  const recien = rqs.filter((r) => recienEntregado(r, desde)).slice(0, ENTREGADOS_EN_LA_TARJETA)
+  // Los últimos que se entregaron, no los últimos que se pidieron.
+  const recien = rqs
+    .filter((r) => recienEntregado(r, desde))
+    .sort((a, b) => (b.entregado_en ?? '').localeCompare(a.entregado_en ?? ''))
+    .slice(0, ENTREGADOS_EN_LA_TARJETA)
   const entregados = rqs.filter((r) => r.estado === 'ENTREGADO').length - recien.length
   const anulados = rqs.filter((r) => r.estado === 'ANULADO').length
   const yaCerrados = [

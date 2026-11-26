@@ -24,6 +24,7 @@ import {
   partesDelInsumo,
   pasoDelRequerimiento,
   quienCompra,
+  tieneParaRecoger,
   YA_LLEGO_TODO,
   yaLlegoTodo,
   type PartesDelInsumo,
@@ -93,11 +94,6 @@ function partesParaElPaso(rq: RequerimientoListado): (PartesDelInsumo | null)[] 
 /** ¿En compra, con lo comprado ya en almacén y el resto sin ninguna compra? */
 function soloFaltaLoNoComprado(rq: RequerimientoListado): boolean {
   return (rq.estado === 'SIN_STOCK' || rq.estado === 'EN_ATENCION') && !llegoTodo(rq) && yaLlegoTodo(partesParaElPaso(rq))
-}
-
-/** ¿Tiene algún insumo que ya se puede recoger en Almacén? */
-export function tieneParaRecoger(rq: RequerimientoListado): boolean {
-  return rq.lineas.some((l) => (partesDelInsumo(l, rq.estado)?.recoger ?? 0) > 0)
 }
 
 /**
