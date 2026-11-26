@@ -1,5 +1,5 @@
 -- =============================================================================
--- LA ENTREGA DEL CÓDIGO ES LA DE SU FABRICACIÓN, NO LA DE SU GARANTÍA
+-- LA ENTREGA DEL CÓDIGO ES LA DE SUS OT, NO LA DE SU GARANTÍA NI SU MANTENIMIENTO
 -- -----------------------------------------------------------------------------
 -- «Se entregó el…», en el cierre del costeo de Códigos internos y en Por
 -- decidir, sale de `codigos_internos_costo` (columna `entregada_el`), que
@@ -12,7 +12,9 @@
 -- Desde la 20261120500000 la garantía y el mantenimiento se siguen por el número
 -- de su OT, no por el código interno de la unidad (así trabaja la empresa: el
 -- código nace con la fabricación). Aquí la entrega del código mira solo las OT
--- que no son de garantía ni de mantenimiento. Lo demás del costo no cambia: el
+-- que van por el código de la unidad: la fabricación y, si la unidad vuelve por
+-- una reparación o una repotenciación, esa OT (es el mismo corte que
+-- `codigoDeCosteoDeLaOt` en la aplicación). Lo demás del costo no cambia: el
 -- presupuesto fijado sigue sumando todas las OT de la unidad, como dice su
 -- comentario.
 --
@@ -173,3 +175,6 @@ begin
    order by 1;
 end;
 $function$;
+
+comment on function public.codigos_internos_costo_calculado(text) is
+  'El costo completo de cada código interno (o de uno) en soles, con lo que falta para que esté completo, el precio de su cotización aprobada sin IGV, el margen (solo con costo), el presupuesto (el fijado a mano en su OT o el de la hoja) con su semáforo, la fecha del acta de entrega más reciente de las OT que van por el código (no las de garantía ni mantenimiento, que van por el número de su OT) y el cierre vigente. Sin pedir permiso: la llaman codigos_internos_costo y cerrar_costeo_codigo.';
