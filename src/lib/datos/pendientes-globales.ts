@@ -180,14 +180,15 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       clave: 'pdf_sin_ot',
       ruta: '/cotizaciones/pdf?estado=APROBADA_SIN_OT',
       tono: 'acento',
-      texto: (n) => plural(n, 'cotización aprobada sin código ni OT', 'cotizaciones aprobadas sin código ni OT'),
+      texto: (n) => plural(n, 'cotización aprobada que espera su OT', 'cotizaciones aprobadas que esperan OT'),
       contar: () =>
         cabeza(
           supabase
             .from('v_cotizaciones_pdf')
             .select('id', { count: 'exact', head: true })
             .eq('estado', 'APROBADA')
-            .is('orden_id', null),
+            // Le falta alguna OT: una por unidad (migración 20261126760000).
+            .gt('ordenes_faltantes', 0),
         ),
     })
   }
