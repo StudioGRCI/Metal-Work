@@ -12,7 +12,7 @@ import { devueltaEntera } from '@/lib/dominio/pago-de-boleta'
 import { estadoDePlanilla } from '@/lib/dominio/planilla-diaria'
 import { ESTADOS_RQ_ABIERTOS, leTocaAtender, quienAtiende, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
 import { hoyLima } from '@/lib/format'
-import { menuDe } from '@/lib/navegacion'
+import { rutasDeTrabajo } from '@/lib/navegacion'
 import { apruebaSinOrden, puede, type PerfilSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -1029,10 +1029,10 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
   // Un pendiente se cuenta solo si su pantalla está en el menú del puesto: lo
   // que se resuelve donde el puesto ya no entra no es suyo. Así Supervisión,
   // Almacén y Requerimientos dejaron de ver lo que se resolvía en la OT (desde
-  // el 2026-10-15), y Tesorería, Gerencia y Contabilidad tampoco lo ven.
-  const enMenu = new Set(
-    menuDe(perfil.permisos, perfil.rol.codigo === 'ADMIN', perfil.rol.codigo).flatMap((g) => g.items.map((i) => i.ruta.split(/[?#]/)[0])),
-  )
+  // el 2026-10-15), y Tesorería, Gerencia y Contabilidad tampoco lo ven. Lo
+  // que el puesto solo consulta tampoco es suyo: Gerencia ve todas las áreas
+  // desde el 2026-11-25, y sus globos siguen siendo lo que espera su visto.
+  const enMenu = rutasDeTrabajo(perfil.permisos, perfil.rol.codigo === 'ADMIN', perfil.rol.codigo)
   const suyas = tareas.filter((t) => enMenu.has(t.ruta.split(/[?#]/)[0]))
 
   const cuentas = await Promise.all(suyas.map((t) => t.contar().catch(() => null)))

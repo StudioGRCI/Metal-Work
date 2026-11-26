@@ -192,7 +192,7 @@ export type EsperaDeFacturacion = { desde: string | null; dias: number | null }
 /**
  * Desde que la OT de cada cotización tiene código interno, que es cuando se
  * puede facturar (DKS, Plan 10), y los días que van contados por la base con
- * la fecha de Lima (migración 20261126210000). Lo lee quien lee las
+ * la fecha de Lima (migración 20261126470000). Lo lee quien lee las
  * cotizaciones aprobadas. Si la base no contesta, lanza: la pantalla sigue sin
  * los días y lo dice.
  */

@@ -1,4 +1,4 @@
--- Lo que falta facturar, desde cuándo, y su cobro (migración 20261126210000, Plan 10.1).
+-- Lo que falta facturar, desde cuándo, y su cobro (migración 20261126470000, Plan 10.1).
 --
 --   1. `facturacion_en_espera` cuenta la espera desde que la OT tiene código
 --      interno: si la unidad lo recibió después de la OT, desde entonces. La lee
@@ -244,7 +244,8 @@ begin
   perform test.afirmar(pg_temp.camino('cot1') = 'SUBIDA:HECHO > REVISION:HECHO > CODIGO_Y_OT:HECHO > FACTURA:HECHO > COBRO:HECHO',
     'cobradas las dos: todo hecho (' || pg_temp.camino('cot1') || ')');
   select * into v from pg_temp.paso('cot1', 'COBRO', 'HECHO');
-  perform test.afirmar(v.puesto = 'Tesorería' and v.detalle is null and v.dias is null, 'el cobro, con el puesto de Tesorería');
+  -- Desde la 20261126450000 (Plan 9.1) el paso hecho lleva los días desde el anterior.
+  perform test.afirmar(v.puesto = 'Tesorería' and v.detalle is null and v.dias >= 0, 'el cobro, con el puesto de Tesorería y los días desde la factura');
 end $$;
 reset role;
 

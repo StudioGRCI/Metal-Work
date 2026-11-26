@@ -313,7 +313,9 @@ const idDe = async (correo) => (await uno(`select id from usuarios where correo 
 {
   const { pagina, contexto } = await entrar('gerencia')
   await ir(pagina, '/diseno/dxf')
-  comprobar(pagina.url().includes('sin-permiso'), 'Gerencia no entra a los DXF')
+  // Los consulta desde la 20261126310000 (`diseno.ver_dxf`), sin subir ni abrir códigos.
+  comprobar(!pagina.url().includes('sin-permiso'), 'Gerencia consulta los DXF')
+  comprobar(!/Cargar DXF|Abrir un código/.test(await pagina.locator('main').innerText()), 'sin subir ni abrir códigos')
   await contexto.close()
 }
 

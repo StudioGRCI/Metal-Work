@@ -1,6 +1,6 @@
 /**
  * Lo que falta facturar, arriba de Facturación (Plan 10.1, migración
- * 20261126210000), con la cuenta de cada puesto (nunca ADMIN):
+ * 20261126470000), con la cuenta de cada puesto (nunca ADMIN):
  *
  *   1. Contabilidad ve arriba «Por facturar»: la aprobada sin factura y la
  *      facturada en parte, con lo que falta y los días desde que la OT tiene

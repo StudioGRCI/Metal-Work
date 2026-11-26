@@ -7,7 +7,7 @@
 --      revisión de Almacén, compra, listo, entrega y anulación. La vuelta a
 --      compra sale de la bitácora.
 --   3. El de la cotización: subida, revisión, corrección, código y OT, factura
---      y anulación; desde la 20261126210000, también la factura de lo que falta
+--      y anulación; desde la 20261126470000, también la factura de lo que falta
 --      y el cobro, que Ventas no ve (lo prueba a fondo el check 472).
 --   4. Lo lee quien ve el documento y nadie más: la función de la cotización
 --      devuelve exactamente las que la política deja ver a cada puesto; el
@@ -542,10 +542,10 @@ begin
   perform public.registrar_factura_venta(pg_temp.id('f1'), pg_temp.id('cot1'), 'E001-458',
     current_setting('prueba.hoy')::date, current_setting('prueba.hoy')::date, 'PEN', 22900, 'Inicial 50 %', current_setting('prueba.f1_ruta'), 'f.pdf');
   perform test.afirmar(pg_temp.camino_cot('cot1') = 'SUBIDA:HECHO > REVISION:HECHO > CORRECCION:HECHO > REVISION:HECHO > CODIGO_Y_OT:HECHO > FACTURA:HECHO > FACTURA_RESTO:AHORA > COBRO:AHORA',
-    'facturada la mitad: espera la factura del resto y su cobro (migración 20261126210000) (' || pg_temp.camino_cot('cot1') || ')');
+    'facturada la mitad: espera la factura del resto y su cobro (migración 20261126470000) (' || pg_temp.camino_cot('cot1') || ')');
   select * into v from pg_temp.paso_cot('cot1', 'FACTURA', 'HECHO');
   perform test.afirmar(v.puesto = 'Contabilidad' and v.detalle = 'EN_PARTE',
-    'la factura sale con su puesto, sin número ni monto; a Contabilidad le dice que es una parte (migración 20261126210000)');
+    'la factura sale con su puesto, sin número ni monto; a Contabilidad le dice que es una parte (migración 20261126470000)');
 end $$;
 reset role;
 

@@ -163,21 +163,21 @@ $$;
 -- =============================================================================
 -- 4. EL RECORRIDO DE LA COTIZACIÓN, HASTA EL COBRO
 -- =============================================================================
--- Producción pudo cambiarla a mano: si no está como la dejó la 20261125130000
--- (o como la deja esta), se detiene antes de pisarla.
+-- Producción pudo cambiarla a mano: si no está como la dejó la 20261126450000
+-- (Ventas, Plan 9.1) o como la deja esta, se detiene antes de pisarla.
 do $$
 declare v_md5 text;
 begin
   select md5(replace(p.prosrc, E'\r', '')) into v_md5
     from pg_proc p where p.oid = 'public.recorrido_de_cotizaciones(uuid[])'::regprocedure;
-  if v_md5 not in ('b2ad46d40d0b717f394402e5e5ced606', '3bd46859513f590a62a6fc4db477bec0') then
+  if v_md5 not in ('2387f7bbd95c071e866c7b7da5659a1a', 'a1d4192f42b2d6b1e567676788b41357') then
     raise exception 'recorrido_de_cotizaciones no está como la conoce el repositorio (md5 %): revísala antes de aplicar esta migración.', v_md5;
   end if;
 end $$;
 
--- Copiada de la 20261125130000. Cambia: la factura espera desde que la OT tiene
--- código interno (antes, desde la OT), y se suman la factura de lo que falta y
--- el cobro.
+-- Copiada de la 20261126450000 (la de la 20261125130000 con los días de cada
+-- paso hecho, Plan 9.1). Cambia: la factura espera desde que la OT tiene código
+-- interno (antes, desde la OT), y se suman la factura de lo que falta y el cobro.
 create or replace function public.recorrido_de_cotizaciones(p_ids uuid[])
 returns table (
   documento uuid,
@@ -392,21 +392,33 @@ begin
     select c.id, 100020, 'ANULACION', 'HECHO', c.anulado_por, null, c.anulado_en, null, null
       from cot c where c.estado = 'ANULADA' and c.anulado_en is not null
   )
-  select p.cot,
-         (row_number() over (
-            partition by p.cot
-            order by case p.situacion when 'HECHO' then 0 when 'AHORA' then 1 else 2 end,
-                     case when p.situacion = 'HECHO' then p.en end, p.canon))::integer,
-         p.paso, p.situacion,
-         case when p.situacion = 'HECHO' then public.puesto(u) else p.puesto_fijo end,
-         p.en,
-         case when p.situacion = 'AHORA' then public.dias_en_espera(p.en) end,
-         p.espera, p.detalle
-    from pasos p
-    left join public.usuarios u on u.id = p.quien
-   -- La anulada no espera a nadie: queda lo hecho, como evidencia.
-   where p.situacion = 'HECHO'
-      or (select c.estado from cot c where c.id = p.cot) <> 'ANULADA';
+  -- Los días de cada paso hecho: cuántas fechas de Lima pasaron desde el paso
+  -- hecho anterior (la subida no tiene anterior). Así el vendedor ve cuánto
+  -- tardó Gerencia en responder y cuánto tardó la OT, sin hacer la cuenta.
+  select x.cot, x.n, x.paso, x.situacion, x.puesto, x.en,
+         case when x.situacion = 'AHORA' then public.dias_en_espera(x.en)
+              when x.situacion = 'HECHO' and x.en is not null and x.previo is not null
+              then greatest((x.en at time zone 'America/Lima')::date - (x.previo at time zone 'America/Lima')::date, 0)
+         end,
+         x.espera, x.detalle
+    from (
+      select p.cot,
+             (row_number() over (
+                partition by p.cot
+                order by case p.situacion when 'HECHO' then 0 when 'AHORA' then 1 else 2 end,
+                         case when p.situacion = 'HECHO' then p.en end, p.canon))::integer as n,
+             p.paso, p.situacion,
+             case when p.situacion = 'HECHO' then public.puesto(u) else p.puesto_fijo end as puesto,
+             p.en,
+             -- El paso hecho justo antes, en el mismo orden en que se muestran.
+             lag(p.en) over (partition by p.cot, p.situacion = 'HECHO' order by p.en, p.canon) as previo,
+             p.espera, p.detalle
+        from pasos p
+        left join public.usuarios u on u.id = p.quien
+       -- La anulada no espera a nadie: queda lo hecho, como evidencia.
+       where p.situacion = 'HECHO'
+          or (select c.estado from cot c where c.id = p.cot) <> 'ANULADA'
+    ) x;
 end;
 $$;
 

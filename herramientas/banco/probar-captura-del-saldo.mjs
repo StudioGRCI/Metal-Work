@@ -410,10 +410,17 @@ await consulta(
 // ------------------------------------------------------ 5. quien no lleva la caja no la abre
 {
   const banco = await cuenta(BANCO)
-  for (const quien of ['contabilidad', 'gerencia']) {
+  for (const quien of ['contabilidad']) {
     const { pagina, contexto } = await entrar(CUENTAS[quien])
     await pagina.goto(`${BASE}/tesoreria/caja-diaria/captura/${banco.id}`, { waitUntil: 'networkidle' }).catch(() => {})
     comprobar(new URL(pagina.url()).pathname === '/sin-permiso', `${quien} no abre la captura por su enlace (${new URL(pagina.url()).pathname})`)
+    await contexto.close()
+  }
+  // Gerencia consulta la caja desde la 20261126310000 (`tesoreria.ver_caja`): abre la captura, no la cambia.
+  {
+    const { pagina, contexto } = await entrar(CUENTAS.gerencia)
+    const r = await pagina.request.get(`${BASE}/tesoreria/caja-diaria/captura/${banco.id}`)
+    comprobar(r.ok() && !r.url().includes('/sin-permiso'), `gerencia abre la captura para consultarla (${r.status()} ${new URL(r.url()).pathname})`)
     await contexto.close()
   }
 }
