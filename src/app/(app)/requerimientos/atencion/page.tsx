@@ -5,6 +5,7 @@ import { Vistas } from '@/components/estructura/vistas'
 import { DiasEnEspera } from '@/components/ui/dias-en-espera'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { Recorrido } from '@/components/ui/recorrido'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
@@ -17,12 +18,12 @@ import { recorridoDeRequerimientos } from '@/lib/datos/recorrido'
 import { cargarRequerimientos, catalogoParaRequerimiento, type MaterialParaRequerimiento, type RequerimientoListado } from '@/lib/datos/requerimientos'
 import { stockEnAlmacen, type MaterialEnStock } from '@/lib/datos/stock-almacen'
 import { ESTADO_METRADO, FRENO_DEL_RQ, frenaElRq, frenoDelRq, listaDeItems, queFaltaDelFreno } from '@/lib/dominio/metrado-rq'
-import { ESTADOS_RQ_ABIERTOS, estadoDelRequerimiento, leTocaAtender, quienAtiende, tipoDeRequerimiento, type CompraDe } from '@/lib/dominio/requerimientos'
-import type { PasoDelRecorrido } from '@/lib/dominio/recorrido'
+import { estadoDelRequerimiento, leTocaAtender, quienAtiende, tipoDeRequerimiento, type CompraDe } from '@/lib/dominio/requerimientos'
+import { describirRecorridoDelRequerimiento, type PasoDelRecorrido, type PasoDescrito } from '@/lib/dominio/recorrido'
 import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
-import { AvanceDelRequerimiento, CompraDelInsumo, MaterialDelInsumo } from '../avance'
+import { AvanceDelRequerimiento, CompraDelInsumo, EntregaDelInsumo, MaterialDelInsumo } from '../avance'
 import { ConAvisos } from './avisos'
 import { EntregarConFaltante, PasoRequerimiento, RevisarStock, type StockDelSistema } from './controles'
 import { PorComprar, type GrupoPorComprar } from './por-comprar'
@@ -68,8 +69,17 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
   const vista = params.vista === 'todos' ? 'todos' : params.vista === 'comprar' && compra ? 'comprar' : 'abiertos'
   const preseleccion = typeof params.rq === 'string' ? params.rq : null
   // Logística genera la OC desde aquí: necesita el padrón y el catálogo de Almacén.
-  const [requerimientos, proveedores, materiales] = await Promise.all([
-    cargarRequerimientos({ soloAbiertos: vista !== 'todos' }),
+  const [{ requerimientos, sinEntregado }, proveedores, materiales] = await Promise.all([
+    // Con lo entregado de cada insumo: Almacén ve qué falta entregar de cada RQ
+    // (plan 2, entrega 2.1). Si eso no se pudo leer, la bandeja sigue sin las
+    // cifras y lo dice, como el metrado y el recorrido.
+    cargarRequerimientos({ soloAbiertos: vista !== 'todos', conEntregado: true }).then(
+      (requerimientos) => ({ requerimientos, sinEntregado: false }),
+      async (e: unknown) => {
+        console.error('Atención: no se pudo leer lo entregado de cada insumo.', e)
+        return { requerimientos: await cargarRequerimientos({ soloAbiertos: vista !== 'todos' }), sinEntregado: true }
+      },
+    ),
     compra ? proveedoresParaCompra() : Promise.resolve([]),
     compra ? catalogoDeAlmacen() : Promise.resolve([]),
   ])
@@ -98,11 +108,13 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
       console.error('Atención: no se pudo leer el metrado de Diseño.', e)
       return null
     }),
-    // Quién tiene cada RQ abierto y desde cuándo, con los días que cuenta la base
-    // (fecha de Lima). Sin eso la bandeja sigue: solo sin la insignia de días.
-    recorridoDeRequerimientos(requerimientos.filter(abierto).map((r) => r.id)).catch(
+    // El recorrido de cada RQ: quién tiene cada abierto y desde cuándo, con los
+    // días que cuenta la base (fecha de Lima), y los pasos que se pliegan en su
+    // fila (plan 2, entrega 2.1). Sin eso la bandeja sigue: solo sin la insignia
+    // de días ni el recorrido.
+    recorridoDeRequerimientos(requerimientos.map((r) => r.id)).catch(
       (e: unknown) => {
-        console.error('Atención: no se pudieron contar los días en espera.', e)
+        console.error('Atención: no se pudo leer el recorrido de los requerimientos (días en espera y pasos).', e)
         return null
       },
     ),
@@ -180,10 +192,17 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
         </p>
       )}
 
-      {recorridos === null && requerimientos.some(abierto) && (
+      {sinEntregado && requerimientos.length > 0 && (
+        <p role="status" className="mb-3 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-entregado-sin-leer>
+          No se pudo leer lo entregado de cada insumo: la lista sigue sin las cifras de lo entregado, lo separado y lo que falta. Vuelve a
+          cargar la pantalla en un momento.
+        </p>
+      )}
+
+      {recorridos === null && requerimientos.length > 0 && (
         <p role="status" className="mb-3 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-dias-sin-leer>
-          No se pudieron contar los días que lleva esperando cada requerimiento: la lista sigue sin ellos y sin ordenarse por antigüedad.
-          Vuelve a cargar la pantalla en un momento.
+          No se pudo leer el recorrido de los requerimientos: la lista sigue sin los días que lleva esperando cada uno, sin ordenarse por
+          antigüedad y sin su recorrido. Vuelve a cargar la pantalla en un momento.
         </p>
       )}
 
@@ -229,6 +248,7 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
                       correcciones={correcciones.get(r.id)}
                       metrado={metrado}
                       espera={espera.get(r.id)}
+                      recorrido={recorridos ? describirRecorridoDelRequerimiento(recorridos.get(r.id) ?? []) : undefined}
                       grupo={grupoDe.get(r.id)}
                     />
                   ))
@@ -256,9 +276,6 @@ async function stockDelSistema(materiales: string[] | null): Promise<Map<string,
     return 'no_se_pudo'
   }
 }
-
-/** El RQ que todavía espera a alguien: el que lleva días en espera. */
-const abierto = (r: RequerimientoListado) => (ESTADOS_RQ_ABIERTOS as readonly string[]).includes(r.estado)
 
 function sistemaDe(m: MaterialEnStock): StockDelSistema {
   return {
@@ -349,6 +366,7 @@ function Fila({
   correcciones,
   metrado,
   espera,
+  recorrido,
   grupo,
 }: {
   rq: RequerimientoListado
@@ -368,6 +386,8 @@ function Fila({
   metrado: Map<string, MetradoDelInsumo>
   /** Quién lo tiene ahora, desde cuándo y hace cuántos días (del recorrido); nada si no se pudo leer o ya no lo tiene nadie. */
   espera: PasoDelRecorrido | undefined
+  /** Los pasos del RQ en palabras; nada si no se pudo leer (lo dice el aviso de arriba, una vez). */
+  recorrido: PasoDescrito[] | undefined
   /** En «Por atender», su grupo en el orden: le toca / no / frenado, y si lo tiene el puesto de quien mira. */
   grupo?: string
 }) {
@@ -437,6 +457,7 @@ function Fila({
                   </>
                 )}
               </span>
+              <EntregaDelInsumo linea={l} estadoRq={rq.estado} />
               {frenados.includes(l) && rq.estado !== 'ANULADO' && rq.estado !== 'ENTREGADO' && (
                 <Insignia tono={ESTADO_METRADO[metrado.get(l.id)!.estado].tono} className="mt-0.5" data-metrado={metrado.get(l.id)!.estado}>
                   {ESTADO_METRADO[metrado.get(l.id)!.estado].etiqueta}
@@ -472,6 +493,8 @@ function Fila({
             ),
           )}
         </ul>
+        {/* Plegado; quién lo tiene y hace cuánto ya lo dice la insignia de arriba. */}
+        <Recorrido pasos={recorrido} className="mt-2 max-w-sm rounded-[var(--radius-base)] border border-borde" relleno="px-2" sinQuienEnElResumen />
       </TD>
       {/* Sin acciones, la celda no deja un hueco en el teléfono. */}
       <TD className="block p-0 align-top sm:table-cell sm:px-3 sm:py-2 sm:text-right">

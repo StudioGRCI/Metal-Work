@@ -22,17 +22,22 @@ import { cn } from '@/lib/utils'
  * (`rounded-[var(--radius-base)] border border-borde`). `relleno`, el margen
  * lateral de esa tarjeta. `femenino`, para el documento que lo es: «la tiene
  * Gerencia» de la cotización, «lo tiene Almacén» del requerimiento.
+ * `sinQuienEnElResumen`, donde la fila ya dice quién lo tiene y hace cuánto
+ * (la insignia de días de Atención de requerimiento): cerrado dice solo
+ * «Recorrido», para no repetirlo a 80 px; abierto, igual que siempre.
  */
 export function Recorrido({
   pasos,
   className,
   relleno = 'px-4',
   femenino = false,
+  sinQuienEnElResumen = false,
 }: {
   pasos: readonly PasoDescrito[] | null | undefined
   className?: string
   relleno?: string
   femenino?: boolean
+  sinQuienEnElResumen?: boolean
 }) {
   const lo = femenino ? 'la' : 'lo'
   if (pasos === null) {
@@ -63,12 +68,14 @@ export function Recorrido({
         </span>
         {/* Lo que más se pregunta, sin abrir: quién lo tiene y hace cuánto; si ya nadie, en qué terminó. */}
         {ahora ? (
+          !sinQuienEnElResumen && (
           <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-texto-suave" data-recorrido-ahora>
             <span className="min-w-0 break-words">
               {femenino ? 'La' : 'Lo'} tiene <span className="font-medium text-texto">{ahora.puesto ?? 'alguien'}</span>
             </span>
             {ahora.dias !== null && <Insignia>{haceDias(ahora.dias)}</Insignia>}
           </span>
+          )
         ) : (
           ultimo && (
             <span className="min-w-0 text-xs break-words text-texto-suave">
