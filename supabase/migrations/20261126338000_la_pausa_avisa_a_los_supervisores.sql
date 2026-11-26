@@ -47,6 +47,7 @@ declare
   v_quien   text;
   v_titulo  text;
   v_cuerpo  text;
+  v_motivo  text;
 begin
   if not (v_pausa or v_reanuda) then
     return null;
@@ -70,15 +71,23 @@ begin
     into v_sola
     from public.tiempos_de_entrega_codigos_calculado(v_codigo) c
    limit 1;
+  -- El código con el costeo cerrado (y no reabierto) no pide reporte: la
+  -- bandeja lo saca (`etapas_abiertas_de_mi_area`).
+  if exists (select 1 from public.codigo_interno_cierres k where k.codigo = v_codigo and k.reabierto_en is null) then
+    v_sola := false;
+  end if;
   v_quien := coalesce(public.puesto_de(v_yo), 'la oficina');
+  -- El motivo sin su punto final: el aviso pone el suyo, salvo tras «?» o «!».
+  v_motivo := rtrim(left(btrim(coalesce(new.motivo_pausa, '')), 300), '. ');
   v_titulo := 'Orden ' || new.numero || case when v_pausa then ' pausada · ' else ' reanudada · ' end || v_codigo;
   v_cuerpo := case when v_pausa
-                   then 'La pausó ' || v_quien || '. Motivo: ' || rtrim(left(btrim(new.motivo_pausa), 300), '. ') || '.'
+                   then 'La pausó ' || v_quien || '. Motivo: ' || v_motivo
+                        || case when right(v_motivo, 1) in ('?', '!') then '' else '.' end
                    else 'La reanudó ' || v_quien || '. El trabajo sigue.' end;
 
   -- La frase del reporte va solo a quien la bandeja se lo pide: un área con una
   -- etapa que ya empezó, o cuya fecha de inicio ya llegó (`pideReporteHoy` de
-  -- `src/lib/dominio/tiempos-entrega.ts`), y sin `produccion.cualquier_area`,
+  -- `src/lib/dominio/tiempos-entrega.ts`, que remite aquí), y sin `produccion.cualquier_area`,
   -- que no ve la bandeja. A la etapa que empieza en dos semanas no se le dice
   -- que «vuelve a pedir» un reporte que todavía no pide.
   insert into public.notificaciones (usuario_id, titulo, cuerpo, ruta, origen_tabla, origen_id)

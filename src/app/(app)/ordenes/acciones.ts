@@ -147,6 +147,8 @@ export async function cambiarEstadoOrden(
   // la pausó o la reanudó) no pisa el motivo ni se lee como falta de permiso.
   // Con `ordenes.pausar`, reanudar vale solo desde PAUSADA: iniciar o reabrir
   // siguen con `ordenes.cambiar_estado`.
+  // Si se leyó la OT y estaba en proceso, un pausar que no toca nada es que otro la cambió.
+  let seLeyoEnProceso = false
   if ((estado === 'PAUSADA' && permitido) || (estado === 'EN_PROCESO' && !permitido && puede(perfil, 'ordenes.pausar'))) {
     const { data: actual, error: errorEstado } = await supabase
       .from('ordenes_trabajo')
@@ -154,6 +156,7 @@ export async function cambiarEstadoOrden(
       .eq('id', orden_id)
       .maybeSingle()
     if (errorEstado) return { ok: false, error: mensajeDeError(errorEstado) }
+    seLeyoEnProceso = actual?.estado === 'EN_PROCESO'
     // Sin revalidar: la pantalla quitaría el botón y con él este aviso.
     if (actual?.estado === estado) {
       return {
@@ -205,7 +208,7 @@ export async function cambiarEstadoOrden(
     .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
-  if (!data && estado === 'PAUSADA') {
+  if (!data && estado === 'PAUSADA' && seLeyoEnProceso) {
     return { ok: false, error: 'La orden cambió mientras tanto: recarga la pantalla para ver cómo está.' }
   }
   if (!data) return { ok: false, error: NO_TOCO_NADA }

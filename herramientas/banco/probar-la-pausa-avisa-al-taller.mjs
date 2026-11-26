@@ -137,6 +137,7 @@ async function esperarEstado(esperado) {
 
 const boton = (pagina, texto) => pagina.getByRole('button', { name: texto, exact: true })
 const limpio = (t) => (t ?? '').replace(/\s+/g, ' ').trim()
+let hayBandeja = false
 
 try {
   // ---------------------------------------------- 2. Administración pausa
@@ -145,7 +146,13 @@ try {
     // Antes de pausar, el código le pide el reporte a Maestranza.
     const mtz = await entrar('sup.mtz', 1440)
     await ir(mtz.pagina, '/planos')
-    comprobar((await mtz.pagina.locator(`[data-codigo-sin-reporte="${codigo}"]`).count()) === 1, `en proceso, «Sin reporte de hoy» le pide ${codigo} a Maestranza`)
+    // La bandeja sale solo en día de taller: en domingo o feriado no hay qué mirar.
+    hayBandeja = (await mtz.pagina.locator('[data-sin-reporte]').count()) > 0
+    if (hayBandeja) {
+      comprobar((await mtz.pagina.locator(`[data-codigo-sin-reporte="${codigo}"]`).count()) === 1, `en proceso, «Sin reporte de hoy» le pide ${codigo} a Maestranza`)
+    } else {
+      console.log('  -- · hoy no es día de taller: no se mira «Sin reporte de hoy»')
+    }
     await mtz.contexto.close()
 
     const { pagina, contexto } = await entrar('administracion', 1440)
@@ -188,8 +195,13 @@ try {
     comprobar(limpio(await pagina.locator('main').innerText()).includes(codigo), `y ahí está el código ${codigo}`)
     await capturar(pagina, 'aviso-pausa-390-planos.png')
     // Lo que el aviso promete: la bandeja ya no le pide ese código.
-    await ir(pagina, '/planos')
-    comprobar((await pagina.locator(`[data-codigo-sin-reporte="${codigo}"]`).count()) === 0, `pausada, «Sin reporte de hoy» ya no le pide ${codigo}`)
+    if (hayBandeja) {
+      await ir(pagina, '/planos')
+      // Si era lo único que pedía, la bandeja entera se va (no queda nada pendiente).
+      const leyo = (await pagina.locator('[data-sin-reporte="sin-leer"]').count()) === 0 &&
+        limpio(await pagina.locator('main').innerText()).includes('Planos y etapas')
+      comprobar(leyo && (await pagina.locator(`[data-codigo-sin-reporte="${codigo}"]`).count()) === 0, `pausada, «Sin reporte de hoy» ya no le pide ${codigo}`)
+    }
     await contexto.close()
   }
 

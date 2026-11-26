@@ -19,6 +19,7 @@
 --   8. El motivo que termina en punto no queda con dos puntos.
 --   9. El área cuya etapa todavía no empieza recibe el aviso sin la frase del
 --      reporte, que su bandeja aún no le pide.
+--  10. Tampoco la lleva el código con el costeo cerrado, que no pide reporte.
 --
 -- Cada escritura con la cuenta del puesto —nunca ADMIN— y `set local role
 -- authenticated`. Termina en rollback.
@@ -58,13 +59,14 @@ select x.codigo, x.orden, x.nombre, a.id,
                ('QA496-B', 1, 'Chasis (prueba 496)', 'MTZ', -6, null::date),
                ('QA496-C', 1, 'Armado (prueba 496)', 'MTZ', -6, null::date),
                ('QA496-C', 2, 'Acabado final, en dos semanas (prueba 496)', 'PRD', 14, null::date),
+               ('QA496-D', 1, 'Retrabajo con el costeo cerrado (prueba 496)', 'MTZ', -6, null::date),
                (public.codigo_de_la_ot('QA496-M1'), 1, 'Mantenimiento (prueba 496)', 'MTZ', -6, null::date)) x(codigo, orden, nombre, area, desde, fin_real)
   join public.areas a on a.codigo = x.area;
 insert into public.clientes (tipo_documento, numero_documento, razon_social)
 values ('RUC', '20999496011', 'CLIENTE DE PRUEBA 496 S.A.C.');
 insert into public.unidades (cliente_id, codigo_interno, marca)
 select c.id, x.codigo, 'Prueba'
-  from public.clientes c, (values ('QA496-A'), ('QA496-B'), ('QA496-C')) x(codigo)
+  from public.clientes c, (values ('QA496-A'), ('QA496-B'), ('QA496-C'), ('QA496-D')) x(codigo)
  where c.numero_documento = '20999496011';
 insert into public.ordenes_trabajo (numero, cliente_id, unidad_id, sede_id, descripcion, estado, fecha_inicio_real, fecha_entrega_comprometida)
 select x.numero, c.id, u.id, (select id from public.sedes where codigo = 'QA496'), 'Check 496 · ' || x.numero,
@@ -74,9 +76,12 @@ select x.numero, c.id, u.id, (select id from public.sedes where codigo = 'QA496'
                      ('QA496-B', 'QA496-B1', 'EN_PROCESO', 5),
                      ('QA496-B', 'QA496-B2', 'PROGRAMADA', 9),
                      ('QA496-C', 'QA496-C1', 'EN_PROCESO', 20),
+                     ('QA496-D', 'QA496-D1', 'EN_PROCESO', 5),
                      (null, 'QA496-SIN1', 'EN_PROCESO', 5)) x(codigo, numero, estado, entrega)
   left join public.unidades u on u.codigo_interno = x.codigo
  where c.numero_documento = '20999496011';
+insert into public.codigo_interno_cierres (codigo, costo_pen, por_fuente, cerrado_por)
+values ('QA496-D', 0, '{}'::jsonb, current_setting('prueba.sup_mtz')::uuid);
 insert into public.ordenes_trabajo (numero, cliente_id, sede_id, descripcion, estado, tipo_trabajo, fecha_inicio_real, fecha_entrega_comprometida)
 select 'QA496-M1', c.id, (select id from public.sedes where codigo = 'QA496'), 'Check 496 · mantenimiento',
        'EN_PROCESO', 'MANTENIMIENTO', current_date - 3, current_date + 5
@@ -214,6 +219,17 @@ select test.afirmar(
 select test.afirmar(
   pg_temp.cuerpo('QA496-C1', '%reanudada%', 'sup_mtz') like '%vuelve a pedir tu reporte diario.',
   'a Maestranza, con la etapa en marcha, sí: ' || coalesce(pg_temp.cuerpo('QA496-C1', '%reanudada%', 'sup_mtz'), '(sin aviso)'));
+
+-- 10. Con el costeo cerrado el código no pide reporte, y el aviso no lo promete.
+select pg_temp.como('adm');
+set local role authenticated;
+update public.ordenes_trabajo set estado = 'PAUSADA', motivo_pausa = 'Retrabajo en espera (prueba 496)' where numero = 'QA496-D1';
+update public.ordenes_trabajo set estado = 'EN_PROCESO' where numero = 'QA496-D1';
+reset role;
+select test.afirmar(
+  pg_temp.cuerpo('QA496-D1', '%pausada%', 'sup_mtz') = 'La pausó Administración. Motivo: Retrabajo en espera (prueba 496).'
+  and pg_temp.cuerpo('QA496-D1', '%reanudada%', 'sup_mtz') = 'La reanudó Administración. El trabajo sigue.',
+  'con el costeo cerrado, el aviso no habla del reporte: ' || coalesce(pg_temp.cuerpo('QA496-D1', '%reanudada%', 'sup_mtz'), '(sin aviso)'));
 
 -- 6. La función del disparador no se llama a mano.
 select test.afirmar(not has_function_privilege('authenticated', 'public.fn_ot_avisa_la_pausa()', 'execute'),
