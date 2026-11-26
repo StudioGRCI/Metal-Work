@@ -1,9 +1,11 @@
 import { Check, Circle } from 'lucide-react'
 
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { Pliegue } from '@/components/ui/seccion-desplegable'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import {
   compromisoEnPalabras,
+  planoMasUrgente,
   puntosDeDiseno,
   resumenDeLoQueFalta,
   type CompromisoDelPlano,
@@ -12,22 +14,36 @@ import {
 import { cn } from '@/lib/utils'
 
 /**
- * Lo que Diseño entrega por código interno, en una línea: los cinco puntos con
- * hecho o pendiente, y la fecha comprometida del plano de cada área contra la
- * real. Va en las listas de Diseño, en Códigos internos (Administración y
- * Gerencia, en lectura) y en Planos y etapas (Supervisión, en lectura). Los
- * días los cuenta la base; aquí no se calcula nada.
+ * Lo que Diseño entrega por código interno, en una línea para las listas: los
+ * cinco puntos con hecho o pendiente y, si hay, el plano vencido o por vencer
+ * más urgente. El detalle (cuántos, desde cuándo, la fecha de cada área) va en
+ * el código. Va en las listas de Diseño, en Códigos internos (Administración y
+ * Gerencia), en Seguimiento por código (Supervisión general) y en Planos y
+ * etapas (el supervisor, solo su área con `areas`), en lectura. Los días los
+ * cuenta la base; aquí no se calcula nada.
  *
  * `null` es «no se pudo leer», y se dice: no es lo mismo que «pendiente».
  */
-export function LineaLoQueDebeDiseno({ d, className }: { d: LoQueDebeDiseno | undefined | null; className?: string }) {
+export function LineaLoQueDebeDiseno({
+  d,
+  areas,
+  className,
+}: {
+  d: LoQueDebeDiseno | undefined | null
+  /** Las áreas cuyo plano interesa a quien mira (el supervisor, la suya); sin esto, todas. */
+  areas?: readonly string[]
+  className?: string
+}) {
   if (d === null) return <NoSeLeyo className={className} />
   const puntos = puntosDeDiseno(d)
   const resumen = resumenDeLoQueFalta(puntos)
+  const urgente = planoMasUrgente((d?.compromisos ?? []).filter((c) => !areas || areas.includes(c.area)))
   return (
-    <div className={cn('space-y-1', className)} data-lo-que-debe-diseno={d?.codigo}>
-      <p className="sr-only">{resumen}.</p>
-      <ul aria-hidden className="flex flex-wrap items-center gap-1.5" title={resumen}>
+    <div className={className} data-lo-que-debe-diseno={d?.codigo}>
+      <p className="sr-only">
+        {resumen}.{urgente && ` ${urgente.insignia}.`}
+      </p>
+      <ul aria-hidden className="flex flex-wrap items-center gap-2" title={resumen}>
         {puntos.map((p) => (
           <li key={p.clave} data-punto={p.clave} data-hecho={p.hecho}>
             <Insignia tono={p.hecho ? 'exito' : 'neutro'}>
@@ -36,58 +52,57 @@ export function LineaLoQueDebeDiseno({ d, className }: { d: LoQueDebeDiseno | un
             </Insignia>
           </li>
         ))}
+        {urgente && (
+          <li data-compromiso={urgente.compromiso.area} data-situacion={urgente.compromiso.situacion}>
+            <Insignia tono={urgente.tono}>{urgente.insignia}</Insignia>
+          </li>
+        )}
       </ul>
-      {d && d.compromisos.length > 0 && <Compromisos compromisos={d.compromisos} />}
     </div>
   )
 }
 
 /**
- * Los cinco puntos con su detalle (cuántos y desde cuándo, o qué falta) y la
- * fecha del plano de cada área. Es la tarjeta del código en Diseño.
+ * La tarjeta del código en Diseño, junto a sus cifras: los cinco puntos en una
+ * fila, el plano de cada área contra el día en que lo necesita, y el detalle de
+ * cada punto plegado.
  */
 export function TarjetaLoQueDebeDiseno({ d }: { d: LoQueDebeDiseno | undefined | null }) {
   const puntos = puntosDeDiseno(d ?? undefined)
   const hechos = puntos.filter((p) => p.hecho).length
   return (
-    <Tarjeta data-lo-que-debe-diseno={d?.codigo}>
+    <Tarjeta data-lo-que-debe-diseno={d?.codigo} data-tarjeta-lo-que-debe>
       <TarjetaCabecera
         titulo="Lo que Diseño entrega"
         descripcion={d === null ? undefined : `${hechos} de ${puntos.length} · ${resumenDeLoQueFalta(puntos)}.`}
-        ayuda="Los cinco puntos que Diseño le entrega al taller por cada unidad, y para cuándo se comprometió el plano de cada área: el día en que empieza la etapa que Diseño le puso a esa área. Supervisión y Administración ven lo mismo, sin poder cambiarlo."
+        ayuda="Los cinco puntos que Diseño le entrega al taller por cada unidad, y el plano de Maestranza y de Producción contra el día en que el área lo necesita: cuando empieza la etapa que Diseño le puso (Habilitado o Ensamblaje). El plano no dice de qué juego es: con varios juegos se mide el primero. Supervisión y Administración ven lo mismo, sin poder cambiarlo."
       />
-      <TarjetaCuerpo className="space-y-4">
+      <TarjetaCuerpo className="space-y-3">
         {d === null ? (
           <NoSeLeyo />
         ) : (
           <>
-            <ul className="divide-y divide-borde">
+            <ul aria-hidden className="flex flex-wrap items-center gap-2">
               {puntos.map((p) => (
-                <li key={p.clave} className="flex items-start gap-3 py-2 first:pt-0 last:pb-0" data-punto={p.clave} data-hecho={p.hecho}>
-                  <span
-                    className={cn(
-                      'mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full',
-                      p.hecho ? 'bg-exito-suave text-exito' : 'bg-neutro-suave text-texto-suave',
-                    )}
-                  >
-                    {p.hecho ? <Check aria-hidden className="size-3.5" /> : <Circle aria-hidden className="size-3" />}
-                  </span>
-                  <div className="min-w-0 flex-1 sm:flex sm:items-baseline sm:justify-between sm:gap-4">
-                    <p className="text-sm font-medium text-texto">
-                      {p.etiqueta}
-                      <span className="sr-only">: {p.hecho ? 'hecho' : 'pendiente'}.</span>
-                    </p>
-                    <p className="text-xs text-texto-suave sm:text-right">{p.detalle}</p>
-                  </div>
+                <li key={p.clave} data-punto={p.clave} data-hecho={p.hecho}>
+                  <Insignia tono={p.hecho ? 'exito' : 'neutro'}>
+                    {p.hecho ? <Check className="size-3" /> : <Circle className="size-3" />}
+                    {p.etiqueta}
+                  </Insignia>
                 </li>
               ))}
             </ul>
-            {d && d.compromisos.length > 0 && (
-              <section aria-label="Fecha comprometida del plano" className="space-y-1.5 border-t border-borde pt-3">
-                <h3 className="text-sm font-semibold text-texto">El plano de cada área</h3>
-                <Compromisos compromisos={d.compromisos} />
-              </section>
-            )}
+            {d && d.compromisos.length > 0 && <Compromisos compromisos={d.compromisos} />}
+            <Pliegue titulo="Ver cada punto" data-detalle-de-diseno="">
+              <ul className="space-y-1">
+                {puntos.map((p) => (
+                  <li key={p.clave} className="text-sm break-words text-texto-suave" data-detalle={p.clave}>
+                    <span className="font-medium text-texto">{p.etiqueta}</span>
+                    <span className="sr-only"> ({p.hecho ? 'hecho' : 'pendiente'})</span>: {p.detalle}
+                  </li>
+                ))}
+              </ul>
+            </Pliegue>
           </>
         )}
       </TarjetaCuerpo>
@@ -97,14 +112,14 @@ export function TarjetaLoQueDebeDiseno({ d }: { d: LoQueDebeDiseno | undefined |
 
 function Compromisos({ compromisos }: { compromisos: readonly CompromisoDelPlano[] }) {
   return (
-    <ul className="space-y-1">
+    <ul className="space-y-1" aria-label="El plano de cada área">
       {compromisos.map((c) => {
         const { texto, insignia, tono } = compromisoEnPalabras(c)
         return (
-          <li key={c.area} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-texto-suave" data-compromiso={c.area} data-situacion={c.situacion}>
-            <span className="min-w-0 break-words">
+          <li key={c.area} className="text-sm text-texto-suave" data-compromiso={c.area} data-situacion={c.situacion}>
+            <span className="break-words">
               <span className="font-medium text-texto">Plano de {c.areaNombre}:</span> {texto}
-            </span>
+            </span>{' '}
             {insignia && <Insignia tono={tono}>{insignia}</Insignia>}
           </li>
         )

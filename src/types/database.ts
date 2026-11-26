@@ -14956,10 +14956,13 @@ export type Database = {
           dxf_en: string | null
           area: string | null
           area_nombre: string | null
+          tiene_etapa: boolean | null
+          etapa: string | null
           comprometido: string | null
           entregado_en: string | null
           situacion: string | null
           dias: number | null
+          por_vencer: boolean | null
         }[]
       }
       lote_de_prueba: {

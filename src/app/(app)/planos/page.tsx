@@ -148,6 +148,8 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
     return null
   })
   const cualquierArea = puede(perfil, 'produccion.cualquier_area')
+  // Del plano que Diseño debe, el supervisor ve el de su área; quien ve todas, todos.
+  const areasDelPlano = cualquierArea ? undefined : misAreas.map((a) => a.codigo)
   // Para la etapa propia: las unidades que el sistema conoce, con su OT y su placa.
   const opcionesDeCodigo = (codigosConocidos ?? [])
     .filter((c) => !c.cerrado)
@@ -221,7 +223,6 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
                   }
                 />
                 <TarjetaCuerpo className="space-y-4">
-                  <LineaLoQueDebeDiseno d={debe === null ? null : debe.get(codigo)} />
                   {deCodigo.length > 0 && (
                     <ListaPlanos
                       planos={deCodigo}
@@ -262,6 +263,11 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
                       <ListaDxf archivos={susDxf} />
                     </section>
                   )}
+                  {/* Después del trabajo del supervisor; del plano, solo el de su área. */}
+                  <section aria-label="Lo que Diseño entrega" className="border-t border-borde pt-4">
+                    <h3 className="mb-2 text-sm font-semibold text-texto">Lo que Diseño entrega</h3>
+                    <LineaLoQueDebeDiseno d={debe === null ? null : debe.get(codigo)} areas={areasDelPlano} />
+                  </section>
                 </TarjetaCuerpo>
               </Tarjeta>
             </li>

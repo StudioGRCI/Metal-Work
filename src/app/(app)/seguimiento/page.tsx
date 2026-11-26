@@ -11,7 +11,16 @@ export const metadata = { title: 'Seguimiento por código' }
  * contra lo pedido y lo salido, y los planos de cada área. Solo lectura.
  */
 export default async function PaginaSeguimiento({ searchParams }: PageProps<'/seguimiento'>) {
-  await exigirPermiso('codigos_internos.seguimiento')
+  const perfil = await exigirPermiso('codigos_internos.seguimiento')
   const params = await searchParams
-  return <ListaDeCodigosDeDiseno vista={vistaSeguimientoValida(params.vista)} params={params} seguimiento />
+  // Lo que Diseño le debe a cada unidad lo ve Supervisión general; Almacén no
+  // (plan 6.1: la base tampoco se lo da).
+  return (
+    <ListaDeCodigosDeDiseno
+      vista={vistaSeguimientoValida(params.vista)}
+      params={params}
+      seguimiento
+      veLoQueDebe={perfil.rol.codigo !== 'ALMACENERO'}
+    />
+  )
 }

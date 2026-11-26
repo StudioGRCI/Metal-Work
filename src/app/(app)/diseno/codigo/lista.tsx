@@ -9,7 +9,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { codigosDeDiseno, dxfDeCodigo, otPorCodigo, type CodigoDeDiseno, type OtDeCodigo } from '@/lib/datos/diseno-codigos'
 import { loQueDebeDiseno } from '@/lib/datos/lo-que-debe-diseno'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
-import { llaveParecido } from '@/lib/dominio/codigos-internos'
+import { esUnidadDeDiseno, llaveParecido } from '@/lib/dominio/codigos-internos'
 import { VISTAS_DISENO, VISTAS_SEGUIMIENTO, enlaceDisenoCodigo, enlaceSeguimientoCodigo, type VistaDiseno } from '@/lib/dominio/diseno-codigos'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
 import { nombreDeUnidadOCodigo, nombreVaTenue } from '@/lib/dominio/unidades'
@@ -68,10 +68,13 @@ export async function ListaDeCodigosDeDiseno({
   vista,
   params,
   seguimiento = false,
+  veLoQueDebe = true,
 }: {
   vista: VistaDiseno
   params: Record<string, string | string[] | undefined>
   seguimiento?: boolean
+  /** Si cada fila lleva lo que Diseño debe (plan 6.1): no en el seguimiento de Almacén. */
+  veLoQueDebe?: boolean
 }) {
   // Almacén entra por «Materiales por código» del menú: el título dice lo mismo que el menú.
   const titulo = seguimiento
@@ -107,14 +110,15 @@ export async function ListaDeCodigosDeDiseno({
       )
     : todos
   const codigos = filtro ? buscados.filter(filtro.cumple) : buscados
-  // Lo que Diseño le debe a cada código (plan 6.1), solo en sus propias listas.
-  // Si no se puede leer, cada fila lo dice y la lista sigue.
-  const debe = seguimiento
-    ? null
-    : await loQueDebeDiseno(codigos.map((c) => c.codigo)).catch((e: unknown) => {
+  // Lo que Diseño le debe a cada unidad (plan 6.1): en sus listas y, en
+  // lectura, en el seguimiento de Supervisión general (no en el de Almacén, que
+  // la base no deja leer). Si no se puede leer, cada fila lo dice y la lista sigue.
+  const debe = veLoQueDebe
+    ? await loQueDebeDiseno(codigos.filter((c) => esUnidadDeDiseno(c.codigo)).map((c) => c.codigo)).catch((e: unknown) => {
         console.error('[diseno] lo que debe Diseño:', e)
         return 'sin-leer' as const
       })
+    : null
 
   return (
     <>
@@ -176,18 +180,20 @@ export async function ListaDeCodigosDeDiseno({
       ) : (
         <ul className="space-y-2">
           {codigos.map((c) => (
-            <li key={c.codigo}>
-              <Link
-                href={enlace(c.codigo, vista)}
-                className="block rounded-[var(--radius-base)] border border-borde bg-superficie p-3 hover:border-acento"
-                data-codigo={c.codigo}
-              >
+            <li
+              key={c.codigo}
+              className="rounded-[var(--radius-base)] border border-borde bg-superficie p-3 has-[a:hover]:border-acento"
+            >
+              <Link href={enlace(c.codigo, vista)} className="block" data-codigo={c.codigo}>
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <Nombre c={c} veOt={veOt} />
                   <Resumen c={c} vista={vista} />
                 </div>
-                {debe !== null && <LineaLoQueDebeDiseno className="mt-2" d={debe === 'sin-leer' ? null : debe.get(c.codigo)} />}
               </Link>
+              {/* Fuera del enlace: dentro, el lector leía los cinco puntos como parte de su nombre. */}
+              {debe !== null && esUnidadDeDiseno(c.codigo) && (
+                <LineaLoQueDebeDiseno className="mt-2" d={debe === 'sin-leer' ? null : debe.get(c.codigo)} />
+              )}
             </li>
           ))}
         </ul>

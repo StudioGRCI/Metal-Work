@@ -4,8 +4,8 @@ import type { CompromisoDelPlano, LoQueDebeDiseno, SituacionDelPlano } from '@/l
 import { createClient } from '@/lib/supabase/server'
 
 /**
- * Lo que Diseño entrega por código interno, punto por punto, y la fecha
- * comprometida del plano de cada área contra la real (migración
+ * Lo que Diseño entrega por código interno, punto por punto, y el plano de
+ * Maestranza y de Producción contra la fecha en que el área lo necesita (migración
  * 20261126600000). Lo cuenta la base; aquí solo se arma por código. Lo leen
  * Diseño, Gerencia, Administración y los supervisores
  * (`puede_ver_codigos_de_diseno`): a los demás la base les dice que no.
@@ -51,10 +51,13 @@ export async function loQueDebeDiseno(codigos: readonly string[]): Promise<Map<s
         const compromiso: CompromisoDelPlano = {
           area: f.area,
           areaNombre: f.area_nombre,
+          tieneEtapa: f.tiene_etapa === true,
+          etapa: f.etapa,
           comprometido: f.comprometido,
           entregadoEn: f.entregado_en,
           situacion,
           dias: f.dias == null ? null : Number(f.dias),
+          porVencer: f.por_vencer === true,
         }
         c.compromisos.push(compromiso)
       }

@@ -106,8 +106,6 @@ export default async function PaginaCodigoDeDiseno({ searchParams }: PageProps<'
           <div className="space-y-5">
             <OrdenesDelCodigo ordenes={ordenes} yo={perfil.id} />
 
-            <TarjetaLoQueDebeDiseno d={debe === null ? null : debe.get(codigo)} />
-
             <div className="grid grid-cols-3 gap-3">
               <Indicador
                 titulo="Planos"
@@ -123,6 +121,8 @@ export default async function PaginaCodigoDeDiseno({ searchParams }: PageProps<'
                 pie={(resumen?.etapas_vencidas ?? 0) > 0 ? `${resumen?.etapas_vencidas} ${resumen?.etapas_vencidas === 1 ? 'vencida' : 'vencidas'}` : 'Terminadas'}
               />
             </div>
+
+            <TarjetaLoQueDebeDiseno d={debe === null ? null : debe.get(codigo)} />
 
             <PastillaFiltro
               ruta="/diseno/codigo"

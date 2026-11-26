@@ -50,6 +50,7 @@ import {
   enlaceCodigo,
   faltaElPrecio,
   montoMixto,
+  esUnidadDeDiseno,
   noEsUnidad,
   normalizarCodigo,
   origenDelAvance,
@@ -108,7 +109,7 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
     // El resumen dice cuánto de la mano de obra es el ajuste de la planilla (la vista de costeo reusa la lectura).
     aTodos ? Promise.resolve([]) : costeoDelCodigo(codigo),
     // Lo que Diseño le debe a la unidad (plan 6.1), en lectura; si no se lee, se dice.
-    noEsUnidad(codigo)
+    !esUnidadDeDiseno(codigo)
       ? Promise.resolve(undefined)
       : loQueDebeDiseno([codigo])
           .then((m) => m.get(codigo))
@@ -218,7 +219,7 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
                   faltaPlanilla={faltaPlanilla}
                   ajuste={ajuste}
                 />
-                {!noEsUnidad(codigo) && (
+                {esUnidadDeDiseno(codigo) && (
                   <div className="space-y-1">
                     <LineaDeDiseno d={diseno} />
                     <LineaLoQueDebeDiseno d={debe} />

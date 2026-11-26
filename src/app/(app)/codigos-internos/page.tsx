@@ -22,6 +22,7 @@ import {
   faltaElPrecio,
   llaveParecido,
   montoMixto,
+  esUnidadDeDiseno,
   noEsUnidad,
   origenDelAvance,
   parecidos,
@@ -91,7 +92,7 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
   const mostrar = codigos.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA)
   // Lo que Diseño le debe a cada unidad de esta página (plan 6.1), en lectura.
   // Si no se puede leer, cada fila lo dice y la lista sigue.
-  const debe = await loQueDebeDiseno(mostrar.filter((c) => !noEsUnidad(c.codigo)).map((c) => c.codigo)).catch((e: unknown) => {
+  const debe = await loQueDebeDiseno(mostrar.filter((c) => esUnidadDeDiseno(c.codigo)).map((c) => c.codigo)).catch((e: unknown) => {
     console.error('[codigos-internos] lo que debe Diseño:', e)
     return null
   })
@@ -354,7 +355,7 @@ function FilaCodigo({
         </p>
       )}
 
-      {!noEsUnidad(c.codigo) && (
+      {esUnidadDeDiseno(c.codigo) && (
         <div className="mt-2 space-y-1">
           <LineaDeDiseno d={diseno} />
           <LineaLoQueDebeDiseno d={debe} />

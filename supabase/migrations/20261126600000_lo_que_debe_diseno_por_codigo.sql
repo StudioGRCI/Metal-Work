@@ -12,18 +12,37 @@
 --   4. Las etapas de Diseño (el par Habilitado y Ensamblaje).
 --   5. Los DXF para el corte.
 --
+-- Las etapas cuentan como entregadas solo con las dos: Habilitado en
+-- Maestranza y Ensamblaje en Producción. Con una sola, falta la otra.
+--
 -- Y la fecha comprometida del plano contra la real, por área (Maestranza y
 -- Producción). La fecha comprometida no cambia de dueño (decisión del plan):
--- sigue siendo la que Diseño pone a su etapa de esa área —el día en que el
--- área empieza, y para empezar necesita sus planos—, y la real es cuando subió
--- el primer plano de esa área. Aquí nadie escribe ninguna fecha.
+-- sale de la etapa que Diseño pone en esa área. El plano no tiene fecha propia,
+-- y el área lo necesita para empezar: la fecha es el primer inicio de esa etapa
+-- (la pantalla dice «lo necesita el …, cuando empieza Habilitado»; la que el
+-- formulario de etapas llama «Comprometida» es el fin, cuando la etapa termina).
+-- La real es cuando subió el primer plano vigente de esa área. Límite: el plano
+-- no dice de qué juego es, así que con varios juegos (Chasis, Furgón) se mide
+-- el primero; el plano del juego siguiente no sale vencido. Aquí nadie escribe
+-- ninguna fecha. «Por vencer» es lo mismo que en las etapas: hasta tres días
+-- hábiles (`limite_por_vencer`).
 --
 -- La lista la ven Diseño y, en lectura, Supervisión y Administración (decisión
--- del plan), con el mismo permiso que ya deja ver las etapas de cada código
--- (`puede_ver_codigos_de_diseno`). Devuelve solo si cada punto está y cuándo:
--- ni el contenido de los planos, ni los DXF, ni importes.
+-- del plan): Diseño (`diseno.codigos`), Gerencia y Administración
+-- (`codigos_internos.ver`), el supervisor de cada área
+-- (`codigos_internos.area`) y Supervisión general con el Gerente de producción
+-- (`codigos_internos.seguimiento`). Almacén tiene ese mismo permiso de
+-- seguimiento y no la ve: no la pidió el plan, y por RLS no lee la OT, la
+-- ficha ni los DXF que esta lista cuenta. Devuelve solo si cada punto está y
+-- cuándo: ni el contenido de los planos, ni los DXF, ni importes.
 --
--- Idempotente. Sin DROP.
+-- Es `security definer` aunque solo lee, y cruza a sabiendas dos límites del
+-- RLS: el supervisor de un área ve aquí que el plano de la otra área está y
+-- cuándo subió (por RLS solo lee los de la suya), y Administración ve cuántos
+-- DXF hay (por RLS no lee `codigo_dxf`). Son cantidades y fechas, nunca el
+-- archivo, y es lo que el plan pidió que vieran en lectura.
+--
+-- Idempotente. Sin DROP: en producción la función no existía.
 -- =============================================================================
 
 create or replace function public.lo_que_debe_diseno(p_codigos text[])
@@ -41,10 +60,13 @@ returns table (
   dxf_en            timestamptz,
   area              text,
   area_nombre       text,
+  tiene_etapa       boolean,
+  etapa             text,
   comprometido      date,
   entregado_en      timestamptz,
   situacion         text,
-  dias              integer
+  dias              integer,
+  por_vencer        boolean
 )
 language plpgsql
 stable
@@ -55,8 +77,13 @@ as $$
 #variable_conflict use_column
 declare
   v_hoy date := (now() at time zone 'America/Lima')::date;
+  v_por_vencer date := public.limite_por_vencer();
 begin
-  if not public.puede_ver_codigos_de_diseno() then
+  if not (public.es_admin()
+          or public.tiene_permiso('diseno.codigos')
+          or public.tiene_permiso('codigos_internos.ver')
+          or public.tiene_permiso('codigos_internos.area')
+          or (public.tiene_permiso('codigos_internos.seguimiento') and public.mi_rol() is distinct from 'ALMACENERO')) then
     raise exception 'No tienes permiso para ver lo que Diseño lleva en cada código.' using errcode = 'insufficient_privilege';
   end if;
   if p_codigos is null or cardinality(p_codigos) = 0 then
@@ -101,7 +128,7 @@ begin
   ),
   -- Las etapas de Diseño: las de arriba que no agregó un área.
   etapa as (
-    select e.codigo_interno as codigo, e.area_id, e.inicio_plan, e.creado_en
+    select e.codigo_interno as codigo, e.area_id, e.inicio_plan, e.creado_en, e.nombre, e.orden
       from public.codigo_etapas e
      where e.quitada_en is null and e.padre_id is null and not e.de_area
        and e.codigo_interno in (select pe.codigo from pedido pe)
@@ -115,16 +142,23 @@ begin
      where x.quitado_en is null and x.codigo_interno in (select pe.codigo from pedido pe)
      group by x.codigo_interno
   ),
-  -- Por área de Maestranza y Producción: la fecha que Diseño comprometió (el
-  -- primer inicio de su etapa ahí) y cuándo subió el primer plano de esa área.
+  -- Por área de Maestranza y Producción: la etapa de Diseño que da la fecha (la
+  -- que empieza primero), su inicio, y cuándo subió el primer plano de esa área.
+  etapa_area as (
+    select et.codigo, et.area_id, min(et.inicio_plan) as comprometido,
+           (array_agg(et.nombre order by et.inicio_plan nulls last, et.orden, et.creado_en))[1] as etapa
+      from etapa et group by et.codigo, et.area_id
+  ),
+  plano_area as (
+    select pl.codigo, pl.area_id, min(pl.subido_en) as entregado_en from plano pl group by pl.codigo, pl.area_id
+  ),
   area as (
     select pe.codigo, a.codigo as area, a.nombre as area_nombre, a.orden_secuencia,
-           (select min(et.inicio_plan) from etapa et where et.codigo = pe.codigo and et.area_id = a.id) as comprometido,
-           (select min(pl.subido_en) from plano pl where pl.codigo = pe.codigo and pl.area_id = a.id) as entregado_en,
-           exists (select 1 from etapa et where et.codigo = pe.codigo and et.area_id = a.id)
-             or exists (select 1 from plano pl where pl.codigo = pe.codigo and pl.area_id = a.id) as aplica
+           ea.area_id is not null as tiene_etapa, ea.etapa, ea.comprometido, pa.entregado_en
       from pedido pe
       cross join public.areas a
+      left join etapa_area ea on ea.codigo = pe.codigo and ea.area_id = a.id
+      left join plano_area pa on pa.codigo = pe.codigo and pa.area_id = a.id
      where a.codigo in ('MTZ', 'PRD')
   )
   select pe.codigo,
@@ -134,9 +168,8 @@ begin
          coalesce(m.n, 0), m.en,
          coalesce(et.n, 0), et.en,
          coalesce(x.n, 0), x.en,
-         ar.area, ar.area_nombre, ar.comprometido, ar.entregado_en,
+         ar.area, ar.area_nombre, ar.tiene_etapa, ar.etapa, ar.comprometido, ar.entregado_en,
          case
-           when ar.area is null then null
            when ar.comprometido is null then case when ar.entregado_en is null then 'SIN_FECHA' else 'ENTREGADO_SIN_FECHA' end
            when ar.entregado_en is not null then
              case when (ar.entregado_en at time zone 'America/Lima')::date <= ar.comprometido then 'A_TIEMPO' else 'TARDE' end
@@ -144,31 +177,26 @@ begin
            else 'PENDIENTE'
          end,
          case
-           when ar.area is null or ar.comprometido is null then null
+           when ar.comprometido is null then null
            when ar.entregado_en is not null then greatest((ar.entregado_en at time zone 'America/Lima')::date - ar.comprometido, 0)
            when ar.comprometido < v_hoy then v_hoy - ar.comprometido
            else ar.comprometido - v_hoy
-         end
+         end,
+         ar.entregado_en is null and ar.comprometido >= v_hoy and ar.comprometido <= v_por_vencer
     from pedido pe
     left join orden o on o.codigo = pe.codigo
     left join planos pl on pl.codigo = pe.codigo
     left join material m on m.codigo = pe.codigo
     left join etapas et on et.codigo = pe.codigo
     left join dxf x on x.codigo = pe.codigo
-    -- Una fila por área que aplica; sin ninguna, una sola fila con el área vacía.
-    left join lateral (
-      select a2.area, a2.area_nombre, a2.comprometido, a2.entregado_en, a2.orden_secuencia
-        from area a2 where a2.codigo = pe.codigo and a2.aplica
-      union all
-      select null, null, null, null, null
-       where not exists (select 1 from area a3 where a3.codigo = pe.codigo and a3.aplica)
-    ) ar on true
-   order by pe.codigo, ar.orden_secuencia nulls first;
+    -- Siempre dos filas: Maestranza y Producción, tengan o no su etapa.
+    join area ar on ar.codigo = pe.codigo
+   order by pe.codigo, ar.orden_secuencia;
 end;
 $$;
 
 comment on function public.lo_que_debe_diseno(text[]) is
-  'Lo que Diseño entrega por código interno, punto por punto (ficha técnica de la OT, planos, materiales, etapas de Diseño y DXF): cuántos hay y desde cuándo. Y por área (Maestranza, Producción), la fecha comprometida del plano —el primer inicio de la etapa de Diseño en esa área— contra la subida del primer plano, con su situación (A_TIEMPO, TARDE, PENDIENTE, VENCIDO, SIN_FECHA, ENTREGADO_SIN_FECHA) y los días de atraso o los que faltan, por fecha de Lima. Una fila por área que aplica; sin ninguna, una fila con el área vacía. La leen quienes ven los códigos de Diseño (puede_ver_codigos_de_diseno). Sin contenido de planos ni DXF ni importes.';
+  'Lo que Diseño entrega por código interno, punto por punto (ficha técnica de la OT, planos, materiales, etapas de Diseño y DXF): cuántos hay y desde cuándo. Una fila por área (Maestranza y Producción, siempre las dos): si tiene su etapa de Diseño y cuál da la fecha, la fecha en que el área necesita el plano —el primer inicio de esa etapa— contra la subida del primer plano vigente, con su situación (A_TIEMPO, TARDE, PENDIENTE, VENCIDO, SIN_FECHA, ENTREGADO_SIN_FECHA), los días de atraso o los que faltan y si está por vencer, por fecha de Lima. Con varios juegos de planos mide el primero. La leen Diseño, Gerencia, Administración, los supervisores, Supervisión general y el Gerente de producción; Almacén no. Sin contenido de planos ni DXF ni importes.';
 
 revoke all on function public.lo_que_debe_diseno(text[]) from public, anon;
 grant execute on function public.lo_que_debe_diseno(text[]) to authenticated;

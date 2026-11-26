@@ -4,11 +4,14 @@
  *
  *   1. Diseño, en sus listas (Planos, Gestión de materiales, Control de etapas
  *      y Archivos DXF), ve en cada código los cinco puntos con hecho o
- *      pendiente, lo mismo que da la base con su sesión; y en el código, la
- *      tarjeta con el detalle y el plano de cada área contra su fecha.
+ *      pendiente y, del plano, solo lo vencido o por vencer; en el código, la
+ *      tarjeta junto a las cifras, con el plano de cada área contra el día en
+ *      que lo necesita. Lo esperado sale de las tablas, no de la función.
  *   2. Administración, en Códigos internos y en el detalle, ve los cinco puntos
  *      en lectura donde antes decía «Diseño todavía no cargó planos ni etapas».
- *   3. El supervisor de Maestranza, en Planos y etapas, los ve en lectura.
+ *   3. El supervisor de Maestranza, en Planos y etapas, los ve en lectura, con
+ *      el plano solo de su área; el Gerente de producción, en su seguimiento.
+ *      Almacén, con el mismo seguimiento, no la ve ni la saca de la base.
  *   4. Logística no entra a ninguna de esas pantallas.
  *   5. En el teléfono (390) nada se sale. Capturas en 390 y 1440.
  *
@@ -129,27 +132,55 @@ const CODIGOS = ['SR-101', 'SR-102', 'SR-103']
 const [{ hay }] = await consulta(`select count(*)::int as hay from public.codigo_planos where codigo_interno = 'SR-101'`)
 if (hay === 0) throw new Error('Falta lo sembrado: corre sembrar-diseno-por-codigo.sql.')
 
-/** Lo que dice la base con la sesión de ese puesto, como lo pinta la pantalla. */
-async function esperado(puesto) {
-  const filas = await comoCuenta(puesto, 'select * from public.lo_que_debe_diseno($1)', [CODIGOS])
+/**
+ * Lo esperado, sacado de las tablas (como postgres) y no de la función: si la
+ * función se equivoca, la pantalla no puede coincidir con el error.
+ */
+async function esperadoDeLasTablas() {
+  const filas = await consulta(
+    `with c(codigo) as (select unnest($1::text[]))
+     select c.codigo, a.codigo as area,
+            exists (select 1 from public.ot_adjuntos x join public.ordenes_trabajo o on o.id = x.orden_id and o.estado <> 'ANULADA'
+                      join public.unidades u on u.id = o.unidad_id and u.codigo_interno = c.codigo where x.tipo = 'FICHA_VEHICULO') as ficha,
+            exists (select 1 from public.codigo_planos p where p.codigo_interno = c.codigo and p.anulado_en is null) as planos,
+            exists (select 1 from public.codigo_materiales m where m.codigo_interno = c.codigo and m.quitado_en is null) as materiales,
+            exists (select 1 from public.codigo_dxf d where d.codigo_interno = c.codigo and d.quitado_en is null) as dxf,
+            exists (select 1 from public.codigo_etapas e where e.codigo_interno = c.codigo and e.area_id = a.id
+                      and e.quitada_en is null and e.padre_id is null and not e.de_area) as etapa,
+            (select min(e.inicio_plan) from public.codigo_etapas e where e.codigo_interno = c.codigo and e.area_id = a.id
+                      and e.quitada_en is null and e.padre_id is null and not e.de_area)::text as necesita,
+            (select min((r.subido_en at time zone 'America/Lima')::date) from public.codigo_planos p
+               join public.codigo_plano_revisiones r on r.plano_id = p.id
+              where p.codigo_interno = c.codigo and p.area_id = a.id and p.anulado_en is null)::text as subido,
+            ((now() at time zone 'America/Lima')::date)::text as hoy, public.limite_por_vencer()::text as limite
+       from c cross join public.areas a where a.codigo in ('MTZ', 'PRD')`,
+    [CODIGOS],
+  )
   const por = new Map()
   for (const f of filas) {
-    const c = por.get(f.codigo) ?? {
-      puntos: { ficha: f.ficha_en !== null, planos: f.planos > 0, materiales: f.materiales > 0, etapas: f.etapas > 0, dxf: f.dxf > 0 },
-      compromisos: {},
-    }
-    if (f.area) c.compromisos[f.area] = f.situacion
+    const c = por.get(f.codigo) ?? { puntos: { ficha: f.ficha, planos: f.planos, materiales: f.materiales, etapas: true, dxf: f.dxf }, areas: {} }
+    c.puntos.etapas &&= f.etapa
+    const situacion = !f.necesita
+      ? f.subido ? 'ENTREGADO_SIN_FECHA' : 'SIN_FECHA'
+      : f.subido ? (f.subido <= f.necesita ? 'A_TIEMPO' : 'TARDE') : f.necesita < f.hoy ? 'VENCIDO' : 'PENDIENTE'
+    c.areas[f.area] = { situacion, urgente: situacion === 'VENCIDO' || (situacion === 'PENDIENTE' && f.necesita <= f.limite) }
     por.set(f.codigo, c)
   }
   return por
 }
+/** De las áreas dadas, la más urgente, como la pinta la lista: VENCIDO antes que lo por vencer. */
+function urgenteEsperado(c, areas = ['MTZ', 'PRD']) {
+  const urg = areas.filter((a) => c.areas[a]?.urgente).sort((a, b) => (c.areas[a].situacion === 'VENCIDO' ? 0 : 1) - (c.areas[b].situacion === 'VENCIDO' ? 0 : 1))
+  return urg.length ? { [urg[0]]: c.areas[urg[0]].situacion } : {}
+}
+const todas = (c) => Object.fromEntries(Object.entries(c.areas).map(([a, x]) => [a, x.situacion]))
 const igual = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+const tablas = await esperadoDeLasTablas()
 
 // ------------------------------------------------ 1. Diseño
-const deDiseno = await esperado('diseno')
-comprobar(igual(deDiseno.get('SR-101')?.puntos, { ficha: true, planos: true, materiales: true, etapas: true, dxf: true }),
-  'la base da a SR-101 los cinco puntos hechos')
-comprobar(deDiseno.get('SR-101')?.compromisos.MTZ === 'TARDE' && deDiseno.get('SR-102')?.compromisos.MTZ === 'VENCIDO',
+comprobar(igual(tablas.get('SR-101')?.puntos, { ficha: true, planos: true, materiales: true, etapas: true, dxf: true }),
+  'las tablas dan a SR-101 los cinco puntos hechos')
+comprobar(tablas.get('SR-101')?.areas.MTZ.situacion === 'TARDE' && tablas.get('SR-102')?.areas.MTZ.situacion === 'VENCIDO',
   'y el plano de Maestranza de SR-101 tarde, el de SR-102 vencido')
 {
   const { pagina, contexto } = await entrar('diseno')
@@ -158,18 +189,36 @@ comprobar(deDiseno.get('SR-101')?.compromisos.MTZ === 'TARDE' && deDiseno.get('S
     const enPantalla = await listas(pagina)
     for (const codigo of CODIGOS) {
       const fila = enPantalla.find((l) => l.codigo === codigo)
-      comprobar(fila && igual(fila.puntos, deDiseno.get(codigo).puntos) && igual(fila.compromisos, deDiseno.get(codigo).compromisos),
-        `/diseno/${vista}: ${codigo} con los cinco puntos y el plano de cada área como dice la base (${JSON.stringify(fila?.puntos)})`)
+      const t = tablas.get(codigo)
+      comprobar(fila && igual(fila.puntos, t.puntos) && igual(fila.compromisos, urgenteEsperado(t)),
+        `/diseno/${vista}: ${codigo} con los cinco puntos y solo el plano urgente, como dicen las tablas (${JSON.stringify(fila?.puntos)} ${JSON.stringify(fila?.compromisos)})`)
     }
+    // La línea va fuera del enlace: el nombre del enlace no la lleva.
+    const nombre = await pagina.locator('a[data-codigo="SR-101"]').first().evaluate((a) => a.textContent.length)
+    comprobar(nombre < 250 && (await pagina.locator('a[data-codigo] [data-lo-que-debe-diseno]').count()) === 0,
+      `/diseno/${vista}: la lista de cinco puntos queda fuera del enlace de la fila (${nombre} caracteres en el enlace)`)
   }
   await ir(pagina, '/diseno/codigo?codigo=SR-101')
   const tarjeta = (await listas(pagina)).find((l) => l.codigo === 'SR-101')
-  comprobar(tarjeta && /5 de 5/.test(tarjeta.texto) && /Plano de Maestranza: comprometido para el .*3 días tarde/.test(tarjeta.texto),
-    `el código SR-101 en Diseño dice «5 de 5» y el plano de Maestranza 3 días tarde («${tarjeta?.texto.slice(0, 160)}»)`)
+  comprobar(
+    tarjeta && /5 de 5/.test(tarjeta.texto) && igual(tarjeta.compromisos, todas(tablas.get('SR-101'))) &&
+      /Plano de Maestranza: lo necesita el .*, cuando empieza Habilitado: Chasis y piso; se subió el .*Subido 3 días tarde/.test(tarjeta.texto),
+    `el código SR-101 en Diseño dice «5 de 5», las dos áreas y el plano de Maestranza 3 días tarde («${tarjeta?.texto.slice(0, 200)}»)`)
+  // Junto a las cifras: va después de ellas y antes de las secciones.
+  const orden = await pagina.evaluate(() => {
+    const t = document.querySelector('[data-tarjeta-lo-que-debe]')
+    const secciones = document.querySelector('[aria-label="Secciones del código"]') ?? [...document.querySelectorAll('nav, [role="tablist"]')].at(-1)
+    const cifras = [...document.querySelectorAll('p')].find((p) => p.textContent.trim() === 'Planos')
+    return {
+      despuesDeCifras: Boolean(cifras && t && cifras.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING),
+      antesDeSecciones: Boolean(secciones && t && t.compareDocumentPosition(secciones) & Node.DOCUMENT_POSITION_FOLLOWING),
+    }
+  })
+  comprobar(orden.despuesDeCifras, `la tarjeta va junto a las cifras, después de ellas (${JSON.stringify(orden)})`)
   await ir(pagina, '/diseno/codigo?codigo=SR-103')
   const nada = (await listas(pagina)).find((l) => l.codigo === 'SR-103')
-  comprobar(nada && /0 de 5/.test(nada.texto) && /Falta adjuntarla a la OT/.test(nada.texto),
-    'SR-103 dice «0 de 5» y que falta adjuntar la ficha a la OT')
+  comprobar(nada && /0 de 5/.test(nada.texto) && /Falta adjuntarla a la OT/.test(nada.texto) && /Faltan Habilitado y Ensamblaje/.test(nada.texto),
+    'SR-103 dice «0 de 5», que falta adjuntar la ficha a la OT y las dos etapas')
   // Lo que ya tenía la pantalla sigue: la OT, las cifras y las secciones.
   comprobar((await pagina.getByText('OT 0003-2026').count()) > 0 && (await pagina.getByRole('link', { name: 'Materiales' }).count()) > 0,
     'el código sigue con su OT y sus secciones')
@@ -178,36 +227,66 @@ comprobar(deDiseno.get('SR-101')?.compromisos.MTZ === 'TARDE' && deDiseno.get('S
 
 // ------------------------------------------------ 2. Administración, en lectura
 {
-  const deAdm = await esperado('administracion')
   const { pagina, contexto } = await entrar('administracion')
   await ir(pagina, '/codigos-internos')
   const enPantalla = await listas(pagina)
   for (const codigo of CODIGOS) {
     const fila = enPantalla.find((l) => l.codigo === codigo)
-    comprobar(fila && igual(fila.puntos, deAdm.get(codigo).puntos), `Códigos internos: ${codigo} con sus cinco puntos (Administración)`)
+    comprobar(fila && igual(fila.puntos, tablas.get(codigo).puntos), `Códigos internos: ${codigo} con sus cinco puntos (Administración)`)
   }
+  comprobar(!enPantalla.some((l) => ['OFICINA', 'PLANTA', 'TODOS LOS ACTIVOS'].includes(l.codigo)), 'ni la oficina ni la planta llevan la lista')
   comprobar((await pagina.getByText('Diseño todavía no cargó planos ni etapas').count()) === 0,
     'ya no dice «Diseño todavía no cargó planos ni etapas»: lo dice la lista')
   comprobar((await pagina.locator('[data-lo-que-debe-diseno] button, [data-lo-que-debe-diseno] form').count()) === 0,
     'y la lista no tiene ningún botón: es lectura')
   await ir(pagina, '/codigos-internos/detalle?codigo=SR-102')
   const detalle = (await listas(pagina)).find((l) => l.codigo === 'SR-102')
-  comprobar(detalle && detalle.compromisos.MTZ === 'VENCIDO' && /Vencido hace 2 días/.test(detalle.texto),
-    `el detalle de SR-102 dice que el plano de Maestranza venció hace 2 días («${detalle?.texto.slice(0, 120)}»)`)
+  comprobar(detalle && detalle.compromisos.MTZ === 'VENCIDO' && /Plano de Maestranza vencido hace 2 días/.test(detalle.texto),
+    `el detalle de SR-102 dice que el plano de Maestranza venció hace 2 días («${detalle?.texto.slice(0, 160)}»)`)
   await contexto.close()
 }
 
-// ------------------------------------------------ 3. Supervisión de Maestranza, en lectura
+// ------------------------------------------------ 3. Supervisión, en lectura
 {
-  const deSup = await esperado('sup.mtz')
   const { pagina, contexto } = await entrar('sup.mtz')
   await ir(pagina, '/planos')
   const enPantalla = await listas(pagina)
-  const fila = enPantalla.find((l) => l.codigo === 'SR-101')
-  comprobar(fila && igual(fila.puntos, deSup.get('SR-101').puntos) && fila.compromisos.MTZ === 'TARDE',
-    'Planos y etapas: el supervisor de Maestranza ve los cinco puntos de SR-101 y su plano tarde')
+  for (const codigo of ['SR-101', 'SR-102']) {
+    const fila = enPantalla.find((l) => l.codigo === codigo)
+    const t = tablas.get(codigo)
+    comprobar(fila && igual(fila.puntos, t.puntos) && igual(fila.compromisos, urgenteEsperado(t, ['MTZ'])),
+      `Planos y etapas: el supervisor de Maestranza ve los cinco puntos de ${codigo} y, del plano, solo lo urgente de su área (${JSON.stringify(fila?.compromisos)})`)
+  }
   comprobar(enPantalla.length > 0 && enPantalla.every((l) => l.codigo), 'cada tarjeta de código lleva su lista')
+  // Va después de su trabajo: los planos que recibe y sus etapas.
+  const despues = await pagina.locator('li').filter({ has: pagina.locator('[data-lo-que-debe-diseno="SR-102"]') }).first().evaluate((li) => {
+    const l = li.querySelector('[data-lo-que-debe-diseno]')
+    const etapas = li.querySelector('[aria-label="Etapas de tu área"]')
+    return Boolean(etapas && etapas.compareDocumentPosition(l) & Node.DOCUMENT_POSITION_FOLLOWING)
+  })
+  comprobar(despues, 'en la tarjeta del código, la lista va después de las etapas del supervisor')
   await contexto.close()
+}
+{
+  // Supervisión general la ve en su seguimiento por código, con todas las unidades.
+  const { pagina, contexto } = await entrar('gerencia.produccion')
+  await ir(pagina, '/seguimiento')
+  const enPantalla = await listas(pagina)
+  for (const codigo of CODIGOS) {
+    const fila = enPantalla.find((l) => l.codigo === codigo)
+    comprobar(fila && igual(fila.puntos, tablas.get(codigo).puntos), `Seguimiento por código: ${codigo} con sus cinco puntos (Gerente de producción)`)
+  }
+  await contexto.close()
+}
+{
+  // Almacén tiene el mismo seguimiento y no la ve: ni en la pantalla ni pidiéndola a la base.
+  const { pagina, contexto } = await entrar('almacen')
+  await ir(pagina, '/seguimiento?vista=materiales')
+  comprobar(new URL(pagina.url()).pathname === '/seguimiento' && (await pagina.locator('[data-lo-que-debe-diseno]').count()) === 0,
+    'Almacén entra a su seguimiento sin la lista de lo que debe Diseño')
+  await contexto.close()
+  const negado = await comoCuenta('almacen', `select public.lo_que_debe_diseno(array['SR-101'])`).then(() => false, (e) => /No tienes permiso/.test(e.message))
+  comprobar(negado, 'y la base no se la da')
 }
 
 // ------------------------------------------------ 4. Logística no entra
