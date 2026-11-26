@@ -320,7 +320,7 @@ export default async function PaginaPorPagar() {
               nombre={['OC', 'OC']}
               fila={filaBoleta}
               // Lo pagado de más y la factura en otra moneda le piden algo a Tesorería: arriba, como salían antes.
-              primero={{ titulo: 'Te piden algo', filas: boletasPorPagar.filter((b) => !boletasConFecha.includes(b) && pideAlgo(b)) }}
+              primero={{ titulo: pasa ? 'Te piden algo' : 'Le piden algo a Tesorería', filas: boletasPorPagar.filter((b) => !boletasConFecha.includes(b) && pideAlgo(b)) }}
               aparte={{ titulo: 'No se pagan aquí', filas: boletasPorPagar.filter((b) => !boletasConFecha.includes(b) && !pideAlgo(b)), conTotal: false }}
             />
           )}
