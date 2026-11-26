@@ -3,8 +3,9 @@ import { FileDown } from 'lucide-react'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { ConAvisos } from '@/app/(app)/requerimientos/atencion/avisos'
 import { Recorrido } from '@/components/ui/recorrido'
-import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
+import { AccionesDeFila, SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
 import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
@@ -19,7 +20,7 @@ import { ocParaDetector } from '@/lib/dominio/adquisiciones'
 import { igvCompra } from '@/lib/dominio/compra-materiales'
 import { ORIGEN_COMPRA, puedeIrARecojo, situacionCompra } from '@/lib/dominio/logistica'
 import { FILTRO_ATRASADAS, type PlazoDeCompra } from '@/lib/dominio/plazos'
-import { describirRecorridoDeLaOrdenDeCompra, type PasoDelRecorrido } from '@/lib/dominio/recorrido'
+import { correccionDeLaFecha, describirRecorridoDeLaOrdenDeCompra, type PasoDelRecorrido } from '@/lib/dominio/recorrido'
 import { comprobantePedido, compraConPdf, condicionDePago } from '@/lib/dominio/proveedores'
 import { fecha, moneda } from '@/lib/format'
 import { compraComoLogistica, exigirPermiso, puede } from '@/lib/sesion'
@@ -145,18 +146,21 @@ export default async function PaginaOrdenesCompra({ searchParams }: { searchPara
         )
       )}
 
+      {/* Lo que dijo la ventana del motivo o de la fecha va arriba: con «Atrasadas», corregir la fecha saca la fila de la lista. */}
+      <ConAvisos>
       <Tarjeta className="overflow-hidden">
         <Tabla apilada>
           <TablaCabecera>
             <tr>
               <TH>Orden</TH>
-              <TH className="hidden md:table-cell">Para</TH>
+              {/* «Para» espera a 1 280 px: entre 768 y 1 279 la tabla se deslizaba de costado y tapaba los botones. */}
+              <TH className="hidden xl:table-cell">Para</TH>
               {/* Por debajo de 768 px cada OC es una ficha (`apilada`): el monto, en qué va y el plazo viajan bajo el número, y el recorrido abierto y los botones van a lo ancho. Con sus columnas la tabla medía 461 px en una pantalla de 390, y el recorrido quedaba en una columna de 150 px. */}
               <TH className="hidden text-right md:table-cell">Monto sin IGV</TH>
               <TH className="hidden md:table-cell">En qué va</TH>
               <TH className="hidden md:table-cell">Comprobante</TH>
               {/* Con `relative`, el rótulo oculto queda dentro de la tabla que se desliza y no ensancha la página en el teléfono. */}
-              <TH className="relative text-right">
+              <TH className="relative text-right md:w-64">
                 <span className="sr-only">Acciones</span>
               </TH>
             </tr>
@@ -183,6 +187,7 @@ export default async function PaginaOrdenesCompra({ searchParams }: { searchPara
           </tbody>
         </Tabla>
       </Tarjeta>
+      </ConAvisos>
     </>
   )
 }
@@ -218,7 +223,16 @@ function FilaCompra({
   )
   const origen = ORIGEN_COMPRA[c.origen === 'DIRECTA' && c.requerimientos.length > 0 ? 'RQ' : c.origen]
   const situacion = situacionCompra(c)
-  const corregida = Boolean(recorrido?.some((p) => p.paso === 'FECHA_CORREGIDA'))
+  const corregida = correccionDeLaFecha(recorrido)
+  // Quién la tiene ahora y hace cuántos días; abierto, cada paso y lo que anotó Logística.
+  const historia = (
+    <Recorrido
+      pasos={recorrido ? describirRecorridoDeLaOrdenDeCompra(recorrido) : null}
+      className="mt-2 rounded-[var(--radius-base)] border border-borde"
+      relleno="px-2.5"
+      femenino
+    />
+  )
   const vigente = c.aprobacion !== 'RECHAZADA' && c.aprobacion !== 'ANULADA'
   const para = [
     // La OC que junta insumos de varios RQ no tiene un código propio: lleva el de cada uno.
@@ -257,6 +271,11 @@ function FilaCompra({
           ) : (
             <span className="text-xs text-texto-suave">{comprobantePendiente(c)}</span>
           )}
+          {/* En la ficha, lo que la columna «Comprobante» dice debajo: qué se pidió y qué facturas tiene. */}
+          {!sinCurso && <span className="text-xs text-texto-suave">{comprobante.etiqueta}</span>}
+          {c.facturas.length > 0 && (
+            <span className="tabular text-xs text-texto">{c.facturas.map((f) => f.numero).join(', ')}</span>
+          )}
         </div>
         <p className="text-xs text-texto">{c.proveedor}</p>
         <p className="text-xs text-texto-suave">
@@ -275,20 +294,15 @@ function FilaCompra({
             {c.aprobacion === 'ANULADA' ? 'Anulada' : 'Rechazada'}: {c.motivo_rechazo}
           </p>
         )}
-        <p className="text-xs text-texto-suave md:hidden">Para {para || '—'}</p>
+        <p className="text-xs text-texto-suave xl:hidden">Para {para || '—'}</p>
         {/* En el teléfono el plazo va aquí, con el resto de la fila. */}
         <PlazoDeLaCompra plazo={plazo} corregida={corregida} className="mt-1 md:hidden" />
         <UltimoMotivo pasos={recorrido} className="mt-1 md:hidden" />
         <HistorialDeCorrecciones correcciones={correcciones} />
-        {/* Quién la tiene ahora y hace cuántos días; abierto, cada paso y lo que anotó Logística. */}
-        <Recorrido
-          pasos={recorrido ? describirRecorridoDeLaOrdenDeCompra(recorrido) : null}
-          className="mt-2 rounded-[var(--radius-base)] border border-borde"
-          relleno="px-2.5"
-          femenino
-        />
+        {/* En la ficha del teléfono el recorrido va a lo ancho; en el monitor, en «En qué va», junto al motivo. */}
+        <div className="md:hidden">{historia}</div>
       </TD>
-      <TD className="hidden text-texto-suave md:table-cell">{para || '—'}</TD>
+      <TD className="hidden text-texto-suave xl:table-cell">{para || '—'}</TD>
       <TD className="tabular hidden text-right whitespace-nowrap md:table-cell">{moneda(c.monto, divisa(c.moneda))}</TD>
       <TD className="hidden md:table-cell">
         <div className="flex flex-wrap gap-1">
@@ -298,6 +312,7 @@ function FilaCompra({
         </div>
         <PlazoDeLaCompra plazo={plazo} corregida={corregida} className="mt-1" />
         <UltimoMotivo pasos={recorrido} className="mt-1" />
+        {historia}
       </TD>
       <TD className="hidden md:table-cell">
         {c.tiene_factura ? (
@@ -321,7 +336,7 @@ function FilaCompra({
         )}
       </TD>
       <TD className="text-right">
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <AccionesDeFila>
           {compraConPdf(c.aprobacion) && (
             <a
               href={`/compras/${c.id}/pdf`}
@@ -337,7 +352,7 @@ function FilaCompra({
             <SeguimientoDeLaCompra
               documento={{ tipo: 'OC', id: c.id, nombre: c.nombre }}
               motivo={(plazo.dias_atraso ?? 0) > 0}
-              fecha={plazo.completa_en ? undefined : plazo.esperada}
+              fecha={plazo.completa_en || (plazo.llego_en && !plazo.por_llegar?.length) ? undefined : plazo.esperada}
             />
           )}
           {emite && c.aprobacion !== 'ANULADA' && (
@@ -356,7 +371,7 @@ function FilaCompra({
               verAdquisiciones={verAdquisiciones}
             />
           )}
-        </div>
+        </AccionesDeFila>
       </TD>
     </TR>
   )

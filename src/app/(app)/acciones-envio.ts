@@ -2,6 +2,7 @@
 
 import { z } from 'zod'
 
+import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { CLAVES_DEL_ENVIO, MAXIMO_PENDIENTES, type ClaveDelEnvio, type Falta, type LoQueEntro } from '@/lib/dominio/envios'
 import { cantidad, fecha, moneda, type CodigoMoneda } from '@/lib/format'
 import { obtenerSesion } from '@/lib/sesion'
@@ -339,7 +340,7 @@ async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo:
         .maybeSingle()
       if (!data) return null
       const de = data.ordenes_compra_materiales
-        ? (data.ordenes_compra_materiales.numero ?? data.ordenes_compra_materiales.referencia)
+        ? nombreDeOc(data.ordenes_compra_materiales)
         : (data.ordenes_servicio?.numero ?? null)
       return {
         por: data.registrado_por,

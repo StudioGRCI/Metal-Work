@@ -9,7 +9,7 @@ import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 /**
- * El seguimiento de una compra atrasada (Plan 4.2, migración 20261126420000):
+ * El seguimiento de una compra atrasada (Plan 4.2, migración 20261126462000):
  * por qué se atrasó y la fecha nueva que prometió el proveedor. Lo anota quien
  * emite las compras (`compras.crear`, el mismo permiso que exigen las dos
  * funciones). La OC y la OS no cambian: cada anotación es una fila nueva.

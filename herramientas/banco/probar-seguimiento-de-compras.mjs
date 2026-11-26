@@ -1,5 +1,5 @@
 /**
- * Clic real sobre la migración 20261126420000 (Plan 4.2): quién tiene cada
+ * Clic real sobre la migración 20261126462000 (Plan 4.2): quién tiene cada
  * compra y por qué se atrasó. Con la cuenta de cada puesto, nunca ADMIN:
  *
  *   1. Logística, en «Órdenes de compra», ve en cada OC quién la tiene y hace
@@ -181,7 +181,7 @@ const fila = (pagina, nombre) => pagina.locator(`tr[data-compra="${nombre}"]`)
   )
   const nueva = (await consulta(`select to_char($1::date + $2::int, 'YYYY-MM-DD') as d`, [hoy, 3 + corregidas]))[0].d
   const [{ fecha_estimada: original }] = await consulta('select fecha_estimada::text from public.ordenes_compra_materiales where id = $1', [ocFecha.id])
-  await fila(pagina, ocFecha.nombre).getByRole('button', { name: /corregir la fecha/i }).click()
+  await fila(pagina, ocFecha.nombre).getByRole('button', { name: /corregir fecha/i }).click()
   await ventana.getByLabel('Fecha nueva que prometió el proveedor').fill(nueva)
   await ventana.getByLabel('Por qué cambia').selectOption('TRANSPORTE')
   await ventana.getByRole('button', { name: 'Corregir' }).click()

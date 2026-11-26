@@ -4,8 +4,9 @@ import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { ConAvisos } from '@/app/(app)/requerimientos/atencion/avisos'
 import { Recorrido } from '@/components/ui/recorrido'
-import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
+import { AccionesDeFila, SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import {
   areasSolicitantes,
@@ -21,7 +22,7 @@ import { llaveParecido, type CodigoParaElegir } from '@/lib/dominio/codigos-inte
 import { resumenDetraccion, type TipoDetraccion } from '@/lib/dominio/detraccion'
 import { ESTADO_SERVICIO, servicioSinPapel } from '@/lib/dominio/logistica'
 import { FILTRO_ATRASADAS, type PlazoDeServicio } from '@/lib/dominio/plazos'
-import { describirRecorridoDeLaOrdenDeServicio, type PasoDelRecorrido } from '@/lib/dominio/recorrido'
+import { correccionDeLaFecha, describirRecorridoDeLaOrdenDeServicio, type PasoDelRecorrido } from '@/lib/dominio/recorrido'
 import { APROBACION_COMPRA, condicionDePago } from '@/lib/dominio/proveedores'
 import { fecha, moneda } from '@/lib/format'
 import { compraComoLogistica, exigirPermiso, puede } from '@/lib/sesion'
@@ -121,6 +122,8 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
         />
       )}
 
+      {/* Lo que dijo la ventana del motivo o de la fecha va arriba: con «Atrasadas», corregir la fecha saca la fila de la lista. */}
+      <ConAvisos>
       <Tarjeta className="overflow-hidden">
         <Tabla apilada>
           <TablaCabecera>
@@ -129,7 +132,7 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
               <TH className="hidden md:table-cell">Para</TH>
               <TH className="hidden text-right md:table-cell">Monto sin IGV</TH>
               <TH className="hidden md:table-cell">En qué va</TH>
-              <TH className="text-right">
+              <TH className="text-right md:w-64">
                 <span className="sr-only">Acciones</span>
               </TH>
             </tr>
@@ -160,6 +163,7 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
           </tbody>
         </Tabla>
       </Tarjeta>
+      </ConAvisos>
     </>
   )
 }
@@ -206,13 +210,6 @@ function FilaServicio({
         {s.motivo_anulacion && <p className="mt-1 text-xs text-peligro">Anulada: {s.motivo_anulacion}</p>}
         {s.observacion_conformidad && <p className="mt-1 text-xs text-texto-suave">Conformidad: {s.observacion_conformidad}</p>}
         <ListaDocumentosServicio documentos={s.documentos} anula={adjunta && vigente} />
-        {/* Quién la tiene ahora y hace cuántos días; abierto, cada paso y lo que anotó Logística. */}
-        <Recorrido
-          pasos={recorrido ? describirRecorridoDeLaOrdenDeServicio(recorrido) : null}
-          className="mt-2 rounded-[var(--radius-base)] border border-borde"
-          relleno="px-2.5"
-          femenino
-        />
         <p className="mt-1 text-xs text-texto-suave md:hidden">
           <span className="tabular font-medium text-texto" data-codigo>
             {s.codigo_interno ?? 'Sin código interno'}
@@ -234,7 +231,7 @@ function FilaServicio({
         <EnQueVa servicio={s} plazo={plazo} recorrido={recorrido} />
       </TD>
       <TD className="text-right">
-        <div className="flex flex-col items-end gap-2">
+        <AccionesDeFila>
           {/* El papel para el contratista: la aprobada, y la anulada después con su marca. */}
           {!servicioSinPapel(s.aprobacion, s.estado) && (
             <a
@@ -277,7 +274,7 @@ function FilaServicio({
               cambiaCodigo={emite && abierta}
             />
           )}
-        </div>
+        </AccionesDeFila>
       </TD>
     </TR>
   )
@@ -310,7 +307,7 @@ function EnQueVa({
         plazo={plazo}
         servicio
         fechaDelDocumento={s.fecha_fin}
-        corregida={Boolean(recorrido?.some((p) => p.paso === 'FECHA_CORREGIDA'))}
+        corregida={correccionDeLaFecha(recorrido)}
         className="mt-1"
       />
       <UltimoMotivo pasos={recorrido} className="mt-1" />
@@ -320,6 +317,13 @@ function EnQueVa({
         <Insignia tono={detraccion.tono} className="whitespace-normal">{detraccion.texto}</Insignia>
         {detraccion.detalle && <p className="mt-0.5 max-w-64 text-xs text-texto-suave">{detraccion.detalle}</p>}
       </div>
+      {/* Quién la tiene ahora y hace cuántos días; abierto, cada paso y lo que anotó Logística. Igual que en la OC. */}
+      <Recorrido
+        pasos={recorrido ? describirRecorridoDeLaOrdenDeServicio(recorrido) : null}
+        className="mt-2 rounded-[var(--radius-base)] border border-borde"
+        relleno="px-2.5"
+        femenino
+      />
     </>
   )
 }
