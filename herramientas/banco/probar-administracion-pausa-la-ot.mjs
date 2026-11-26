@@ -8,7 +8,9 @@
  *   2. Con la OT pausada ve «Reanudar»; al tocarlo, la base la deja en proceso.
  *   3. Lo mismo en el teléfono (390), con capturas, y nada se sale de la
  *      pantalla.
- *   4. Gerencia abre la misma OT y no ve «Pausar». El supervisor no entra a la
+ *   4. Con una pestaña vieja (otro ya la pausó o la reanudó), pausar no pisa
+ *      el motivo y reanudar no dice «no tienes permiso».
+ *   5. Gerencia abre la misma OT y no ve «Pausar». El supervisor no entra a la
  *      OT.
  *
  * Deja la OT como la encontró (en proceso). Variables: BANCO_CLAVE, BASE
@@ -139,6 +141,40 @@ try {
     await boton(pagina, 'Pausar').waitFor({ timeout: 15000 }).catch(() => {})
     comprobar((await boton(pagina, 'Pausar').count()) === 1, `${ancho}: reanudada, vuelve a ofrecer «Pausar»`)
     await contexto.close()
+  }
+
+  // Una pestaña vieja: otro ya cambió la OT. No pisa el motivo ni dice «no tienes permiso».
+  {
+    const replica = async (sql, valores) => {
+      await base.query('begin')
+      await base.query('set local session_replication_role = replica')
+      await base.query(sql, valores)
+      await base.query('commit')
+    }
+    const { pagina, contexto } = await entrar('administracion', 1440)
+    await ir(pagina, `/ordenes/${orden.id}`)
+    await replica(`update public.ordenes_trabajo set estado = 'PAUSADA', motivo_pausa = 'Lo pausó otro (prueba)' where id = $1`, [orden.id])
+    await boton(pagina, 'Pausar').click()
+    const ventana = pagina.getByRole('dialog')
+    await ventana.locator('textarea[name="motivo"]').fill('Otro motivo que no debe entrar')
+    await ventana.getByRole('button', { name: 'Confirmar' }).click()
+    const aviso = ventana.locator('[role="alert"]')
+    await aviso.waitFor({ timeout: 15000 }).catch(() => {})
+    const textoPausa = ((await aviso.textContent().catch(() => '')) ?? '').trim()
+    comprobar(textoPausa.includes('ya está pausada') && textoPausa.includes('Lo pausó otro'), `pestaña vieja: pausar la ya pausada dice cómo está («${textoPausa}»)`)
+    comprobar((await estadoDe()).motivo_pausa === 'Lo pausó otro (prueba)', 'pestaña vieja: el motivo de quien la pausó no se pisa')
+    await contexto.close()
+
+    const otra = await entrar('administracion', 1440)
+    await ir(otra.pagina, `/ordenes/${orden.id}`)
+    await replica(`update public.ordenes_trabajo set estado = 'EN_PROCESO' where id = $1`, [orden.id])
+    await boton(otra.pagina, 'Reanudar').click()
+    const avisoReanudar = otra.pagina.locator('[role="alert"]').filter({ hasText: /proceso|pausada/ })
+    await avisoReanudar.first().waitFor({ timeout: 15000 }).catch(() => {})
+    const textoReanudar = ((await avisoReanudar.first().textContent().catch(() => '')) ?? '').trim()
+    comprobar(textoReanudar.includes('ya estaba en proceso') && !textoReanudar.includes('permiso'), `pestaña vieja: reanudar la ya reanudada no habla de permiso («${textoReanudar}»)`)
+    comprobar((await estadoDe()).estado === 'EN_PROCESO', 'pestaña vieja: la OT sigue en proceso')
+    await otra.contexto.close()
   }
 
   // Gerencia ve la OT y no la pausa.
