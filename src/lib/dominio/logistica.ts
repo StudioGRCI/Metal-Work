@@ -271,3 +271,24 @@ export function pasosDelDia(
   }
   return pasos.sort((a, b) => new Date(a.en).getTime() - new Date(b.en).getTime())
 }
+
+/**
+ * Para qué es una compra por aprobar: el código y el RQ de cada insumo, la OT y
+ * su unidad, o el almacén en la compra directa. Lo dicen igual Aprobación de
+ * compras y «Por decidir».
+ */
+export function destinoDeCompra(c: {
+  tipo: 'OC' | 'OS'
+  origen: string
+  requerimientos: string[]
+  codigos: string[]
+  codigo_interno: string | null
+  ordenes: string[]
+  unidades: string[]
+}): string {
+  // La que compra insumos de RQ va al código interno de cada uno.
+  if (c.requerimientos.length > 0) return [c.codigos.join(', '), c.requerimientos.join(', ')].filter(Boolean).join(' · ')
+  if (c.origen === 'DIRECTA') return 'Para el almacén'
+  const partes = [c.codigo_interno, c.ordenes.length ? `OT ${c.ordenes.join(', ')}` : null, ...c.unidades].filter(Boolean)
+  return partes.length ? partes.join(' · ') : c.tipo === 'OS' ? 'Sin OT' : 'OT —'
+}
