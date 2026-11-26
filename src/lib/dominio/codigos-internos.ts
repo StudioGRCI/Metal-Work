@@ -1,5 +1,5 @@
 import type { Tono } from '@/components/ui/etiqueta-estado'
-import { moneda } from '@/lib/format'
+import { moneda, periodo } from '@/lib/format'
 import { horasCortas } from './rrhh'
 
 /**
@@ -212,6 +212,11 @@ export function noEsUnidad(codigo: string) {
   return codigo === CODIGO_SIN_AVANCE || codigo === CODIGO_TODOS_LOS_ACTIVOS
 }
 
+/** Si al código le toca lo que Diseño entrega por unidad: ni PLANTA, ni «todos los activos», ni OFICINA. */
+export function esUnidadDeDiseno(codigo: string) {
+  return !noEsUnidad(codigo) && codigo !== CODIGO_FIJO_OFICINA.codigo
+}
+
 /**
  * De dónde sale el porcentaje de un código, en una línea, con lo que devuelve
  * `codigos_internos_avance`. Sin fila, el código no tiene etapas ni reportes y
@@ -303,4 +308,37 @@ export function enlaceCodigo(codigo: string, vista?: VistaCodigo) {
 /** El detalle del gasto de un código para Requerimientos: como el de Gerencia, el código va en la consulta. */
 export function enlaceGastoCodigo(codigo: string) {
   return `/requerimientos/gasto-por-codigo/detalle?${new URLSearchParams({ codigo })}`
+}
+
+/**
+ * Lo que falta para cerrar el costeo de un código, con las palabras de su
+ * pantalla. Vacío: se puede cerrar hoy. Lo usan el detalle del código (la línea
+ * del cierre) y «Por decidir», para que la regla se lea en un solo lugar: el
+ * código que espera a Logística, RR. HH. o Contabilidad no se le pide a Gerencia.
+ */
+export function faltaParaCerrar(
+  // Estructural, como el resumen del código: el dominio no importa de `datos`, que es solo del servidor.
+  c: {
+    materiales_sin_precio: number
+    horas_sin_costo: number
+    lineas_sin_cambio: number
+    venta: { sin_igv: number; sin_cambio: number } | null
+  },
+  espera: { esperaElMes: boolean; faltaOficina: string[]; faltaPlanilla: string[] },
+): string[] {
+  const { esperaElMes, faltaOficina, faltaPlanilla } = espera
+  return [
+    c.materiales_sin_precio > 0 && `${c.materiales_sin_precio} ${c.materiales_sin_precio === 1 ? 'salida' : 'salidas'} del almacén sin precio`,
+    c.horas_sin_costo > 0 && `${horasCortas(c.horas_sin_costo)} de personal sin costo`,
+    c.lineas_sin_cambio > 0 && `${c.lineas_sin_cambio} ${c.lineas_sin_cambio === 1 ? 'línea' : 'líneas'} en dólares sin tipo de cambio`,
+    // Con cotización, el cierre congela el margen: sin el IGV o el cambio de la venta saldría sin él.
+    c.venta && c.venta.sin_igv > 0 &&
+      `${c.venta.sin_igv === 1 ? 'confirmar si la cotización incluye IGV' : `confirmar si ${c.venta.sin_igv} cotizaciones incluyen IGV`} (Gerencia o Administración en el expediente de la OT, o Ventas al corregir la cotización)`,
+    c.venta && c.venta.sin_cambio > 0 && 'el tipo de cambio del día en que se aprobó la cotización en dólares (lo registran Contabilidad o Administración)',
+    esperaElMes && 'que termine el mes: los gastos del mes y el sueldo de la oficina se reparten por las horas del mes entero',
+    faltaOficina.length > 0 &&
+      `registrar los pagos de la oficina de ${faltaOficina.map((m) => periodo(m)).join(', ')} (RR. HH.: los pagos, o la fecha de ingreso de quien entró después)`,
+    faltaPlanilla.length > 0 &&
+      `cerrar la planilla de taller de ${faltaPlanilla.map((m) => periodo(m)).join(', ')} (RR. HH., en Planillas: al cerrarla entra el ajuste de la mano de obra)`,
+  ].filter((x): x is string => Boolean(x))
 }

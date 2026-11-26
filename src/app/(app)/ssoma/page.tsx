@@ -4,17 +4,25 @@ import Link from 'next/link'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Vistas } from '@/components/estructura/vistas'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { Pliegue } from '@/components/ui/seccion-desplegable'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
 import {
   areasParaReportar,
+  listarAccionesSsoma,
   listarReportesSsoma,
+  MAXIMO_ACCIONES_SSOMA,
   MAXIMO_REPORTES_SSOMA,
   personalParaReportar,
+  seguimientoDe,
+  seguimientoDeReportes,
+  type AccionSsoma,
   type ReporteSsoma,
+  type SeguimientoSsoma,
 } from '@/lib/datos/ssoma'
-import { diasEnEspera, ESTADO_REPORTE_SSOMA, TIPO_REPORTE_SSOMA } from '@/lib/dominio/ssoma'
-import { fechaHora } from '@/lib/format'
+import { cuandoVence, diasEnEspera, ESTADO_ACCION_SSOMA, ESTADO_REPORTE_SSOMA, TIPO_REPORTE_SSOMA } from '@/lib/dominio/ssoma'
+import { fecha, fechaHora } from '@/lib/format'
+import { cn } from '@/lib/utils'
 import { exigirSesion, puede } from '@/lib/sesion'
 
 import { EstadoDelReporteSsoma, ReportarIncidente } from './formulario'
@@ -22,7 +30,8 @@ import { EstadoDelReporteSsoma, ReportarIncidente } from './formulario'
 export const metadata = { title: 'Seguridad: reportes' }
 
 const VISTAS = [
-  { valor: 'vigentes', titulo: 'Vigentes' },
+  { valor: 'vigentes', titulo: 'Reportes' },
+  { valor: 'acciones', titulo: 'Acciones correctivas' },
   { valor: 'anulados', titulo: 'Anulados' },
 ] as const
 
@@ -34,16 +43,24 @@ const VISTAS = [
 export default async function PaginaSsoma({ searchParams }: PageProps<'/ssoma'>) {
   const perfil = await exigirSesion()
   const veTodo = puede(perfil, ['ssoma.ver', 'ssoma.gestionar'])
+  const gestiona = puede(perfil, 'ssoma.gestionar')
   const porOtro = puede(perfil, 'ssoma.reportar_por_otro')
   const params = await searchParams
-  const vista = veTodo && params.vista === 'anulados' ? 'anulados' : 'vigentes'
+  const vista = veTodo && (params.vista === 'anulados' || params.vista === 'acciones') ? params.vista : 'vigentes'
 
-  const [reportes, areas, personal] = await Promise.all([
-    listarReportesSsoma(),
+  const [{ reportes, cortados }, areas, personal, acciones] = await Promise.all([
+    // A SSOMA, lo que espera por ella primero.
+    listarReportesSsoma({ porClasificarPrimero: gestiona }),
     areasParaReportar(),
     porOtro ? personalParaReportar() : Promise.resolve([]),
+    listarAccionesSsoma(),
   ])
-  const alTope = reportes.length >= MAXIMO_REPORTES_SSOMA
+  // Cómo va cada reporte de la lista: pide los que se muestran, no «todos».
+  const porReporte = await seguimientoDeReportes(reportes.map((r) => r.id))
+  const alTope = cortados.porClasificar || cortados.recientes
+  const accionesAlTope = acciones.length >= MAXIMO_ACCIONES_SSOMA
+  // Lo que la persona tiene a su cargo: las vencidas arriba (`listarAccionesSsoma` ya las ordena).
+  const mias = acciones.filter((a) => a.responsable_id === perfil.id && a.estado !== 'ANULADA')
 
   const boton = (
     <ReportarIncidente
@@ -52,12 +69,20 @@ export default async function PaginaSsoma({ searchParams }: PageProps<'/ssoma'>)
       areas={areas}
       personal={personal}
       // El mismo permiso con que la base deja registrar fuera de los 30 días.
-      sinPlazo={puede(perfil, 'ssoma.gestionar')}
+      sinPlazo={gestiona}
     />
   )
 
   if (veTodo) {
-    const vigentes = reportes.filter((r) => r.estado !== 'ANULADO')
+    // Para SSOMA, después de los por clasificar, los clasificados sin ninguna
+    // acción: si no, se quedan quietos sin que nadie se entere.
+    const esperando = (r: ReporteSsoma) =>
+      !gestiona ? 2 : r.estado === 'REPORTADO' ? 0 : r.estado === 'CLASIFICADO' && seguimientoDe(porReporte, r.id).acciones === 0 ? 1 : 2
+    const vigentes = reportes
+      .filter((r) => r.estado !== 'ANULADO')
+      .map((r, i) => ({ r, i }))
+      .sort((a, b) => esperando(a.r) - esperando(b.r) || a.i - b.i)
+      .map(({ r }) => r)
     const anulados = reportes.filter((r) => r.estado === 'ANULADO')
     const lista = vista === 'anulados' ? anulados : vigentes
     return (
@@ -69,6 +94,12 @@ export default async function PaginaSsoma({ searchParams }: PageProps<'/ssoma'>)
           acciones={boton}
           estado={<EstadoDelReporteSsoma />}
         />
+        {/* Gerencia o SSOMA también pueden tener una acción a su cargo: no se pierde entre las demás. */}
+        {mias.some((a) => a.estado === 'ABIERTA') && (
+          <div className="mb-5">
+            <TusAcciones mias={mias} cuentaId={perfil.id} />
+          </div>
+        )}
         <Vistas
           etiqueta="Vista"
           className="mb-3"
@@ -77,24 +108,49 @@ export default async function PaginaSsoma({ searchParams }: PageProps<'/ssoma'>)
             titulo: v.titulo,
             href: v.valor === 'vigentes' ? '/ssoma' : `/ssoma?vista=${v.valor}`,
             activa: vista === v.valor,
-            cuenta: v.valor === 'anulados' ? anulados.length : vigentes.length,
+            cuenta: v.valor === 'anulados' ? anulados.length : v.valor === 'acciones' ? acciones.length : vigentes.length,
           }))}
         />
-        <Tarjeta className="overflow-hidden">
-          <TablaDeReportes
-            reportes={lista}
-            conAutor
-            vacio={
-              vista === 'anulados'
-                ? { titulo: 'No hay reportes anulados', descripcion: 'Un reporte mal hecho se anula desde su ficha, con su motivo.' }
-                : {
-                    titulo: 'Todavía no hay reportes',
-                    descripcion: 'Cuando alguien reporte un accidente, un incidente o una condición insegura, aparece aquí y en la campana.',
-                  }
-            }
-          />
-        </Tarjeta>
-        {alTope && <Tope />}
+        {vista === 'acciones' ? (
+          <Tarjeta className="overflow-hidden">
+            <TablaDeAcciones
+              acciones={acciones}
+              cuentaId={perfil.id}
+              conReporte
+              vacio={{
+                titulo: 'Todavía no hay acciones correctivas',
+                descripcion: 'Se encargan desde cada reporte, después de clasificarlo y anotar la causa.',
+              }}
+            />
+          </Tarjeta>
+        ) : (
+          <Tarjeta className="overflow-hidden">
+            <TablaDeReportes
+              reportes={lista}
+              porReporte={porReporte}
+              conAutor
+              paraSsoma={gestiona}
+              vacio={
+                vista === 'anulados'
+                  ? {
+                      titulo: 'No hay reportes anulados',
+                      descripcion: 'Un reporte mal hecho se anula desde su ficha, con su motivo.',
+                    }
+                  : {
+                      titulo: 'Todavía no hay reportes',
+                      descripcion:
+                        'Cuando alguien reporte un accidente, un incidente o una condición insegura, aparece aquí y en la campana.',
+                    }
+              }
+            />
+          </Tarjeta>
+        )}
+        {alTope && vista !== 'acciones' && <Tope cortados={cortados} />}
+        {accionesAlTope && vista === 'acciones' && (
+          <p className="mt-3 text-xs text-texto-suave">
+            Se muestran {MAXIMO_ACCIONES_SSOMA} acciones: primero las vencidas y las abiertas.
+          </p>
+        )}
       </>
     )
   }
@@ -104,7 +160,7 @@ export default async function PaginaSsoma({ searchParams }: PageProps<'/ssoma'>)
   return (
     <>
       <EncabezadoPagina
-        titulo="Reportar a SSOMA"
+        titulo={mias.length > 0 ? 'Seguridad: reportes y acciones' : 'Reportar a SSOMA'}
         descripcion="Un accidente, un incidente o algo inseguro que viste: repórtalo en el momento, con foto si puedes."
         ayuda="Tu reporte le llega a SSOMA al instante, con su número. Aquí ves cómo va cada uno de los tuyos. Quién reportó lo ven solo SSOMA y Gerencia: tu área ve el hecho, no tu nombre."
         migas={[{ titulo: 'SSOMA' }]}
@@ -112,10 +168,12 @@ export default async function PaginaSsoma({ searchParams }: PageProps<'/ssoma'>)
         estado={<EstadoDelReporteSsoma />}
       />
       <div className="space-y-5">
+        {mias.length > 0 && <TusAcciones mias={mias} cuentaId={perfil.id} />}
         <Tarjeta className="overflow-hidden">
           <TarjetaCabecera titulo="Tus reportes" descripcion={mios.length > 0 ? `${mios.length} ${mios.length === 1 ? 'reporte' : 'reportes'}` : undefined} />
           <TablaDeReportes
             reportes={mios}
+            porReporte={porReporte}
             vacio={{
               titulo: 'Todavía no has reportado nada',
               descripcion: 'Si ves algo inseguro o pasa un incidente, toca «Reportar incidente». Toma un minuto.',
@@ -128,27 +186,40 @@ export default async function PaginaSsoma({ searchParams }: PageProps<'/ssoma'>)
               titulo="En tu área"
               descripcion="Lo que se reportó donde trabajas, para que estés al tanto. No se muestra quién lo reportó."
             />
-            <TablaDeReportes reportes={delArea} vacio={{ titulo: 'Nada reportado en tu área', descripcion: '' }} />
+            <TablaDeReportes reportes={delArea} porReporte={porReporte} vacio={{ titulo: 'Nada reportado en tu área', descripcion: '' }} />
           </Tarjeta>
         )}
       </div>
-      {alTope && <Tope />}
+      {alTope && <Tope cortados={cortados} />}
     </>
   )
 }
 
-function Tope() {
-  return <p className="mt-3 text-xs text-texto-suave">Se muestran los {MAXIMO_REPORTES_SSOMA} reportes más recientes.</p>
+/** Dice cuál de las dos consultas se cortó: la de los que esperan clasificación (solo SSOMA) o la de los recientes. */
+function Tope({ cortados }: { cortados: { porClasificar: boolean; recientes: boolean } }) {
+  const texto =
+    cortados.porClasificar && cortados.recientes
+      ? `Se muestran los ${MAXIMO_REPORTES_SSOMA} reportes por clasificar más antiguos y, del resto, los ${MAXIMO_REPORTES_SSOMA} más recientes.`
+      : cortados.porClasificar
+        ? `Se muestran los ${MAXIMO_REPORTES_SSOMA} reportes por clasificar más antiguos.`
+        : `Se muestran los ${MAXIMO_REPORTES_SSOMA} reportes más recientes.`
+  return <p className="mt-3 text-xs text-texto-suave">{texto}</p>
 }
 
 function TablaDeReportes({
   reportes,
+  porReporte,
   conAutor = false,
+  paraSsoma = false,
   vacio,
 }: {
   reportes: ReporteSsoma[]
+  /** Cómo va cada uno: sus acciones abiertas y vencidas. */
+  porReporte: Record<string, SeguimientoSsoma>
   /** La columna de quién reportó: solo para SSOMA y Gerencia. */
   conAutor?: boolean
+  /** Quien mira es SSOMA: el estado dice lo que le toca hacer. */
+  paraSsoma?: boolean
   vacio: { titulo: string; descripcion: string }
 }) {
   return (
@@ -166,14 +237,26 @@ function TablaDeReportes({
         {reportes.length === 0 ? (
           <SinDatos titulo={vacio.titulo} descripcion={vacio.descripcion} />
         ) : (
-          reportes.map((r) => <FilaReporte key={r.id} reporte={r} conAutor={conAutor} />)
+          reportes.map((r) => (
+            <FilaReporte key={r.id} reporte={r} seg={seguimientoDe(porReporte, r.id)} conAutor={conAutor} paraSsoma={paraSsoma} />
+          ))
         )}
       </tbody>
     </Tabla>
   )
 }
 
-function FilaReporte({ reporte: r, conAutor }: { reporte: ReporteSsoma; conAutor: boolean }) {
+function FilaReporte({
+  reporte: r,
+  seg,
+  conAutor,
+  paraSsoma,
+}: {
+  reporte: ReporteSsoma
+  seg: SeguimientoSsoma
+  conAutor: boolean
+  paraSsoma: boolean
+}) {
   const tipo = TIPO_REPORTE_SSOMA[r.tipo]
   const anulado = r.estado === 'ANULADO'
   const autor = r.reporto ? [r.reporto, r.reporto_puesto].filter(Boolean).join(' · ') : null
@@ -209,7 +292,7 @@ function FilaReporte({ reporte: r, conAutor }: { reporte: ReporteSsoma; conAutor
         )}
         <div className="mt-1 space-y-1 sm:hidden">
           <p className="tabular text-xs text-texto-suave">Pasó {fechaHora(r.ocurrido_en)}</p>
-          <Situacion reporte={r} />
+          <Situacion reporte={r} seg={seg} paraSsoma={paraSsoma} />
         </div>
       </TD>
       <TD className="hidden align-top md:table-cell">
@@ -227,20 +310,175 @@ function FilaReporte({ reporte: r, conAutor }: { reporte: ReporteSsoma; conAutor
         <p className="tabular text-xs whitespace-nowrap text-texto">{fechaHora(r.ocurrido_en)}</p>
       </TD>
       <TD className="hidden align-top sm:table-cell">
-        <Situacion reporte={r} />
+        <Situacion reporte={r} seg={seg} paraSsoma={paraSsoma} />
       </TD>
     </TR>
   )
 }
 
-/** En quién está el reporte y desde cuándo. */
-function Situacion({ reporte: r }: { reporte: ReporteSsoma }) {
-  const estado = ESTADO_REPORTE_SSOMA[r.estado]
+/** En quién está el reporte y desde cuándo; si está en corrección, cuántas acciones faltan. */
+function Situacion({ reporte: r, seg, paraSsoma }: { reporte: ReporteSsoma; seg: SeguimientoSsoma; paraSsoma: boolean }) {
+  // Para SSOMA, «En SSOMA» es «te toca clasificarlo».
+  const estado =
+    paraSsoma && r.estado === 'REPORTADO' ? { etiqueta: 'Por clasificar', tono: 'aviso' as const } : ESTADO_REPORTE_SSOMA[r.estado]
   const espera = diasEnEspera(r.dias_en_espera)
+  const faltan = r.estado === 'CLASIFICADO' ? seg.abiertas : 0
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {estado ? <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia> : r.estado}
       {espera && <span className="text-xs text-texto-suave">desde {espera}</span>}
+      {r.estado === 'CLASIFICADO' &&
+        seg.acciones === 0 &&
+        (paraSsoma ? (
+          <Insignia tono="aviso">sin acción encargada</Insignia>
+        ) : (
+          <span className="text-xs text-texto-suave">sin acciones aún</span>
+        ))}
+      {faltan > 0 && (
+        <span className="text-xs text-texto-suave">
+          {faltan} {faltan === 1 ? 'acción abierta' : 'acciones abiertas'}
+        </span>
+      )}
+      {seg.vencidas > 0 && (
+        <Insignia tono="peligro">
+          {seg.vencidas} {seg.vencidas === 1 ? 'vencida' : 'vencidas'}
+        </Insignia>
+      )}
     </div>
+  )
+}
+
+/**
+ * Las acciones correctivas, con las vencidas arriba (ya vienen ordenadas). Cada
+ * fila lleva a la acción dentro de su reporte, donde se cierra con evidencia.
+ */
+function TablaDeAcciones({
+  acciones,
+  cuentaId,
+  conReporte = false,
+  vacio,
+}: {
+  acciones: AccionSsoma[]
+  cuentaId: string
+  conReporte?: boolean
+  vacio: { titulo: string; descripcion: string }
+}) {
+  return (
+    <Tabla>
+      <TablaCabecera>
+        <tr>
+          <TH>Acción</TH>
+          <TH className="hidden md:table-cell">Responsable</TH>
+          <TH className="hidden sm:table-cell">Fecha límite</TH>
+          <TH className="hidden sm:table-cell">Cómo va</TH>
+        </tr>
+      </TablaCabecera>
+      <tbody>
+        {acciones.length === 0 ? (
+          <SinDatos titulo={vacio.titulo} descripcion={vacio.descripcion} />
+        ) : (
+          acciones.map((a) => <FilaAccion key={a.id} accion={a} mia={a.responsable_id === cuentaId} conReporte={conReporte} />)
+        )}
+      </tbody>
+    </Tabla>
+  )
+}
+
+function FilaAccion({ accion: a, mia, conReporte }: { accion: AccionSsoma; mia: boolean; conReporte: boolean }) {
+  const vence = a.estado === 'ABIERTA' ? cuandoVence(a.dias_para_vencer) : null
+  const vencida = a.estado === 'ABIERTA' && (a.dias_para_vencer ?? 0) < 0
+  const tipo = TIPO_REPORTE_SSOMA[a.reporte_tipo]
+  const href = `/ssoma/${a.reporte_id}#accion-${a.id}`
+  return (
+    <TR data-accion-ssoma={a.id} data-estado={a.estado} data-vencida={vencida || undefined}>
+      <TD className={cn('align-top', vencida && 'border-l-2 border-l-peligro')}>
+        <Link
+          href={href}
+          className={cn(
+            'inline-flex min-h-11 items-center text-sm font-medium text-texto hover:text-acento hover:underline sm:min-h-0',
+            a.estado === 'ANULADA' && 'text-texto-suave line-through',
+          )}
+        >
+          <span className="line-clamp-2 max-w-xl">{a.descripcion}</span>
+        </Link>
+        {conReporte && (
+          <p className="tabular mt-0.5 text-xs text-texto-suave">
+            {a.reporte_numero}
+            {tipo ? ` · ${tipo.etiqueta}` : ''} · {a.area}
+          </p>
+        )}
+        {mia && a.estado === 'ABIERTA' && <p className="mt-0.5 text-xs font-medium text-acento">A tu cargo</p>}
+        {!(mia && a.estado === 'ABIERTA') && (
+          <div className="mt-1 space-y-1 text-xs text-texto-suave md:hidden">
+            <p>
+              {a.responsable}
+              {a.responsable_puesto ? ` · ${a.responsable_puesto}` : ''}
+            </p>
+          </div>
+        )}
+        <div className="mt-1 flex flex-wrap items-center gap-1.5 sm:hidden">
+          <EstadoDeAccion accion={a} />
+          <span className="tabular text-xs text-texto-suave">hasta el {fecha(a.fecha_limite)}</span>
+          {vence && <span className={cn('text-xs', vencida ? 'font-medium text-peligro' : 'text-texto-suave')}>· {vence.texto}</span>}
+        </div>
+      </TD>
+      <TD className="hidden align-top md:table-cell">
+        <p className="text-sm text-texto">{a.responsable}</p>
+        {a.responsable_puesto && <p className="text-xs text-texto-suave">{a.responsable_puesto}</p>}
+      </TD>
+      <TD className="hidden align-top sm:table-cell">
+        <p className="tabular text-xs whitespace-nowrap text-texto">{fecha(a.fecha_limite)}</p>
+        {vence && (
+          <p className={cn('text-xs', vence.tono === 'peligro' ? 'font-medium text-peligro' : 'text-texto-suave')}>{vence.texto}</p>
+        )}
+      </TD>
+      <TD className="hidden align-top sm:table-cell">
+        <EstadoDeAccion accion={a} />
+      </TD>
+    </TR>
+  )
+}
+
+function EstadoDeAccion({ accion: a }: { accion: AccionSsoma }) {
+  const vencida = a.estado === 'ABIERTA' && (a.dias_para_vencer ?? 0) < 0
+  const estado = vencida ? { etiqueta: 'Vencida', tono: 'peligro' as const } : ESTADO_ACCION_SSOMA[a.estado]
+  return estado ? <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia> : <>{a.estado}</>
+}
+
+/** Lo que SSOMA le encargó a quien mira: las abiertas (la vencida arriba) y las cerradas plegadas. */
+function TusAcciones({ mias, cuentaId }: { mias: AccionSsoma[]; cuentaId: string }) {
+  const miasAbiertas = mias.filter((a) => a.estado === 'ABIERTA')
+  const miasVencidas = miasAbiertas.filter((a) => (a.dias_para_vencer ?? 0) < 0)
+  const miasCerradas = mias.filter((a) => a.estado === 'CERRADA')
+  return (
+    <Tarjeta className="overflow-hidden" data-tus-acciones>
+      <TarjetaCabecera
+        titulo="Tus acciones correctivas"
+        descripcion={
+          miasAbiertas.length === 0
+            ? 'Todas cerradas.'
+            : [
+                `${miasAbiertas.length} ${miasAbiertas.length === 1 ? 'abierta' : 'abiertas'}`,
+                miasVencidas.length > 0 && `${miasVencidas.length} ${miasVencidas.length === 1 ? 'vencida' : 'vencidas'}`,
+              ]
+                .filter(Boolean)
+                .join(' · ')
+        }
+        ayuda="Lo que SSOMA te encargó corregir. Ábrela, haz lo que pide y ciérrala con fotos de lo que hiciste: SSOMA recibe el aviso."
+      />
+      {miasAbiertas.length > 0 && (
+        <TablaDeAcciones acciones={miasAbiertas} cuentaId={cuentaId} conReporte vacio={{ titulo: '', descripcion: '' }} />
+      )}
+      {/* Las cerradas no empujan hacia abajo lo que sí falta: van plegadas. */}
+      {miasCerradas.length > 0 && (
+        <div className="border-t border-borde px-4">
+          <Pliegue titulo={`Ver las cerradas (${miasCerradas.length})`} data-tus-cerradas="">
+            <div className="-mx-4 border-t border-borde">
+              <TablaDeAcciones acciones={miasCerradas} cuentaId={cuentaId} conReporte vacio={{ titulo: '', descripcion: '' }} />
+            </div>
+          </Pliegue>
+        </div>
+      )}
+    </Tarjeta>
   )
 }

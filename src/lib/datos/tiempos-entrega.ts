@@ -264,6 +264,52 @@ export async function personasParaAsignar(): Promise<{ id: string; nombre: strin
   })
 }
 
+/** Una etapa sin terminar del área de quien mira, con el semáforo del tablero de RR. HH. */
+export type EtapaAbiertaDelArea = {
+  id: string
+  codigo: string
+  nombre: string
+  padre_id: string | null
+  inicio_plan: string | null
+  fin_plan: string | null
+  inicio_real: string | null
+  /** El último reporte diario de su área en ese código, de cualquier supervisor. */
+  ultimo_reporte: string | null
+  semaforo: Semaforo
+  /** Días hábiles hasta la fecha comprometida; negativo si ya venció. */
+  dias_habiles: number | null
+}
+
+/**
+ * Las etapas sin terminar del área de quien mira, de los códigos que siguen en
+ * el tablero de tiempos de entrega, con su semáforo y sus días hábiles tal como
+ * los da la base (`etapas_abiertas_de_mi_area`, migración 20261126333000): el
+ * atraso se lee de ahí, no se calcula otra vez (Plan 1, entrega 1.3).
+ */
+export async function etapasAbiertasDeMiArea(): Promise<EtapaAbiertaDelArea[]> {
+  const supabase = await createClient()
+  const { data, error } = await todasLasFilas(() => supabase.rpc('etapas_abiertas_de_mi_area'), ['codigo', 'id'])
+  if (error) throw new Error(`No se pudieron leer las etapas de tu área: ${error.message}`)
+  return (data ?? []).flatMap((e) =>
+    e.id && e.codigo
+      ? [
+          {
+            id: e.id,
+            codigo: e.codigo,
+            nombre: e.nombre ?? '',
+            padre_id: e.padre_id,
+            inicio_plan: e.inicio_plan,
+            fin_plan: e.fin_plan,
+            inicio_real: e.inicio_real,
+            ultimo_reporte: e.ultimo_reporte,
+            semaforo: semaforoValido(e.semaforo),
+            dias_habiles: e.dias_habiles === null ? null : Number(e.dias_habiles),
+          },
+        ]
+      : [],
+  )
+}
+
 /**
  * La última revisión diaria de avisos (migración 20261126315000): el día que
  * corrió y a qué hora terminó. Vacía si todavía no corrió nunca. Así el

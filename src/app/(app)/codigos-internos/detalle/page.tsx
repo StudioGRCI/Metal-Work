@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import { Download, FileText } from 'lucide-react'
 
 import { LineaDeDiseno } from '@/components/codigo-interno/linea-diseno'
+import { LineaLoQueDebeDiseno } from '@/components/codigo-interno/lo-que-debe-diseno'
 import { DelDocumento } from '@/components/estructura/del-documento'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { SeccionesDelDocumento } from '@/components/estructura/secciones-del-documento'
@@ -31,6 +32,7 @@ import {
   type ResumenCodigo,
 } from '@/lib/datos/codigos-internos'
 import { etapasDeCodigo } from '@/lib/datos/diseno-codigos'
+import { loQueDebeDiseno } from '@/lib/datos/lo-que-debe-diseno'
 import { cotizacionesAprobadas, facturadoDelCodigo, facturasDelCodigo, type FacturadoDelCodigo } from '@/lib/datos/facturacion'
 import { mesesSinPagosDeOficina, mesesSinPlanillaDeTaller, repartoDelMes } from '@/lib/datos/gastos-generales'
 import { PERMISOS_BAJAR_COTIZACION, rutaParaBajarCotizacion } from '@/lib/descarga'
@@ -47,7 +49,9 @@ import {
   dondeAparece,
   enlaceCodigo,
   faltaElPrecio,
+  faltaParaCerrar,
   montoMixto,
+  esUnidadDeDiseno,
   noEsUnidad,
   normalizarCodigo,
   origenDelAvance,
@@ -94,7 +98,7 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
   const pedida = vistaValida(params.vista)
   const vista = vistas.some((v) => v.valor === pedida) ? pedida : 'avance'
 
-  const [{ codigos: conDocumentos, diseno: deDiseno, avances }, facturado, reparto, horasDelMes, faltaOficina, faltaPlanilla, lineas] = await Promise.all([
+  const [{ codigos: conDocumentos, diseno: deDiseno, avances }, facturado, reparto, horasDelMes, faltaOficina, faltaPlanilla, lineas, debe] = await Promise.all([
     leerListaDeCodigos(),
     veFacturas && !aTodos ? facturadoDelCodigo(codigo) : Promise.resolve(null),
     aTodos ? repartoATodosLosActivos() : Promise.resolve<RepartoATodosFila[]>([]),
@@ -105,6 +109,15 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
     cierra && !aTodos && !noEsUnidad(codigo) ? mesesSinPlanillaDeTaller(codigo) : Promise.resolve<string[]>([]),
     // El resumen dice cuánto de la mano de obra es el ajuste de la planilla (la vista de costeo reusa la lectura).
     aTodos ? Promise.resolve([]) : costeoDelCodigo(codigo),
+    // Lo que Diseño le debe a la unidad (plan 6.1), en lectura; si no se lee, se dice.
+    !esUnidadDeDiseno(codigo)
+      ? Promise.resolve(undefined)
+      : loQueDebeDiseno([codigo])
+          .then((m) => m.get(codigo))
+          .catch((e: unknown) => {
+            console.error('[codigos-internos/detalle] lo que debe Diseño:', e)
+            return null
+          }),
   ])
   const ajuste = ajusteDePlanilla(lineas)
   const esperaElMes = horasDelMes.some((r) => r.codigo === codigo)
@@ -207,7 +220,12 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
                   faltaPlanilla={faltaPlanilla}
                   ajuste={ajuste}
                 />
-                <LineaDeDiseno d={diseno} />
+                {esUnidadDeDiseno(codigo) && (
+                  <div className="space-y-1">
+                    <LineaDeDiseno d={diseno} />
+                    <LineaLoQueDebeDiseno d={debe} />
+                  </div>
+                )}
               </>
             )}
 
@@ -626,23 +644,10 @@ function LineaCierre({
   const z = c.cierre
   if (!z) {
     if (!cierra) return null
-    const falta = [
-      c.materiales_sin_precio > 0 && `${c.materiales_sin_precio} ${c.materiales_sin_precio === 1 ? 'salida' : 'salidas'} del almacén sin precio`,
-      c.horas_sin_costo > 0 && `${horasCortas(c.horas_sin_costo)} de personal sin costo`,
-      c.lineas_sin_cambio > 0 && `${c.lineas_sin_cambio} ${c.lineas_sin_cambio === 1 ? 'línea' : 'líneas'} en dólares sin tipo de cambio`,
-      // Con cotización, el cierre congela el margen: sin el IGV o el cambio de la venta saldría sin él.
-      c.venta && c.venta.sin_igv > 0 &&
-        `${c.venta.sin_igv === 1 ? 'confirmar si la cotización incluye IGV' : `confirmar si ${c.venta.sin_igv} cotizaciones incluyen IGV`} (Gerencia o Administración en el expediente de la OT, o Ventas al corregir la cotización)`,
-      c.venta && c.venta.sin_cambio > 0 && 'el tipo de cambio del día en que se aprobó la cotización en dólares (lo registran Contabilidad o Administración)',
-      esperaElMes && 'que termine el mes: los gastos del mes y el sueldo de la oficina se reparten por las horas del mes entero',
-      faltaOficina.length > 0 &&
-        `registrar los pagos de la oficina de ${faltaOficina.map((m) => periodo(m)).join(', ')} (RR. HH.: los pagos, o la fecha de ingreso de quien entró después)`,
-      faltaPlanilla.length > 0 &&
-        `cerrar la planilla de taller de ${faltaPlanilla.map((m) => periodo(m)).join(', ')} (RR. HH., en Planillas: al cerrarla entra el ajuste de la mano de obra)`,
-    ].filter(Boolean)
+    const falta = faltaParaCerrar(c, { esperaElMes, faltaOficina, faltaPlanilla })
     if (falta.length > 0) {
       return (
-        <div className="space-y-1 rounded-[var(--radius-base)] border border-borde p-3 text-xs text-texto-suave" data-cierre="incompleto">
+        <div id="cierre-del-costeo" className="scroll-mt-20 space-y-1 rounded-[var(--radius-base)] border border-borde p-3 text-xs text-texto-suave" data-cierre="incompleto">
           <p>El costeo se cierra al entregar la unidad, con todo completo. Hoy falta: {falta.join(', ')}.</p>
           {c.venta && c.venta.sin_igv > 0 && (
             <Link href={enlaceCodigo(codigo, 'documentos')} className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0">
@@ -661,7 +666,7 @@ function LineaCierre({
     }
     const precio = verPrecio && c.venta?.margen_pct !== null && c.venta?.margen_pct !== undefined
     return (
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-base)] border border-borde p-3 text-xs text-texto-suave" data-cierre="abierto">
+      <div id="cierre-del-costeo" className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-base)] border border-borde p-3 text-xs text-texto-suave" data-cierre="abierto">
         <div className="space-y-1">
           <p>
             {c.entregada_el

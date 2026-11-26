@@ -3,6 +3,7 @@ import 'server-only'
 import { z } from 'zod'
 
 import { todasLasFilas } from '@/lib/datos/todas-las-filas'
+import type { DocumentoDeLaCompra } from '@/lib/dominio/adquisiciones'
 import { BUCKET_PAGOS_COMPRAS, BUCKET_PAGOS_FACTURAS, BUCKET_PAGOS_SERVICIO } from '@/lib/dominio/finanzas'
 import { createClient } from '@/lib/supabase/server'
 
@@ -212,6 +213,31 @@ export async function trazabilidadDeCompras(): Promise<CompraTrazada[]> {
   const { data, error } = await todasLasFilas(() => supabase.rpc('trazabilidad_de_compras'), ['creado_en.desc', 'id'])
   if (error) throw new Error(`No se pudieron leer las órdenes de compra y de servicio: ${error.message}`)
   return z.array(esquemaFila).parse(data)
+}
+
+const esquemaDocumentoDeLaCompra = z.object({
+  compra: z.guid(),
+  documento: z.string(),
+  situacion: z.enum(['ESTA', 'EN_PARTE', 'POR_REGISTRAR', 'FALTA']),
+  desde: texto,
+  dias: z.number().int().nullable(),
+  numeros: texto,
+})
+
+/**
+ * Qué documento lleva cada OC y cada OS, cuál falta y desde cuándo
+ * (`documentos_de_las_compras()`, migración 20261126480000), por compra. La
+ * función pide lo mismo que la pantalla (`adquisiciones.ver`) y solo lee.
+ */
+export async function documentosDeLasCompras(): Promise<Map<string, DocumentoDeLaCompra[]>> {
+  const supabase = await createClient()
+  const { data, error } = await todasLasFilas(() => supabase.rpc('documentos_de_las_compras'), ['compra', 'documento'])
+  if (error) throw new Error(`No se pudo leer qué documento falta en cada compra: ${error.message}`)
+  const porCompra = new Map<string, DocumentoDeLaCompra[]>()
+  for (const { compra, ...d } of z.array(esquemaDocumentoDeLaCompra).parse(data)) {
+    porCompra.set(compra, [...(porCompra.get(compra) ?? []), d])
+  }
+  return porCompra
 }
 
 /** La clave con que se busca un enlace firmado: el bucket y la ruta. */
