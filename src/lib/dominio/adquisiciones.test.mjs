@@ -32,6 +32,9 @@ test('cada documento se nombra según falte, esté a medias o esté', () => {
   assert.equal(textoDelDocumento({ documento: 'DETRACCION', situacion: 'EN_PARTE', numeros: 'OP-1' }), 'Detracción depositada en parte · (operación OP-1)')
   assert.equal(textoDelDocumento({ documento: 'NOTA_CREDITO', situacion: 'EN_PARTE', numeros: 'FC01-1' }), 'Falta la nota de crédito de otra devolución (ya está la FC01-1)')
   assert.equal(textoDelDocumento({ documento: 'NOTA_CREDITO', situacion: 'FALTA', numeros: null }), 'Falta la nota de crédito de lo devuelto')
+  // El papel está y falta registrarlo: no se dice «falta la factura» al lado de la factura.
+  assert.equal(textoDelDocumento({ documento: 'FACTURA', situacion: 'POR_REGISTRAR', numeros: 'E102-1' }), 'Factura E102-1 por registrar')
+  assert.equal(textoDelDocumento({ documento: 'COMPROBANTE', situacion: 'POR_REGISTRAR', numeros: 'E555-1' }), 'Falta el PDF del comprobante E555-1 (anotado al pagar)')
 })
 
 test('lo que falta va del que más espera al que menos, y lo que está no cuenta', () => {
@@ -40,8 +43,9 @@ test('lo que falta va del que más espera al que menos, y lo que está no cuenta
     { documento: 'FACTURA', situacion: 'ESTA', desde: null, dias: null, numeros: 'F001-1' },
     { documento: 'NOTA_CREDITO', situacion: 'FALTA', desde: null, dias: 9, numeros: null },
     { documento: 'DETRACCION', situacion: 'EN_PARTE', desde: null, dias: 2, numeros: 'OP-1' },
+    { documento: 'COMPROBANTE', situacion: 'POR_REGISTRAR', desde: null, dias: 1, numeros: 'E555-1' },
   ]
-  assert.deepEqual(documentosQueFaltan(docs).map((d) => d.documento), ['NOTA_CREDITO', 'GUIA', 'DETRACCION'])
+  assert.deepEqual(documentosQueFaltan(docs).map((d) => d.documento), ['NOTA_CREDITO', 'GUIA', 'DETRACCION', 'COMPROBANTE'])
 })
 
 test('«Incompletas» es la que tiene algún documento que falta o está a medias', () => {

@@ -5,8 +5,9 @@
  *   1. Siembra, con la función de cada puesto: la OC «A» aprobada hace 5 días,
  *      sin factura y en la lista del conductor (le faltan la factura y la guía);
  *      la OC «B» con su factura registrada, recogida, validada y con 2 devueltos
- *      sin reposición (le falta la nota de crédito); la OS «S» afecta a
- *      detracción, aprobada hace 3 días y con un pago al proveedor (le faltan el
+ *      sin reposición (le faltan la nota de crédito y la guía, que el conductor
+ *      no llevó); la OS «S» afecta a detracción, aprobada hace 3 días y pagada al
+ *      proveedor con el número de su comprobante anotado (le faltan el PDF del
  *      comprobante y la detracción); y la OC «C», con su factura entera, que no
  *      debe salir en «Incompletas».
  *   2. Contabilidad, en 1440 y en 390, filtra «Incompletas»: cada una dice qué le
@@ -193,8 +194,9 @@ const [{ id: caja }] = await consulta(
 )
 await como('tesoreria')
 const voucher = await archivo('pagos-servicio', `${os}/${(await consulta(`select gen_random_uuid() as u`))[0].u}.pdf`, 'tesoreria')
-await consulta(`select public.registrar_pago_servicio(gen_random_uuid(), $1, $2::date, 1000, false, $3, null, $4, $5, null, 'PROVEEDOR')`,
-  [os, hoy, `OP-473-${SUFIJO}`, voucher, caja])
+const COMPROBANTE_OS = `E555-${SUFIJO.slice(0, 5)}`
+await consulta(`select public.registrar_pago_servicio(gen_random_uuid(), $1, $2::date, 1000, false, $3, $6, $4, $5, null, 'PROVEEDOR')`,
+  [os, hoy, `OP-473-${SUFIJO}`, voucher, caja, COMPROBANTE_OS])
 await nadie()
 
 const numeros = Object.fromEntries(
@@ -202,7 +204,7 @@ const numeros = Object.fromEntries(
     .map((f) => [f.id, f.numero]),
 )
 const [A, B, C, S] = [numeros[ocA], numeros[ocB], numeros[ocC], numeros[os]]
-console.log(`  siembra: ${A} sin factura hace 5 días y en la lista; ${B} con devolución sin nota; ${C} completa; ${S} pagada sin comprobante ni detracción`)
+console.log(`  siembra: ${A} sin factura hace 5 días y en la lista; ${B} con devolución sin nota; ${C} completa; ${S} pagada con el comprobante anotado y sin detracción`)
 
 // ---------------------------------------------------------------- navegador
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
@@ -257,8 +259,15 @@ async function leerExcel(buffer) {
   const fb = await faltas(B)
   comprobar(/nota de crédito/.test(fb.NOTA_CREDITO ?? '') && /desde hoy/.test(fb.NOTA_CREDITO ?? '') && !fb.FACTURA,
     `${B}: falta la nota de crédito de lo devuelto, y la factura no («${fb.NOTA_CREDITO}»)`)
+  comprobar(/Falta la guía de remisión/.test(fb.GUIA ?? '') && /desde hoy/.test(fb.GUIA ?? ''),
+    `${B}: el conductor la dejó sin guía y la guía sigue faltando («${fb.GUIA}»)`)
+  comprobar((await fila(B).locator('[data-falta="GUIA"]').getByRole('button', { name: /Cargar guía/ }).count()) === 1,
+    `${B}: Contabilidad puede cargar la guía desde esa línea`)
   const fs = await faltas(S)
-  comprobar(/Falta la factura, boleta o recibo/.test(fs.COMPROBANTE ?? '') && /hace 3 días/.test(fs.COMPROBANTE ?? ''), `${S}: falta el comprobante, hace 3 días («${fs.COMPROBANTE}»)`)
+  comprobar(new RegExp(`Falta el PDF del comprobante ${COMPROBANTE_OS} \\(anotado al pagar\\)`).test(fs.COMPROBANTE ?? '') && /hace 3 días/.test(fs.COMPROBANTE ?? ''),
+    `${S}: el comprobante anotado al pagar dice que falta su PDF, hace 3 días («${fs.COMPROBANTE}»)`)
+  const celdaS = limpio(await fila(S).locator('td').nth(5).textContent())
+  comprobar(celdaS.split(COMPROBANTE_OS).length === 2, `${S}: su número sale una vez, no también como «anotado al pagar» suelto («${celdaS}»)`)
   comprobar(/etracción/.test(fs.DETRACCION ?? '') && /desde hoy/.test(fs.DETRACCION ?? ''), `${S}: falta la detracción desde el pago al proveedor («${fs.DETRACCION}»)`)
   comprobar((await fila(C).count()) === 0, `${C}, completa, no sale en «Incompletas»`)
   const sinFalta = await pagina.locator('tbody tr[data-orden]').evaluateAll((trs) => trs.filter((tr) => !tr.querySelector('[data-falta]')).map((tr) => tr.getAttribute('data-orden')))
@@ -279,18 +288,23 @@ async function leerExcel(buffer) {
   for (const t of ['Orden', 'Proveedor', 'Factura o comprobante', 'Guía de remisión', 'Detracción', 'Nota de crédito', 'Qué falta', 'Días de la espera más larga'])
     comprobar(titulos.includes(t), `el Excel tiene la columna «${t}»`)
   const de = (n) => filas.find((f) => f.Orden === n)
-  comprobar(/^Falta desde el .+ \(5 días\)$/.test(de(A)?.['Factura o comprobante'] ?? '') && /^Falta desde el /.test(de(A)?.['Guía de remisión'] ?? '') && de(A)?.['Días de la espera más larga'] === 5,
+  comprobar(/^Falta desde el .+ \(hace 5 días\)$/.test(de(A)?.['Factura o comprobante'] ?? '') && /^Falta desde el /.test(de(A)?.['Guía de remisión'] ?? '') && de(A)?.['Días de la espera más larga'] === 5,
     `${A} en el Excel: falta la factura desde hace 5 días y la guía («${de(A)?.['Factura o comprobante']}», «${de(A)?.['Guía de remisión']}»)`)
   comprobar(/^Factura /.test(de(B)?.['Factura o comprobante'] ?? '') && /^Falta desde el /.test(de(B)?.['Nota de crédito'] ?? ''),
     `${B} en el Excel: la factura está y la nota de crédito falta («${de(B)?.['Factura o comprobante']}», «${de(B)?.['Nota de crédito']}»)`)
-  comprobar(/^Falta desde el .+ \(3 días\)$/.test(de(S)?.['Factura o comprobante'] ?? '') && /^Falta desde el /.test(de(S)?.Detracción ?? '') && de(S)?.['Nota de crédito'] === '—',
-    `${S} en el Excel: falta el comprobante (3 días) y la detracción, y no lleva nota («${de(S)?.Detracción}»)`)
+  comprobar(new RegExp(`^Falta el PDF del comprobante ${COMPROBANTE_OS} \\(anotado al pagar\\), desde el .+ \\(hace 3 días\\)$`).test(de(S)?.['Factura o comprobante'] ?? '') &&
+      /^Falta desde el .+ \(desde hoy\)$/.test(de(S)?.Detracción ?? '') && de(S)?.['Nota de crédito'] === '—' && /Servicio de prueba 473/.test(de(S)?.['Descripción del servicio'] ?? ''),
+    `${S} en el Excel: falta el PDF del comprobante (hace 3 días) y la detracción, con su descripción y sin nota («${de(S)?.['Factura o comprobante']}», «${de(S)?.Detracción}»)`)
+  comprobar(/Pagada en parte · pagado S\/\s?1,000\.00/.test(de(S)?.Pago ?? '') && /por pagar S\/\s?118\.00/.test(de(B)?.Pago ?? ''),
+    `el pago dice lo pagado y lo que falta, como la pantalla («${de(S)?.Pago}», «${de(B)?.Pago}»)`)
   comprobar(de(C) && !de(C)['Qué falta'] && de(C)['Días de la espera más larga'] === null, `${C} en el Excel, sin nada que falte`)
   comprobar(de(A)?.Proveedor === PROVEEDOR && de(A)?.Total === 118, `${A} en el Excel con su proveedor y su total (${de(A)?.Total})`)
 
-  // Un mes cambiado a mano no rompe nada: cae en el mes en curso.
-  const raro = await pagina.request.get(`${BASE}/adquisiciones/excel?mes=2026-13`)
-  comprobar(raro.status() === 200 && /MW-Adquisiciones-\d{4}-\d{2}\.xlsx/.test(raro.headers()['content-disposition'] ?? ''), 'un mes que no existe baja el del mes en curso')
+  // Un mes que no se entiende no baja otro mes callado: vuelve a la pantalla y lo dice junto al botón.
+  await pagina.goto(`${BASE}/adquisiciones/excel?mes=noviembre`, { waitUntil: 'networkidle' })
+  const avisoMes = limpio(await pagina.locator('#excel-aviso').textContent().catch(() => ''))
+  comprobar(/\/adquisiciones\?excel=mes/.test(pagina.url()) && /Ese mes no se entiende/.test(avisoMes),
+    `un mes que no se entiende vuelve a Adquisiciones con el aviso («${avisoMes}»)`)
   await contexto.close()
 }
 

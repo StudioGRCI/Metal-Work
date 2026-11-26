@@ -240,7 +240,7 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
             ...situaciones.map((s) => ({ valor: s.valor, etiqueta: `${s.etiqueta} (${delTipo.filter((f) => enSituacion(f, s.valor)).length})` })),
           ]}
         />
-        <ExcelDelMes mes={mes} />
+        <ExcelDelMes mes={mes} aviso={params.excel === 'mes' ? 'mes' : params.excel === 'fallo' ? 'fallo' : null} />
       </div>
 
       {/* En el teléfono, una tarjeta por orden: siete columnas se corrían de costado. */}
@@ -557,9 +557,15 @@ function Documentos({ f, urls, acceso }: { f: Fila; urls: Map<string, string>; a
   return (
     <ul className="space-y-1 text-xs">
       {otrasFaltas.map((d) => (
-        <li key={d.documento} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-aviso" data-falta={d.documento}>
-          <span>{textoDelDocumento(d)}</span>
-          <DiasEnEspera dias={d.dias} desde={d.desde} />
+        <li key={d.documento} className="space-y-1" data-falta={d.documento}>
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-aviso">
+            <span>{textoDelDocumento(d)}</span>
+            <DiasEnEspera dias={d.dias} desde={d.desde} />
+          </p>
+          {/* La OC que el conductor ya dejó sin guía: se carga igual (Plan 10, auditoría). */}
+          {d.documento === 'GUIA' && acceso.cargaGuia && !f.guia && f.peso_kg !== null && (
+            <CargarGuia ordenCompraId={f.id} solicitudId={crypto.randomUUID()} numero={nombreDe(f)} peso={f.peso_kg} hoy={acceso.hoy} />
+          )}
         </li>
       ))}
       {f.facturas.map((x) => {
@@ -611,7 +617,7 @@ function Documentos({ f, urls, acceso }: { f: Fila; urls: Map<string, string>; a
           <DiasEnEspera dias={falta('BOLETA')?.dias} desde={falta('BOLETA')?.desde} />
         </li>
       )}
-      {comprobantesOs.map((c, i) => (
+      {(f.papeles.some((d) => d.documento === 'COMPROBANTE' && d.situacion === 'POR_REGISTRAR') ? [] : comprobantesOs).map((c, i) => (
         <li key={`${c}-${i}`} className="text-texto">
           Comprobante <span className="tabular">{c}</span> <span className="text-texto-suave">(anotado al pagar)</span>
         </li>
@@ -893,17 +899,41 @@ function Vouchers({
  * navegador baja el archivo de `/adquisiciones/excel`, que pide el mismo permiso
  * que esta pantalla.
  */
-function ExcelDelMes({ mes }: { mes: string }) {
+function ExcelDelMes({ mes, aviso }: { mes: string; aviso: 'mes' | 'fallo' | null }) {
   return (
-    <form method="get" action="/adquisiciones/excel" className="flex flex-wrap items-center gap-2">
-      <label htmlFor="excel-mes" className="text-sm text-texto-suave">
-        Excel del mes
-      </label>
-      <Entrada id="excel-mes" type="month" name="mes" defaultValue={mes} max={mes} min="2026-01" required className="w-auto" />
-      <Boton type="submit" variante="contorno">
-        <Download aria-hidden className="size-4" />
-        Descargar Excel
-      </Boton>
+    <form method="get" action="/adquisiciones/excel" className="space-y-1">
+      <div className="flex flex-wrap items-center gap-2">
+        <label htmlFor="excel-mes" className="text-sm text-texto-suave">
+          Excel del mes
+        </label>
+        {/* Donde el navegador no tiene calendario de meses (Safari de escritorio) es un campo de texto: el formato lo dice el ejemplo. */}
+        <Entrada
+          id="excel-mes"
+          type="month"
+          name="mes"
+          defaultValue={mes}
+          max={mes}
+          pattern="[0-9]{4}-[0-9]{2}"
+          placeholder={mes}
+          title="El mes, como año-mes: 2026-11"
+          required
+          aria-invalid={aviso === 'mes' || undefined}
+          aria-describedby={aviso ? 'excel-aviso' : undefined}
+          className="w-auto"
+        />
+        <Boton type="submit" variante="contorno">
+          <Download aria-hidden className="size-4" />
+          Descargar Excel
+        </Boton>
+      </div>
+      {/* La descarga es un GET: si no sale, la ruta vuelve aquí y lo dice, en vez de dejar una página de error. */}
+      {aviso && (
+        <p id="excel-aviso" role="alert" className="text-sm text-peligro">
+          {aviso === 'mes'
+            ? 'Ese mes no se entiende: elígelo en el calendario o escríbelo como año-mes (2026-11).'
+            : 'No se pudo armar el Excel: no se leyó qué documento falta en cada orden. Vuelve a intentarlo.'}
+        </p>
+      )}
     </form>
   )
 }

@@ -218,7 +218,7 @@ export async function trazabilidadDeCompras(): Promise<CompraTrazada[]> {
 const esquemaDocumentoDeLaCompra = z.object({
   compra: z.guid(),
   documento: z.string(),
-  situacion: z.enum(['ESTA', 'EN_PARTE', 'FALTA']),
+  situacion: z.enum(['ESTA', 'EN_PARTE', 'POR_REGISTRAR', 'FALTA']),
   desde: texto,
   dias: z.number().int().nullable(),
   numeros: texto,

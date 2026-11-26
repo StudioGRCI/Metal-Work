@@ -15,6 +15,9 @@
 --   5. Adjunto el comprobante, está.
 --   6. Quién la lee: Contabilidad, Logística, Tesorería y Gerencia lo mismo; Supervisión
 --      y Almacén, no. Y nada de esto borra ni cambia un documento.
+--   7. (va antes que la 6) Lo que hallaron los auditores: la OC dejada sin guía la sigue pidiendo; la OC con
+--      boleta no pide nota de crédito; la factura anexada y el comprobante anotado al
+--      pagar están por registrar; la OS afecta bajo el mínimo no pide detracción.
 \set ON_ERROR_STOP on
 begin;
 
@@ -38,7 +41,7 @@ begin
     'se crearon los ocho usuarios del check, uno por puesto');
   perform set_config('prueba.area_mtz', (select id::text from public.areas where codigo = 'MTZ'), true);
   perform set_config('prueba.hoy', (now() at time zone 'America/Lima')::date::text, true);
-  foreach v in array array['rq', 'oc', 'ing', 'f1', 'dev1', 'nc1', 'guia', 'os', 'sin', 'p1', 'p2', 'p3', 'p4'] loop
+  foreach v in array array['rq', 'oc', 'ing', 'f1', 'dev1', 'nc1', 'guia', 'os', 'sin', 'p1', 'p2', 'p3', 'p4', 'rq2', 'rq3', 'ocb', 'oc2', 'ingb', 'devb', 'min', 'p5'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
 end $$;
@@ -241,9 +244,9 @@ select pg_temp.como('contabilidad');
 set local role authenticated;
 do $$ begin
   perform test.afirmar((select situacion = 'FALTA' and dias = 0
-                               and desde = (select creado_en from public.pagos_orden_servicio where id = pg_temp.id('p1'))
+                               and desde = (select fecha_pago::timestamp at time zone 'America/Lima' from public.pagos_orden_servicio where id = pg_temp.id('p1'))
                           from pg_temp.doc('os', 'DETRACCION')),
-    'pagado el proveedor, falta la detracción, desde ese pago');
+    'pagado el proveedor, falta la detracción, desde la fecha de ese pago');
   perform test.afirmar(not exists (select 1 from pg_temp.doc('sin', 'DETRACCION')), 'la OS sin detracción no la pide aunque se pague');
 end $$;
 reset role;
@@ -287,6 +290,105 @@ end $$;
 select set_config('prueba.visto', (
   select string_agg(format('%s:%s:%s:%s:%s', d.compra, d.documento, d.situacion, d.dias, d.numeros), '|' order by d.compra, d.documento)
     from public.documentos_de_las_compras() d where d.compra in (pg_temp.id('oc'), pg_temp.id('os'), pg_temp.id('sin'))), true);
+reset role;
+
+-- ============================================ 7. Lo que encontraron los auditores
+-- a) La OC con boleta que el conductor dejó sin guía, y de la que Almacén devolvió 2:
+--    la guía sigue faltando después de dejarla, y la nota de crédito no se le pide
+--    (se registra contra una factura, y esta OC no tiene).
+select pg_temp.como('requerimientos');
+set local role authenticated;
+select public.emitir_requerimiento(pg_temp.id('rq2'), 'OPERACION', pg_temp.id('area_mtz'),
+  'CHK473_A', 'Discos con boleta para la prueba 473', null, format('[{"material_id": "%s", "cantidad": 10}]', current_setting('prueba.m1'))::jsonb);
+select public.emitir_requerimiento(pg_temp.id('rq3'), 'OPERACION', pg_temp.id('area_mtz'),
+  'CHK473_A', 'Discos con factura anexada para la prueba 473', null, format('[{"material_id": "%s", "cantidad": 10}]', current_setting('prueba.m1'))::jsonb);
+reset role;
+select pg_temp.como('almacenero');
+set local role authenticated;
+select public.rq_revisar_stock(pg_temp.id('rq2'), '[{"item": 1, "en_stock": 0}]'::jsonb, null);
+select public.rq_revisar_stock(pg_temp.id('rq3'), '[{"item": 1, "en_stock": 0}]'::jsonb, null);
+reset role;
+select pg_temp.como('comprador');
+set local role authenticated;
+select public.emitir_compra_de_requerimientos(pg_temp.id('ocb'),
+  jsonb_build_array(jsonb_build_object('material_id', current_setting('prueba.m1'), 'cantidad', 10, 'precio', 10,
+    'insumos', (select jsonb_agg(l.id) from public.requerimiento_lineas l where l.requerimiento_id = pg_temp.id('rq2')))),
+  pg_temp.id('proveedor'), 'COT-473-B', null, 'CONTADO', 0, 'PEN', false);
+select public.emitir_compra_de_requerimientos(pg_temp.id('oc2'),
+  jsonb_build_array(jsonb_build_object('material_id', current_setting('prueba.m1'), 'cantidad', 10, 'precio', 10,
+    'insumos', (select jsonb_agg(l.id) from public.requerimiento_lineas l where l.requerimiento_id = pg_temp.id('rq3')))),
+  pg_temp.id('proveedor'), 'COT-473-C', null, 'CONTADO', 0, 'PEN', true);
+reset role;
+select pg_temp.como('gerente');
+set local role authenticated;
+select public.aprobar_compra(c.id) from public.ordenes_compra_materiales c
+ where c.id in (pg_temp.id('ocb'), pg_temp.id('oc2')) and c.aprobacion = 'POR_APROBAR';
+reset role;
+select pg_temp.como('comprador');
+set local role authenticated;
+select public.mandar_compra_a_recojo(pg_temp.id('ocb'));
+select public.programar_recojo(pg_temp.id('ocb'), 25, null);
+reset role;
+select pg_temp.como('conductor');
+set local role authenticated;
+select public.marcar_compra_en_recojo(pg_temp.id('ocb'));
+select public.marcar_compra_recogida(pg_temp.id('ocb'));
+select public.marcar_compra_dejada_almacen(pg_temp.id('ocb'));
+reset role;
+select set_config('prueba.ingresos_b',
+  (select jsonb_agg(jsonb_build_object('id', i.id, 'movimiento_id', current_setting('prueba.ingb'), 'cantidad', 10))
+     from public.ingresos_pendientes_almacen i where i.orden_compra_id = pg_temp.id('ocb'))::text, true);
+select pg_temp.como('almacenero');
+set local role authenticated;
+select public.validar_ingresos_compra(pg_temp.id('ocb'), current_setting('prueba.ingresos_b')::jsonb, null);
+select public.devolver_al_proveedor(pg_temp.id('devb'), pg_temp.id('ingb'), 2, 'GR-DEV-473B', 'Dos discos llegaron partidos', false);
+reset role;
+-- Logística anexa la factura de la otra OC con factura; Contabilidad todavía no la registra.
+insert into storage.objects (bucket_id, name, owner_id, metadata)
+values ('documentos-compras', 'compra/' || pg_temp.id('oc2') || '/anexo-473.pdf', pg_temp.id('comprador')::text,
+        '{"mimetype": "application/pdf", "size": 2048}');
+set local session_replication_role = replica;
+insert into public.documentos_compra_material (orden_compra_id, tipo, numero_documento, fecha_emision, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por)
+values (pg_temp.id('oc2'), 'FACTURA', 'E102-473', current_setting('prueba.hoy')::date, 'anexo-473.pdf', 'compra/' || pg_temp.id('oc2') || '/anexo-473.pdf', 'application/pdf', 2048,
+        pg_temp.id('comprador'));
+set local session_replication_role = origin;
+-- c) Una OS afecta que no llega al mínimo de la detracción, pagada con el comprobante anotado y sin su PDF.
+do $$ begin
+  insert into public.ordenes_servicio (id, numero, proveedor_id, proveedor, descripcion, monto, monto_pen, moneda, codigo_interno,
+                                       aprobacion, aprobado_por, aprobado_en, creado_por,
+                                       detraccion_afecta, detraccion_codigo, detraccion_porcentaje, detraccion_minimo)
+  values (pg_temp.id('min'), 'QA-OS-473-MIN', pg_temp.id('proveedor'), 'PROVEEDOR DE PRUEBA 473 S.A.C.', 'Servicio chico del check 473',
+          500, 500, 'PEN', 'CHK473_A', 'APROBADA', pg_temp.id('gerente'), now() - interval '1 day', pg_temp.id('comprador'),
+          true, '020', 12, 700);
+  perform test.afirmar((select detraccion_monto is null from public.ordenes_servicio where id = pg_temp.id('min')),
+    'la OS afecta que no llega al mínimo no tiene monto de detracción');
+end $$;
+select pg_temp.como('tesoreria');
+set local role authenticated;
+do $$
+declare v_ruta text := pg_temp.id('min') || '/' || gen_random_uuid() || '.pdf';
+begin
+  insert into storage.objects (bucket_id, name, owner_id, metadata)
+  values ('pagos-servicio', v_ruta, auth.uid()::text, '{"mimetype": "application/pdf", "size": 2048}');
+  perform public.registrar_pago_servicio(pg_temp.id('p5'), pg_temp.id('min'), current_setting('prueba.hoy')::date, 590, true,
+    'OP-473-p5', 'E555-473', v_ruta, pg_temp.id('caja'), null, 'PROVEEDOR');
+end $$;
+reset role;
+select pg_temp.como('contabilidad');
+set local role authenticated;
+do $$ begin
+  perform test.afirmar((select situacion = 'FALTA' and dias = 0 from pg_temp.doc('ocb', 'GUIA')),
+    'el conductor la dejó en el almacén sin guía: la guía sigue faltando');
+  perform test.afirmar(not exists (select 1 from pg_temp.doc('ocb', 'NOTA_CREDITO')),
+    'a la OC con boleta no se le pide nota de crédito de lo devuelto: no tiene factura contra la cual registrarla');
+  perform test.afirmar((select situacion = 'FALTA' from pg_temp.doc('ocb', 'BOLETA')), 'y le falta su boleta');
+  perform test.afirmar((select situacion = 'POR_REGISTRAR' and numeros = 'E102-473' and dias = 0 from pg_temp.doc('oc2', 'FACTURA')),
+    'la factura que anexó Logística está por registrar, con su número, no «falta»');
+  perform test.afirmar(not exists (select 1 from pg_temp.doc('min', 'DETRACCION')),
+    'la OS afecta que no llega al mínimo no pide detracción aunque se pague entera');
+  perform test.afirmar((select situacion = 'POR_REGISTRAR' and numeros = 'E555-473' and dias = 1 from pg_temp.doc('min', 'COMPROBANTE')),
+    'el comprobante que Tesorería anotó al pagar está por registrar: falta su PDF');
+end $$;
 reset role;
 
 -- ============================================ 6. Quién la lee, y que no toca nada

@@ -8,13 +8,17 @@ import {
   TIPO_DOCUMENTO_COMPRA,
   TIPO_DOCUMENTO_SERVICIO,
   documentosQueFaltan,
+  nombreDeOc,
   textoDelDocumento,
   type DocumentoDeLaCompra,
 } from '@/lib/dominio/adquisiciones'
 import { definir } from '@/lib/dominio/estados'
 import { ESTADO_SERVICIO, situacionCompra } from '@/lib/dominio/logistica'
 import { APROBACION_COMPRA, compraDetenida, condicionDePago } from '@/lib/dominio/proveedores'
-import { fecha, fechaHora } from '@/lib/format'
+import { haceDias } from '@/lib/dominio/recorrido'
+import { fecha, fechaHora, moneda } from '@/lib/format'
+
+const codigo = (m: string | null) => (m === 'USD' ? 'USD' : 'PEN')
 
 const AZUL = 'FF13467F'
 const AVISO = 'FFFEF3C7'
@@ -22,14 +26,32 @@ const BORDE = 'FFC9D1DC'
 
 export type CompraParaExcel = CompraTrazada & { papeles: DocumentoDeLaCompra[] }
 
-/** Una celda por documento: lo que está con su número; lo que falta, desde cuándo y cuántos días. */
+/**
+ * Una celda por documento: lo que está con su número; lo que falta, desde cuándo y
+ * hace cuánto, con las palabras de la pantalla («hace 5 días», «desde hoy»).
+ */
 function celdaDelDocumento(d: DocumentoDeLaCompra | undefined): string {
   if (!d) return '—'
   const texto = textoDelDocumento(d)
   if (d.situacion === 'ESTA') return texto
   const desde = d.desde ? ` desde el ${fecha(d.desde)}` : ''
-  const dias = d.dias === null ? '' : d.dias === 1 ? ' (1 día)' : ` (${d.dias} días)`
-  return d.situacion === 'FALTA' ? `Falta${desde}${dias}` : `${texto}; lo demás falta${desde}${dias}`
+  const dias = d.dias === null ? '' : ` (${haceDias(d.dias)})`
+  if (d.situacion === 'FALTA') return `Falta${desde}${dias}`
+  if (d.situacion === 'POR_REGISTRAR') return `${texto},${desde}${dias}`
+  return `${texto}; lo demás falta${desde}${dias}`
+}
+
+/** El pago como lo dice la pantalla: el estado, lo que falta de cada factura y lo pagado sin factura (la OS, la OC con boleta). */
+function pago(f: CompraTrazada): string {
+  const partes = [definir(ESTADO_PAGO, f.pago).etiqueta]
+  for (const x of f.facturas) {
+    if (x.estado !== 'REGISTRADA' || x.saldo <= 0) continue
+    partes.push(`${f.facturas.length > 1 ? `${x.numero}: ` : ''}${x.pagado > 0 ? 'saldo' : 'por pagar'} ${moneda(x.saldo, codigo(x.moneda))}`)
+  }
+  const pagado = new Map<string, number>()
+  for (const p of f.pagos) pagado.set(p.moneda, (pagado.get(p.moneda) ?? 0) + p.monto)
+  for (const [m, monto] of pagado) if (monto > 0) partes.push(`pagado ${moneda(monto, codigo(m))}`)
+  return partes.join(' · ')
 }
 
 /** «En qué va», como la columna de la pantalla: la aprobación de Gerencia y el avance. */
@@ -98,6 +120,7 @@ export async function generarAdquisicionesExcel({
     { titulo: 'Emitida por', ancho: 20 },
     { titulo: 'De dónde sale', ancho: 30 },
     { titulo: 'Proveedor', ancho: 32 },
+    { titulo: 'Descripción del servicio', ancho: 30 },
     { titulo: 'Moneda', ancho: 8 },
     { titulo: 'Total', ancho: 13 },
     { titulo: 'Condición de pago', ancho: 16 },
@@ -109,7 +132,7 @@ export async function generarAdquisicionesExcel({
     { titulo: 'Otros documentos', ancho: 28 },
     { titulo: 'Qué falta', ancho: 34 },
     { titulo: 'Días de la espera más larga', ancho: 12 },
-    { titulo: 'Pago', ancho: 18 },
+    { titulo: 'Pago', ancho: 30 },
   ]
   const [anio, numeroMes] = mes.split('-').map(Number)
   const nombreMes = new Intl.DateTimeFormat('es-PE', { month: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(anio, numeroMes - 1, 1)))
@@ -125,7 +148,7 @@ export async function generarAdquisicionesExcel({
   t.font = { bold: true, size: 16, color: { argb: AZUL } }
   hoja.getRow(1).height = 26
   const s = hoja.getCell(2, 1)
-  s.value = `Las OC y OS emitidas en el mes, con qué documento tiene cada una, cuál falta y desde cuándo. «—»: no lo lleva. Descargado el ${fechaHora(generadoEn)} por ${generadoPor}.`
+  s.value = `Las OC y OS emitidas en el mes, con qué documento tiene cada una, cuál falta y desde cuándo. «—»: no lo lleva o todavía no se le pide (la guía, antes de la lista del conductor; la detracción, antes del primer pago; la factura, antes de la aprobación). Descargado el ${fechaHora(generadoEn)} por ${generadoPor}.`
   s.font = { size: 10, color: { argb: 'FF4B5563' } }
   s.alignment = { wrapText: true, vertical: 'top' }
   hoja.getRow(2).height = 30
@@ -151,11 +174,12 @@ export async function generarAdquisicionesExcel({
     const r = hoja.getRow(n++)
     r.values = [
       f.tipo,
-      f.numero ?? (f.tipo === 'OC' ? 'OC sin número' : 'OS sin número'),
+      f.tipo === 'OC' ? nombreDeOc(f) : (f.numero ?? 'OS sin número'),
       fecha(f.creado_en),
       f.emitido_por ?? '',
       origen(f),
       f.proveedor,
+      f.tipo === 'OS' ? (f.descripcion ?? '') : '',
       f.moneda === 'USD' ? 'USD' : 'PEN',
       f.total === null || f.sin_precio ? null : f.total,
       condicionDePago(f.condicion_pago, f.dias_credito),
@@ -167,11 +191,11 @@ export async function generarAdquisicionesExcel({
       otrosDocumentos(f),
       faltan.map((d) => textoDelDocumento(d)).join('; '),
       faltan.reduce<number | null>((max, d) => (d.dias !== null && (max === null || d.dias > max) ? d.dias : max), null),
-      definir(ESTADO_PAGO, f.pago).etiqueta,
+      pago(f),
     ]
-    r.getCell(8).numFmt = '#,##0.00'
+    r.getCell(9).numFmt = '#,##0.00'
     r.alignment = { vertical: 'top', wrapText: true }
-    if (faltan.length > 0) r.getCell(16).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AVISO } }
+    if (faltan.length > 0) r.getCell(17).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AVISO } }
   }
   if (filas.length === 0) hoja.getCell(5, 1).value = 'Ninguna OC ni OS emitida en ese mes.'
   return Buffer.from(await libro.xlsx.writeBuffer())

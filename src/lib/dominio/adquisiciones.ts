@@ -232,8 +232,18 @@ export function anexoPorRevisarAlAnular(
  * `documentos_de_las_compras()` (migración 20261126220000, Plan 10). Cada uno
  * dice cómo se nombra cuando falta, cuando está a medias y cuando ya está.
  */
-export const DOCUMENTO_DE_COMPRA: Record<string, { nombre: string; falta: string; enParte: string; esta: string }> = {
-  FACTURA: { nombre: 'Factura', falta: 'Falta la factura', enParte: 'Facturada en parte', esta: 'Factura' },
+export const DOCUMENTO_DE_COMPRA: Record<
+  string,
+  { nombre: string; falta: string; enParte: string; esta: string; porRegistrar?: (numeros: string | null) => string }
+> = {
+  // POR_REGISTRAR: el papel está, falta registrarlo (la factura que anexó Logística o quedó en borrador).
+  FACTURA: {
+    nombre: 'Factura',
+    falta: 'Falta la factura',
+    enParte: 'Facturada en parte',
+    esta: 'Factura',
+    porRegistrar: (n) => (n ? `Factura ${n} por registrar` : 'Factura por registrar'),
+  },
   BOLETA: {
     nombre: 'Boleta, nota de venta o recibo',
     falta: 'Falta la boleta, nota de venta o recibo',
@@ -245,6 +255,8 @@ export const DOCUMENTO_DE_COMPRA: Record<string, { nombre: string; falta: string
     falta: 'Falta la factura, boleta o recibo',
     enParte: 'Comprobante en parte',
     esta: 'Comprobante',
+    // Tesorería anotó su número al pagar; falta adjuntar el PDF.
+    porRegistrar: (n) => (n ? `Falta el PDF del comprobante ${n} (anotado al pagar)` : 'Falta el PDF del comprobante (anotado al pagar)'),
   },
   GUIA: { nombre: 'Guía de remisión', falta: 'Falta la guía de remisión', enParte: 'Guía de remisión en parte', esta: 'Guía de remisión' },
   DETRACCION: {
@@ -264,7 +276,7 @@ export const DOCUMENTO_DE_COMPRA: Record<string, { nombre: string; falta: string
 /** El orden en que se leen, el mismo en la pantalla y en el Excel. */
 export const ORDEN_DE_DOCUMENTOS = ['FACTURA', 'BOLETA', 'COMPROBANTE', 'GUIA', 'DETRACCION', 'NOTA_CREDITO'] as const
 
-export type SituacionDeDocumento = 'ESTA' | 'EN_PARTE' | 'FALTA'
+export type SituacionDeDocumento = 'ESTA' | 'EN_PARTE' | 'POR_REGISTRAR' | 'FALTA'
 export type DocumentoDeLaCompra = {
   documento: string
   situacion: SituacionDeDocumento
@@ -277,6 +289,7 @@ export type DocumentoDeLaCompra = {
 export function textoDelDocumento(d: Pick<DocumentoDeLaCompra, 'documento' | 'situacion' | 'numeros'>): string {
   const def = DOCUMENTO_DE_COMPRA[d.documento] ?? { nombre: d.documento, falta: `Falta: ${d.documento}`, enParte: d.documento, esta: d.documento }
   if (d.situacion === 'FALTA') return def.falta
+  if (d.situacion === 'POR_REGISTRAR') return def.porRegistrar ? def.porRegistrar(d.numeros) : `${def.nombre} por registrar`
   if (!d.numeros) return d.situacion === 'EN_PARTE' ? def.enParte : def.esta
   // La detracción no tiene número propio: lo que se anota es la operación del depósito.
   const numeros = d.documento === 'DETRACCION' ? `(operación ${d.numeros})` : d.numeros
