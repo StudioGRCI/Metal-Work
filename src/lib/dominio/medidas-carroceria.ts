@@ -28,16 +28,23 @@ export function resumenMedidas(c: MedidasDeCarroceria): string | null {
 }
 
 /**
- * El código de un tipo de carrocería, que sale de su nombre: mayúsculas, sin
- * tildes, con guiones bajos. No se repite: el alta que encuentra el suyo
- * devuelve el que estaba (`crearCarroceria`), y la orden nueva busca por él la
- * carrocería cuya alta volvió sin decir si entró.
+ * El nombre de una carrocería como se compara: mayúsculas, sin tildes, con
+ * guiones bajos y entero. Con él decide el alta si ya estaba
+ * (`crearCarroceria`), la orden nueva busca la que volvió sin decir si entró, y
+ * la base no deja renombrar una con el de otra (`fn_carroceria_nombre_sin_repetir`).
  */
-export const codigoDeCarroceria = (nombre: string) =>
+export const nombreDeCarroceria = (nombre: string) =>
   nombre
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toUpperCase()
     .replace(/[^A-Z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
-    .slice(0, 40)
+
+/**
+ * El código de una carrocería nueva, que sale de su nombre recortado a 40. Solo
+ * al darla de alta: después es el de la empresa y no sigue al nombre. Para
+ * saber si dos se llaman igual, `nombreDeCarroceria`: el recorte confundía dos
+ * nombres largos que solo difieren al final.
+ */
+export const codigoDeCarroceria = (nombre: string) => nombreDeCarroceria(nombre).slice(0, 40)
