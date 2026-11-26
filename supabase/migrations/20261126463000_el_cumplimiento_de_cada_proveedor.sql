@@ -18,9 +18,11 @@
 --     después (entrega 4.2): corregirla le dice a Logística cuándo llega, no
 --     borra que llegó tarde. La que no tenía fecha prometida no se mide.
 --   · Atrasada por causa nuestra: la que se atrasó y cuyo último motivo anotado
---     (entrega 4.2) es el pago, el transporte o la aprobación. No se le cuenta
---     al proveedor ni a favor ni en contra: se dice aparte. «Proveedor» y
---     «Otro» sí cuentan contra él.
+--     antes de que llegara (entrega 4.2) es el pago, el transporte o la
+--     aprobación. No se le cuenta al proveedor ni a favor ni en contra: se dice
+--     aparte. Si ese motivo vino al corregir la fecha, vale solo hasta la fecha
+--     nueva: si tampoco la cumple, el atraso es suyo. «Proveedor» y «Otro» sí
+--     cuentan contra él, y lo anotado después de que llegó no cambia nada.
 --   · Devueltas: las OC de las que Almacén le devolvió algo, se reponga o no.
 -- Solo cuentas, sin un sol: nada de importes.
 --
@@ -288,16 +290,22 @@ begin
     select * from os_plazo
   ),
   -- Atrasada: pasó la fecha que prometió al emitirla sin llegar (o llegó a
-  -- medias), o llegó después. Y de quién fue el atraso, por el último motivo.
+  -- medias), o llegó después. Y de quién fue el atraso, por el último motivo
+  -- anotado ANTES de que llegara: lo que se anota después no cambia el
+  -- veredicto. Si ese motivo vino con una fecha corregida, perdona solo hasta
+  -- esa fecha: si el proveedor tampoco cumple la nueva, el atraso es suyo.
   juzgadas as (
     select t.*,
            t.original is not null
              and (case when t.llego is null then t.original < public.fecha_de_lima(now())
                        else public.fecha_de_lima(t.llego) > t.original end) as tarde,
            coalesce((select s.motivo in ('PAGO', 'TRANSPORTE', 'APROBACION')
+                            and (s.tipo <> 'FECHA_ESPERADA'
+                                 or coalesce(public.fecha_de_lima(t.llego), public.fecha_de_lima(now())) <= s.fecha_nueva)
                        from public.seguimiento_de_compras s
-                      where (t.oc is not null and s.orden_compra_id = t.oc)
-                         or (t.os is not null and s.orden_servicio_id = t.os)
+                      where ((t.oc is not null and s.orden_compra_id = t.oc)
+                             or (t.os is not null and s.orden_servicio_id = t.os))
+                        and (t.llego is null or s.registrado_en <= t.llego)
                       order by s.registrado_en desc, s.id desc
                       limit 1), false) as por_nosotros
       from todas t
@@ -322,7 +330,7 @@ end;
 $$;
 
 comment on function public.cumplimiento_de_proveedores(uuid[]) is
-  'De cada proveedor: cuántas compras se le hicieron (OC aprobadas u OS aprobadas no anuladas), cuántas llegaron, cuántas de esas tenían fecha prometida (medidas), cuántas de esas llegaron a tiempo contra la fecha prometida al emitirlas (la OC cuando se dejó lo último en almacén, la OS cuando volvió conforme; por fecha de Lima) de cuántas OC Almacén le devolvió algo y cuántas pasaron la fecha prometida al emitirlas sin llegar (atrasadas; la OC a medias cuenta como sin llegar). Lo lee quien ve el padrón (proveedores.ver). Solo cuentas, sin importes.';
+  'De cada proveedor, solo cuentas y sin importes (lo lee quien ve el padrón, proveedores.ver). compras: OC aprobadas y OS aprobadas no anuladas. llegaron: las que llegaron (la OC cuando se dejó lo último en almacén, la OS cuando volvió conforme). medidas: de las que llegaron, las que tenían fecha prometida, menos las atrasadas por causa nuestra. a_tiempo: de las medidas, las que llegaron a más tardar la fecha prometida al emitirlas (por fecha de Lima). devueltas: OC de las que Almacén le devolvió algo. atrasadas: las que pasaron la fecha prometida al emitirlas sin llegar completas (la OC a medias cuenta como sin llegar), menos las nuestras. sin_fecha: llegaron sin fecha prometida. nuestras: atrasadas cuyo último motivo anotado antes de llegar es pago, transporte o aprobación; si vino con una fecha corregida, solo mientras no se pase esa fecha.';
 
 revoke all on function public.cumplimiento_de_proveedores(uuid[]) from public, anon;
 grant execute on function public.cumplimiento_de_proveedores(uuid[]) to authenticated;

@@ -10,7 +10,7 @@ const veces = (n: number, una: string, varias: string) => `${n} ${n === 1 ? una 
  * que llegaron, cuántas a tiempo contra la fecha que prometió al emitirlas;
  * cuántas pasaron esa fecha sin llegar, y de cuántas OC Almacén le devolvió
  * algo. La que se atrasó por causa nuestra (pago, transporte o aprobación,
- * según el último motivo anotado) se dice aparte y no cuenta. Lo que pesa contra el proveedor va en tono de aviso, siempre con su
+ * según el último motivo anotado antes de que llegara) se dice aparte y no cuenta. Lo que pesa contra el proveedor va en tono de aviso, siempre con su
  * texto. Solo cuentas, sin importes. En la columna va en renglones; bajo el
  * nombre, en uno solo.
  */
@@ -49,7 +49,7 @@ export function Cumplimiento({
     if (c.atrasadas > 0)
       partes.push({ clave: 'atrasadas', texto: `${veces(c.atrasadas, 'atrasada', 'atrasadas')} sin llegar completa${c.atrasadas === 1 ? '' : 's'}`, aviso: true })
     if (c.nuestras > 0)
-      partes.push({ clave: 'nuestras', texto: `${veces(c.nuestras, 'atrasada', 'atrasadas')} por causa nuestra (no ${c.nuestras === 1 ? 'cuenta' : 'cuentan'})` })
+      partes.push({ clave: 'nuestras', texto: `${veces(c.nuestras, 'atrasada', 'atrasadas')} por pago, transporte o aprobación (no ${c.nuestras === 1 ? 'cuenta' : 'cuentan'})` })
     partes.push(
       c.devueltas > 0
         ? { clave: 'devueltas', texto: `${c.devueltas} con devolución`, aviso: true }
@@ -63,8 +63,8 @@ export function Cumplimiento({
     >
       {partes.map((p, i) => (
         <Fragment key={p.clave}>
-          {/* Entre partes, un separador sin color: a la vista «·» en el renglón; al lector, una coma también en la columna. */}
-          {i > 0 && (enLinea ? ' · ' : <span className="sr-only">, </span>)}
+          {/* Entre partes, un separador sin color: a la vista «·» en el renglón; al lector, un punto y coma también en la columna (las partes llevan comas). */}
+          {i > 0 && (enLinea ? ' · ' : <span className="sr-only">; </span>)}
           {/* Sin `whitespace-nowrap`: una parte larga entera ensanchaba la columna del nombre y corría la tabla a 1 024 px. */}
           <span className={cn(p.fuerte && 'text-texto', p.aviso && 'text-aviso')}>
             {enLinea && i > 0 && typeof p.texto === 'string' ? p.texto.charAt(0).toLowerCase() + p.texto.slice(1) : p.texto}

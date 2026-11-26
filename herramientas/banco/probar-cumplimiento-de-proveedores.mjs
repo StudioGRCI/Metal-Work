@@ -135,14 +135,14 @@ function esperado(c) {
   else if (c.medidas > 0) partes.push(`${c.a_tiempo} de ${c.medidas} ${c.medidas === 1 ? 'llegada' : 'llegadas'} a tiempo`)
   if (c.sin_fecha > 0) partes.push(`${veces(c.sin_fecha, 'llegó', 'llegaron')} sin fecha prometida`)
   if (c.atrasadas > 0) partes.push(`${veces(c.atrasadas, 'atrasada', 'atrasadas')} sin llegar completa${c.atrasadas === 1 ? '' : 's'}`)
-  if (c.nuestras > 0) partes.push(`${veces(c.nuestras, 'atrasada', 'atrasadas')} por causa nuestra (no ${c.nuestras === 1 ? 'cuenta' : 'cuentan'})`)
+  if (c.nuestras > 0) partes.push(`${veces(c.nuestras, 'atrasada', 'atrasadas')} por pago, transporte o aprobación (no ${c.nuestras === 1 ? 'cuenta' : 'cuentan'})`)
   partes.push(c.devueltas > 0 ? `${c.devueltas} con devolución` : 'sin devoluciones')
   return partes
 }
 function dice(texto, c) {
   const e = esperado(c)
   const t = texto.toLowerCase()
-  return Array.isArray(e) ? e.every((p) => t.includes(p)) && t.split(/,|·/).length === e.length : t === e
+  return Array.isArray(e) ? e.every((p) => t.includes(p)) && t.split(/;|·/).length === e.length : t === e
 }
 
 /** Cada fila del padrón en pantalla, con lo que dice su cumplimiento visible. */

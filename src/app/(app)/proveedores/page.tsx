@@ -49,7 +49,7 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
         descripcion={busqueda
           ? total === 0 ? `Ningún proveedor con «${busqueda}»` : `${total === 1 ? '1 proveedor' : `${total} proveedores`} con «${busqueda}»`
           : total === 1 ? '1 proveedor en el padrón' : `${total} proveedores en el padrón`}
-        ayuda="La orden de compra elige el proveedor de este padrón. «Cumplimiento» cuenta las OC y OS aprobadas que se le hicieron; de las que llegaron (la OS, cuando volvió conforme), cuántas llegaron a más tardar en la fecha que prometió al emitirlas (no la corregida después); cuántas pasaron esa fecha sin llegar completas, y de cuántas OC Almacén le devolvió algo. La que se atrasó por el pago, el transporte o la aprobación, según el último motivo que anotó Logística, no cuenta contra el proveedor y se dice aparte."
+        ayuda="La orden de compra elige el proveedor de este padrón. «Cumplimiento» cuenta las OC y OS aprobadas que se le hicieron; de las que llegaron (la OS, cuando volvió conforme), cuántas llegaron a más tardar en la fecha que prometió al emitirlas (no la corregida después); cuántas pasaron esa fecha sin llegar completas, y de cuántas OC Almacén le devolvió algo. La que se atrasó por el pago, el transporte o la aprobación, según el último motivo que anotó Logística antes de que llegara, no cuenta contra el proveedor y se dice aparte; si con ese motivo se corrigió la fecha y tampoco la cumplió, sí cuenta."
         acciones={
           <div className="flex flex-wrap items-center gap-3">
             {edita && <NuevoProveedor />}

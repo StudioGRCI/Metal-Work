@@ -108,7 +108,7 @@ export type CumplimientoDelProveedor = {
   atrasadas: number
   /** Las que llegaron sin fecha prometida: no se pueden medir. */
   sin_fecha: number
-  /** Las que se atrasaron y su último motivo es el pago, el transporte o la aprobación: no cuentan contra él. */
+  /** Las que se atrasaron y su último motivo antes de llegar es el pago, el transporte o la aprobación (con fecha corregida, solo hasta esa fecha): no cuentan contra él. */
   nuestras: number
 }
 

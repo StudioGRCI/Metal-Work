@@ -2,7 +2,7 @@
 -- cuenta de cada puesto —nunca ADMIN— y `set local role authenticated`.
 -- Termina en rollback.
 --
--- Un proveedor nuevo. Logística le emite seis OC y tres OS:
+-- Un proveedor nuevo. Logística le emite diez OC y tres OS:
 --   a. OC prometida en 3 días que llega hoy, entera: a tiempo. Almacén le
 --      devuelve un disco que se repone: «con devolución», y sigue a tiempo.
 --   b. OC prometida hace 2 días; Logística corrige la fecha a mañana y llega
@@ -15,10 +15,24 @@
 --   f. OC prometida hace 2 días que no llega; Logística anota primero
 --      «Proveedor» y después «Transporte»: vale el último, el atraso es nuestro
 --      y no cuenta contra él («por causa nuestra»).
+--   g. OC prometida hace 2 días; Logística anota «Pago» y después llega: se
+--      atrasó por causa nuestra, llegó, y no se mide.
+--   h. OC prometida en 3 días, con la fecha corregida por «Pago» a 5 días, que
+--      llega hoy: no se atrasó, se mide y llegó a tiempo.
+--   i. OC emitida hace 10 días, prometida hace 5, con la fecha corregida por
+--      «Pago» a hace 2, que tampoco llega: la corrección nuestra perdonaba solo
+--      hasta la fecha nueva; pasada esa, el atraso es del proveedor.
+--   j. OC prometida hace 2 días que llega hoy, y después Logística le anota
+--      «Pago»: lo anotado después de llegar no cambia nada, sigue medida y
+--      fuera de tiempo.
 --   OS 1, que vuelve conforme antes de su fin: a tiempo. OS 2, anulada: no
 --   cuenta. OS 3, en ejecución con su fin ayer: atrasada sin llegar.
--- Total: 7 compras (a, b, c, e, f, OS 1, OS 3), 4 llegaron, 3 medidas, 2 a tiempo,
--- 1 con devolución, 2 atrasadas (c y OS 3), 1 sin fecha (e), 1 por causa nuestra (f).
+-- Total: 11 compras (a, b, c, e, f, g, h, i, j, OS 1, OS 3), 7 llegaron (a, b, e, g, h, j, OS 1),
+-- 5 medidas (a, b, h, j, OS 1), 3 a tiempo (a, h, OS 1), 1 con devolución,
+-- 3 atrasadas (c, i, OS 3), 1 sin fecha (e), 2 por causa nuestra (f, g).
+-- Todo el check corre en una transacción y `now()` es el mismo para todo: la
+-- hora del motivo de la g y del de la j se fija a mano para que quede antes y
+-- después de la llegada, como pasa en dos días distintos.
 -- La OC que llega a medias y vencida no tiene caso aquí: cuenta como sin llegar
 -- por `plazos_de_compras_calculados`, que prueba el check 484.
 -- Lo leen Logística, Almacén y Requerimientos (proveedores.ver), con las mismas cifras
@@ -42,7 +56,7 @@ begin
   end loop;
   perform test.afirmar((select count(*) from public.usuarios where apellidos = 'Check 486') = 6,
     'se crearon los seis usuarios del check, uno por puesto');
-  foreach v in array array['oca', 'ocb', 'occ', 'ocd', 'oce', 'ocf', 'os1', 'os2', 'os3', 'mova', 'deva'] loop
+  foreach v in array array['oca', 'ocb', 'occ', 'ocd', 'oce', 'ocf', 'ocg', 'och', 'oci', 'ocj', 'os1', 'os2', 'os3', 'mova', 'deva', 'motg', 'motb'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
 end $$;
@@ -85,7 +99,7 @@ select test.afirmar((select compras = 0 and medidas = 0 and a_tiempo = 0 and dev
 do $$
 declare v text;
 begin
-  foreach v in array array['oca', 'ocb', 'occ', 'ocd', 'ocf'] loop
+  foreach v in array array['oca', 'ocb', 'occ', 'ocd', 'ocf', 'ocg', 'och', 'oci', 'ocj'] loop
     perform public.emitir_compra_directa(pg_temp.id(v), pg_temp.id('proveedor'), 'COT-486-' || v, 'Discos para el almacén',
       jsonb_build_array(jsonb_build_object('material_id', pg_temp.id('disco'), 'cantidad', 5, 'precio', 8)),
       pg_temp.hoy() + 3, 'CONTADO', 0, 'PEN', true, 'PLANTA');
@@ -111,6 +125,12 @@ update public.ordenes_compra_materiales set fecha_estimada = pg_temp.hoy() - 2 w
 update public.ordenes_compra_materiales set fecha_estimada = pg_temp.hoy() - 1 where id = pg_temp.id('occ');
 -- La f, para hace 2 días: no llega, por el transporte.
 update public.ordenes_compra_materiales set fecha_estimada = pg_temp.hoy() - 2 where id = pg_temp.id('ocf');
+update public.ordenes_compra_materiales set fecha_estimada = pg_temp.hoy() - 2 where id in (pg_temp.id('ocg'), pg_temp.id('ocj'));
+-- La i se emitió hace 10 días (sin disparadores: la fecha de emisión no se cambia por la aplicación).
+set local session_replication_role = replica;
+update public.ordenes_compra_materiales set creado_en = now() - interval '10 days', fecha_estimada = pg_temp.hoy() - 5
+ where id = pg_temp.id('oci');
+set local session_replication_role = origin;
 -- La OS 3 empezó hace 5 días y debía terminar ayer.
 update public.ordenes_servicio set fecha_inicio = pg_temp.hoy() - 5, fecha_fin = pg_temp.hoy() - 1 where id = pg_temp.id('os3');
 
@@ -121,6 +141,10 @@ select public.aprobar_compra(pg_temp.id('ocb'));
 select public.aprobar_compra(pg_temp.id('occ'));
 select public.aprobar_compra(pg_temp.id('oce'));
 select public.aprobar_compra(pg_temp.id('ocf'));
+select public.aprobar_compra(pg_temp.id('ocg'));
+select public.aprobar_compra(pg_temp.id('och'));
+select public.aprobar_compra(pg_temp.id('oci'));
+select public.aprobar_compra(pg_temp.id('ocj'));
 select public.aprobar_orden_servicio(pg_temp.id('os3'));
 select public.aprobar_orden_servicio(pg_temp.id('os1'));
 select public.aprobar_orden_servicio(pg_temp.id('os2'));
@@ -138,7 +162,17 @@ select public.avanzar_orden_servicio(pg_temp.id('os2'), 'ANULADA', 'El proveedor
 select public.avanzar_orden_servicio(pg_temp.id('os3'), 'EN_EJECUCION', null);
 select public.anotar_motivo_atraso(gen_random_uuid(), 'OC', pg_temp.id('ocf'), 'PROVEEDOR', 'No contesta el teléfono');
 select public.anotar_motivo_atraso(gen_random_uuid(), 'OC', pg_temp.id('ocf'), 'TRANSPORTE', 'La camioneta está en el taller');
+select public.anotar_motivo_atraso(pg_temp.id('motg'), 'OC', pg_temp.id('ocg'), 'PAGO', 'Tesorería pagó tarde');
+select public.corregir_fecha_esperada(gen_random_uuid(), 'OC', pg_temp.id('och'), pg_temp.hoy() + 5, 'PAGO', 'El adelanto sale el lunes');
+select public.corregir_fecha_esperada(gen_random_uuid(), 'OC', pg_temp.id('oci'), pg_temp.hoy() - 2, 'PAGO', 'El adelanto salió tarde');
+select public.programar_recojo(pg_temp.id('ocg'), 10, null);
+select public.programar_recojo(pg_temp.id('och'), 10, null);
+select public.programar_recojo(pg_temp.id('ocj'), 10, null);
 reset role;
+-- El motivo de la g se anotó antes de que llegara.
+set local session_replication_role = replica;
+update public.seguimiento_de_compras set registrado_en = now() - interval '1 hour' where id = pg_temp.id('motg');
+set local session_replication_role = origin;
 
 select pg_temp.como('conductor');
 set local role authenticated;
@@ -148,7 +182,22 @@ select public.marcar_compra_recogida(pg_temp.id('ocb'));
 select public.marcar_compra_dejada_almacen(pg_temp.id('ocb'));
 select public.marcar_compra_recogida(pg_temp.id('oce'));
 select public.marcar_compra_dejada_almacen(pg_temp.id('oce'));
+select public.marcar_compra_recogida(pg_temp.id('ocg'));
+select public.marcar_compra_dejada_almacen(pg_temp.id('ocg'));
+select public.marcar_compra_recogida(pg_temp.id('och'));
+select public.marcar_compra_dejada_almacen(pg_temp.id('och'));
+select public.marcar_compra_recogida(pg_temp.id('ocj'));
+select public.marcar_compra_dejada_almacen(pg_temp.id('ocj'));
 reset role;
+
+-- La j ya llegó tarde; después Logística le anota «Pago». Queda después de la llegada.
+select pg_temp.como('comprador');
+set local role authenticated;
+select public.anotar_motivo_atraso(pg_temp.id('motb'), 'OC', pg_temp.id('ocj'), 'PAGO', 'Se pagó tarde');
+reset role;
+set local session_replication_role = replica;
+update public.seguimiento_de_compras set registrado_en = now() + interval '1 hour' where id = pg_temp.id('motb');
+set local session_replication_role = origin;
 
 -- Almacén valida la a entera y le devuelve un disco que se repone. La b queda sin validar.
 select set_config('prueba.ingresosa', (
@@ -167,21 +216,22 @@ do $$
 declare r record;
 begin
   select * into r from public.cumplimiento_de_proveedores(array[pg_temp.id('proveedor')]);
-  perform test.afirmar(r.compras = 7,
+  perform test.afirmar(r.compras = 11,
     format('cuentan las OC aprobadas y las OS no anuladas; no la que espera a Gerencia ni la anulada (dice %s)', r.compras));
-  perform test.afirmar(r.llegaron = 4, format('llegaron a, b, e y la OS; la e sin fecha prometida (dice %s)', r.llegaron));
-  perform test.afirmar(r.medidas = 3, format('se miden las que ya llegaron: a, b y la OS (dice %s)', r.medidas));
-  perform test.afirmar(r.a_tiempo = 2,
-    format('a tiempo la a y la OS; la b no, aunque se corrigió la fecha (dice %s)', r.a_tiempo));
+  perform test.afirmar(r.llegaron = 7, format('llegaron a, b, e, g, h, j y la OS 1 (dice %s)', r.llegaron));
+  perform test.afirmar(r.medidas = 5,
+    format('se miden a, b, h, j y la OS 1: no la e, sin fecha, ni la g, atrasada por el pago (dice %s)', r.medidas));
+  perform test.afirmar(r.a_tiempo = 3,
+    format('a tiempo la a, la h (su fecha corregida no la saca) y la OS 1; la b no, ni la j con el «Pago» anotado después (dice %s)', r.a_tiempo));
   perform test.afirmar(r.devueltas = 1, format('una OC con devolución (dice %s)', r.devueltas));
-  perform test.afirmar(r.atrasadas = 2,
-    format('la c y la OS 3 pasaron su fecha sin llegar; la b llegó tarde y ya no cuenta, la f es nuestra (dice %s)', r.atrasadas));
+  perform test.afirmar(r.atrasadas = 3,
+    format('la c, la i (pasó también la fecha corregida) y la OS 3; la b llegó, la f es nuestra (dice %s)', r.atrasadas));
   perform test.afirmar(r.sin_fecha = 1, format('la e llegó sin fecha prometida (dice %s)', r.sin_fecha));
-  perform test.afirmar(r.nuestras = 1,
-    format('la f se atrasó por el transporte, su último motivo: no cuenta contra el proveedor (dice %s)', r.nuestras));
+  perform test.afirmar(r.nuestras = 2,
+    format('la f (transporte, su último motivo) y la g (pago, antes de llegar) no cuentan contra el proveedor (dice %s)', r.nuestras));
 
   select * into r from public.cumplimiento_de_proveedores(array[pg_temp.id('proveedor'), pg_temp.id('proveedor')]);
-  perform test.afirmar(r.compras = 7, format('el mismo proveedor pedido dos veces no duplica las cifras (dice %s)', r.compras));
+  perform test.afirmar(r.compras = 11, format('el mismo proveedor pedido dos veces no duplica las cifras (dice %s)', r.compras));
 
   -- La lista de OC, contra la fecha corregida, no la ve atrasada: son dos preguntas distintas.
   select * into r from public.plazos_de_compras(array[pg_temp.id('ocb')]);
@@ -202,12 +252,12 @@ reset role;
 -- ============================================ Quién lo lee
 select pg_temp.como('almacenero');
 set local role authenticated;
-select test.afirmar((select a_tiempo = 2 and devueltas = 1 from public.cumplimiento_de_proveedores(array[pg_temp.id('proveedor')])),
+select test.afirmar((select a_tiempo = 3 and devueltas = 1 from public.cumplimiento_de_proveedores(array[pg_temp.id('proveedor')])),
   'Almacén, que ve el padrón, lee las mismas cifras');
 reset role;
 select pg_temp.como('requerimientos');
 set local role authenticated;
-select test.afirmar((select compras = 7 and a_tiempo = 2 and atrasadas = 2 and nuestras = 1
+select test.afirmar((select compras = 11 and a_tiempo = 3 and atrasadas = 3 and nuestras = 2
                        from public.cumplimiento_de_proveedores(array[pg_temp.id('proveedor')])),
   'Requerimientos, que ve el padrón, lee las mismas cifras: el cumplimiento no depende de qué compras ve cada uno');
 reset role;
