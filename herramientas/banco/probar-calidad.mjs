@@ -1,6 +1,6 @@
 /**
  * Calidad inspecciona por código interno y etapa (plan «Las demás áreas»,
- * entrega A.1, migración 20261126520000), con clic real y la cuenta de cada
+ * entrega A.1, migración 20261126700000), con clic real y la cuenta de cada
  * puesto (nunca ADMIN):
  *
  *   1. Calidad, en el monitor: «Inspecciones de calidad» encabeza su menú. Elige

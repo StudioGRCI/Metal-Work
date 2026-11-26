@@ -195,8 +195,11 @@ select test.afirmar((select count(*) from public.codigo_dxf) = 0
 reset role;
 select pg_temp.como('gerente_gge');
 set local role authenticated;
-select test.afirmar((select count(*) from public.codigo_dxf) = 0
-  and (select count(*) from storage.objects where bucket_id = 'dxf-codigo') = 0, 'Gerencia no: son de Diseño, Maestranza y Producción');
+-- Gerencia los consulta desde la 20261126310000 (`diseno.ver_dxf`), sin subir ni quitar.
+select test.afirmar((select count(*) from public.codigo_dxf where codigo_interno = current_setting('prueba.codigo')) = 4
+  and (select count(*) from storage.objects where bucket_id = 'dxf-codigo' and name = current_setting('prueba.dxf1') || '.zip') = 1,
+  'Gerencia consulta el DXF y su archivo');
+select test.debe_fallar($q$select public.quitar_dxf_codigo(pg_temp.id('dxf1'))$q$, 'pero no lo quita', 'diseno.codigos');
 reset role;
 
 select pg_temp.como('supervisor_mtz');

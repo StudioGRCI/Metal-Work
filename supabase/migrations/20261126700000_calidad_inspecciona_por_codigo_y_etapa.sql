@@ -105,6 +105,9 @@ create table if not exists public.calidad_inspeccion_pasos (
   tipo            text not null,
   nota            text,
   registrado_por  uuid not null default public.usuario_actual() references public.usuarios(id) on delete restrict,
+  -- A quién le llegó el aviso de este paso, como se le dijo a quien lo registró:
+  -- el mismo envío repetido lo vuelve a decir igual, sin adivinarlo.
+  avisado         text check (avisado in ('RESPONSABLE', 'AREA', 'GERENCIA', 'CALIDAD', 'NADIE')),
   -- La hora del reloj y no la de la transacción: el recorrido se ordena por ella.
   creado_en       timestamptz not null default clock_timestamp(),
   actualizado_en  timestamptz not null default now(),
@@ -113,6 +116,8 @@ create table if not exists public.calidad_inspeccion_pasos (
     and (nota is null or char_length(nota) <= 1000)
     and (tipo <> 'OBSERVADA_DE_NUEVO' or char_length(btrim(coalesce(nota, ''))) >= 10))
 );
+alter table public.calidad_inspeccion_pasos add column if not exists avisado text
+  check (avisado in ('RESPONSABLE', 'AREA', 'GERENCIA', 'CALIDAD', 'NADIE'));
 comment on table public.calidad_inspeccion_pasos is
   'Cada paso de una observación de calidad: el área la marca corregida (con nota o foto), Calidad la vuelve a observar (con nota) o la levanta. No se cambia ni se borra.';
 -- El recorrido de una inspección, en orden (b); sirve también a su llave.
@@ -435,7 +440,7 @@ begin
   if v_n > 0 then return 'AREA'; end if;
   select count(*) into v_n from public.notificaciones n
    where n.origen_tabla = 'calidad_inspecciones' and n.origen_id = p_inspeccion;
-  perform public.avisar_a_permiso('calidad.ver', left(p_titulo || ' (el área no tiene cuenta activa)', 200), p_cuerpo,
+  perform public.avisar_a_permiso('calidad.ver', left(p_titulo || ' (el área no tiene otra cuenta activa)', 200), p_cuerpo,
     '/calidad/' || p_inspeccion::text, 'calidad_inspecciones', p_inspeccion);
   return case when (select count(*) from public.notificaciones n
                      where n.origen_tabla = 'calidad_inspecciones' and n.origen_id = p_inspeccion) > v_n
@@ -505,7 +510,10 @@ begin
     if not found or v_etapa.codigo_interno <> v_codigo then
       raise exception 'Esa etapa ya no es de %: vuelve a elegirla.', v_codigo using errcode = 'check_violation';
     end if;
-    if v_etapa.area_id is not null then
+    -- Una etapa a cargo de Calidad («Pruebas de la unidad») es como una sin área:
+    -- Calidad no se observa a sí misma, elige el área que hizo el trabajo.
+    if v_etapa.area_id is not null
+       and v_etapa.area_id is distinct from (select a.id from public.areas a where a.codigo = 'CAL') then
       if p_area is not null and p_area <> v_etapa.area_id then
         raise exception 'La etapa «%» es de otra área: la observación va al área de la etapa.', v_etapa.nombre using errcode = 'check_violation';
       end if;
@@ -584,7 +592,7 @@ begin
   if found then
     if v_actual.registrado_por = v_yo and public.mismo_envio(p_id, 'PASO_CALIDAD', v_envio) then
       return query select v_actual.id, (select i.estado from public.calidad_inspecciones i where i.id = v_actual.inspeccion_id),
-                          case when v_actual.tipo = 'CORREGIDA' then 'CALIDAD' else 'AREA' end;
+                          coalesce(v_actual.avisado, 'NADIE');
       return;
     end if;
     if v_actual.registrado_por = v_yo then
@@ -638,12 +646,9 @@ begin
     raise exception 'La nota pasa de 1000 caracteres: acórtala.' using errcode = 'check_violation';
   end if;
 
-  insert into public.calidad_inspeccion_pasos (id, inspeccion_id, tipo, nota, registrado_por)
-  values (p_id, p_inspeccion, p_tipo, v_nota, v_yo);
-  v_fotos := public.calidad_anotar_fotos(p_inspeccion, p_id, p_fotos);
-  update public.calidad_inspecciones set estado = v_estado where id = p_inspeccion;
-  perform public.anotar_envio(p_id, 'PASO_CALIDAD', v_envio);
-
+  -- El aviso sale antes de anotar el paso, para guardar en él a quién llegó; si
+  -- algo de abajo falla, la transacción se lleva también el aviso.
+  v_fotos := jsonb_array_length(coalesce(p_fotos, '[]'::jsonb));
   if p_tipo = 'CORREGIDA' then
     perform public.avisar_a_permiso('calidad.inspeccionar', 'El área corrigió ' || v_que,
       coalesce(v_nota, v_fotos || ' foto' || case when v_fotos = 1 then '' else 's' end || ' de la corrección'),
@@ -657,6 +662,12 @@ begin
     v_avisado := public.calidad_avisar_al_area(p_inspeccion, 'Calidad levantó la observación de ' || v_que,
       coalesce(v_nota, 'Quedó conforme.'));
   end if;
+
+  insert into public.calidad_inspeccion_pasos (id, inspeccion_id, tipo, nota, registrado_por, avisado)
+  values (p_id, p_inspeccion, p_tipo, v_nota, v_yo, v_avisado);
+  perform public.calidad_anotar_fotos(p_inspeccion, p_id, p_fotos);
+  update public.calidad_inspecciones set estado = v_estado where id = p_inspeccion;
+  perform public.anotar_envio(p_id, 'PASO_CALIDAD', v_envio);
   return query select p_id, v_estado, v_avisado;
 end;
 $$;
@@ -746,7 +757,7 @@ language sql stable security definer set search_path to 'public' rows 200 as $$
    order by v.creado_en desc;
 $$;
 comment on function public.calidad_inspecciones_visibles(uuid) is
-  'Las inspecciones de calidad que ve quien pregunta (una, o todas con p_id vacío): todas para Calidad y Gerencia; las de su área, sin anuladas, para el área. Nombra el puesto, no la persona. dias_abierta se cuenta con la fecha de Lima.';
+  'Las inspecciones de calidad que ve quien pregunta (una, o todas con p_id vacío): todas para Calidad y Gerencia; las de su área para el área, también la anulada en lectura. Nombra el puesto, no la persona. dias_abierta se cuenta con la fecha de Lima.';
 revoke all on function public.calidad_inspecciones_visibles(uuid) from public, anon;
 grant execute on function public.calidad_inspecciones_visibles(uuid) to authenticated;
 

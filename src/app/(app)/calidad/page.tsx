@@ -7,7 +7,7 @@ import { Vistas } from '@/components/estructura/vistas'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
-import { listarInspecciones, loQueSeInspecciona, MAXIMO_INSPECCIONES, type InspeccionCalidad } from '@/lib/datos/calidad'
+import { listarInspecciones, loQueSeInspecciona, MAXIMO_ABIERTAS, MAXIMO_INSPECCIONES, type InspeccionCalidad } from '@/lib/datos/calidad'
 import { diasAbierta, ESTADO_INSPECCION, ESTADOS_ABIERTOS } from '@/lib/dominio/calidad'
 import { fechaHora } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
@@ -45,7 +45,8 @@ export default async function PaginaCalidad({ searchParams }: PageProps<'/calida
     inspecciona ? loQueSeInspecciona() : Promise.resolve(null),
   ])
   // Las abiertas van todas; el tope es de las que ya quedaron.
-  const alTope = inspecciones.filter((i) => !abierta(i)).length >= MAXIMO_INSPECCIONES
+  const alTope =
+    inspecciones.filter((i) => !abierta(i)).length >= MAXIMO_INSPECCIONES || inspecciones.filter(abierta).length >= MAXIMO_ABIERTAS
 
   if (veTodo) {
     const vigentes = inspecciones.filter((i) => i.estado !== 'ANULADA')
@@ -157,7 +158,7 @@ function conBusqueda(ruta: string, busqueda: string) {
 function Tope() {
   return (
     <p className="mt-3 text-xs text-texto-suave">
-      Van todas las abiertas y las {MAXIMO_INSPECCIONES} cerradas más recientes: para una más vieja, búscala por su código.
+      Van las abiertas (hasta {MAXIMO_ABIERTAS}) y las {MAXIMO_INSPECCIONES} cerradas más recientes: para una más vieja, búscala por su código.
     </p>
   )
 }

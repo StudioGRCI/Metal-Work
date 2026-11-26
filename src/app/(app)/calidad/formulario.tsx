@@ -193,8 +193,9 @@ function FormularioInspeccion({
   const fallidas = hayFallidas(fotos)
   const vieja = usePestanaDeLaVersionAnterior()
   const delCodigo = etapas.filter((e) => e.codigo === codigo)
-  // Las etapas de siempre («Trámites», «Entrega») no tienen área: Calidad la elige.
-  const etapaSinArea = delCodigo.find((e) => e.id === etapaId)?.area_id === null
+  // Las etapas de siempre («Trámites», «Entrega») no tienen área, y la de Calidad
+  // no se la observa a sí misma: Calidad elige el área que hizo el trabajo.
+  const etapaSinArea = delCodigo.find((e) => e.id === etapaId)?.pide_area === true
   const pideArea = codigo !== '' && (delCodigo.length === 0 || etapaSinArea)
   const noConforme = resultado === 'NO_CONFORME'
 
@@ -264,7 +265,7 @@ function FormularioInspeccion({
               etiqueta="Etapa que revisaste"
               htmlFor="calidad-etapa"
               requerido
-              ayuda="La observación le llega al área de la etapa."
+              ayuda={etapaSinArea ? undefined : 'La observación le llega al área de la etapa.'}
               error={errorDeLaEtapa ?? undefined}
             >
               {/* Con otro código, otra lista: React no vuelve a aplicar el valor inicial de un select ya montado. */}
@@ -290,7 +291,7 @@ function FormularioInspeccion({
               requerido
               ayuda={
                 etapaSinArea
-                  ? 'Esta etapa no tiene un área a cargo: elige la que hizo el trabajo, a ella le llega la observación.'
+                  ? 'Esta etapa no tiene otra área a cargo: elige la que hizo el trabajo, a ella le llega la observación.'
                   : 'Este código todavía no tiene etapas en el sistema: elige el área a la que le llega la observación.'
               }
               ayudaEnIcono={false}

@@ -1,4 +1,4 @@
--- Calidad inspecciona por código interno y etapa (migración 20261126520000,
+-- Calidad inspecciona por código interno y etapa (migración 20261126700000,
 -- plan «Las demás áreas», entrega A.1):
 --   * Calidad elige el código y la etapa, marca conforme o no conforme; lo no
 --     conforme lleva su observación y fotos, y le llega al área de la etapa: a
@@ -46,7 +46,10 @@ begin
          ('CHK491_A', 2, 'Habilitado', current_setting('prueba.area_mtz')::uuid, null, current_setting('prueba.diseno')::uuid),
          ('CHK491_A', 3, 'Rotulado', current_setting('prueba.area_mkt')::uuid, null, current_setting('prueba.diseno')::uuid),
          -- Como «Trámites» y «Entrega» de las etapas de siempre: sin área a cargo.
-         ('CHK491_A', 4, 'Entrega', null, null, current_setting('prueba.diseno')::uuid);
+         ('CHK491_A', 4, 'Entrega', null, null, current_setting('prueba.diseno')::uuid),
+         -- Y una a cargo de Calidad: Calidad no se observa a sí misma, elige el área.
+         ('CHK491_A', 5, 'Pruebas de la unidad', current_setting('prueba.area_cal')::uuid, null, current_setting('prueba.diseno')::uuid);
+  perform set_config('prueba.etapa_cal', (select id::text from public.codigo_etapas where codigo_interno = 'CHK491_A' and orden = 5), true);
   perform set_config('prueba.etapa_sin_area', (select id::text from public.codigo_etapas where codigo_interno = 'CHK491_A' and orden = 4), true);
   perform set_config('prueba.etapa_prd', (select id::text from public.codigo_etapas where codigo_interno = 'CHK491_A' and orden = 1), true);
   perform set_config('prueba.etapa_mtz', (select id::text from public.codigo_etapas where codigo_interno = 'CHK491_A' and orden = 2), true);
@@ -144,10 +147,10 @@ do $$ begin
     'Calidad ve los dos códigos con OT abierta');
   perform test.afirmar(not exists (select 1 from public.calidad_codigos_para_inspeccionar() where codigo = 'CHK491_C'),
     'el código ya entregado no se ofrece');
-  perform test.afirmar((select etapas from public.calidad_codigos_para_inspeccionar() where codigo = 'CHK491_A') = 4
+  perform test.afirmar((select etapas from public.calidad_codigos_para_inspeccionar() where codigo = 'CHK491_A') = 5
     and (select etapas from public.calidad_codigos_para_inspeccionar() where codigo = 'CHK491_B') = 0,
     'cada código dice cuántas etapas tiene');
-  perform test.afirmar((select count(*) from public.calidad_etapas_del_codigo('chk491_a')) = 4
+  perform test.afirmar((select count(*) from public.calidad_etapas_del_codigo('chk491_a')) = 5
     and (select area from public.calidad_etapas_del_codigo('CHK491_A') where orden = 1) = (select nombre from public.areas where codigo = 'PRD'),
     'las etapas del código salen con su área, escriba el código como lo escriba');
 end $$;
@@ -204,6 +207,10 @@ select test.debe_fallar(pg_temp.inspeccionar('i5', 'CHK491_A', 'etapa_sin_area',
   'una etapa sin área a cargo pide el área', 'Elige el área que hizo');
 select test.debe_fallar(pg_temp.inspeccionar('i5', 'CHK491_A', 'etapa_sin_area', 'area_mkt', 'CONFORME', null, null),
   'en la etapa sin área, la elegida también es de la planta', 'Elige el área de la planta');
+select test.debe_fallar(pg_temp.inspeccionar('i5', 'CHK491_A', 'etapa_cal', null, 'NO_CONFORME', 'Falla la prueba de frenos', null),
+  'la etapa a cargo de Calidad pide el área que hizo el trabajo (Calidad no se observa a sí misma)', 'Elige el área que hizo');
+select test.debe_fallar(pg_temp.inspeccionar('i5', 'CHK491_A', 'etapa_cal', 'area_cal', 'NO_CONFORME', 'Falla la prueba de frenos', null),
+  'ni eligiendo Calidad a mano', 'Elige el área de la planta');
 
 do $$
 declare r record;
@@ -378,6 +385,18 @@ reset role;
 select test.afirmar(pg_temp.avisos('sup_prd', 'i3') = 1 and pg_temp.avisos('operario_prd', 'i3') = 0,
   'solo el responsable recibió la observación con responsable');
 select test.afirmar(pg_temp.avisos('gerente', 'i4') = 1, 'Gerencia recibió la del área sin nadie');
+select pg_temp.como('calidad');
+set local role authenticated;
+-- Lo mismo con un paso: levantar la del área sin nadie le llega a Gerencia, y el
+-- mismo envío repetido lo dice igual (no «le llegó al área»).
+select set_config('prueba.p_i4', gen_random_uuid()::text, false);
+select test.afirmar((select avisado from public.calidad_registrar_paso(current_setting('prueba.p_i4')::uuid,
+  current_setting('prueba.i4')::uuid, 'LEVANTADA', 'Rotulado rehecho', '[]')) = 'GERENCIA'
+  and (select avisado from public.calidad_registrar_paso(current_setting('prueba.p_i4')::uuid,
+  current_setting('prueba.i4')::uuid, 'LEVANTADA', 'Rotulado rehecho', '[]')) = 'GERENCIA',
+  'el paso repetido dice a quién llegó la primera vez (Gerencia), no al área');
+reset role;
+select test.afirmar(pg_temp.avisos('gerente', 'i4') = 2, 'el paso repetido no le mandó otro aviso a Gerencia');
 
 -- ============================================ 7. No se borra ni se corrige por debajo
 select test.debe_fallar(format('delete from public.calidad_inspecciones where id = %L', current_setting('prueba.i3')),

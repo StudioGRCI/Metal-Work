@@ -1,7 +1,7 @@
 import type { Tono } from '@/components/ui/etiqueta-estado'
 
 /*
- * Calidad (migración 20261126520000): la inspección por código interno y etapa.
+ * Calidad (migración 20261126700000): la inspección por código interno y etapa.
  * Lo que la pantalla y las acciones comparten con la base.
  */
 
@@ -68,7 +68,7 @@ export function aQuienLlego(avisado: string | null, area: string): string {
     case 'AREA':
       return `Le llegó a las cuentas de ${area}.`
     case 'GERENCIA':
-      return `${area} no tiene ninguna cuenta activa: le llegó a Gerencia.`
+      return `${area} no tiene otra cuenta activa: le llegó a Gerencia.`
     case 'CALIDAD':
       return 'Le llegó a Calidad.'
     default:

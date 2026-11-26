@@ -38,6 +38,8 @@ export const CLAVES_DEL_ENVIO = [
   'cuenta_caja',
   // El reporte a SSOMA (Plan 15.1): reabrir tras «No llegó la respuesta» no da otro número RI al mismo hecho.
   'reporte_ssoma',
+  // El reporte de avería (Plan 16.2): reabrir tras «No llegó la respuesta» no da otro número AV a la misma falla.
+  'reporte_averia',
   // Calidad (A.1): reabrir tras «No llegó la respuesta» no registra dos veces la
   // misma inspección ni el mismo paso de su observación.
   'inspeccion_calidad',

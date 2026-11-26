@@ -5,7 +5,7 @@ import { BUCKET_FOTOS_CALIDAD, ESTADOS_ABIERTOS } from '@/lib/dominio/calidad'
 import { createClient } from '@/lib/supabase/server'
 
 /*
- * Las inspecciones de calidad (migración 20261126520000). Todo se lee por
+ * Las inspecciones de calidad (migración 20261126700000). Todo se lee por
  * `calidad_inspecciones_visibles`, que decide qué ve quien pregunta: Calidad y
  * Gerencia todas; cada área las suyas, la anulada en lectura. La pantalla no arma ese
  * filtro, y tampoco decide qué botón le toca a quien mira: lo dicen
@@ -71,6 +71,9 @@ function aInspeccion(f: Fila): InspeccionCalidad | null {
   }
 }
 
+/** Cuántas abiertas trae la lista como mucho: el tope de filas de la API. */
+export const MAXIMO_ABIERTAS = 1000
+
 /** Cuántas inspecciones ya cerradas trae la lista como mucho: las más recientes. Las abiertas van todas. */
 export const MAXIMO_INSPECCIONES = 300
 
@@ -92,7 +95,8 @@ export async function listarInspecciones(busqueda?: string | null): Promise<Insp
   // sin corregir salía de la lista y de la cifra sin que nadie la cerrara. El
   // tope es solo para lo que ya quedó.
   const [abiertas, cerradas] = await Promise.all([
-    consulta().in('estado', [...ESTADOS_ABIERTOS]).order('creado_en', { ascending: false }),
+    // Hasta 1000, el tope de filas de la API (`max_rows`): la pantalla lo dice si se llega.
+    consulta().in('estado', [...ESTADOS_ABIERTOS]).order('creado_en', { ascending: false }).range(0, MAXIMO_ABIERTAS - 1),
     consulta()
       .not('estado', 'in', `(${ESTADOS_ABIERTOS.join(',')})`)
       .order('creado_en', { ascending: false })
@@ -175,6 +179,8 @@ export type EtapaParaInspeccionar = {
   area_id: string | null
   area: string | null
   terminada: boolean
+  /** Sin área a cargo, o a cargo de Calidad: Calidad elige el área que hizo el trabajo. */
+  pide_area: boolean
 }
 export type AreaParaInspeccionar = { id: string; nombre: string }
 
@@ -192,22 +198,23 @@ export async function loQueSeInspecciona(): Promise<{
   const [codigos, etapas, areas] = await Promise.all([
     supabase.rpc('calidad_codigos_para_inspeccionar'),
     supabase.rpc('calidad_etapas_del_codigo', { p_codigo: null }),
-    // Para el código sin etapas, solo las áreas de la planta, sin Calidad: la
-    // misma regla que `calidad_inspeccionar`.
-    supabase.from('areas').select('id, nombre').eq('activo', true).eq('es_oficina', false).neq('codigo', 'CAL').order('orden_secuencia'),
+    supabase.from('areas').select('id, nombre, codigo, es_oficina').eq('activo', true).order('orden_secuencia'),
   ])
   if (codigos.error) throw new Error(`No se pudieron leer los códigos internos: ${codigos.error.message}`)
   if (etapas.error) throw new Error(`No se pudieron leer las etapas: ${etapas.error.message}`)
   if (areas.error) throw new Error(`No se pudieron leer las áreas: ${areas.error.message}`)
+  // La misma regla que `calidad_inspeccionar`: la etapa sin área o a cargo de
+  // Calidad pide el área, y elegida a mano es una de la planta, nunca Calidad.
+  const calidad = (areas.data ?? []).find((a) => a.codigo === 'CAL')?.id ?? null
   return {
     codigos: (codigos.data ?? []).flatMap((c) =>
       c.codigo ? [{ codigo: c.codigo, ot: c.ot_numero, cliente: c.cliente, unidad: c.unidad, etapas: c.etapas ?? 0 }] : [],
     ),
     etapas: (etapas.data ?? []).flatMap((e) =>
       e.id && e.codigo && e.nombre && e.orden !== null
-        ? [{ id: e.id, codigo: e.codigo, orden: e.orden, nombre: e.nombre, padre_id: e.padre_id, area_id: e.area_id, area: e.area, terminada: e.terminada === true }]
+        ? [{ id: e.id, codigo: e.codigo, orden: e.orden, nombre: e.nombre, padre_id: e.padre_id, area_id: e.area_id, area: e.area, terminada: e.terminada === true, pide_area: e.area_id === null || e.area_id === calidad }]
         : [],
     ),
-    areas: areas.data ?? [],
+    areas: (areas.data ?? []).filter((a) => !a.es_oficina && a.codigo !== 'CAL').map((a) => ({ id: a.id, nombre: a.nombre })),
   }
 }
