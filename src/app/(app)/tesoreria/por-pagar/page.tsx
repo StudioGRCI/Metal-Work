@@ -114,9 +114,15 @@ export default async function PaginaPorPagar() {
   // La que espera su comprobante o ya tiene su factura se paga por ella: no suma al «Por pagar» ni a lo vencido.
   // Tampoco la que el proveedor devolvió entera: no se le debe hasta que la vuelva a cobrar.
   const pagables = boletasPorPagar.filter((b) => !b.comprobante_en_camino && !b.factura && !devueltaEntera(b))
+  // En los grupos por vencimiento, solo lo que de verdad se paga aquí: con saldo y sin pedir otra cosa
+  // (lo pagado de más, la factura en otra moneda). Lo demás va al final, en «No se pagan aquí».
+  const boletasConFecha = pagables.filter((b) => saldoDeLaBoleta(b) > 0 && !pideAlgo(b))
   // Lo que le pide a Tesorería algo que no es pagar: el encabezado lo cuenta y lleva a su tarjeta.
-  const deMas = boletasPorPagar.filter((b) => Number(b.de_mas ?? 0) > 0).length
-  const otraMoneda = boletasPorPagar.filter((b) => b.otra_moneda).length
+  // Cada aviso lleva a la primera OC que lo causa, en el grupo donde haya caído.
+  const pagadasDeMas = boletasPorPagar.filter((b) => Number(b.de_mas ?? 0) > 0)
+  const conOtraMoneda = boletasPorPagar.filter((b) => b.otra_moneda)
+  const deMas = pagadasDeMas.length
+  const otraMoneda = conOtraMoneda.length
   const partesPorPagar = partes.filter((x) => Number(x.saldo ?? 0) > 0)
   const partesPagadas = partes.filter((x) => Number(x.saldo ?? 0) <= 0)
   // La factura que espera a Contabilidad pudo pagarse fuera: no suma hasta que lo diga.
@@ -165,11 +171,11 @@ export default async function PaginaPorPagar() {
           tono: 'text-aviso',
         }
       : null,
-    deMas > 0 ? { texto: deMas === 1 ? 'una OC pagada de más' : `${deMas} OC pagadas de más`, href: '#compras-con-boleta', tono: 'text-peligro' } : null,
+    deMas > 0 ? { texto: deMas === 1 ? 'una OC pagada de más' : `${deMas} OC pagadas de más`, href: `#compra-${pagadasDeMas[0].id}`, tono: 'text-peligro' } : null,
     otraMoneda > 0
       ? {
           texto: otraMoneda === 1 ? 'una OC con factura en otra moneda' : `${otraMoneda} OC con factura en otra moneda`,
-          href: '#compras-con-boleta',
+          href: `#compra-${conOtraMoneda[0].id}`,
           tono: 'text-peligro',
         }
       : null,
@@ -259,7 +265,8 @@ export default async function PaginaPorPagar() {
               clave={(c) => c.id ?? ''}
               nombre={['factura', 'facturas']}
               fila={filaFactura}
-              aparte={{ titulo: 'No se pagan todavía', filas: porPagar.filter((c) => !exigibles.includes(c)) }}
+              // Sin total: las que esperan a Contabilidad pudieron pagarse fuera, y el encabezado tampoco las suma.
+              aparte={{ titulo: 'No se pagan todavía', filas: porPagar.filter((c) => !exigibles.includes(c)), conTotal: false }}
             />
           )}
         </TarjetaCuerpo>
@@ -287,7 +294,7 @@ export default async function PaginaPorPagar() {
             // camino, ya tienen factura, piden una devolución o el proveedor la devolvió) van al final.
             <GruposPorVencimiento
               lista="boletas"
-              filas={pagables}
+              filas={boletasConFecha}
               hoy={hoy}
               dia={(b) => b.vence}
               moneda={(b) => b.moneda}
@@ -295,7 +302,7 @@ export default async function PaginaPorPagar() {
               clave={(b) => b.id ?? ''}
               nombre={['OC', 'OC']}
               fila={filaBoleta}
-              aparte={{ titulo: 'No se pagan aquí', filas: boletasPorPagar.filter((b) => !pagables.includes(b)), conTotal: false }}
+              aparte={{ titulo: 'No se pagan aquí', filas: boletasPorPagar.filter((b) => !boletasConFecha.includes(b)), conTotal: false }}
             />
           )}
         </TarjetaCuerpo>

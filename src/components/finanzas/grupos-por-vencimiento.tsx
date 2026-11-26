@@ -62,7 +62,8 @@ function Grupo({
   return (
     <section aria-labelledby={id} className="space-y-3" data-grupo-vencimiento={clave}>
       <header className={cn('flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b pb-1', aparte ? 'border-dashed border-borde' : 'border-borde')}>
-        <h3 id={id} className={cn('text-sm font-semibold', TONO[clave])}>
+        {/* `scroll-mt-20`: el índice de arriba salta aquí sin que la barra tape el rótulo. Pesa como el nombre de cada fila. */}
+        <h3 id={id} className={cn('scroll-mt-20 text-base font-semibold', TONO[clave])}>
           {titulo}
           <span className="font-normal text-texto-suave"> · {cuantos}</span>
         </h3>
@@ -111,8 +112,33 @@ export function GruposPorVencimiento<T>({
 }) {
   const cuantos = (n: number) => `${n} ${n === 1 ? uno : varios}`
   const grupos = agruparPorVencimiento(filas, dia, hoy)
+  // El índice de la lista: cada grupo con su total, para saber de un vistazo cuánto vence hoy o esta
+  // semana sin bajar (en el teléfono la lista mide miles de píxeles). Con un solo grupo no hace falta.
+  const indice = [
+    ...grupos.map((g) => ({ clave: g.grupo as GrupoDeVencimiento | 'APARTE', titulo: NOMBRE_DEL_GRUPO[g.grupo], totales: totalesPorMoneda(g.filas, monedaDe, monto), n: g.filas.length })),
+    ...(aparte && aparte.filas.length > 0
+      ? [{ clave: 'APARTE' as const, titulo: aparte.titulo, totales: aparte.conTotal === false ? null : totalesPorMoneda(aparte.filas, monedaDe, monto), n: aparte.filas.length }]
+      : []),
+  ]
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
+      {indice.length > 1 && (
+        <nav aria-label={`Ir a un grupo de la lista`} data-indice-vencimiento={lista}>
+          <ul className="flex flex-wrap gap-2">
+            {indice.map((g) => (
+              <li key={g.clave}>
+                <a
+                  href={`#${lista}-${g.clave.toLowerCase()}`}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-[var(--radius-base)] border border-borde px-3 text-xs hover:border-acento sm:min-h-9"
+                >
+                  <span className={cn('font-semibold', TONO[g.clave])}>{g.titulo}</span>
+                  {g.totales ? <TotalPorMoneda totales={g.totales} className="font-medium text-texto" /> : <span className="text-texto-suave">{cuantos(g.n)}</span>}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )}
       {grupos.map((g) => (
         <Grupo
           key={g.grupo}

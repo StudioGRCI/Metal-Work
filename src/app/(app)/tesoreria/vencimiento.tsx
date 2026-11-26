@@ -15,22 +15,22 @@ export function Vencimiento({ dia, saldo }: { dia: string | null; saldo: number 
   if (faltan === null) return <>Sin vencimiento</>
   if (saldo > 0 && faltan < 0) {
     return (
-      <span className="text-peligro" data-dias-vencimiento={faltan}>
-        Venció el {fecha(dia)}, {diasDelVencimiento(faltan)}
+      <span className="text-peligro">
+        Venció el {fecha(dia)}, <span className="whitespace-nowrap">{diasDelVencimiento(faltan)}</span>
       </span>
     )
   }
   if (saldo > 0 && faltan === 0) {
     return (
-      <span className="text-aviso" data-dias-vencimiento={0}>
+      <span className="text-aviso">
         Vence hoy
       </span>
     )
   }
   if (saldo > 0) {
     return (
-      <span data-dias-vencimiento={faltan}>
-        Vence el {fecha(dia)}, {diasDelVencimiento(faltan)}
+      <span>
+        Vence el {fecha(dia)}, <span className="whitespace-nowrap">{diasDelVencimiento(faltan)}</span>
       </span>
     )
   }
