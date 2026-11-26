@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import { ListaEtapas, resumenEtapas } from '@/components/codigo-interno/etapas'
 import { TablaComparada, TablaListaDiseno, TablaLoPedido } from '@/components/codigo-interno/materiales'
 import { ListaDxf } from '@/components/codigo-interno/dxf'
+import { TarjetaLoQueDebeDiseno } from '@/components/codigo-interno/lo-que-debe-diseno'
 import { ListaPlanos } from '@/components/codigo-interno/planos'
 import { DelDocumento } from '@/components/estructura/del-documento'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
@@ -26,9 +27,12 @@ import {
   planosDeCodigo,
   type OrdenDelCodigo,
 } from '@/lib/datos/diseno-codigos'
+import { quienSubioYQuienLeyo, type LecturasDelCodigo } from '@/lib/datos/quien-subio-y-quien-leyo'
+import { QUE_DICE_EL_AVISO } from '@/components/codigo-interno/quien-subio-y-quien-leyo'
 import { limitePorVencer } from '@/lib/datos/limite-por-vencer'
+import { loQueDebeDiseno } from '@/lib/datos/lo-que-debe-diseno'
 import { responsablesDeEtapas } from '@/lib/datos/tiempos-entrega'
-import { normalizarCodigo } from '@/lib/dominio/codigos-internos'
+import { esUnidadDeDiseno, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { AREAS_DE_ETAPA_DE_DISENO, VISTAS_DISENO, vistaDisenoValida, type VistaDiseno } from '@/lib/dominio/diseno-codigos'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
 import { cantidad, fecha, fechaHora, hoyLima } from '@/lib/format'
@@ -72,7 +76,18 @@ export default async function PaginaCodigoDeDiseno({ searchParams }: PageProps<'
   const vista = vistaDisenoValida(params.vista)
   const titulo = VISTAS_DISENO.find((v) => v.valor === vista)?.titulo ?? 'Planos'
 
-  const [codigos, ordenes] = await Promise.all([codigosDeDiseno(), codigo === 'PLANTA' ? Promise.resolve([]) : ordenesDelCodigo(codigo)])
+  const [codigos, ordenes, debe] = await Promise.all([
+    codigosDeDiseno(),
+    codigo === 'PLANTA' ? Promise.resolve([]) : ordenesDelCodigo(codigo),
+    // Si no se puede leer, la tarjeta lo dice: el resto del código sigue a la vista.
+    // La oficina y «todos los activos» no son unidad: no se les pide nada.
+    !esUnidadDeDiseno(codigo)
+      ? Promise.resolve('no-es-unidad' as const)
+      : loQueDebeDiseno([codigo]).catch((e: unknown) => {
+          console.error('[diseno/codigo] lo que debe Diseño:', e)
+          return null
+        }),
+  ])
   const resumen = codigos.find((c) => c.codigo === codigo)
 
   return (
@@ -110,6 +125,8 @@ export default async function PaginaCodigoDeDiseno({ searchParams }: PageProps<'
                 pie={(resumen?.etapas_vencidas ?? 0) > 0 ? `${resumen?.etapas_vencidas} ${resumen?.etapas_vencidas === 1 ? 'vencida' : 'vencidas'}` : 'Terminadas'}
               />
             </div>
+
+            {debe !== 'no-es-unidad' && <TarjetaLoQueDebeDiseno d={debe === null ? null : debe.get(codigo)} />}
 
             <PastillaFiltro
               ruta="/diseno/codigo"
@@ -209,8 +226,33 @@ async function Vista({ vista, codigo }: { vista: VistaDiseno; codigo: string }) 
   return <VistaPlanos codigo={codigo} />
 }
 
+/**
+ * Quién subió cada versión y si el taller leyó su aviso. Si no se puede leer,
+ * la lista sale igual, sin eso, y una línea lo dice.
+ */
+function lecturasDe(codigo: string): Promise<LecturasDelCodigo | null> {
+  return quienSubioYQuienLeyo(codigo).catch((e: unknown) => {
+    console.error('[diseno/codigo] quién subió y quién leyó:', e)
+    return null
+  })
+}
+
+function NoSeLeyoQuienLeyo() {
+  return (
+    <p role="status" className="text-xs text-texto-suave">
+      No se pudo leer quién subió cada versión ni si el taller leyó su aviso. Vuelve a cargar la pantalla en un momento.
+    </p>
+  )
+}
+
+
 async function VistaPlanos({ codigo }: { codigo: string }) {
-  const [planos, areas, etapas] = await Promise.all([planosDeCodigo(codigo), areasDePlanos(), etapasDeCodigo(codigo)])
+  const [planos, areas, etapas, lecturas] = await Promise.all([
+    planosDeCodigo(codigo),
+    areasDePlanos(),
+    etapasDeCodigo(codigo),
+    lecturasDe(codigo),
+  ])
   const conHistoria = planos.filter((p) => p.revisiones > 1)
   const repartido = planos.filter((p) => !p.anulado_en).reduce((suma, p) => suma + (p.peso ?? 0), 0)
   const libre = Math.max(0, Math.round((100 - repartido) * 100) / 100)
@@ -238,9 +280,10 @@ async function VistaPlanos({ codigo }: { codigo: string }) {
                   sinPeso > 0 ? ` · ${sinPeso} sin porcentaje` : ''
                 }`
           }
-          ayuda="La revisión vigente de cada plano, si el supervisor del área ya la recibió, y el porcentaje de la unidad que representa. El avance de la unidad suma lo que avanzó cada plano por su porcentaje; lo que no se repartió en planos se mide por las etapas."
+          ayuda={`La revisión vigente de cada plano, quién de Diseño la subió, si el área leyó su aviso y si el supervisor ya la recibió, y el porcentaje de la unidad que representa. El avance de la unidad suma lo que avanzó cada plano por su porcentaje; lo que no se repartió en planos se mide por las etapas.${QUE_DICE_EL_AVISO}`}
         />
-        <TarjetaCuerpo>
+        <TarjetaCuerpo className="space-y-3">
+          {lecturas === null && planos.length > 0 && <NoSeLeyoQuienLeyo />}
           {planos.length === 0 ? (
             <p className="text-sm text-texto-suave">Todavía no hay planos. Carga el primero con el formulario de arriba.</p>
           ) : (
@@ -248,6 +291,7 @@ async function VistaPlanos({ codigo }: { codigo: string }) {
               planos={planos}
               avisarSinPeso
               historial={historial}
+              lecturas={lecturas?.planos}
               acciones={(p) =>
                 p.anulado_en ? null : (
                   <>
@@ -377,7 +421,7 @@ async function VistaEtapas({ codigo }: { codigo: string }) {
 
 /** Los DXF del código para el corte: Diseño los sube; Maestranza y Producción los descargan. */
 async function VistaDxf({ codigo }: { codigo: string }) {
-  const archivos = await dxfDeCodigo(codigo)
+  const [archivos, lecturas] = await Promise.all([dxfDeCodigo(codigo), lecturasDe(codigo)])
   return (
     <>
       <Tarjeta>
@@ -391,8 +435,12 @@ async function VistaDxf({ codigo }: { codigo: string }) {
       </Tarjeta>
 
       <Tarjeta>
-        <TarjetaCabecera titulo="DXF del código" ayuda="Lo que descargan Maestranza, para cortar, y Producción. Si uno o un envío entero se subió por error, quítalo: queda en el historial." />
-        <TarjetaCuerpo>
+        <TarjetaCabecera
+          titulo="DXF del código"
+          ayuda={`Lo que descargan Maestranza, para cortar, y Producción, con quién de Diseño subió cada envío y si cada área leyó su aviso. Si uno o un envío entero se subió por error, quítalo: queda en el historial.${QUE_DICE_EL_AVISO}`}
+        />
+        <TarjetaCuerpo className="space-y-3">
+          {lecturas === null && archivos.length > 0 && <NoSeLeyoQuienLeyo />}
           {archivos.length === 0 ? (
             <p className="text-sm text-texto-suave">Todavía no hay DXF. Carga el primero con el formulario de arriba.</p>
           ) : (
@@ -400,6 +448,7 @@ async function VistaDxf({ codigo }: { codigo: string }) {
               archivos={archivos}
               acciones={(d) => <QuitarDxf id={d.id} nombre={d.nombre_archivo} />}
               accionesDeEnvio={(g) => (g.length > 1 ? <QuitarEnvioDxf envio={g[0].envio} descripcion={g[0].descripcion} cuantos={g.length} /> : null)}
+              lecturas={lecturas?.dxf}
             />
           )}
         </TarjetaCuerpo>

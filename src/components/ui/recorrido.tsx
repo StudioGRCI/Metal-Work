@@ -28,6 +28,8 @@ import { cn } from '@/lib/utils'
  * `sinQuienEnElResumen`, donde la fila ya dice quién lo tiene y hace cuánto
  * (la insignia de días de Atención de requerimiento): cerrado dice solo
  * «Recorrido», para no repetirlo a 80 px; abierto, igual que siempre.
+ * `titulo`, donde hay más de un documento a la vista y «Recorrido» no dice de
+ * cuál («Recorrido de la cotización 3568-2026» en el código interno).
  */
 export function Recorrido({
   pasos,
@@ -35,12 +37,14 @@ export function Recorrido({
   relleno = 'px-4',
   femenino = false,
   sinQuienEnElResumen = false,
+  titulo = 'Recorrido',
 }: {
   pasos: readonly PasoDescrito[] | null | undefined
   className?: string
   relleno?: string
   femenino?: boolean
   sinQuienEnElResumen?: boolean
+  titulo?: string
 }) {
   const lo = femenino ? 'la' : 'lo'
   if (pasos === null) {
@@ -67,7 +71,7 @@ export function Recorrido({
         <span className="flex items-center gap-1.5 text-sm font-medium text-texto">
           <ChevronDown aria-hidden className="size-4 shrink-0 text-texto-suave transition-transform group-open/recorrido:rotate-180" />
           <Route aria-hidden className="size-4 shrink-0 text-texto-suave" />
-          Recorrido
+          {titulo}
         </span>
         {/* Lo que más se pregunta, sin abrir: quién lo tiene y hace cuánto; si ya nadie, en qué terminó. */}
         {ahora ? (
@@ -134,8 +138,8 @@ export function Recorrido({
   )
 }
 
-/** El punto de cada paso: hecho, el que espera ahora, o el que todavía no toca. */
-function Marca({ situacion }: { situacion: PasoDescrito['situacion'] }) {
+/** El punto de cada paso: hecho, el que espera ahora, o el que todavía no toca. Lo usa también el recorrido del código interno. */
+export function Marca({ situacion }: { situacion: PasoDescrito['situacion'] }) {
   if (situacion === 'HECHO') {
     return (
       <span aria-hidden className="relative z-[1] mt-0.5 grid size-[19px] shrink-0 place-items-center rounded-full bg-exito-suave text-exito">
