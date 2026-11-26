@@ -222,7 +222,7 @@ export async function ListaDeCodigosDeDiseno({
                     </Link>
                     {/* Fuera del enlace: dentro, el lector leía los cinco puntos como parte de su nombre. */}
                     {debe !== null && esUnidadDeDiseno(c.codigo) && (
-                      <LineaLoQueDebeDiseno className="mt-2" d={debe === 'sin-leer' ? null : debe.get(c.codigo)} />
+                      <LineaLoQueDebeDiseno className="mt-2" propia d={debe === 'sin-leer' ? null : debe.get(c.codigo)} />
                     )}
                   </div>
                 )}

@@ -301,7 +301,9 @@ function TarjetaDeUnidad({
       <TarjetaCabecera
         titulo={<span className="font-mono">{codigo}</span>}
         descripcion={unidad ?? undefined}
-        acciones={entregada ? <Insignia tono="neutro">Entregada</Insignia> : <BotonPedirParaUnidad codigo={codigo} />}
+        // Con borde y no lleno: una tarjeta por unidad son decenas de botones
+        // iguales, y llenos ninguno llamaba la atención (entrega 5).
+        acciones={entregada ? <Insignia tono="neutro">Entregada</Insignia> : <BotonPedirParaUnidad codigo={codigo} variante="contorno" />}
       />
       <TarjetaCuerpo className="space-y-3">
         <AvisoDeLaUnidad codigo={codigo} />

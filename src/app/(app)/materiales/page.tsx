@@ -58,9 +58,11 @@ export default async function PaginaMateriales({ searchParams }: PageProps<'/mat
             clave="todos"
             opciones={[
               { valor: null, etiqueta: 'En uso' },
-              ...(porConfirmar === null || (porConfirmar === 0 && !soloPorConfirmar)
+              // Si no se pudo contar, la pastilla sale sin cifra: quitarla dejaba
+              // la lista filtrada sin nada encendido.
+              ...(porConfirmar === 0 && !soloPorConfirmar
                 ? []
-                : [{ valor: POR_CONFIRMAR, clave: 'ver', etiqueta: `Unidad por confirmar (${porConfirmar})` }]),
+                : [{ valor: POR_CONFIRMAR, clave: 'ver', etiqueta: porConfirmar === null ? 'Unidad por confirmar' : `Unidad por confirmar (${porConfirmar})` }]),
               { valor: '1', etiqueta: 'También los retirados' },
             ]}
             params={params}
@@ -112,6 +114,12 @@ export default async function PaginaMateriales({ searchParams }: PageProps<'/mat
           </Tabla>
         </Tarjeta>
       </div>
+      {/* `Paginacion` calla con una sola página; cuántos son se dice igual. */}
+      {paginas <= 1 && total > 0 && (
+        <p className="mt-4 text-xs text-texto-suave" data-total-materiales>
+          {total === 1 ? '1 material' : `${total.toLocaleString('es-PE')} materiales`}
+        </p>
+      )}
       <Paginacion ruta="/materiales" pagina={pagina} paginas={paginas} total={total} porPagina={tamanoPagina} params={params} />
     </>
   )

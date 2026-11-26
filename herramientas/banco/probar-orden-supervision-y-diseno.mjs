@@ -9,8 +9,9 @@
  *      cada material es una ficha; «confirmar unidad» ya no va en una insignia
  *      ámbar por fila sino en el filtro «Unidad por confirmar (N)», con la
  *      cuenta de la base, que deja solo esos. «Corregir» abre su ventana con
- *      la casilla de confirmar la unidad; «Retirar» y «Devolver» escriben en
- *      la base (y el material vuelve a quedar como estaba). Gerencia, que solo
+ *      la casilla de confirmar la unidad y, marcada, la confirma en la base;
+ *      «Retirar» y «Devolver» escriben en la base (sobre un material que la
+ *      prueba siembra y borra al terminar). Gerencia, que solo
  *      consulta, lee «unidad por confirmar» y no recibe columna de acciones.
  *   2. Unidades, con la de Diseño: «Editar» y «Desactivar» en un renglón; a
  *      390 la ficha lleva el cliente, el vehículo y el detalle; a 1024 el
@@ -28,7 +29,14 @@
  *      Códigos internos, Planos de Diseño y Reporte diario; 12 px entre las
  *      fichas de la lista de Diseño. El vacío de la lista de Diseño es el
  *      `SinDatos` de siempre.
- *   7. En ninguna, errores en la consola ni letra de menos de 12 px.
+ *   7. Las demás pantallas de la entrega, con la cuenta de su puesto y a 1440 y
+ *      390: el supervisor de Maestranza y el de Producción en Planos y etapas,
+ *      Subcontratos, RQ por unidad, Observaciones de calidad y Reporte diario;
+ *      el Gerente de producción en Seguimiento; Diseño en Gestión de
+ *      materiales, Control de etapas, Archivos DXF e Insumos por autorizar;
+ *      Ventas en Clientes y en Carrocerías; el colaborador en el Informe
+ *      semanal; Gerencia en el detalle de un código.
+ *   8. En ninguna, errores en la consola ni letra de menos de 12 px.
  *
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), BANCO_BASE,
  * BANCO_CHROMIUM.
@@ -153,6 +161,7 @@ function comprobarCaja(t, errores, donde) {
   errores.length = 0
 }
 
+const MATERIAL_QA = { codigo: 'QA-E5-MATERIAL', descripcion: 'QA MATERIAL DE LA ENTREGA CINCO' }
 const CODIGO_LARGO = 'QACODIGOLARGODECUARENTALETRASSINESPACIOS'
 const NOMBRE_LARGO = 'QA carrocería de código largo (entrega 5)'
 
@@ -192,25 +201,44 @@ try {
       }
     }
     if (ancho === 390) {
-      // «Retirar» y «Devolver» con clic real, y el material vuelve a quedar en uso.
-      await ir(pagina, '/materiales')
-      const fila = pagina.locator('main tbody > tr').first()
-      const nombre = ((await fila.locator('td').first().locator('p').first().textContent()) ?? '').trim()
-      const material = await uno('select id from materiales where descripcion = $1 and activo order by codigo limit 1', [nombre])
+      // Con un material propio, sembrado y borrado al terminar: «Corregir» con
+      // la casilla confirma la unidad, y «Retirar» y «Devolver» escriben en la base.
+      await base.query('delete from materiales where codigo = $1', [MATERIAL_QA.codigo])
+      const sembrado = await uno(
+        `insert into materiales (codigo, descripcion, categoria_id, unidad_medida_id, unidad_pendiente)
+         select $1, $2, categoria_id, unidad_medida_id, true from materiales where activo order by codigo limit 1 returning id`,
+        [MATERIAL_QA.codigo, MATERIAL_QA.descripcion],
+      )
       try {
+        await ir(pagina, `/materiales?ver=unidad&buscar=${encodeURIComponent(MATERIAL_QA.descripcion)}`)
+        const fila = pagina.locator('main tbody > tr').filter({ has: pagina.locator(`input[name="id"][value="${sembrado.id}"]`) })
+        comprobar((await fila.count()) === 1, 'el material sembrado sale en «Unidad por confirmar», buscado por su nombre')
+        comprobar((await pagina.getByRole('link', { name: 'Unidad por confirmar (1)' }).count()) === 1, 'la cuenta del filtro sigue a la búsqueda («Unidad por confirmar (1)»)')
+        comprobar(((await pagina.locator('[data-total-materiales]').textContent().catch(() => '')) ?? '').trim() === '1 material', 'con una sola página, la lista sigue diciendo cuántos son («1 material»)')
+        await fila.getByRole('button', { name: /^Corregir / }).click()
+        const ventana = pagina.locator('[role="dialog"]').first()
+        await ventana.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {})
+        await ventana.locator('input[name="confirmar_unidad"]').check()
+        await ventana.getByRole('button', { name: 'Guardar' }).click()
+        await ventana.waitFor({ state: 'hidden', timeout: 20000 }).catch(() => {})
+        comprobar((await uno('select unidad_pendiente from materiales where id = $1', [sembrado.id])).unidad_pendiente === false, '«Corregir» con la casilla marcada confirma la unidad en la base')
+        await pagina.waitForFunction((id) => !document.querySelector(`main tbody input[name="id"][value="${id}"]`), sembrado.id, { timeout: 20000 }).catch(() => {})
+        comprobar((await fila.count()) === 0, 'confirmada, el material sale del filtro «Unidad por confirmar»')
+
+        await ir(pagina, `/materiales?buscar=${encodeURIComponent(MATERIAL_QA.descripcion)}`)
+        comprobar((await fila.locator('[data-unidad-por-confirmar]').count()) === 0, 'y su fila ya no dice «confirmar unidad»')
         await fila.getByRole('button', { name: /^Retirar / }).click()
-        await pagina.waitForFunction((n) => ![...document.querySelectorAll('main tbody > tr')].some((tr) => tr.querySelector('p')?.textContent.trim() === n), nombre, { timeout: 20000 }).catch(() => {})
-        comprobar((await uno('select activo from materiales where id = $1', [material.id])).activo === false, `«Retirar» deja el material fuera de uso en la base (${nombre})`)
-        await ir(pagina, `/materiales?todos=1&buscar=${encodeURIComponent(nombre)}`)
-        const retirado = pagina.locator('main tbody > tr').filter({ hasText: 'retirado' }).first()
-        comprobar((await retirado.count()) === 1, 'el retirado sale en «También los retirados», con su marca')
-        await retirado.getByRole('button', { name: /^Devolver / }).click()
-        await pagina.waitForFunction(() => !document.querySelector('main tbody > tr button[aria-label^="Devolver"]'), null, { timeout: 20000 }).catch(() => {})
-        comprobar((await uno('select activo from materiales where id = $1', [material.id])).activo === true, '«Devolver» lo deja otra vez en uso en la base')
+        await pagina.waitForFunction((id) => !document.querySelector(`main tbody input[name="id"][value="${id}"]`), sembrado.id, { timeout: 20000 }).catch(() => {})
+        comprobar((await uno('select activo from materiales where id = $1', [sembrado.id])).activo === false, '«Retirar» deja el material fuera de uso en la base')
+        await ir(pagina, `/materiales?todos=1&buscar=${encodeURIComponent(MATERIAL_QA.descripcion)}`)
+        comprobar((await fila.getByText('retirado', { exact: true }).count()) === 1, 'el retirado sale en «También los retirados», con su marca')
+        await fila.getByRole('button', { name: /^Devolver / }).click()
+        await fila.getByRole('button', { name: /^Retirar / }).waitFor({ timeout: 20000 }).catch(() => {})
+        comprobar((await uno('select activo from materiales where id = $1', [sembrado.id])).activo === true, '«Devolver» lo deja otra vez en uso en la base')
       } finally {
-        await base.query('update materiales set activo = true where id = $1', [material.id])
+        await base.query('delete from materiales where id = $1', [sembrado.id])
       }
-      comprobar(errores.length === 0, `Materiales ${ancho}: sin errores de consola al retirar y devolver${errores.length ? ` (${errores[0]})` : ''}`)
+      comprobar(errores.length === 0, `Materiales ${ancho}: sin errores de consola al corregir, retirar y devolver${errores.length ? ` (${errores[0]})` : ''}`)
     }
     await contexto.close()
   }
@@ -270,6 +298,17 @@ try {
     await contexto.close()
   }
 
+  {
+    // De 640 a 767 px el cliente era una columna con su enlace: la ficha lo conserva.
+    const { pagina, contexto, errores } = await entrar('diseno', 700)
+    await ir(pagina, '/unidades')
+    const fila = pagina.locator('main tbody > tr').filter({ has: pagina.getByRole('button', { name: 'Editar' }) }).first()
+    const enlace = fila.locator('td').first().locator('a[href^="/clientes/"]')
+    comprobar((await enlace.count()) === 1 && (await enlace.isVisible()), 'Unidades 700: el cliente sigue llevando a su ficha desde la unidad')
+    comprobarCaja(await leerTabla(pagina), errores, 'Unidades 700')
+    await contexto.close()
+  }
+
   // ---------------------------------------------------------------- 3. Órdenes de trabajo
   console.log('\n3. Órdenes de trabajo')
   for (const ancho of [1440, 1024, 768, 700]) {
@@ -280,6 +319,8 @@ try {
     const fichas = await pagina.locator('main ul > li > a[href^="/ordenes/"]').evaluateAll((es) => es.filter((e) => e.getBoundingClientRect().width > 0).length)
     if (ancho === 700) {
       comprobar(!t.hay && fichas > 0, `Órdenes ${ancho}: una ficha por orden, sin la tabla (${fichas})`)
+      const conTrabajo = await pagina.locator('main ul > li > a[href^="/ordenes/"] [data-trabajo-en-ficha]').evaluateAll((es) => es.filter((e) => e.getBoundingClientRect().width > 0 && e.textContent.trim()).length)
+      comprobar(conTrabajo === fichas, `Órdenes ${ancho}: cada ficha lleva el trabajo, su tipo y el responsable, que a ese ancho antes daba la tabla (${conTrabajo} de ${fichas})`)
     } else {
       comprobar(t.hay && fichas === 0 && t.filas.length > 0, `Órdenes ${ancho}: la tabla, con ${t.filas.length} órdenes`)
       comprobar(ancho >= 1280 ? enFila === 0 : enFila === t.filas.length, `Órdenes ${ancho}: el trabajo ${ancho >= 1280 ? 'va en su columna' : 'va bajo el cliente'} (${enFila})`)
@@ -293,8 +334,8 @@ try {
   await base.query('delete from tipos_carroceria where nombre = $1', [NOMBRE_LARGO])
   await base.query('insert into tipos_carroceria (codigo, nombre, orden_secuencia) values ($1, $2, 999)', [CODIGO_LARGO, NOMBRE_LARGO])
   try {
-    for (const ancho of [1024, 768, 390]) {
-      const { pagina, contexto, errores } = await entrar('diseno', ancho)
+    for (const [puesto, ancho] of [['diseno', 1024], ['diseno', 768], ['diseno', 390], ['ventas', 768], ['ventas', 390]]) {
+      const { pagina, contexto, errores } = await entrar(puesto, ancho)
       await ir(pagina, '/carrocerias')
       const t = await leerTabla(pagina)
       const codigo = pagina.locator('main tbody [data-codigo-carroceria]', { hasText: CODIGO_LARGO })
@@ -303,10 +344,10 @@ try {
         const celda = el.closest('td').getBoundingClientRect()
         return r.width > 0 && r.right <= celda.right + 1 && r.left >= celda.left - 1
       })
-      comprobar(cabe, `Carrocerías ${ancho}: el código de ${CODIGO_LARGO.length} letras cabe en su celda`)
+      comprobar(cabe, `Carrocerías ${puesto} ${ancho}: el código de ${CODIGO_LARGO.length} letras cabe en su celda`)
       const conTres = t.filas.filter((f) => f.mandos.length >= 2)
-      comprobar(conTres.every((f) => f.renglones === 1), `Carrocerías ${ancho}: los botones siguen en un renglón (el peor, ${Math.max(0, ...conTres.map((f) => f.renglones))})`)
-      comprobarCaja(t, errores, `Carrocerías ${ancho}`)
+      comprobar(conTres.every((f) => f.renglones === 1), `Carrocerías ${puesto} ${ancho}: los botones siguen en un renglón (el peor, ${Math.max(0, ...conTres.map((f) => f.renglones))})`)
+      comprobarCaja(t, errores, `Carrocerías ${puesto} ${ancho}`)
       await contexto.close()
     }
   } finally {
@@ -340,7 +381,7 @@ try {
     const lineas = await leerLineas(pagina)
     const vacias = lineas.filter((l) => l.puntos.length === 5 && l.puntos.every((p) => !p.hecho))
     comprobar(vacias.length > 0 && vacias.every((l) => l.sinNada && l.insignias === 0), `Códigos internos ${ancho}: el código sin nada de Diseño lo dice en una línea, sin casillas (${vacias.length})`)
-    comprobar(vacias.every((l) => /Diseño todavía no carga: ficha técnica, planos, materiales, etapas, DXF\./.test(l.texto)), `Códigos internos ${ancho}: la línea nombra los cinco puntos («${vacias[0]?.texto}»)`)
+    comprobar(vacias.every((l) => /^Diseño todavía no carga: ficha técnica, planos, materiales, etapas( \([^)]*\))?, DXF\.$/.test(l.texto)), `Códigos internos ${ancho}: la línea nombra los cinco puntos («${vacias[0]?.texto}»)`)
     comprobar(lineas.filter((l) => l.puntos.some((p) => p.hecho)).every((l) => !l.sinNada && l.puntos.length === 5), `Códigos internos ${ancho}: el que tiene algo cargado conserva sus cinco casillas`)
     comprobar((await separacion(pagina, 'main ul:has(> li > a[data-codigo])')) === 20, `Códigos internos ${ancho}: 20 px entre los filtros y la lista`)
     const t = await leerTabla(pagina)
@@ -367,6 +408,7 @@ try {
     const lineas = await leerLineas(pagina)
     const vacias = lineas.filter((l) => l.puntos.length === 5 && l.puntos.every((p) => !p.hecho))
     comprobar(vacias.length > 0 && vacias.every((l) => l.sinNada && l.insignias === 0), `Planos de Diseño ${ancho}: el código sin nada lo dice en una línea, sin casillas (${vacias.length})`)
+    comprobar(vacias.every((l) => l.texto.startsWith('Falta cargar: ficha técnica, planos, materiales, etapas')), `Planos de Diseño ${ancho}: a Diseño se lo dice como suyo («${vacias[0]?.texto}»)`)
     comprobar((await separacion(pagina, 'main ul:has(> li [data-codigo])')) === 20, `Planos de Diseño ${ancho}: 20 px entre los filtros y la lista`)
     const entreFichas = await pagina.evaluate(() => {
       const [a, b] = document.querySelectorAll('main ul:has(> li [data-codigo]) > li')
@@ -389,6 +431,60 @@ try {
     if (hayLista) comprobar((await separacion(pagina, 'main ul:has(> li > a[data-reporte])')) === 20, 'Reporte diario: 20 px entre los filtros y la lista')
     else console.log('  — Reporte diario sin reportes este mes: no se mide la separación')
     comprobarCaja(await leerTabla(pagina), errores, 'Reporte diario 1440')
+    await contexto.close()
+  }
+
+  // ---------------------------------------------------------------- 7. Las demás pantallas, con la cuenta de su puesto
+  console.log('\n7. Las demás pantallas de la entrega')
+  const DEMAS = [
+    ['sup.mtz', ['/planos', '/subcontratos/area', '/requerimientos/unidades', '/calidad', '/reportes-diarios']],
+    ['sup.prd', ['/planos', '/requerimientos/unidades']],
+    ['gerencia.produccion', ['/seguimiento', '/seguimiento?vista=materiales']],
+    ['diseno', ['/diseno/materiales', '/diseno/etapas', '/diseno/dxf', '/requerimientos/metrado']],
+    ['ventas', ['/clientes']],
+    ['colaborador', ['/diseno/informe-semanal']],
+  ]
+  for (const [puesto, rutas] of DEMAS) {
+    for (const ancho of [1440, 390]) {
+      const { pagina, contexto, errores } = await entrar(puesto, ancho)
+      for (const ruta of rutas) {
+        errores.length = 0
+        await ir(pagina, ruta)
+        const titulo = ((await pagina.locator('main h1').first().textContent()) ?? '').trim()
+        comprobar(!/No tienes acceso/.test(titulo), `${puesto} entra a ${ruta} («${titulo}»)`)
+        comprobarCaja(await leerTabla(pagina), errores, `${ruta} (${puesto}) ${ancho}`)
+      }
+      if (puesto === 'sup.mtz') {
+        // 20 px entre el buscador con sus filtros y lo que sigue, en las pantallas del supervisor.
+        await ir(pagina, '/planos')
+        const sep = await pagina.evaluate(() => {
+          const filtros = document.querySelector('main nav[aria-label="Qué códigos mostrar"], main [aria-label="Qué códigos mostrar"]')?.closest('.space-y-3')
+          const sigue = filtros?.nextElementSibling
+          return filtros && sigue ? Math.round(sigue.getBoundingClientRect().top - filtros.getBoundingClientRect().bottom) : null
+        })
+        comprobar(sep === 20, `Planos y etapas (sup.mtz) ${ancho}: 20 px entre los filtros y lo que sigue (${sep})`)
+        // «Nuevo RQ» de cada tarjeta va con borde, como «Nuevo RQ con otro código»: llenos, eran decenas iguales.
+        await ir(pagina, '/requerimientos/unidades')
+        const botones = await pagina.evaluate(() => {
+          const fondo = (b) => getComputedStyle(b).backgroundColor
+          const deTarjeta = [...document.querySelectorAll('main ul[aria-label^="Unidades de"] button[data-cursor-vuelve^="rq-"]')]
+          const otro = [...document.querySelectorAll('main button')].find((b) => b.textContent.includes('Nuevo RQ con otro código'))
+          return { cuantos: deTarjeta.length, iguales: deTarjeta.every((b) => fondo(b) === fondo(otro)), conBorde: deTarjeta.every((b) => parseFloat(getComputedStyle(b).borderTopWidth) >= 1) }
+        })
+        comprobar(botones.cuantos > 0 && botones.iguales && botones.conBorde, `RQ por unidad (sup.mtz) ${ancho}: «Nuevo RQ» de cada tarjeta va con borde, no lleno (${botones.cuantos})`)
+      }
+      await contexto.close()
+    }
+  }
+  {
+    // El detalle del código también lleva la línea: ahí no hay casillas repetidas, pero dice lo mismo.
+    const { pagina, contexto, errores } = await entrar('gerencia', 1440)
+    await ir(pagina, '/codigos-internos?ver=sin-diseno')
+    const enlace = await pagina.locator('main a[data-codigo]').first().getAttribute('href')
+    await ir(pagina, enlace)
+    const linea = await leerLineas(pagina)
+    comprobar(linea.length >= 1 && linea.every((l) => l.puntos.length === 5), `el detalle del código nombra los cinco puntos (${linea[0]?.texto})`)
+    comprobarCaja(await leerTabla(pagina), errores, 'Detalle del código (Gerencia) 1440')
     await contexto.close()
   }
 } finally {

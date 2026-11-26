@@ -60,9 +60,10 @@ const abierto = (c: ResumenCodigo) => c.cierre === null
 
 /**
  * Los filtros de la lista. «Parecidos» es lo que Gerencia tiene que verificar a
- * mano. «Sin nada de Diseño» junta lo que antes decía cada fila —que Diseño
- * todavía no cargó planos ni etapas—: repetido en casi todas dejaba de avisar
- * (hallazgo 4 del plan de orden y diseño; entrega 5).
+ * mano. «Sin nada de Diseño» junta lo que cada fila dice con sus cinco puntos
+ * vacíos (antes del plan 6.1, «Diseño todavía no cargó planos ni etapas»):
+ * repetido en casi todas dejaba de avisar (hallazgo 4 del plan de orden y
+ * diseño; entrega 5).
  */
 const FILTROS: Record<string, (c: ResumenCodigo, parecido: boolean, diseno: CodigoDeDiseno | undefined) => boolean> = {
   reportes: (c) => c.reportes > 0,

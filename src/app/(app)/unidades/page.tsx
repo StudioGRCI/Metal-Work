@@ -162,7 +162,17 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                           que cabe su columna. Entre 640 y 1199 px no se veían. */}
                       <span className="block font-normal whitespace-normal">
                         <span className="line-clamp-2 text-xs text-texto-suave md:hidden">
-                          {cliente ? cliente.razon_social : u.cliente_id ? null : 'Del taller'}
+                          {/* De 640 a 767 px antes era la columna, con su enlace a la ficha del cliente. */}
+                          {cliente ? (
+                            <>
+                              <span className="sm:hidden">{cliente.razon_social}</span>
+                              <Link href={`/clientes/${cliente.id}`} className="hidden text-acento hover:underline sm:inline">
+                                {cliente.razon_social}
+                              </Link>
+                            </>
+                          ) : u.cliente_id ? null : (
+                            'Del taller'
+                          )}
                         </span>
                         <span className="block text-xs text-texto md:hidden">{[u.marca, u.modelo, u.anio].filter(Boolean).join(' ')}</span>
                         {detalle && <span className="block text-xs text-texto-suave xl:hidden" data-detalle-unidad>{detalle}</span>}

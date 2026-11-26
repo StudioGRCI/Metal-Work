@@ -121,164 +121,167 @@ export default async function PaginaPorAutorizar({ searchParams }: PageProps<'/r
         migas={[{ titulo: 'Requerimientos', ruta: '/requerimientos' }, { titulo: 'Por autorizar' }]}
       />
 
-      <div className="mb-5 max-w-md">
-        <BuscadorSimple
-          ruta="/requerimientos/metrado"
-          clave="codigo"
-          etiqueta="Buscar por código interno"
-          marcador="Código interno, RQ o insumo"
-        />
-      </div>
+      {/* 20 px entre los bloques (la escala de la skill diseno), sin márgenes sueltos. */}
+      <div className="space-y-5">
+        <div className="max-w-md">
+          <BuscadorSimple
+            ruta="/requerimientos/metrado"
+            clave="codigo"
+            etiqueta="Buscar por código interno"
+            marcador="Código interno, RQ o insumo"
+          />
+        </div>
 
-      {recorridos === null && hayAlgo && (
-        <p role="status" className="mb-3 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-dias-sin-leer>
-          No se pudo leer el recorrido de los requerimientos: quién pidió cada uno, cuántos días lleva esperando y, en los ya
-          autorizados, por dónde van. La bandeja sigue sin esos datos. Vuelve a cargar la pantalla en un momento.
-        </p>
-      )}
+        {recorridos === null && hayAlgo && (
+          <p role="status" className="rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-dias-sin-leer>
+            No se pudo leer el recorrido de los requerimientos: quién pidió cada uno, cuántos días lleva esperando y, en los ya
+            autorizados, por dónde van. La bandeja sigue sin esos datos. Vuelve a cargar la pantalla en un momento.
+          </p>
+        )}
 
-      <ConAvisos>
-        <section aria-labelledby="por-autorizar" className="space-y-3">
-          <h2 id="por-autorizar" className="text-sm font-semibold text-texto">
-            {autoriza ? 'Esperan tu visto' : 'Esperan el visto de Diseño'} <span className="tabular font-normal text-texto-suave">· {porAutorizar.length}</span>
-          </h2>
-          {porAutorizar.length === 0 ? (
-            <Tarjeta>
-              {q ? (
-                <SinDatos
-                  enTabla={false}
-                  titulo={autoriza ? 'Nada de lo que espera tu visto coincide' : 'Nada de lo que espera el visto de Diseño coincide'}
-                  descripcion={`Ningún requerimiento por autorizar coincide con «${q}». Prueba con otro código o borra la búsqueda.`}
-                />
-              ) : (
-                <SinDatos
-                  enTabla={false}
-                  titulo={autoriza ? 'Nada espera tu visto' : 'Nada espera el visto de Diseño'}
-                  descripcion={
-                    autoriza
-                      ? 'Cuando un requerimiento pida más de lo que dice el metrado y quien lo pidió escriba por qué, aparece aquí y te llega el aviso.'
-                      : 'Cuando un requerimiento pida más de lo que dice el metrado y quien lo pidió escriba por qué, aparece aquí hasta que Diseño lo autorice o no.'
-                  }
-                />
-              )}
-            </Tarjeta>
-          ) : (
-            porAutorizar.map((r) => (
-              <Tarjeta key={r.id} className="overflow-hidden" data-rq={r.numero}>
-                {/* Si el recorrido dice que lo tiene otro (un insumo espera sustento), se dice quién. */}
-                <CabeceraDelRq
-                  rq={r}
-                  cargaMetrado={cargaMetrado}
-                  veMetrado={veMetrado}
-                  pidio={pidio(r)}
-                  espera={ahora(r)}
-                  verQuien={!autoriza || ahora(r)?.paso !== 'VISTO_DISENO'}
-                />
-                <OtrosQueFrenan rq={r} items={de(r, ['SIN_SUSTENTO', 'RECHAZADO']).map((l) => l.item)} autoriza={autoriza} />
-                {(() => {
-                  const insumos = de(r, ['POR_AUTORIZAR']).map((l) => {
-                    const m = metrado.get(l.id)!
-                    return {
-                      item: l.item,
-                      pedido: `${cantidad(l.cantidad)} ${l.unidad} ${l.descripcion}`,
-                      cuenta: cuentaDelMetrado(m, l.unidad),
-                      sustento: m.sustento,
-                      // Por su puesto, como «Pidió»: nunca el nombre de la persona (decisión del 2026-11-25).
-                      firma: [sustento(r, m.sustentado_en), m.sustentado_en ? fechaHora(m.sustentado_en) : null].filter(Boolean).join(', ') || null,
+        <ConAvisos>
+          <section aria-labelledby="por-autorizar" className="space-y-3">
+            <h2 id="por-autorizar" className="text-sm font-semibold text-texto">
+              {autoriza ? 'Esperan tu visto' : 'Esperan el visto de Diseño'} <span className="tabular font-normal text-texto-suave">· {porAutorizar.length}</span>
+            </h2>
+            {porAutorizar.length === 0 ? (
+              <Tarjeta>
+                {q ? (
+                  <SinDatos
+                    enTabla={false}
+                    titulo={autoriza ? 'Nada de lo que espera tu visto coincide' : 'Nada de lo que espera el visto de Diseño coincide'}
+                    descripcion={`Ningún requerimiento por autorizar coincide con «${q}». Prueba con otro código o borra la búsqueda.`}
+                  />
+                ) : (
+                  <SinDatos
+                    enTabla={false}
+                    titulo={autoriza ? 'Nada espera tu visto' : 'Nada espera el visto de Diseño'}
+                    descripcion={
+                      autoriza
+                        ? 'Cuando un requerimiento pida más de lo que dice el metrado y quien lo pidió escriba por qué, aparece aquí y te llega el aviso.'
+                        : 'Cuando un requerimiento pida más de lo que dice el metrado y quien lo pidió escriba por qué, aparece aquí hasta que Diseño lo autorice o no.'
                     }
-                  })
-                  return autoriza ? <VistoDelRequerimiento id={r.id} numero={r.numero} insumos={insumos} /> : <InsumosEnConsulta insumos={insumos} />
-                })()}
+                  />
+                )}
               </Tarjeta>
-            ))
-          )}
-        </section>
-      </ConAvisos>
+            ) : (
+              porAutorizar.map((r) => (
+                <Tarjeta key={r.id} className="overflow-hidden" data-rq={r.numero}>
+                  {/* Si el recorrido dice que lo tiene otro (un insumo espera sustento), se dice quién. */}
+                  <CabeceraDelRq
+                    rq={r}
+                    cargaMetrado={cargaMetrado}
+                    veMetrado={veMetrado}
+                    pidio={pidio(r)}
+                    espera={ahora(r)}
+                    verQuien={!autoriza || ahora(r)?.paso !== 'VISTO_DISENO'}
+                  />
+                  <OtrosQueFrenan rq={r} items={de(r, ['SIN_SUSTENTO', 'RECHAZADO']).map((l) => l.item)} autoriza={autoriza} />
+                  {(() => {
+                    const insumos = de(r, ['POR_AUTORIZAR']).map((l) => {
+                      const m = metrado.get(l.id)!
+                      return {
+                        item: l.item,
+                        pedido: `${cantidad(l.cantidad)} ${l.unidad} ${l.descripcion}`,
+                        cuenta: cuentaDelMetrado(m, l.unidad),
+                        sustento: m.sustento,
+                        // Por su puesto, como «Pidió»: nunca el nombre de la persona (decisión del 2026-11-25).
+                        firma: [sustento(r, m.sustentado_en), m.sustentado_en ? fechaHora(m.sustentado_en) : null].filter(Boolean).join(', ') || null,
+                      }
+                    })
+                    return autoriza ? <VistoDelRequerimiento id={r.id} numero={r.numero} insumos={insumos} /> : <InsumosEnConsulta insumos={insumos} />
+                  })()}
+                </Tarjeta>
+              ))
+            )}
+          </section>
+        </ConAvisos>
 
-      {sinSustento.length > 0 && (
-        <section aria-labelledby="sin-sustento" className="mt-5 space-y-3">
-          <div>
-            <h2 id="sin-sustento" className="text-sm font-semibold text-texto">
-              Esperan el sustento de quien pidió <span className="tabular font-normal text-texto-suave">· {sinSustento.length}</span>
-            </h2>
-            <p className="text-xs text-texto-suave">
-              {autoriza
-                ? 'Se pasan del metrado y todavía nadie escribió por qué. Si el metrado del código está incompleto, amplíalo y dejan de pasarse.'
-                : 'Se pasan del metrado y todavía nadie escribió por qué. Si el metrado del código está incompleto y Diseño lo amplía, dejan de pasarse.'}
-            </p>
-          </div>
-          {sinSustento.map((r) => (
-            <Tarjeta key={r.id} className="overflow-hidden" data-rq={r.numero}>
-              <CabeceraDelRq rq={r} cargaMetrado={cargaMetrado} veMetrado={veMetrado} pidio={pidio(r)} espera={ahora(r)} verQuien />
-              <ul className="divide-y divide-borde border-t border-borde">
-                {de(r, ['SIN_SUSTENTO', 'RECHAZADO']).map((l) => {
-                  const m = metrado.get(l.id)!
-                  const e = ESTADO_METRADO[m.estado]
-                  return (
-                    <li key={l.item} className="space-y-0.5 px-4 py-3 text-sm">
-                      <p className="break-words text-texto">
-                        <span className="tabular font-semibold">Ítem {l.item} ·</span> {cantidad(l.cantidad)} {l.unidad} {l.descripcion}{' '}
-                        <Insignia tono={e.tono}>{e.etiqueta}</Insignia>
-                      </p>
-                      <p className="text-xs text-texto-suave">{cuentaDelMetrado(m, l.unidad)}</p>
-                      {m.estado === 'RECHAZADO' && m.nota_decision && (
-                        <p className="text-xs break-words text-texto-suave">
-                          <span className="font-medium text-texto">Diseño:</span> {m.nota_decision}
+        {sinSustento.length > 0 && (
+          <section aria-labelledby="sin-sustento" className="space-y-3">
+            <div>
+              <h2 id="sin-sustento" className="text-sm font-semibold text-texto">
+                Esperan el sustento de quien pidió <span className="tabular font-normal text-texto-suave">· {sinSustento.length}</span>
+              </h2>
+              <p className="text-xs text-texto-suave">
+                {autoriza
+                  ? 'Se pasan del metrado y todavía nadie escribió por qué. Si el metrado del código está incompleto, amplíalo y dejan de pasarse.'
+                  : 'Se pasan del metrado y todavía nadie escribió por qué. Si el metrado del código está incompleto y Diseño lo amplía, dejan de pasarse.'}
+              </p>
+            </div>
+            {sinSustento.map((r) => (
+              <Tarjeta key={r.id} className="overflow-hidden" data-rq={r.numero}>
+                <CabeceraDelRq rq={r} cargaMetrado={cargaMetrado} veMetrado={veMetrado} pidio={pidio(r)} espera={ahora(r)} verQuien />
+                <ul className="divide-y divide-borde border-t border-borde">
+                  {de(r, ['SIN_SUSTENTO', 'RECHAZADO']).map((l) => {
+                    const m = metrado.get(l.id)!
+                    const e = ESTADO_METRADO[m.estado]
+                    return (
+                      <li key={l.item} className="space-y-0.5 px-4 py-3 text-sm">
+                        <p className="break-words text-texto">
+                          <span className="tabular font-semibold">Ítem {l.item} ·</span> {cantidad(l.cantidad)} {l.unidad} {l.descripcion}{' '}
+                          <Insignia tono={e.tono}>{e.etiqueta}</Insignia>
                         </p>
-                      )}
-                    </li>
-                  )
-                })}
-              </ul>
-            </Tarjeta>
-          ))}
-        </section>
-      )}
+                        <p className="text-xs text-texto-suave">{cuentaDelMetrado(m, l.unidad)}</p>
+                        {m.estado === 'RECHAZADO' && m.nota_decision && (
+                          <p className="text-xs break-words text-texto-suave">
+                            <span className="font-medium text-texto">Diseño:</span> {m.nota_decision}
+                          </p>
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+              </Tarjeta>
+            ))}
+          </section>
+        )}
 
-      {autorizados.length > 0 && (
-        <section aria-labelledby="ya-autorizados" className="mt-5 space-y-3" data-ya-autorizados>
-          <div>
-            <h2 id="ya-autorizados" className="text-sm font-semibold text-texto">
-              Ya autorizados por Diseño <span className="tabular font-normal text-texto-suave">· {todosLosAutorizados.length}</span>
-            </h2>
-            <p className="text-xs text-texto-suave">
-              Siguen abiertos.
-              {recorridos !== null && ' Abre su recorrido para ver por dónde van después del visto, quién los tiene y hace cuántos días.'}
-              {todosLosAutorizados.length > AUTORIZADOS_A_LA_VISTA &&
-                ` Van los ${AUTORIZADOS_A_LA_VISTA} de visto más reciente; para uno anterior, búscalo por su código.`}
-            </p>
-          </div>
-          {autorizados.map((r) => (
-            <Tarjeta key={r.id} className="overflow-hidden" data-rq={r.numero} data-autorizado>
-              <CabeceraDelRq rq={r} cargaMetrado={cargaMetrado} veMetrado={veMetrado} pidio={pidio(r)} />
-              <ul className="divide-y divide-borde border-t border-borde">
-                {autorizadas(r).map((l) => {
-                  const m = metrado.get(l.id)!
-                  return (
-                    <li key={l.item} className="space-y-0.5 px-4 py-3 text-sm">
-                      <p className="break-words text-texto">
-                        <span className="tabular font-semibold">Ítem {l.item} ·</span> {cantidad(l.cantidad)} {l.unidad} {l.descripcion}{' '}
-                        <Insignia tono={ESTADO_METRADO.AUTORIZADO.tono}>
-                          {m.decidido_en ? `Autorizado el ${fecha(m.decidido_en)}` : ESTADO_METRADO.AUTORIZADO.etiqueta}
-                        </Insignia>
-                      </p>
-                      {m.nota_decision && (
-                        <p className="text-xs break-words text-texto-suave">
-                          <span className="font-medium text-texto">Diseño:</span> {m.nota_decision}
+        {autorizados.length > 0 && (
+          <section aria-labelledby="ya-autorizados" className="space-y-3" data-ya-autorizados>
+            <div>
+              <h2 id="ya-autorizados" className="text-sm font-semibold text-texto">
+                Ya autorizados por Diseño <span className="tabular font-normal text-texto-suave">· {todosLosAutorizados.length}</span>
+              </h2>
+              <p className="text-xs text-texto-suave">
+                Siguen abiertos.
+                {recorridos !== null && ' Abre su recorrido para ver por dónde van después del visto, quién los tiene y hace cuántos días.'}
+                {todosLosAutorizados.length > AUTORIZADOS_A_LA_VISTA &&
+                  ` Van los ${AUTORIZADOS_A_LA_VISTA} de visto más reciente; para uno anterior, búscalo por su código.`}
+              </p>
+            </div>
+            {autorizados.map((r) => (
+              <Tarjeta key={r.id} className="overflow-hidden" data-rq={r.numero} data-autorizado>
+                <CabeceraDelRq rq={r} cargaMetrado={cargaMetrado} veMetrado={veMetrado} pidio={pidio(r)} />
+                <ul className="divide-y divide-borde border-t border-borde">
+                  {autorizadas(r).map((l) => {
+                    const m = metrado.get(l.id)!
+                    return (
+                      <li key={l.item} className="space-y-0.5 px-4 py-3 text-sm">
+                        <p className="break-words text-texto">
+                          <span className="tabular font-semibold">Ítem {l.item} ·</span> {cantidad(l.cantidad)} {l.unidad} {l.descripcion}{' '}
+                          <Insignia tono={ESTADO_METRADO.AUTORIZADO.tono}>
+                            {m.decidido_en ? `Autorizado el ${fecha(m.decidido_en)}` : ESTADO_METRADO.AUTORIZADO.etiqueta}
+                          </Insignia>
                         </p>
-                      )}
-                    </li>
-                  )
-                })}
-              </ul>
-              {/* Si no se pudo leer, ya lo dice el aviso de arriba: no se repite en cada tarjeta. */}
-              {recorridos !== null && (
-                <Recorrido pasos={describirRecorridoDelRequerimiento(recorridos.get(r.id) ?? [])} className="border-t border-borde" />
-              )}
-            </Tarjeta>
-          ))}
-        </section>
-      )}
+                        {m.nota_decision && (
+                          <p className="text-xs break-words text-texto-suave">
+                            <span className="font-medium text-texto">Diseño:</span> {m.nota_decision}
+                          </p>
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+                {/* Si no se pudo leer, ya lo dice el aviso de arriba: no se repite en cada tarjeta. */}
+                {recorridos !== null && (
+                  <Recorrido pasos={describirRecorridoDelRequerimiento(recorridos.get(r.id) ?? [])} className="border-t border-borde" />
+                )}
+              </Tarjeta>
+            ))}
+          </section>
+        )}
+      </div>
     </>
   )
 }

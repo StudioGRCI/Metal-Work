@@ -53,10 +53,11 @@ En `src/components/ui/`:
   (`xl:hidden`).
 - **Un aviso que se repite en casi todas las filas deja de avisar** (hallazgo
   4 del plan de orden y diseño; entrega 5, 2026-11-26). «Confirmar unidad» iba
-  en ámbar en 298 materiales y los cinco puntos de Diseño, en cinco casillas
-  vacías, en 188 de 191 códigos. Va a un filtro con su cuenta arriba
-  («Unidad por confirmar (298)», «Sin planos, materiales ni etapas de Diseño
-  (205)») y la fila lo dice en letra suave, sin color ni casillas
+  en ámbar en 572 materiales en producción (298 en el banco local) y los cinco
+  puntos de Diseño, en cinco casillas vacías, en casi todos los códigos (188 de
+  191 en el banco). Va a un filtro con su cuenta arriba («Unidad por confirmar
+  (N)», «Sin planos, materiales ni etapas de Diseño (N)») y la fila lo dice en
+  letra suave, sin color ni casillas
   (`LineaLoQueDebeDiseno` lo hace sola cuando no hay nada hecho; conserva los
   `data-punto`). El color y la insignia quedan para la fila que es la
   excepción. `PastillaFiltro` admite una opción con otra `clave` de URL

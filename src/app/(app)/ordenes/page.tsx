@@ -207,6 +207,13 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                   <span className={nombreVaTenue(unidad, orden.avance_del_codigo) ? 'text-texto-tenue' : undefined}>{nombreDeUnidadOCodigo(unidad, orden.avance_del_codigo)}</span>
                   {orden.tipo_carroceria ? ` · ${orden.tipo_carroceria}` : ''}
                 </p>
+                {/* Entre 640 y 767 px antes se veía la tabla, con el trabajo y el
+                    responsable: la ficha los lleva en ese ancho para no perderlos. */}
+                <p className="mt-1 hidden text-xs text-texto-suave sm:block" data-trabajo-en-ficha>
+                  {orden.descripcion && <span className="text-texto">{orden.descripcion} · </span>}
+                  {definir(TIPO_TRABAJO, orden.tipo_trabajo).etiqueta}
+                  {orden.responsable && ` · ${orden.responsable}`}
+                </p>
                 <div className="mt-3 flex items-end justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <Progreso valor={orden.avance_porcentaje} mostrarValor alto="sm" />
@@ -289,7 +296,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                       {/* Sin `cliente_id` es de verdad sin cliente: la abrió el
                           taller (100). Con él y sin nombre, es que quien mira
                           no tiene clientes.ver, y ahí no se dice nada. */}
-                      <p className="max-w-44 truncate text-texto xl:max-w-52 min-[1600px]:max-w-72" title={orden.cliente ?? undefined}>
+                      <p className="line-clamp-2 max-w-44 text-texto xl:block xl:max-w-52 xl:truncate min-[1600px]:max-w-72" title={orden.cliente ?? undefined}>
                         {orden.cliente ?? (orden.cliente_id === null ? (
                           <span className="text-aviso">Sin cliente todavía</span>
                         ) : null)}
@@ -308,7 +315,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                         )}
                       </p>
                       {/* Lo mismo que la columna «Trabajo», hasta que cabe. */}
-                      <p className="max-w-44 truncate text-xs text-texto-suave xl:hidden" title={orden.descripcion ?? undefined} data-trabajo-en-fila>
+                      <p className="line-clamp-2 max-w-44 text-xs text-texto-suave xl:hidden" title={orden.descripcion ?? undefined} data-trabajo-en-fila>
                         {orden.descripcion}
                       </p>
                       <p className="max-w-44 truncate text-xs text-texto-suave xl:hidden">
