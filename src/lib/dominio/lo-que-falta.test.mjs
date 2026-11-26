@@ -80,11 +80,13 @@ test('la orden de servicio: Logística da la factura y la conformidad; Tesorerí
   assert.deepEqual(faltaDelServicio(servicio({ cancelada: true })), [])
 })
 
-test('la OS en dólares sin monto en soles no se paga ni se da por pagada, y no le toca a Tesorería', () => {
-  const r = faltaDelServicio(servicio({ sinTipoDeCambio: true, todoPagado: true, saldoProveedor: 0 }))
-  assert.deepEqual(quien(r), ['Administrador del sistema!'])
-  assert.match(r[0].que, /sin tipo de cambio/)
-  assert.deepEqual(quien(faltaDelServicio(servicio({ sinTipoDeCambio: true }))), ['Administrador del sistema!'])
+test('la OS en dólares sin monto en soles no se paga ni se da por pagada, y dice de qué día falta el cambio y quién lo registra', () => {
+  const r = faltaDelServicio(servicio({ sinTipoDeCambio: true, cambioDel: '23/11/2026', todoPagado: true, saldoProveedor: 0 }))
+  assert.deepEqual(quien(r), ['Contabilidad o Administración!'])
+  assert.match(r[0].que, /^el tipo de cambio del 23\/11\/2026:/)
+  const sinFecha = faltaDelServicio(servicio({ sinTipoDeCambio: true }))
+  assert.deepEqual(quien(sinFecha), ['Contabilidad o Administración!'])
+  assert.match(sinFecha[0].que, /^el tipo de cambio del día en que se emitió la OS:/)
 })
 
 test('la OS sin decir si lleva detracción se lo pide a Logística', () => {

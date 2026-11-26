@@ -219,6 +219,7 @@ function Servicio({
             saldoDetraccion: saldo.saldoDetraccion,
             detraccionSinDefinir: s.detraccion.afecta === null,
             sinTipoDeCambio,
+            cambioDel: s.detraccion.emitida_en ? fecha(s.detraccion.emitida_en) : null,
           })}
         />
         <ParaPagar documentos={documentos} cuentas={s.cancelada ? [] : s.cuentas} monedaDocumento={m} sinCuentas={s.cancelada ? null : sinCuentas} />

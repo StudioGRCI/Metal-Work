@@ -898,7 +898,7 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
     tareas.push({
       clave: 'rq_por_recoger', ruta: '/requerimientos?ver=recoger', tono: 'acento',
       texto: n => plural(n, 'requerimiento de tu área con algo para recoger en almacén', 'requerimientos de tu área con algo para recoger en almacén'),
-      contar: async () => (await cargarRequerimientos({ soloAbiertos: true, area, conEntregado: true })).filter(tieneParaRecoger).length,
+      contar: async () => (await cargarRequerimientos({ soloAbiertos: true, area, conEntregado: true, sinFechaCorregida: true })).filter(tieneParaRecoger).length,
     })
   }
 
