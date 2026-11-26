@@ -1045,6 +1045,16 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       texto: n => plural(n, 'reporte de seguridad por clasificar', 'reportes de seguridad por clasificar'),
       contar: () => cabeza(supabase.from('ssoma_reportes').select('id', { count: 'exact', head: true }).eq('estado', 'REPORTADO')),
     })
+    // El clasificado sin ninguna acción viva: se quedaría quieto sin que nadie se entere.
+    tareas.push({
+      clave: 'ssoma_sin_accion', ruta: '/ssoma', tono: 'aviso',
+      texto: n => plural(n, 'reporte clasificado sin acción', 'reportes clasificados sin acción'),
+      contar: async () => {
+        const { data, error } = await supabase.rpc('ssoma_por_atender').single()
+        if (error) throw new Error('No se pudo consultar el pendiente.')
+        return data?.sin_accion ?? 0
+      },
+    })
     tareas.push({
       clave: 'ssoma_vencidas_de_otros', ruta: '/ssoma?vista=acciones', tono: 'peligro',
       texto: n => plural(n, 'acción correctiva vencida por seguir', 'acciones correctivas vencidas por seguir'),

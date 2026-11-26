@@ -17993,6 +17993,7 @@ export type Database = {
           anulado_en: string | null
           motivo_anulacion: string | null
           alcance: string | null
+          orden: number | null
         }[]
       }
       ssoma_anotar_evidencia: {
@@ -18085,6 +18086,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      ssoma_hay_quien_reciba_el_cierre: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
       ssoma_historia_de_accion: {
         Args: {
           p_accion: string | null
@@ -18118,6 +18123,13 @@ export type Database = {
           nombre: string | null
           cargo: string | null
           area: string | null
+        }[]
+      }
+      ssoma_por_atender: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          por_clasificar: number | null
+          sin_accion: number | null
         }[]
       }
       ssoma_reabrir_accion: {
@@ -18191,7 +18203,7 @@ export type Database = {
       }
       ssoma_seguimiento_de_reportes: {
         Args: {
-          p_id: string | null
+          p_ids: string[] | null
         }
         Returns: {
           reporte: string | null

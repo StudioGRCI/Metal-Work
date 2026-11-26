@@ -333,7 +333,8 @@ let accion2 = null
 {
   const { pagina, contexto, errores } = await entrar(CUENTAS.mtz, CELULAR)
   await ir(pagina, `${BASE}/ssoma/${rep.id}`)
-  const recorrido = limpio(await pagina.locator('[data-recorrido]').innerText())
+  // El recorrido va plegado: se lee su texto entero, no solo lo que se ve.
+  const recorrido = limpio(await pagina.locator('[data-recorrido]').textContent())
   comprobar(/En corrección · 1 de 2 acciones cerradas · 1 vencida/.test(recorrido), `[Maestranza 390] el recorrido dice cómo va: «${recorrido.slice(-120)}»`)
   comprobar((await pagina.locator('[data-accion-ssoma]').count()) === 2, '[Maestranza 390] ve las dos acciones de su reporte')
   comprobar((await pagina.locator('[data-accion-ssoma] img').count()) === 0 && (await pagina.locator('[data-cerrar-accion]').count()) === 0,
@@ -347,6 +348,14 @@ let accion2 = null
 // ------------------------------------------------------------ 4. SSOMA sigue, reabre, reasigna y anula
 {
   const { pagina, contexto, errores } = await entrar(CUENTAS.ssoma, MONITOR)
+  await ir(pagina, `${BASE}/ssoma`)
+  const porClasificar = await consulta(`select count(*)::int as n from public.ssoma_reportes where estado = 'REPORTADO'`)
+  if (porClasificar[0].n > 0) {
+    const fila = limpio(await pagina.locator('[data-reporte-ssoma]').first().innerText())
+    comprobar(/Por clasificar/.test(fila), `[SSOMA 1440] en «Reportes», lo que espera su clasificación va primero: «${fila.slice(0, 80)}»`)
+  } else {
+    console.log('  -- · [SSOMA 1440] no hay reportes por clasificar en esta base: el orden de «Reportes» no se miró')
+  }
   await ir(pagina, `${BASE}/ssoma?vista=acciones`)
   const primera = pagina.locator('[data-accion-ssoma]').first()
   comprobar((await primera.getAttribute('data-vencida')) === 'true', '[SSOMA 1440] en «Acciones correctivas», las vencidas arriba')
@@ -419,6 +428,16 @@ let accion2 = null
   comprobar(errores.length === 0, `[Producción 390] sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }
+{
+  // Otra acción en un reporte ya corregido: SSOMA sabe antes de guardar que lo vuelve a abrir.
+  const { pagina, contexto } = await entrar(CUENTAS.ssoma, MONITOR)
+  await ir(pagina, `${BASE}/ssoma/${rep.id}`)
+  await pagina.getByRole('button', { name: 'Agregar acción' }).click()
+  const aviso = pagina.locator('[role="dialog"] [data-aviso-corregido]')
+  comprobar(await aviso.isVisible(), '[SSOMA 1440] en un reporte corregido, «Agregar acción» avisa que lo vuelve a abrir')
+  await pagina.keyboard.press('Escape')
+  await contexto.close()
+}
 
 // ------------------------------------------------------------ 5. Gerencia y Ventas
 {
@@ -431,7 +450,7 @@ let accion2 = null
     '[Gerencia 1440] no se le ofrece clasificar, encargar, cerrar ni cambiar acciones',
   )
   comprobar((await pagina.locator(`[data-accion-ssoma="${accion2?.id}"] img`).count()) >= 1, '[Gerencia 1440] ve la evidencia')
-  comprobar(/Corregido/.test(limpio(await pagina.locator('[data-recorrido]').innerText())), '[Gerencia 1440] el recorrido dice «Corregido»')
+  comprobar(/Corregido/.test(limpio(await pagina.locator('[data-recorrido] summary').innerText())), '[Gerencia 1440] el recorrido dice «Corregido» sin abrirlo')
   await pagina.screenshot({ path: join(CAPTURAS, 'ssoma-ficha-gerencia-1440.png'), fullPage: true })
   await ir(pagina, `${BASE}/ssoma?vista=acciones`)
   comprobar((await pagina.locator(`[data-accion-ssoma="${accion2?.id}"]`).count()) === 1, '[Gerencia 1440] consulta «Acciones correctivas»')

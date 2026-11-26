@@ -34,6 +34,32 @@
 -- estado del reporte se cambia con ALTER TABLE … DROP CONSTRAINT, que sí pasa.
 -- =============================================================================
 
+-- 0. Las funciones de la 15.1 que esta reescribe son las que el repositorio conoce --------
+-- Si alguien pegó un arreglo a mano en producción, se detiene en vez de pisarlo.
+-- Valen la huella de la 15.1 y la de esta migración (volver a correrla).
+do $$
+declare
+  v record;
+begin
+  for v in
+    select f.firma, f.huellas, md5(replace(p.prosrc, E'\r', '')) as huella
+      from (values
+        ('public.fn_ssoma_reporte_guardia()', array['a83e6ece7d87042dbbf21094f980e221', 'a2ac81a0b5df725bd271184f3d61b1bb']),
+        ('public.ssoma_anular_reporte(uuid,text)', array['28ec3de74b6301866cdee96acc2bfcb2', '062aaf5c10673636a4938dae44b57b93']),
+        ('public.ssoma_foto_anotada(text)', array['9e6f0b19f14da8cc6a4e8142270ebb5e', '2e0b6ef025271d045e3bb6907f35fc1d']),
+        ('public.ssoma_reportes_visibles(uuid)', array['7122f214f3957cacc985a632bd31f837', 'd9426adeef75bad24c8d7a5e7faefa45'])
+      ) as f(firma, huellas)
+      left join pg_proc p on p.oid = to_regprocedure(f.firma)
+  loop
+    if v.huella is null then
+      raise exception 'Falta %: esta base no tiene la entrega 15.1 de SSOMA.', v.firma;
+    end if;
+    if not (v.huella = any (v.huellas)) then
+      raise exception '% no es la que conoce el repositorio (se cambió a mano, huella %): no se reemplaza. Avisa antes de seguir.', v.firma, v.huella;
+    end if;
+  end loop;
+end $$;
+
 -- 1. El reporte sabe en qué va ---------------------------------------------------------
 --   REPORTADO   · lo tiene SSOMA, por clasificar.
 --   CLASIFICADO · clasificado; sus acciones, si tiene, siguen abiertas.
@@ -154,7 +180,9 @@ create index if not exists ix_ssoma_acciones_responsable on public.ssoma_accione
 -- Las acciones de un reporte (b).
 create index if not exists ix_ssoma_acciones_reporte on public.ssoma_acciones (reporte_id);
 select public.activar_timestamps('ssoma_acciones');
-select public.activar_auditoria('ssoma_acciones');
+-- Sin `activar_auditoria`: la copia en `audit_log` la lee quien tiene
+-- `auditoria.ver`, y la acción dice qué se corrige de un reporte que ese puesto
+-- no ve. Su historia, con quién y cuándo, ya está en `ssoma_accion_eventos`.
 select public.activar_registro_de_prueba('ssoma_acciones');
 
 -- Su historia: cada asignación, cierre, reapertura y anulación, con quién y cuándo.
@@ -507,6 +535,10 @@ begin
   if p_id is null then raise exception 'Vuelve a abrir el formulario de la acción.' using errcode = 'check_violation'; end if;
   select * into v_actual from public.ssoma_acciones where id = p_id;
   if found then
+    -- El mismo pedido, de la misma persona: se perdió la respuesta.
+    if v_actual.creado_por is distinct from v_yo then
+      raise exception 'Vuelve a abrir el formulario de la acción.' using errcode = 'check_violation';
+    end if;
     if public.mismo_envio(p_id, 'ACCION_SSOMA', v_envio) then return p_id; end if;
     raise exception 'Esa acción ya quedó registrada la primera vez que la enviaste: lo que cambiaste después no se guardó.'
       using errcode = 'check_violation';
@@ -539,6 +571,13 @@ begin
   values (p_id, 'ASIGNADA', p_responsable, p_fecha_limite, v_yo);
   perform public.anotar_envio(p_id, 'ACCION_SSOMA', v_envio);
   perform public.ssoma_recalcular_reporte(p_reporte);
+  -- Quien reportó ya había recibido «quedó corregido»: se entera de que volvió.
+  if v_rep.estado = 'CERRADO' then
+    perform public.ssoma_avisar_a(v_rep.registrado_por,
+      'Tu reporte ' || v_rep.numero || ' volvió a corrección',
+      'SSOMA encargó una acción más: falta corregir algo.',
+      '/ssoma/' || p_reporte::text, 'ssoma_reportes', p_reporte);
+  end if;
 
   perform public.ssoma_avisar_a(p_responsable,
     'Acción correctiva a tu cargo (' || v_rep.numero || '): vence el ' || public.ssoma_dia(p_fecha_limite),
@@ -626,6 +665,38 @@ comment on function public.ssoma_cerrar_accion(uuid, uuid, text, jsonb) is
 revoke all on function public.ssoma_cerrar_accion(uuid, uuid, text, jsonb) from public, anon;
 grant execute on function public.ssoma_cerrar_accion(uuid, uuid, text, jsonb) to authenticated;
 
+-- Si el cierre le llega a alguien de SSOMA: `avisar_a_permiso` no le avisa a
+-- quien cierra ni a una cuenta dada de baja. La pantalla no dice «ya le avisamos
+-- a SSOMA» si nadie lo recibe.
+create or replace function public.ssoma_hay_quien_reciba_el_cierre()
+returns boolean language sql stable security definer set search_path to 'public' as $$
+  select exists (
+    select 1 from public.usuarios u
+     where u.activo and u.id is distinct from public.usuario_actual()
+       and exists (select 1 from public.roles_permisos rp where rp.rol_id = u.rol_id and rp.permiso_codigo = 'ssoma.gestionar'));
+$$;
+comment on function public.ssoma_hay_quien_reciba_el_cierre() is
+  'Si hay una cuenta activa de SSOMA, distinta de quien pregunta, que recibe el aviso del cierre de una acción.';
+revoke all on function public.ssoma_hay_quien_reciba_el_cierre() from public, anon;
+grant execute on function public.ssoma_hay_quien_reciba_el_cierre() to authenticated;
+
+-- Lo que espera por SSOMA: los reportes por clasificar y los clasificados que no
+-- tienen ninguna acción viva (se quedarían quietos sin que nadie se entere).
+create or replace function public.ssoma_por_atender()
+returns table (por_clasificar integer, sin_accion integer)
+language sql stable security definer set search_path to 'public' rows 1 as $$
+  select count(*) filter (where r.estado = 'REPORTADO')::integer,
+         count(*) filter (where r.estado = 'CLASIFICADO'
+                            and not exists (select 1 from public.ssoma_acciones a
+                                             where a.reporte_id = r.id and a.estado <> 'ANULADA'))::integer
+    from public.ssoma_reportes r
+   where public.puede_ver_reportes_ssoma() and r.estado in ('REPORTADO', 'CLASIFICADO');
+$$;
+comment on function public.ssoma_por_atender() is
+  'Cuántos reportes esperan su clasificación y cuántos clasificados no tienen ninguna acción viva. Solo para SSOMA y Gerencia; a los demás, ceros.';
+revoke all on function public.ssoma_por_atender() from public, anon;
+grant execute on function public.ssoma_por_atender() to authenticated;
+
 -- 12. Reabrir, reasignar y anular: SSOMA -----------------------------------------------------------------
 -- La evidencia no basta: vuelve a su responsable con el motivo y una fecha nueva.
 create or replace function public.ssoma_reabrir_accion(p_accion uuid, p_motivo text, p_fecha_limite date)
@@ -638,6 +709,7 @@ declare
   v_motivo text := btrim(coalesce(p_motivo, ''));
   v_hoy    date := public.ssoma_hoy();
   v_numero text;
+  v_rep    public.ssoma_reportes%rowtype;
 begin
   if v_yo is null or not (public.es_admin() or public.tiene_permiso('ssoma.gestionar')) then
     raise exception 'Una acción correctiva la reabre SSOMA.' using errcode = 'insufficient_privilege';
@@ -666,11 +738,19 @@ begin
   update public.ssoma_acciones
      set estado = 'ABIERTA', fecha_limite = p_fecha_limite, cerrado_por = null, cerrado_en = null, nota_cierre = null
    where id = p_accion;
+  select * into v_rep from public.ssoma_reportes where id = v_acc.reporte_id;
   perform public.ssoma_recalcular_reporte(v_acc.reporte_id);
-  select numero into v_numero from public.ssoma_reportes where id = v_acc.reporte_id;
+  v_numero := v_rep.numero;
   perform public.ssoma_avisar_a(v_acc.responsable_id,
     'SSOMA reabrió tu acción correctiva (' || v_numero || '): vence el ' || public.ssoma_dia(p_fecha_limite),
     v_motivo, '/ssoma/' || v_acc.reporte_id::text || '#accion-' || p_accion::text, 'ssoma_acciones', p_accion);
+  -- Quien reportó ya había recibido «quedó corregido»: se entera de que volvió.
+  if v_rep.estado = 'CERRADO' then
+    perform public.ssoma_avisar_a(v_rep.registrado_por,
+      'Tu reporte ' || v_numero || ' volvió a corrección',
+      'SSOMA reabrió una de sus acciones: falta corregir algo más.',
+      '/ssoma/' || v_rep.id::text, 'ssoma_reportes', v_rep.id);
+  end if;
   return p_accion;
 end;
 $$;
@@ -722,7 +802,8 @@ begin
       v_acc.descripcion, v_ruta, 'ssoma_acciones', p_accion);
     perform public.ssoma_avisar_a(v_acc.responsable_id,
       'SSOMA le pasó a otra persona tu acción correctiva (' || v_numero || ')',
-      v_acc.descripcion, '/ssoma/' || v_acc.reporte_id::text, 'ssoma_acciones', p_accion);
+      -- A «/ssoma»: el reporte ya no es suyo y su ficha no se le abre.
+      v_acc.descripcion, '/ssoma', 'ssoma_acciones', p_accion);
   else
     perform public.ssoma_avisar_a(p_responsable,
       'Tu acción correctiva (' || v_numero || ') ahora vence el ' || public.ssoma_dia(p_fecha_limite),
@@ -769,12 +850,13 @@ begin
 
   select * into v_rep from public.ssoma_reportes where id = v_acc.reporte_id;
   perform public.ssoma_avisar_a(v_acc.responsable_id,
-    'SSOMA anuló tu acción correctiva (' || v_rep.numero || ')', v_motivo,
-    '/ssoma/' || v_acc.reporte_id::text || '#accion-' || p_accion::text, 'ssoma_acciones', p_accion);
+    'SSOMA anuló tu acción correctiva (' || v_rep.numero || ')', v_motivo || ' · ' || v_acc.descripcion,
+    -- A «/ssoma»: sin una acción viva, la ficha del reporte ya no se le abre. El motivo va en el aviso.
+    '/ssoma', 'ssoma_acciones', p_accion);
   if public.ssoma_recalcular_reporte(v_rep.id) then
     perform public.ssoma_avisar_a(v_rep.registrado_por,
       'Tu reporte ' || v_rep.numero || ' quedó corregido',
-      'Se cerraron con evidencia todas las acciones que SSOMA pidió.',
+      'Se cerraron con evidencia las acciones que siguen vigentes.',
       '/ssoma/' || v_rep.id::text, 'ssoma_reportes', v_rep.id);
   end if;
   return p_accion;
@@ -880,7 +962,9 @@ revoke all on function public.ssoma_reportes_visibles(uuid) from public, anon;
 grant execute on function public.ssoma_reportes_visibles(uuid) to authenticated;
 
 -- Cómo va cada reporte visible: la clasificación (solo SSOMA y Gerencia) y sus acciones.
-create or replace function public.ssoma_seguimiento_de_reportes(p_id uuid)
+-- Recibe los reportes que la pantalla muestra, no «todos»: con «todos», el tope de
+-- filas de la API cortaba la respuesta y un reporte decía «sin acciones aún» sin serlo.
+create or replace function public.ssoma_seguimiento_de_reportes(p_ids uuid[])
 returns table (
   reporte uuid, clasificacion text, hubo_atencion boolean, dias_perdidos integer, causa text,
   clasifico text, clasificado_en timestamptz, cerrado_en timestamptz,
@@ -895,7 +979,8 @@ language sql stable security definer set search_path to 'public' rows 200 as $$
          case when v.alcance = 'TODOS' then c.creado_en end,
          r.cerrado_en,
          coalesce(n.acciones, 0), coalesce(n.abiertas, 0), coalesce(n.vencidas, 0), coalesce(n.cerradas, 0)
-    from public.ssoma_reportes_visibles(p_id) v
+    from (select distinct x.id from unnest(p_ids) as x(id) where x.id is not null) i
+    cross join lateral public.ssoma_reportes_visibles(i.id) v
     join public.ssoma_reportes r on r.id = v.id
     left join lateral (
       select x.* from public.ssoma_clasificaciones x where x.reporte_id = v.id order by x.creado_en desc, x.id desc limit 1
@@ -908,10 +993,10 @@ language sql stable security definer set search_path to 'public' rows 200 as $$
         from public.ssoma_acciones a where a.reporte_id = v.id
     ) n on true;
 $$;
-comment on function public.ssoma_seguimiento_de_reportes(uuid) is
-  'Cómo va cada reporte que ve quien pregunta: la última clasificación con su causa (solo SSOMA y Gerencia) y cuántas acciones tiene abiertas, vencidas y cerradas.';
-revoke all on function public.ssoma_seguimiento_de_reportes(uuid) from public, anon;
-grant execute on function public.ssoma_seguimiento_de_reportes(uuid) to authenticated;
+comment on function public.ssoma_seguimiento_de_reportes(uuid[]) is
+  'Cómo va cada uno de esos reportes, si quien pregunta lo ve: la última clasificación con su causa (solo SSOMA y Gerencia) y cuántas acciones tiene abiertas, vencidas y cerradas.';
+revoke all on function public.ssoma_seguimiento_de_reportes(uuid[]) from public, anon;
+grant execute on function public.ssoma_seguimiento_de_reportes(uuid[]) to authenticated;
 
 -- Las acciones que ve quien pregunta (de un reporte, una sola, o todas). `alcance`:
 --   TODOS       · SSOMA, Gerencia y el administrador: todas, con su historia.
@@ -923,7 +1008,7 @@ returns table (
   id uuid, reporte_id uuid, reporte_numero text, reporte_tipo text, area text, descripcion text,
   responsable_id uuid, responsable text, responsable_puesto text, fecha_limite date, estado text,
   dias_para_vencer integer, creado_en timestamptz, asigno text, cerrado_en timestamptz, cerro text, nota_cierre text,
-  fotos integer, anulado_en timestamptz, motivo_anulacion text, alcance text)
+  fotos integer, anulado_en timestamptz, motivo_anulacion text, alcance text, orden integer)
 language sql stable security definer set search_path to 'public' rows 200 as $$
   with yo as (
     select u.id, u.area_id, public.puede_ver_reportes_ssoma() as todo
@@ -956,14 +1041,19 @@ language sql stable security definer set search_path to 'public' rows 200 as $$
               else 0 end,
          v.anulado_en,
          case when v.alcance <> 'REPORTE' then v.motivo_anulacion end,
-         v.alcance
+         v.alcance,
+         -- Para ordenar en la base, antes del tope: vencidas, abiertas, cerradas, anuladas.
+         case when v.estado = 'ABIERTA' and v.fecha_limite < public.ssoma_hoy() then 0
+              when v.estado = 'ABIERTA' then 1
+              when v.estado = 'CERRADA' then 2
+              else 3 end
     from visibles v
     join public.areas ar on ar.id = v.area_id
     join public.usuarios u on u.id = v.responsable_id
     left join public.roles ro on ro.id = u.rol_id;
 $$;
 comment on function public.ssoma_acciones_visibles(uuid, uuid) is
-  'Las acciones correctivas que ve quien pregunta: todas (SSOMA, Gerencia), las que tiene a cargo, y las vigentes de los reportes que hizo o de su área, sin la evidencia. dias_para_vencer es negativo si ya venció (fecha de Lima).';
+  'Las acciones correctivas que ve quien pregunta: todas (SSOMA, Gerencia), las que tiene a cargo, y las vigentes de los reportes que hizo o de su área, sin la evidencia. dias_para_vencer es negativo si ya venció (fecha de Lima); orden pone primero las vencidas, después las abiertas, las cerradas y las anuladas.';
 revoke all on function public.ssoma_acciones_visibles(uuid, uuid) from public, anon;
 grant execute on function public.ssoma_acciones_visibles(uuid, uuid) to authenticated;
 

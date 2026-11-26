@@ -18,6 +18,8 @@ select '20100000475', 'PRUEBAS SSOMA S.A.C.' where not exists (select 1 from pub
 insert into public.sedes (codigo, nombre) values ('T475', 'Taller de pruebas de SSOMA') on conflict (codigo) do nothing;
 
 select test.crear_usuario('Sara', 'Seguridad', 'ssoma475@demo.pe', 'SSOMA', (select id from public.sedes limit 1)) as ssoma_id \gset
+select test.crear_usuario('Sixto', 'Seguridad Dos', 'ssoma2.475@demo.pe', 'SSOMA', (select id from public.sedes limit 1)) as ssoma2_id \gset
+select test.crear_usuario('Gilda', 'General', 'supgeneral475@demo.pe', 'SUPERVISOR_GENERAL', (select id from public.sedes limit 1)) as supgen_id \gset
 select test.crear_usuario('Gema', 'Gerente', 'gerencia475@demo.pe', 'GERENTE', (select id from public.sedes limit 1)) as gerente_id \gset
 select test.crear_usuario('Abel', 'Almacén', 'almacen475@demo.pe', 'ALMACENERO', (select id from public.sedes limit 1)) as almacen_id \gset
 select test.crear_usuario('Alma', 'Almacén Dos', 'almacen2.475@demo.pe', 'ALMACENERO', (select id from public.sedes limit 1)) as almacen2_id \gset
@@ -30,6 +32,8 @@ select test.crear_usuario('Ada', 'Administradora', 'admin475@demo.pe', 'ADMIN', 
 
 select set_config('prueba.ssoma', :'ssoma_id', true);
 select set_config('prueba.gerente', :'gerente_id', true);
+select set_config('prueba.ssoma2', :'ssoma2_id', true);
+select set_config('prueba.supgen', :'supgen_id', true);
 select set_config('prueba.almacen', :'almacen_id', true);
 select set_config('prueba.almacen2', :'almacen2_id', true);
 select set_config('prueba.sup', :'sup_id', true);
@@ -79,6 +83,12 @@ begin
   perform test.afirmar(
     not exists (select 1 from pg_trigger where tgrelid = 'public.ssoma_clasificaciones'::regclass and tgname ilike '%audit%'),
     'la causa no se copia a la auditoría genérica');
+  perform test.afirmar(
+    not exists (select 1 from pg_trigger
+                 where tgrelid in ('public.ssoma_acciones'::regclass, 'public.ssoma_accion_eventos'::regclass,
+                                   'public.ssoma_accion_fotos'::regclass)
+                   and tgname ilike '%audit%'),
+    'las acciones tampoco: su copia la leería quien tiene auditoria.ver sin ver SSOMA');
   perform test.afirmar(
     not has_function_privilege('authenticated', 'public.ssoma_recalcular_reporte(uuid)', 'execute')
     and not has_function_privilege('authenticated', 'public.ssoma_anotar_evidencia(uuid, uuid, jsonb)', 'execute')
@@ -163,7 +173,7 @@ begin
   execute pg_temp.clasificar(current_setting('prueba.r1'), 'INCIDENTE_PELIGROSO', null, null, v_causa || ', y nadie lo revisó');
   perform test.afirmar(
     (select clasificacion = 'INCIDENTE_PELIGROSO' and causa like '%nadie lo revisó' and clasifico = 'Sara Seguridad'
-       from public.ssoma_seguimiento_de_reportes(current_setting('prueba.r1')::uuid)),
+       from public.ssoma_seguimiento_de_reportes(array[current_setting('prueba.r1')::uuid])),
     'SSOMA ve la última clasificación, con su causa y quién la puso');
   reset role;
   perform test.afirmar((select count(*) from public.ssoma_clasificaciones where reporte_id = current_setting('prueba.r1')::uuid) = 2,
@@ -174,7 +184,7 @@ begin
   set local role authenticated;
   perform test.afirmar(
     (select clasificacion is null and causa is null and clasifico is null
-       from public.ssoma_seguimiento_de_reportes(current_setting('prueba.r1')::uuid)),
+       from public.ssoma_seguimiento_de_reportes(array[current_setting('prueba.r1')::uuid])),
     'el área ve el reporte sin la clasificación ni la causa');
   perform test.afirmar((select count(*) from public.ssoma_clasificaciones) = 0,
     'y la tabla de la clasificación no se la deja leer');
@@ -182,7 +192,7 @@ begin
   perform test.como_usuario(current_setting('prueba.gerente')::uuid);
   set local role authenticated;
   perform test.afirmar(
-    (select clasificacion = 'INCIDENTE_PELIGROSO' from public.ssoma_seguimiento_de_reportes(current_setting('prueba.r1')::uuid))
+    (select clasificacion = 'INCIDENTE_PELIGROSO' from public.ssoma_seguimiento_de_reportes(array[current_setting('prueba.r1')::uuid]))
     and (select count(*) from public.ssoma_clasificaciones) = 2,
     'Gerencia ve la clasificación');
   reset role;
@@ -231,6 +241,14 @@ begin
     'el mismo id con otra cosa dice que ya quedó', 'la primera vez');
   execute pg_temp.crear(current_setting('prueba.a2'), current_setting('prueba.r1'), 'Revisar los demás estantes del almacén',
       current_setting('prueba.almacen2'), current_setting('prueba.hoy'));
+  reset role;
+
+  -- El id del formulario es de quien lo abrió: otra cuenta de SSOMA con el mismo id no recibe «ok».
+  perform test.como_usuario(current_setting('prueba.ssoma2')::uuid);
+  set local role authenticated;
+  perform test.debe_fallar(pg_temp.crear(current_setting('prueba.a1'), current_setting('prueba.r1'), '  Poner   el tope al estante alto ',
+      current_setting('prueba.sup'), (current_setting('prueba.hoy')::date + 3)::text),
+    'otra cuenta con el mismo id no recibe la acción de otro como suya', 'Vuelve a abrir el formulario');
   reset role;
 
   perform test.afirmar(
@@ -284,7 +302,7 @@ begin
     'pero no la tabla de acciones');
   perform test.afirmar(
     (select acciones = 2 and abiertas = 2 and vencidas = 0
-       from public.ssoma_seguimiento_de_reportes(current_setting('prueba.r1')::uuid)),
+       from public.ssoma_seguimiento_de_reportes(array[current_setting('prueba.r1')::uuid])),
     'y cuántas van abiertas');
   reset role;
 
@@ -294,7 +312,7 @@ begin
   perform test.afirmar(
     (select count(*) from public.ssoma_acciones_visibles(null, null)) = 0
     and (select count(*) from public.ssoma_acciones) = 0
-    and (select count(*) from public.ssoma_seguimiento_de_reportes(null)) = 0,
+    and (select count(*) from public.ssoma_seguimiento_de_reportes(array[current_setting('prueba.r1')::uuid, current_setting('prueba.r2')::uuid])) = 0,
     'Ventas no ve acciones ajenas');
   reset role;
 
@@ -304,6 +322,23 @@ begin
   perform test.afirmar(
     (select count(*) = 2 and bool_and(alcance = 'TODOS') from public.ssoma_acciones_visibles(null, null)),
     'Gerencia ve todas las acciones');
+  reset role;
+end $$;
+
+-- ============================================================ 4b. auditoria.ver no abre SSOMA
+do $$
+begin
+  perform test.como_usuario(current_setting('prueba.supgen')::uuid);
+  set local role authenticated;
+  perform test.afirmar(
+    public.tiene_permiso('auditoria.ver') and not public.puede_ver_reportes_ssoma(),
+    'el Supervisor General lee la auditoría y no ve SSOMA (si no, esta prueba no prueba nada)');
+  perform test.afirmar(
+    (select count(*) from public.ssoma_acciones_visibles(null, null)) = 0
+    and (select count(*) from public.ssoma_acciones) = 0
+    and (select count(*) from public.audit_log
+          where tabla in ('ssoma_acciones', 'ssoma_accion_eventos', 'ssoma_accion_fotos', 'ssoma_clasificaciones')) = 0,
+    'ni por la función, ni por la tabla, ni por la auditoría');
   reset role;
 end $$;
 
@@ -317,7 +352,7 @@ begin
   perform test.afirmar(
     (select dias_para_vencer = -2 from public.ssoma_acciones_visibles(null, current_setting('prueba.a2')::uuid))
     and (select dias_para_vencer = 3 from public.ssoma_acciones_visibles(null, current_setting('prueba.a1')::uuid))
-    and (select vencidas = 1 and abiertas = 2 from public.ssoma_seguimiento_de_reportes(current_setting('prueba.r1')::uuid)),
+    and (select vencidas = 1 and abiertas = 2 from public.ssoma_seguimiento_de_reportes(array[current_setting('prueba.r1')::uuid])),
     'la que pasó su fecha cuenta como vencida, con los días en negativo');
   reset role;
 end $$;
@@ -485,8 +520,9 @@ begin
     and exists (select 1 from public.notificaciones where usuario_id = current_setting('prueba.sup')::uuid
                    and origen_id = current_setting('prueba.a2')::uuid and titulo like 'Acción correctiva a tu cargo%')
     and exists (select 1 from public.notificaciones where usuario_id = current_setting('prueba.almacen2')::uuid
-                   and origen_id = current_setting('prueba.a2')::uuid and titulo like 'SSOMA le pasó a otra persona%'),
-    'reasignada: el nuevo responsable recibe el aviso y la anterior se entera');
+                   and origen_id = current_setting('prueba.a2')::uuid and titulo like 'SSOMA le pasó a otra persona%'
+                   and ruta = '/ssoma'),
+    'reasignada: el nuevo responsable recibe el aviso y la anterior se entera, con un enlace que se le abre');
 
   -- La anterior la sigue viendo, porque el reporte es de su área, pero ya no como suya.
   perform test.como_usuario(current_setting('prueba.almacen2')::uuid);
@@ -515,8 +551,10 @@ begin
       current_setting('prueba.almacen'), (current_setting('prueba.hoy')::date + 7)::text);
   reset role;
   perform test.afirmar(
-    (select estado = 'CLASIFICADO' and cerrado_en is null from public.ssoma_reportes where id = current_setting('prueba.r1')::uuid),
-    'una acción nueva vuelve a abrir el reporte');
+    (select estado = 'CLASIFICADO' and cerrado_en is null from public.ssoma_reportes where id = current_setting('prueba.r1')::uuid)
+    and exists (select 1 from public.notificaciones where usuario_id = current_setting('prueba.almacen')::uuid
+                   and origen_id = current_setting('prueba.r1')::uuid and titulo like 'Tu reporte RI-% volvió a corrección'),
+    'una acción nueva vuelve a abrir el reporte, y quien lo reportó se entera');
 
   perform test.como_usuario(current_setting('prueba.almacen')::uuid);
   set local role authenticated;
@@ -537,8 +575,21 @@ begin
   reset role;
   perform test.afirmar(
     (select estado = 'ANULADA' and anulado_por = current_setting('prueba.ssoma')::uuid from public.ssoma_acciones where id = current_setting('prueba.a3')::uuid)
-    and (select estado from public.ssoma_reportes where id = current_setting('prueba.r1')::uuid) = 'CERRADO',
-    'anulada con su motivo, y el reporte vuelve a cerrarse');
+    and (select estado from public.ssoma_reportes where id = current_setting('prueba.r1')::uuid) = 'CERRADO'
+    and exists (select 1 from public.notificaciones where usuario_id = current_setting('prueba.almacen')::uuid
+                   and origen_id = current_setting('prueba.a3')::uuid and titulo like 'SSOMA anuló tu acción%' and ruta = '/ssoma'),
+    'anulada con su motivo, el reporte vuelve a cerrarse y el aviso al responsable lleva a una pantalla que se le abre');
+
+  -- Reabrir una acción de un reporte corregido lo vuelve a abrir, y quien lo reportó se entera otra vez.
+  perform test.como_usuario(current_setting('prueba.ssoma')::uuid);
+  set local role authenticated;
+  perform public.ssoma_reabrir_accion(current_setting('prueba.a2')::uuid, 'Faltan los dos estantes del fondo', current_setting('prueba.hoy')::date + 4);
+  reset role;
+  perform test.afirmar(
+    (select estado = 'CLASIFICADO' from public.ssoma_reportes where id = current_setting('prueba.r1')::uuid)
+    and (select count(*) from public.notificaciones where usuario_id = current_setting('prueba.almacen')::uuid
+            and origen_id = current_setting('prueba.r1')::uuid and titulo like 'Tu reporte RI-% volvió a corrección') = 2,
+    'reabrir en un reporte corregido lo devuelve a corrección y quien lo reportó se entera');
 
   -- El área ya no ve la anulada; SSOMA sí.
   perform test.como_usuario(current_setting('prueba.almacen2')::uuid);
