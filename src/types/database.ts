@@ -823,6 +823,7 @@ export type Database = {
           motivo_anulacion: string | null
           creado_en: string
           actualizado_en: string
+          captura_ruta: string | null
         }
         Insert: {
           id?: string
@@ -840,6 +841,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          captura_ruta?: string | null
         }
         Update: {
           id?: string
@@ -857,6 +859,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          captura_ruta?: string | null
         }
         Relationships: [
           {
@@ -14016,6 +14019,7 @@ export type Database = {
           p_fecha: string | null
           p_saldo_banco: number | null
           p_observaciones: string | null
+          p_captura_ruta: string | null
         }
         Returns: string
       }
@@ -16352,6 +16356,36 @@ export type Database = {
           proveedor: string | null
           peso_kg: number | null
           recojo: string | null
+        }[]
+      }
+      historia_cierres_caja: {
+        Args: {
+          p_desde: string | null
+          p_hasta: string | null
+        }
+        Returns: {
+          id: string | null
+          caja_id: string | null
+          cuenta: string | null
+          tipo: string | null
+          banco: string | null
+          moneda: string | null
+          cuenta_activa: boolean | null
+          con_captura: boolean | null
+          fecha: string | null
+          saldo_inicial: number | null
+          ingresos: number | null
+          egresos: number | null
+          saldo_final: number | null
+          saldo_banco: number | null
+          diferencia: number | null
+          observaciones: string | null
+          cerrado_por: string | null
+          cerrado_en: string | null
+          reabierto_por: string | null
+          reabierto_en: string | null
+          motivo_reapertura: string | null
+          con_captura_del_dia: boolean | null
         }[]
       }
       horas_en_texto: {
