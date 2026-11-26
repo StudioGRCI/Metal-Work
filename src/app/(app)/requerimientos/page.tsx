@@ -94,6 +94,9 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
   // cifra verde de arriba. Las cifras siguen contando todos.
   const soloRecoger = !soloUno && !plazo && params.ver === 'recoger'
   const recogen = enPlazo ?? (soloRecoger ? requerimientos.filter(tieneParaRecoger) : requerimientos)
+  // Cómo va cada insumo del RQ de Administración, de principio a fin (plan 8,
+  // entrega 8.3), para quien lo lleva.
+  const llevaElRqa = puede(perfil, 'requerimientos.administracion')
   const [correcciones, metrado, recorridos, conformidad] = await Promise.all([
     correccionesDe('REQUERIMIENTO', recogen.map((r) => r.id)),
     // De todos, no solo de los mostrados: las cifras de arriba y «esperan tu sustento» los cuentan.
@@ -294,6 +297,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
               metrado={metrado}
               recorrido={recorridos ? describirRecorridoDelRequerimiento(recorridos.get(r.id) ?? []) : null}
               conformidad={conformidad}
+              pasosPorInsumo={llevaElRqa && r.tipo === 'ADMINISTRACION'}
             />
           ))}
         </div>

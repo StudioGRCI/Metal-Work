@@ -139,3 +139,177 @@ export async function anularAveria(_previo: unknown, formulario: FormData): Prom
           : ''
   return { ok: true, mensaje: `Reporte anulado. Queda con su motivo.${vuelve}` }
 }
+
+/** El mismo permiso que piden `averias_atender`, `averias_enlazar_rq`, `averias_quitar_rq` y `averias_cerrar`. */
+const SOLO_MANTENIMIENTO = 'Una avería la atiende Mantenimiento.'
+
+/**
+ * Mantenimiento la toma con su diagnóstico, o lo corrige mientras la atiende.
+ * El mismo texto otra vez no cambia nada.
+ */
+export async function atenderAveria(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'averias.atender')) return { ok: false, error: SOLO_MANTENIMIENTO }
+
+  const analisis = z
+    .object({
+      id: z.guid(),
+      diagnostico: z
+        .string()
+        .min(10, 'Escribe el diagnóstico: qué tiene el equipo, en al menos 10 caracteres.')
+        .max(2000, 'El diagnóstico pasa de 2000 caracteres.'),
+      primera: z.enum(['SI', 'NO']),
+    })
+    .safeParse({ id: formulario.get('id'), diagnostico: dato(formulario, 'diagnostico'), primera: dato(formulario, 'primera') })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .rpc('averias_atender', { p_id: analisis.data.id, p_diagnostico: analisis.data.diagnostico })
+    .maybeSingle()
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data?.averia !== analisis.data.id) return { ok: false, error: 'El diagnóstico no quedó. Recarga la pantalla.' }
+
+  revalidatePath('/averias', 'layout')
+  return {
+    ok: true,
+    mensaje: analisis.data.primera === 'SI' ? 'Diagnóstico anotado: la avería queda en atención.' : 'Diagnóstico corregido.',
+  }
+}
+
+/** Mantenimiento enlaza el RQ con que se pidieron los repuestos. El id del enlace lo pone la pantalla: el reintento no lo duplica. */
+export async function enlazarRequerimiento(_previo: unknown, formulario: FormData): Promise<ResultadoAccion<{ numero: string }>> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'averias.atender')) return { ok: false, error: SOLO_MANTENIMIENTO }
+
+  const analisis = z
+    .object({
+      enlace: z.guid(),
+      averia: z.guid(),
+      requerimiento: z.guid('Elige el RQ de la lista.'),
+      nota: z.string().min(3, 'Di qué repuesto se pidió con ese RQ.').max(300, 'La nota pasa de 300 caracteres.'),
+    })
+    .safeParse({
+      enlace: formulario.get('enlace'),
+      averia: formulario.get('averia'),
+      requerimiento: dato(formulario, 'requerimiento'),
+      nota: dato(formulario, 'nota'),
+    })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+  const d = analisis.data
+
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .rpc('averias_enlazar_rq', { p_enlace: d.enlace, p_averia: d.averia, p_requerimiento: d.requerimiento, p_nota: d.nota })
+    .maybeSingle()
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data?.enlace !== d.enlace || !data.numero_rq) return { ok: false, error: 'El RQ no quedó enlazado. Recarga la pantalla.' }
+
+  revalidatePath('/averias', 'layout')
+  return { ok: true, mensaje: `RQ ${data.numero_rq} enlazado.`, datos: { numero: data.numero_rq } }
+}
+
+/** Mantenimiento quita un RQ enlazado por error. No se borra: queda quién y cuándo. */
+export async function quitarRequerimiento(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'averias.atender')) return { ok: false, error: SOLO_MANTENIMIENTO }
+
+  const analisis = z.object({ enlace: z.guid() }).safeParse({ enlace: formulario.get('enlace') })
+  if (!analisis.success) return { ok: false, error: 'Vuelve a cargar la pantalla.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('averias_quitar_rq', { p_enlace: analisis.data.enlace }).maybeSingle()
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data?.enlace !== analisis.data.enlace) return { ok: false, error: 'El RQ no se quitó. Recarga la pantalla.' }
+
+  revalidatePath('/averias', 'layout')
+  return { ok: true, mensaje: `RQ ${data.numero_rq ?? ''} quitado de este reporte.`.replace('  ', ' ') }
+}
+
+/** Mantenimiento la cierra con el trabajo hecho y las horas parado; el equipo vuelve a operativo si estaba parado por ella. */
+export async function cerrarAveria(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'averias.atender')) return { ok: false, error: SOLO_MANTENIMIENTO }
+
+  const analisis = z
+    .object({
+      id: z.guid(),
+      trabajo: z.string().min(10, 'Cuenta el trabajo hecho, en al menos 10 caracteres.').max(2000, 'El trabajo hecho pasa de 2000 caracteres.'),
+      horas: z.coerce
+        .number({ message: 'Anota las horas que el equipo estuvo parado (0 si no se paró).' })
+        .min(0, 'Las horas parado no pueden ser negativas.')
+        .max(9999, 'Revisa las horas parado: pasan de 9999.'),
+    })
+    .safeParse({
+      id: formulario.get('id'),
+      trabajo: dato(formulario, 'trabajo'),
+      // «2,5» también se lee como 2.5; un campo vacío no es «0».
+      horas: dato(formulario, 'horas').replace(',', '.') || undefined,
+    })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .rpc('averias_cerrar', { p_id: analisis.data.id, p_trabajo: analisis.data.trabajo, p_horas: analisis.data.horas })
+    .maybeSingle()
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data?.averia !== analisis.data.id) return { ok: false, error: 'La avería no se cerró. Recarga la pantalla.' }
+
+  revalidatePath('/averias', 'layout')
+  revalidatePath('/equipos')
+  const equipo = data.equipo_vuelve_a
+    ? ' El equipo vuelve a operativo.'
+    : data.sigue_parado_por
+      ? ` El equipo sigue parado: el reporte ${data.sigue_parado_por} dice que detiene el trabajo.`
+      : data.equipo_estado === 'PARADO'
+        ? ' El equipo sigue parado en el padrón: si ya funciona, cámbialo en Equipos.'
+        : data.equipo_estado === 'CON_OBSERVACION'
+          ? ' El equipo sigue «con observación» en el padrón: si ya quedó bien, cámbialo en Equipos.'
+          : ''
+  const aviso = data.avisada ? ' Le avisamos a quien la reportó para que confirme si quedó bien.' : ''
+  return { ok: true, mensaje: `Avería cerrada.${equipo}${aviso}` }
+}
+
+/**
+ * Quien la reportó confirma que quedó bien, o dice qué sigue fallando y vuelve
+ * a Mantenimiento. No pide permiso: la base deja confirmar solo a quien la reportó.
+ */
+export async function confirmarAveria(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  await exigirSesion()
+
+  const analisis = z
+    .object({
+      id: z.guid(),
+      quedo: z.enum(['SI', 'NO'], { message: 'Elige si el equipo quedó bien.' }),
+      nota: z.string().max(500, 'La nota pasa de 500 caracteres.'),
+    })
+    .safeParse({ id: formulario.get('id'), quedo: dato(formulario, 'quedo'), nota: dato(formulario, 'nota') })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+  const d = analisis.data
+  if (d.quedo === 'NO' && d.nota.length < 10) {
+    return { ok: false, error: 'Cuenta qué sigue fallando, en al menos 10 caracteres: vuelve a Mantenimiento con eso.' }
+  }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .rpc('averias_confirmar', { p_id: d.id, p_quedo_bien: d.quedo === 'SI', p_nota: d.nota })
+    .maybeSingle()
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data?.averia !== d.id) return { ok: false, error: 'No quedó tu respuesta. Recarga la pantalla.' }
+
+  revalidatePath('/averias', 'layout')
+  if (data.estado === 'CONFIRMADA') return { ok: true, mensaje: 'Gracias: queda confirmado que la avería quedó bien.' }
+  revalidatePath('/equipos')
+  return {
+    ok: true,
+    mensaje: `Vuelve a Mantenimiento con lo que contaste${
+      data.avisado_a === 'MANTENIMIENTO'
+        ? '; ya le avisamos.'
+        : data.avisado_a === 'SU_BANDEJA'
+          ? ': queda en tu bandeja de «Por atender».'
+          : data.avisado_a === 'GERENCIA'
+          ? '. No hay cuenta de Mantenimiento activa: le avisamos a Gerencia.'
+          : '. No hay ninguna cuenta activa que reciba el aviso: díselo a Mantenimiento en persona.'
+    }${data.equipo_parado ? ' El equipo quedó parado otra vez.' : ''}`,
+  }
+}

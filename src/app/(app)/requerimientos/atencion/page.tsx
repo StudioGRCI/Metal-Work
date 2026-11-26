@@ -19,7 +19,7 @@ import { recorridoDeRequerimientos } from '@/lib/datos/recorrido'
 import { cargarRequerimientos, catalogoParaRequerimiento, type MaterialParaRequerimiento, type RequerimientoListado } from '@/lib/datos/requerimientos'
 import { stockEnAlmacen, type MaterialEnStock } from '@/lib/datos/stock-almacen'
 import { ESTADO_METRADO, FRENO_DEL_RQ, frenaElRq, frenoDelRq, listaDeItems, queFaltaDelFreno } from '@/lib/dominio/metrado-rq'
-import { estadoDelRequerimiento, leTocaAtender, quienAtiende, tipoDeRequerimiento, type CompraDe } from '@/lib/dominio/requerimientos'
+import { estadoDelRequerimiento, leTocaAtender, loTieneQuienAtiende, quienAtiende, tipoDeRequerimiento, type CompraDe } from '@/lib/dominio/requerimientos'
 import { describirRecorridoDelRequerimiento, type PasoDelRecorrido, type PasoDescrito } from '@/lib/dominio/recorrido'
 import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -138,9 +138,13 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
   const metrado = metradoLeido ?? new Map<string, MetradoDelInsumo>()
   const stockDelCatalogo = stock === 'no_se_pudo' ? null : hayNuevos ? Object.fromEntries([...stock].map(([id, m]) => [id, sistemaDe(m)])) : {}
 
-  // El que espera el sustento o el visto de Diseño todavía no le toca a Almacén:
-  // no cuenta como suyo y va después de los que sí puede revisar.
-  const leToca = (r: RequerimientoListado) => leTocaAtender(r, { recibe, despacha, compraDe }, espera.get(r.id)?.puesto) && !frenoDelRq(r, metrado)
+  // Le toca lo que hoy tiene su puesto según el recorrido del RQ (DKS,
+  // 2026-11-26), por la clave de su espera: lo que espera a Gerencia, al
+  // conductor o al área no cuenta como suyo aunque después pase por él. Sin el recorrido, la regla de antes: el que
+  // espera el sustento o el visto de Diseño todavía no le toca a Almacén.
+  const suyo = (r: RequerimientoListado) => loTieneQuienAtiende(espera.get(r.id)?.espera, r, { recibe, despacha, compraDe }, perfil.area_id ?? null)
+  const leToca = (r: RequerimientoListado) =>
+    recorridos === null ? leTocaAtender(r, { recibe, despacha, compraDe }) && !frenoDelRq(r, metrado) : suyo(r)
   const meToca = requerimientos.filter(leToca).length
   // Las notas que quien mira puede cerrar suman en «Te toca», como en el globo (`notas_por_responder`).
   const porResponder = (notas ?? []).filter((n) => n.puedeAtender).length
@@ -148,25 +152,16 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
   const grupoDe = new Map<string, string>()
   if (vista === 'abiertos') {
     const orden = (r: RequerimientoListado) => (leToca(r) ? 0 : frenoDelRq(r, metrado) ? 2 : 1)
-    // Dentro de cada grupo, primero lo que hoy tiene el puesto de quien mira
-    // (Almacén, Logística o la administradora, según su recorrido) y después lo
-    // demás; en cada parte, el que más espera arriba (plan 0): desde que lo tiene
-    // quien lo tiene. Sin el recorrido queda el orden de antes.
-    const propios = new Set([
-      ...(recibe || despacha ? ['Almacén'] : []),
-      ...(compraDe.OPERACION ? ['Logística'] : []),
-      ...(compraDe.ADMINISTRACION ? ['Administración'] : []),
-    ])
-    const ajeno = (r: RequerimientoListado) => {
-      const quien = espera.get(r.id)?.puesto
-      return quien && propios.has(quien) ? 0 : 1
-    }
+    // Arriba lo que hoy tiene el puesto de quien mira (Almacén, Logística o la
+    // administradora, según su recorrido), después lo demás y al final lo frenado
+    // por el metrado; en cada grupo, el que más espera arriba (plan 0): desde que
+    // lo tiene quien lo tiene. Sin el recorrido queda el orden de antes.
     const desde = (r: RequerimientoListado) => {
       const en = espera.get(r.id)?.en
       return en ? Date.parse(en) : Number.POSITIVE_INFINITY
     }
-    requerimientos.sort((a, b) => orden(a) - orden(b) || ajeno(a) - ajeno(b) || desde(a) - desde(b))
-    for (const r of requerimientos) grupoDe.set(r.id, `${orden(r)}${ajeno(r)}`)
+    requerimientos.sort((a, b) => orden(a) - orden(b) || desde(a) - desde(b))
+    for (const r of requerimientos) grupoDe.set(r.id, String(orden(r)))
   }
   const grupos = compra ? insumosPorComprar(requerimientos, compraDe, metrado, espera) : []
   const porComprar = grupos.reduce((suma, g) => suma + g.insumos.length, 0)
@@ -192,8 +187,8 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
         }))}
       >
         {vista === 'abiertos' && (requerimientos.length > 0 || porResponder > 0) && (recibe || despacha || compra) && (
-          <p className="text-sm text-texto-suave sm:ml-auto" data-esperan-por-ti={meToca + porResponder}>
-            {loQueTeToca(meToca, porResponder)}
+          <p className="text-sm text-texto-suave sm:ml-auto" data-esperan-por-ti={recorridos === null ? undefined : meToca + porResponder}>
+            {recorridos === null ? 'No se pudo contar cuántos esperan por ti.' : loQueTeToca(meToca, porResponder)}
           </p>
         )}
       </Vistas>

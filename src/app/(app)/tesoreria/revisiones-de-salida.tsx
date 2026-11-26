@@ -7,6 +7,7 @@ import { AreaTexto, Campo, Seleccion } from '@/components/ui/campos'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import type { RevisionPendiente } from '@/lib/datos/vehiculos'
 import { useEnvio } from '@/lib/envio'
+import { nombreMoneda } from '@/lib/dominio/caja'
 import { fechaHora, moneda, parteDe, porcentaje, type CodigoMoneda } from '@/lib/format'
 
 import { responderRevisionSalida } from '../vehiculos/acciones-ficha'
@@ -21,6 +22,11 @@ export type CobroDelCodigo = {
   cotizaciones: number
   /** El código tiene cotizaciones en monedas distintas: lo de arriba es solo de la primera moneda. */
   monedasDistintas: boolean
+  /**
+   * Lo facturado y cobrado en la otra moneda que la cotización (20261126960000): no se suma a lo
+   * de arriba ni se compara con el total. Null si todas las facturas van en la moneda de la cotización.
+   */
+  otraMoneda: { facturado: number; cobrado: number } | null
 }
 
 /**
@@ -80,7 +86,10 @@ function RevisionPorResponder({
   abreVehiculos: boolean
 }) {
   const { alEnviar, enviando, error, resultado } = useEnvio(responderRevisionSalida, undefined, { documento: v.id })
+  // Con facturas en la otra moneda, lo que falta es solo de la moneda de la cotización, y así se dice.
   const porCobrar = cobro?.total === null || cobro === undefined ? null : Math.max(0, cobro.total - cobro.cobrado)
+  const otra = cobro?.otraMoneda ?? null
+  const mOtra: CodigoMoneda = cobro?.moneda === 'USD' ? 'PEN' : 'USD'
   return (
     <article className="rounded-[var(--radius-base)] border border-borde p-4" data-revision={v.id}>
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -115,9 +124,21 @@ function RevisionPorResponder({
         <p className="mt-1 tabular text-xs text-texto-suave" data-cobro-del-codigo>
           {cobro.total === null ? (
             'La cotización del código no tiene total registrado.'
-          ) : cobro.facturado === 0 ? (
+          ) : cobro.facturado === 0 && !otra ? (
             <>
               Cotización de <span className="text-texto">{moneda(cobro.total, cobro.moneda)}</span>: Contabilidad todavía no la factura y no hay nada cobrado.
+            </>
+          ) : cobro.facturado === 0 && otra ? (
+            // Facturada solo en la otra moneda: decir «no la factura» era falso, y la tarjeta decide si el vehículo sale.
+            <>
+              {cobro.cotizaciones > 1 ? `Las ${cobro.cotizaciones} cotizaciones, que suman` : 'Cotización de'}{' '}
+              <span className="text-texto">{moneda(cobro.total, cobro.moneda)}</span>
+              {cobro.monedasDistintas && ' sin las de otra moneda'}, {cobro.cotizaciones > 1 ? 'facturadas' : 'facturada'} en{' '}
+              <span data-otra-moneda>
+                {nombreMoneda(mOtra)}: <span className="font-medium text-texto">{moneda(otra.facturado, mOtra)}</span> · cobrado{' '}
+                <span className="font-medium text-texto">{moneda(otra.cobrado, mOtra)}</span>
+              </span>
+              . Para ver si está cancelada, cuéntalo con el tipo de cambio.
             </>
           ) : (
             <>
@@ -130,7 +151,15 @@ function RevisionPorResponder({
                 <>
                   {' '}
                   · falta <span className="text-aviso">{moneda(porCobrar, cobro.moneda)}</span>
+                  {otra && ` sin contar lo de ${nombreMoneda(mOtra)}`}
                 </>
+              )}
+              {otra && (
+                <span data-otra-moneda>
+                  {' '}
+                  · y en {nombreMoneda(mOtra)}: facturado <span className="font-medium text-texto">{moneda(otra.facturado, mOtra)}</span> · cobrado{' '}
+                  <span className="font-medium text-texto">{moneda(otra.cobrado, mOtra)}</span>. Para ver si está cancelada, cuéntalo con el tipo de cambio.
+                </span>
               )}
             </>
           )}
