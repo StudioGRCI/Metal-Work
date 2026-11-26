@@ -92,7 +92,7 @@ export function queFaltaDelFreno(f: { sinSustento: number[]; enDiseno: number[] 
   const conDiseno =
     f.enDiseno.length === 1 ? `el insumo ${listaDeItems(f.enDiseno)} ya está con Diseño` : `los insumos ${listaDeItems(f.enDiseno)} ya están con Diseño`
   if (f.enDiseno.length === 0) return sin
-  if (f.sinSustento.length === 0) return `Diseño tiene el sustento de ${f.enDiseno.length === 1 ? 'el insumo' : 'los insumos'} ${listaDeItems(f.enDiseno)} y falta su visto`
+  if (f.sinSustento.length === 0) return `Diseño tiene el sustento ${f.enDiseno.length === 1 ? 'del insumo' : 'de los insumos'} ${listaDeItems(f.enDiseno)} y falta su visto`
   return `${sin}; ${conDiseno}`
 }
 
