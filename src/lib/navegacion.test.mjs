@@ -52,7 +52,7 @@ test('lo que Gerencia consulta no es su trabajo; lo que ya tenía en su menú, s
     '/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales', '/rrhh/tiempos-de-entrega',
   ])
   assert.deepEqual(pestanasDe(GERENCIA, false, 'GERENTE').map((p) => p.ruta), [
-    '/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios',
+    '/codigos-internos', '/cotizaciones/pdf', '/por-decidir', '/reportes-diarios',
   ])
 })
 
