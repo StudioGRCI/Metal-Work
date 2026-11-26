@@ -26,6 +26,9 @@ import {
 import { actividadesDeOrden, areasDelTaller, despachosParaReporte } from '@/lib/datos/actividades'
 import { adjuntosDeOrden, ordenTienePdf } from '@/lib/datos/adjuntos'
 import { cotizacionPdfDeOrden } from '@/lib/datos/cotizaciones-pdf'
+import { recorridoDeCotizaciones } from '@/lib/datos/recorrido'
+import { describirRecorridoDeLaCotizacion } from '@/lib/dominio/recorrido'
+import { Recorrido } from '@/components/ui/recorrido'
 import { materialesParaPantalla } from '@/lib/datos/materiales-orden'
 import { controlesYSolicitudesDeOrden, costoDeOrdenes, mermaDeOrden } from '@/lib/datos/costos-ot'
 import { CODIGO_SIN_AVANCE, codigoDeCosteoDeLaOt, enlaceCodigo } from '@/lib/dominio/codigos-internos'
@@ -155,9 +158,26 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
       && puede(perfil, 'diseno.planos') ? actividadParaConvertirEtapas(id) : Promise.resolve([]),
   ])
 
-  const [salida, fechasClave] = await Promise.all([
+  // El recorrido de la OT desde su cotización (plan 8.1): lo lee quien ya ve esa
+  // cotización (`recorrido_de_cotizaciones` lo vuelve a mirar). Sin él, la
+  // tarjeta lo dice en su lugar (`null`); sin cotización, no hay tarjeta.
+  const cotizacionDelRecorrido =
+    vista === 'resumen' &&
+    orden.cotizacion_pdf_id &&
+    puede(perfil, ['cotizaciones.ver_pdf_comercial', 'cotizaciones.ver_aprobadas', 'tesoreria.ver_documentos'])
+      ? { id: orden.cotizacion_pdf_id, numero: cotizacionPdf?.numero ?? null }
+      : null
+  const [salida, fechasClave, recorridoDeLaCotizacion] = await Promise.all([
     verSalida ? estadoDeSalida(id) : Promise.resolve(null),
     vista === 'resumen' && !orden.plan_etapas_manual ? fechasClaveDeOrden(id) : Promise.resolve(null),
+    cotizacionDelRecorrido
+      ? recorridoDeCotizaciones([cotizacionDelRecorrido.id])
+          .then((r) => describirRecorridoDeLaCotizacion(r.get(cotizacionDelRecorrido.id) ?? []))
+          .catch((e: unknown) => {
+            console.error('OT: no se pudo leer el recorrido de su cotización.', e)
+            return null
+          })
+      : Promise.resolve(undefined),
   ])
 
   // La orden del taller sin cliente (100): la oficina, que ve los clientes y
@@ -356,6 +376,19 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
                   fechas={fechasClave}
                   disenoCumplida={pendientes.planos > 0 && pendientes.planosEntregados >= pendientes.planos}
                 />
+              )}
+              {/* Sin pasos no hay tarjeta: Costos pasa el filtro por
+                  `tesoreria.ver_documentos` y la base no le muestra ninguno. */}
+              {cotizacionDelRecorrido && recorridoDeLaCotizacion !== undefined &&
+                (recorridoDeLaCotizacion === null || recorridoDeLaCotizacion.length > 0) && (
+                <Tarjeta className="overflow-hidden" data-recorrido-de-la-ot>
+                  <TarjetaCabecera
+                    titulo="Recorrido de su cotización"
+                    descripcion={cotizacionDelRecorrido.numero ? `Cotización ${cotizacionDelRecorrido.numero}` : undefined}
+                    ayuda="Por dónde pasó esta OT antes de llegar al taller y después: la cotización subida, la revisión de Gerencia, el código interno y la OT que cargó Administración, y su factura. Quién hizo cada paso y cuándo."
+                  />
+                  <Recorrido pasos={recorridoDeLaCotizacion} className="border-t border-borde" femenino />
+                </Tarjeta>
               )}
             </div>
 

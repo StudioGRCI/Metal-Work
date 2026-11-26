@@ -10,7 +10,8 @@ import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import { limitePorVencer } from '@/lib/datos/limite-por-vencer'
-import { responsablesDeEtapas } from '@/lib/datos/tiempos-entrega'
+import { esDiaDeTaller } from '@/lib/datos/reportes-diarios'
+import { etapasAbiertasDeMiArea, responsablesDeEtapas, type EtapaAbiertaDelArea } from '@/lib/datos/tiempos-entrega'
 import {
   areasParaEtapas,
   dxfDeCodigo,
@@ -26,10 +27,12 @@ import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { llaveParecido } from '@/lib/dominio/codigos-internos'
 import { enlaceSeguimientoCodigo } from '@/lib/dominio/diseno-codigos'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
+import { pideReporteHoy } from '@/lib/dominio/tiempos-entrega'
 import { nombreDeUnidadOCodigo } from '@/lib/dominio/unidades'
 import { cantidad, hoyLima } from '@/lib/format'
 import { exigirPermiso, puede, puedeHojaDeArea } from '@/lib/sesion'
 
+import { SinReporteDeHoy, type CodigoSinReporte } from './sin-reporte'
 import { FormularioEtapaDeArea, MarcarEtapa, MoverEtapa, QuitarEtapa, RecibirPlano, VentanaEtapaDeArea } from '../diseno/codigo/formularios'
 
 export const metadata = { title: 'Planos y etapas' }
@@ -95,7 +98,13 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
   const hoy = hoyLima()
 
   const veOt = puede(perfil, 'ordenes.ver')
-  const [limite, responsables, planos, todasLasEtapas, dxf, ots, codigosConocidos, todasLasAreas] = await Promise.all([
+  const cualquierArea = puede(perfil, 'produccion.cualquier_area')
+  // «Sin reporte de hoy» es del supervisor que reporta su área (Plan 1, 1.3):
+  // quien ve todas las áreas no lee los reportes de las otras, y en la búsqueda
+  // o en otra pestaña estorbaría. Solo en día de taller.
+  const reportaSuArea = puede(perfil, 'reporte_diario.registrar') && !cualquierArea
+  const conBandeja = reportaSuArea && !q && !vista
+  const [limite, responsables, planos, todasLasEtapas, dxf, ots, codigosConocidos, todasLasAreas, hayTaller, abiertasDelArea] = await Promise.all([
     limitePorVencer(),
     responsablesDeEtapas(null),
     planosDeCodigo(null),
@@ -107,6 +116,21 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
     veOt ? otPorCodigo() : Promise.resolve(new Map<string, OtDeCodigo>()),
     codigosParaElegir(),
     areasParaEtapas(),
+    // Si no se pudo saber, se muestra: en un feriado sobra; en un día de taller, faltaría.
+    conBandeja
+      ? esDiaDeTaller(hoy).catch((e: unknown) => {
+          console.error('Planos y etapas: no se pudo saber si hoy hay taller; la bandeja sale igual.', e)
+          return true
+        })
+      : Promise.resolve(false),
+    // Las etapas abiertas del área con el semáforo del tablero; `null` si no se pudieron leer.
+    // También en la búsqueda: la bandeja lleva a `?q=`, y la tarjeta dice el mismo plazo.
+    reportaSuArea
+      ? etapasAbiertasDeMiArea().catch((e: unknown) => {
+          console.error('Planos y etapas: no se pudieron leer las etapas por reportar.', e)
+          return null
+        })
+      : Promise.resolve(null),
   ])
   const misAreas = todasLasAreas.filter((a) => puedeHojaDeArea(perfil, a.id))
 
@@ -142,11 +166,28 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
   const paginas = Math.max(1, Math.ceil(lista.length / POR_PAGINA))
   const pagina = Math.min(Math.max(1, Math.trunc(Number(params.pagina)) || 1), paginas)
   const enPagina = lista.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA)
-  const cualquierArea = puede(perfil, 'produccion.cualquier_area')
   // Para la etapa propia: las unidades que el sistema conoce, con su OT y su placa.
   const opcionesDeCodigo = (codigosConocidos ?? [])
     .filter((c) => !c.cerrado)
     .map((c) => ({ valor: c.codigo, etiqueta: c.codigo, detalle: deQueOt(c.codigo, ots.get(c.codigo)) ?? c.unidad ?? undefined }))
+
+  // Los códigos con una etapa del área que pide el reporte de hoy, y cuáles no
+  // lo tienen. Las etapas, su semáforo y el último reporte del área los da la
+  // base (`etapas_abiertas_de_mi_area`): ni el atraso ni el reporte se cuentan
+  // aquí otra vez. Los códigos ya entregados o con el costeo cerrado no entran.
+  const pidenHoy = new Map<string, EtapaAbiertaDelArea[]>()
+  for (const e of abiertasDelArea ?? []) {
+    if (!pideReporteHoy(e, hoy)) continue
+    pidenHoy.set(e.codigo, [...(pidenHoy.get(e.codigo) ?? []), e])
+  }
+  // El plazo de cada etapa abierta en su tarjeta, el mismo de la bandeja.
+  const semaforos = new Map((abiertasDelArea ?? []).map((e) => [e.id, { semaforo: e.semaforo, dias_habiles: e.dias_habiles }]))
+  const sinReporte: CodigoSinReporte[] | null =
+    abiertasDelArea === null
+      ? null
+      : [...pidenHoy.entries()]
+          .filter(([, etapas]) => !etapas.some((e) => e.ultimo_reporte === hoy))
+          .map(([codigo, etapas]) => ({ codigo, etapas }))
 
   const vacio = q
     ? { titulo: 'Ningún código con esta búsqueda', texto: 'Mira en las otras pestañas o borra la búsqueda con «Limpiar».' }
@@ -162,9 +203,13 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
     <>
       <EncabezadoPagina
         titulo="Planos y etapas"
-        ayuda={`Los planos que Diseño cargó para ${cualquierArea ? 'cada área' : 'tu área'} en cada código interno: ábrelos y marca «Recibido». Y las etapas que hace ${cualquierArea ? 'cada área' : 'tu área'}: agrégales sus subetapas y marca cuándo empezó y cuándo terminó cada una. Maestranza y Producción descargan aquí los DXF. Cuando un código tiene todos sus planos recibidos y sus etapas terminadas, pasa a «Terminados».`}
+        ayuda={`Los planos que Diseño cargó para ${cualquierArea ? 'cada área' : 'tu área'} en cada código interno: ábrelos y marca «Recibido». Y las etapas que hace ${cualquierArea ? 'cada área' : 'tu área'}: agrégales sus subetapas y marca cuándo empezó y cuándo terminó cada una. Maestranza y Producción descargan aquí los DXF. Cuando un código tiene todos sus planos recibidos y sus etapas terminadas, pasa a «Terminados».${conBandeja ? ' Arriba, en día de taller, los códigos con una etapa en marcha que todavía no tienen el reporte diario de hoy de tu área.' : ''}`}
         migas={[{ titulo: 'Supervisión' }, { titulo: 'Planos y etapas' }]}
       />
+
+      {conBandeja && hayTaller && (
+        <SinReporteDeHoy codigos={sinReporte} piden={pidenHoy.size} hoy={hoy} sinArea={perfil.area_id === null} />
+      )}
 
       <div className="mb-4 space-y-3">
         <BuscadorSimple ruta="/planos" etiqueta="Buscar código interno" marcador={veOt ? 'Código, OT o cliente' : 'Código interno'} />
@@ -232,6 +277,7 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
                         hoy={hoy}
                         limite={limite}
                         responsables={responsables}
+                        semaforos={semaforos}
                         acciones={(e, lugar) => (
                           <>
                             <MarcarEtapa etapa={e} hoy={hoy} />
