@@ -16,19 +16,21 @@ const GERENCIA = [
   'vehiculos.ver',
   'codigos_internos.seguimiento', 'codigos_internos.gasto', 'configuracion.ver', 'diseno.ver_informes', 'diseno.ver_materiales',
   'diseno.ver_dxf', 'requerimientos.ver_metrado', 'compras.ver_gestion', 'tesoreria.ver_caja', 'tesoreria.ver_tipo_cambio',
+  // Reportes de seguridad, desde el área de SSOMA (#192).
+  'ssoma.ver',
 ]
 
 const rutas = (grupos) => grupos.flatMap((g) => g.items.map((i) => i.ruta))
 
-test('Gerencia ve por área las 47 pantallas que su permiso le abre, cada una una vez', () => {
+test('Gerencia ve por área las 48 pantallas que su permiso le abre, cada una una vez', () => {
   const grupos = menuDe(GERENCIA, false, 'GERENTE')
   assert.deepEqual(grupos.map((g) => g.titulo), [
     'Principal', 'Por aprobar', 'Ventas', 'Diseño e Ingeniería', 'Requerimientos', 'Almacén', 'Logística', 'Administración', 'Finanzas',
-    'Recursos Humanos',
+    'Recursos Humanos', 'SSOMA',
   ])
   const todas = rutas(grupos)
-  assert.equal(todas.length, 47)
-  assert.equal(new Set(todas).size, 47)
+  assert.equal(todas.length, 48)
+  assert.equal(new Set(todas).size, 48)
   // Las once que se le abrieron en lectura el 2026-11-26, y Proveedores sin `proveedores.editar`.
   for (const r of [
     '/carrocerias', '/seguimiento', '/requerimientos/metrado', '/materiales', '/diseno/informe-semanal', '/diseno/dxf',
@@ -106,6 +108,7 @@ test('en Gerencia, lo que espera su visto va siempre abierto y cada área nace p
       ['Principal', 'fijo'], ['Por aprobar', 'fijo'], ['Ventas', 'plegado'], ['Diseño e Ingeniería', 'plegado'], ['Requerimientos', 'plegado'],
       ['Almacén', 'plegado'],
       ['Logística', 'plegado'], ['Administración', 'plegado'], ['Finanzas', 'plegado'], ['Recursos Humanos', 'plegado'],
+      ['SSOMA', 'plegado'],
     ],
   )
 })

@@ -20,6 +20,7 @@ import {
   DraftingCompass,
   Drill,
   FileArchive,
+  FileCheck2,
   FilePenLine,
   FileSpreadsheet,
   FileText,
@@ -45,6 +46,7 @@ import {
   ScanSearch,
   ScrollText,
   Settings,
+  ShieldAlert,
   ShieldCheck,
   Tag,
   Timer,
@@ -215,7 +217,7 @@ export const NAVEGACION = [
       {
         titulo: 'Insumos por autorizar',
         ruta: '/requerimientos/metrado',
-        icono: ShieldCheck,
+        icono: FileCheck2,
         permiso: 'requerimientos.autorizar_metrado',
         lectura: 'requerimientos.ver_metrado',
         descripcion: 'Lo que un requerimiento pide de más sobre el metrado del código, con el sustento de quien lo pidió',
@@ -605,6 +607,23 @@ export const NAVEGACION = [
       { titulo: 'Planillas', ruta: '/rrhh', icono: UserCog, permiso: 'rrhh.ver_planillas', descripcion: 'Planillas del mes y su distribución por unidad', disponible: true },
     ],
   },
+  // SSOMA lleva los reportes de seguridad (Plan 15, migración 20261125150100):
+  // los ve enteros, con quién reportó; Gerencia los consulta. La misma pantalla
+  // está otra vez en «Reportar», sin permiso: ahí reporta cualquier puesto y ve
+  // los suyos. Vale la primera que la persona puede ver.
+  {
+    titulo: 'SSOMA',
+    items: [
+      {
+        titulo: 'Reportes de seguridad',
+        ruta: '/ssoma',
+        icono: ShieldCheck,
+        permiso: ['ssoma.gestionar', 'ssoma.ver'],
+        descripcion: 'Cada accidente, incidente o condición insegura reportada, con su número y cómo va',
+        disponible: true,
+      },
+    ],
+  },
   // El padrón de equipos de la planta (Plan 16). Lo lleva Mantenimiento; Almacén
   // entra a anotar quién tiene cada equipo. Gerencia lo consulta desde su
   // grupo Almacén (2026-11-26).
@@ -639,6 +658,20 @@ export const NAVEGACION = [
         icono: Settings,
         permiso: 'configuracion.ver',
         descripcion: 'Calendario laboral y catálogos del taller',
+        disponible: true,
+      },
+    ],
+  },
+  // Lo que reporta cualquier puesto, sin permiso: va al final del menú de todos
+  // (`RUTAS_PARA_TODOS`). Reportar un incidente no puede depender de un permiso.
+  {
+    titulo: 'Reportar',
+    items: [
+      {
+        titulo: 'Reportar incidente',
+        ruta: '/ssoma',
+        icono: ShieldAlert,
+        descripcion: 'Un accidente, un incidente o algo inseguro que viste: le llega a SSOMA al instante',
         disponible: true,
       },
     ],
@@ -831,6 +864,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
           '/rrhh/tiempos-de-entrega',
         ],
       },
+      // Los reportes de seguridad, en consulta y sin anular (Plan 15).
+      { titulo: 'SSOMA', consulta: true, rutas: ['/ssoma'] },
     ],
     telefono: ['/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios'],
     // Lo que consultaba desde su menú antes del 2026-11-25 sigue en su inicio.
@@ -903,7 +938,10 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       { titulo: 'Por autorizar', rutas: ['/requerimientos/metrado'] },
       { titulo: 'Por código interno', rutas: ['/diseno/planos', '/diseno/materiales', '/diseno/etapas', '/diseno/dxf'] },
       { titulo: 'Diseño e Ingeniería', rutas: ['/ordenes', '/materiales', '/diseno/informe-semanal', '/diseno/evaluaciones'] },
-      { titulo: 'Catálogos', rutas: ['/carrocerias', '/unidades'] },
+      // Nace plegado desde el 2026-11-26: con «Reportar» al final, el menú de
+      // Diseño no entraba a 760 px. Los catálogos se tocan poco y se abre solo
+      // si la pantalla que se abre está dentro.
+      { titulo: 'Catálogos', pliegue: 'plegado', rutas: ['/carrocerias', '/unidades'] },
       { titulo: 'Consultas', rutas: ['/requerimientos', '/clientes'] },
     ],
     telefono: ['/requerimientos/metrado', '/diseno/planos', '/diseno/materiales', '/ordenes'],
@@ -958,7 +996,10 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
         titulo: 'Control del personal',
         rutas: ['/rrhh/personal', '/rrhh/cuentas', '/rrhh/asistencia', '/rrhh/tardanzas', '/rrhh/permisos', '/rrhh/observaciones'],
       },
-      { titulo: 'Planillas y costeo', rutas: ['/rrhh', '/rrhh/costeo', '/rrhh/pagos-oficina'] },
+      // Nace plegado desde el 2026-11-26: con «Reportar» al final, el menú de
+      // RR. HH. no entraba a 760 px. Es trabajo de fin de mes y se abre solo si
+      // la pantalla que se abre está dentro.
+      { titulo: 'Planillas y costeo', pliegue: 'plegado', rutas: ['/rrhh', '/rrhh/costeo', '/rrhh/pagos-oficina'] },
     ],
     telefono: ['/reportes-diarios', '/planilla-diaria', '/rrhh/personal', '/rrhh/asistencia'],
   },
@@ -1029,11 +1070,25 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     ],
     telefono: ['/reportes-diarios', '/seguimiento', '/rrhh/tiempos-de-entrega', '/'],
   },
+  // Seguridad y salud en el trabajo (Plan 15): lo que la gente reporta es lo
+  // que espera por SSOMA cada día. Las acciones correctivas, las charlas, las
+  // inspecciones y la entrega de EPP se suman aquí con sus entregas.
+  SSOMA: {
+    grupos: [{ titulo: 'SSOMA', rutas: ['/ssoma'] }],
+    telefono: ['/ssoma', '/'],
+  },
 }
 // El líder de Diseño hace el trabajo de Diseño y además revisa el de su equipo
 // (`docs/PERMISOS.md`): lleva su mismo menú. Sin esta línea le salía el
 // catálogo completo, con Configuración, y en el teléfono sin Planos ni Etapas.
 MENU_POR_PUESTO.DISENO_LIDER = MENU_POR_PUESTO.DISENO
+
+/**
+ * Lo que va en el menú de todos los puestos, al final y en el grupo «Reportar»:
+ * no se repite en cada entrada de `MENU_POR_PUESTO`. Una pantalla que cualquier
+ * puesto usa para avisar de algo (un incidente, una avería) se suma aquí.
+ */
+const RUTAS_PARA_TODOS: readonly RutaDeModulo[] = ['/ssoma']
 
 const comoLista = (p: string | readonly string[] | undefined): readonly string[] => (p === undefined ? [] : typeof p === 'string' ? [p] : p)
 
@@ -1053,7 +1108,12 @@ function lePermite(item: ItemNavegacion, permisos: readonly string[], esAdmin: b
 export function menuDe(permisos: readonly string[], esAdmin: boolean, rolCodigo: string): GrupoNavegacion[] {
   const propio = esAdmin ? undefined : MENU_POR_PUESTO[rolCodigo]
   const grupos: GrupoNavegacion[] = propio
-    ? [{ titulo: 'Principal', rutas: ['/', ...(propio.principal ?? [])], pliegue: 'fijo' as const }, ...propio.grupos].map((g) => ({
+    ? [
+        { titulo: 'Principal', rutas: ['/', ...(propio.principal ?? [])], pliegue: 'fijo' as const },
+        ...propio.grupos,
+        // «Reportar» va siempre abierto: reportar un incidente no puede quedar escondido en un pliegue.
+        { titulo: 'Reportar', rutas: RUTAS_PARA_TODOS, pliegue: 'fijo' as const },
+      ].map((g) => ({
         titulo: g.titulo,
         pliegue: g.pliegue,
         ...('consulta' in g && g.consulta ? { consulta: true } : {}),
@@ -1209,6 +1269,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/rrhh/costeo', corto: 'Costeo' },
   { ruta: '/rrhh/pagos-oficina', corto: 'Pagos' },
   { ruta: '/rrhh/observaciones', corto: 'Observaciones' },
+  { ruta: '/ssoma', corto: 'Seguridad' },
   { ruta: '/reportes-diarios', corto: 'Reporte' },
   { ruta: '/codigos-internos', corto: 'Códigos' },
   { ruta: '/diseno/planos', corto: 'Planos' },
