@@ -157,8 +157,10 @@ export default async function PaginaOrdenesCompra({ searchParams }: { searchPara
           <TablaCabecera>
             <tr>
               {/* Su ancho: con los botones en un renglón, la columna de acciones
-                  se comía la de la orden y cada fila crecía un 21 %. */}
-              <TH className="md:w-1/4">Orden</TH>
+                  se comía la de la orden y cada fila crecía un 21 %. Desde 1280 px
+                  «Para» y «Comprobante» salen de esta celda, y lo que sobra va a
+                  los botones: con el plazo (#209) una OC lleva hasta cinco. */}
+              <TH className="md:w-1/4 xl:w-1/6">Orden</TH>
               {/* «Para» espera a 1 280 px: entre 768 y 1 279 la tabla se deslizaba de costado y tapaba los botones. */}
               <TH className="hidden xl:table-cell">Para</TH>
               {/* Por debajo de 768 px cada OC es una ficha (`apilada`): el monto, en qué va y el plazo viajan bajo el número, y el recorrido abierto y los botones van a lo ancho. Con sus columnas la tabla medía 461 px en una pantalla de 390, y el recorrido quedaba en una columna de 150 px. */}
@@ -167,7 +169,7 @@ export default async function PaginaOrdenesCompra({ searchParams }: { searchPara
               {/* «Comprobante» también espera a 1 280 px: entre 768 y 1 279 la columna «Orden» quedaba de 83 px y partía el proveedor palabra por palabra. Su dato va bajo el número. */}
               <TH className="hidden xl:table-cell">Comprobante</TH>
               {/* Con `relative`, el rótulo oculto queda dentro de la tabla que se desliza y no ensancha la página en el teléfono. El ancho, solo para quien tiene los botones: a quien consulta le queda «PDF». */}
-              <TH className={cn('relative text-right', (emite || (llevaSuRqa && visibles.some(esDeUnRqa))) && 'md:w-64')}>
+              <TH className={cn('relative text-right', (emite || (llevaSuRqa && visibles.some(esDeUnRqa))) && 'md:w-80 xl:w-[28rem]')}>
                 <span className="sr-only">Acciones</span>
               </TH>
             </tr>

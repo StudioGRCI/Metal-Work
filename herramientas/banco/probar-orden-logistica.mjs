@@ -158,7 +158,8 @@ let proveedor = null
 let correo = null
 let placa = null
 const CASOS = [
-  { puesto: 'logistica', ruta: '/compras/ordenes', nombre: 'Órdenes de compra', monto: true, maxRenglones: 1 },
+  // Dos: desde #244 la OC atrasada suma «Motivo del atraso» y «Corregir fecha»; con cinco mandos (531 px) no caben en uno sin quitarle la columna a la orden.
+  { puesto: 'logistica', ruta: '/compras/ordenes', nombre: 'Órdenes de compra', monto: true, maxRenglones: 2 },
   // La OS emitida lleva seis: «En ejecución», «Conforme», «Adjuntar documento»,
   // «Código y detracción», «PDF» y «Anular». Antes, uno por renglón.
   { puesto: 'logistica', ruta: '/compras/servicios', nombre: 'Órdenes de servicio', monto: true, maxRenglones: 3, anular: true },
