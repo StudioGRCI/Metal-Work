@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
@@ -16,9 +17,10 @@ import {
 } from '@/lib/datos/requerimientos'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { CODIGO_FIJO_PLANTA, llaveParecido, normalizarCodigo } from '@/lib/dominio/codigos-internos'
+import { PERMISO_OTS_DE_MANTENIMIENTO } from '@/lib/dominio/mantenimiento'
 import { ESTADOS_RQ_ABIERTOS, estadoDelRequerimiento } from '@/lib/dominio/requerimientos'
 import { diaLima, fecha, hoyLima, porcentaje, sumarDias } from '@/lib/format'
-import { exigirPermiso } from '@/lib/sesion'
+import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { InsumosDelRequerimiento } from './insumos'
 import { AvisoDeLaUnidad, BotonPedirParaUnidad, PedirPorUnidad } from './pedir'
@@ -70,6 +72,9 @@ function estadoDeEtapa(e: EtapaDeCodigo): { texto: string; tono: Tono } {
  */
 export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/requerimientos/unidades'>) {
   const perfil = await exigirPermiso('requerimientos.area')
+  // Mantenimiento no trabaja unidades de fabricación: pide por el N.º de su OT,
+  // desde su lista de OT (A.3). Esta pantalla lee planos y etapas, que no ve.
+  if (!puede(perfil, 'requerimientos.emitir') && puede(perfil, PERMISO_OTS_DE_MANTENIMIENTO)) redirect('/mantenimiento')
   const params = await searchParams
   const q = typeof params.q === 'string' ? params.q.trim() : ''
   const area = perfil.area_id
@@ -178,7 +183,8 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
         estado={<AvisoDeLaUnidad codigo={null} />}
       />
 
-      <div className="mb-4 space-y-3">
+      {/* 20 px entre bloques, 12 entre las tarjetas de la lista (la escala de la skill diseno). */}
+      <div className="mb-5 space-y-3">
         {seguimiento === null && (
           <p role="status" className="text-sm text-aviso" data-seguimiento-sin-leer>
             No se pudo leer el visto de Diseño, la fecha en que llega cada compra ni quién recibió cada insumo: los pasos salen sin eso. Recarga la
@@ -190,7 +196,7 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
       </div>
 
       {unidades.length === 0 ? (
-        <Tarjeta className="mb-3">
+        <Tarjeta className="mb-5">
           <SinDatos
             enTabla={false}
             titulo={q ? 'Ninguna unidad de tu área con esta búsqueda' : 'Ninguna unidad tiene todavía trabajo cargado para tu área'}
@@ -213,7 +219,7 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
           />
         </Tarjeta>
       ) : (
-        <ul className="mb-3 grid items-start gap-3 lg:grid-cols-2" aria-label={`Unidades de ${areaFija.nombre}`}>
+        <ul className="mb-5 grid items-start gap-3 lg:grid-cols-2" aria-label={`Unidades de ${areaFija.nombre}`}>
           {unidades.map(([codigo, u]) => (
             <li key={codigo}>
               <TarjetaDeUnidad
@@ -231,7 +237,7 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
       )}
 
       {sinPadron && (
-        <Tarjeta className="mb-3">
+        <Tarjeta className="mb-5">
           <SinDatos
             enTabla={false}
             titulo="No se pudo leer el padrón de unidades"
@@ -241,7 +247,7 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
       )}
 
       {otras.length > 0 && (
-        <Tarjeta className="mb-3" id="otras-unidades">
+        <Tarjeta className="mb-5" id="otras-unidades">
           <TarjetaCabecera
             titulo={`Las demás unidades del taller (${otras.length})`}
             descripcion="Del padrón de unidades, sin trabajo cargado para tu área todavía. Si ya trabajas en una, pide su material desde aquí."
@@ -300,7 +306,9 @@ function TarjetaDeUnidad({
       <TarjetaCabecera
         titulo={<span className="font-mono">{codigo}</span>}
         descripcion={unidad ?? undefined}
-        acciones={entregada ? <Insignia tono="neutro">Entregada</Insignia> : <BotonPedirParaUnidad codigo={codigo} />}
+        // Con borde y no lleno: una tarjeta por unidad son decenas de botones
+        // iguales, y llenos ninguno llamaba la atención (entrega 5).
+        acciones={entregada ? <Insignia tono="neutro">Entregada</Insignia> : <BotonPedirParaUnidad codigo={codigo} variante="contorno" />}
       />
       <TarjetaCuerpo className="space-y-3">
         <AvisoDeLaUnidad codigo={codigo} />

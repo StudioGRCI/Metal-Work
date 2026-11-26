@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { COLUMNAS_DETRACCION, cargarTiposDetraccion, detraccionDeFila, documentosDeServicios, type DocumentoDeServicio } from '@/lib/datos/logistica'
+import { cambioDeLosServicios, COLUMNAS_DETRACCION, cargarTiposDetraccion, detraccionDeFila, documentosDeServicios, type DocumentoDeServicio } from '@/lib/datos/logistica'
 import { bajarComo } from '@/lib/descarga'
 import type { DetraccionDeServicio, SaldoDeServicio } from '@/lib/dominio/detraccion'
 import { BUCKET_COBROS_VENTA, BUCKET_FACTURAS_VENTA, BUCKET_PAGOS_SERVICIO, comoVaLaFactura, totalConIgv, type ComoVaLaFactura, type UnidadDeCotizacion } from '@/lib/dominio/finanzas'
@@ -42,8 +42,13 @@ export type ParteDeFactura = Pick<
 export type FacturaVenta = FilaFactura & { url: string | null; cobros: CobroFactura[]; partes: ParteDeFactura[] }
 
 type FilaCotizacion = Funciones<'cotizaciones_para_facturar'>['Returns'][number]
-/** `unidades` trae siempre al menos una: la cotización de una sola unidad es su unidad 1. */
-export type CotizacionAprobada = FilaCotizacion & { url: string | null; unidades: UnidadDeCotizacion[] }
+/**
+ * `unidades` trae siempre al menos una: la cotización de una sola unidad es su unidad 1.
+ * `paso_a_otro_comprador`: la venta se cerró porque su OT pasó a otro comprador (las OT, el
+ * número solo para quien lee las órdenes); ya no lleva OT y queda cobrar o anular su factura
+ * (migración 20261126988000). Nulo: no se cerró.
+ */
+export type CotizacionAprobada = FilaCotizacion & { url: string | null; unidades: UnidadDeCotizacion[]; paso_a_otro_comprador: (string | null)[] | null }
 /** En la bandeja de Contabilidad, `facturas` deja de ser la cuenta y trae las facturas mismas. */
 export type CotizacionParaFacturar = Omit<CotizacionAprobada, 'facturas'> & { facturas: FacturaVenta[] }
 
@@ -135,7 +140,11 @@ export async function cotizacionesAprobadas(codigo?: string): Promise<Cotizacion
   // La de varias unidades lleva un código por unidad (migración 20261126998000).
   const filas = (data ?? []).filter((f) => codigo === undefined || unidadesDe(f).some((u) => u.codigo === codigo))
   const esPdf = (f: FilaCotizacion) => (f.archivo_mime ?? 'application/pdf') === 'application/pdf'
-  const urls = await enlaces('cotizaciones-pdf', filas.filter(esPdf).map((f) => f.archivo_ruta))
+  // Solo puede estar cerrada la que no tiene código: la base mira esas.
+  const [urls, cerradas] = await Promise.all([
+    enlaces('cotizaciones-pdf', filas.filter(esPdf).map((f) => f.archivo_ruta)),
+    ventasCerradas(filas.flatMap((f) => (f.cotizacion_id && !f.codigo_interno ? [f.cotizacion_id] : []))),
+  ])
   await Promise.all(
     filas
       .filter((f) => f.archivo_ruta && !esPdf(f))
@@ -145,7 +154,12 @@ export async function cotizacionesAprobadas(codigo?: string): Promise<Cotizacion
         if (firmado?.signedUrl) urls.set(f.archivo_ruta as string, bajarComo(firmado.signedUrl, f.archivo_nombre ?? true))
       }),
   )
-  return filas.map((f) => ({ ...f, url: (f.archivo_ruta && urls.get(f.archivo_ruta)) ?? null, unidades: unidadesDe(f) }))
+  return filas.map((f) => ({
+    ...f,
+    url: (f.archivo_ruta && urls.get(f.archivo_ruta)) ?? null,
+    unidades: unidadesDe(f),
+    paso_a_otro_comprador: (f.cotizacion_id && cerradas.get(f.cotizacion_id)) || null,
+  }))
 }
 
 const COLUMNAS_FACTURA =
@@ -301,6 +315,17 @@ export async function bandejaDeFacturacion(): Promise<CotizacionParaFacturar[]> 
   return lista.sort((a, b) => turno(a) - turno(b))
 }
 
+/** De las cotizaciones dadas, las que se cerraron porque su OT pasó a otro comprador, con sus OT. */
+async function ventasCerradas(ids: string[]): Promise<Map<string, (string | null)[]>> {
+  const cerradas = new Map<string, (string | null)[]>()
+  if (ids.length === 0) return cerradas
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('ventas_cerradas_por_otro_comprador', { p_ids: ids })
+  if (error) throw error
+  for (const v of data ?? []) if (v.cotizacion_id) cerradas.set(v.cotizacion_id, v.ordenes ?? [])
+  return cerradas
+}
+
 /**
  * Lo facturado de un código contra lo vendido, cotización por cotización, con la regla de la bandeja de
  * Contabilidad (`comoVaLaFactura`). `null`: no se comparó (sin permiso para leer lo vendido, o alguna
@@ -425,12 +450,16 @@ export async function serviciosPorPagar(verCuentas: boolean): Promise<ServicioPo
   if (cuentas.error) throw new Error(`No se pudieron leer las cuentas de los proveedores: ${cuentas.error.message}`)
   if (detracciones.error) throw new Error(`No se pudo leer la detracción de los servicios: ${detracciones.error.message}`)
   const detraccionDe = new Map((detracciones.data ?? []).map((d) => [d.id, d]))
-  const urls = await enlaces(BUCKET_PAGOS_SERVICIO, (pagos.data ?? []).map((p) => p.archivo_ruta))
+  // Con qué cambio va de verdad cada OS, como lo dice la base: Tesorería deposita con esa cifra.
+  const [cambios, urls] = await Promise.all([
+    cambioDeLosServicios((detracciones.data ?? []).filter((d) => d.moneda !== 'PEN').map((d) => d.id)),
+    enlaces(BUCKET_PAGOS_SERVICIO, (pagos.data ?? []).map((p) => p.archivo_ruta)),
+  ])
   return filas.map((f) => ({
     ...f,
     pagos: (pagos.data ?? []).filter((p) => p.orden_servicio_id === f.id).map((p) => ({ ...p, url: urls.get(p.archivo_ruta) ?? null })),
     cuentas: (cuentas.data ?? []).filter((c) => c.proveedor_id === f.proveedor_id).map(({ id, banco, numero_cuenta, titular, moneda }) => ({ id, banco, numero_cuenta, titular, moneda })),
-    detraccion: detraccionDeFila(f.id ? detraccionDe.get(f.id) : undefined, tipos),
+    detraccion: detraccionDeFila(f.id ? detraccionDe.get(f.id) : undefined, tipos, f.id ? cambios.get(f.id) : undefined),
     documentos: (f.id && documentos.get(f.id)) || [],
     saldo: (f.id && saldos.get(f.id)) || SIN_SALDO,
   }))

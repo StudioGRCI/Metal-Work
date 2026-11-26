@@ -13,7 +13,7 @@ import { serviciosPorPagar, type ServicioPorPagar } from '@/lib/datos/facturacio
 import { AdjuntarDocumentoServicio } from '@/app/(app)/compras/servicios/documentos-servicio'
 import { etiquetaDocumentoServicio } from '@/lib/dominio/adquisiciones'
 import type { CuentaParaPagar } from '@/lib/dominio/caja'
-import { faltaDelServicio, resumenDetraccion } from '@/lib/dominio/detraccion'
+import { cambioDeLaVispera, diaDelCambio, faltaDelServicio, resumenDetraccion } from '@/lib/dominio/detraccion'
 import { faltaDelServicio as queLeFaltaAlServicio } from '@/lib/dominio/lo-que-falta'
 import { resumenPorMoneda } from '@/lib/dominio/finanzas'
 import { ESTADO_SERVICIO } from '@/lib/dominio/logistica'
@@ -219,7 +219,11 @@ function Servicio({
             saldoDetraccion: saldo.saldoDetraccion,
             detraccionSinDefinir: s.detraccion.afecta === null,
             sinTipoDeCambio,
-            cambioDel: s.detraccion.emitida_en ? fecha(s.detraccion.emitida_en) : null,
+            cambioDel: diaDelCambio(s.detraccion),
+            cambioSinFactura: Boolean(s.detraccion.afecta) && s.detraccion.origen_del_cambio === 'SIN_FACTURA',
+            facturaSinFecha: Boolean(s.detraccion.afecta) && s.detraccion.origen_del_cambio === 'FACTURA_SIN_FECHA',
+            // Solo si el cambio de ese día todavía puede llegar: el de un sábado o un feriado no llega.
+            cambioDeLaVispera: s.detraccion.afecta && s.detraccion.espera_el_cambio ? cambioDeLaVispera(s.detraccion) : null,
           })}
         />
         <ParaPagar documentos={documentos} cuentas={s.cancelada ? [] : s.cuentas} monedaDocumento={m} sinCuentas={s.cancelada ? null : sinCuentas} />
@@ -243,7 +247,7 @@ function Servicio({
                 }
               />
             )}
-            {adjunta && <AdjuntarDocumentoServicio ordenServicioId={s.id} numero={s.numero ?? 'orden de servicio'} />}
+            {adjunta && <AdjuntarDocumentoServicio ordenServicioId={s.id} numero={s.numero ?? 'orden de servicio'} enOtraMoneda={m !== 'PEN'} />}
           </div>
         )}
       </div>

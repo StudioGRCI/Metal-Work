@@ -26,7 +26,7 @@ const GERENCIA = [
 
 const rutas = (grupos) => grupos.flatMap((g) => g.items.map((i) => i.ruta))
 
-test('Gerencia ve por área las 53 pantallas que su permiso le abre, cada una una vez', () => {
+test('Gerencia ve por área las 55 pantallas que su permiso le abre, cada una una vez', () => {
   const grupos = menuDe(GERENCIA, false, 'GERENTE')
   assert.deepEqual(grupos.map((g) => g.titulo), [
     'Principal', 'Por aprobar', 'Ventas', 'Diseño e Ingeniería', 'Requerimientos', 'Almacén', 'Logística', 'Administración',
@@ -34,17 +34,18 @@ test('Gerencia ve por área las 53 pantallas que su permiso le abre, cada una un
   ])
   const todas = rutas(grupos)
   // 49 en main el 2026-11-26 (con Averías), más Por decidir (plan 12, entrega 12.1), el Control de compras de Almacén,
-  // las inspecciones de calidad (A.1), las charlas e inducciones de SSOMA (plan 15, entrega 15.3) y los reclamos de garantía (A.2).
-  assert.equal(todas.length, 54)
-  assert.equal(new Set(todas).size, 54)
+  // las inspecciones de calidad (A.1), las charlas e inducciones de SSOMA (plan 15, entrega 15.3), los reclamos de garantía (A.2)
+  // y las inspecciones de seguridad (plan 15, entrega 15.4).
+  assert.equal(todas.length, 55)
+  assert.equal(new Set(todas).size, 55)
   // Los reclamos de garantía, en lo que consulta de Ventas: un grupo más no entraba en el monitor.
   assert.deepEqual(rutas(grupos.filter((g) => g.titulo === 'Ventas')), ['/clientes', '/unidades', '/carrocerias', '/garantias'])
   // Calidad la consulta con su permiso: la entrada del área (sin permiso) no la reemplaza.
-  assert.equal(grupos.find((g) => g.titulo === 'SSOMA y Calidad')?.items[2]?.titulo, 'Inspecciones de calidad')
+  assert.equal(grupos.find((g) => g.titulo === 'SSOMA y Calidad')?.items[3]?.titulo, 'Inspecciones de calidad')
   // Las averías y los reportes de seguridad, en lo que consulta: no se repiten en «Reportar», que va al final para todos.
   // Las averías van con los equipos en Almacén: un grupo más no entraba en el monitor.
   assert.deepEqual(rutas(grupos.filter((g) => g.titulo === 'Almacén')).slice(-2), ['/equipos', '/averias'])
-  assert.deepEqual(rutas(grupos.filter((g) => g.titulo === 'SSOMA y Calidad')), ['/ssoma', '/ssoma/charlas', '/calidad'])
+  assert.deepEqual(rutas(grupos.filter((g) => g.titulo === 'SSOMA y Calidad')), ['/ssoma', '/ssoma/charlas', '/ssoma/inspecciones', '/calidad'])
   assert.ok(!grupos.some((g) => g.titulo === 'Reportar'))
   // Las once que se le abrieron en lectura el 2026-11-26, y Proveedores sin `proveedores.editar`.
   for (const r of [
@@ -154,6 +155,31 @@ test('«Reportar incidente» y «Reportar avería» están al final del menú de
   assert.deepEqual(mantenimiento.map((g) => g.titulo), ['Principal', 'Mantenimiento', 'Reportar'])
   assert.deepEqual(mantenimiento[1].items.map((i) => i.titulo), ['Averías', 'Equipos'])
   assert.deepEqual(mantenimiento[2].items.map((i) => i.titulo), ['Reportar incidente'])
+})
+
+test('Mantenimiento lleva arriba las unidades de los clientes: sus OT, su reporte diario y sus requerimientos (A.3)', () => {
+  const permisos = ['averias.atender', 'equipos.gestionar', 'equipos.asignar', 'equipos.ver', 'mantenimiento.ots', 'requerimientos.area', 'reporte_diario.registrar']
+  const grupos = menuDe(permisos, false, 'MANTENIMIENTO')
+  assert.deepEqual(grupos.map((g) => g.titulo), ['Principal', 'Unidades de clientes', 'Mantenimiento', 'Reportar'])
+  assert.deepEqual(grupos[1].items.map((i) => [i.ruta, i.titulo]), [
+    ['/mantenimiento', 'OT de mantenimiento'],
+    ['/reportes-diarios', 'Reporte diario'],
+    ['/requerimientos', 'Requerimientos'],
+  ])
+  assert.deepEqual(grupos[2].items.map((i) => i.titulo), ['Averías', 'Equipos'])
+  // «RQ por unidad» es de los supervisores: sus unidades son las de fabricación.
+  assert.ok(!rutas(grupos).includes('/requerimientos/unidades'))
+  // Ningún ícono repetido en su menú.
+  const iconos = grupos.flatMap((g) => g.items).map((i) => i.icono)
+  assert.equal(new Set(iconos).size, iconos.length)
+  assert.deepEqual(pestanasDe(permisos, false, 'MANTENIMIENTO').map((p) => [p.ruta, p.corto]), [
+    ['/mantenimiento', 'OT'],
+    ['/reportes-diarios', 'Reporte'],
+    ['/averias', 'Averías'],
+    ['/equipos', 'Equipos'],
+  ])
+  // Quien no es Mantenimiento no la ve aunque tenga los otros dos permisos.
+  assert.ok(!rutas(menuDe(['requerimientos.area', 'reporte_diario.registrar'], false, 'SUPERVISOR')).includes('/mantenimiento'))
 })
 
 test('Calidad lleva sus inspecciones arriba y consulta los códigos y las OT sin montos', () => {

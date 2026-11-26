@@ -1,4 +1,4 @@
-import { Download, FileText, Hash, History, Hourglass, MessageSquareWarning, ReceiptText } from 'lucide-react'
+import { Download, FileText, Hash, History, Hourglass, MessageSquareWarning, ReceiptText, RotateCcw, UserRoundX } from 'lucide-react'
 import Link from 'next/link'
 
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
@@ -19,7 +19,7 @@ import { describirRecorridoDeLaCotizacion } from '@/lib/dominio/recorrido'
 import { diaLima, fecha as fmtFecha, hora, hoyLima, moneda as formatoMoneda } from '@/lib/format'
 import { exigirPermiso, puede, puedeCorregirCotizacion, puedeQuitarCotizacion } from '@/lib/sesion'
 
-import { CargarCodigoYOt, CorregirCotizacion, EstadoDeLaOt, QuitarCotizacion, RevisarCotizacion } from './acciones-cotizacion'
+import { CancelarVenta, CargarCodigoYOt, CorregirCotizacion, EstadoDeLaOt, QuitarCotizacion, RevisarCotizacion } from './acciones-cotizacion'
 import { IrALaTarjetaDelAviso } from './ir-a-la-tarjeta-del-aviso'
 import { EstadoDeSubirCotizacion, SubirCotizacion } from './subir-cotizacion'
 
@@ -109,6 +109,18 @@ function faltaSuOt(c: { estado: string | null; ordenes_faltantes: number | null 
   return c.estado === 'APROBADA' && (c.ordenes_faltantes ?? 0) > 0
 }
 
+// La OT que fue su venta y pasó a otro comprador con «Editar OT»: esa unidad
+// ya no lleva OT y la base no deja cargarle otra (migración 20261126988000,
+// DKS 2026-11-26: «Cerrarla: no lleva otra OT»). La de varias unidades la pinta
+// como un renglón más de sus OT; esta frase es para la de una. El número llega
+// solo a quien lee las órdenes; si no, se dice que pasó, sin él.
+function pasoAOtroComprador(salieron: (string | null)[] | null) {
+  const todas = salieron ?? []
+  if (todas.length === 0) return null
+  const cual = todas.length === 1 && todas[0] ? ` ${todas[0]}` : ''
+  return `Su OT${cual} pasó a otro comprador: esta venta ya no lleva otra OT.`
+}
+
 function enFiltro(
   c: { estado: string | null; ordenes: unknown[]; ordenes_faltantes: number | null; revisado_en: string | null },
   filtro: FiltroEstado | null,
@@ -174,10 +186,18 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
   // que esperan su visto; Administración, las aprobadas que esperan su código y
   // su OT; Ventas, las suyas rechazadas. El orden por fecha se conserva dentro de cada grupo.
   const sinCodigo = faltaSuOt
+  // La venta que se reabrió (su OT pasó a otro comprador y allí se anuló) la
+  // decide quien la registró: sigue, o la cancela (migración 20261126988000).
+  const puedeCancelar = (c: (typeof cotizaciones)[number]) =>
+    puedeSubir && c.estado === 'APROBADA' && c.reabierta_por_ot_anulada !== null && c.registrado_por === perfil.id && !c.facturada
+  // La que espera su decisión, aunque tenga una factura por anular antes: Inicio las cuenta todas.
+  const esperaSuDecision = (c: (typeof cotizaciones)[number]) =>
+    puedeSubir && c.estado === 'APROBADA' && c.reabierta_por_ot_anulada !== null && c.registrado_por === perfil.id
   const meToca = (c: (typeof cotizaciones)[number]) =>
     (revisa && c.estado === 'POR_REVISAR') ||
     (cargaOt && sinCodigo(c)) ||
-    (puedeCorregirCotizacion(perfil, c) && !c.facturada)
+    (puedeCorregirCotizacion(perfil, c) && !c.facturada) ||
+    puedeCancelar(c)
   // La que Gerencia acaba de revisar se queda donde estaba, ya aprobada o
   // rechazada, también en «Por revisar»: si se iba al fondo, bajo el dedo
   // quedaba el «Aprobar» de otra y un segundo toque aprobaba la equivocada.
@@ -188,7 +208,8 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
   const arriba = (c: (typeof cotizaciones)[number]) => meToca(c) || recienRevisada(c)
   const visibles = cotizaciones
     .filter((c) => (enFiltro(c, filtro, mes) || (filtro === 'POR_REVISAR' && recienRevisada(c))) && buscada(c))
-    .sort((a, b) => Number(arriba(b)) - Number(arriba(a)))
+    // Primero la venta que se reabrió y espera a quien la registró: «decide si sigue» (Inicio lleva aquí).
+    .sort((a, b) => Number(esperaSuDecision(b)) - Number(esperaSuDecision(a)) || Number(arriba(b)) - Number(arriba(a)))
 
   // El recorrido de las que se muestran. Sin él, la tarjeta sigue con todo lo demás y lo dice en su lugar.
   const recorridos = await recorridoDeCotizaciones(visibles.flatMap((c) => (c.id ? [c.id] : []))).catch((e: unknown) => {
@@ -327,8 +348,24 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
             const varias = unidades > 1
             const faltan = c.ordenes_faltantes ?? 0
             // La unidad que sigue: la primera sin OT vigente (si se anuló la 2, la 2).
-            const tomadas = new Set(c.ordenes.map((o, i) => o.unidad ?? i + 1))
+            // La unidad que pasó a otro comprador tampoco se vuelve a cargar: la base la salta.
+            const pasaron = c.unidades_a_otro_comprador
+            const tomadas = new Set([...c.ordenes.map((o, i) => o.unidad ?? i + 1), ...pasaron.map((p) => p.unidad)])
             const siguiente = Array.from({ length: unidades }, (_, i) => i + 1).find((k) => !tomadas.has(k)) ?? c.ordenes.length + 1
+            // La frase, solo si no le queda ninguna OT; si le queda alguna (la cantidad
+            // se corrigió después, o se cargó otra antes de 20261126988000), la que
+            // pasó va como un renglón más de sus OT.
+            const pasada = c.ordenes.length === 0 && !varias ? pasoAOtroComprador(c.ordenes_a_otro_comprador) : null
+            // La venta que se reabrió: su OT pasó a otro comprador y allí se anuló. Espera su OT
+            // hasta que la cancele quien la registró (StudioGRCI, 2026-11-26; migración 20261126988000).
+            const reabierta = c.estado === 'APROBADA' ? c.reabierta_por_ot_anulada : null
+            const esMia = c.registrado_por === perfil.id
+            const cancela = puedeCancelar(c)
+            // Sus OT y, en la de varias, las unidades que pasaron, por número de unidad.
+            const filasDeOt: { unidad: number; o?: (typeof c.ordenes)[number]; numero?: string | null }[] = [
+              ...c.ordenes.map((o, i) => ({ unidad: o.unidad ?? i + 1, o })),
+              ...(pasada ? [] : pasaron.map((p) => ({ unidad: p.unidad, numero: p.numero }))),
+            ].sort((x, y) => x.unidad - y.unidad)
 
             return (
               // Con `id`: el aviso de la campana aterriza en esta fila (`#id`), y
@@ -340,6 +377,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                       <span className="flex flex-wrap items-center gap-2">
                         <span className="text-base font-semibold text-texto">{c.numero}</span>
                         <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
+                        {pasada && <Insignia tono="neutro">Pasó a otro comprador</Insignia>}
                         {version > 1 && (
                           <span className="text-xs font-medium text-texto-suave">versión {version}</span>
                         )}
@@ -448,9 +486,27 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                       </details>
                     )}
 
+                    {reabierta && (
+                      <p className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-aviso-suave px-2.5 py-1.5 text-xs text-aviso" data-venta-reabierta>
+                        <RotateCcw aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+                        <span>
+                          <span className="font-medium">
+                            Su OT{reabierta.numero ? ` ${reabierta.numero}` : ''} pasó a otro comprador y allí se anuló: la venta volvió a esperar su OT.
+                          </span>{' '}
+                          {cancela
+                            ? 'Si la venta sigue, Administración le carga su OT. Si ya no sigue, cancélala con «Cancelar la venta».'
+                            : puedeSubir && esMia
+                              ? 'Si la venta sigue, Administración le carga su OT. Para cancelarla, Contabilidad anula primero su factura.'
+                              : cargaOt
+                                ? `Antes de cargarle otra OT, confirma con ${c.registrado_por_nombre ?? 'quien la registró'} si la venta sigue; si no sigue, la cancela esa persona${c.facturada ? ', después de que Contabilidad anule su factura' : ''}.`
+                                : `Si la venta ya no sigue, la cancela quien la registró${c.registrado_por_nombre ? ` (${c.registrado_por_nombre})` : ''}.`}
+                        </span>
+                      </p>
+                    )}
+
                     {/* Una aprobada que espera su código: quien no lo da tiene
                         que saber por qué no avanza y quién la destraba. */}
-                    {!cargaOt && sinCodigo(c) && (
+                    {!cargaOt && sinCodigo(c) && !reabierta && (
                       <p className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-aviso-suave px-2.5 py-1.5 text-xs text-aviso">
                         <Hourglass aria-hidden className="mt-0.5 size-3.5 shrink-0" />
                         <span>
@@ -466,44 +522,65 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                       </p>
                     )}
 
-                    {c.ordenes.length > 0 && (
+                    {filasDeOt.length > 0 && (
                       <ul className="space-y-1" aria-label={varias ? `OT de las ${unidades} unidades` : undefined}>
-                        {c.ordenes.map((o, i) => (
-                          <li key={o.id ?? `${o.codigo_interno ?? 'sin-codigo'}-${i}`} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-                            <Hash aria-hidden className="size-4 text-texto-suave" />
-                            {varias && <span className="text-xs font-medium text-texto-suave">Unidad {o.unidad ?? i + 1}</span>}
-                            {o.codigo_interno ? (
-                              veCodigos ? (
-                                <Link
-                                  href={`/codigos-internos/detalle?codigo=${encodeURIComponent(o.codigo_interno)}`}
-                                  className="font-mono font-medium break-all text-acento hover:underline pointer-coarse:inline-flex pointer-coarse:min-h-11 pointer-coarse:items-center"
-                                >
-                                  {o.codigo_interno}
-                                </Link>
+                        {filasDeOt.map((f, i) => {
+                          // La unidad cuya OT pasó a otro comprador, en su lugar entre las demás (20261126988000).
+                          if (!f.o) {
+                            return (
+                              <li key={`paso-${f.unidad}-${i}`} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm" data-paso-a-otro-comprador>
+                                <UserRoundX aria-hidden className="size-4 text-texto-suave" />
+                                {varias && <span className="text-xs font-medium text-texto-suave">Unidad {f.unidad}</span>}
+                                {f.numero && <span className="text-texto-suave">OT {f.numero}</span>}
+                                <Insignia tono="neutro">Pasó a otro comprador: ya no lleva OT</Insignia>
+                              </li>
+                            )
+                          }
+                          const o = f.o
+                          return (
+                            <li key={o.id ?? `${o.codigo_interno ?? 'sin-codigo'}-${i}`} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                              <Hash aria-hidden className="size-4 text-texto-suave" />
+                              {varias && <span className="text-xs font-medium text-texto-suave">Unidad {f.unidad}</span>}
+                              {o.codigo_interno ? (
+                                veCodigos ? (
+                                  <Link
+                                    href={`/codigos-internos/detalle?codigo=${encodeURIComponent(o.codigo_interno)}`}
+                                    className="font-mono font-medium break-all text-acento hover:underline pointer-coarse:inline-flex pointer-coarse:min-h-11 pointer-coarse:items-center"
+                                  >
+                                    {o.codigo_interno}
+                                  </Link>
+                                ) : (
+                                  <span className="font-mono font-medium break-all text-texto">{o.codigo_interno}</span>
+                                )
                               ) : (
-                                <span className="font-mono font-medium break-all text-texto">{o.codigo_interno}</span>
-                              )
-                            ) : (
-                              <span className="text-texto-suave">Sin código interno</span>
-                            )}
-                            {o.numero &&
-                              (veOt && o.id ? (
-                                <Link href={`/ordenes/${o.id}`} className="font-medium text-acento hover:underline pointer-coarse:inline-flex pointer-coarse:min-h-11 pointer-coarse:items-center">
-                                  · OT {o.numero}
-                                </Link>
-                              ) : (
-                                <span className="text-texto-suave">· OT {o.numero}</span>
-                              ))}
-                            {o.estado && (
-                              <Insignia tono={definir(ESTADO_OT, o.estado).tono}>{definir(ESTADO_OT, o.estado).etiqueta}</Insignia>
-                            )}
-                          </li>
-                        ))}
+                                <span className="text-texto-suave">Sin código interno</span>
+                              )}
+                              {o.numero &&
+                                (veOt && o.id ? (
+                                  <Link href={`/ordenes/${o.id}`} className="font-medium text-acento hover:underline pointer-coarse:inline-flex pointer-coarse:min-h-11 pointer-coarse:items-center">
+                                    · OT {o.numero}
+                                  </Link>
+                                ) : (
+                                  <span className="text-texto-suave">· OT {o.numero}</span>
+                                ))}
+                              {o.estado && (
+                                <Insignia tono={definir(ESTADO_OT, o.estado).tono}>{definir(ESTADO_OT, o.estado).etiqueta}</Insignia>
+                              )}
+                            </li>
+                          )
+                        })}
                       </ul>
+                    )}
+                    {pasada && (
+                      <p className="flex items-start gap-1.5 text-xs text-texto-suave" data-paso-a-otro-comprador>
+                        <UserRoundX aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+                        <span>{pasada}</span>
+                      </p>
                     )}
                     {corregiria && c.facturada && (
                       <p className="text-xs text-texto-suave">
-                        Ya está facturada: no se corrige. Si hay que cambiarla, Contabilidad anula primero la factura.
+                        {/* La reabierta ya dice arriba que Contabilidad anula primero la factura. */}
+                        Ya está facturada: no se corrige.{reabierta && esMia ? '' : ' Si hay que cambiarla, Contabilidad anula primero la factura.'}
                       </p>
                     )}
                     {/* Para consultar, justo encima de las acciones: quién hizo cada paso, quién la tiene ahora y hace cuántos días. */}
@@ -514,7 +591,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                       femenino
                     />
 
-                    {(revisa && c.estado === 'POR_REVISAR' || cargaOt && sinCodigo(c) || corrige || quitable) && (
+                    {(revisa && c.estado === 'POR_REVISAR' || cargaOt && sinCodigo(c) || corrige || quitable || cancela) && (
                       <div className="flex flex-wrap items-center gap-2">
                         {revisa && c.estado === 'POR_REVISAR' && c.id && (
                           <RevisarCotizacion id={c.id} conOrden={c.ordenes.length > 0} />
@@ -536,11 +613,12 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                           <CorregirCotizacion id={c.id} numero={c.numero ?? ''} observacion={c.observacion}
                             rechazada={c.estado === 'RECHAZADA'} aprobada={c.estado === 'APROBADA'}
                             version={c.version ?? 1} clienteId={c.cliente_id ?? ''} carroceriaId={c.tipo_carroceria_id ?? ''}
-                            unidades={unidades} conOrdenes={c.ordenes.length}
+                            unidades={unidades} conOrdenes={c.ordenes.length} pasaron={c.ordenes_a_otro_comprador?.length ?? 0}
                             unidadMayor={Math.max(0, ...c.ordenes.map((o) => o.unidad ?? 1))}
                             clientes={catalogos.clientes} carrocerias={catalogos.carrocerias} />
                         )}
                         {!c.orden_id && quitable && c.id && <QuitarCotizacion id={c.id} numero={c.numero ?? ''} />}
+                        {cancela && c.id && <CancelarVenta id={c.id} numero={c.numero ?? ''} />}
                       </div>
                     )}
                   </TarjetaCuerpo>

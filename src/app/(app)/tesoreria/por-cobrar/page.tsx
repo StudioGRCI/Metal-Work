@@ -220,7 +220,16 @@ export default async function PaginaPorCobrar() {
                   data-cotizacion={c.numero ?? undefined}
                 >
                   <span>
-                    <span className="font-medium text-texto">{rotuloDeCodigos(c.unidades)}</span>
+                    <span className="font-medium text-texto">
+                      {c.paso_a_otro_comprador && !c.unidades.some((u) => u.codigo) ? 'Venta cerrada' : rotuloDeCodigos(c.unidades)}
+                    </span>
+                    {/* Su OT pasó a otro comprador: no lleva OT ni se factura más (migración 20261126988000). */}
+                    {c.paso_a_otro_comprador && (
+                      <>
+                        {' '}
+                        <Insignia tono="neutro">Pasó a otro comprador</Insignia>
+                      </>
+                    )}
                     <span className="text-texto-suave">
                       {' '}
                       · {c.cliente ?? 'Cliente sin registrar'} · cotización {c.numero}
@@ -235,9 +244,10 @@ export default async function PaginaPorCobrar() {
                           <span className="tabular">
                             Facturado {moneda(c.facturado, m)}
                             {/* Con una factura en otra moneda no se compara con el total (como facturacion_pendientes). */}
-                            {!otra && parteDe(c.facturado, total) !== null && ` (${porcentaje(parteDe(c.facturado, total))} de la cotización)`} · cobrado{' '}
+                            {/* La venta cerrada no se factura más: el % de la cotización diría que falta el resto. */}
+                            {!otra && !c.paso_a_otro_comprador && parteDe(c.facturado, total) !== null && ` (${porcentaje(parteDe(c.facturado, total))} de la cotización)`} · cobrado{' '}
                             {moneda(c.cobrado, m)}
-                            {!otra && parteDe(c.cobrado, total) !== null && ` (${porcentaje(parteDe(c.cobrado, total))} de la cotización)`}
+                            {!otra && !c.paso_a_otro_comprador && parteDe(c.cobrado, total) !== null && ` (${porcentaje(parteDe(c.cobrado, total))} de la cotización)`}
                           </span>
                         )
                       )}

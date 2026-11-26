@@ -1,4 +1,4 @@
-import { Download, FileText, Hourglass, ReceiptText } from 'lucide-react'
+import { Download, FileText, Hourglass, ReceiptText, UserRoundX } from 'lucide-react'
 import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
@@ -59,6 +59,8 @@ function estadoDeUnidad(u: UnidadDeCotizacion, sola: boolean): Estado {
  * Administración y no se la llama «Por facturar».
  */
 function estadoDe(c: CotizacionParaFacturar): Estado {
+  // Su OT pasó a otro comprador: ya no lleva OT ni se factura más (migración 20261126988000).
+  if (c.paso_a_otro_comprador) return { etiqueta: 'Pasó a otro comprador', tono: 'neutro' }
   const [primera] = c.unidades
   if (c.unidades.length === 1 && primera) return estadoDeUnidad(primera, true)
   const como = c.unidades.map(comoVaLaUnidad)
@@ -78,6 +80,16 @@ const porFacturar = (c: CotizacionParaFacturar) => c.unidades.some(esperaFactura
 /** La unidad que más espera su factura, entre las que la esperan. */
 function laQueMasEspera(c: CotizacionParaFacturar): UnidadDeCotizacion | null {
   return c.unidades.filter(esperaFactura).reduce<UnidadDeCotizacion | null>((max, u) => (max === null || (u.dias ?? -1) > (max.dias ?? -1) ? u : max), null)
+}
+
+/** La venta que se cerró porque su OT pasó a otro comprador, con la OT si se puede leer. */
+function pasoAOtroComprador(c: CotizacionParaFacturar, ordenes: (string | null)[]) {
+  const numeros = ordenes.filter((n): n is string => Boolean(n))
+  const ot = numeros.length === 0 ? 'Su OT' : numeros.length === 1 ? `Su OT ${numeros[0]}` : `Sus OT ${numeros.join(' y ')}`
+  const paso = numeros.length > 1 || ordenes.length > 1 ? 'pasaron' : 'pasó'
+  // Sin factura vigente no sale en la bandeja (`cotizaciones_para_facturar`).
+  const porCobrar = c.facturas.some((f) => !f.anulada_en && !f.cancelada)
+  return `${ot} ${paso} a otro comprador: esta venta ya no lleva OT.${porCobrar ? ' Queda cobrar su factura, o anularla.' : ''}`
 }
 
 /**
@@ -130,7 +142,8 @@ export default async function PaginaFacturacion() {
   // Lo que espera factura va primero, de lo más antiguo a lo más nuevo, y la que está en
   // corrección después, porque no se puede facturar todavía; luego lo facturado y al final
   // lo que espera su OT.
-  const turno = (c: CotizacionParaFacturar) => (!c.unidades.some((u) => u.codigo) ? 3 : porFacturar(c) ? (c.en_correccion ? 1 : 0) : 2)
+  const turno = (c: CotizacionParaFacturar) =>
+    c.paso_a_otro_comprador ? 2 : !c.unidades.some((u) => u.codigo) ? 3 : porFacturar(c) ? (c.en_correccion ? 1 : 0) : 2
   const cotizaciones = [...bandeja].sort((a, b) => turno(a) - turno(b) || (turno(a) === 0 ? (diasDe(b) ?? -1) - (diasDe(a) ?? -1) : 0))
   // Una fila por unidad que espera factura: cada una lleva la suya. Primero las que Contabilidad
   // puede facturar ya, de la que más espera a la que menos; las que están en corrección, al final.
@@ -173,8 +186,10 @@ export default async function PaginaFacturacion() {
             const m = codigo(c.moneda)
             const total = totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
             const facturado = facturadoDe(c)
-            const facturadoPct = total === null || enOtraMoneda(c) ? null : parteDe(facturado, total)
-            const falta = total === null || enOtraMoneda(c) ? 0 : Math.max(0, total - facturado)
+            // La venta cerrada no se factura más: el % diría que falta el resto.
+            const facturadoPct = total === null || enOtraMoneda(c) || c.paso_a_otro_comprador ? null : parteDe(facturado, total)
+            // La venta cerrada no se factura más: no le falta nada.
+            const falta = total === null || enOtraMoneda(c) || c.paso_a_otro_comprador ? 0 : Math.max(0, total - facturado)
             const aguarda = esperaDe(c, laQueMasEspera(c), recorridos)
             const varias = c.unidades.length > 1
             const conOt = c.unidades.filter((u) => u.codigo)
@@ -187,7 +202,9 @@ export default async function PaginaFacturacion() {
                     <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
                       <div>
                         <p className="flex flex-wrap items-center gap-2">
-                          <span className="text-base font-semibold text-texto">{rotuloDeCodigos(c.unidades)}</span>
+                          <span className="text-base font-semibold text-texto">
+                            {c.paso_a_otro_comprador && conOt.length === 0 ? 'Venta cerrada' : rotuloDeCodigos(c.unidades)}
+                          </span>
                           {/* La que está en corrección no espera a Contabilidad: no se la llama «Por facturar». */}
                           {c.en_correccion && porFacturar(c) ? (
                             <Insignia>En corrección</Insignia>
@@ -266,7 +283,12 @@ export default async function PaginaFacturacion() {
                       </p>
                     )}
 
-                    {sinOt > 0 && (
+                    {c.paso_a_otro_comprador ? (
+                      <p data-paso-a-otro-comprador className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-neutro-suave px-2.5 py-1.5 text-xs text-texto-suave">
+                        <UserRoundX aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+                        <span>{pasoAOtroComprador(c, c.paso_a_otro_comprador)}</span>
+                      </p>
+                    ) : sinOt > 0 && (
                       <p className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-neutro-suave px-2.5 py-1.5 text-xs text-texto-suave">
                         <Hourglass aria-hidden className="mt-0.5 size-3.5 shrink-0" />
                         <span>
@@ -279,7 +301,8 @@ export default async function PaginaFacturacion() {
                       </p>
                     )}
 
-                    {varias && <Unidades cotizacion={c} moneda={m} recorridos={recorridos} factura={factura} />}
+                    {/* La venta cerrada ya no lleva OT: sus unidades no esperan ninguna. */}
+                    {varias && !c.paso_a_otro_comprador && <Unidades cotizacion={c} moneda={m} recorridos={recorridos} factura={factura} />}
 
                     {c.facturas.length > 0 && (
                       <div className="space-y-2 border-t border-borde pt-3">

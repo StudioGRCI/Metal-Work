@@ -84,7 +84,8 @@ $$;
 
 -- ============================================ 1. Qué área pide qué
 select test.afirmar((select array_agg(codigo order by codigo) from public.areas where requerimiento = 'OPERACION')
-                    = array['ACB', 'ALM', 'MTZ', 'PRD'], 'el de operación lo piden Acabados, Almacén, Maestranza y Producción');
+                    = array['ACB', 'ALM', 'MNT', 'MTZ', 'PRD'],
+                    'el de operación lo piden Acabados, Almacén, Maestranza, Producción y, desde la 20261126996000, Mantenimiento');
 select test.afirmar((select requerimiento = 'ADMINISTRACION' and activo from public.areas where codigo = 'SAP'),
                     'Servicios de apoyo existe y pide por el de Administración');
 select test.afirmar((select bool_and(requerimiento = 'ADMINISTRACION') from public.areas
