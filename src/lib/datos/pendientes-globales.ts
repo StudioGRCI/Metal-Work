@@ -12,7 +12,7 @@ import { ESTADOS_ACTIVOS_OT } from '@/lib/dominio/estados'
 import { totalConIgv } from '@/lib/dominio/finanzas'
 import { devueltaEntera } from '@/lib/dominio/pago-de-boleta'
 import { estadoDePlanilla } from '@/lib/dominio/planilla-diaria'
-import { ESTADOS_RQ_ABIERTOS, leTocaAtender, PUESTO_ALMACEN, quienAtiende, RQ_EN_COMPRA, tieneParaRecoger, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
+import { ESTADOS_RQ_ABIERTOS, leTocaAtender, loTieneQuienAtiende, quienAtiende, tieneParaRecoger, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
 import { hoyLima } from '@/lib/format'
 import { rutasDeTrabajo } from '@/lib/navegacion'
 import { apruebaSinOrden, puede, type PerfilSesion } from '@/lib/sesion'
@@ -180,14 +180,15 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       clave: 'pdf_sin_ot',
       ruta: '/cotizaciones/pdf?estado=APROBADA_SIN_OT',
       tono: 'acento',
-      texto: (n) => plural(n, 'cotización aprobada sin código ni OT', 'cotizaciones aprobadas sin código ni OT'),
+      texto: (n) => plural(n, 'cotización aprobada que espera su OT', 'cotizaciones aprobadas que esperan OT'),
       contar: () =>
         cabeza(
           supabase
             .from('v_cotizaciones_pdf')
             .select('id', { count: 'exact', head: true })
             .eq('estado', 'APROBADA')
-            .is('orden_id', null),
+            // Le falta alguna OT: una por unidad (migración 20261126760000).
+            .gt('ordenes_faltantes', 0),
         ),
     })
   }
@@ -777,8 +778,23 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       return data ?? []
     })())
   const atiende = quienAtiende(perfil)
-  const rqQueTeTocan = (estado: string) => async () =>
-    (await rqAbiertos()).filter((r) => r.estado === estado && leTocaAtender(r, atiende)).length
+  // Qué espera hoy cada RQ abierto después de la revisión del stock, según su
+  // recorrido: el globo cuenta solo lo que tiene el puesto de quien mira, igual
+  // que «N esperan por ti» en la bandeja (DKS, 2026-11-26). Los por revisar van
+  // en su propia línea y no se piden: el recorrido cuesta por cada RQ. Si no se
+  // puede leer, el error sube y el globo sale con «!» en vez de contar otra cosa.
+  let esperas: Promise<{ tipo: string | null; area_id: string | null; espera: string | undefined }[]> | null = null
+  const queEspera = () =>
+    (esperas ??= (async () => {
+      const despues = (await rqAbiertos()).filter((r) => r.estado !== 'POR_ATENDER')
+      if (despues.length === 0) return []
+      const recorridos = await recorridoDeRequerimientos(despues.map((r) => r.id))
+      return despues.map((r) => ({
+        tipo: r.tipo,
+        area_id: r.area_id,
+        espera: recorridos.get(r.id)?.find((p) => p.situacion === 'AHORA')?.espera ?? undefined,
+      }))
+    })())
   // Los RQ con algún insumo que se pasa del metrado de Diseño sin su visto
   // (migración 20261120400000), y con cuál falta el sustento de quien pidió.
   let frenados: Promise<{ frenados: Set<string>; sinSustento: Set<string> }> | null = null
@@ -837,29 +853,28 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       return (data ?? []).length
     },
   })
-  // En compra, a Almacén le toca cuando lo comprado ya llegó y falta dejarlo
-  // listo: lo dice el recorrido, como en la bandeja de atención (leTocaAtender).
-  if (atiende.recibe) tareas.push({
-    clave: 'rq_por_dejar_listo', ruta: '/requerimientos/atencion', tono: 'aviso',
-    texto: n => plural(n, 'requerimiento con lo comprado en almacén por dejar listo', 'requerimientos con lo comprado en almacén por dejar listos'),
-    contar: async () => {
-      const enCompra = (await rqAbiertos()).filter((r) => (RQ_EN_COMPRA as readonly string[]).includes(r.estado))
-      if (enCompra.length === 0) return 0
-      const recorridos = await recorridoDeRequerimientos(enCompra.map((r) => r.id))
-      const loTiene = (id: string) => recorridos.get(id)?.find((p) => p.situacion === 'AHORA')?.puesto
-      return enCompra.filter((r) => loTiene(r.id) === PUESTO_ALMACEN && leTocaAtender(r, atiende, PUESTO_ALMACEN)).length
-    },
-  })
-  if (atiende.compraDe.OPERACION || atiende.compraDe.ADMINISTRACION) tareas.push({
-    clave: 'rq_por_comprar', ruta: '/requerimientos/atencion', tono: 'aviso',
-    texto: n => plural(n, 'requerimiento sin stock por comprar', 'requerimientos sin stock por comprar'),
-    contar: async () =>
-      (await rqAbiertos()).filter((r) => r.estado === 'SIN_STOCK' && atiende.compraDe[tipoDeRequerimiento(r)]).length,
-  })
-  if (atiende.despacha) tareas.push({
-    clave: 'rq_por_entregar', ruta: '/requerimientos/atencion', tono: 'acento',
-    texto: n => plural(n, 'requerimiento listo por entregar al área', 'requerimientos listos por entregar al área'),
-    contar: rqQueTeTocan('LISTO_EN_ALMACEN'),
+  // Lo que tiene su puesto después de la revisión del stock: a quien compra, lo
+  // que falta comprar, programar o volver a traer; a Almacén, lo que llegó y
+  // falta validar o dejar listo, y lo que ya salió del kardex y falta marcar
+  // entregado. Lo que espera a Gerencia, al conductor o al área que lo recoge no
+  // cuenta (DKS, 2026-11-26). La revisión va en su propia línea.
+  const almacen = atiende.recibe || atiende.despacha
+  const compra = atiende.compraDe.OPERACION || atiende.compraDe.ADMINISTRACION
+  if (almacen || compra) tareas.push({
+    clave: 'rq_te_esperan', ruta: '/requerimientos/atencion', tono: 'aviso',
+    texto: n =>
+      almacen && compra ? plural(n, 'requerimiento espera por ti', 'requerimientos esperan por ti')
+      : almacen ? plural(n, 'requerimiento por validar, dejar listo o entregar espera por ti', 'requerimientos por validar, dejar listos o entregar esperan por ti')
+      // Programar el recojo es solo de Logística: a la administradora, lo que falta comprar.
+      // El RQ listo de su propia área también es suyo: lo recoge.
+      : atiende.compraDe.OPERACION
+        ? perfil.area_id
+          ? plural(n, 'requerimiento por comprar, programar o recoger espera por ti', 'requerimientos por comprar, programar o recoger esperan por ti')
+          : plural(n, 'requerimiento por comprar o programar espera por ti', 'requerimientos por comprar o programar esperan por ti')
+        : perfil.area_id
+          ? plural(n, 'requerimiento por comprar o recoger espera por ti', 'requerimientos por comprar o recoger esperan por ti')
+          : plural(n, 'requerimiento por comprar espera por ti', 'requerimientos por comprar esperan por ti'),
+    contar: async () => (await queEspera()).filter((r) => loTieneQuienAtiende(r.espera, r, atiende, perfil.area_id ?? null)).length,
   })
   // Las notas de las entregas que Almacén todavía no responde (plan 2, entrega
   // 2.2): las cierra quien despacha (`atender_conformidad_salida`), y DKS
@@ -1152,7 +1167,10 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
   // cuenta, también a una que solo consulta `/ssoma` (Gerencia), y es suya igual.
   const suyas = tareas.filter((t) => DE_CUALQUIER_PUESTO.has(t.clave) || enMenu.has(t.ruta.split(/[?#]/)[0]))
 
-  const cuentas = await Promise.all(suyas.map((t) => t.contar().catch(() => null)))
+  const cuentas = await Promise.all(suyas.map((t) => t.contar().catch((e: unknown) => {
+    console.error(`Pendientes: no se pudo contar «${t.clave}».`, e)
+    return null
+  })))
 
   const porRuta: Record<string, number> = {}
   const sinComprobar = new Set<string>()

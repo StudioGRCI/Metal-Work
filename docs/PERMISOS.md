@@ -617,14 +617,14 @@ la OT en su menú.
 | Puesto | Globos del menú | Cifras |
 | --- | --- | --- |
 | Requerimientos | Salidas de vehículo observadas por Tesorería | Requerimientos abiertos (y listos en almacén), Esperan compra, Vehículos en la planta, Salido del almacén por código |
-| Almacén | Requerimientos por revisar, Requerimientos listos por entregar, Compras dejadas por validar, Salidas que esperan su formato firmado | Por llegar al almacén, Bajo su stock mínimo, Materiales con saldo, Salidas este mes |
-| Logística | Requerimientos sin stock por comprar, Compras aprobadas por programar | OC en Gerencia, Con el conductor, Servicios en curso, Comprado este mes |
+| Almacén | Requerimientos por revisar, Requerimientos que esperan por él según su recorrido (por validar, dejar listos o marcar entregados; desde el 2026-11-26), Compras dejadas por validar, Salidas que esperan su formato firmado | Por llegar al almacén, Bajo su stock mínimo, Materiales con saldo, Salidas este mes |
+| Logística | Requerimientos que esperan por él según su recorrido (por comprar, programar o volver a traer; desde el 2026-11-26), Compras aprobadas por programar | OC en Gerencia, Con el conductor, Servicios en curso, Comprado este mes |
 | Conductor | Compras por recoger o dejar | Por recoger, En camino, Dejadas este mes |
 | Gerencia | Cotizaciones por revisar, Cotizaciones aprobadas sin código ni OT, Compras y servicios por aprobar (si la regla la hace aprobadora), Reportes diarios que esperan su visto | Códigos con movimiento, Costo acumulado, Facturado y cobrado, Costo por completar; y los seis códigos más recientes |
 | Tesorería | Facturas por cobrar, Facturas de compra vencidas y por pagar, OC con boleta por pagar, Boletas de una parte por pagar, OC con boleta pagadas de más o con factura en otra moneda, Servicios por pagar, Recibos por honorarios por pagar, Planillas diarias por pagar, Salidas de vehículo por revisar | Por cobrar, Por pagar, Servicios por pagar, Honorarios por pagar |
 | Contabilidad | Cotizaciones por facturar, Guías de remisión por cargar, Compras sin factura registrada | Facturado este mes, Facturas de compra del mes, Guías cargadas este mes |
 | Diseño | Informes por revisar, Códigos con etapas vencidas y lo de la OT | Códigos en curso, Sin etapas, Planos sin recibir, Sin lista de materiales; y el bloque de la OT |
-| Administración | Requerimientos de Administración por comprar y lo de la OT | Requerimientos abiertos, Subcontratos vigentes, Gastos generales del mes, Clientes; y el bloque de la OT |
+| Administración | Requerimientos de Administración que esperan por ella según su recorrido (desde el 2026-11-26) y lo de la OT | Requerimientos abiertos, Subcontratos vigentes, Gastos generales del mes, Clientes; y el bloque de la OT |
 | Recursos Humanos | Reportes diarios que esperan su visto, Días con horas extras por decidir, Personas por enviar a la planilla diaria, Planilla del mes por cerrar | Personal activo, Marcaron ingreso hoy, Tardanzas del mes, Reportes diarios del mes |
 | Portería | — | Marcaron ingreso hoy, Marcaron salida hoy, Tardanzas de hoy |
 | Mantenimiento | — | Averías por atender (y cuántas detienen el trabajo, desde el 2026-11-26), Equipos parados, Con observación, Equipos en el padrón |
