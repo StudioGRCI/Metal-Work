@@ -77,3 +77,7 @@ test('lo que la OC no compró no está «por llegar»', () => {
     ['el insumo 2, por llegar', 'el insumo 1, sin comprar: pide el resto en un RQ nuevo'],
   )
 })
+
+test('lo que no tiene OC, o la tiene rechazada, está «por comprar»', () => {
+  assert.deepEqual(loQueLoAtrasa([{ item: 2, partes: { recoger: 0, porLlegar: 0, revisar: 0, porComprar: 4 } }]), ['el insumo 2, por comprar'])
+})

@@ -366,10 +366,14 @@ export function TarjetaRequerimiento({
  */
 function LoQueLoTieneVencido({ rq, freno }: { rq: RequerimientoListado; freno: ReturnType<typeof frenoDelRq> }) {
   // Lo que la OC no compró ya no está «por llegar»: la tarjeta pide un RQ nuevo para eso.
+  // Y lo que no tiene OC, o la tiene rechazada o anulada, está «por comprar».
   const falta = loQueLoAtrasa(
     rq.lineas.map((l) => {
       const p = partesDelInsumo(l, rq.estado)
-      return { item: l.item, partes: p && laCompraQuedoCorta(l, p) ? { ...p, porLlegar: 0, sinCompra: p.porLlegar } : p }
+      if (!p || p.porLlegar === 0) return { item: l.item, partes: p }
+      if (laCompraQuedoCorta(l, p)) return { item: l.item, partes: { ...p, porLlegar: 0, sinCompra: p.porLlegar } }
+      if (!l.orden_compra || l.compra_rechazada) return { item: l.item, partes: { ...p, porLlegar: 0, porComprar: p.porLlegar } }
+      return { item: l.item, partes: p }
     }),
   )
   return (

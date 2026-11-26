@@ -79,9 +79,10 @@ export function textoDelPlazo(plazo: number): { etiqueta: string; tono: 'peligro
 /**
  * Lo que falta de un insumo, como lo parte la barra (`partesDelInsumo`); `null`
  * en el anulado. `sinCompra` es lo que la OC no compró y ya no va a llegar: ya
- * entró entera (`laCompraQuedoCorta`).
+ * entró entera (`laCompraQuedoCorta`). `porComprar` es lo que todavía no tiene
+ * OC, o cuya OC se rechazó o se anuló: no viene en camino.
  */
-type Partes = { recoger: number; porLlegar: number; revisar: number; sinCompra?: number } | null
+type Partes = { recoger: number; porLlegar: number; revisar: number; porComprar?: number; sinCompra?: number } | null
 
 /** «2», «2 y 5», «2, 4 y 5». */
 const lista = (items: number[]) => (items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} y ${items.at(-1)}`)
@@ -92,9 +93,10 @@ const lista = (items: number[]) => (items.length <= 1 ? items.join('') : `${item
  * insumos 1 y 3, por llegar». Un insumo con dos partes sale en las dos.
  */
 export function loQueLoAtrasa(lineas: readonly { item: number; partes: Partes }[]): string[] {
-  const grupos: { clave: 'recoger' | 'porLlegar' | 'revisar' | 'sinCompra'; texto: string }[] = [
+  const grupos: { clave: 'recoger' | 'porLlegar' | 'porComprar' | 'revisar' | 'sinCompra'; texto: string }[] = [
     { clave: 'recoger', texto: 'para recoger en Almacén' },
     { clave: 'porLlegar', texto: 'por llegar' },
+    { clave: 'porComprar', texto: 'por comprar' },
     { clave: 'revisar', texto: 'por revisar en Almacén' },
     { clave: 'sinCompra', texto: 'sin comprar: pide el resto en un RQ nuevo' },
   ]
