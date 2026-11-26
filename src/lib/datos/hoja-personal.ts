@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { rangoDelMes } from '@/lib/datos/rrhh'
+import { hoyLima } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 
 /**
@@ -116,8 +117,9 @@ export async function pagosDeLaPersona(
 ): Promise<PagoDeLaHoja[]> {
   const supabase = await createClient()
   const { desde, hasta } = rangoDelMes(mes)
-  // El último día del mes: un pago de la oficina que termina en el mes siguiente se pone aquí.
-  const finDelMes = new Date(Date.parse(`${hasta}T12:00:00Z`) - 86_400_000).toISOString().slice(0, 10)
+  // El último día del mes, o hoy si el mes es este: un pago de la oficina cuyo tramo termina en otro mes se pone
+  // aquí, nunca en un día que no llegó.
+  const finDelMes = [new Date(Date.parse(`${hasta}T12:00:00Z`) - 86_400_000).toISOString().slice(0, 10), hoyLima()].sort()[0]
   // Primero las planillas diarias del mes y después la parte de la persona en
   // ellas: filtrar por la fecha de la planilla dentro del embebido pide `!inner`
   // con su llave nombrada, que el banco local no lee.
@@ -176,7 +178,7 @@ export async function pagosDeLaPersona(
       clase: 'OFICINA',
       id: p.id,
       // Un tramo puede pasar de un mes a otro (hasta 61 días): se pone en el mes que se mira.
-      fecha: p.hasta > finDelMes ? finDelMes : p.hasta,
+      fecha: p.hasta > finDelMes ? finDelMes : p.hasta < desde ? desde : p.hasta,
       desde: p.desde,
       hasta: p.hasta,
       monto: Number(p.monto),

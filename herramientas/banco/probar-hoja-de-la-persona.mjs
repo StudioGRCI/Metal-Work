@@ -96,6 +96,7 @@ const [{ id: rrhhId }] = await consulta('select id from usuarios where correo = 
 const [{ id: mtz }] = await consulta(`select id from areas where codigo = 'MTZ'`)
 const [{ id: con }] = await consulta(`select id from areas where codigo = 'CON'`)
 let planillaDiaria = null
+const reportes = []
 
 await comoPuesto(
   CUENTAS.rrhh,
@@ -122,6 +123,7 @@ for (const [fecha, horas, descripcion] of [
     `select public.registrar_reporte_diario(gen_random_uuid(), $1::date, $2, 'Tolva de prueba', 'Trabajo del día (prueba del banco).', $3::jsonb, null, null) as id`,
     [fecha, CODIGO, JSON.stringify([{ descripcion, avance: 10, personal: [{ trabajador_id: juan.id, horas }] }])],
   )
+  reportes.push(id)
   await comoPuesto(CUENTAS.gerencia, `select public.validar_reporte_diario($1, 'GERENCIA')`, [id])
   await comoPuesto(CUENTAS.rrhh, `select public.validar_reporte_diario($1, 'RRHH')`, [id])
 }
@@ -301,11 +303,17 @@ try {
   for (const a of await consulta(`select id from asistencias where trabajador_id = $1 and anulado_en is null`, [juan.id])) {
     await comoPuesto(CUENTAS.rrhh, `select public.anular_asistencia($1, 'Prueba del banco')`, [a.id]).catch((e) => fallas.push(`no se pudo deshacer lo sembrado: ${e?.message ?? e}`))
   }
+  // Los reportes validados también: si no, la planilla diaria siguiente del banco se lleva a Juan.
+  for (const id of reportes) {
+    await comoPuesto(CUENTAS.rrhh, `select public.anular_reporte_diario($1, 'Prueba del banco: se deja anulado al terminar')`, [id]).catch((e) =>
+      fallas.push(`no se pudo anular el reporte: ${e?.message ?? e}`),
+    )
+  }
   for (const t of [juan, lucia]) {
     await comoPuesto(CUENTAS.rrhh, `select public.rrhh_dar_de_baja_trabajador($1, $2::date)`, [t.id, hoy]).catch((e) => fallas.push(`no se pudo deshacer lo sembrado: ${e?.message ?? e}`))
   }
   await base.end()
 }
 
-console.log(fallas.length ? `\n${fallas.length} fallas` : '\nTodo pasa.')
+console.log(fallas.length ? `\n${fallas.length} fallas:\n- ${fallas.join('\n- ')}` : '\nTodo pasa.')
 process.exit(fallas.length ? 1 : 0)

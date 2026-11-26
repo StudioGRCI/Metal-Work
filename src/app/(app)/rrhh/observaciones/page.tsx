@@ -80,10 +80,10 @@ export default async function PaginaObservaciones({ searchParams }: PageProps<'/
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         {persona ? (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <Link href={`/rrhh/observaciones?mes=${mes}`} className="text-sm font-medium text-acento hover:underline">
+            <Link href={`/rrhh/observaciones?mes=${mes}`} className="inline-flex min-h-11 items-center text-sm font-medium text-acento hover:underline sm:min-h-0">
               Volver al mes
             </Link>
-            <Link href={`/rrhh/personal/${persona.id}?mes=${mes}`} className="text-sm font-medium text-acento hover:underline">
+            <Link href={`/rrhh/personal/${persona.id}?mes=${mes}`} className="inline-flex min-h-11 items-center text-sm font-medium text-acento hover:underline sm:min-h-0">
               Ver su hoja del mes
             </Link>
           </div>

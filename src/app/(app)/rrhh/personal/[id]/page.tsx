@@ -111,6 +111,8 @@ export default async function PaginaHojaDeLaPersona({ params, searchParams }: Pa
   const yaPagados = vigentes.pagos.filter((p) => (p.clase === 'OFICINA' ? p.hasta.slice(0, 7) === mes : p.pagado_el !== null))
   const pagado = yaPagados.reduce((n, p) => n + (p.clase === 'OFICINA' ? p.monto : p.total), 0)
   const porPagar = vigentes.pagos.reduce((n, p) => n + (p.clase === 'PLANILLA_DIARIA' && p.pagado_el === null ? p.total : 0), 0)
+  // El pago de la oficina cuyo tramo termina en otro mes se ve aquí, pero se cuenta allá: se dice en el pie.
+  const deOtroMes = vigentes.pagos.filter((p) => p.clase === 'OFICINA' && p.hasta.slice(0, 7) !== mes).length
 
   const enlace = (cambios: { mes?: string; ver?: Parte | null }) => {
     const m = cambios.mes ?? mes
@@ -205,13 +207,13 @@ export default async function PaginaHojaDeLaPersona({ params, searchParams }: Pa
               titulo="Pagado"
               icono={Wallet}
               valor={<span className="tabular">{moneda(pagado)}</span>}
-              tono={porPagar > 0 ? 'aviso' : 'neutro'}
               pie={
                 vigentes.pagos.length === 0
                   ? 'Sin pagos este mes'
                   : [
-                      `${yaPagados.length} ${yaPagados.length === 1 ? 'pago' : 'pagos'}`,
+                      yaPagados.length === 0 ? 'Nada pagado aún' : `${yaPagados.length} ${yaPagados.length === 1 ? 'pago' : 'pagos'}`,
                       porPagar > 0 ? `${moneda(porPagar)} por pagar` : null,
+                      deOtroMes > 0 ? `${deOtroMes} ${deOtroMes === 1 ? 'pago de la oficina se cuenta' : 'pagos de la oficina se cuentan'} en el mes en que termina` : null,
                     ]
                       .filter(Boolean)
                       .join(' · ')
@@ -390,7 +392,10 @@ function Renglon({ suceso: s, mes, id, veSueldo }: { suceso: Suceso; mes: string
             cuando={diaConSemana(s.fecha)}
             detalle={[
               horas.join(' + '),
-              p.monto_descuentos > 0 && `se restó ${moneda(p.monto_descuentos)} por tardanzas y permisos`,
+              p.monto_descuentos !== 0 &&
+                (p.monto_descuentos > 0
+                  ? `se restó ${moneda(p.monto_descuentos)} por tardanzas y permisos`
+                  : `se devolvió ${moneda(-p.monto_descuentos)}`),
               p.boleta_entregada && 'boleta entregada',
             ]
               .filter(Boolean)
@@ -405,6 +410,11 @@ function Renglon({ suceso: s, mes, id, veSueldo }: { suceso: Suceso; mes: string
           anulado={p.anulado_en !== null}
           motivoAnulacion={p.motivo_anulacion}
           insignia={<Insignia tono="exito">Pago de la oficina</Insignia>}
+          estado={
+            p.hasta.slice(0, 7) !== mes ? (
+              <Insignia tono="neutro">Se cuenta en {mesLargo(`${p.hasta.slice(0, 7)}-01`)}</Insignia>
+            ) : undefined
+          }
           href={`/rrhh/pagos-oficina?mes=${mes}`}
           irA="Ver en Pagos de la oficina"
           parte="pagos"
