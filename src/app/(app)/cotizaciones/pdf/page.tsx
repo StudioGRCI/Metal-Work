@@ -10,7 +10,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Recorrido } from '@/components/ui/recorrido'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { etiquetaDeMime } from '@/lib/archivo-cotizacion'
-import { catalogosDeCotizacion, listarCotizacionesPdf } from '@/lib/datos/cotizaciones-pdf'
+import { catalogosDeCotizacion, listarCotizacionesPdf, unidadesLibresYaFacturadas } from '@/lib/datos/cotizaciones-pdf'
 import { recorridoDeCotizaciones } from '@/lib/datos/recorrido'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
@@ -216,6 +216,18 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
     console.error('Cotización: no se pudo leer el recorrido.', e)
     return null
   })
+
+  // A quien carga la OT: las unidades libres que ya tienen factura, para avisarle antes de que
+  // otro vehículo se quede con ella. Solo puede pasar si falta más de una OT. Es un aviso de
+  // más: si no se lee, la ventana sigue como siempre.
+  const yaFacturadas = cargaOt
+    ? await unidadesLibresYaFacturadas(
+        visibles.flatMap((c) => (c.id && sinCodigo(c) && (c.cantidad_unidades ?? 1) > 1 && (c.ordenes_faltantes ?? 0) > 1 ? [c.id] : [])),
+      ).catch((e: unknown) => {
+        console.error('Cotización: no se pudo leer qué unidades sin OT ya tienen factura.', e)
+        return null
+      })
+    : null
 
   const opciones = [
     { valor: null, etiqueta: `Vigentes (${cotizaciones.length - anuladas})` },
@@ -593,6 +605,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                               cual: siguiente,
                               de: unidades,
                               otras: c.ordenes.flatMap((o, i) => (o.codigo_interno ? [{ unidad: o.unidad ?? i + 1, codigo: o.codigo_interno }] : [])),
+                              facturadas: yaFacturadas?.get(c.id),
                             }}
                           />
                         )}

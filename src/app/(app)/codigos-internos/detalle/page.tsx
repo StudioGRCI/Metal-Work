@@ -1644,25 +1644,41 @@ async function VistaFacturacion({ codigo, perfil }: { codigo: string; perfil: Pe
             <ul className="divide-y divide-borde">
               {cotizaciones.map((c) => {
                 const m = deMoneda(c.moneda)
-                const total = totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
+                // De la cotización de varias unidades, este código es una: lo que le toca del total y lo
+                // facturado y cobrado de esa unidad (migración 20261126998000). Con una sola, lo de la cotización.
+                const unidad = c.unidades.length > 1 ? (c.unidades.find((u) => u.codigo === codigo) ?? null) : null
+                const total = unidad ? unidad.parte : totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
+                const facturas = unidad ? unidad.facturas : Number(c.facturas)
+                const facturado = unidad ? unidad.facturado : Number(c.facturado)
+                const cobrado = unidad ? unidad.cobrado : Number(c.cobrado)
+                const facturadoOtra = unidad ? unidad.facturadoOtraMoneda : Number(c.facturado_otra_moneda)
+                const cobradoOtra = unidad ? unidad.cobradoOtraMoneda : Number(c.cobrado_otra_moneda)
                 const pdf = c.archivo_mime === 'application/pdf'
                 return (
                   <li key={c.cotizacion_id} className="flex flex-wrap items-start justify-between gap-2 py-2 text-sm first:pt-0 last:pb-0" data-cotizacion={c.numero ?? undefined}>
                     <div className="min-w-0">
-                      <p className="font-medium text-texto">Cotización {c.numero}</p>
+                      <p className="font-medium text-texto">
+                        Cotización {c.numero}
+                        {unidad && (
+                          <span className="font-normal text-texto-suave" data-unidad={unidad.numero}>
+                            {' '}
+                            · unidad {unidad.numero} de {c.unidades.length}
+                          </span>
+                        )}
+                      </p>
                       <p className="text-xs text-texto-suave">{c.cliente ?? 'Cliente sin registrar'}</p>
                       {/* Lo facturado en la otra moneda va aparte: sumarlo mezclaba soles con dólares (20261126960000).
                           Facturada solo en la otra moneda, no se pinta «Facturado US$ 0.00»: diría que no se facturó nada. */}
-                      {(Number(c.facturas) === 0 || Number(c.facturado) > 0 || Number(c.facturado_otra_moneda) === 0) && (
+                      {(facturas === 0 || facturado > 0 || facturadoOtra === 0) && (
                         <p className="tabular text-xs text-texto-suave">
-                          {Number(c.facturas) === 0 ? 'Contabilidad aún no la factura' : `Facturado ${moneda(c.facturado, m)} · cobrado ${moneda(c.cobrado, m)}`}
+                          {facturas === 0 ? 'Contabilidad aún no la factura' : `Facturado ${moneda(facturado, m)} · cobrado ${moneda(cobrado, m)}`}
                         </p>
                       )}
-                      {Number(c.facturado_otra_moneda) > 0 && (
+                      {facturadoOtra > 0 && (
                         <p className="tabular text-xs text-texto-suave" data-otra-moneda>
-                          {Number(c.facturado) > 0 ? 'Y en ' : 'Facturada en '}
-                          {nombreMoneda(otraMoneda(m))}: {Number(c.facturado) > 0 && 'facturado '}{moneda(c.facturado_otra_moneda, otraMoneda(m))} · cobrado{' '}
-                          {moneda(c.cobrado_otra_moneda, otraMoneda(m))}
+                          {facturado > 0 ? 'Y en ' : 'Facturada en '}
+                          {nombreMoneda(otraMoneda(m))}: {facturado > 0 && 'facturado '}{moneda(facturadoOtra, otraMoneda(m))} · cobrado{' '}
+                          {moneda(cobradoOtra, otraMoneda(m))}
                         </p>
                       )}
                       {c.url && (
@@ -1688,7 +1704,10 @@ async function VistaFacturacion({ codigo, perfil }: { codigo: string; perfil: Pe
                         </a>
                       )}
                     </div>
-                    <strong className="tabular">{total === null ? <span className="font-normal text-texto-suave">Sin total</span> : moneda(total, m)}</strong>
+                    <strong className={unidad ? 'tabular text-left sm:text-right' : 'tabular text-right'}>
+                      {total === null ? <span className="font-normal text-texto-suave">Sin total</span> : moneda(total, m)}
+                      {unidad && total !== null && <span className="block text-xs font-normal text-texto-suave">lo que le toca a esta unidad</span>}
+                    </strong>
                   </li>
                 )
               })}
@@ -1700,13 +1719,13 @@ async function VistaFacturacion({ codigo, perfil }: { codigo: string; perfil: Pe
       <Tarjeta>
         <TarjetaCabecera
           titulo={`Facturas de venta${facturas.length > 0 ? ` (${facturas.length})` : ''}`}
-          ayuda="Cada factura que registró Contabilidad, con los cobros que registró Tesorería y su voucher. Las anuladas salen tachadas."
+          ayuda={`Cada factura que registró Contabilidad, con los cobros que registró Tesorería y su voucher. Las anuladas salen tachadas.${facturas.some((f) => (f.unidades_de_la_cotizacion ?? 1) > 1) ? ' La factura por toda una cotización de varias unidades sale en el código de cada una, con lo que le toca.' : ''}`}
         />
         <TarjetaCuerpo className="space-y-3">
           {facturas.length === 0 ? (
             <p className="text-sm text-texto-suave">Contabilidad todavía no registra una factura de este código.</p>
           ) : (
-            facturas.map((f) => <FacturaDeVenta key={f.id} factura={f} />)
+            facturas.map((f) => <FacturaDeVenta key={f.id} factura={f} delCodigo={codigo} />)
           )}
         </TarjetaCuerpo>
       </Tarjeta>

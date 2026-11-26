@@ -263,3 +263,25 @@ export async function catalogosDeCotizacion() {
   if (carrocerias.error) throw new Error('No se pudo cargar el catálogo de carrocerías. Recarga la página para volver a intentar.')
   return { clientes: clientes.data ?? [], carrocerias: carrocerias.data ?? [] }
 }
+
+/**
+ * De las cotizaciones de varias unidades a las que les falta más de una OT: las
+ * unidades libres que ya tienen una factura propia (se facturaron y después se
+ * anuló su OT), con el código con que se facturaron. La factura sigue al número
+ * de la unidad, así que la OT que ocupe ese número se queda con ella: la
+ * ventana de la OT lo avisa (migración 20261126998000). Solo responde a quien
+ * carga órdenes; sin montos.
+ */
+export async function unidadesLibresYaFacturadas(ids: string[]): Promise<Map<string, { unidad: number; codigo: string }[]>> {
+  const mapa = new Map<string, { unidad: number; codigo: string }[]>()
+  const unicos = [...new Set(ids)].slice(0, 500)
+  if (unicos.length === 0) return mapa
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('unidades_libres_ya_facturadas', { p_ids: unicos })
+  if (error) throw new Error(`No se pudo leer qué unidades sin OT ya tienen factura: ${error.message}`)
+  for (const f of data ?? []) {
+    if (!f.cotizacion || f.numero_de_unidad == null || !f.codigo_facturado) continue
+    mapa.set(f.cotizacion, [...(mapa.get(f.cotizacion) ?? []), { unidad: Number(f.numero_de_unidad), codigo: f.codigo_facturado }])
+  }
+  return mapa
+}

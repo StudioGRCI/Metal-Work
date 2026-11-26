@@ -150,6 +150,11 @@ async function factura(cot, total, cobro) {
        values ($1, $2, $3, $4, $5, $6, current_date - 1, current_date + 29, 'PEN', $7, $8, 'f.pdf', 900, $9, now() - interval '1 day') returning id`,
       [cot.codigo, cot.id, cot.numero, clienteId, CLIENTE, serie, total, `${sello}/${serie}.pdf`, contabilidad],
     )
+    // Sin disparadores no nace la parte de la factura (su unidad, 20261126998000): se anota aquí.
+    await consulta(
+      `insert into public.facturas_venta_unidades (factura_id, numero_de_unidad, de_unidades, codigo_interno, monto) values ($1, 1, 1, $2, $3)`,
+      [id, cot.codigo, total],
+    )
     if (cobro) {
       await consulta(
         `insert into public.cobros_factura_venta (factura_id, fecha, moneda, monto, cancela, archivo_ruta, archivo_mime, archivo_tamano, registrado_por)
