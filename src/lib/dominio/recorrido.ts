@@ -2,8 +2,9 @@
  * El recorrido de un documento numerado: por dónde pasó, quién hizo cada paso y
  * cuándo, quién lo tiene ahora y hace cuántos días (migración 20261125130000).
  * La base da las claves (`recorrido_de_requerimientos`,
- * `recorrido_de_cotizaciones`, `recorrido_de_planillas`); las frases viven aquí. Un documento nuevo suma
- * su función con la misma forma y su mapa de pasos en este archivo.
+ * `recorrido_de_cotizaciones`, `recorrido_de_informes_diseno`, `recorrido_de_planillas`);
+ * las frases viven aquí. Un documento nuevo suma su función con la misma forma y
+ * su mapa de pasos en este archivo.
  */
 
 /** HECHO: alguien lo hizo. AHORA: alguien lo tiene. PENDIENTE: todavía no le toca a nadie. */
@@ -155,6 +156,24 @@ const ESPERAS_DE_LA_COTIZACION: Record<string, (detalle: string | null) => strin
   FACTURA: () => 'Registra su factura.',
 }
 
+const PASOS_DEL_INFORME_DISENO: Record<string, Frases> = {
+  REGISTRO: { hecho: 'Borrador empezado', falta: 'Borrador' },
+  ENVIO: { hecho: 'Enviado a Diseño', falta: 'Envío a Diseño' },
+  // El motivo va entero: es lo que el colaborador tiene que corregir.
+  DEVOLUCION: { hecho: 'Devuelto para corregir', falta: 'Devolución', nota: (motivo) => `Motivo: ${motivo}` },
+  CORRECCION: { hecho: 'Corregido', falta: 'Corrección' },
+  APROBACION: { hecho: 'Aprobado por Diseño', falta: 'Aprobación' },
+  // Del circuito anterior, cuando el informe pasaba a Administración (migración 20261001213000).
+  RECEPCION: { hecho: 'Recibido por Administración', falta: 'Recepción de Administración' },
+  REVISION: { hecho: 'Revisado por Diseño', falta: 'Revisión de Diseño' },
+}
+
+const ESPERAS_DEL_INFORME_DISENO: Record<string, () => string> = {
+  ENVIO: () => 'Completa la semana y envía el informe a Diseño.',
+  CORRECCION: () => 'Corrige lo que Diseño observó y vuelve a enviarlo.',
+  REVISION: () => 'Lo aprueba o lo devuelve con su motivo.',
+}
+
 const PASOS_DE_LA_AVERIA: Record<string, Frases> = {
   REPORTE: {
     hecho: (d) => (d === 'PARADO' ? 'Reportada: el equipo quedó parado' : 'Reportada'),
@@ -202,6 +221,10 @@ export function describirRecorridoDeLaCotizacion(pasos: readonly PasoDelRecorrid
     ? descritos.map((p) => (p.paso === 'REVISION' && p.detalle === 'APROBADA' ? { ...p, nota: null } : p))
     : descritos
 }
+
+/** El recorrido de un informe semanal de Diseño, en palabras. */
+export const describirRecorridoDelInformeDiseno = (pasos: readonly PasoDelRecorrido[]) =>
+  describir(pasos, PASOS_DEL_INFORME_DISENO, ESPERAS_DEL_INFORME_DISENO)
 
 /** «1 persona», «12 personas». */
 const personas = (n: string) => (Number(n) === 1 ? '1 persona' : `${n} personas`)

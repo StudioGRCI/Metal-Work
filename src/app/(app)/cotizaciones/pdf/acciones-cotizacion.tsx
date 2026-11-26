@@ -1100,14 +1100,12 @@ export function CargarCodigoYOt({
           <Campo
             etiqueta="Fecha de entrega al cliente"
             htmlFor="eo-fecha"
-            ayuda="El día prometido al cliente para entregarle la unidad, según la OT"
-            requerido
+            ayuda="El día prometido al cliente, según la OT. Si todavía no está, cárgala sin fecha: queda pendiente en Órdenes de trabajo"
           >
             <Entrada
               id="eo-fecha"
               name="fecha_entrega"
               type="date"
-              required
               value={fechaEntrega}
               onChange={(e) => {
                 aMano.current.add('fecha')

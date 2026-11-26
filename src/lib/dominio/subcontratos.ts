@@ -98,11 +98,22 @@ export function cuentasDeSubcontrato(
   const suma = (lista: typeof vigentes, campo: 'monto_bruto' | 'retencion_monto' | 'monto_neto') =>
     Math.round(lista.reduce((n, r) => n + r[campo], 0) * 100) / 100
   const recibido = suma(vigentes, 'monto_bruto')
+  const pagadoBruto = suma(pagados, 'monto_bruto')
   return {
     recibos: vigentes.length,
     recibido,
     retenido: suma(vigentes, 'retencion_monto'),
     pagado: suma(pagados, 'monto_neto'),
+    /**
+     * Lo pagado contra lo pactado: el bruto de los recibos pagados. Tesorería
+     * deposita el neto y la retención va a SUNAT a nombre del subcontratista;
+     * las dos partes descuentan del contrato. El plan 8 (entrega 8.2) pide
+     * «pagado y saldo» sin decir cuál; contarlo en bruto es la propuesta del
+     * hilo, a la espera del «ok» de DKS en el PR.
+     */
+    pagadoBruto,
+    /** Lo que falta pagar del contrato: lo pactado menos lo pagado en bruto. */
+    saldo: Math.round((monto - pagadoBruto) * 100) / 100,
     porPagar: Math.round((suma(vigentes, 'monto_neto') - suma(pagados, 'monto_neto')) * 100) / 100,
     porRecibir: Math.round((monto - recibido) * 100) / 100,
   }
@@ -114,3 +125,38 @@ export function normalizarNumeroRecibo(numero: string): string {
 }
 
 export const NUMERO_RECIBO = /^[A-Z0-9]{1,4}-[0-9]{1,8}$/
+
+/** «Vence pronto»: el fin del contrato cae dentro de estos días (DKS, plan 8). */
+export const DIAS_VENCE_PRONTO = 7
+
+/**
+ * Cuántos días faltan para el fin del contrato (negativo si ya pasó), contando
+ * por fecha de Lima. `null` si no corre: no está vigente, no tiene fin pactado,
+ * o el supervisor ya anotó que terminó.
+ */
+export function diasParaVencer(
+  s: { estado: string; fecha_fin: string | null; fin_real: string | null },
+  hoy: string,
+): number | null {
+  if (s.estado !== 'VIGENTE' || !s.fecha_fin || s.fin_real) return null
+  // Las dos son YYYY-MM-DD: se restan como días enteros, sin la hora ni la zona.
+  const dia = (f: string) => Date.UTC(Number(f.slice(0, 4)), Number(f.slice(5, 7)) - 1, Number(f.slice(8, 10)))
+  return Math.round((dia(s.fecha_fin.slice(0, 10)) - dia(hoy)) / 86_400_000)
+}
+
+/**
+ * Vence pronto: dentro de los siete días (DKS, plan 8), o ya venció y sigue
+ * vigente sin fin real. Sumar los ya vencidos es la propuesta del hilo, a la
+ * espera del «ok» de DKS en el PR: son los que más urgen.
+ */
+export function vencePronto(dias: number | null): boolean {
+  return dias !== null && dias <= DIAS_VENCE_PRONTO
+}
+
+/** Cómo se dice cuándo vence. */
+export function cuandoVence(dias: number): string {
+  if (dias === 0) return 'Vence hoy'
+  if (dias === 1) return 'Vence mañana'
+  if (dias > 1) return `Vence en ${dias} días`
+  return dias === -1 ? 'Venció ayer' : `Venció hace ${-dias} días`
+}

@@ -320,7 +320,9 @@ const esquemaCodigoYOt = z.object({
   }),
   marca: z.string().trim().max(80).optional(),
   modelo: z.string().trim().max(80).optional(),
-  fecha_entrega: z.string().regex(ES_FECHA, 'Falta la fecha de entrega al cliente'),
+  // Sin fecha se carga igual y la OT queda en los pendientes de la lista de OT
+  // (plan 8, migración 20261126330000).
+  fecha_entrega: z.union([z.literal(''), z.string().regex(ES_FECHA, 'La fecha de entrega al cliente no es válida')]).optional(),
   ruta_pdf: z.string().min(1),
   nombre_pdf: z.string().trim().min(1).max(200),
   tamano_pdf: z.coerce.number({ error: 'Falta el tamaño del PDF de la OT: vuelve a elegirlo.' }).int().min(1, 'El PDF de la OT está vacío: elige otro.'),
@@ -357,7 +359,8 @@ export async function cargarCodigoYOt(
     p_codigo_interno: v.codigo_interno,
     p_numero_ot: v.numero,
     p_tipo_unidad: v.tipo_unidad,
-    p_fecha_entrega: v.fecha_entrega,
+    // Vacía va como null: la base la acepta y la OT queda en los pendientes.
+    p_fecha_entrega: v.fecha_entrega || null,
     p_ruta_pdf: v.ruta_pdf,
     p_nombre_pdf: v.nombre_pdf,
     p_tamano_pdf: v.tamano_pdf,
