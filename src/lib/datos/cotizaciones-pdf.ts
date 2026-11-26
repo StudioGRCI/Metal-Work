@@ -29,9 +29,19 @@ export type OrdenDeCotizacion = {
   unidad: number | null
 }
 
-export type CotizacionPdf = Omit<Vistas<'v_cotizaciones_pdf'>, 'ordenes'> & {
+/** Una unidad cuya OT pasó a otro comprador (migración 20261126988000); el número, solo a quien lee las órdenes. */
+export type UnidadQuePaso = { unidad: number; numero: string | null }
+
+export type CotizacionPdf = Omit<Vistas<'v_cotizaciones_pdf'>, 'ordenes' | 'unidades_a_otro_comprador' | 'reabierta_por_ot_anulada'> & {
   /** Sus OT vigentes, en el orden en que Administración las cargó: una por unidad. */
   ordenes: OrdenDeCotizacion[]
+  /** Las unidades cuya OT pasó a otro comprador: ya no llevan OT. */
+  unidades_a_otro_comprador: UnidadQuePaso[]
+  /**
+   * La venta se reabrió: su OT pasó a otro comprador y allí se anuló, y volvió a esperar su OT
+   * hasta que Ventas la cancele (migración 20261126988000). Con el número de esa OT si se puede leer.
+   */
+  reabierta_por_ot_anulada: { numero: string | null } | null
   url: string | null
   urlAprobada: string | null
   versiones: VersionCotizacion[]
@@ -94,7 +104,7 @@ export async function listarCotizacionesPdf(limite = 200): Promise<CotizacionPdf
   const { data, error } = await supabase
     .from('v_cotizaciones_pdf')
     .select(
-      'id, numero, estado, observacion, cliente_id, cliente, tipo_carroceria_id, carroceria, nombre_archivo, ruta_storage, tamano_bytes, creado_en, registrado_por, registrado_por_nombre, revisado_en, revisado_por_nombre, orden_id, orden_numero, orden_estado, tuvo_orden, version, mime_type, archivo_subido_en, monto_venta, moneda, codigo_interno, cantidad_unidades, ordenes, ordenes_vigentes, ordenes_faltantes',
+      'id, numero, estado, observacion, cliente_id, cliente, tipo_carroceria_id, carroceria, nombre_archivo, ruta_storage, tamano_bytes, creado_en, registrado_por, registrado_por_nombre, revisado_en, revisado_por_nombre, orden_id, orden_numero, orden_estado, tuvo_orden, version, mime_type, archivo_subido_en, monto_venta, moneda, codigo_interno, cantidad_unidades, ordenes, ordenes_vigentes, ordenes_faltantes, ordenes_a_otro_comprador, unidades_a_otro_comprador, reabierta_por_ot_anulada',
     )
     .order('creado_en', { ascending: false })
     .limit(limite)
@@ -146,6 +156,11 @@ export async function listarCotizacionesPdf(limite = 200): Promise<CotizacionPdf
     return {
       ...f,
       ordenes: Array.isArray(f.ordenes) ? (f.ordenes as OrdenDeCotizacion[]) : [],
+      unidades_a_otro_comprador: Array.isArray(f.unidades_a_otro_comprador) ? (f.unidades_a_otro_comprador as UnidadQuePaso[]) : [],
+      reabierta_por_ot_anulada:
+        f.reabierta_por_ot_anulada && typeof f.reabierta_por_ot_anulada === 'object' && !Array.isArray(f.reabierta_por_ot_anulada)
+          ? { numero: typeof f.reabierta_por_ot_anulada.numero === 'string' ? f.reabierta_por_ot_anulada.numero : null }
+          : null,
       cliente: f.cliente ?? (f.id && clientes.get(f.id)) ?? null,
       facturas: (facturas.data ?? []).filter((x) => x.cotizacion_pdf_id === f.id),
       facturada: facturadas.has(f.id),

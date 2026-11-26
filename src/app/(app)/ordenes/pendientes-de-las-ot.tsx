@@ -128,8 +128,13 @@ function Fila({ p, corrige }: { p: PendienteDeOt; corrige: boolean }) {
           ? 'Poner la fecha'
           : 'Ver la OT'
   const documento = esCotizacion ? `Cotización ${p.numero}` : `OT ${p.numero}`
-  const nota = p.ventaAnteriorDe
-    ? `Fue la venta anterior de la OT ${p.ventaAnteriorDe}, que pasó a otro comprador. Cárgale otra OT solo si esta venta sigue.`
+  // La venta que se reabrió trae la misma OT en las dos columnas: pasó a otro
+  // comprador y allí se anuló. Si sigue, lo sabe Ventas (StudioGRCI, 2026-11-26).
+  const nota = p.otAnulada && p.ventaAnteriorDe === p.otAnulada
+    ? `La OT ${p.otAnulada} había pasado a otro comprador y allí se anuló: esta venta volvió a esperar su OT. Antes de cargarla, confirma con Ventas si la venta sigue.`
+    : p.ventaAnteriorDe
+    ? // Solo la de varias unidades llega aquí: la de una, cuya OT pasó, ya no lleva otra (20261126988000).
+      `La OT ${p.ventaAnteriorDe} pasó a otro comprador: esa unidad ya no lleva OT.`
     : p.otAnulada
     ? `Su OT ${p.otAnulada} se anuló. Cárgala otra vez solo si la venta sigue.`
     : p.codigoBloqueado

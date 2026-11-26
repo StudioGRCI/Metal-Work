@@ -1,8 +1,8 @@
 'use client'
 
-import { AlertTriangle, Check, Hash, MessageSquareWarning, RefreshCw, Trash2 } from 'lucide-react'
+import { AlertTriangle, Ban, Check, Hash, MessageSquareWarning, RefreshCw, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useId, useRef, useState, useTransition, type FormEvent, type Ref } from 'react'
+import { useEffect, useId, useRef, useState, useTransition, type FormEvent, type Ref } from 'react'
 
 import { EstadoDelEnvio, useEnvioDeLaVentana } from '@/components/avance/selector-fotos'
 import { Boton } from '@/components/ui/boton'
@@ -17,13 +17,13 @@ import { leerArchivoOrden } from '@/lib/archivo-orden'
 import type { DatosOrdenPdf } from '@/lib/orden-pdf'
 import { ACEPTA_COTIZACION, ayudaDelMonto, leerCabeceraDeArchivo, tipoDeCotizacion, totalDelDocumentoSiNoCalza } from '@/lib/archivo-cotizacion'
 import { normalizar, type TotalCotizacion } from '@/lib/cotizacion-pdf'
-import { anotarQueSeVa, enviosEnCamino, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, partida, pidioOtraPantalla, ponerIdaQueNoSalio, quitarConLaCuenta, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, sigueDondeSalio, ultimoToque, useCursorAlRechazo, useEnvio, useEnviosEnCamino, type Partida } from '@/lib/envio'
+import { anotarQueSeVa, enviosEnCamino, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, navegarSiEsDeLaPestana, NO_SE_GUARDO_OTRA_CUENTA, OtraCuentaEnLaPestana, partida, pidioOtraPantalla, ponerIdaQueNoSalio, quitarConLaCuenta, refrescarSiEsDeLaPestana, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, sigueDondeSalio, ultimoToque, useCursorAlRechazo, useEnvio, useEnviosEnCamino, type Partida } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
 import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 import { useEstadoCompartido } from '@/lib/estado-compartido'
 import { createClient } from '@/lib/supabase/client'
 
-import { cargarCodigoYOt, corregirCotizacionPdf, quitarCotizacionPdf, revisarCotizacionPdf } from './acciones'
+import { cancelarVentaReabierta, cargarCodigoYOt, corregirCotizacionPdf, quitarCotizacionPdf, revisarCotizacionPdf } from './acciones'
 
 /** El rechazo de un envío; con `ref`, recibe el cursor al volver (`useCursorAlRechazo`). */
 function Falla({ texto, ref }: { texto: string | null; ref?: Ref<HTMLParagraphElement> }) {
@@ -119,6 +119,7 @@ export function CorregirCotizacion({
   carroceriaId,
   unidades,
   conOrdenes,
+  pasaron = 0,
   unidadMayor = 0,
   clientes,
   carrocerias,
@@ -137,6 +138,8 @@ export function CorregirCotizacion({
   unidades: number
   /** Las OT que ya tiene: la cantidad no baja de ahí. */
   conOrdenes: number
+  /** Las unidades cuya OT pasó a otro comprador (20261126988000): ya no llevan OT. */
+  pasaron?: number
   /** La unidad mayor con OT vigente: la cantidad tampoco baja de ahí. */
   unidadMayor?: number
   clientes: { id: string; razon_social: string }[]
@@ -370,7 +373,7 @@ export function CorregirCotizacion({
         titulo={`Corregir la cotización ${numero}`}
         descripcion={
           aprobada
-            ? `Reemplaza el PDF o Word y corrige los datos. Conserva el número y el archivo anterior. Vuelve a Por revisar: no se factura${unidades > conOrdenes ? ' ni se cargan las OT que faltan' : ''} hasta que Gerencia apruebe esta versión.`
+            ? `Reemplaza el PDF o Word y corrige los datos. Conserva el número y el archivo anterior. Vuelve a Por revisar: no se factura${unidades > conOrdenes + pasaron ? ' ni se cargan las OT que faltan' : ''} hasta que Gerencia apruebe esta versión.`
             : 'Reemplaza el PDF o Word y corrige los datos. Conserva el número y el archivo anterior; Gerencia revisará esta versión.'
         }
         ancho="md"
@@ -573,6 +576,113 @@ export function QuitarCotizacion({ id, numero }: { id: string; numero: string })
         No
       </Boton>
       <Falla texto={error} />
+    </form>
+  )
+}
+
+/**
+ * Ventas cancela la venta que se reabrió porque su OT pasó a otro comprador y
+ * allí se anuló (StudioGRCI, 2026-11-26; migración 20261126988000). La
+ * cotización queda anulada con su motivo: no se borra. Solo la ve quien la
+ * registró; la base lo vuelve a comprobar.
+ *
+ * Cancelada, la tarjeta sale de las vigentes: la pantalla va a «Anuladas», a
+ * esa tarjeta, para que no parezca borrada; si la ida no sale (la persona ya
+ * pidió otra pantalla), lo dice la línea de arriba con su enlace.
+ */
+export function CancelarVenta({ id, numero }: { id: string; numero: string }) {
+  const router = useRouter()
+  const [confirmando, setConfirmando] = useState(false)
+  // «No cancelar» devuelve el cursor al botón que abrió el formulario.
+  const [vuelve, setVuelve] = useState(false)
+  const { alEnviar, enviando, error, limpiar } = useEnvio(
+    cancelarVentaReabierta,
+    (resultado, desde) => {
+      setConfirmando(false)
+      const url = `/cotizaciones/pdf?estado=ANULADA&q=${encodeURIComponent(numero)}#${id}`
+      // El reenvío con otro motivo (se perdió la respuesta, u otra pestaña): la
+      // venta ya estaba cancelada con el primero. Se dice arriba, con el camino
+      // a su tarjeta; llevarla ahí sin más mostraba otro motivo sin explicar por qué.
+      if (resultado.datos?.yaEstaba) {
+        ponerIdaQueNoSalio({
+          dice: `La venta de la cotización ${numero} ya estaba cancelada desde tu primer envío: el motivo que escribiste ahora no se guardó. Está en «Anuladas».`,
+          enlace: 'Ver la anulada',
+          url,
+          tono: 'info',
+        })
+        return
+      }
+      navegarSiEsDeLaPestana(router, url, desde, {
+        dice: `La venta de la cotización ${numero} quedó cancelada: la cotización está en «Anuladas», con su número y su archivo.`,
+        enlace: 'Ver la anulada',
+      })
+    },
+    { documento: id },
+  )
+  const idMotivo = useId()
+  const formulario = useRef<HTMLFormElement>(null)
+  const motivo = useRef<HTMLTextAreaElement>(null)
+  const rechazo = useRef<HTMLParagraphElement>(null)
+  // El rechazo por el motivo va en su campo; cualquier otro, en el aviso de abajo.
+  const delMotivo = error !== null && error.includes('10 caracteres')
+  useCursorAlRechazo(enviando, error, () => (delMotivo ? motivo.current : rechazo.current))
+  // En el teléfono el formulario se abría bajo la barra de abajo, con sus botones fuera de la vista.
+  useEffect(() => {
+    if (confirmando) formulario.current?.scrollIntoView({ block: 'center' })
+  }, [confirmando])
+
+  if (!confirmando) {
+    return (
+      <Boton
+        type="button"
+        tamano="sm"
+        variante="fantasma"
+        autoFocus={vuelve}
+        onClick={() => {
+          limpiar()
+          setConfirmando(true)
+        }}
+      >
+        <Ban aria-hidden className="size-3.5 text-peligro" />
+        Cancelar la venta
+      </Boton>
+    )
+  }
+
+  return (
+    // Sobre `superficie`, con el borde de peligro: sobre `peligro-suave` la ayuda del campo quedaba bajo AA (4,48:1).
+    <form ref={formulario} onSubmit={alEnviar} className="w-full space-y-3 rounded-[var(--radius-base)] border border-peligro/40 bg-superficie px-3 py-3" data-cancelar-venta>
+      <input type="hidden" name="id" value={id} />
+      <p className="rounded-[var(--radius-base)] bg-peligro-suave px-2.5 py-2 text-xs text-peligro">
+        La cotización {numero} queda anulada, con su número y su archivo, y ya no espera su OT. No se puede deshacer.
+      </p>
+      <Campo
+        etiqueta="Por qué se cancela la venta"
+        htmlFor={idMotivo}
+        requerido
+        ayuda="Al menos 10 caracteres: el cliente desistió, cambió de proveedor…"
+        ayudaEnIcono={false}
+        error={delMotivo ? error : undefined}
+      >
+        <AreaTexto ref={motivo} id={idMotivo} name="motivo" rows={2} required minLength={10} maxLength={500} autoFocus />
+      </Campo>
+      <Falla texto={delMotivo ? null : error} ref={rechazo} />
+      <div className="flex flex-wrap gap-2">
+        <Boton type="submit" tamano="sm" variante="peligro" cargando={enviando}>
+          Sí, cancelar la venta
+        </Boton>
+        <Boton
+          type="button"
+          tamano="sm"
+          variante="fantasma"
+          onClick={() => {
+            setVuelve(true)
+            setConfirmando(false)
+          }}
+        >
+          No cancelar
+        </Boton>
+      </div>
     </form>
   )
 }
