@@ -2,9 +2,9 @@
  * El recorrido de un documento numerado: por dónde pasó, quién hizo cada paso y
  * cuándo, quién lo tiene ahora y hace cuántos días (migración 20261125130000).
  * La base da las claves (`recorrido_de_requerimientos`,
- * `recorrido_de_cotizaciones`, `recorrido_de_informes_diseno`, `recorrido_de_planillas`);
- * las frases viven aquí. Un documento nuevo suma su función con la misma forma y
- * su mapa de pasos en este archivo.
+ * `recorrido_de_cotizaciones`, `recorrido_de_informes_diseno`, `recorrido_de_planillas`,
+ * `recorrido_de_reportes_diarios`); las frases viven aquí. Un documento nuevo suma su
+ * función con la misma forma y su mapa de pasos en este archivo.
  */
 
 // Sin imports de valores: `recorrido.test.mjs` lo carga con `node --test`, que no
@@ -41,6 +41,8 @@ export type PasoDescrito = PasoDelRecorrido & {
   titulo: string
   /** Una línea más: qué se espera de quien lo tiene, o el dato del paso. */
   nota: string | null
+  /** Lo tienen dos a la vez («Gerencia y Recursos Humanos»): «lo tienen», no «lo tiene». */
+  plural?: boolean
   /**
    * Una anotación al margen del circuito (el motivo del atraso, la fecha
    * corregida): no dice en qué terminó el documento, así que el resumen de un
@@ -266,6 +268,26 @@ const ESPERAS_DE_LA_AVERIA: Record<string, (detalle: string | null) => string> =
       : 'Prueba el equipo y dice si quedó bien.',
 }
 
+const PASOS_DEL_REPORTE: Record<string, Frases> = {
+  ENVIO: { hecho: (d) => (d === 'CORRIGE' ? 'Subió la corrección de un reporte observado' : 'Subido'), falta: 'Subida' },
+  VISTO_RRHH: { hecho: 'Visto bueno de Recursos Humanos', falta: 'Visto bueno de Recursos Humanos' },
+  VISTO_GERENCIA: { hecho: 'Visto bueno de Gerencia', falta: 'Visto bueno de Gerencia' },
+  VALIDACION: { hecho: 'Validado', falta: 'Visto bueno de Gerencia y de Recursos Humanos' },
+  OBSERVACION: {
+    hecho: (area) => `Observado por ${area === 'GERENCIA' ? 'Gerencia' : area === 'RRHH' ? 'Recursos Humanos' : 'quien lo valida'}`,
+    falta: 'Observación',
+  },
+  CORRECCION: { hecho: 'Corregido y subido de nuevo', falta: 'Corrección' },
+  ANULACION: { hecho: 'Anulado', falta: 'Anulación' },
+}
+
+const ESPERAS_DEL_REPORTE: Record<string, (detalle: string | null) => string> = {
+  VALIDACION: () => 'Le dan su visto bueno, en cualquier orden, o lo observan.',
+  VISTO_RRHH: () => 'Le da su visto bueno a la gente y sus horas, o lo observa.',
+  VISTO_GERENCIA: () => 'Le da su visto bueno al trabajo y su avance, o lo observa.',
+  CORRECCION: () => 'Lo corrige y lo sube de nuevo.',
+}
+
 function describir(
   pasos: readonly PasoDelRecorrido[],
   frases: Record<string, Frases>,
@@ -476,3 +498,10 @@ export const describirRecorridoDeLaAveria = (pasos: readonly PasoDelRecorrido[])
     // Sin la cuenta de quien la reportó, la confirma otra persona: el título no la nombra.
     p.situacion === 'AHORA' && p.paso === 'CONFIRMACION' && p.detalle === 'SIN_CUENTA' ? { ...p, titulo: 'Confirmación: si quedó bien' } : p,
   )
+
+/**
+ * El recorrido de un reporte diario, en palabras. Recién subido lo tienen
+ * Gerencia y Recursos Humanos a la vez: ese paso va en plural.
+ */
+export const describirRecorridoDelReporte = (pasos: readonly PasoDelRecorrido[]) =>
+  describir(pasos, PASOS_DEL_REPORTE, ESPERAS_DEL_REPORTE).map((p) => (p.espera === 'VALIDACION' ? { ...p, plural: true } : p))
