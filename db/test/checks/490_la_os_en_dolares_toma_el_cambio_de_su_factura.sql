@@ -25,7 +25,15 @@
 --   osg: US$ 1 000. Factura de anteayer, sin cambio propio: va con el de hace 3
 --        días. Se deposita la detracción y después llega el cambio de anteayer:
 --        no la mueve hasta que el depósito se anula.
+--   osh: US$ 1 000. Factura de un sábado: va con el cambio del viernes y no
+--        espera otro. osi: factura del lunes siguiente, sin cambio propio:
+--        va con el del viernes y espera el suyo.
 --   osp: en soles. Su factura no pide fecha y no cambia nada.
+--
+-- En cada paso, `cambio_de_los_servicios` dice de dónde sale el cambio, de qué
+-- día es el registrado, si se espera el de su día y si la OS ya está fija:
+-- es lo que lee la pantalla. La ve quien ve la OS (Almacén, que no lee sus
+-- documentos, también) y no quien no la ve.
 --
 -- Quien no debe (Ventas) no adjunta; nadie con sesión ejecuta los ayudantes.
 \set ON_ERROR_STOP on
@@ -38,7 +46,7 @@ grant select, insert, delete on storage.objects to authenticated;
 do $$
 declare v text; v_id uuid;
 begin
-  foreach v in array array['COMPRADOR:LOG', 'GERENTE:GGE', 'CONTABILIDAD:CON', 'TESORERIA:TES', 'VENDEDOR:GCO'] loop
+  foreach v in array array['COMPRADOR:LOG', 'GERENTE:GGE', 'CONTABILIDAD:CON', 'TESORERIA:TES', 'VENDEDOR:GCO', 'ALMACENERO:ALM'] loop
     v_id := gen_random_uuid();
     insert into auth.users (id, email) values (v_id, lower(replace(v, ':', '.')) || '.490@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
@@ -47,8 +55,8 @@ begin
       from public.roles r where r.codigo = split_part(v, ':', 1);
     perform set_config('prueba.' || lower(split_part(v, ':', 1)), v_id::text, true);
   end loop;
-  perform test.afirmar((select count(*) from public.usuarios where apellidos = 'Check 490') = 5,
-    'se crearon los cinco usuarios del check, uno por puesto');
+  perform test.afirmar((select count(*) from public.usuarios where apellidos = 'Check 490') = 6,
+    'se crearon los seis usuarios del check, uno por puesto');
   insert into public.proveedores (id, numero_documento, razon_social)
   select gen_random_uuid(), r, 'PROVEEDOR DE PRUEBA 490'
     from (select '2069' || lpad(n::text, 6, '0') || d::text as r from generate_series(490000, 490200) n, generate_series(0, 9) d) x
@@ -56,7 +64,7 @@ begin
    order by r limit 1
   on conflict (tipo_documento, numero_documento) do update set activo = true;
   perform set_config('prueba.proveedor', (select id::text from public.proveedores where razon_social = 'PROVEEDOR DE PRUEBA 490'), true);
-  foreach v in array array['osa', 'osb', 'osc', 'osd', 'ose', 'osf', 'osg', 'osp', 'tc15', 'pago', 'pagod', 'pagof', 'pagog', 'adelantod', 'fa', 'fb', 'fc', 'fd', 'fe', 'ff', 'fg', 'fp'] loop
+  foreach v in array array['osa', 'osb', 'osc', 'osd', 'ose', 'osf', 'osg', 'osh', 'osi', 'osp', 'tc15', 'pago', 'pagod', 'pagof', 'pagog', 'adelantod', 'fa', 'fb', 'fc', 'fd', 'fe', 'ff', 'fg', 'fh', 'fi', 'fp'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
 end $$;
@@ -71,6 +79,26 @@ create or replace function pg_temp.id(p text) returns uuid language sql as $$ se
 create or replace function pg_temp.hoy() returns date language sql as $$ select (now() at time zone 'America/Lima')::date $$;
 create or replace function pg_temp.os(p text) returns public.ordenes_servicio language sql as $$
   select * from public.ordenes_servicio where id = pg_temp.id(p);
+$$;
+-- Lo que la base dice del cambio de esa OS a ese puesto: origen | día | día del cambio registrado
+-- | si se espera el de su día | si está fija. Los días, contados desde hoy.
+create or replace function pg_temp.cambio(p_os text, p_como text default 'comprador') returns text language plpgsql as $$
+declare v text;
+begin
+  perform pg_temp.como(p_como);
+  select concat_ws('|', c.origen, coalesce((c.dia - pg_temp.hoy())::text, '-'), coalesce((c.registrado_el - pg_temp.hoy())::text, '-'),
+                   c.se_espera::text, c.fijo::text)
+    into v
+    from public.cambio_de_los_servicios(array[pg_temp.id(p_os)]) c;
+  return coalesce(v, 'nada');
+end $$;
+-- El sábado de hace tres o cuatro semanas: lejos de los demás cambios del check.
+create or replace function pg_temp.sabado() returns date language sql as $$
+  select pg_temp.hoy() - 21 - ((extract(isodow from pg_temp.hoy() - 21)::int + 1) % 7)
+$$;
+-- Si ese día puede tener cambio propio: de lunes a viernes y sin feriado.
+create or replace function pg_temp.habil(p date) returns text language sql as $$
+  select (extract(isodow from p) < 6 and not exists (select 1 from public.feriados f where f.fecha = p and not f.laborable))::text
 $$;
 -- Un archivo ya subido a la carpeta de esa OS, a nombre de quien lo va a anotar.
 create or replace function pg_temp.subir(p_os text, p_de text) returns text language plpgsql as $$
@@ -108,6 +136,10 @@ select public.emitir_orden_servicio(pg_temp.id('osf'), pg_temp.id('proveedor'), 
   'PLANTA', 'Plegado de pisos, prueba 490', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'USD', 1000, 'CONTADO', 0, '025', null);
 select public.emitir_orden_servicio(pg_temp.id('osg'), pg_temp.id('proveedor'), null, (select id from public.areas where codigo = 'ACB'),
   'PLANTA', 'Corte de planchas, prueba 490', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'USD', 1000, 'CONTADO', 0, '025', null);
+select public.emitir_orden_servicio(pg_temp.id('osh'), pg_temp.id('proveedor'), null, (select id from public.areas where codigo = 'ACB'),
+  'PLANTA', 'Granallado de aros, prueba 490', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'USD', 1000, 'CONTADO', 0, '025', null);
+select public.emitir_orden_servicio(pg_temp.id('osi'), pg_temp.id('proveedor'), null, (select id from public.areas where codigo = 'ACB'),
+  'PLANTA', 'Cromado de pasamanos, prueba 490', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'USD', 1000, 'CONTADO', 0, '025', null);
 select public.emitir_orden_servicio(pg_temp.id('osp'), pg_temp.id('proveedor'), null, (select id from public.areas where codigo = 'ACB'),
   'PLANTA', 'Pintura de la tolva, prueba 490', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'PEN', 500, 'CONTADO', 0, '025', null);
 reset role;
@@ -120,10 +152,15 @@ select public.aprobar_orden_servicio(pg_temp.id('osd'));
 select public.aprobar_orden_servicio(pg_temp.id('ose'));
 select public.aprobar_orden_servicio(pg_temp.id('osf'));
 select public.aprobar_orden_servicio(pg_temp.id('osg'));
+select public.aprobar_orden_servicio(pg_temp.id('osh'));
+select public.aprobar_orden_servicio(pg_temp.id('osi'));
 select public.aprobar_orden_servicio(pg_temp.id('osp'));
 reset role;
 select test.afirmar((pg_temp.os('osa')).monto_pen = 3700.00 and (pg_temp.os('osa')).fecha_cambio is null,
   format('la OS en dólares se emitió con el cambio de ayer y sin día de factura (dice %s)', (pg_temp.os('osa')).monto_pen));
+select test.afirmar(pg_temp.cambio('osa') = 'SIN_FACTURA|0|-1|false|false',
+  format('la base dice que va con el cambio de ayer, el último que había al emitirla, y que falta su factura (dice %s)', pg_temp.cambio('osa')));
+select test.afirmar(pg_temp.cambio('osp') = 'nada', 'de la OS en soles no dice nada');
 select set_config('prueba.detraccion_antes', coalesce((pg_temp.os('osa')).detraccion_monto::text, 'sin'), true);
 
 -- Contabilidad registra después el cambio de hace 3 días: la OS ya tiene su monto y no se mueve.
@@ -191,6 +228,23 @@ select test.afirmar((select count(*) from public.documentos_orden_servicio where
   'quedó una sola factura, con su fecha de emisión');
 select test.afirmar((pg_temp.os('osa')).monto_pen = 3800.00 and (pg_temp.os('osa')).fecha_cambio = pg_temp.hoy() - 3,
   format('la OS toma el cambio del día de su factura: US$ 1 000 a 3,80 (dice %s)', (pg_temp.os('osa')).monto_pen));
+select test.afirmar(pg_temp.cambio('osa') = 'FACTURA|-3|-3|false|false',
+  format('y la base dice que va con el cambio de ese día, el de su factura (dice %s)', pg_temp.cambio('osa')));
+-- Almacén ve la OS pero no sus documentos: lo lee igual, de la base, y no «depositada con otra factura».
+select pg_temp.como('almacenero');
+set local role authenticated;
+select test.afirmar((select count(*) from public.ordenes_servicio where id = pg_temp.id('osa')) = 1
+                and (select count(*) from public.documentos_orden_servicio where orden_servicio_id = pg_temp.id('osa')) = 0,
+  'Almacén ve la OS y no ve su factura');
+select test.afirmar((select c.origen = 'FACTURA' and c.registrado_el = pg_temp.hoy() - 3 and not c.fijo
+                       from public.cambio_de_los_servicios(array[pg_temp.id('osa')]) c),
+  'y la base le dice igual que va con el cambio de su factura');
+reset role;
+select pg_temp.como('vendedor');
+set local role authenticated;
+select test.afirmar((select count(*) from public.cambio_de_los_servicios(array[pg_temp.id('osa')])) = 0,
+  'a Ventas, que no ve la OS, no le dice nada');
+reset role;
 select test.afirmar((pg_temp.os('osa')).total_con_igv_pen = 4484.00,
   format('y con él su total con IGV (dice %s)', (pg_temp.os('osa')).total_con_igv_pen));
 select test.afirmar(
@@ -218,6 +272,8 @@ reset role;
 select test.afirmar((pg_temp.os('osb')).monto_pen is null and (pg_temp.os('osb')).fecha_cambio = pg_temp.hoy() - 15
                 and (pg_temp.os('osb')).detraccion_monto is null,
   'la factura de un día sin cambio registrado deja la OS sin monto en soles ni detracción: falta el cambio de ese día');
+select test.afirmar(pg_temp.cambio('osb') = 'FACTURA|-15|-|false|false',
+  format('y la base dice que es el día de su factura, sin ningún cambio del que salga su monto (dice %s)', pg_temp.cambio('osb')));
 select pg_temp.como('contabilidad');
 set local role authenticated;
 insert into public.tipos_de_cambio (id, fecha, compra, venta, fuente, registrado_por)
@@ -265,6 +321,9 @@ insert into public.pagos_orden_servicio (id, orden_servicio_id, fecha_pago, mone
 values (pg_temp.id('adelantod'), pg_temp.id('osd'), current_date, 'USD', 300, false, 'PROVEEDOR', 'prueba/490/adelanto-d.pdf', 'application/pdf', 1000, pg_temp.id('tesoreria')),
        (pg_temp.id('pagod'), pg_temp.id('osd'), current_date, 'PEN', (pg_temp.os('osd')).detraccion_monto, false, 'DETRACCION', 'prueba/490/detraccion-d.pdf', 'application/pdf', 1000, pg_temp.id('tesoreria'));
 set local session_replication_role = origin;
+-- Depositada sin factura: ya no la espera. Decir «falta su factura» anunciaba un cambio que no va a pasar.
+select test.afirmar(pg_temp.cambio('osd', 'tesoreria') = 'FIJA_SIN_FACTURA|0|-1|false|true',
+  format('la OS con su detracción depositada y sin factura está fija, y la base no dice que falte su factura (dice %s)', pg_temp.cambio('osd', 'tesoreria')));
 select set_config('prueba.ruta_d', pg_temp.subir('osd', 'tesoreria'), true);
 select pg_temp.como('tesoreria');
 set local role authenticated;
@@ -273,12 +332,16 @@ select public.adjuntar_documento_servicio(pg_temp.id('fd'), pg_temp.id('osd'), '
 reset role;
 select test.afirmar((pg_temp.os('osd')).monto_pen = 3700.00 and (pg_temp.os('osd')).fecha_cambio is null,
   'la OS con su detracción ya depositada no se mueve al adjuntar su factura');
+select test.afirmar(pg_temp.cambio('osd', 'tesoreria') = 'DEPOSITADA_ANTES|0|-1|false|true',
+  format('y la base dice que sigue con el cambio con que se emitió: se depositó antes de la factura (dice %s)', pg_temp.cambio('osd', 'tesoreria')));
 select pg_temp.como('tesoreria');
 set local role authenticated;
 select public.anular_pago_servicio(pg_temp.id('pagod'), 'Se depositó con el cambio equivocado');
 reset role;
 select test.afirmar((pg_temp.os('osd')).monto_pen = 3800.00 and (pg_temp.os('osd')).fecha_cambio = pg_temp.hoy() - 3,
   format('anulado el depósito, toma el cambio de su factura aunque le quede el adelanto (dice %s)', (pg_temp.os('osd')).monto_pen));
+select test.afirmar(pg_temp.cambio('osd', 'tesoreria') = 'FACTURA|-3|-3|false|false',
+  format('y deja de estar fija: el adelanto no la fija (dice %s)', pg_temp.cambio('osd', 'tesoreria')));
 
 -- ============================================ Anulada la factura, vuelve al día en que se emitió
 select pg_temp.como('comprador');
@@ -322,6 +385,8 @@ select public.adjuntar_documento_servicio(pg_temp.id('ff'), pg_temp.id('osf'), '
 reset role;
 select test.afirmar((pg_temp.os('osf')).monto_pen = 3700.00 and (pg_temp.os('osf')).fecha_cambio = pg_temp.hoy(),
   'la factura de hoy, sin el cambio de hoy, toma el último registrado: el de ayer');
+select test.afirmar(pg_temp.cambio('osf') = 'FACTURA|0|-1|' || pg_temp.habil(pg_temp.hoy()) || '|false',
+  format('la base dice que va con el de ayer y, si hoy es día hábil, que espera el de hoy (dice %s)', pg_temp.cambio('osf')));
 select pg_temp.como('contabilidad');
 set local role authenticated;
 insert into public.tipos_de_cambio (fecha, compra, venta, fuente, registrado_por)
@@ -344,6 +409,8 @@ update public.tipos_de_cambio set venta = 3.95, compra = 3.90 where fecha = pg_t
 reset role;
 select test.afirmar((pg_temp.os('osf')).monto_pen = 3900.00,
   'depositada su detracción, corregir después el cambio de ese día no la mueve');
+select test.afirmar(pg_temp.cambio('osf', 'tesoreria') = 'DEPOSITADA_CON_OTRO_CAMBIO|0|-|false|true',
+  format('y la base dice que quedó fija con otro cambio que el que hoy tiene el día de su factura (dice %s)', pg_temp.cambio('osf', 'tesoreria')));
 -- Anulado el depósito, se pone al día con el cambio que se corrigió mientras estaba fija.
 select pg_temp.como('tesoreria');
 set local role authenticated;
@@ -351,6 +418,8 @@ select public.anular_pago_servicio(pg_temp.id('pagof'), 'Se depositó antes de q
 reset role;
 select test.afirmar((pg_temp.os('osf')).monto_pen = 3950.00 and (pg_temp.os('osf')).fecha_cambio = pg_temp.hoy(),
   format('anulado el depósito, toma el cambio de su factura como quedó corregido (dice %s)', (pg_temp.os('osf')).monto_pen));
+select test.afirmar(pg_temp.cambio('osf') = 'FACTURA|0|0|false|false',
+  format('y va con el cambio de hoy, sin esperar otro (dice %s)', pg_temp.cambio('osf')));
 
 -- ============================================ Se deposita con el cambio de la víspera y el del día llega después
 -- osg: factura de anteayer, que no tiene cambio propio: toma el de hace 3 días (3,80).
@@ -362,11 +431,15 @@ select public.adjuntar_documento_servicio(pg_temp.id('fg'), pg_temp.id('osg'), '
 reset role;
 select test.afirmar((pg_temp.os('osg')).monto_pen = 3800.00 and (pg_temp.os('osg')).fecha_cambio = pg_temp.hoy() - 2,
   'la factura de anteayer, sin cambio propio, toma el último registrado hasta ese día');
+select test.afirmar(pg_temp.cambio('osg') = 'FACTURA|-2|-3|' || pg_temp.habil(pg_temp.hoy() - 2) || '|false',
+  format('la base dice que va con el de hace 3 días y, si anteayer fue día hábil, que espera el suyo (dice %s)', pg_temp.cambio('osg')));
 set local session_replication_role = replica;
 insert into public.pagos_orden_servicio (id, orden_servicio_id, fecha_pago, moneda, monto, cancela, destino, archivo_ruta, archivo_mime, archivo_tamano, registrado_por)
 values (pg_temp.id('pagog'), pg_temp.id('osg'), current_date, 'PEN', (pg_temp.os('osg')).detraccion_monto, false, 'DETRACCION', 'prueba/490/detraccion-g.pdf', 'application/pdf', 1000, pg_temp.id('tesoreria')),
        (gen_random_uuid(), pg_temp.id('osg'), current_date, 'USD', 200, false, 'PROVEEDOR', 'prueba/490/adelanto-g.pdf', 'application/pdf', 1000, pg_temp.id('tesoreria'));
 set local session_replication_role = origin;
+select test.afirmar(pg_temp.cambio('osg', 'tesoreria') = 'FACTURA|-2|-3|false|true',
+  format('depositada su detracción con el cambio de la víspera, ya no espera el de su día (dice %s)', pg_temp.cambio('osg', 'tesoreria')));
 select pg_temp.como('contabilidad');
 set local role authenticated;
 insert into public.tipos_de_cambio (fecha, compra, venta, fuente, registrado_por)
@@ -374,12 +447,41 @@ values (pg_temp.hoy() - 2, 3.80, 3.85, 'SUNAT', pg_temp.id('contabilidad'));
 reset role;
 select test.afirmar((pg_temp.os('osg')).monto_pen = 3800.00,
   'con la detracción depositada, el cambio de ese día que llega después no la mueve');
+select test.afirmar(pg_temp.cambio('osg', 'tesoreria') = 'DEPOSITADA_CON_OTRO_CAMBIO|-2|-|false|true',
+  format('y la base dice que quedó con otro cambio que el que ahora tiene ese día (dice %s)', pg_temp.cambio('osg', 'tesoreria')));
 select pg_temp.como('tesoreria');
 set local role authenticated;
 select public.anular_pago_servicio(pg_temp.id('pagog'), 'Se depositó con el cambio de la víspera');
 reset role;
 select test.afirmar((pg_temp.os('osg')).monto_pen = 3850.00,
   format('anulado el depósito, toma el cambio que se registró mientras tanto, aunque le quede un adelanto (dice %s)', (pg_temp.os('osg')).monto_pen));
+
+-- ============================================ El sábado no tiene cambio propio: no se espera
+-- Viernes a 3,60. La factura del sábado va con ese y no espera otro; la del lunes, que tampoco
+-- tiene el suyo, va con el mismo y sí lo espera.
+select pg_temp.como('contabilidad');
+set local role authenticated;
+insert into public.tipos_de_cambio (fecha, compra, venta, fuente, registrado_por)
+values (pg_temp.sabado() - 1, 3.55, 3.60, 'SUNAT', pg_temp.id('contabilidad'));
+reset role;
+select set_config('prueba.ruta_h', pg_temp.subir('osh', 'comprador'), true);
+select set_config('prueba.ruta_i', pg_temp.subir('osi', 'comprador'), true);
+select pg_temp.como('comprador');
+set local role authenticated;
+select public.adjuntar_documento_servicio(pg_temp.id('fh'), pg_temp.id('osh'), 'FACTURA', 'F001-4910', 'factura-h.pdf',
+                                          current_setting('prueba.ruta_h'), pg_temp.sabado());
+select public.adjuntar_documento_servicio(pg_temp.id('fi'), pg_temp.id('osi'), 'FACTURA', 'F001-4911', 'factura-i.pdf',
+                                          current_setting('prueba.ruta_i'), pg_temp.sabado() + 2);
+reset role;
+select test.afirmar(extract(isodow from pg_temp.sabado()) = 6 and pg_temp.sabado() between pg_temp.hoy() - 27 and pg_temp.hoy() - 21,
+  'el día elegido es un sábado de hace tres o cuatro semanas');
+select test.afirmar((pg_temp.os('osh')).monto_pen = 3600.00 and (pg_temp.os('osi')).monto_pen = 3600.00,
+  'la factura del sábado y la del lunes van con el cambio del viernes');
+select test.afirmar(pg_temp.cambio('osh') = format('FACTURA|%s|%s|false|false', pg_temp.sabado() - pg_temp.hoy(), pg_temp.sabado() - 1 - pg_temp.hoy()),
+  format('la del sábado no espera otro cambio: ese día no tiene el suyo (dice %s)', pg_temp.cambio('osh')));
+select test.afirmar(pg_temp.cambio('osi') = format('FACTURA|%s|%s|%s|false', pg_temp.sabado() + 2 - pg_temp.hoy(), pg_temp.sabado() - 1 - pg_temp.hoy(),
+                                                    pg_temp.habil(pg_temp.sabado() + 2)),
+  format('la del lunes sí espera el suyo, salvo que ese lunes sea feriado (dice %s)', pg_temp.cambio('osi')));
 
 -- ============================================ La OS en soles no pide fecha
 select set_config('prueba.ruta_p', pg_temp.subir('osp', 'comprador'), true);
@@ -420,6 +522,26 @@ begin
                    and not has_function_privilege('anon', 'public.adjuntar_documento_servicio(uuid, uuid, text, text, text, text)', 'execute')
                    and not has_table_privilege('authenticated', 'public.ordenes_servicio', 'update'),
     'los ayudantes no los ejecuta nadie con sesión, y nadie escribe el día del cambio por fuera');
+end $$;
+
+-- La base le dice el cambio de la OS a quien ve la OS: los mismos permisos que su política de
+-- lectura. Si la política cambia y la función no, alguien vería la OS sin su cambio, o al revés.
+do $$
+declare v_politica text[]; v_funcion text[];
+begin
+  select array_agg(distinct m[1] order by m[1]) into v_politica
+    from pg_policy p, regexp_matches(pg_get_expr(p.polqual, p.polrelid), $r$tiene_permiso\('([a-z_.]+)'$r$, 'g') m
+   where p.polrelid = 'public.ordenes_servicio'::regclass and p.polname = 'ver_ordenes_servicio';
+  select array_agg(distinct m[1] order by m[1]) into v_funcion
+    from regexp_matches(pg_get_functiondef('public.cambio_de_los_servicios(uuid[])'::regprocedure), $r$tiene_permiso\('([a-z_.]+)'$r$, 'g') m;
+  perform test.afirmar(v_politica is not null and v_politica = v_funcion
+                   and pg_get_expr((select polqual from pg_policy where polrelid = 'public.ordenes_servicio'::regclass and polname = 'ver_ordenes_servicio'),
+                                   'public.ordenes_servicio'::regclass) like '%es_aprobador_compras()%'
+                   and pg_get_functiondef('public.cambio_de_los_servicios(uuid[])'::regprocedure) like '%es_aprobador_compras()%',
+    format('cambio_de_los_servicios pide los mismos permisos que la política que deja ver la OS (política %s, función %s)', v_politica, v_funcion));
+  perform test.afirmar(has_function_privilege('authenticated', 'public.cambio_de_los_servicios(uuid[])', 'execute')
+                   and not has_function_privilege('anon', 'public.cambio_de_los_servicios(uuid[])', 'execute'),
+    'la ejecuta quien tiene sesión, y nadie sin ella');
 end $$;
 
 rollback;

@@ -40,6 +40,11 @@ test('la OS en otra moneda dice con el tipo de cambio de qué día va su detracc
   // La que no pasa del mínimo no deposita nada: solo pudo quedar fija por estar pagada.
   assert.match(resumenDetraccion(os({ monto: null, origen_del_cambio: 'DEPOSITADA_ANTES', ...elDia })).detalle, /la orden ya estaba pagada cuando llegó su factura$/)
   assert.match(resumenDetraccion(os({ origen_del_cambio: 'FACTURA_SIN_FECHA', ...elDia })).detalle, /el día en que se emitió: su factura se adjuntó sin fecha de emisión$/)
+  // Depositada antes de que llegara la factura: ya no la espera, y no se dice que falta.
+  const fija = resumenDetraccion(os({ origen_del_cambio: 'FIJA_SIN_FACTURA', ...elDia })).detalle
+  assert.match(fija, /el día en que se emitió: su detracción ya está depositada, y su factura ya no lo cambia$/)
+  assert.doesNotMatch(fija, /falta su factura/)
+  assert.match(resumenDetraccion(os({ monto: null, origen_del_cambio: 'FIJA_SIN_FACTURA', ...elDia })).detalle, /la orden ya está pagada, y su factura ya no lo cambia$/)
   // La factura de ese día ya no es la vigente: no se la nombra como «su factura».
   const conOtra = resumenDetraccion(os({ origen_del_cambio: 'DEPOSITADA_CON_OTRA' })).detalle
   assert.match(conOtra, /del 23\/11\/2026: su detracción ya estaba depositada cuando se anuló o se cambió su factura$/)

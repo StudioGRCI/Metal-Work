@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { COLUMNAS_DETRACCION, cargarTiposDetraccion, detraccionDeFila, insumosPorCompra } from '@/lib/datos/logistica'
+import { cambioDeLosServicios, type CambioDelServicio, COLUMNAS_DETRACCION, cargarTiposDetraccion, detraccionDeFila, insumosPorCompra } from '@/lib/datos/logistica'
 import { fechasCorregidas } from '@/lib/datos/plazos-compras'
 import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import type { DetraccionDeServicio } from '@/lib/dominio/detraccion'
@@ -142,6 +142,9 @@ export async function esAprobadorDeCompras(): Promise<boolean> {
   return data === true
 }
 
+/** El cambio de la OS, salvo el de la que solo espera su factura: en Aprobación eso no se dice. */
+const conFacturaODeposito = (c: CambioDelServicio | undefined) => (c && c.origen !== 'SIN_FACTURA' ? c : undefined)
+
 export async function cargarAprobacionCompras(opciones: { puestos: boolean }) {
   const supabase = await createClient()
   const [regla, compras, roles] = await Promise.all([
@@ -170,7 +173,10 @@ export async function cargarAprobacionCompras(opciones: { puestos: boolean }) {
   // y si la OC va con factura o con boleta: `documentos_por_aprobar` no lo trae,
   // y sin eso la pantalla sumaría el IGV a una compra que no lo lleva.
   const idsOc = (compras.data ?? []).flatMap((c) => (c.tipo !== 'OS' && c.id ? [c.id] : []))
-  const [insumos, comprobante, stock, corregidas] = await Promise.all([
+  const [cambios, insumos, comprobante, stock, corregidas] = await Promise.all([
+    // Con qué cambio va la OS en otra moneda que ya tiene su factura. La que todavía no la tiene
+    // no lo dice aquí: se aprueba antes de que exista, y «falta su factura» saldría en todas.
+    cambioDeLosServicios((extra.data ?? []).filter((f) => f.moneda !== 'PEN').map((f) => f.id)),
     insumosPorCompra(supabase, idsOc),
     idsOc.length ? supabase.from('ordenes_compra_materiales').select('id, con_factura').in('id', idsOc) : Promise.resolve({ data: [], error: null }),
     idsOc.length ? supabase.rpc('stock_al_aprobar_compras', { p_compras: idsOc }) : Promise.resolve({ data: [], error: null }),
@@ -245,7 +251,7 @@ export async function cargarAprobacionCompras(opciones: { puestos: boolean }) {
         codigo_interno: c.tipo === 'OS' ? (porId.get(c.id ?? '')?.codigo_interno ?? null) : null,
         requerimientos: c.tipo === 'OS' ? [] : (insumos.get(c.id ?? '')?.requerimientos ?? []),
         codigos: c.tipo === 'OS' ? [] : (insumos.get(c.id ?? '')?.codigos ?? []),
-        detraccion: c.tipo === 'OS' ? detraccionDeFila(porId.get(c.id ?? ''), tipos) : null,
+        detraccion: c.tipo === 'OS' ? detraccionDeFila(porId.get(c.id ?? ''), tipos, conFacturaODeposito(cambios.get(c.id ?? ''))) : null,
         con_factura: c.tipo === 'OS' ? true : (conFactura.get(c.id ?? '') ?? true),
       }),
     ),

@@ -51,19 +51,27 @@ export type DetraccionDeServicio = {
    * (`DEPOSITADA_CON_OTRA`: sigue con el día de la factura de entonces). `FACTURA_SIN_FECHA`: la
    * factura se adjuntó antes de que se pidiera su fecha. `DEPOSITADA_CON_OTRO_CAMBIO`: el día es el
    * de su factura, pero el cambio de ese día se registró o se corrigió con la detracción ya
-   * depositada, y sigue con el de antes. Null o ausente, en soles.
+   * depositada, y sigue con el de antes. `FIJA_SIN_FACTURA`: su detracción se depositó, o la OS
+   * se pagó, sin que hubiera llegado la factura: ya no la espera. Null o ausente, en soles o donde
+   * no se dice. Lo decide la base (`cambio_de_los_servicios`), no la pantalla.
    */
   origen_del_cambio?: OrigenDelCambio | null
   /**
    * El día del cambio registrado del que sale de verdad su monto en soles. Con factura es anterior
    * al de la factura mientras el de ese día no se registre (la factura de hoy llega antes que el
    * cambio de hoy); sin factura es el último que había al emitirla, que puede no ser el de su día.
-   * Null o ausente: no se leyó, o no sale de ninguno de los que se leyeron.
+   * Null o ausente: no se leyó, o no sale de ninguno de los registrados.
    */
   cambio_registrado_el?: string | null
+  /**
+   * Va con el cambio de un día anterior al de su factura y el de ese día todavía puede llegar: es
+   * día hábil y la OS no está fija. El sábado, el domingo y el feriado no tienen cambio propio:
+   * vale el último registrado, y no se espera otro.
+   */
+  espera_el_cambio?: boolean
 }
 
-export type OrigenDelCambio = 'FACTURA' | 'SIN_FACTURA' | 'FACTURA_SIN_FECHA' | 'DEPOSITADA_ANTES' | 'DEPOSITADA_CON_OTRA' | 'DEPOSITADA_CON_OTRO_CAMBIO'
+export type OrigenDelCambio = 'FACTURA' | 'SIN_FACTURA' | 'FACTURA_SIN_FECHA' | 'FIJA_SIN_FACTURA' | 'DEPOSITADA_ANTES' | 'DEPOSITADA_CON_OTRA' | 'DEPOSITADA_CON_OTRO_CAMBIO'
 
 /** «23/11/2026, la fecha de su factura» o «23/11/2026»: el día del cambio, como se le dice a quien paga. */
 export function diaDelCambio(d: Pick<DetraccionDeServicio, 'dia_del_cambio' | 'origen_del_cambio'>): string | null {
@@ -111,6 +119,11 @@ function conQueCambio(d: DetraccionDeServicio): string {
     return ` · con el tipo de cambio que había cuando ${d.monto === null ? 'se pagó la orden' : 'se depositó su detracción'}, no el que hoy tiene el ${fecha(d.dia_del_cambio)}, la fecha de su factura`
   }
   if (d.origen_del_cambio === 'FACTURA_SIN_FECHA') return ` · ${alEmitir}: su factura se adjuntó sin fecha de emisión`
+  // Se depositó, o se pagó, antes de que llegara la factura: decir «falta su factura» anunciaba un
+  // cambio que ya no va a pasar (auditoría de funcionamiento del 2026-11-26).
+  if (d.origen_del_cambio === 'FIJA_SIN_FACTURA') {
+    return ` · ${alEmitir}: ${d.monto === null ? 'la orden ya está pagada' : 'su detracción ya está depositada'}, y su factura ya no lo cambia`
+  }
   return ` · ${alEmitir}: falta su factura`
 }
 

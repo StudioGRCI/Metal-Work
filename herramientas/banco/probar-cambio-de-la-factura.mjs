@@ -16,7 +16,12 @@
  *   6. La factura de un día cuyo cambio todavía no está: la OS va con el último
  *      registrado; Contabilidad registra el de ese día con su pantalla y la OS
  *      lo toma sola.
- *   7. Ventas no entra.
+ *   7. La OS con su detracción ya depositada y sin factura no dice que la
+ *      factura decide nada, y al adjuntársela se dice que no la movió.
+ *   8. La factura de un sábado va con el cambio del viernes y no avisa que
+ *      falte el suyo.
+ *   9. Almacén, que ve las OS pero no sus documentos, lee lo mismo.
+ *  10. Ventas no entra.
  *
  * Cada corrida emite sus propias OS: se puede repetir. Solo en el banco.
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), BANCO_BASE (mw_demo),
@@ -93,7 +98,7 @@ for (const [dias, venta] of [[1, 3.7], [3, 3.8]]) {
 const [{ tc3, tc_sin }] = await q(`select public.cambio_del_dia($1::date, 'VENTA') as tc3, public.cambio_del_dia($2::date, 'VENTA') as tc_sin`, [hace3, sin_cambio])
 const [{ proveedor }] = await q(`select id as proveedor from public.proveedores where activo order by razon_social limit 1`)
 const emitidas = {}
-for (const [clave, moneda, monto, que] of [['a', 'USD', 1000, 'Torneado de ejes'], ['b', 'USD', 500, 'Rectificado de bocinas'], ['c', 'PEN', 800, 'Arenado de la tolva'], ['d', 'USD', 2000, 'Galvanizado de barandas']]) {
+for (const [clave, moneda, monto, que] of [['a', 'USD', 1000, 'Torneado de ejes'], ['b', 'USD', 500, 'Rectificado de bocinas'], ['c', 'PEN', 800, 'Arenado de la tolva'], ['d', 'USD', 2000, 'Galvanizado de barandas'], ['e', 'USD', 1500, 'Cromado de pasamanos'], ['f', 'USD', 1000, 'Granallado de aros']]) {
   const [{ id }] = await como(
     'logistica',
     `select public.emitir_orden_servicio(gen_random_uuid(), $1, null, (select id from public.areas where codigo = 'MTZ'), 'PLANTA', $2, null,
@@ -104,7 +109,7 @@ for (const [clave, moneda, monto, que] of [['a', 'USD', 1000, 'Torneado de ejes'
   const [os] = await q(`select id, numero, monto, monto_pen from public.ordenes_servicio where id = $1`, [id])
   emitidas[clave] = os
 }
-const { a, b, c, d } = emitidas
+const { a, b, c, d, e, f } = emitidas
 console.log(`  OS: ${a.numero} (US$ 1 000, S/ ${a.monto_pen}), ${b.numero} (US$ 500), ${c.numero} (S/ 800); cambio de hace 3 días ${tc3}`)
 comprobar(a.monto_pen !== null && Number(tc3) > 0, 'la OS en dólares nació con monto en soles y hay cambio de hace 3 días')
 
@@ -236,8 +241,8 @@ comprobar(!errorA, `Logística adjuntó la factura de la ${a.numero} sin error${
 {
   const errorOtra = await adjuntarFactura(log, a, `F001-${SELLO}5`, hace3)
   const aviso = limpio(await log.locator(`[data-aviso-documento-servicio="${a.numero}"]`).first().textContent())
-  comprobar(!errorOtra && aviso.includes(`La orden ya iba con el tipo de cambio del ${dma(hace3)}: su monto en soles no cambió`),
-    `una segunda factura del mismo día dice que el monto no cambió («${errorOtra || aviso}»)`)
+  comprobar(!errorOtra && aviso.includes(`La orden va con el tipo de cambio del ${dma(hace3)}, la fecha de esta factura`) && !aviso.includes('de nuevo'),
+    `una segunda factura del mismo día no dice que se calculó de nuevo («${errorOtra || aviso}»)`)
   const [os] = await q(`select monto_pen from public.ordenes_servicio where id = $1`, [a.id])
   comprobar(Number(os.monto_pen) === Math.round(1000 * Number(tc3) * 100) / 100, 'y la OS sigue con el mismo monto en soles')
 }
@@ -350,7 +355,65 @@ if (tc_sin !== null) {
   }
 }
 
-// 7. Ventas no entra ------------------------------------------------------------------
+// 7. Depositada su detracción antes de que llegue la factura: ya no la espera -------------------
+{
+  // El depósito se siembra sin su función, que exige la conformidad y la constancia subida.
+  await base.query('begin')
+  await base.query(`set local session_replication_role = replica`)
+  await base.query(
+    `insert into public.pagos_orden_servicio (id, orden_servicio_id, fecha_pago, moneda, monto, cancela, destino, archivo_ruta, archivo_mime, archivo_tamano, registrado_por)
+     select gen_random_uuid(), s.id, current_date, 'PEN', s.detraccion_monto, false, 'DETRACCION', 'prueba/banco/detraccion-' || s.id || '.pdf', 'application/pdf', 1000,
+            (select id from public.usuarios where correo = 'tesoreria.local@metalwork.test')
+       from public.ordenes_servicio s where s.id = $1`, [e.id])
+  await base.query('commit')
+  const tes = await entrar('tesoreria', 1440)
+  await ir(tes, '/tesoreria/pagos-de-servicio')
+  const tarjeta = limpio(await tes.locator(`[data-servicio="${e.numero}"]`).innerText())
+  comprobar(tarjeta.includes('su detracción ya está depositada, y su factura ya no lo cambia'),
+    `Tesorería lee que la ${e.numero}, con su detracción depositada y sin factura, ya no cambia con su factura`)
+  comprobar(!tarjeta.includes('decide el monto en soles') && !tarjeta.includes('falta su factura'), 'y no que la factura decide el monto en soles y la detracción')
+  await captura(tes, 'tesoreria-depositada-sin-factura-1440')
+  await tes.context().close()
+  const log3 = await entrar('logistica', 1440)
+  await ir(log3, '/compras/servicios')
+  const errorE = await adjuntarFactura(log3, e, `F001-${SELLO}6`, hace3)
+  const avisoE = limpio(await log3.locator(`[data-aviso-documento-servicio="${e.numero}"]`).first().textContent())
+  comprobar(!errorE && avisoE.includes('ya tiene depositada su detracción o ya está pagada: su monto en soles sigue con el tipo de cambio de antes'),
+    `al adjuntarle la factura, Logística lee que no la movió («${errorE || avisoE}»)`)
+  const [os] = await q(`select monto_pen, fecha_cambio from public.ordenes_servicio where id = $1`, [e.id])
+  comprobar(Number(os.monto_pen) === Number(e.monto_pen) && os.fecha_cambio === null, `y en la base sigue en S/ ${os.monto_pen}, sin día de factura`)
+
+  // 8. La factura de un sábado: vale el cambio del viernes y no se espera otro.
+  const [{ sabado, viernes }] = await q(
+    `select to_char(s, 'YYYY-MM-DD') as sabado, to_char(s - 1, 'YYYY-MM-DD') as viernes
+       from (select $1::date - 4 - ((extract(isodow from $1::date - 4)::int + 1) % 7) as s) x`, [hoy])
+  await como('contabilidad',
+    `insert into public.tipos_de_cambio (fecha, compra, venta, fuente, registrado_por)
+     select $1::date, 3.55, 3.60, 'SUNAT', public.usuario_actual() where not exists (select 1 from public.tipos_de_cambio where fecha = $1::date)`, [viernes])
+  const [{ del_viernes }] = await q(`select venta as del_viernes from public.tipos_de_cambio where fecha = $1::date`, [viernes])
+  const errorF = await adjuntarFactura(log3, f, `F001-${SELLO}7`, sabado)
+  const marca = log3.locator(`[data-aviso-documento-servicio="${f.numero}"]`).first()
+  const avisoF = limpio(await marca.textContent())
+  comprobar(!errorF && avisoF.includes(`La orden tomó el tipo de cambio del ${dma(viernes)}, el último registrado hasta el ${dma(sabado)}`),
+    `la factura del sábado ${dma(sabado)} toma el cambio del viernes, y se dice («${errorF || avisoF}»)`)
+  comprobar(!avisoF.includes('todavía no está registrado') && !/text-aviso/.test((await marca.getAttribute('class')) ?? ''),
+    'sin avisar que falta el cambio del sábado: ese día no tiene el suyo')
+  const [osF] = await q(`select monto_pen from public.ordenes_servicio where id = $1`, [f.id])
+  comprobar(Number(osF.monto_pen) === Math.round(1000 * Number(del_viernes) * 100) / 100, `y la OS quedó en S/ ${osF.monto_pen}`)
+  await log3.context().close()
+
+  // 9. Almacén ve las OS pero no sus documentos: lee lo mismo que Logística, no «ya estaba depositada».
+  const alm = await entrar('almacen', 1440)
+  await ir(alm, '/compras/servicios')
+  const pagina = limpio(await alm.locator('main').innerText())
+  comprobar(new URL(alm.url()).pathname === '/compras/servicios' && pagina.includes(a.numero), 'Almacén entra a Compras › Servicios y ve las órdenes')
+  comprobar(pagina.includes(`con el tipo de cambio del ${dma(hace3)}, la fecha de su factura`) && !pagina.includes('cuando se anuló o se cambió su factura'),
+    `y lee que la ${a.numero} va con el cambio de su factura, no que su detracción ya estaba depositada`)
+  comprobar((await alm.locator('[data-adjuntar-documento-servicio]').count()) === 0, 'sin botón para adjuntar documentos')
+  await alm.context().close()
+}
+
+// 10. Ventas no entra -----------------------------------------------------------------
 {
   const ven = await entrar('ventas', 1280)
   await ir(ven, '/compras/servicios')

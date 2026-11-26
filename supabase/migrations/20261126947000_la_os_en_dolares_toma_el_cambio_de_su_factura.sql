@@ -34,6 +34,9 @@
 --      todavía no se depositó y tiene que salir con el cambio de la factura. La
 --      OS sin factura sigue con la regla de antes (20261126626000): con cualquier
 --      pago vigente, corregir el cambio del día en que se emitió no la mueve.
+--   7. La pantalla dice de qué día es el cambio de la OS y por qué. Esa cuenta
+--      la hace la base (`cambio_de_los_servicios`), con las mismas reglas, y la
+--      pantalla solo la lee.
 --
 -- Las funciones que ya existían se cambian buscando su texto exacto: si otra
 -- migración las cambió, se detiene y pide revisarlas a mano. Idempotente y sin
@@ -92,12 +95,12 @@ end $$;
 -- 3. La OS toma el cambio de su factura -----------------------------------------
 
 -- La OS cuyo monto en soles ya no se mueve: tiene vigente el depósito de su
--- detracción o el pago que la canceló.
+-- detracción o el pago que la canceló. No escribe nada: corre con quien la
+-- llama, que son siempre las funciones de esta migración.
 create or replace function public.servicio_con_el_cambio_fijo(p_orden_servicio uuid)
 returns boolean
 language sql
 stable
-security definer
 set search_path to 'public'
 as $$
   select exists (select 1 from public.pagos_orden_servicio p
@@ -379,3 +382,104 @@ comment on function public.fn_tipo_de_cambio_alcanza_a_las_facturas() is
 create or replace trigger trg_tipo_de_cambio_alcanza_a_las_facturas
   after insert or update of fecha, venta on public.tipos_de_cambio
   for each statement execute function public.fn_tipo_de_cambio_alcanza_a_las_facturas();
+
+-- ---------------------------------------------------------------------------
+-- 7. La pantalla no adivina con qué cambio va la OS: lo dice la base
+-- ---------------------------------------------------------------------------
+-- Compras › Servicios, Tesorería y Aprobación dicen de qué día es el cambio de
+-- la OS y por qué. Eso depende de su factura, de sus pagos y de los cambios
+-- registrados, y no todo el que ve la OS puede leer sus documentos ni sus
+-- pagos: Almacén leía «su detracción ya estaba depositada» de una OS sin
+-- ningún pago, porque su pantalla no veía la factura (auditoría del
+-- 2026-11-26). La cuenta se hace aquí, una sola vez y con las mismas reglas
+-- que mueven el monto, y la pantalla solo la lee.
+--
+-- La ve quien ve la OS: los mismos permisos que la política ver_ordenes_servicio
+-- (el check 490 falla si dejan de coincidir). No entrega el documento ni el
+-- pago, solo de dónde sale el cambio.
+
+create or replace function public.cambio_de_los_servicios(p_ids uuid[])
+returns table (
+  orden_servicio_id uuid,
+  origen            text,
+  dia               date,
+  registrado_el     date,
+  se_espera         boolean,
+  fijo              boolean
+)
+language sql
+stable
+security definer
+set search_path to 'public'
+rows 50
+as $$
+  with os as (
+    select s.id, s.monto, s.monto_pen, s.fecha_cambio,
+           coalesce(s.fecha_cambio, public.fecha_de_lima(s.creado_en)) as dia,
+           public.servicio_con_el_cambio_fijo(s.id) as fijo,
+           -- La factura vigente del día que guarda la OS, la que dice alguna fecha y la que hay.
+           exists (select 1 from public.documentos_orden_servicio d
+                    where d.orden_servicio_id = s.id and d.anulado_en is null and d.tipo = 'FACTURA'
+                      and d.fecha_emision = s.fecha_cambio) as la_de_ese_dia,
+           exists (select 1 from public.documentos_orden_servicio d
+                    where d.orden_servicio_id = s.id and d.anulado_en is null and d.tipo = 'FACTURA'
+                      and d.fecha_emision is not null) as con_fecha,
+           exists (select 1 from public.documentos_orden_servicio d
+                    where d.orden_servicio_id = s.id and d.anulado_en is null and d.tipo = 'FACTURA') as con_factura
+      from public.ordenes_servicio s
+     where s.id = any(p_ids)
+       and s.moneda <> 'PEN'
+       and (public.es_admin()
+            or public.tiene_permiso('compras.ver')
+            or public.tiene_permiso('compras.crear')
+            or public.tiene_permiso('compras.detraccion')
+            or public.tiene_permiso('tesoreria.ver_documentos')
+            or public.tiene_permiso('costos.ver')
+            or public.es_aprobador_compras())
+  ), con_cambio as (
+    select o.*,
+           -- Con factura le toca uno solo: el último registrado hasta su día, como cambio_del_dia.
+           -- Sin factura se emitió con el último que había entonces (el de su día pudo registrarse
+           -- después, y no la mueve): el más reciente del que sale su monto.
+           (select t.fecha
+              from public.tipos_de_cambio t
+             where t.fecha <= o.dia and t.fecha > o.dia - 10
+               and (o.fecha_cambio is not null or round(o.monto * t.venta, 2) = o.monto_pen)
+             order by t.fecha desc
+             limit 1) as toca
+      from os o
+  ), medido as (
+    select c.*,
+           case when c.monto is null or c.monto_pen is null or c.toca is null then null
+                when round(c.monto * (select t.venta from public.tipos_de_cambio t where t.fecha = c.toca), 2) = c.monto_pen then c.toca
+           end as lleva
+      from con_cambio c
+  )
+  select m.id,
+         case when m.fecha_cambio is not null and not m.la_de_ese_dia then 'DEPOSITADA_CON_OTRA'
+              -- Va con el día de su factura, pero su monto no sale del cambio que hoy le toca a ese día.
+              when m.fecha_cambio is not null and m.monto_pen is not null and m.lleva is null then 'DEPOSITADA_CON_OTRO_CAMBIO'
+              when m.fecha_cambio is not null then 'FACTURA'
+              when m.con_fecha then 'DEPOSITADA_ANTES'
+              -- Se depositó su detracción, o se pagó, antes de que llegara la factura: ya no la espera.
+              when m.fijo then 'FIJA_SIN_FACTURA'
+              when m.con_factura then 'FACTURA_SIN_FECHA'
+              else 'SIN_FACTURA'
+         end,
+         m.dia,
+         m.lleva,
+         -- Va con el de un día anterior y todavía puede llegar el suyo: el día de su factura es
+         -- hábil (el sábado, el domingo y el feriado no tienen cambio propio: vale el último) y
+         -- la OS no está fija.
+         coalesce(m.fecha_cambio is not null and m.la_de_ese_dia and m.lleva < m.dia and not m.fijo
+                  and extract(isodow from m.dia) < 6
+                  and not exists (select 1 from public.feriados f where f.fecha = m.dia and not f.laborable), false),
+         m.fijo
+    from medido m;
+$$;
+
+revoke all on function public.cambio_de_los_servicios(uuid[]) from public, anon;
+grant execute on function public.cambio_de_los_servicios(uuid[]) to authenticated;
+
+comment on function public.cambio_de_los_servicios(uuid[]) is
+  'De cada OS en otra moneda que quien llama puede ver: de dónde sale el día de su cambio (su factura, el día en que se emitió, o lo que quedó fijo al depositar su detracción), qué día es, de qué día es el cambio registrado del que sale su monto en soles, si todavía se espera el de su día y si ya está fija. Para la pantalla; no entrega documentos ni pagos (20261126947000).';

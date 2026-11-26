@@ -222,7 +222,8 @@ function Servicio({
             cambioDel: diaDelCambio(s.detraccion),
             cambioSinFactura: Boolean(s.detraccion.afecta) && s.detraccion.origen_del_cambio === 'SIN_FACTURA',
             facturaSinFecha: Boolean(s.detraccion.afecta) && s.detraccion.origen_del_cambio === 'FACTURA_SIN_FECHA',
-            cambioDeLaVispera: s.detraccion.afecta ? cambioDeLaVispera(s.detraccion) : null,
+            // Solo si el cambio de ese día todavía puede llegar: el de un sábado o un feriado no llega.
+            cambioDeLaVispera: s.detraccion.afecta && s.detraccion.espera_el_cambio ? cambioDeLaVispera(s.detraccion) : null,
           })}
         />
         <ParaPagar documentos={documentos} cuentas={s.cancelada ? [] : s.cuentas} monedaDocumento={m} sinCuentas={s.cancelada ? null : sinCuentas} />

@@ -251,7 +251,7 @@ function AnularDocumentoServicio({
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo={`Anular ${etiqueta}`}
-        descripcion={`No se borra: queda con su archivo, el motivo, quién y cuándo, y deja de contar para el pago.${mueveElCambio ? ' La orden vuelve al tipo de cambio del día en que se emitió, salvo que su detracción ya esté depositada o la orden ya esté pagada.' : ''}`}
+        descripcion={`No se borra: queda con su archivo, el motivo, quién y cuándo, y deja de contar para el pago.${mueveElCambio ? ' La orden pasa al tipo de cambio de la factura que le quede o, si no le queda ninguna, al del día en que se emitió, salvo que su detracción ya esté depositada o la orden ya esté pagada.' : ''}`}
         ancho="md"
       >
         <form onSubmit={alEnviar} className="space-y-4">

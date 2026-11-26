@@ -14616,6 +14616,19 @@ export type Database = {
         }
         Returns: null
       }
+      cambio_de_los_servicios: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          orden_servicio_id: string | null
+          origen: string | null
+          dia: string | null
+          registrado_el: string | null
+          se_espera: boolean | null
+          fijo: boolean | null
+        }[]
+      }
       cambio_del_dia: {
         Args: {
           p_fecha: string | null
