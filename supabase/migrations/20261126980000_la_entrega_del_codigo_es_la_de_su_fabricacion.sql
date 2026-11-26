@@ -37,7 +37,7 @@ begin
   if v_actual is null then
     raise exception 'No existe la función public.codigos_internos_costo_calculado: esta migración la espera.';
   end if;
-  if v_actual not in ('e2fe09bb42d5872932489360fe533d20', '95d28c3af9ac2f10e6a3f161cd68596b') then
+  if v_actual not in ('22510d6d4ab2a8494ee1488ca425f88f', '08415ddedd88d264726703e47be9bc96') then
     raise exception 'La función public.codigos_internos_costo_calculado tiene en esta base un texto que el repositorio no conoce (md5 %). Revisar antes de reemplazarla.', v_actual;
   end if;
 end $$;
@@ -88,12 +88,19 @@ begin
       from linea l
      group by l.codigo
   ), cotizacion as (
-    -- La cotización aprobada (o aprobada antes de una corrección) de la OT del código.
-    select public.codigo_interno_de_cotizacion(c.id) as codigo, c.moneda::text as moneda, c.monto_venta::numeric as monto,
+    -- La cotización aprobada (o aprobada antes de una corrección) de las OT del
+    -- código: a cada código vigente de la cotización, su parte del total.
+    select x.codigo, c.moneda::text as moneda,
+           round(c.monto_venta::numeric / greatest(c.cantidad_unidades, 1), 2) as monto,
            ig.incluye_igv, (coalesce(c.revisado_en, c.creado_en) at time zone 'America/Lima')::date as fecha
       from public.cotizaciones_pdf c
       -- El IGV confirmado para esta versión: una corrección sin confirmar no tiene precio.
       left join public.cotizaciones_pdf_igv ig on ig.cotizacion_id = c.id and ig.version = c.version
+      cross join lateral (
+        select distinct e ->> 'codigo_interno' as codigo
+          from jsonb_array_elements(public.ordenes_de_cotizacion(c.id)) e
+         where e ->> 'codigo_interno' is not null
+      ) x
      where c.estado::text <> 'ANULADA' and c.monto_venta is not null and public.cotizacion_fue_aprobada(c.id)
   ), venta_linea as (
     select v.*,
