@@ -230,7 +230,9 @@ function VentanaCambio({
       titulo={t ? `${t.etiqueta} · ${definir(ESTADO_OT, estadoActual).etiqueta}` : ''}
       descripcion={
         t?.motivo
-          ? 'Este cambio queda registrado en la trazabilidad de la orden. Indica el motivo.'
+          ? t.estado === 'PAUSADA'
+            ? 'Indica el motivo. Queda en la trazabilidad de la orden y les llega a los supervisores de las áreas con una etapa abierta en su código.'
+            : 'Este cambio queda registrado en la trazabilidad de la orden. Indica el motivo.'
           : (t?.confirmar ?? '')
       }
       ancho="sm"

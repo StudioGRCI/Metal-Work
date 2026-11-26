@@ -218,6 +218,8 @@ export async function cambiarEstadoOrden(
   // la pausó o la reanudó) no pisa el motivo ni se lee como falta de permiso.
   // Con `ordenes.pausar`, reanudar vale solo desde PAUSADA: iniciar o reabrir
   // siguen con `ordenes.cambiar_estado`.
+  // Si se leyó la OT y estaba en proceso, un pausar que no toca nada es que otro la cambió.
+  let seLeyoEnProceso = false
   if ((estado === 'PAUSADA' && permitido) || (estado === 'EN_PROCESO' && !permitido && puede(perfil, 'ordenes.pausar'))) {
     const { data: actual, error: errorEstado } = await supabase
       .from('ordenes_trabajo')
@@ -225,6 +227,7 @@ export async function cambiarEstadoOrden(
       .eq('id', orden_id)
       .maybeSingle()
     if (errorEstado) return { ok: false, error: mensajeDeError(errorEstado) }
+    seLeyoEnProceso = actual?.estado === 'EN_PROCESO'
     // Sin revalidar: la pantalla quitaría el botón y con él este aviso.
     if (actual?.estado === estado) {
       return {
@@ -261,7 +264,7 @@ export async function cambiarEstadoOrden(
     return { ok: false, error: 'Indica el motivo, con al menos 3 letras, para continuar.' }
   }
 
-  const { data, error } = await supabase
+  const cambio = supabase
     .from('ordenes_trabajo')
     .update({
       estado,
@@ -269,10 +272,16 @@ export async function cambiarEstadoOrden(
       ...(estado === 'ANULADA' ? { motivo_anulacion: motivo } : {}),
     })
     .eq('id', orden_id)
+  // Pausar solo la que sigue en proceso: si otra pestaña la pausó en el mismo
+  // instante, no se pisa su motivo, que es el que ya le llegó al taller.
+  const { data, error } = await (estado === 'PAUSADA' ? cambio.eq('estado', 'EN_PROCESO') : cambio)
     .select('id')
     .maybeSingle()
 
   if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data && estado === 'PAUSADA' && seLeyoEnProceso) {
+    return { ok: false, error: 'La orden cambió mientras tanto: recarga la pantalla para ver cómo está.' }
+  }
   if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   revalidatePath(`/ordenes/${orden_id}`)
