@@ -882,7 +882,10 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       {
         titulo: 'Por aprobar',
         pliegue: 'fijo',
-        rutas: ['/por-decidir', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'],
+        // Las OT por aprobar (`ordenes.aprobar`, solo Gerencia) van aquí y no en
+        // Administración, que es de consulta y no cuenta pendientes: su globo no
+        // las contaba (StudioGRCI, 2026-11-26).
+        rutas: ['/por-decidir', '/cotizaciones/pdf', '/ordenes', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'],
       },
       { titulo: 'Ventas', consulta: true, rutas: ['/clientes', '/unidades', '/carrocerias'] },
       {
@@ -902,16 +905,19 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
           '/seguimiento?vista=materiales',
           '/almacen/reposicion',
           '/equipos',
+          // Las averías que reporta la gente (Plan 16.2), junto a sus equipos:
+          // las consulta, sin anular. Van aquí y no en un grupo «Mantenimiento»
+          // propio porque su cabecera no entraba en un monitor con la OT por
+          // aprobar en «Por aprobar» (648 de 635 px, 2026-11-26).
+          '/averias',
         ],
       },
-      // Las averías que reporta la gente (Plan 16.2): las consulta, sin anular.
-      { titulo: 'Mantenimiento', consulta: true, rutas: ['/averias'] },
       {
         titulo: 'Logística',
         consulta: true,
         rutas: ['/compras/ordenes', '/compras/servicios', '/compras/gestion', '/proveedores', '/compras/valorizacion'],
       },
-      { titulo: 'Administración', consulta: true, rutas: ['/ordenes', '/subcontratos'] },
+      { titulo: 'Administración', consulta: true, rutas: ['/subcontratos'] },
       {
         titulo: 'Finanzas',
         consulta: true,
@@ -941,10 +947,10 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
           '/rrhh/tiempos-de-entrega',
         ],
       },
-      // Los reportes de seguridad, en consulta y sin anular (Plan 15).
-      { titulo: 'SSOMA', consulta: true, rutas: ['/ssoma'] },
-      // Las inspecciones de calidad, en consulta: no registra ni anula (A.1).
-      { titulo: 'Calidad', consulta: true, rutas: ['/calidad'] },
+      // Los reportes de seguridad (Plan 15) y las inspecciones de calidad (A.1),
+      // en consulta: no registra ni anula. Van en un mismo grupo porque un grupo
+      // más no entra en un monitor de 1440 × 760 (ver Almacén, con Averías).
+      { titulo: 'SSOMA y Calidad', consulta: true, rutas: ['/ssoma', '/calidad'] },
     ],
     // «Por decidir» en lugar de «Aprobar»: lo eligió DKS el 2026-11-26 (plan 12, entrega 12.1).
     telefono: ['/codigos-internos', '/cotizaciones/pdf', '/por-decidir', '/reportes-diarios'],

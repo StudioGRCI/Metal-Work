@@ -62,6 +62,9 @@ const enMonedas = <T,>(filas: T[], moneda: (f: T) => string | null, monto: (f: T
 
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`
 
+/** Pendientes que son de la persona y no de su puesto: se cuentan aunque su pantalla no esté en su menú de trabajo. */
+const DE_CUALQUIER_PUESTO = new Set(['ssoma_acciones_vencidas', 'ssoma_acciones_abiertas'])
+
 /**
  * Con `cache`: el layout lo lee para los globos y el Dashboard para su cifra
  * de lo que espera, en la misma carga, y las consultas se hacen una sola vez.
@@ -1061,6 +1064,47 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       contar: () => inspeccionesDeCalidad('puede_corregir'),
     })
   }
+  // SSOMA (15.2): las acciones correctivas a cargo de quien mira, que puede ser
+  // cualquier cuenta; la política de `ssoma_acciones` le deja contar las suyas.
+  // Las vencidas aparte y en rojo: son las que la pantalla pone arriba.
+  for (const de of [
+    { clave: 'ssoma_acciones_vencidas', tono: 'peligro' as const, vencidas: true, uno: 'acción correctiva vencida a tu cargo', varios: 'acciones correctivas vencidas a tu cargo' },
+    { clave: 'ssoma_acciones_abiertas', tono: 'aviso' as const, vencidas: false, uno: 'acción correctiva a tu cargo', varios: 'acciones correctivas a tu cargo' },
+  ]) {
+    tareas.push({
+      clave: de.clave, ruta: '/ssoma', tono: de.tono,
+      texto: n => plural(n, de.uno, de.varios),
+      contar: () => {
+        const q = supabase.from('ssoma_acciones').select('id', { count: 'exact', head: true })
+          .eq('responsable_id', perfil.id).eq('estado', 'ABIERTA')
+        return cabeza(de.vencidas ? q.lt('fecha_limite', hoy) : q.gte('fecha_limite', hoy))
+      },
+    })
+  }
+  // SSOMA: los reportes por clasificar y las acciones de otros que pasaron su fecha.
+  if (puede(perfil, 'ssoma.gestionar')) {
+    tareas.push({
+      clave: 'ssoma_por_clasificar', ruta: '/ssoma', tono: 'aviso',
+      texto: n => plural(n, 'reporte de seguridad por clasificar', 'reportes de seguridad por clasificar'),
+      contar: () => cabeza(supabase.from('ssoma_reportes').select('id', { count: 'exact', head: true }).eq('estado', 'REPORTADO')),
+    })
+    // El clasificado sin ninguna acción viva: se quedaría quieto sin que nadie se entere.
+    tareas.push({
+      clave: 'ssoma_sin_accion', ruta: '/ssoma', tono: 'aviso',
+      texto: n => plural(n, 'reporte clasificado sin acción', 'reportes clasificados sin acción'),
+      contar: async () => {
+        const { data, error } = await supabase.rpc('ssoma_por_atender').single()
+        if (error) throw new Error('No se pudo consultar el pendiente.')
+        return data?.sin_accion ?? 0
+      },
+    })
+    tareas.push({
+      clave: 'ssoma_vencidas_de_otros', ruta: '/ssoma?vista=acciones', tono: 'peligro',
+      texto: n => plural(n, 'acción correctiva vencida por seguir', 'acciones correctivas vencidas por seguir'),
+      contar: () => cabeza(supabase.from('ssoma_acciones').select('id', { count: 'exact', head: true })
+        .eq('estado', 'ABIERTA').lt('fecha_limite', hoy).neq('responsable_id', perfil.id)),
+    })
+  }
 
   // Un pendiente se cuenta solo si su pantalla está en el menú del puesto: lo
   // que se resuelve donde el puesto ya no entra no es suyo. Así Supervisión,
@@ -1069,7 +1113,9 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
   // que el puesto solo consulta tampoco es suyo: Gerencia ve todas las áreas
   // desde el 2026-11-25, y sus globos siguen siendo lo que espera su visto.
   const enMenu = rutasDeTrabajo(perfil.permisos, perfil.rol.codigo === 'ADMIN', perfil.rol.codigo)
-  const suyas = tareas.filter((t) => enMenu.has(t.ruta.split(/[?#]/)[0]))
+  // Salvo la acción correctiva a su cargo: SSOMA se la puede encargar a cualquier
+  // cuenta, también a una que solo consulta `/ssoma` (Gerencia), y es suya igual.
+  const suyas = tareas.filter((t) => DE_CUALQUIER_PUESTO.has(t.clave) || enMenu.has(t.ruta.split(/[?#]/)[0]))
 
   const cuentas = await Promise.all(suyas.map((t) => t.contar().catch(() => null)))
 
