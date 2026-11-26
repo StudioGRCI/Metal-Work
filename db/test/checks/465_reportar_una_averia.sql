@@ -379,10 +379,29 @@ do $$
 declare r record;
 begin
   select * into r from public.averias_anular(pg_temp.id('av6'), 'Es la misma falla del otro reporte, se queda el otro.');
-  perform test.afirmar(r.equipo_vuelve_a is null, 'anular el que lo paró no lo devuelve mientras el otro siga diciendo que detiene');
+  perform test.afirmar(r.equipo_vuelve_a is null and r.sigue_parado_por ~ '^AV-',
+    'anular el que lo paró no lo devuelve mientras el otro siga diciendo que detiene, y dice cuál');
 end $$;
 reset role;
-select test.afirmar((select estado = 'PARADO' from public.equipos where id = pg_temp.id('e1')), 'y el equipo sigue parado');
+select test.afirmar(
+  (select e.estado = 'PARADO' and e.estado_nota like 'Avería ' || v.numero || ':%'
+     from public.equipos e join public.averias v on v.id = pg_temp.id('av7') where e.id = pg_temp.id('e1')),
+  'y el equipo sigue parado, con la nota del reporte que sigue vigente');
+select test.afirmar(
+  (select paro_el_equipo and equipo_estado_antes = 'OPERATIVO' from public.averias where id = pg_temp.id('av7')),
+  'el que sigue vigente se queda con el paro y con cómo estaba el equipo antes');
+select test.como_usuario(:'mnt_id');
+set local role authenticated;
+do $$
+declare r record;
+begin
+  select * into r from public.averias_anular(pg_temp.id('av7'), 'Se arregló el interruptor, prueba del check.');
+  perform test.afirmar(r.equipo_vuelve_a = 'OPERATIVO' and r.sigue_parado_por is null,
+    'y al anular el último, el equipo vuelve a como estaba antes del primero');
+end $$;
+reset role;
+select test.debe_fallar(format('update public.averias set paro_el_equipo = true where id = %L', current_setting('prueba.av5')),
+  'el paro no se pasa a mano, solo al anular', 'no se corrige');
 
 -- 10. Nadie borra ni corrige por debajo -------------------------------------------------
 select test.como_usuario(:'admin_id');

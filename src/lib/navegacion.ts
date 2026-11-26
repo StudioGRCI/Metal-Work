@@ -1253,8 +1253,6 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/rrhh/pagos-oficina', corto: 'Pagos' },
   { ruta: '/rrhh/observaciones', corto: 'Observaciones' },
   { ruta: '/ssoma', corto: 'Seguridad' },
-  // Solo el nombre corto: en el orden de ADMIN va lejos, para no quitarle ninguna de sus cuatro pestañas.
-  { ruta: '/averias', corto: 'Averías' },
   { ruta: '/reportes-diarios', corto: 'Reporte' },
   { ruta: '/codigos-internos', corto: 'Códigos' },
   { ruta: '/diseno/planos', corto: 'Planos' },
@@ -1277,4 +1275,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/almacen/stock', corto: 'Stock' },
   { ruta: '/almacen/reposicion', corto: 'Reposición' },
   { ruta: '/equipos', corto: 'Equipos' },
+  // Al final: solo el nombre corto. Antes quitaba una de las cuatro pestañas a
+  // los puestos sin menú propio (Operario, Calidad, Costos…).
+  { ruta: '/averias', corto: 'Averías' },
 ]

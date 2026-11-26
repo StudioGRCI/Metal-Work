@@ -67,11 +67,11 @@ export function aQuienSeAviso(
 ): string {
   const partes: string[] = []
   // Quien es de Mantenimiento no se avisa a sí mismo: no se le dice que «le avisamos a Mantenimiento».
-  if (avisos.mantenimiento && !atiende) partes.push('Mantenimiento')
-  if (avisos.responsable) partes.push('el responsable del área')
-  if (avisos.ssoma) partes.push('SSOMA')
+  if (avisos.mantenimiento && !atiende) partes.push('a Mantenimiento')
+  if (avisos.responsable) partes.push('al responsable del área')
+  if (avisos.ssoma) partes.push('a SSOMA')
   let texto = `Reporte ${numero} registrado.${parado ? ` El equipo ${codigo} quedó parado.` : ''}`
-  if (partes.length > 0) texto += ` Ya le avisamos a ${enLista(partes)}.`
+  if (partes.length > 0) texto += ` Ya ${partes.length === 1 ? 'le' : 'les'} avisamos ${enLista(partes)}.`
   // Lo que no tenía quién lo recibiera, todo junto: sin Mantenimiento y sin SSOMA a la vez se dicen los dos.
   const faltan = [
     ...(!atiende && !avisos.mantenimiento ? ['Mantenimiento'] : []),

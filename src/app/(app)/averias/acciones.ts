@@ -134,6 +134,8 @@ export async function anularAveria(_previo: unknown, formulario: FormData): Prom
       ? ' El equipo vuelve a operativo.'
       : data.equipo_vuelve_a === 'CON_OBSERVACION'
         ? ' El equipo vuelve a «con observación».'
-        : ''
+        : data.sigue_parado_por
+          ? ` El equipo sigue parado: el reporte ${data.sigue_parado_por} dice que detiene el trabajo.`
+          : ''
   return { ok: true, mensaje: `Reporte anulado. Queda con su motivo.${vuelve}` }
 }

@@ -142,6 +142,7 @@ create or replace function public.fn_averia_guardia()
 returns trigger language plpgsql set search_path to 'public' as $$
 declare
   v_cambian constant text[] := array['estado', 'anulado_por', 'anulado_en', 'motivo_anulacion', 'actualizado_en'];
+  v_paro    constant text[] := array['paro_el_equipo', 'equipo_estado_antes', 'equipo_nota_antes', 'equipo_parado_desde'];
 begin
   if tg_op = 'DELETE' then
     raise exception 'Un reporte de avería no se borra: Mantenimiento lo anula con su motivo.' using errcode = 'check_violation';
@@ -149,7 +150,12 @@ begin
   if old.estado = 'ANULADA' then
     raise exception 'El reporte % está anulado: queda como evidencia.', old.numero using errcode = 'check_violation';
   end if;
-  if (to_jsonb(new) - v_cambian) is distinct from (to_jsonb(old) - v_cambian) then
+  if (to_jsonb(new) - v_cambian) is distinct from (to_jsonb(old) - v_cambian)
+     -- Lo único que cambia sin anular: `averias_anular` le pasa el paro del equipo
+     -- al otro reporte vigente que dice que detiene el trabajo, y solo a ese.
+     and not (coalesce(current_setting('averias.traspaso_del_paro', true), '') = old.id::text
+              and old.estado = 'REPORTADA' and not old.paro_el_equipo and new.paro_el_equipo
+              and (to_jsonb(new) - v_cambian - v_paro) = (to_jsonb(old) - v_cambian - v_paro)) then
     raise exception 'Lo que dice el reporte % no se corrige: si está mal, Mantenimiento lo anula con su motivo y se reporta de nuevo.', old.numero
       using errcode = 'check_violation';
   end if;
@@ -395,6 +401,10 @@ begin
   if p_id is null then
     raise exception 'Vuelve a abrir el formulario del reporte.' using errcode = 'check_violation';
   end if;
+  -- Dos pedidos con el mismo id a la vez (un reintento que se cruza con el
+  -- primero): el segundo espera aquí y después lee el que ya entró, en vez de
+  -- chocar con la llave y decir «ya existe».
+  perform pg_advisory_xact_lock(hashtextextended('averias_reportar:' || p_id::text, 0));
   select * into v_actual from public.averias where id = p_id;
   if found then
     if v_actual.registrado_por = v_yo and public.mismo_envio(p_id, 'REPORTE_AVERIA', v_envio) then
@@ -513,13 +523,15 @@ grant execute on function public.averias_reportar(uuid, uuid, text, boolean, boo
 -- Un reporte mal hecho no se borra: Mantenimiento lo anula. Si el equipo sigue
 -- parado por él, vuelve a como estaba; a quien lo reportó le llega el aviso.
 create or replace function public.averias_anular(p_id uuid, p_motivo text)
-returns table (averia uuid, equipo_vuelve_a text)
+returns table (averia uuid, equipo_vuelve_a text, sigue_parado_por text)
 language plpgsql security definer set search_path to 'public' as $$
 declare
   v_yo     uuid := public.usuario_actual();
   v_av     public.averias%rowtype;
   v_equipo public.equipos%rowtype;
   v_vuelve text;
+  v_otro   public.averias%rowtype;
+  v_sigue  text;
 begin
   if v_yo is null or not (public.es_admin() or public.tiene_permiso('averias.atender')) then
     raise exception 'Un reporte de avería lo anula Mantenimiento.' using errcode = 'insufficient_privilege';
@@ -532,7 +544,7 @@ begin
   if v_av.estado = 'ANULADA' then
     -- El mismo pedido repetido (se perdió la respuesta) entra; con otro motivo se dice, no se finge.
     if v_av.motivo_anulacion = btrim(p_motivo) and v_av.anulado_por = v_yo then
-      return query select p_id, null::text;
+      return query select p_id, null::text, null::text;
       return;
     end if;
     raise exception 'El reporte % ya estaba anulado, con este motivo: «%». No se cambia.', v_av.numero, v_av.motivo_anulacion
@@ -549,14 +561,33 @@ begin
     select * into v_equipo from public.equipos where id = v_av.equipo_id for update;
     -- Y si otro reporte vigente del mismo equipo dice que detiene el trabajo, sigue
     -- parado: anular el repetido no arregla la falla que el otro reporta.
-    if v_equipo.activo and v_equipo.estado = 'PARADO' and v_equipo.estado_desde = v_av.equipo_parado_desde
-       and not exists (select 1 from public.averias o
-                        where o.equipo_id = v_av.equipo_id and o.id <> p_id
-                          and o.estado = 'REPORTADA' and o.detiene_trabajo) then
-      update public.equipos
-         set estado = v_av.equipo_estado_antes, estado_nota = v_av.equipo_nota_antes
-       where id = v_av.equipo_id;
-      v_vuelve := v_av.equipo_estado_antes;
+    select o.* into v_otro
+      from public.averias o
+     where o.equipo_id = v_av.equipo_id and o.id <> p_id and o.estado = 'REPORTADA' and o.detiene_trabajo
+     order by o.creado_en
+     limit 1
+       for update;
+    if v_equipo.activo and v_equipo.estado = 'PARADO' and v_equipo.estado_desde = v_av.equipo_parado_desde then
+      if v_otro.id is null then
+        update public.equipos
+           set estado = v_av.equipo_estado_antes, estado_nota = v_av.equipo_nota_antes
+         where id = v_av.equipo_id;
+        v_vuelve := v_av.equipo_estado_antes;
+      else
+        -- El otro reporte se queda con el paro y con cómo estaba el equipo antes:
+        -- cuando se cierre o se anule, el equipo vuelve a eso. La nota del padrón
+        -- pasa a su número.
+        perform set_config('averias.traspaso_del_paro', v_otro.id::text, true);
+        update public.averias
+           set paro_el_equipo = true, equipo_estado_antes = v_av.equipo_estado_antes,
+               equipo_nota_antes = v_av.equipo_nota_antes, equipo_parado_desde = v_av.equipo_parado_desde
+         where id = v_otro.id;
+        perform set_config('averias.traspaso_del_paro', '', true);
+        update public.equipos
+           set estado_nota = left('Avería ' || v_otro.numero || ': ' || v_otro.descripcion, 300)
+         where id = v_av.equipo_id;
+        v_sigue := v_otro.numero;
+      end if;
     end if;
   end if;
 
@@ -565,7 +596,8 @@ begin
     values (v_av.registrado_por, 'Mantenimiento anuló tu reporte ' || v_av.numero, left(btrim(p_motivo), 500),
             '/averias/' || p_id::text, 'averias', p_id);
   end if;
-  return query select p_id, v_vuelve;
+  -- Si sigue parado porque otro reporte vigente dice que detiene, se dice cuál.
+  return query select p_id, v_vuelve, v_sigue;
 end;
 $$;
 comment on function public.averias_anular(uuid, text) is

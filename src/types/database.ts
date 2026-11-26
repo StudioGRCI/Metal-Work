@@ -12771,6 +12771,7 @@ export type Database = {
         Returns: {
           averia: string | null
           equipo_vuelve_a: string | null
+          sigue_parado_por: string | null
         }[]
       }
       averias_areas_de_la_cuenta: {

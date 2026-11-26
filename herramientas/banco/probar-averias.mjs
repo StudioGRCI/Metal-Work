@@ -71,9 +71,23 @@ const supMtz = await cuenta('sup.mtz.local@metalwork.test')
 const mantenimiento = await cuenta('mantenimiento.local@metalwork.test')
 
 // El responsable de Maestranza es su supervisor, como lo pondría el administrador
-// en Configuración. Y el equipo empieza operativo, aunque una vuelta anterior se
-// haya cortado a medias.
+// en Configuración.
 await base.query(`update public.areas set jefe_id = $1 where codigo = 'MTZ'`, [supMtz])
+// El equipo empieza sin reportes vigentes: los de una vuelta anterior los anula
+// Mantenimiento, con su función, para que el equipo vuelva como lo haría de verdad.
+// Ponerlo operativo por debajo dejaba un reporte que dice «detiene» con el equipo
+// operativo. Solo si quedó parado por otra cosa se arregla a mano.
+await base.query('begin')
+await base.query(`select set_config('request.jwt.claim.sub', $1, true), set_config('request.jwt.claims', json_build_object('sub', $1::text, 'role', 'authenticated')::text, true)`, [
+  mantenimiento,
+])
+await base.query('set local role authenticated')
+await base.query(
+  `select public.averias_anular(v.id, 'Limpieza del banco antes de la prueba de averías.')
+     from public.averias_visibles(null) v where v.equipo_codigo = $1 and v.estado = 'REPORTADA'`,
+  [EQUIPO],
+)
+await base.query('commit')
 await base.query(`update public.equipos set estado = 'OPERATIVO', estado_nota = null where codigo = $1 and estado <> 'OPERATIVO'`, [EQUIPO])
 
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
