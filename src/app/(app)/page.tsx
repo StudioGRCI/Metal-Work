@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import {
   AlertTriangle,
+  ChevronRight,
   ClipboardList,
   Factory,
   PauseCircle,
@@ -11,6 +12,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Indicador, tramos } from '@/components/ui/indicador'
 import { Insignia, Punto, type Tono } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
+import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_OT, ORDEN_ESTADO_OT, PRIORIDAD, definir } from '@/lib/dominio/estados'
 import { situacionDeEntrega } from '@/lib/dominio/expediente'
@@ -18,23 +20,26 @@ import { nombreDeUnidadOCodigo, nombreVaTenue } from '@/lib/dominio/unidades'
 import { fecha, fechaLarga, hoyLima, moneda, porcentajeYMonto, porcentaje } from '@/lib/format'
 import { costoDeOrdenes } from '@/lib/datos/costos-ot'
 import { dashboardDelPuesto, type Cifra, type CodigoEnCurso } from '@/lib/datos/dashboard'
+import { pendientesGlobales, type TareaPendiente } from '@/lib/datos/pendientes-globales'
 import { indicadoresTablero, ordenesAtrasadas, ordenesPorEntrega } from '@/lib/datos/ordenes'
-import { menuDe } from '@/lib/navegacion'
+import { menuDe, type ItemNavegacion } from '@/lib/navegacion'
 import { exigirSesion, puede, type PerfilSesion } from '@/lib/sesion'
 import { cn } from '@/lib/utils'
 
 export const metadata = { title: 'Dashboard' }
 
 /**
- * El dashboard de cada puesto, de arriba abajo: las cifras clave de su área,
- * cada una con el enlace a la pantalla donde se mira, y, para quien todavía
- * lleva la OT, las órdenes del taller. Al final, en el teléfono, sus módulos a
- * un toque.
+ * El dashboard de cada puesto, de arriba abajo: «Te toca», lo que espera por
+ * el puesto en cada pantalla de su menú, con el enlace a donde se atiende; las
+ * cifras clave de su área, cada una con el enlace a la pantalla donde se mira;
+ * y, para quien todavía lleva la OT, las órdenes del taller. Al final, en el
+ * teléfono, sus módulos a un toque.
  *
- * No lleva una lista de «lo que te toca hoy»: el sistema no le dice a nadie
- * qué tiene que hacer, le muestra cómo va su área y le deja cada pantalla a un
- * toque (decisión del 2026-10-19). Los globos del menú siguen contando lo que
- * espera en cada pantalla.
+ * «Te toca» volvió el 2026-11-25 (decisión 4 del plan de orden y diseño): lo
+ * pendiente era una cifra más entre ocho o diez y no llevaba a su lista, y en
+ * el teléfono quedaba debajo de todas. Cuenta lo mismo que los globos del menú
+ * (`pendientesGlobales`, una sola lectura por carga), sin órdenes ni plazos:
+ * dice qué espera y dónde, no qué hacer primero.
  */
 export default async function PaginaDashboard() {
   const perfil = await exigirSesion()
@@ -44,31 +49,153 @@ export default async function PaginaDashboard() {
   // quien la tiene en su menú (Diseño, su colaborador y Administración).
   const llevaOrdenes = menuDe(perfil.permisos, esAdmin, perfil.rol.codigo).some((g) => g.items.some((i) => i.ruta === '/ordenes'))
 
-  const area = await dashboardDelPuesto(perfil)
+  const [area, pendientes] = await Promise.all([dashboardDelPuesto(perfil), pendientesGlobales(perfil)])
+  const modulos = menuDe(perfil.permisos, esAdmin, perfil.rol.codigo).flatMap((g) => g.items)
 
   return (
     <>
       {/* El puesto y no el nombre (migración 109): la pantalla es del puesto,
           quien lo ocupe hoy ya sabe cómo se llama. */}
       <EncabezadoPagina titulo="Dashboard" descripcion={`${perfil.puesto} · ${fechaLarga(hoy)}`} />
-      {area && area.cifras.length > 0 && <CifrasDelArea titulo={area.titulo} cifras={area.cifras} />}
-      {area?.codigos && area.codigos.length > 0 && <CodigosEnCurso codigos={area.codigos} />}
-      {llevaOrdenes && <OrdenesDelTaller perfil={perfil} />}
-      <TusModulos perfil={perfil} />
+      {/* 20 px entre bloques, como pide la escala de separaciones (skill `diseno`). */}
+      <div className="space-y-5">
+        {pendientes.cuentas > 0 && (
+          <TeToca tareas={pendientes.tareas} sinComprobar={pendientes.sinComprobar} modulos={modulos} />
+        )}
+        {area && area.cifras.length > 0 && <CifrasDelArea titulo={area.titulo} cifras={area.cifras} />}
+        {area?.codigos && area.codigos.length > 0 && <CodigosEnCurso codigos={area.codigos} />}
+        {llevaOrdenes && <OrdenesDelTaller perfil={perfil} />}
+        <TusModulos perfil={perfil} />
+      </div>
     </>
   )
+}
+
+/**
+ * Las columnas del monitor según cuántas cifras trae el puesto, para que cada
+ * fila vaya llena y todas las tarjetas midan lo mismo: con dos cifras en cuatro
+ * columnas quedaba media fila vacía, y con siete, tres sueltas debajo de cuatro.
+ */
+const COLUMNAS_DEL_MONITOR: Record<number, string> = {
+  1: 'lg:grid-cols-1',
+  2: 'lg:grid-cols-2',
+  3: 'lg:grid-cols-3',
+  4: 'lg:grid-cols-4',
+  5: 'lg:grid-cols-5',
+  6: 'lg:grid-cols-3',
+  8: 'lg:grid-cols-4',
+  9: 'lg:grid-cols-3',
+  10: 'lg:grid-cols-5',
+}
+
+/**
+ * «Te toca»: cada cuenta que tiene algo, en el orden del menú del puesto —que
+ * es el de su trabajo—, con el módulo donde se atiende y lo que vale si es
+ * dinero. Sin nada, lo dice en una línea; una cuenta que no se pudo leer lo
+ * dice con su pantalla, nunca como si no hubiera nada.
+ */
+function TeToca({ tareas, sinComprobar, modulos }: { tareas: TareaPendiente[]; sinComprobar: string[]; modulos: ItemNavegacion[] }) {
+  const base = (ruta: string) => ruta.split(/[?#]/)[0]
+  const lugar = (ruta: string) => {
+    const i = modulos.findIndex((m) => base(m.ruta) === base(ruta))
+    return { orden: i === -1 ? modulos.length : i, modulo: i === -1 ? null : modulos[i] }
+  }
+  const filas = tareas
+    .map((t, i) => ({ ...t, ...lugar(t.ruta), i }))
+    .sort((a, b) => a.orden - b.orden || a.i - b.i)
+  const sinLeer = sinComprobar.map((ruta) => lugar(ruta).modulo).filter((m): m is ItemNavegacion => m !== null)
+  const total = filas.reduce((n, t) => n + t.cantidad, 0)
+  const pantallas = new Set(filas.map((t) => base(t.ruta))).size
+
+  return (
+    <Tarjeta data-te-toca="">
+      <TarjetaCabecera
+        titulo="Te toca"
+        descripcion={
+          filas.length === 0
+            ? null
+            : `${total} ${total === 1 ? 'pendiente' : 'pendientes'}${pantallas > 1 ? ` en ${pantallas} pantallas` : ''}`
+        }
+        ayuda="Lo que espera por tu puesto en cada pantalla de tu menú, con el enlace a donde se atiende. Los globos del menú cuentan lo mismo."
+      />
+      <TarjetaCuerpo className="p-2 sm:p-3">
+        {filas.length === 0 && sinLeer.length === 0 ? (
+          <div className="px-2 py-2">
+            <SinDatos compacto titulo="Nada te espera por ahora" descripcion="Cuando llegue algo a tus pantallas, aparece aquí con su enlace." />
+          </div>
+        ) : (
+          <ul className="grid gap-x-4 lg:grid-cols-2">
+            {filas.map((t) => {
+              const Icono = t.modulo?.icono
+              const monto = t.monto && (t.monto.PEN > 0 || t.monto.USD > 0)
+                ? [t.monto.PEN > 0 ? moneda(t.monto.PEN) : null, t.monto.USD > 0 ? moneda(t.monto.USD, 'USD') : null].filter(Boolean).join(' y ')
+                : null
+              return (
+                <li key={t.clave}>
+                  <Link
+                    href={t.ruta}
+                    data-cantidad={t.cantidad}
+                    className="group flex min-h-11 items-center gap-3 rounded-[var(--radius-base)] px-2 py-2.5 hover:bg-superficie-2"
+                  >
+                    <span className={cn('flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-base)]', FONDO_DEL_TONO[t.tono])}>
+                      {Icono ? <Icono aria-hidden className="size-4" /> : <Punto tono={t.tono} />}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-texto">{t.texto}</span>
+                      {(t.modulo || monto) && (
+                        <span className="block text-xs text-texto-suave">
+                          {t.modulo?.titulo}
+                          {t.modulo && monto && ' · '}
+                          {monto && <span className="tabular text-texto">{monto} sin IGV</span>}
+                        </span>
+                      )}
+                    </span>
+                    <ChevronRight aria-hidden className="size-4 shrink-0 text-texto-tenue group-hover:text-acento" />
+                  </Link>
+                </li>
+              )
+            })}
+            {sinLeer.map((m) => (
+              <li key={`sin-leer-${m.ruta}`}>
+                <Link href={m.ruta} className="group flex min-h-11 items-center gap-3 rounded-[var(--radius-base)] px-2 py-2.5 hover:bg-superficie-2">
+                  <span className={cn('flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-base)]', FONDO_DEL_TONO.aviso)}>
+                    <AlertTriangle aria-hidden className="size-4" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-texto">No se pudo comprobar lo que espera</span>
+                    <span className="block text-xs text-texto-suave">{m.titulo}: ábrela para verlo</span>
+                  </span>
+                  <ChevronRight aria-hidden className="size-4 shrink-0 text-texto-tenue group-hover:text-acento" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </TarjetaCuerpo>
+    </Tarjeta>
+  )
+}
+
+/** El fondo del ícono de cada fila de «Te toca», del color de su cuenta. */
+const FONDO_DEL_TONO: Record<Tono, string> = {
+  neutro: 'bg-superficie-2 text-texto-suave',
+  exito: 'bg-exito-suave text-exito',
+  aviso: 'bg-aviso-suave text-aviso',
+  peligro: 'bg-peligro-suave text-peligro',
+  info: 'bg-info-suave text-info',
+  acento: 'bg-acento-suave text-acento',
 }
 
 /** Las cifras clave del área, cada una con el enlace a la pantalla donde se mira. */
 function CifrasDelArea({ titulo, cifras }: { titulo: string; cifras: Cifra[] }) {
   return (
-    <section aria-label={titulo} className="mb-6">
+    <section aria-label={titulo}>
       <h2 className="mb-2 text-base font-semibold text-texto">{titulo}</h2>
       {/* Dos columnas ya en el teléfono: apiladas de a una ocupaban una pantalla entera.
           Con un número impar, la primera —la cifra principal del puesto— toma la
           fila entera en vez de dejar una sola con un hueco al lado: en media
           columna, un saldo de seis cifras partía el «S/» en otro renglón. */}
-      <div className={cn('grid grid-cols-2 gap-3 sm:gap-4 max-lg:[&>:first-child:nth-last-child(odd)]:col-span-2 [&>:first-child:nth-last-child(odd)_.rotulo-indicador]:min-h-0', cifras.length === 6 ? 'lg:grid-cols-3' : cifras.length >= 5 ? 'lg:grid-cols-5' : cifras.length === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-4')}>
+      <div className={cn('grid grid-cols-2 gap-3 sm:gap-4 max-lg:[&>:first-child:nth-last-child(odd)]:col-span-2 [&>:first-child:nth-last-child(odd)_.rotulo-indicador]:min-h-0', COLUMNAS_DEL_MONITOR[cifras.length] ?? 'lg:grid-cols-4')}>
         {cifras.map((c) => (
           <Indicador key={c.clave} icono={c.icono} titulo={c.titulo} valor={c.valor} pie={c.pie} tono={c.tono} href={c.href} />
         ))}
@@ -80,7 +207,7 @@ function CifrasDelArea({ titulo, cifras }: { titulo: string; cifras: Cifra[] }) 
 /** Gerencia: los códigos que se movieron hace poco, con su avance y lo que llevan costado. */
 function CodigosEnCurso({ codigos }: { codigos: CodigoEnCurso[] }) {
   return (
-    <Tarjeta className="mb-4">
+    <Tarjeta>
       <TarjetaCabecera
         titulo="Códigos con movimiento reciente"
         ayuda="Del que se movió hace menos al que se movió hace más, con su avance y su costo a la fecha"
@@ -141,7 +268,7 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
   const hoy = hoyLima()
 
   return (
-    <section aria-label="Órdenes de trabajo" className="mb-6">
+    <section aria-label="Órdenes de trabajo">
       <h2 className="mb-2 text-base font-semibold text-texto">Órdenes de trabajo</h2>
 
       {/* Dos columnas ya en el teléfono: cinco tarjetas apiladas ocupaban una

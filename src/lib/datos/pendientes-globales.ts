@@ -18,9 +18,9 @@ import { createClient } from '@/lib/supabase/server'
 
 /**
  * Lo que espera a quien mira en cada módulo, en todo el sistema: los globos del
- * menú y de la barra del teléfono. Hasta el 2026-10-19 también era la lista
- * «Te toca hoy» del Dashboard; se quitó porque el sistema no le dice a nadie
- * qué hacer, le muestra lo que espera en cada pantalla que puede abrir. Cada
+ * menú y de la barra del teléfono, y «Te toca» arriba del Dashboard, cada
+ * cuenta con el enlace a donde se atiende (decisión 4 del plan de orden y
+ * diseño, 2026-11-25: lo pendiente era una cifra más entre ocho o diez). Cada
  * cuenta se pide solo si el puesto tiene el permiso que la resuelve —a quien no
  * puede aprobar no se le cuentan reportes por aprobar— y cada una es un `count`
  * de cabecera sobre las vistas que ya existen, que el RLS filtra solo. Una
@@ -36,6 +36,8 @@ export type PendientesGlobales = {
   tareas: TareaPendiente[]
   /** Las claves cuya cuenta no se pudo leer: la cifra del Dashboard que las suma no puede decir «nada por ahora». */
   clavesSinComprobar: string[]
+  /** Cuántas cuentas lleva el puesto: sin ninguna, «Te toca» no tiene nada que decir y no sale. */
+  cuentas: number
 }
 
 /** Lo que vale lo que espera, en cada moneda, para las cuentas que son dinero. */
@@ -1057,5 +1059,5 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
     })
   })
 
-  return { porRuta, sinComprobar: [...sinComprobar], tareas: conAlgo, clavesSinComprobar }
+  return { porRuta, sinComprobar: [...sinComprobar], tareas: conAlgo, clavesSinComprobar, cuentas: suyas.length }
 })
