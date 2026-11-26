@@ -447,7 +447,7 @@ Plan «El puesto de Tramitador», entrega 1 de 4 (StudioGRCI, 2026-11-26).
 Migraciones `20261126997000_el_tramite_tiene_numero`,
 `20261126997100_el_tramitador_y_sus_tramites` y
 `20261126997200_la_cuenta_del_tramitador`, comprobadas con los roles reales en
-la base local (check 496) y con clic real en el banco
+la base local (check 497) y con clic real en el banco
 (`herramientas/banco/probar-tramites.mjs`). La empresa no tiene formato propio
 de trámite: el número es `TR-0001-2026`. El puesto es del área de
 Administración (ADM). El expediente con sus archivos y el cierre con el
