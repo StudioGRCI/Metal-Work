@@ -368,12 +368,15 @@ function FilaCompra({
               fecha={plazo.completa_en || (plazo.llego_en && !plazo.por_llegar?.length) ? undefined : plazo.esperada}
             />
           )}
-          {emite && c.aprobacion !== 'ANULADA' && (
+          {/* La rechazada no lleva ningún botón (ni recojo, ni adjuntar, ni corregir): con el
+              envoltorio vacío de `AccionesCompra` la celda no contaba como vacía y la ficha del
+              teléfono dejaba un renglón en blanco (probar-orden-logistica, 2026-11-26). */}
+          {emite && c.aprobacion !== 'ANULADA' && c.aprobacion !== 'RECHAZADA' && (
             <AccionesCompra
               id={c.id}
               oc={ocParaDetector(c)}
               recojo={puedeIrARecojo(c)}
-              adjuntar={c.aprobacion !== 'RECHAZADA'}
+              adjuntar
               conFactura={c.con_factura}
               codigoInterno={c.codigo_interno}
               codigosDeInsumos={c.codigo_por_insumo ? c.codigos : null}
