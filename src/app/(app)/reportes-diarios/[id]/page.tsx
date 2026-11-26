@@ -166,7 +166,9 @@ export default async function PaginaReporteDiario({ params, searchParams }: Page
                     <div>
                       <p className="text-sm font-medium text-texto">{AREA_QUE_VALIDA[lado]}</p>
                       <p className="text-xs text-texto-suave">
-                        {visto ? `Visto bueno el ${fechaHora(visto)}` : estado === 'OBSERVADO' ? 'Sin visto: está observado' : 'Falta su visto bueno'}
+                        {visto
+                          ? `Visto bueno${lado === 'GERENCIA' && r.visto_gerencia_de ? ` de ${r.visto_gerencia_de}` : ''} el ${fechaHora(visto)}`
+                          : estado === 'OBSERVADO' ? 'Sin visto: está observado' : 'Falta su visto bueno'}
                       </p>
                     </div>
                     {estado === 'POR_VALIDAR' && valida.includes(lado) && <ValidarReporte id={r.id} lado={lado} yaDioVisto={Boolean(visto)} />}

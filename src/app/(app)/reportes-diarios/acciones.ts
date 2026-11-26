@@ -298,6 +298,21 @@ export async function validarReporteDiario(_previo: unknown, formulario: FormDat
   const { data, error } = await supabase.rpc('validar_reporte_diario', { p_id: id, p_lado: lado })
   if (error) return { ok: false, error: mensajeDeError(error) }
 
+  // Desde el 2026-11-25 el visto de Gerencia lo dan dos puestos (la General y la
+  // de Producción) y vale el primero: la función no lo cambia si ya estaba.
+  // Si era de otra persona, se dice: «Visto bueno registrado» mentiría.
+  const columna = lado === 'GERENCIA' ? 'visto_gerencia_por' : 'visto_rrhh_por'
+  const { data: quedo } = await supabase.from('reportes_diarios').select(columna).eq('id', id).maybeSingle()
+  const quien = (quedo as Record<string, string | null> | null)?.[columna] ?? null
+  if (quien && quien !== perfil.id) {
+    const { data: otro } = await supabase.from('usuarios').select('nombres, apellidos').eq('id', quien).maybeSingle()
+    revalidatePath(`/reportes-diarios/${id}`)
+    return {
+      ok: true,
+      mensaje: `Este reporte ya tenía el visto de ${lado === 'GERENCIA' ? 'Gerencia' : 'Recursos Humanos'}${otro ? `, de ${`${otro.nombres} ${otro.apellidos}`.trim()}` : ''}: no hacía falta el tuyo.`,
+    }
+  }
+
   revalidatePath('/reportes-diarios')
   revalidatePath(`/reportes-diarios/${id}`)
   revalidatePath('/planilla-diaria')

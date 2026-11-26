@@ -85,7 +85,7 @@ export function Pestanas({ ordenId, numero, activa, contadores, visibles }: {
                   <span
                     aria-hidden
                     className={cn(
-                      'tabular rounded-full px-1.5 text-[11px] font-semibold',
+                      'tabular rounded-full px-1.5 text-xs font-semibold',
                       esActiva ? 'bg-acento-texto/20 text-acento-texto' : 'bg-aviso-suave text-aviso',
                     )}
                   >

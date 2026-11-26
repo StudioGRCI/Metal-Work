@@ -270,7 +270,7 @@ export async function PestanaFacturas({ perfil, params }: { perfil: PerfilSesion
                           </Insignia>
                         )}
                         {compra.facturas.length > 0 && (
-                          <p className="mt-1 text-[11px] text-texto-suave">
+                          <p className="mt-1 text-xs text-texto-suave">
                             {compra.facturas.join(', ')}: {moneda(compra.facturado, codigo(compra.moneda))}
                           </p>
                         )}
@@ -282,7 +282,7 @@ export async function PestanaFacturas({ perfil, params }: { perfil: PerfilSesion
                       <TD className="text-right align-top tabular whitespace-nowrap">
                         {compra.sin_precio ? <span className="text-aviso">Precio pendiente</span> : moneda(compra.total, codigo(compra.moneda))}
                         {!compra.sin_precio && compra.facturado > 0 && (
-                          <p className="text-[11px] font-normal text-texto-suave">
+                          <p className="text-xs font-normal text-texto-suave">
                             Falta {moneda(Math.max(compra.total - compra.facturado, 0), codigo(compra.moneda))}
                           </p>
                         )}
@@ -570,7 +570,7 @@ function OcEnUnaLinea({ orden: o, acceso }: { orden: OcEnTabla; acceso: Acceso }
 function AnexadasPorRegistrar({ facturas }: { facturas: FacturaDeLogistica[] }) {
   if (facturas.length === 0) return null
   return (
-    <ul className="mt-1 space-y-0.5 text-[11px] text-aviso">
+    <ul className="mt-1 space-y-0.5 text-xs text-aviso">
       {facturas.map((d) => (
         <li key={d.id}>
           Logística anexó <span className="tabular">{d.numero ?? d.nombre_archivo}</span>
@@ -655,7 +655,7 @@ function GrupoFactura({
               </TD>
               <TD rowSpan={alto} className="align-top whitespace-nowrap">
                 <span className="tabular">{fecha(f.fecha_emision)}</span>
-                <p className="text-[11px] text-texto-suave">
+                <p className="text-xs text-texto-suave">
                   {f.condicion_pago === 'CREDITO' ? `Crédito, vence ${fecha(f.fecha_vencimiento)}` : 'Contado'}
                 </p>
               </TD>
@@ -708,7 +708,7 @@ function DatosDeFactura({
       {conNumero && (
         <>
           <NumeroDeFactura factura={f} />
-          <p className="text-[11px] text-texto-suave">{definir(TIPO_COMPROBANTE, f.tipo).etiqueta}</p>
+          <p className="text-xs text-texto-suave">{definir(TIPO_COMPROBANTE, f.tipo).etiqueta}</p>
         </>
       )}
       <p className="mt-1 flex flex-wrap gap-1">
@@ -722,7 +722,7 @@ function DatosDeFactura({
         <InsigniaDelDetector avisos={avisos} />
       </p>
       {/* La OC con boleta se dio por pagada fuera: hasta que Contabilidad lo diga, Tesorería no la paga (migración 20261022175000). */}
-      {f.ruc_proveedor && <p className="tabular text-[11px] text-texto-suave">RUC {f.ruc_proveedor}</p>}
+      {f.ruc_proveedor && <p className="tabular text-xs text-texto-suave">RUC {f.ruc_proveedor}</p>}
       {f.enEspera && (
         <p className="mt-1 max-w-72 text-xs text-aviso">
           {corrige
@@ -847,11 +847,11 @@ function CeldaOc({ orden, acceso }: { orden: OcEnTabla; acceso: Acceso }) {
       )}
       {/* La de antes de la serie no tiene número: su referencia es la cotización del proveedor. */}
       {!orden.numero && orden.referencia && (
-        <p className="whitespace-normal text-[11px] text-texto-suave">
+        <p className="whitespace-normal text-xs text-texto-suave">
           Ref. del proveedor: <span className="tabular whitespace-nowrap">{orden.referencia}</span>
         </p>
       )}
-      <p className="tabular text-[11px] text-texto-suave">{orden.sin_precio ? 'Sin precio' : moneda(orden.total, codigo(orden.moneda))}</p>
+      <p className="tabular text-xs text-texto-suave">{orden.sin_precio ? 'Sin precio' : moneda(orden.total, codigo(orden.moneda))}</p>
     </TD>
   )
 }

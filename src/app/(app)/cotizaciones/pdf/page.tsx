@@ -134,6 +134,8 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
   // Quien da el código interno y sube la OT de la aprobada: Administración.
   const cargaOt = puede(perfil, 'ordenes.crear')
   const veCodigos = puede(perfil, 'codigos_internos.ver')
+  // Gerencia Comercial (2026-11-25) sigue la cotización hasta su OT: la abre desde aquí.
+  const veOt = puede(perfil, 'ordenes.ver')
 
   const [todas, catalogos] = await Promise.all([
     listarCotizacionesPdf(),
@@ -365,7 +367,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                     )}
 
                     {c.estado === 'APROBADA' && (
-                      <p className="text-[11px] text-texto-tenue">
+                      <p className="text-xs text-texto-tenue">
                         Aprobada por {c.revisado_por_nombre ?? 'Gerencia'}
                         {c.revisado_en ? ` el ${fmtFecha(c.revisado_en)}` : ''}
                       </p>
@@ -438,7 +440,13 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                         ) : (
                           <span className="text-texto-suave">Sin código interno</span>
                         )}
-                        <span className="text-texto-suave">· OT {c.orden_numero}</span>
+                        {veOt ? (
+                          <Link href={`/ordenes/${c.orden_id}`} className="font-medium text-acento hover:underline">
+                            · OT {c.orden_numero}
+                          </Link>
+                        ) : (
+                          <span className="text-texto-suave">· OT {c.orden_numero}</span>
+                        )}
                         <Insignia tono={definir(ESTADO_OT, c.orden_estado).tono}>
                           {definir(ESTADO_OT, c.orden_estado).etiqueta}
                         </Insignia>

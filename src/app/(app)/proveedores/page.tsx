@@ -104,7 +104,7 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
                         )}
                       </p>
                       {(p.nombre_comercial || p.rubro) && (
-                        <p className="text-[11px] text-texto-suave">{[p.nombre_comercial, p.rubro].filter(Boolean).join(' · ')}</p>
+                        <p className="text-xs text-texto-suave">{[p.nombre_comercial, p.rubro].filter(Boolean).join(' · ')}</p>
                       )}
                       {/* En el teléfono el RUC baja aquí: su columna aparte dejaba el nombre en cuatro renglones. */}
                       <p className="text-xs text-texto-suave sm:hidden">
@@ -116,7 +116,7 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
                     </TD>
                     <TD className="hidden text-texto-suave sm:table-cell">
                       {contacto || '—'}
-                      {p.correo && <p className="text-[11px]">{p.correo}</p>}
+                      {p.correo && <p className="text-xs">{p.correo}</p>}
                     </TD>
                     <TD className="hidden whitespace-nowrap text-texto-suave sm:table-cell">{pago}</TD>
                     {verCuentas && (
@@ -125,12 +125,12 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
                           <span className="text-aviso">Sin cuenta</span>
                         ) : (
                           p.cuentas.map((c) => (
-                            <p key={c.id} className="tabular whitespace-nowrap text-[11px]">
+                            <p key={c.id} className="tabular whitespace-nowrap text-xs">
                               {resumenCuenta(c)}
                             </p>
                           ))
                         )}
-                        {p.direccion_recojo && <p className="text-[11px]">Recojo: {p.direccion_recojo}</p>}
+                        {p.direccion_recojo && <p className="text-xs">Recojo: {p.direccion_recojo}</p>}
                       </TD>
                     )}
                     {edita && (

@@ -184,7 +184,7 @@ export function Feriados({
                   )}
                 >
                   {f.nombre}
-                  <span className="ml-2 text-[11px] text-texto-tenue">
+                  <span className="ml-2 text-xs text-texto-tenue">
                     {f.ambito === 'NACIONAL' ? 'nacional' : 'de la empresa'}
                   </span>
                 </span>
@@ -220,7 +220,7 @@ function AlternarFeriado({ feriado: f }: { feriado: Feriado }) {
               ? `Volver a marcar ${f.nombre} como feriado`
               : `Marcar que el día de ${f.nombre} se trabaja`
           }
-          className="inline-flex min-h-11 items-center text-[11px] text-texto-tenue hover:text-acento sm:min-h-0"
+          className="inline-flex min-h-11 items-center text-xs text-texto-tenue hover:text-acento sm:min-h-0"
         >
           {f.laborable ? 'Volver a feriado' : 'Se trabaja'}
         </button>

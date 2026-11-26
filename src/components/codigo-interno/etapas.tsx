@@ -43,11 +43,14 @@ export function etapasConSubetapas(etapas: EtapaDeCodigo[]): { etapa: EtapaDeCod
 export function ListaEtapas({
   etapas,
   hoy,
+  limite,
   acciones,
   conPlanosConPeso = false,
 }: {
   etapas: EtapaDeCodigo[]
   hoy: string
+  /** El último día que todavía es «por vencer», de la base (`limitePorVencer`). */
+  limite?: string | null
   acciones?: (etapa: EtapaDeCodigo, lugar: LugarDeEtapa) => ReactNode
   /** El código tiene planos con % de la unidad: su avance no entra al de la etapa, y se dice. */
   conPlanosConPeso?: boolean
@@ -61,6 +64,7 @@ export function ListaEtapas({
             e={etapa}
             numero={`${i + 1}.`}
             hoy={hoy}
+            limite={limite}
             conPlanosConPeso={conPlanosConPeso}
             acciones={acciones?.(etapa, { primera: i === 0, ultima: i === grupos.length - 1, subetapas })}
           />
@@ -72,6 +76,7 @@ export function ListaEtapas({
                     e={s}
                     numero={`${i + 1}.${j + 1}`}
                     hoy={hoy}
+                    limite={limite}
                     conPlanosConPeso={conPlanosConPeso}
                     sub
                     acciones={acciones?.(s, { primera: j === 0, ultima: j === subetapas.length - 1, subetapas: [] })}
@@ -90,6 +95,7 @@ function FilaEtapa({
   e,
   numero,
   hoy,
+  limite,
   conPlanosConPeso,
   sub = false,
   acciones,
@@ -97,12 +103,13 @@ function FilaEtapa({
   e: EtapaDeCodigo
   numero: string
   hoy: string
+  limite?: string | null
   conPlanosConPeso: boolean
   sub?: boolean
   acciones?: ReactNode
 }) {
   const estado = estadoEtapa(e)
-  const plazo = plazoEtapa(e, hoy)
+  const plazo = plazoEtapa(e, hoy, limite)
   // En el teléfono los botones van debajo: al lado dejaban el nombre en 60 px (auditoría del 27/10/2026).
   return (
     <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-start sm:justify-between" data-etapa={e.nombre} data-subetapa={sub || undefined}>

@@ -115,13 +115,13 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
         <dl className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
           {[...totales.values()].sort((a, b) => a.grupo.localeCompare(b.grupo) || a.moneda.localeCompare(b.moneda)).map((t) => (
             <div key={`${t.grupo}-${t.moneda}`} className="rounded-[var(--radius-base)] border border-borde bg-superficie px-3 py-2">
-              <dt className="text-[11px] text-texto-suave">{GRUPO[t.grupo] ?? t.grupo}</dt>
+              <dt className="text-xs text-texto-suave">{GRUPO[t.grupo] ?? t.grupo}</dt>
               <dd className="tabular mt-1 text-lg font-semibold text-texto">{moneda(t.monto, t.moneda)}</dd>
             </div>
           ))}
           {reparto.length > 0 && oficina.monto > 0 && (
             <div className="rounded-[var(--radius-base)] border border-borde bg-superficie px-3 py-2" data-sueldo-oficina>
-              <dt className="text-[11px] text-texto-suave">Sueldo de la oficina</dt>
+              <dt className="text-xs text-texto-suave">Sueldo de la oficina</dt>
               <dd className="tabular mt-1 text-lg font-semibold text-texto">{moneda(oficina.monto)}</dd>
             </div>
           )}
@@ -167,13 +167,13 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
                 <TR key={g.id}>
                   <TD className="max-w-60">
                     <span className={`block text-sm font-medium ${anulado ? 'text-texto-suave line-through' : 'text-texto'}`}>{concepto?.nombre ?? g.concepto}</span>
-                    <span className="block text-[11px] text-texto-suave">{GRUPO[concepto?.grupo ?? ''] ?? ''}</span>
-                    <span className="block text-[11px] text-texto-suave md:hidden">{g.descripcion}</span>
+                    <span className="block text-xs text-texto-suave">{GRUPO[concepto?.grupo ?? ''] ?? ''}</span>
+                    <span className="block text-xs text-texto-suave md:hidden">{g.descripcion}</span>
                   </TD>
                   <TD className="hidden max-w-72 md:table-cell">
                     <span className="line-clamp-2 text-sm">{g.descripcion}</span>
                     {anulado && (
-                      <span className="mt-1 block text-[11px] text-peligro">
+                      <span className="mt-1 block text-xs text-peligro">
                         Anulado{nombreDe(g.anulador) ? ` por ${nombreDe(g.anulador)}` : ''} el {fechaHora(g.anulado_en)}: {g.motivo_anulacion}
                       </span>
                     )}
@@ -191,7 +191,7 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
                     <span className={anulado ? 'text-texto-suave line-through' : ''}>{moneda(g.monto, monedaGasto)}</span>
                     {anulado && <Insignia tono="peligro" className="mt-1 ml-auto flex w-fit md:hidden">Anulado</Insignia>}
                   </TD>
-                  <TD className="hidden text-[11px] text-texto-suave lg:table-cell">
+                  <TD className="hidden text-xs text-texto-suave lg:table-cell">
                     {nombreDe(g.registrador) ?? '—'}
                     <span className="block">{fechaHora(g.creado_en)}</span>
                   </TD>
@@ -247,7 +247,7 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
                 <TD className="hidden tabular text-right sm:table-cell">{cantidad(r.horas)}</TD>
                 <TD className="tabular text-right whitespace-nowrap">
                   {porcentaje(r.parte, 2)}
-                  <span className="block text-[11px] text-texto-suave sm:hidden">{cantidad(r.horas)} h</span>
+                  <span className="block text-xs text-texto-suave sm:hidden">{cantidad(r.horas)} h</span>
                 </TD>
                 <TD className="tabular text-right whitespace-nowrap">
                   {moneda(cargaPen(r.codigo))}
