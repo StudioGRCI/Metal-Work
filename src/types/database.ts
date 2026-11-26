@@ -8719,6 +8719,108 @@ export type Database = {
           }
         ]
       }
+      recojo_fotos: {
+        Row: {
+          id: string
+          orden_compra_id: string
+          orden: number
+          ruta: string
+          mime_type: string
+          tamano_bytes: number
+          subida_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          orden_compra_id: string
+          orden: number
+          ruta: string
+          mime_type: string
+          tamano_bytes: number
+          subida_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_compra_id?: string
+          orden?: number
+          ruta?: string
+          mime_type?: string
+          tamano_bytes?: number
+          subida_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recojo_fotos_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_compra_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recojo_fotos_subida_por_fkey"
+            columns: ["subida_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      recojos_no_logrados: {
+        Row: {
+          id: string
+          orden_compra_id: string
+          motivo: string
+          salio_en: string | null
+          programado_en: string | null
+          registrado_por: string
+          registrado_en: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id: string
+          orden_compra_id: string
+          motivo: string
+          salio_en?: string | null
+          programado_en?: string | null
+          registrado_por?: string
+          registrado_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          orden_compra_id?: string
+          motivo?: string
+          salio_en?: string | null
+          programado_en?: string | null
+          registrado_por?: string
+          registrado_en?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recojos_no_logrados_orden_compra_id_fkey"
+            columns: ["orden_compra_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_compra_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recojos_no_logrados_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       reembolsos_nota_credito: {
         Row: {
           id: string
@@ -14615,6 +14717,12 @@ export type Database = {
         }
         Returns: null
       }
+      foto_de_recojo_anotada: {
+        Args: {
+          p_ruta: string | null
+        }
+        Returns: boolean
+      }
       gastos_del_mes_oficina: {
         Args: {
           p_periodo: string | null
@@ -14981,6 +15089,13 @@ export type Database = {
         }
         Returns: string
       }
+      marcar_compra_recogida_con_fotos: {
+        Args: {
+          p_compra: string | null
+          p_fotos: Json | null
+        }
+        Returns: string
+      }
       marcar_etapa_codigo: {
         Args: {
           p_id: string | null
@@ -14995,6 +15110,14 @@ export type Database = {
           p_id: string | null
           p_inicio: string | null
           p_fin: string | null
+        }
+        Returns: string
+      }
+      marcar_recojo_no_logrado: {
+        Args: {
+          p_id: string | null
+          p_compra: string | null
+          p_motivo: string | null
         }
         Returns: string
       }
@@ -15929,6 +16052,32 @@ export type Database = {
           p_id: string | null
         }
         Returns: string
+      }
+      recojo_anotar_fotos: {
+        Args: {
+          p_compra: string | null
+          p_fotos: Json | null
+        }
+        Returns: null
+      }
+      recojo_fotos_en_gestion: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          orden_compra_id: string | null
+          orden: number | null
+          ruta: string | null
+        }[]
+      }
+      recojos_no_logrados_en_gestion: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          orden_compra_id: string | null
+          motivo: string | null
+          registrado_en: string | null
+          salio_en: string | null
+          registrado_por_nombre: string | null
+        }[]
       }
       recomprar_lo_devuelto: {
         Args: {
