@@ -3154,6 +3154,7 @@ export type Database = {
           motivo_anulacion: string | null
           creado_en: string
           actualizado_en: string
+          fecha_emision: string | null
         }
         Insert: {
           id?: string
@@ -3170,6 +3171,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          fecha_emision?: string | null
         }
         Update: {
           id?: string
@@ -3186,6 +3188,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          fecha_emision?: string | null
         }
         Relationships: [
           {
@@ -5642,6 +5645,7 @@ export type Database = {
           detraccion_motivo: string | null
           total_con_igv_pen: number | null
           detraccion_monto: number | null
+          fecha_cambio: string | null
         }
         Insert: {
           id?: string
@@ -5682,6 +5686,7 @@ export type Database = {
           detraccion_porcentaje?: number | null
           detraccion_minimo?: number | null
           detraccion_motivo?: string | null
+          fecha_cambio?: string | null
         }
         Update: {
           id?: string
@@ -5722,6 +5727,7 @@ export type Database = {
           detraccion_porcentaje?: number | null
           detraccion_minimo?: number | null
           detraccion_motivo?: string | null
+          fecha_cambio?: string | null
         }
         Relationships: [
           {
@@ -13986,6 +13992,7 @@ export type Database = {
           p_numero: string | null
           p_nombre: string | null
           p_ruta: string | null
+          p_fecha_emision: string | null
         }
         Returns: string
       }
@@ -14989,6 +14996,25 @@ export type Database = {
           p_estado: string | null
         }
         Returns: string
+      }
+      cambio_de_la_factura_de_servicio: {
+        Args: {
+          p_orden_servicio: string | null
+        }
+        Returns: null
+      }
+      cambio_de_los_servicios: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          orden_servicio_id: string | null
+          origen: string | null
+          dia: string | null
+          registrado_el: string | null
+          se_espera: boolean | null
+          fijo: boolean | null
+        }[]
       }
       cambio_del_dia: {
         Args: {
@@ -20675,6 +20701,12 @@ export type Database = {
           numero: string | null
           cantidad: number | null
         }[]
+      }
+      servicio_con_el_cambio_fijo: {
+        Args: {
+          p_orden_servicio: string | null
+        }
+        Returns: boolean
       }
       servicios_pendientes_de_pago: {
         Args: Record<PropertyKey, never>
