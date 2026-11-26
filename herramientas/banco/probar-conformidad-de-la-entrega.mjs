@@ -161,21 +161,21 @@ const ventana = (pagina) => pagina.getByRole('dialog')
   comprobar(foto.status() === 200 && jpg[0] === 0xff && jpg[1] === 0xd8 && (foto.headers()['content-type'] ?? '').startsWith('image/'),
     `la foto se abre con la sesión de quien pidió (${foto.status()} ${foto.headers()['content-type']}, ${jpg.length} bytes)`)
 
-  // «Llegó incompleto» con lo mismo que salió: lo rechaza la base y lo escrito se queda.
+  // «Llegó incompleto» con lo mismo que salió: lo frena el campo y lo escrito se queda.
   await laSalida(pagina, conFoto).locator('[data-anotar-conformidad]').click()
   await ventana(pagina).getByLabel('Llegó incompleto').check()
-  await ventana(pagina).getByLabel(/¿Cuánto llegó\?/).fill('4')
+  const llegaron = ventana(pagina).getByLabel(/¿Cuántas UND llegaron\?/)
+  await llegaron.fill('4')
   await ventana(pagina).getByLabel('Nota para Almacén').fill('Llegaron tres discos, faltó uno en la caja')
-  await ventana(pagina).locator('input[name="recibido"]').evaluate((e) => e.removeAttribute('max'))
   await ventana(pagina).getByRole('button', { name: 'Anotar' }).click()
-  const rechazo = ventana(pagina).getByRole('alert')
-  await rechazo.filter({ hasText: /\S/ }).waitFor({ timeout: 30000 }).catch(() => {})
-  comprobar((await texto(rechazo)).length > 0, `con lo mismo que salió lo rechaza: «${await texto(rechazo)}»`)
+  await pagina.waitForTimeout(500)
+  const frenado = await llegaron.evaluate((e) => e.validationMessage)
+  comprobar(/menos de lo que salió/.test(frenado), `con lo mismo que salió lo frena el campo: «${frenado}»`)
   comprobar((await ventana(pagina).getByLabel('Nota para Almacén').inputValue()).startsWith('Llegaron tres'), 'y lo escrito se queda')
   comprobar((await notasDe(conFoto.id)).length === 0, 'sin anotar nada')
 
   // Con menos entra, una sola vez aunque se toque tres veces.
-  await ventana(pagina).getByLabel(/¿Cuánto llegó\?/).fill('3')
+  await llegaron.fill('3')
   const enviar = ventana(pagina).getByRole('button', { name: 'Anotar' })
   // Los tres en el mismo instante, antes de que React alcance a trabar el botón.
   await enviar.evaluate((b) => {
@@ -192,6 +192,10 @@ const ventana = (pagina) => pagina.getByRole('dialog')
   await nota.waitFor({ timeout: 30000 }).catch(() => {})
   comprobar((await texto(nota)).includes('Llegó 3 de 4 UND') && (await texto(nota)).includes('Almacén todavía no responde'), `la tarjeta dice la nota: «${await texto(nota).catch(() => '')}»`)
   comprobar((await laSalida(pagina, conFoto).locator('[data-anotar-conformidad]').count()) === 0, 'con la nota abierta no ofrece anotar otra')
+  const anotado = laSalida(pagina, conFoto).locator('[data-anotado]')
+  comprobar((await texto(anotado).catch(() => '')).includes('Anotado') && (await anotado.evaluate((e) => e === document.activeElement).catch(() => false)),
+    `dice que quedó anotado y el cursor va ahí: «${await texto(anotado).catch(() => '')}»`)
+  comprobar((await tarjeta(pagina).locator('[data-con-nota-abierta]').count()) === 1, 'la cabecera del RQ avisa que tiene una nota abierta')
   await laSalida(pagina, conFoto).scrollIntoViewIfNeeded()
   await pagina.screenshot({ path: join(CAPTURAS, '2-2-requerimientos-1440-nota.png') })
   comprobar(errores.length === 0, `sin errores de consola como Requerimientos ${errores.join(' | ')}`)
@@ -243,7 +247,12 @@ const ventana = (pagina) => pagina.getByRole('dialog')
   comprobar(arriba, 'arriba de la lista de requerimientos')
   const filas = tarjetaNotas.locator('li', { hasText: N })
   comprobar((await filas.count()) === 2, `las dos notas del ${N}`)
+  // Las que no caben a la vista van plegadas: se abren para buscar las del RQ sembrado.
+  const plegadas = tarjetaNotas.locator('[data-notas-plegadas]')
+  if ((await plegadas.count()) === 1) await plegadas.locator('summary').click()
   const fila = tarjetaNotas.locator('li', { hasText: 'Llegó 3 de 4 UND' }).filter({ hasText: N })
+  comprobar((await texto(fila)).includes('Producción') && (await texto(fila)).includes(codigo) && (await texto(fila)).includes('recibió Soldador de Producción'),
+    `con el área, el código y quién recibió: «${await texto(fila)}»`)
   comprobar((await fila.locator('[data-dias-en-espera]').count()) === 1, 'cada una con los días que espera a Almacén')
   await pagina.screenshot({ path: join(CAPTURAS, '2-2-almacen-1440-notas.png') })
   await fila.getByRole('button', { name: 'Responder' }).click()
@@ -254,6 +263,10 @@ const ventana = (pagina) => pagina.getByRole('dialog')
   const [cerrada] = await notasDe(conFoto.id)
   const [{ id: yo }] = await consulta('select id::text from public.usuarios where correo = $1', [CUENTAS.almacen])
   comprobar(cerrada?.atendido_en && cerrada.atendido_por === yo, 'la nota queda cerrada por Almacén, con quién y cuándo')
+  const avisoCerrada = pagina.locator('[data-nota-cerrada]')
+  await avisoCerrada.waitFor({ timeout: 30000 }).catch(() => {})
+  comprobar((await texto(avisoCerrada).catch(() => '')).includes(N) && (await avisoCerrada.evaluate((e) => e === document.activeElement).catch(() => false)),
+    `Atención dice que se cerró y el cursor va ahí: «${await texto(avisoCerrada).catch(() => '')}»`)
   // La pantalla se pone al día sola después del envío; se espera a que lo haga.
   const quedan = async () => tarjetaNotas.locator('li', { hasText: N }).count()
   for (let i = 0; i < 30 && (await quedan()) !== 1; i++) await pagina.waitForTimeout(500)

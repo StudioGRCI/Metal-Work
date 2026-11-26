@@ -10,7 +10,7 @@ import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabl
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
 import { catalogoDeAlmacen, type MaterialParaConteo } from '@/lib/datos/atencion-materiales'
-import { notasDeConformidad } from '@/lib/datos/conformidad'
+import { notasAbiertasParaAlmacen } from '@/lib/datos/conformidad'
 import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
 import { insumosPorSacarDelKardex, type InsumoPorSacar } from '@/lib/datos/kardex'
 import { metradoDeRequerimientos, type MetradoDelInsumo } from '@/lib/datos/metrado-rq'
@@ -27,6 +27,7 @@ import { exigirPermiso, puede } from '@/lib/sesion'
 import { AvanceDelRequerimiento, CompraDelInsumo, EntregaDelInsumo, MaterialDelInsumo } from '../avance'
 import { ConAvisos } from './avisos'
 import { NotasDeLasEntregas } from './notas-de-entregas'
+import { AvisoDeLasNotas } from './responder-nota'
 import { EntregarConFaltante, PasoRequerimiento, RevisarStock, type StockDelSistema } from './controles'
 import { PorComprar, type GrupoPorComprar } from './por-comprar'
 
@@ -71,7 +72,7 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
   const vista = params.vista === 'todos' ? 'todos' : params.vista === 'comprar' && compra ? 'comprar' : 'abiertos'
   const preseleccion = typeof params.rq === 'string' ? params.rq : null
   // Logística genera la OC desde aquí: necesita el padrón y el catálogo de Almacén.
-  const [{ requerimientos, sinEntregado }, proveedores, materiales] = await Promise.all([
+  const [{ requerimientos, sinEntregado }, proveedores, materiales, notas] = await Promise.all([
     // Con lo entregado de cada insumo: Almacén ve qué falta entregar de cada RQ
     // (plan 2, entrega 2.1). Si eso no se pudo leer, la bandeja sigue sin las
     // cifras y lo dice, como el metrado y el recorrido.
@@ -84,6 +85,14 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
     ),
     compra ? proveedoresParaCompra() : Promise.resolve([]),
     compra ? catalogoDeAlmacen() : Promise.resolve([]),
+    // Las notas abiertas de las entregas: quien pidió dice que una salida no
+    // llegó o llegó incompleta (plan 2, entrega 2.2). Las ve Almacén arriba.
+    recibe || despacha
+      ? notasAbiertasParaAlmacen().catch((e: unknown) => {
+          console.error('Atención: no se pudieron leer las notas de las entregas.', e)
+          return null
+        })
+      : Promise.resolve([]),
   ])
   const paraComprar = compra ? { proveedores, materiales, puedeRegistrarProveedor: puede(perfil, 'proveedores.editar') } : null
   // Almacén asocia o da de alta el material nuevo al revisar el stock: el catálogo
@@ -99,7 +108,7 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
   // «Entregado» pide antes la salida del kardex de cada insumo: a quien despacha
   // se le dice cuántos faltan en cada RQ listo.
   const listos = despacha ? requerimientos.filter((r) => r.estado === 'LISTO_EN_ALMACEN').map((r) => r.id) : []
-  const [catalogo, correcciones, stock, porSacar, metradoLeido, recorridos, notas] = await Promise.all([
+  const [catalogo, correcciones, stock, porSacar, metradoLeido, recorridos] = await Promise.all([
     hayNuevos ? catalogoParaRequerimiento() : Promise.resolve<MaterialParaRequerimiento[]>([]),
     correccionesDe('REQUERIMIENTO', requerimientos.map((r) => r.id)),
     stockDelSistema(hayNuevos ? null : porRevisar),
@@ -120,14 +129,6 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
         return null
       },
     ),
-    // Las notas abiertas de las entregas: quien pidió dice que una salida no
-    // llegó o llegó incompleta (plan 2, entrega 2.2). Las ve Almacén arriba.
-    recibe || despacha
-      ? notasDeConformidad({ soloAbiertas: true }).catch((e: unknown) => {
-          console.error('Atención: no se pudieron leer las notas de las entregas.', e)
-          return null
-        })
-      : Promise.resolve([]),
   ])
   const espera = new Map<string, PasoDelRecorrido>()
   for (const [id, pasos] of recorridos ?? []) {
@@ -223,6 +224,7 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
         </p>
       )}
 
+      {(recibe || despacha) && <AvisoDeLasNotas />}
       {vista !== 'comprar' && notas && <NotasDeLasEntregas notas={notas} />}
 
       {vista === 'comprar' && paraComprar ? (

@@ -1,25 +1,32 @@
 'use client'
 
 import { Reply } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo } from '@/components/ui/campos'
+import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
-import { useCursorAlRechazo, useEnvio } from '@/lib/envio'
+import { useEnvio } from '@/lib/envio'
+import { useEstadoCompartido } from '@/lib/estado-compartido'
 
 import { atenderConformidad } from './acciones'
+
+/** Lo que dijo la última nota cerrada: lo pinta `AvisoDeLasNotas`, que no se va con la fila. */
+const CLAVE_DEL_AVISO = 'atencion-nota-cerrada'
 
 /**
  * Almacén cierra la nota de una salida escribiendo qué hizo (plan 2, entrega
  * 2.2): queda quién y cuándo, y a quien la anotó le llega el aviso. Lo
  * respondido no se cambia después.
  */
-export function ResponderNota({ id, titulo, resumen }: { id: string; titulo: string; resumen: string }) {
+export function ResponderNota({ id, requerimiento, resumen }: { id: string; requerimiento: string; resumen: string }) {
   const [abierta, setAbierta] = useState(false)
-  const aviso = useRef<HTMLParagraphElement>(null)
-  const { alEnviar, enviando, error } = useEnvio(atenderConformidad, () => setAbierta(false))
-  useCursorAlRechazo(enviando, error, () => aviso.current)
+  const [, setAviso] = useEstadoCompartido<{ texto: string; vez: number } | null>(CLAVE_DEL_AVISO, null)
+  const { alEnviar, enviando, error } = useEnvio(atenderConformidad, (r) => {
+    setAbierta(false)
+    setAviso({ texto: `${requerimiento}: ${r.mensaje ?? 'nota cerrada.'}`, vez: Date.now() })
+  })
   return (
     <>
       <Boton type="button" variante="contorno" tamano="sm" onClick={() => setAbierta(true)} data-responder-nota={id}>
@@ -29,7 +36,7 @@ export function ResponderNota({ id, titulo, resumen }: { id: string; titulo: str
       <Ventana
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
-        titulo={titulo}
+        titulo={`Responder la nota del ${requerimiento}`}
         descripcion={`${resumen} Lo que respondas cierra la nota, le llega a quien la anotó y no se cambia después.`}
         ancho="md"
       >
@@ -47,19 +54,29 @@ export function ResponderNota({ id, titulo, resumen }: { id: string; titulo: str
               />
             </Campo>
           </fieldset>
-          <p ref={aviso} tabIndex={-1} role="alert" className="text-sm text-peligro outline-none empty:hidden">
-            {error}
-          </p>
-          <div className="flex justify-end gap-2">
-            <Boton type="button" variante="contorno" onClick={() => setAbierta(false)}>
-              Cancelar
-            </Boton>
-            <Boton type="submit" cargando={enviando}>
-              Cerrar la nota
-            </Boton>
-          </div>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Cerrar la nota" />
         </form>
       </Ventana>
     </>
+  )
+}
+
+/**
+ * El aviso de la nota que se acaba de cerrar, arriba de Atención y siempre
+ * puesto: la fila se va al cerrarla, y con la última, la tarjeta entera. El
+ * cursor viene aquí, porque el botón que abrió la ventana ya no está.
+ */
+export function AvisoDeLasNotas() {
+  const [aviso] = useEstadoCompartido<{ texto: string; vez: number } | null>(CLAVE_DEL_AVISO, null)
+  const caja = useRef<HTMLParagraphElement>(null)
+  useEffect(() => {
+    if (!aviso) return
+    const t = setTimeout(() => caja.current?.focus(), 0)
+    return () => clearTimeout(t)
+  }, [aviso])
+  return (
+    <p ref={caja} role="status" tabIndex={-1} className="mb-3 text-sm text-exito outline-none empty:hidden" data-nota-cerrada={aviso ? '' : undefined}>
+      {aviso && <span key={aviso.vez}>{aviso.texto}</span>}
+    </p>
   )
 }

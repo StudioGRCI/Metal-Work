@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ChevronDown, ClipboardList, PackageCheck, Truck, Workflow } from 'lucide-react'
+import { ChevronDown, ClipboardList, ExternalLink, PackageCheck, Truck, Workflow } from 'lucide-react'
 
 import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
 import { Insignia, Punto, type Tono } from '@/components/ui/etiqueta-estado'
@@ -285,6 +285,11 @@ export function TarjetaRequerimiento({
               <Insignia>{rq.estado}</Insignia>
             )}
             {rq.tipo === 'ADMINISTRACION' && <Insignia tono="acento">Administración</Insignia>}
+            {conformidad && tieneNotaAbierta(rq, conformidad) && (
+              <Insignia tono="peligro" title="Quien pidió anotó que una salida no llegó o llegó incompleta, y Almacén todavía no responde." data-con-nota-abierta>
+                Nota de entrega abierta
+              </Insignia>
+            )}
             {plazo !== null && plazo < 0 && <Insignia tono="peligro">Se necesitaba el {fecha(rq.fecha_requerida)}</Insignia>}
             {plazo === 0 && <Insignia tono="aviso">Se necesita hoy</Insignia>}
             {plazo === 1 && <Insignia tono="aviso">Se necesita mañana</Insignia>}
@@ -454,14 +459,12 @@ function InsumosConPartes({
   const partes = rq.lineas.map((l) => partesDelInsumo(l, rq.estado))
   const frenanElRq = (metrado && frenoDelRq(rq, metrado)?.items) ?? []
   const cuenta = (k: keyof PartesDelInsumo) => partes.filter((p) => p && p[k] > 0).length
-  const abiertas = conformidad ? notasAbiertas(rq, conformidad) : 0
   const fichas = [
     { n: cuenta('recoger'), texto: 'para recoger', tono: 'exito' as Tono },
     { n: cuenta('porLlegar'), texto: 'por llegar', tono: 'aviso' as Tono },
     { n: cuenta('revisar'), texto: 'por revisar', tono: 'neutro' as Tono },
     { n: cuenta('entregado'), texto: cuenta('entregado') === 1 ? 'entregado' : 'entregados', tono: 'neutro' as Tono },
     { n: rq.lineas.filter((l) => sinSalida(l, rq) > 0).length, texto: 'no salió del kardex', tono: 'aviso' as Tono },
-    { n: abiertas, texto: abiertas === 1 ? 'nota espera a Almacén' : 'notas esperan a Almacén', tono: 'peligro' as Tono },
   ].filter((f) => f.n > 0)
   const total = rq.lineas.length
   return (
@@ -654,6 +657,9 @@ function SalidasDelInsumo({
                 <span className="tabular font-medium text-texto">
                   {cantidad(s.cantidad)} {s.unidad ?? linea.unidad}
                 </span>
+                {s.material && linea.material_nombre && s.material !== linea.material_nombre && (
+                  <span className="break-words text-texto"> de {s.material}</span>
+                )}
                 {s.numero && <span className="tabular"> · {s.numero}</span>}
                 <span> · {fechaHora(s.en)}</span>
                 {s.recibio && <span className="break-words"> · recibió {s.recibio}</span>}
@@ -664,17 +670,21 @@ function SalidasDelInsumo({
                     href={`/requerimientos/salidas/${s.id}/foto`}
                     target="_blank"
                     rel="noopener"
-                    className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0"
+                    className="inline-flex min-h-11 items-center gap-1 px-1 font-medium text-acento hover:underline pointer-fine:min-h-0"
                     data-ver-foto={s.numero ?? s.id}
                   >
                     Ver foto
+                    <ExternalLink aria-hidden className="size-3.5" />
+                    <span className="sr-only"> (se abre en otra pestaña)</span>
                   </a>
                 )}
-                {s.puedeAnotar && !s.notaAbierta && (
+                {/* Montado también con la nota abierta: sin botón, guarda el aviso de lo que se anotó. */}
+                {s.puedeAnotar && (
                   <AnotarConformidad
                     salida={{ id: s.id, cantidad: s.cantidad, unidad: s.unidad ?? linea.unidad, numero: s.numero, en: s.en }}
                     requerimiento={rq.numero}
-                    material={linea.descripcion}
+                    material={s.material ?? linea.descripcion}
+                    abierta={Boolean(s.notaAbierta)}
                   />
                 )}
               </div>
@@ -705,7 +715,7 @@ function NotaDeLaSalida({ nota: n }: { nota: NotaDeConformidad }) {
           {n.anotadoPor ?? 'Quien pidió'} · {fechaHora(n.anotadoEn)}
         </span>
       </p>
-      <p className="break-words text-texto">{n.nota}</p>
+      <p className="break-words text-texto">«{n.nota}»</p>
       {n.atendidoEn ? (
         <p className="break-words text-texto">
           <span className="font-medium text-exito">Almacén respondió: </span>

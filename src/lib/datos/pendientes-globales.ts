@@ -826,11 +826,8 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
   if (atiende.compraDe.OPERACION || atiende.compraDe.ADMINISTRACION) tareas.push({
     clave: 'rq_por_comprar', ruta: '/requerimientos/atencion', tono: 'aviso',
     texto: n => plural(n, 'requerimiento sin stock por comprar', 'requerimientos sin stock por comprar'),
-    // El que espera el visto de Diseño tampoco se compra: la bandeja no lo cuenta como suyo.
-    contar: async () => {
-      const [lista, { frenados }] = await Promise.all([rqAbiertos(), rqFrenados()])
-      return lista.filter((r) => r.estado === 'SIN_STOCK' && atiende.compraDe[tipoDeRequerimiento(r)] && !frenados.has(r.id)).length
-    },
+    contar: async () =>
+      (await rqAbiertos()).filter((r) => r.estado === 'SIN_STOCK' && atiende.compraDe[tipoDeRequerimiento(r)]).length,
   })
   if (atiende.despacha) tareas.push({
     clave: 'rq_por_entregar', ruta: '/requerimientos/atencion', tono: 'acento',

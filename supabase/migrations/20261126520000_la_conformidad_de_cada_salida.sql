@@ -119,12 +119,29 @@ create or replace trigger trg_conformidad_salidas_guardia
   before update on public.conformidad_salidas
   for each row execute function public.fn_conformidad_salidas_guardia();
 
+-- Decisión 2: la nota no se borra, ni por el dueño de las tablas. Es la
+-- evidencia de lo que dijo quien pidió y de lo que respondió Almacén.
+create or replace function public.fn_conformidad_salidas_no_se_borra()
+returns trigger language plpgsql set search_path to 'public' as $$
+begin
+  raise exception 'Una nota de la conformidad de una salida no se borra: queda como evidencia.' using errcode = 'check_violation';
+end;
+$$;
+revoke all on function public.fn_conformidad_salidas_no_se_borra() from public, anon, authenticated;
+
+create or replace trigger trg_conformidad_salidas_no_se_borra
+  before delete on public.conformidad_salidas
+  for each row execute function public.fn_conformidad_salidas_no_se_borra();
+
 -- --------------------------------------------------------- 2. Quién la anota
 /**
  * Decisión 1: quien registró el RQ, Requerimientos (`requerimientos.emitir`) y
  * el supervisor del área que lo pidió (`requerimientos.area` y su misma área);
  * en un RQ de Administración, Administración. Quien despacha (Almacén) no anota
- * sobre lo que él mismo entregó. Interna: la llaman las funciones de abajo.
+ * sobre lo que él mismo entregó. El colaborador de Diseño pide con
+ * `requerimientos.emitir`, pero responde solo por los suyos (migración
+ * 20261106100000): entra por quien lo registró. Interna: la llaman las
+ * funciones de abajo.
  */
 create or replace function public.puede_anotar_conformidad(p_rq public.requerimientos)
 returns boolean language sql stable security definer set search_path to 'public' as $$
@@ -134,7 +151,7 @@ returns boolean language sql stable security definer set search_path to 'public'
        p_rq.creado_por = public.usuario_actual()
        or case when p_rq.tipo = 'ADMINISTRACION'
                then public.tiene_permiso('requerimientos.administracion')
-               else public.tiene_permiso('requerimientos.emitir')
+               else (public.tiene_permiso('requerimientos.emitir') and public.mi_rol() is distinct from 'DISENO_COLABORADOR')
                     or (public.tiene_permiso('requerimientos.area')
                         and exists (select 1 from public.usuarios u
                                      where u.id = public.usuario_actual() and u.activo and u.area_id = p_rq.area_id))
@@ -182,7 +199,7 @@ begin
       left join public.unidades_medida um on um.id = mat.unidad_medida_id
      where m.tipo = 'SALIDA'
        and r.id = any(coalesce(p_ids, '{}'))
-     order by r.id, l.item, m.registrado_en;
+     order by r.id, l.item, m.registrado_en, m.id;
 end;
 $$;
 revoke all on function public.salidas_de_requerimientos(uuid[]) from public, anon;
@@ -238,7 +255,7 @@ begin
       left join public.usuarios ut on ut.id = c.atendido_por
      where (p_requerimientos is null or c.requerimiento_id = any(p_requerimientos))
        and (not p_solo_abiertas or c.atendido_en is null)
-     order by c.atendido_en is not null, c.registrado_en;
+     order by c.atendido_en is not null, c.registrado_en, c.id;
 end;
 $$;
 revoke all on function public.notas_de_conformidad(uuid[], boolean) from public, anon;
@@ -266,8 +283,15 @@ begin
 
   select * into v_previa from public.conformidad_salidas where id = p_id;
   if found then
-    if v_previa.registrado_por = v_yo and v_previa.movimiento_id = p_movimiento then return p_id; end if;
-    raise exception 'Esa nota ya existe. Vuelve a cargar la pantalla.' using errcode = 'unique_violation';
+    -- El mismo envío es todo lo que el envío lleva: con otro tipo, otra cantidad
+    -- u otra nota no es el mismo, y darlo por anotado guardaría lo de antes.
+    if v_previa.registrado_por = v_yo and v_previa.movimiento_id = p_movimiento and v_previa.tipo = p_tipo
+       and v_previa.cantidad_recibida is not distinct from (case when p_tipo = 'LLEGO_INCOMPLETO' then p_cantidad_recibida end)
+       and v_previa.nota = btrim(coalesce(p_nota, '')) then
+      return p_id;
+    end if;
+    raise exception 'Esta nota ya quedó anotada la primera vez que la enviaste, con lo que decía entonces: recarga la pantalla para ver cómo quedó.'
+      using errcode = 'unique_violation';
   end if;
 
   select * into v_mov from public.movimientos_materiales where id = p_movimiento for update;
@@ -336,7 +360,11 @@ begin
   if not found then raise exception 'Esa nota no existe. Vuelve a cargar la pantalla.' using errcode = 'no_data_found'; end if;
   if v_nota.atendido_en is not null then
     if v_nota.respuesta = v_resp and v_nota.atendido_por = public.usuario_actual() then return p_id; end if;
-    raise exception 'Esta nota ya se cerró.' using errcode = 'check_violation';
+    if v_nota.atendido_por = public.usuario_actual() then
+      raise exception 'Esta nota ya quedó cerrada la primera vez que la enviaste, con lo que respondiste entonces: recarga la pantalla para ver cómo quedó.'
+        using errcode = 'check_violation';
+    end if;
+    raise exception 'Esta nota ya la cerró otra persona de Almacén: recarga la pantalla para ver qué respondió.' using errcode = 'check_violation';
   end if;
   if char_length(v_resp) not between 10 and 500 then
     raise exception 'Escribe qué hizo Almacén, de 10 a 500 caracteres.' using errcode = 'check_violation';

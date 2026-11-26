@@ -13,6 +13,7 @@ declare
   v_alm  uuid := test.crear_usuario('Alan', 'Almacén', 'alm.conf473@demo.pe', 'ALMACENERO');
   v_log  uuid := test.crear_usuario('Lía', 'Logística', 'log.conf473@demo.pe', 'COMPRADOR');
   v_ven  uuid := test.crear_usuario('Vito', 'Ventas', 'ven.conf473@demo.pe', 'VENDEDOR');
+  v_col  uuid := test.crear_usuario('Celia', 'Diseño', 'col.conf473@demo.pe', 'DISENO_COLABORADOR');
   v_mat  uuid;
   v_rq   uuid := gen_random_uuid();
   v_lin  uuid := gen_random_uuid();
@@ -45,6 +46,7 @@ begin
   perform set_config('prueba.alm', v_alm::text, false);
   perform set_config('prueba.log', v_log::text, false);
   perform set_config('prueba.ven', v_ven::text, false);
+  perform set_config('prueba.col', v_col::text, false);
   perform set_config('prueba.rq', v_rq::text, false);
   perform set_config('prueba.mov', v_mov::text, false);
 end $$;
@@ -64,6 +66,14 @@ select test.como_usuario(current_setting('prueba.otro')::uuid);
 set local role authenticated;
 select test.debe_fallar(format($q$select public.anotar_conformidad_salida(gen_random_uuid(), %L, 'NO_LLEGO', null, 'No llegó nada al taller')$q$,
   current_setting('prueba.mov')), 'El supervisor de otra área no anota');
+reset role;
+-- El colaborador de Diseño pide con requerimientos.emitir, pero responde solo por los suyos.
+select test.como_usuario(current_setting('prueba.col')::uuid);
+set local role authenticated;
+select test.debe_fallar(format($q$select public.anotar_conformidad_salida(gen_random_uuid(), %L, 'NO_LLEGO', null, 'No llegó nada al taller')$q$,
+  current_setting('prueba.mov')), 'El colaborador de Diseño no anota en un RQ que no registró');
+select test.afirmar((select not bool_or(puede_anotar) from public.salidas_de_requerimientos(array[current_setting('prueba.rq')::uuid])),
+  'Y la pantalla no le ofrece anotar');
 reset role;
 
 -- 2. Nadie escribe la tabla directo.
@@ -88,6 +98,9 @@ begin
     'El envío repetido anota una sola vez');
   perform set_config('prueba.nota', v_id::text, false);
 end $$;
+-- El mismo id con otro contenido no es el mismo envío: no se da por anotado.
+select test.debe_fallar(format($q$select public.anotar_conformidad_salida(%L, %L, 'NO_LLEGO', null, 'Al final no llegó ninguno')$q$,
+  current_setting('prueba.nota'), current_setting('prueba.mov')), 'El mismo id con otra cosa no pasa por anotado', 'la primera vez que la enviaste');
 
 -- 5. Una abierta por salida: el supervisor del área no anota otra mientras tanto.
 reset role;
@@ -138,5 +151,7 @@ select test.afirmar((select count(*) from public.notificaciones
 -- 8. Ni el dueño de las tablas corrige lo anotado.
 select test.debe_fallar(format($q$update public.conformidad_salidas set nota = 'Otra nota cualquiera' where id = %L$q$, current_setting('prueba.nota')),
   'Lo anotado no se corrige');
+select test.debe_fallar(format($q$delete from public.conformidad_salidas where id = %L$q$, current_setting('prueba.nota')),
+  'Ni se borra');
 
 rollback;

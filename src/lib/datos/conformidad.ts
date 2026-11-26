@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { diasEnEspera } from '@/lib/datos/dias-en-espera'
+import { todasLasFilas } from '@/lib/datos/todas-las-filas'
 import { createClient } from '@/lib/supabase/server'
 
 /**
@@ -14,6 +15,8 @@ export type SalidaDelInsumo = {
   lineaId: string
   cantidad: number
   unidad: string | null
+  /** El material que salió: puede no ser el que se pidió (otra marca u otra medida del mismo almacén). */
+  material: string | null
   numero: string | null
   en: string
   recibio: string | null
@@ -50,12 +53,19 @@ export type NotaDeConformidad = {
   dias: number | null
 }
 
+/** Lo que Almacén necesita a la vista para responder una nota: de qué área y código es, quién recibió y la foto. */
+export type NotaParaAlmacen = NotaDeConformidad & { area: string | null; codigoInterno: string | null; recibio: string | null; conFoto: boolean }
+
 /** Las salidas de estos RQ, por insumo (el id de su línea). Lanza si la base no contesta. */
 export async function salidasDeRequerimientos(ids: readonly string[]): Promise<Map<string, SalidaDelInsumo[]>> {
   const porLinea = new Map<string, SalidaDelInsumo[]>()
   if (ids.length === 0) return porLinea
   const db = await createClient()
-  const { data, error } = await db.rpc('salidas_de_requerimientos', { p_ids: [...ids] })
+  // Una fila por salida: con 300 RQ pasa de mil, y Supabase corta en mil sin avisar.
+  const { data, error } = await todasLasFilas(
+    () => db.rpc('salidas_de_requerimientos', { p_ids: [...ids] }),
+    ['requerimiento_id', 'item', 'salio_en', 'movimiento_id'],
+  )
   if (error) throw new Error(`No se pudieron leer las salidas de los requerimientos: ${error.message}`)
   for (const s of data ?? []) {
     if (!s.movimiento_id || !s.requerimiento_linea_id || !s.requerimiento_id || !s.salio_en) continue
@@ -66,6 +76,7 @@ export async function salidasDeRequerimientos(ids: readonly string[]): Promise<M
       lineaId: s.requerimiento_linea_id,
       cantidad: Number(s.cantidad ?? 0),
       unidad: s.unidad,
+      material: s.material,
       numero: s.numero_salida,
       en: s.salio_en,
       recibio: s.recibido_por,
@@ -86,10 +97,15 @@ export async function salidasDeRequerimientos(ids: readonly string[]): Promise<M
 export async function notasDeConformidad(opciones: { requerimientos?: readonly string[]; soloAbiertas?: boolean } = {}): Promise<NotaDeConformidad[]> {
   if (opciones.requerimientos && opciones.requerimientos.length === 0) return []
   const db = await createClient()
-  const { data, error } = await db.rpc('notas_de_conformidad', {
-    p_requerimientos: opciones.requerimientos ? [...opciones.requerimientos] : undefined,
-    p_solo_abiertas: opciones.soloAbiertas ?? false,
-  })
+  // De mil en mil, las abiertas primero y la más antigua arriba.
+  const { data, error } = await todasLasFilas(
+    () =>
+      db.rpc('notas_de_conformidad', {
+        p_requerimientos: opciones.requerimientos ? [...opciones.requerimientos] : undefined,
+        p_solo_abiertas: opciones.soloAbiertas ?? false,
+      }),
+    ['atendido_en.asc.nullsfirst', 'anotado_en', 'id'],
+  )
   if (error) throw new Error(`No se pudieron leer las notas de las salidas: ${error.message}`)
   const notas: NotaDeConformidad[] = (data ?? []).flatMap((n) =>
     n.id && n.movimiento_id && n.requerimiento_id && n.anotado_en && n.salio_en && (n.tipo === 'NO_LLEGO' || n.tipo === 'LLEGO_INCOMPLETO')
@@ -119,7 +135,9 @@ export async function notasDeConformidad(opciones: { requerimientos?: readonly s
         ]
       : [],
   )
-  // Cuánto espera cada abierta, con la fecha de Lima de la base. Sin eso la lista sigue, sin los días.
+  // Cuánto espera cada abierta, con la fecha de Lima de la base: solo para la
+  // lista de Almacén. Sin eso la lista sigue, sin los días.
+  if (!opciones.soloAbiertas) return notas
   const abiertas = notas.filter((n) => !n.atendidoEn)
   const dias = await diasEnEspera(abiertas.map((n) => n.anotadoEn)).catch((e: unknown) => {
     console.error('Notas de las salidas: no se pudieron contar los días.', e)
@@ -144,4 +162,30 @@ export async function conformidadDeRequerimientos(ids: readonly string[]): Promi
   const notas = new Map<string, NotaDeConformidad[]>()
   for (const n of lista) notas.set(n.movimientoId, [...(notas.get(n.movimientoId) ?? []), n])
   return { salidas, notas }
+}
+
+/**
+ * Las notas abiertas, para la tarjeta de arriba de Atención, con el área y el
+ * código interno del RQ y quién recibió la salida y si tiene foto. Almacén lee
+ * el RQ y el kardex con su permiso; si eso falla, las notas siguen sin esos datos.
+ */
+export async function notasAbiertasParaAlmacen(): Promise<NotaParaAlmacen[]> {
+  const notas = await notasDeConformidad({ soloAbiertas: true })
+  if (notas.length === 0) return []
+  const db = await createClient()
+  const [rqs, salidas] = await Promise.all([
+    db.from('requerimientos').select('id, codigo_interno, area:areas(nombre)').in('id', [...new Set(notas.map((n) => n.requerimientoId))]),
+    db.from('movimientos_materiales').select('id, recibido_por_nombre, foto_ruta').in('id', notas.map((n) => n.movimientoId)),
+  ])
+  if (rqs.error) console.error('Notas de las salidas: no se pudo leer el área y el código de los RQ.', rqs.error)
+  if (salidas.error) console.error('Notas de las salidas: no se pudo leer quién recibió cada salida.', salidas.error)
+  const rq = new Map((rqs.data ?? []).map((r) => [r.id, r]))
+  const salida = new Map((salidas.data ?? []).map((m) => [m.id, m]))
+  return notas.map((n) => ({
+    ...n,
+    area: rq.get(n.requerimientoId)?.area?.nombre ?? null,
+    codigoInterno: rq.get(n.requerimientoId)?.codigo_interno ?? null,
+    recibio: salida.get(n.movimientoId)?.recibido_por_nombre ?? null,
+    conFoto: Boolean(salida.get(n.movimientoId)?.foto_ruta),
+  }))
 }
