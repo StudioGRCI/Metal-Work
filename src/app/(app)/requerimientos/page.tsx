@@ -9,11 +9,11 @@ import { correccionesDe } from '@/lib/datos/correcciones'
 import { metradoDeRequerimientos } from '@/lib/datos/metrado-rq'
 import { recorridoDeRequerimientos } from '@/lib/datos/recorrido'
 import { esperaSuSustento } from '@/lib/dominio/metrado-rq'
-import { esFiltroDePlazo, estaVencido, FILTROS_DE_PLAZO, plazoDelRq, seNecesitaEstaSemana, type FiltroDePlazo } from '@/lib/dominio/plazo-rq'
+import { esFiltroDePlazo, fechasDelFiltro, FILTROS_DE_PLAZO, type FiltroDePlazo } from '@/lib/dominio/plazo-rq'
 import { describirRecorridoDelRequerimiento } from '@/lib/dominio/recorrido'
-import { cargarRequerimientos, catalogosDelRequerimiento } from '@/lib/datos/requerimientos'
+import { cargarRequerimientos, catalogosDelRequerimiento, contarRequerimientosAbiertos } from '@/lib/datos/requerimientos'
 import { TIPO_REQUERIMIENTO, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
-import { diasHasta, hoyLima } from '@/lib/format'
+import { hoyLima } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { esUuid } from '@/lib/utils'
 
@@ -59,23 +59,45 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
   // `?area=todas` muestra los de todas. Los de Administración no son de ningún taller.
   const supervisaArea = perfil.rol.codigo === 'SUPERVISOR' && perfil.area_id !== null
   const deSuArea = supervisaArea && params.area !== 'todas' ? (perfil.area_id ?? undefined) : undefined
-  const [requerimientos, catalogos] = await Promise.all([
-    cargarRequerimientos(
-      soloUno
-        ? { id: soloUno, conEntregado: true }
-        : { tipo: supervisaArea || vista === 'todos' ? undefined : vista, area: deSuArea, codigo, conEntregado: true },
-    ),
+  // `?plazo=` deja los RQ en camino que se necesitan de hoy al domingo, o los
+  // vencidos (plan 3, entrega 3.1). Los pide a la base por su fecha, con los
+  // demás filtros (tipo, área, código): con la lista de los 300 más nuevos los
+  // vencidos más viejos quedaban fuera. No se suma a «para recoger» ni a «esperan
+  // tu sustento»: son otra pregunta, y sus cifras no contarían lo que se ve.
+  const plazo = !soloUno && esFiltroDePlazo(params.plazo) ? params.plazo : null
+  const hoy = hoyLima()
+  const filtrosDeLista = { tipo: supervisaArea || vista === 'todos' ? undefined : vista, area: deSuArea, codigo } as const
+  const [requerimientos, catalogos, enPlazo, cuentasDePlazo] = await Promise.all([
+    cargarRequerimientos(soloUno ? { id: soloUno, conEntregado: true } : { ...filtrosDeLista, conEntregado: true }),
     emite ? catalogosDelRequerimiento() : Promise.resolve(null),
+    plazo
+      ? cargarRequerimientos({
+          ...filtrosDeLista,
+          soloAbiertos: true,
+          conEntregado: true,
+          necesitadoDesde: fechasDelFiltro(plazo, hoy).desde,
+          necesitadoHasta: fechasDelFiltro(plazo, hoy).hasta,
+        })
+      : Promise.resolve(null),
+    // Las cifras de las pastillas, contadas por la base con los mismos filtros.
+    soloUno
+      ? Promise.resolve(null)
+      : Promise.all(
+          (Object.keys(FILTROS_DE_PLAZO) as FiltroDePlazo[]).map(async (f) => {
+            const { desde, hasta } = fechasDelFiltro(f, hoy)
+            return [f, await contarRequerimientosAbiertos({ ...filtrosDeLista, necesitadoDesde: desde, necesitadoHasta: hasta })] as const
+          }),
+        ).then((cuentas) => new Map(cuentas)),
   ])
   // `?ver=recoger` deja solo los que tienen algo para recoger en Almacén: es la
   // cifra verde de arriba. Las cifras siguen contando todos.
-  const soloRecoger = !soloUno && params.ver === 'recoger'
-  const recogen = soloRecoger ? requerimientos.filter(tieneParaRecoger) : requerimientos
+  const soloRecoger = !soloUno && !plazo && params.ver === 'recoger'
+  const recogen = enPlazo ?? (soloRecoger ? requerimientos.filter(tieneParaRecoger) : requerimientos)
   const [correcciones, metrado, recorridos] = await Promise.all([
     correccionesDe('REQUERIMIENTO', recogen.map((r) => r.id)),
     // De todos, no solo de los mostrados: las cifras de arriba y «esperan tu sustento» los cuentan.
     // Sin el metrado, la tarjeta sigue: solo no dice qué insumo se pasa, y arriba se avisa.
-    metradoDeRequerimientos(requerimientos.map((r) => r.id)).catch((e: unknown) => {
+    metradoDeRequerimientos([...new Set([...requerimientos, ...(enPlazo ?? [])].map((r) => r.id))]).catch((e: unknown) => {
       console.error('Requerimientos: no se pudo leer el metrado de Diseño.', e)
       return null
     }),
@@ -95,25 +117,13 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
   // El colaborador de Diseño corrige, sustenta y anula solo los que registró él (migración 20261106100000).
   const esSuyo = (r: (typeof requerimientos)[number]) => loLleva(r) && (perfil.rol.codigo !== 'DISENO_COLABORADOR' || r.creado_por === perfil.id)
   const porSustentar = metrado ? requerimientos.filter((r) => esSuyo(r) && esperaSuSustento(r, metrado)) : []
-  const soloSustentar = !soloUno && !soloRecoger && params.ver === 'sustentar'
-  const sinPlazo = soloSustentar ? porSustentar : recogen
-  // `?plazo=` deja los que se necesitan de hoy al domingo, o los vencidos con algo
-  // por entregar (plan 3, entrega 3.1). Se suma a los demás filtros; sus cifras
-  // cuentan lo que se ve sin él.
-  const hoy = hoyLima()
-  const plazos = new Map(sinPlazo.map((r) => [r.id, plazoDelRq(r.estado, diasHasta(r.fecha_requerida))]))
-  const cumple: Record<FiltroDePlazo, (r: (typeof requerimientos)[number]) => boolean> = {
-    semana: (r) => seNecesitaEstaSemana(plazos.get(r.id) ?? null, hoy),
-    vencidos: (r) => estaVencido(plazos.get(r.id) ?? null),
-  }
-  const plazo = !soloUno && esFiltroDePlazo(params.plazo) ? params.plazo : null
-  const mostrados = plazo ? sinPlazo.filter(cumple[plazo]) : sinPlazo
-  // La dirección de esta misma lista, sin el filtro de recoger: para quitarlo y para ponerlo.
+  const soloSustentar = !soloUno && !plazo && !soloRecoger && params.ver === 'sustentar'
+  const mostrados = soloSustentar ? porSustentar : recogen
+  // La dirección de esta misma lista, sin el filtro de recoger ni el de la fecha: para quitarlos y para ponerlos.
   const filtros = new URLSearchParams()
   if (pedida) filtros.set('tipo', pedida)
   if (supervisaArea && !deSuArea) filtros.set('area', 'todas')
   if (codigo) filtros.set('codigo', codigo)
-  if (plazo) filtros.set('plazo', plazo)
   const sinRecoger = `/requerimientos${filtros.size > 0 ? `?${filtros}` : ''}`
   filtros.set('ver', 'sustentar')
   const conSustentar = `/requerimientos?${filtros}`
@@ -121,6 +131,10 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
   const conRecoger = `/requerimientos?${filtros}`
   const verTodos = supervisaArea && !deSuArea ? '/requerimientos?area=todas' : '/requerimientos'
   const vacio = listaVacia({ plazo, soloRecoger, soloSustentar, codigo, deSuArea: Boolean(deSuArea), emite, pideSuArea, sinRecoger, verTodos })
+  // Las pestañas y el «Ver todos» del código conservan la fecha elegida.
+  const conPlazo = (href: string) => (plazo ? `${href}${href.includes('?') ? '&' : '?'}plazo=${plazo}` : href)
+  // La pastilla de la fecha quita «para recoger» y «esperan tu sustento»: no se suman.
+  const { ver: _ver, ...sinVer } = params
 
   return (
     <>
@@ -163,7 +177,10 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
             }))
         ).map((v) => ({
           ...v,
-          href: codigo && v.clave !== 'unidades' ? `${v.href}${v.href.includes('?') ? '&' : '?'}codigo=${encodeURIComponent(codigo)}` : v.href,
+          href:
+            v.clave === 'unidades'
+              ? v.href
+              : conPlazo(codigo ? `${v.href}${v.href.includes('?') ? '&' : '?'}codigo=${encodeURIComponent(codigo)}` : v.href),
           activa: !soloUno && v.activa,
           cuenta: !soloUno && v.activa ? mostrados.length : undefined,
         }))}
@@ -172,7 +189,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
       {!soloUno && codigo && (
         <p className="mb-3 text-sm text-texto-suave">
           Solo los del código interno <span className="font-mono text-texto">{codigo}</span>.{' '}
-          <Link href={verTodos} className="font-medium text-acento hover:underline">
+          <Link href={conPlazo(verTodos)} className="font-medium text-acento hover:underline">
             Ver todos
           </Link>
         </p>
@@ -231,13 +248,13 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
           className="mb-3"
           ruta="/requerimientos"
           clave="plazo"
-          params={params}
+          params={sinVer}
           activo={plazo}
           opciones={[
             { valor: null, etiqueta: 'Cualquier fecha' },
             ...(Object.keys(FILTROS_DE_PLAZO) as FiltroDePlazo[]).map((f) => ({
               valor: f,
-              etiqueta: `${FILTROS_DE_PLAZO[f]} (${sinPlazo.filter(cumple[f]).length})`,
+              etiqueta: cuentasDePlazo ? `${FILTROS_DE_PLAZO[f]} (${cuentasDePlazo.get(f) ?? 0})` : FILTROS_DE_PLAZO[f],
             })),
           ]}
         />
@@ -308,18 +325,14 @@ function listaVacia({
     </Link>
   )
   if (plazo) {
-    // Quita solo este filtro: los demás (el código, lo de recoger) siguen puestos.
-    const sinEste = new URLSearchParams(sinRecoger.split('?')[1] ?? '')
-    sinEste.delete('plazo')
-    if (soloRecoger) sinEste.set('ver', 'recoger')
-    if (soloSustentar) sinEste.set('ver', 'sustentar')
+    // Quita solo este filtro: los demás (el tipo, el área, el código) siguen puestos.
     return {
       titulo: plazo === 'vencidos' ? 'Ninguno vencido sin atender' : 'Ninguno se necesita esta semana',
       descripcion:
         plazo === 'vencidos'
-          ? 'Todo lo que se necesitaba hasta ayer ya se entregó o se anuló.'
-          : 'Ningún requerimiento en camino pide su fecha entre hoy y el domingo.',
-      accion: enlace(`/requerimientos${sinEste.size > 0 ? `?${sinEste}` : ''}`, 'Ver de cualquier fecha'),
+          ? 'Ningún requerimiento en camino tiene su fecha vencida.'
+          : 'Ningún requerimiento en camino se necesita entre hoy y el domingo.',
+      accion: enlace(sinRecoger, 'Ver de cualquier fecha'),
     }
   }
   if (soloSustentar) {

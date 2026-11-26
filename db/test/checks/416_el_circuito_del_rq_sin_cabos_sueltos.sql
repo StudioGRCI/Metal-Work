@@ -358,6 +358,10 @@ reset role;
 -- Las secciones 7 y 7b sacan accesorios por código sin RQ, como antes de la regla
 -- de la salida (20261120410000): lo que prueban es de quién es lo devuelto y a
 -- qué código sale un accesorio. La regla nueva la prueba el check 457.
+-- El aviso de lo que llega (20261126300000) corre al cerrar la transacción: se adelanta
+-- para poder tocar la tabla, que no se altera con eventos pendientes.
+set constraints trg_rq_avisar_lo_que_llego immediate;
+set constraints trg_rq_avisar_lo_que_llego deferred;
 alter table public.movimientos_materiales disable trigger trg_salida_es_lo_que_pidio_el_rq;
 
 -- ============================================ 7. El accesorio devuelto vuelve a ser de su unidad
@@ -628,6 +632,10 @@ select test.afirmar((select existencia = 4 and libre = 0 from public.stock_libre
 -- la salida (20261120410000) un accesorio ya no sale sin RQ; lo que se prueba es
 -- la cuenta de las salidas de antes, que siguen en el kardex.
 reset role;
+-- El aviso de lo que llega (20261126300000) corre al cerrar la transacción: se adelanta
+-- para poder tocar la tabla, que no se altera con eventos pendientes.
+set constraints trg_rq_avisar_lo_que_llego immediate;
+set constraints trg_rq_avisar_lo_que_llego deferred;
 alter table public.movimientos_materiales disable trigger trg_salida_es_lo_que_pidio_el_rq;
 select pg_temp.como('almacenero');
 set local role authenticated;
@@ -1047,6 +1055,10 @@ reset role;
 -- De 12q en adelante, los accesorios salen por código y sin RQ, como antes de la
 -- regla de la salida (20261120410000): lo que se prueba es a qué código y a qué
 -- vehículo va la salida. La regla nueva la prueba el check 457.
+-- El aviso de lo que llega (20261126300000) corre al cerrar la transacción: se adelanta
+-- para poder tocar la tabla, que no se altera con eventos pendientes.
+set constraints trg_rq_avisar_lo_que_llego immediate;
+set constraints trg_rq_avisar_lo_que_llego deferred;
 alter table public.movimientos_materiales disable trigger trg_salida_es_lo_que_pidio_el_rq;
 
 -- 12q. Un código de la lista es ese código aunque se escriba como la placa de

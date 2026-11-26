@@ -5,11 +5,12 @@
  *
  *   1. Siembra, con el rol de cada puesto, cuatro RQ de Requerimientos: uno
  *      vencido hace tres días (Almacén tiene un insumo, Logística compra los
- *      otros dos y llega la mitad de uno), uno para hoy, uno para dentro de dos
- *      días y otro para dentro de doce. Solo la fecha del vencido se corre como
- *      dueño: la base no deja pedir para atrás.
- *   2. La campana: a Requerimientos le llega «Llegó a almacén» con el ingreso, y
- *      lo ve en /avisos.
+ *      otros dos, el conductor los deja en Almacén y Almacén valida la mitad de
+ *      uno y el otro entero), uno para hoy, uno para dentro de dos días y otro
+ *      para dentro de doce. Solo la fecha del vencido se corre como dueño: la
+ *      base no deja pedir para atrás.
+ *   2. La campana: a Requerimientos le llega un solo «Llegó a almacén» por esa
+ *      recepción, con cuánto entró de cada insumo, y lo ve en /avisos.
  *   3. Requerimientos ve en cada RQ cuánto le falta o cuánto lleva vencido, y en
  *      el vencido qué insumos lo tienen así. Las pastillas «Se necesita esta
  *      semana» y «Vencido sin atender» dejan solo los que cumplen, con su cifra.
@@ -119,17 +120,24 @@ try {
   await base.query('set constraints all immediate')
   await base.query('set constraints all deferred')
   await como('gerencia', 'select public.aprobar_compra($1)', [ids.oc])
-  // El recojo tiene su propia sonda: aquí el conductor ya la dejó en Almacén.
-  await base.query(`set local session_replication_role = replica`)
-  await base.query(`update public.ordenes_compra_materiales set entregado_almacen_en = now() where id = $1`, [ids.oc])
-  await base.query(`set local session_replication_role = origin`)
-  // Llegan 3 de las 6 planchas. El ingreso entra como en el kardex; el aviso es lo que se prueba.
-  const [almacen] = await consulta('select id from public.usuarios where correo = $1', [correoDe('almacen')])
-  await base.query(`select set_config('request.jwt.claim.sub', $1, true)`, [almacen.id])
-  await base.query(`insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, registrado_por, orden_compra_detalle_id)
-    select gen_random_uuid(), 'INGRESO', d.material_id, 3, 'COMPRA', 'GR 001-123', $2, d.id
-      from public.requerimiento_lineas l join public.orden_compra_material_detalles d on d.id = l.orden_compra_detalle_id
-     where l.requerimiento_id = $1 and l.item = 1`, [ids.v, almacen.id])
+  // El conductor la recoge y la deja en Almacén, con sus roles.
+  await como('logistica', 'select public.programar_recojo($1, 30, null)', [ids.oc])
+  await como('conductor', 'select public.marcar_compra_recogida($1)', [ids.oc])
+  await como('conductor', 'select public.marcar_compra_dejada_almacen($1)', [ids.oc])
+  await base.query('commit')
+} catch (e) {
+  await base.query('rollback')
+  throw e
+}
+// Almacén valida en una sola recepción 3 de las 6 planchas y los 2 del insumo 3,
+// en su propia transacción: el aviso sale al cerrarla, uno solo con los dos insumos.
+await base.query('begin')
+try {
+  await como('almacen', `select public.validar_ingresos_compra($1, (
+      select jsonb_agg(jsonb_build_object('id', p.id, 'movimiento_id', gen_random_uuid(),
+               'cantidad', case when p.material_id = $2 then 3 else p.cantidad end,
+               'observacion', case when p.material_id = $2 then 'Llegaron 3, el resto llega el viernes' end))
+        from public.ingresos_pendientes_almacen p where p.orden_compra_id = $1), 'GR 001-123')`, [ids.oc, materiales[1]])
   await base.query('commit')
 } catch (e) {
   await base.query('rollback')
@@ -142,10 +150,12 @@ const numeros = Object.fromEntries(
 
 // ------------------------------------------------ 2. La campana
 await base.query('begin')
-const avisos = await como('requerimientos', `select titulo, ruta from public.notificaciones where origen_id = $1 and titulo like 'Llegó a almacén:%'`, [ids.v])
+const avisos = await como('requerimientos', `select titulo, cuerpo, ruta from public.notificaciones where origen_id = $1 and titulo like 'Llegó a almacén:%'`, [ids.v])
 await base.query('rollback')
 comprobar(avisos.length === 1 && avisos[0].ruta === `/requerimientos?rq=${ids.v}`,
-  `a Requerimientos le llega un «Llegó a almacén» del ${vencido}, que abre solo ese RQ (${avisos.length})`)
+  `a Requerimientos le llega un solo «Llegó a almacén» del ${vencido} por la recepción de dos materiales, que abre solo ese RQ (${avisos.length})`)
+comprobar(/: 3 \S+ del insumo 1, .*; 2 \S+ del insumo 3, .*\(.+\)\. Mira en el RQ cuánto ya puedes recoger\.$/.test(avisos[0]?.cuerpo ?? ''),
+  `y dice cuánto entró de cada insumo: «${avisos[0]?.cuerpo}»`)
 
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
 const errores = []
@@ -218,7 +228,7 @@ const tarjetas = (pagina) =>
   comprobar(de(ids.l)?.texto === 'Faltan 12 días', `el ${numeros[ids.l]} dice «Faltan 12 días» (${de(ids.l)?.texto})`)
   const loVencido = (await pagina.locator(`[data-lo-vencido="${vencido}"]`).textContent())?.replace(/\s+/g, ' ').trim()
   comprobar(
-    loVencido === `Se necesitaba el ${enDias(-3).split('-').reverse().join('/')}. Lo que falta: los insumos 1 y 2, para recoger en Almacén; los insumos 1 y 3, por llegar.`,
+    loVencido === `Se necesitaba el ${enDias(-3).split('-').reverse().join('/')}. Lo que falta: los insumos 1, 2 y 3, para recoger en Almacén; el insumo 1, por llegar.`,
     `el vencido dice qué insumos lo tienen así: «${loVencido}»`,
   )
   comprobar((await pagina.locator('[data-lo-vencido]').count()) === todas.filter((t) => t.plazo !== null && t.plazo < 0).length,

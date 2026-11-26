@@ -12,7 +12,7 @@ import type { LineaRequerimiento, MaterialParaRequerimiento, RequerimientoListad
 import type { CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import type { PasoDescrito } from '@/lib/dominio/recorrido'
 import { estaVencido, loQueLoAtrasa, plazoDelRq, textoDelPlazo } from '@/lib/dominio/plazo-rq'
-import { cuentaDelMetrado, ESTADO_METRADO, FRENO_DEL_RQ, frenaElRq, frenoDelRq, listaDeItems, pideSustento } from '@/lib/dominio/metrado-rq'
+import { cuentaDelMetrado, ESTADO_METRADO, FRENO_DEL_RQ, frenaElRq, frenoDelRq, listaDeItems, pideSustento, queFaltaDelFreno } from '@/lib/dominio/metrado-rq'
 import {
   COMPRA_CORTA,
   estadoDelRequerimiento,
@@ -284,7 +284,7 @@ export function TarjetaRequerimiento({
             )}
             {rq.tipo === 'ADMINISTRACION' && <Insignia tono="acento">Administración</Insignia>}
             {textoPlazo && (
-              <Insignia tono={textoPlazo.tono} title={`Se necesita el ${fecha(rq.fecha_requerida)}`} data-plazo={plazo}>
+              <Insignia tono={textoPlazo.tono} data-plazo={plazo}>
                 {textoPlazo.etiqueta}
               </Insignia>
             )}
@@ -320,7 +320,7 @@ export function TarjetaRequerimiento({
         <PasosDelRequerimiento rq={rq} enEspera={enEspera?.etiqueta} />
       )}
 
-      {estaVencido(plazo) && <LoQueLoTieneVencido rq={rq} />}
+      {estaVencido(plazo) && <LoQueLoTieneVencido rq={rq} freno={freno} />}
 
       {metrado && <FrenoDelMetrado rq={rq} metrado={metrado} sustenta={anula} />}
 
@@ -364,12 +364,23 @@ export function TarjetaRequerimiento({
  * primero, después lo que falta que llegue o que Almacén revise. Quien lo pidió
  * ve de un vistazo si le toca ir a Almacén o esperar.
  */
-function LoQueLoTieneVencido({ rq }: { rq: RequerimientoListado }) {
-  const falta = loQueLoAtrasa(rq.lineas.map((l) => ({ item: l.item, partes: partesDelInsumo(l, rq.estado) })))
+function LoQueLoTieneVencido({ rq, freno }: { rq: RequerimientoListado; freno: ReturnType<typeof frenoDelRq> }) {
+  // Lo que la OC no compró ya no está «por llegar»: la tarjeta pide un RQ nuevo para eso.
+  const falta = loQueLoAtrasa(
+    rq.lineas.map((l) => {
+      const p = partesDelInsumo(l, rq.estado)
+      return { item: l.item, partes: p && laCompraQuedoCorta(l, p) ? { ...p, porLlegar: 0, sinCompra: p.porLlegar } : p }
+    }),
+  )
   return (
     <p className="border-t border-borde bg-peligro-suave px-4 py-2 text-xs text-texto" data-lo-vencido={rq.numero}>
       <span className="font-medium text-peligro">Se necesitaba el {fecha(rq.fecha_requerida)}.</span>{' '}
-      {falta.length > 0 ? `Lo que falta: ${falta.join('; ')}.` : 'Falta que Almacén lo entregue.'}
+      {/* Frenado por el metrado, Almacén no lo puede revisar: decir «por revisar en Almacén» lo culpaba. */}
+      {freno
+        ? `Lo detiene el metrado de Diseño: ${queFaltaDelFreno(freno).replace(/^./, (c) => c.toLowerCase())}.`
+        : falta.length > 0
+          ? `Lo que falta: ${falta.join('; ')}.`
+          : 'Ya salió todo de Almacén: falta que lo dé por entregado.'}
     </p>
   )
 }
@@ -531,6 +542,8 @@ function InsumoConPartes({
   return (
     <li className="px-4 py-3" data-insumo={l.item}>
       <p className="text-sm break-words text-texto">
+        {/* El número del insumo: «los insumos 1 y 3» de la línea del vencido y del metrado lo nombran así. */}
+        <span className="tabular text-texto-suave">{l.item}.</span>{' '}
         <span className="tabular font-semibold">
           {cantidad(l.cantidad)} {u}
         </span>{' '}

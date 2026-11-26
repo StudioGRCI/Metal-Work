@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { diasHastaElDomingo, estaVencido, loQueLoAtrasa, plazoDelRq, seNecesitaEstaSemana, textoDelPlazo } from './plazo-rq.ts'
+import { diasHastaElDomingo, esFiltroDePlazo, estaVencido, fechasDelFiltro, loQueLoAtrasa, plazoDelRq, seNecesitaEstaSemana, textoDelPlazo } from './plazo-rq.ts'
 
 test('solo el RQ con algo por entregar tiene plazo', () => {
   for (const estado of ['POR_ATENDER', 'SIN_STOCK', 'EN_ATENCION', 'LISTO_EN_ALMACEN']) assert.equal(plazoDelRq(estado, -2), -2)
@@ -53,4 +53,27 @@ test('lo que atrasa el RQ: primero lo que ya se puede recoger', () => {
   )
   assert.deepEqual(loQueLoAtrasa([{ item: 1, partes: p(0, 0, 5) }]), ['el insumo 1, por revisar en Almacén'])
   assert.deepEqual(loQueLoAtrasa([{ item: 1, partes: p(0, 0, 0) }]), [])
+})
+
+test('las fechas que se le piden a la base por cada filtro', () => {
+  // El 2026-11-26 es jueves: la semana va hasta el domingo 29.
+  assert.deepEqual(fechasDelFiltro('vencidos', '2026-11-26'), { desde: null, hasta: '2026-11-25' })
+  assert.deepEqual(fechasDelFiltro('semana', '2026-11-26'), { desde: '2026-11-26', hasta: '2026-11-29' })
+  assert.deepEqual(fechasDelFiltro('semana', '2026-11-29'), { desde: '2026-11-29', hasta: '2026-11-29' }, 'el domingo, solo ese día')
+  assert.deepEqual(fechasDelFiltro('vencidos', '2027-01-01'), { desde: null, hasta: '2026-12-31' }, 'cruza el año')
+})
+
+test('un ?plazo= raro no es filtro ni tumba la página', () => {
+  assert.equal(esFiltroDePlazo('vencidos'), true)
+  for (const raro of ['__proto__', 'hasOwnProperty', 'constructor', '', undefined, ['vencidos']]) assert.equal(esFiltroDePlazo(raro), false)
+})
+
+test('lo que la OC no compró no está «por llegar»', () => {
+  assert.deepEqual(
+    loQueLoAtrasa([
+      { item: 1, partes: { recoger: 0, porLlegar: 0, revisar: 0, sinCompra: 2 } },
+      { item: 2, partes: { recoger: 0, porLlegar: 3, revisar: 0 } },
+    ]),
+    ['el insumo 2, por llegar', 'el insumo 1, sin comprar: pide el resto en un RQ nuevo'],
+  )
 })

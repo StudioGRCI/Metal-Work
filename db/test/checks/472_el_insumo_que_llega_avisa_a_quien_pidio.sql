@@ -1,11 +1,15 @@
 -- El insumo que llega avisa a quien lo pidió (migración 20261126300000, plan 3,
 -- entrega 3.1). Cuando entra al kardex lo comprado para un insumo de un RQ en
--- compra, la campana le avisa a quien registró ese RQ, una vez por ingreso; si
--- la OC junta dos RQ, cada uno recibe el suyo. No avisa lo que vuelve de una
--- salida, ni al RQ que ya está listo, ni a quien registró el ingreso si es el
--- mismo que pidió. El aviso lo lee quien registró el RQ con su rol, y nadie más.
--- Cada paso con el rol que lo hace —nunca ADMIN— y `set local role
--- authenticated`. Termina en rollback.
+-- compra, la campana le avisa a quien registró ese RQ cuánto le llegó: un aviso
+-- por RQ y por recepción, aunque la recepción traiga varios materiales, y solo
+-- al RQ al que el ingreso le trajo algo (lo que entra se reparte en el orden en
+-- que se pidió). No avisa al RQ que ya está listo, ni lo
+-- que vuelve de una salida. El aviso lo lee quien registró el RQ con su rol, y
+-- nadie más. Cada paso con el rol que lo hace —nunca ADMIN— y `set local role
+-- authenticated`: el ingreso entra por las funciones de Almacén
+-- (`validar_ingresos_compra`, `registrar_recepcion_material`). El disparador
+-- corre al cerrar la transacción; aquí se adelanta con `set constraints`.
+-- Termina en rollback.
 \set ON_ERROR_STOP on
 begin;
 
@@ -25,7 +29,7 @@ begin
                         where u.area_id = a.id and u.activo and r.codigo = 'SUPERVISOR')
      order by a.codigo limit 1), true);
   foreach v in array array['REQUERIMIENTOS:REQ:requerimientos', 'SUPERVISOR:-:supervisor', 'ALMACENERO:ALM:almacenero',
-                           'COMPRADOR:LOG:comprador', 'GERENTE:GER:gerente', 'VENDEDOR:GCO:vendedor'] loop
+                           'COMPRADOR:LOG:comprador', 'GERENTE:GER:gerente', 'CONDUCTOR:LOG:conductor', 'VENDEDOR:GCO:vendedor'] loop
     v_id := gen_random_uuid();
     insert into auth.users (id, email) values (v_id, split_part(v, ':', 3) || '.472@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
@@ -69,17 +73,21 @@ create or replace function pg_temp.avisos(p_rq text) returns bigint language sql
    where origen_id = current_setting('prueba.' || p_rq)::uuid and titulo like 'Llegó a almacén:%';
 $$;
 
--- Un ingreso de compra al kardex, como dueño: la recepción tiene sus propios checks.
--- Lo registra la cuenta `p_quien`, que es lo que mira el aviso para no avisarse a sí mismo.
-create or replace function pg_temp.ingreso(p_rq text, p_item int, p_cantidad numeric, p_quien text) returns void language plpgsql as $$
+-- La línea de OC de un insumo.
+create or replace function pg_temp.linea_oc(p_rq text, p_item int) returns uuid language sql as $$
+  select orden_compra_detalle_id from public.requerimiento_lineas where id = pg_temp.insumo(p_rq, p_item);
+$$;
+
+-- Lo que deja el disparador al cerrar la transacción. El check corre entero en
+-- una sola, y el aviso de la misma recepción se reconoce por su hora (la de la
+-- transacción): los ya dejados se corren un minuto atrás, como si cada paso
+-- fuera su propia transacción.
+create or replace function pg_temp.cerrar() returns void language plpgsql as $$
 begin
-  perform set_config('request.jwt.claim.sub', current_setting('prueba.' || p_quien), true);
-  insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, registrado_por, orden_compra_detalle_id)
-  select gen_random_uuid(), 'INGRESO', d.material_id, p_cantidad, 'COMPRA', 'GR 472', current_setting('prueba.' || p_quien)::uuid, d.id
-    from public.requerimiento_lineas l
-    join public.orden_compra_material_detalles d on d.id = l.orden_compra_detalle_id
-   where l.id = pg_temp.insumo(p_rq, p_item);
-  perform set_config('request.jwt.claim.sub', '', true);
+  set constraints all immediate;
+  set constraints all deferred;
+  update public.notificaciones set creado_en = creado_en - interval '1 minute'
+   where titulo like 'Llegó a almacén:%' and creado_en = now();
 end $$;
 
 -- ============================================ 1. Dos RQ, de dos personas, por comprar
@@ -128,60 +136,89 @@ set local role authenticated;
 select public.aprobar_compra(current_setting('prueba.oc')::uuid);
 select public.aprobar_compra(current_setting('prueba.oc3')::uuid);
 reset role;
--- El conductor las deja en Almacén: el recojo tiene sus propios checks, así que se
--- anota como dueño y sin disparadores. Los del movimiento sí corren después.
-set local session_replication_role = replica;
-update public.ordenes_compra_materiales set entregado_almacen_en = now()
- where id in (current_setting('prueba.oc')::uuid, current_setting('prueba.oc3')::uuid);
-set local session_replication_role = origin;
+-- Logística la pone en la lista del conductor, que la recoge y la deja en Almacén.
+select pg_temp.como('comprador');
+set local role authenticated;
+select public.programar_recojo(current_setting('prueba.oc')::uuid, 50, null);
+select public.programar_recojo(current_setting('prueba.oc3')::uuid, 5, null);
+reset role;
+select pg_temp.como('conductor');
+set local role authenticated;
+select public.marcar_compra_recogida(current_setting('prueba.oc')::uuid);
+select public.marcar_compra_dejada_almacen(current_setting('prueba.oc')::uuid);
+select public.marcar_compra_recogida(current_setting('prueba.oc3')::uuid);
+select public.marcar_compra_dejada_almacen(current_setting('prueba.oc3')::uuid);
+reset role;
+select pg_temp.cerrar();
 
 select test.afirmar(pg_temp.avisos('rq1') = 0 and pg_temp.avisos('rq2') = 0, 'antes de que llegue nada, ningún aviso de «llegó»');
 
--- ============================================ 2. Llega una parte de las planchas: avisa a los dos RQ de esa línea
-select pg_temp.ingreso('rq1', 1, 3, 'almacenero');
-select test.afirmar(pg_temp.avisos('rq1') = 1 and pg_temp.avisos('rq2') = 1,
-  'una parte de la línea compartida avisa a cada RQ una vez');
-select test.afirmar((select usuario_id = current_setting('prueba.requerimientos')::uuid
-                            and ruta = '/requerimientos?rq=' || current_setting('prueba.rq1')
-                            and cuerpo like '%Plancha LAF 2 mm (prueba 472)%' and cuerpo like '%CHK472_A%'
-                       from public.notificaciones
-                      where origen_id = current_setting('prueba.rq1')::uuid and titulo like 'Llegó a almacén:%'),
-  'el del RQ 1 va a quien lo registró, nombra el insumo y el código, y abre solo ese RQ');
-select test.afirmar((select usuario_id = current_setting('prueba.supervisor')::uuid
-                       from public.notificaciones
-                      where origen_id = current_setting('prueba.rq2')::uuid and titulo like 'Llegó a almacén:%'),
-  'el del RQ 2 va al supervisor que lo registró, no a la cuenta de Requerimientos');
-
--- ============================================ 3. Llega el resto: otro aviso; y los discos, el suyo
-select pg_temp.ingreso('rq1', 1, 5, 'almacenero');
-select pg_temp.ingreso('rq1', 2, 4, 'almacenero');
-select test.afirmar(pg_temp.avisos('rq1') = 3 and pg_temp.avisos('rq2') = 2,
-  'cada ingreso avisa: el resto de las planchas y los discos');
-
--- ============================================ 4. Lo que no avisa
--- El que registró el ingreso es el mismo que pidió: no se avisa a sí mismo.
-select pg_temp.ingreso('rq3', 1, 1, 'requerimientos');
-select test.afirmar(pg_temp.avisos('rq3') = 0, 'quien registra el ingreso no se avisa a sí mismo');
--- Con el RQ ya listo en almacén, otro ingreso de su línea no avisa otra vez.
+-- ============================================ 2. Una recepción con dos materiales: un solo aviso, y solo a quien le tocó
+-- De las 8 planchas llegan 3 y los 4 discos. Las planchas se reparten en el orden
+-- en que se pidieron: las 3 son del RQ 1 (pidió 5 antes que el RQ 2), y al RQ 2 no le llega nada.
 select pg_temp.como('almacenero');
 set local role authenticated;
-select public.rq_marcar_listo_en_almacen(current_setting('prueba.rq2')::uuid, null);
+select public.validar_ingresos_compra(current_setting('prueba.oc')::uuid, (
+  select jsonb_agg(jsonb_build_object('id', p.id, 'movimiento_id', gen_random_uuid(),
+           'cantidad', case when p.material_id = current_setting('prueba.pla')::uuid then 3 else p.cantidad end,
+           'observacion', case when p.material_id = current_setting('prueba.pla')::uuid then 'Llegaron 3, el resto llega el viernes' end))
+    from public.ingresos_pendientes_almacen p where p.orden_compra_id = current_setting('prueba.oc')::uuid), 'GR 001-472');
 reset role;
-select pg_temp.ingreso('rq2', 1, 0.5, 'almacenero');
-select test.afirmar(pg_temp.avisos('rq2') = 2, 'el RQ listo en almacén ya tuvo su aviso: no recibe otro');
-select test.afirmar(pg_temp.avisos('rq1') = 4, 'el otro RQ de la misma línea, todavía en compra, sí lo recibe');
--- Lo que vuelve al almacén de una salida no es compra.
-select test.afirmar(not exists (
+select pg_temp.cerrar();
+select test.afirmar(pg_temp.avisos('rq1') = 1, 'la recepción de dos materiales deja un solo aviso al RQ 1, no uno por material');
+select test.afirmar(pg_temp.avisos('rq2') = 0, 'al RQ 2 no le llegó nada de esas 3 planchas: no se le avisa');
+select test.afirmar((select usuario_id = current_setting('prueba.requerimientos')::uuid
+                            and ruta = '/requerimientos?rq=' || current_setting('prueba.rq1')
+                            and cuerpo like 'Entró al almacén, para CHK472_A: %'
+                            and cuerpo like '%3 UND del insumo 1, Plancha LAF 2 mm (prueba 472)%'
+                            and cuerpo like '%4 UND del insumo 2, Disco de corte (prueba 472)%'
+                            and cuerpo like '%(prueba 472) (OC-%). Mira en el RQ cuánto ya puedes recoger.'
+                            and cuerpo not like '%(OC-%(OC-%'
+                       from public.notificaciones
+                      where origen_id = current_setting('prueba.rq1')::uuid and titulo like 'Llegó a almacén:%'),
+  'el aviso va a quien registró el RQ 1, dice cuánto entró de cada insumo, nombra la OC una vez y abre solo ese RQ');
+
+-- ============================================ 3. Llega el resto de las planchas, a mano: a cada RQ lo suyo
+select pg_temp.como('almacenero');
+set local role authenticated;
+select public.registrar_recepcion_material(gen_random_uuid(), pg_temp.linea_oc('rq1', 1), 5, 'GR 001-473');
+reset role;
+select pg_temp.cerrar();
+select test.afirmar(pg_temp.avisos('rq1') = 2 and pg_temp.avisos('rq2') = 1, 'el resto avisa a los dos RQ de la línea');
+select test.afirmar((select cuerpo like '%: 2 UND del insumo 1,%' from public.notificaciones
+                      where origen_id = current_setting('prueba.rq1')::uuid and titulo like 'Llegó a almacén:%' and cuerpo not like '%Disco%'),
+  'al RQ 1 le dice que entraron las 2 que le faltaban');
+select test.afirmar((select usuario_id = current_setting('prueba.supervisor')::uuid and cuerpo like '%: 3 UND del insumo 1,%'
+                       from public.notificaciones
+                      where origen_id = current_setting('prueba.rq2')::uuid and titulo like 'Llegó a almacén:%'),
+  'y al supervisor que registró el RQ 2, las 3 suyas, no a la cuenta de Requerimientos');
+
+-- ============================================ 4. Lo que no avisa
+-- Lo que entra de más no se puede recibir: la recepción no pasa de lo comprado
+-- («La recepción supera lo pendiente»). Si entrara, los insumos ya completos no
+-- suben y nadie recibe aviso: el cálculo es el mismo de la sección 2, con el RQ 2.
+-- El RQ que queda «Listo en almacén» antes de cerrar ya tuvo ese aviso: no recibe «Llegó».
+select pg_temp.como('almacenero');
+set local role authenticated;
+select public.validar_ingresos_compra(current_setting('prueba.oc3')::uuid, (
+  select jsonb_agg(jsonb_build_object('id', p.id, 'movimiento_id', gen_random_uuid(), 'cantidad', p.cantidad))
+    from public.ingresos_pendientes_almacen p where p.orden_compra_id = current_setting('prueba.oc3')::uuid), 'GR 001-475');
+select public.rq_marcar_listo_en_almacen(current_setting('prueba.rq3')::uuid, null);
+reset role;
+select pg_temp.cerrar();
+select test.afirmar(pg_temp.avisos('rq3') = 0, 'el RQ que quedó listo con ese ingreso no recibe además «Llegó»');
+-- Lo que vuelve al almacén de una salida no es compra; y corre al cerrar la transacción.
+select test.afirmar(exists (
   select 1 from pg_trigger t where t.tgname = 'trg_rq_avisar_lo_que_llego'
-     and pg_get_triggerdef(t.oid) not like '%devolucion_de IS NULL%'),
-  'el disparador deja fuera lo que vuelve de una salida');
+     and pg_get_triggerdef(t.oid) like '%devolucion_de IS NULL%' and t.tgdeferrable and t.tginitdeferred),
+  'el disparador deja fuera lo que vuelve de una salida y corre al cerrar la transacción');
 
 -- ============================================ 5. Quién lo lee
 select pg_temp.como('requerimientos');
 set local role authenticated;
 select test.afirmar((select count(*) from public.notificaciones
-                      where origen_id = current_setting('prueba.rq1')::uuid and titulo like 'Llegó a almacén:%') = 4,
-  'quien registró el RQ 1 ve sus cuatro avisos con su rol');
+                      where origen_id = current_setting('prueba.rq1')::uuid and titulo like 'Llegó a almacén:%') = 2,
+  'quien registró el RQ 1 ve sus dos avisos con su rol');
 select test.afirmar((select count(*) from public.notificaciones
                       where origen_id = current_setting('prueba.rq2')::uuid and titulo like 'Llegó a almacén:%') = 0,
   'y no ve los del RQ del supervisor');
