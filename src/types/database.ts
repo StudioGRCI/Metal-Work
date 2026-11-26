@@ -13013,6 +13013,9 @@ export type Database = {
           ordenes: Json | null
           ordenes_vigentes: number | null
           ordenes_faltantes: number | null
+          ordenes_a_otro_comprador: string[] | null
+          unidades_a_otro_comprador: Json | null
+          reabierta_por_ot_anulada: Json | null
         }
         Relationships: []
       }
@@ -14609,6 +14612,24 @@ export type Database = {
           p_operacion?: string | null
         }
         Returns: number
+      }
+      camino_de_las_salidas: {
+        Args: {
+          p_cotizacion: string | null
+          p_sin: string | null
+        }
+        Returns: {
+          orden_id: string | null
+          salio_en: string | null
+          anulada: boolean | null
+        }[]
+      }
+      cancelar_venta_reabierta: {
+        Args: {
+          p_cotizacion: string | null
+          p_motivo: string | null
+        }
+        Returns: null
       }
       cantidad_en_texto: {
         Args: {
@@ -17974,6 +17995,13 @@ export type Database = {
         }
         Returns: Json
       }
+      ordenes_que_salieron_de_la_cotizacion: {
+        Args: {
+          p_cotizacion: string | null
+          p_sin: string | null
+        }
+        Returns: string[]
+      }
       ordenes_servicio_listado: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -18002,6 +18030,12 @@ export type Database = {
           emitida_por: string | null
           atrasada: boolean | null
         }[]
+      }
+      ot_anulada_que_reabre_la_venta: {
+        Args: {
+          p_cotizacion: string | null
+        }
+        Returns: string
       }
       ot_con_su_vehiculo_en_el_arenado: {
         Args: {
@@ -18451,6 +18485,12 @@ export type Database = {
       puede_armar_hoja_de_area: {
         Args: {
           p_area_id: string | null
+        }
+        Returns: boolean
+      }
+      puede_cancelar_la_venta: {
+        Args: {
+          p_cotizacion: string | null
         }
         Returns: boolean
       }
@@ -20102,6 +20142,16 @@ export type Database = {
           en_recojo_en: string | null
         }[]
       }
+      salidas_de_la_cotizacion: {
+        Args: {
+          p_cotizacion: string | null
+          p_sin: string | null
+        }
+        Returns: {
+          orden_id: string | null
+          salio_en: string | null
+        }[]
+      }
       salidas_de_requerimientos: {
         Args: {
           p_ids: string[] | null
@@ -21082,6 +21132,16 @@ export type Database = {
           pago: string | null
         }[]
       }
+      ultima_ot_anulada_de_la_venta: {
+        Args: {
+          p_cotizacion: string | null
+        }
+        Returns: {
+          numero: string | null
+          anulada_en: string | null
+          paso: boolean | null
+        }[]
+      }
       unidades_del_cliente_con_su_entrega: {
         Args: {
           p_cliente: string | null
@@ -21103,6 +21163,12 @@ export type Database = {
           vehiculo: string | null
           ordenes: string | null
         }[]
+      }
+      unidades_que_salieron_de_la_cotizacion: {
+        Args: {
+          p_cotizacion: string | null
+        }
+        Returns: Json
       }
       usuario_actual: {
         Args: Record<PropertyKey, never>
@@ -21243,6 +21309,30 @@ export type Database = {
           placa: string | null
           chasis: string | null
           en_planta: boolean | null
+        }[]
+      }
+      venta_que_paso_a_otro_comprador: {
+        Args: {
+          p_numero: string | null
+          p_cantidad: number | null
+          p_vigentes: number | null
+          p_salieron: string[] | null
+        }
+        Returns: string
+      }
+      venta_reabierta: {
+        Args: {
+          p_cotizacion: string | null
+        }
+        Returns: Json
+      }
+      ventas_cerradas_por_otro_comprador: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          cotizacion_id: string | null
+          ordenes: string[] | null
         }[]
       }
     }

@@ -9,8 +9,9 @@
 --   * Dice por qué «Editar OT» no puede poner el código (OT sin unidad, unidad
 --     de otra OT también) y cuál OT se anuló si la cotización vuelve por eso.
 --   * La cotización que fue la venta anterior de una OT que pasó a otro
---     comprador sale diciendo de qué OT fue; la que vuelve por su OT anulada
---     espera desde la anulación.
+--     comprador ya no sale: no lleva otra OT (migración 20261126988000, la
+--     prueba entera en el check 495); la que vuelve por su OT anulada espera
+--     desde la anulación.
 --   * Quien tiene `ordenes.crear` lee lo que la función mira (corre como quien
 --     llama): si no, vería toda OT «sin código» sin ningún error.
 --   * La pide Administración; Ventas, Diseño, Almacén y Gerencia no.
@@ -191,9 +192,8 @@ begin
              where f->>'numero' = 'QA-472-B' and (f->>'falta_ot')::boolean and f->>'ot_anulada' = '8477-2026'),
     'La cotización cuya OT se anuló vuelve, y dice cuál se anuló');
   perform test.afirmar(
-    exists (select 1 from jsonb_array_elements(v_filas) f
-             where f->>'numero' = 'QA-472-C' and f->>'venta_anterior_de' = '8470-2026'),
-    'La venta anterior de una OT que pasó a otro comprador sale, diciendo de qué OT fue');
+    not exists (select 1 from jsonb_array_elements(v_filas) f where f->>'numero' = 'QA-472-C'),
+    'La venta anterior de una OT que pasó a otro comprador ya no sale: no lleva otra OT');
   perform test.afirmar(
     exists (select 1 from jsonb_array_elements(v_filas) f
              where f->>'numero' = 'QA-472-B' and (f->>'dias')::int = 0),

@@ -176,6 +176,16 @@ const PASOS_DE_LA_COTIZACION: Record<string, Frases> = {
   CORRECCION: { hecho: 'Corrección subida', falta: 'Corrección', nota: (version) => `Pasó a la ${version}` },
   // El número de la OT llega solo a quien lee las órdenes.
   CODIGO_Y_OT: { hecho: 'Con código interno y OT', falta: 'Código interno y OT', nota: (ot) => ot },
+  // Su OT pasó a otro comprador con «Editar OT» (migración 20261126988000): esa
+  // unidad ya no lleva OT. Solo se dice hecho; el número, a quien lee las órdenes.
+  OTRO_COMPRADOR: {
+    hecho: 'Pasó a otro comprador',
+    falta: 'Paso a otro comprador',
+    nota: (ots) => {
+      const cuantas = ots.split(', ').length
+      return cuantas === 1 ? `La OT ${ots} ya no es de esta venta` : `Las OT ${ots.replace(/, ([^,]*)$/, ' y $1')} ya no son de esta venta`
+    },
+  },
   // En parte, solo a quien lee las facturas (migración 20261126470000): «Facturada» con la mitad sin facturar confundía.
   FACTURA: { hecho: (d) => (d === 'EN_PARTE' ? 'Facturada en parte' : 'Facturada'), falta: 'Factura' },
   // Facturada en parte: la factura de lo que falta del total (migración 20261126470000). Solo espera, nunca se dice hecha.
@@ -188,13 +198,19 @@ const PASOS_DE_LA_COTIZACION: Record<string, Frases> = {
 const ESPERAS_DE_LA_COTIZACION: Record<string, (detalle: string | null) => string> = {
   REVISION: () => 'La aprueba o la rechaza.',
   CORRECCION: () => 'Sube la corrección con el mismo número.',
-  // Con varias unidades el detalle dice cuántas OT lleva de cuántas («1/3»).
+  // Con varias unidades el detalle dice cuántas OT lleva de cuántas («1/3»), y
+  // cuántas pasaron a otro comprador si alguna («1/3/1», migración 20261126988000).
   CODIGO_Y_OT: (d) => {
-    const [lleva, de] = (d ?? '').split('/').map(Number)
+    const [lleva, de, pasaron = 0] = (d ?? '').split('/').map(Number)
     if (!de) return 'Le da el código interno de la unidad y sube la OT.'
-    const faltan = de - lleva
+    const faltan = de - lleva - pasaron
+    const falta = faltan === 1 ? 'falta la de 1 unidad, con su código interno' : `faltan las de ${faltan} unidades, cada una con su código interno`
+    if (pasaron) {
+      const paso = pasaron === 1 ? '1 pasó a otro comprador' : `${pasaron} pasaron a otro comprador`
+      return lleva ? `De ${de} unidades, lleva ${lleva} OT y ${paso}: ${falta}.` : `De ${de} unidades, ${paso}: ${falta}.`
+    }
     return lleva
-      ? `Lleva ${lleva} de ${de} OT: ${faltan === 1 ? 'falta la de 1 unidad, con su código interno' : `faltan las de ${faltan} unidades, cada una con su código interno`}.`
+      ? `Lleva ${lleva} de ${de} OT: ${falta}.`
       : `Le da a cada una de las ${de} unidades su código interno y sube su OT.`
   },
   FACTURA: () => 'Registra su factura.',

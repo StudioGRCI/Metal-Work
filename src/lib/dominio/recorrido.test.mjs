@@ -99,6 +99,27 @@ test('la anulada que estuvo aprobada ya no dice que la ven Contabilidad y Tesore
   assert.equal(pasos[1].nota, null)
 })
 
+test('la venta cuya OT pasó a otro comprador lo dice y no espera a nadie (20261126988000)', () => {
+  const una = describirRecorridoDeLaCotizacion([
+    paso(1, 'SUBIDA', 'HECHO'),
+    paso(2, 'REVISION', 'HECHO', { detalle: 'APROBADA' }),
+    paso(3, 'OTRO_COMPRADOR', 'HECHO', { puesto: 'Administración', detalle: '9357-2026' }),
+  ])
+  assert.deepEqual(una.map((p) => p.titulo), ['Enviada a Gerencia', 'Aprobada', 'Pasó a otro comprador'])
+  assert.equal(una[2].nota, 'La OT 9357-2026 ya no es de esta venta')
+  assert.ok(una.every((p) => p.situacion === 'HECHO'))
+
+  const dos = describirRecorridoDeLaCotizacion([paso(1, 'OTRO_COMPRADOR', 'HECHO', { detalle: '9357-2026, 9358-2026' })])
+  assert.equal(dos[0].nota, 'Las OT 9357-2026 y 9358-2026 ya no son de esta venta')
+  // La de varias: lo que espera de Administración cuenta la que pasó.
+  const tres = describirRecorridoDeLaCotizacion([paso(1, 'CODIGO_Y_OT', 'AHORA', { puesto: 'Administración', espera: 'CODIGO_Y_OT', detalle: '1/3/1' })])
+  assert.equal(tres[0].nota, 'De 3 unidades, lleva 1 OT y 1 pasó a otro comprador: falta la de 1 unidad, con su código interno.')
+  const sinOt = describirRecorridoDeLaCotizacion([paso(1, 'CODIGO_Y_OT', 'AHORA', { espera: 'CODIGO_Y_OT', detalle: '0/3/1' })])
+  assert.equal(sinOt[0].nota, 'De 3 unidades, 1 pasó a otro comprador: faltan las de 2 unidades, cada una con su código interno.')
+  // Sin el número (quien no lee las órdenes), sin nota.
+  assert.equal(describirRecorridoDeLaCotizacion([paso(1, 'OTRO_COMPRADOR', 'HECHO')])[0].nota, null)
+})
+
 test('un paso que este mapa no conoce se pinta en llano, no se esconde', () => {
   const [hecho, ahora] = describirRecorridoDelRequerimiento([
     paso(1, 'PASO_NUEVO', 'HECHO', { detalle: 'algo' }),
