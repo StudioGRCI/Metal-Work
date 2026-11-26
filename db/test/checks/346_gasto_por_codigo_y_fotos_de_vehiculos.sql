@@ -130,8 +130,8 @@ select test.afirmar(
   'Requerimientos ya no tiene almacen.ver ni costos.ver');
 select test.afirmar(
   (select array_agg(r.codigo::text order by r.codigo) from public.roles_permisos rp join public.roles r on r.id = rp.rol_id
-    where rp.permiso_codigo = 'codigos_internos.gasto') = array['REQUERIMIENTOS'],
-  'el gasto por código lo tiene Requerimientos y nadie más');
+    where rp.permiso_codigo = 'codigos_internos.gasto') = array['GERENTE', 'REQUERIMIENTOS'],
+  'el gasto por código lo tienen Requerimientos y Gerencia, que lo consulta (20261126310000), y nadie más');
 select test.afirmar(
   exists (select 1 from public.roles_permisos rp join public.roles r on r.id = rp.rol_id
            where r.codigo = 'REQUERIMIENTOS' and rp.permiso_codigo = 'costos.solicitar_pago'),
@@ -232,8 +232,10 @@ begin
   perform test.afirmar(v.materiales_pen = 44 and v.compras_pen = 55.5 and v.mano_obra = 10,
     format('el resumen de Gerencia dice lo mismo y suma la hora de Juan (salió %s, %s, %s)', v.materiales_pen, v.compras_pen, v.mano_obra));
   perform test.afirmar((select count(*) from public.codigo_interno_compras(v_c)) = 1, 'Gerencia sigue viendo las compras del código');
-  perform test.debe_fallar('select * from public.codigos_internos_gasto()', 'la lista del gasto es la puerta de Requerimientos', 'codigos_internos.gasto');
-  perform test.debe_fallar(format('select * from public.codigo_interno_gasto(%L)', v_c), 'y el gasto de un código también', 'codigos_internos.gasto');
+  -- Desde la 20261126310000 Gerencia también consulta el gasto por código (`codigos_internos.gasto`).
+  perform test.afirmar((select count(*) from public.codigos_internos_gasto() g where g.codigo = v_c) = 1,
+    'Gerencia consulta la lista del gasto');
+  perform test.afirmar((select count(*) from public.codigo_interno_gasto(v_c)) > 0, 'y el gasto de un código');
   reset role;
 
   perform test.como_usuario(current_setting('prueba.vendedor')::uuid);
