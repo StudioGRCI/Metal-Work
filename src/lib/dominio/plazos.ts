@@ -60,7 +60,7 @@ export function faltaDe(l: LoQueFalta, formato: (n: number) => string): string {
 
 /**
  * Por qué se atrasó una compra, de la lista corta que decidió el plan 4.2
- * (migración 20261126420000). Con «Otro», la nota es obligatoria.
+ * (migración 20261126462000). Con «Otro», la nota es obligatoria.
  */
 export const MOTIVOS_DE_ATRASO = ['PROVEEDOR', 'PAGO', 'TRANSPORTE', 'APROBACION', 'OTRO'] as const
 export type MotivoDeAtraso = (typeof MOTIVOS_DE_ATRASO)[number]

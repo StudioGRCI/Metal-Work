@@ -34,14 +34,14 @@ export function PlazoDeLaCompra({
   plazo,
   servicio = false,
   fechaDelDocumento,
-  corregida = false,
+  corregida = null,
   className,
 }: {
   plazo: PlazoDeCompra | undefined
   servicio?: boolean
   fechaDelDocumento?: string | null
-  /** Logística corrigió la fecha que prometió el proveedor (Plan 4.2): la anterior está en el recorrido. */
-  corregida?: boolean
+  /** Logística corrigió la fecha que prometió el proveedor (Plan 4.2): cuál valía antes; todas, en el recorrido. */
+  corregida?: { antes: string | null } | null
   className?: string
 }) {
   if (!plazo) return null
@@ -61,7 +61,7 @@ export function PlazoDeLaCompra({
       prometida ? (
         <span key="prometida">
           {servicio ? 'Debe volver' : 'Prometida'} <span className="tabular font-medium text-texto">{prometida}</span>
-          {corregida && ' (corregida)'}
+          {corregida && (corregida.antes ? ` (corregida; antes ${fecha(corregida.antes)})` : ' (corregida)')}
         </span>
       ) : (
         <span key="prometida" className="text-texto-tenue">

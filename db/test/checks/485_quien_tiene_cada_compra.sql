@@ -1,4 +1,4 @@
--- Quién tiene cada compra y por qué se atrasó (migración 20261126420000, Plan
+-- Quién tiene cada compra y por qué se atrasó (migración 20261126462000, Plan
 -- 4.2). Con la cuenta de cada puesto —nunca ADMIN— y `set local role
 -- authenticated`. Termina en rollback.
 --
@@ -9,9 +9,10 @@
 --   2. Logística anota el motivo de la OC atrasada. El mismo envío repetido da
 --      lo mismo; con otro contenido, el primero queda. Almacén no anota; la OC
 --      que no está atrasada tampoco; «Otro» lleva nota.
---   3. Logística corrige la fecha prometida: el plazo cuenta contra la nueva, la
---      anterior queda en el recorrido y la OC no cambia. La OC completa ya no
---      se corrige.
+--   3. Logística corrige la fecha prometida de la OC que no llegó: el plazo
+--      cuenta contra la nueva, la anterior queda en el recorrido y la OC no
+--      cambia. La OC completa, o la que llegó entera y espera la validación de
+--      Almacén, ya no se corrige.
 --   4. Lo anotado no se corrige ni se borra, ni como dueño; nadie inserta directo.
 --   5. La OS: el proveedor la tiene; su motivo y su fecha, igual.
 --   6. Lo leen Logística y Gerencia; Ventas no; sin sesión, nadie.
@@ -127,7 +128,7 @@ select public.programar_recojo(pg_temp.id('oc3'), 10, null);
 select test.afirmar(pg_temp.ahora('oc1') = 'GUIA:Contabilidad:GUIA + SALIDA:Conductor de Logística:SALIR',
   format('programada, la tienen Contabilidad (la guía) y el conductor, la guía primero (dice %s)', pg_temp.ahora('oc1')));
 select public.avanzar_orden_servicio(pg_temp.id('os1'), 'EN_EJECUCION', null);
-select test.afirmar(pg_temp.ahora('os1', true) = 'EJECUCION:El proveedor:EJECUTAR',
+select test.afirmar(pg_temp.ahora('os1', true) = 'EJECUCION:el proveedor:EJECUTAR',
   format('en ejecución, la OS la tiene el proveedor (dice %s)', pg_temp.ahora('os1', true)));
 select test.afirmar((select r.puesto from public.recorrido_de_ordenes_servicio(array[pg_temp.id('os1')]) r where r.paso = 'INICIO')
                     = (select public.puesto_de(pg_temp.id('comprador'))),
@@ -208,38 +209,41 @@ reset role;
 -- ============================================ 3. La fecha corregida
 select pg_temp.como('comprador');
 set local role authenticated;
-select public.corregir_fecha_esperada(pg_temp.id('fec1'), 'OC', pg_temp.id('oc1'), pg_temp.hoy() + 2, 'PROVEEDOR', 'Avisó que llega el lunes');
-select test.afirmar(public.corregir_fecha_esperada(pg_temp.id('fec1'), 'OC', pg_temp.id('oc1'), pg_temp.hoy() + 2, 'PROVEEDOR', 'Avisó que llega el lunes')
+select public.corregir_fecha_esperada(pg_temp.id('fec1'), 'OC', pg_temp.id('oc2'), pg_temp.hoy() + 2, 'PROVEEDOR', 'Avisó que llega el lunes');
+select test.afirmar(public.corregir_fecha_esperada(pg_temp.id('fec1'), 'OC', pg_temp.id('oc2'), pg_temp.hoy() + 2, 'PROVEEDOR', 'Avisó que llega el lunes')
                     = pg_temp.id('fec1'), 'la misma corrección repetida da lo mismo');
 do $$
 declare r record;
 begin
-  select * into r from public.plazos_de_compras(array[pg_temp.id('oc1')]);
+  select * into r from public.plazos_de_compras(array[pg_temp.id('oc2')]);
   perform test.afirmar(r.esperada = pg_temp.hoy() + 2 and not r.atrasada and r.dias_atraso = 0,
     format('el plazo cuenta contra la fecha nueva (esperada %s, %s días)', r.esperada, r.dias_atraso));
 end $$;
-select test.afirmar((select fecha_estimada from public.ordenes_compra_materiales where id = pg_temp.id('oc1')) = pg_temp.hoy() - 3,
+select test.afirmar((select fecha_estimada from public.ordenes_compra_materiales where id = pg_temp.id('oc2')) = pg_temp.hoy() + 3,
   'la OC no cambia: su fecha de emisión queda como salió en el documento');
-select public.corregir_fecha_esperada(pg_temp.id('fec2'), 'OC', pg_temp.id('oc1'), pg_temp.hoy() + 4, 'TRANSPORTE', null);
+select public.corregir_fecha_esperada(pg_temp.id('fec2'), 'OC', pg_temp.id('oc2'), pg_temp.hoy() + 4, 'TRANSPORTE', null);
 select test.afirmar((select s.fecha_anterior from public.seguimiento_de_compras s where s.id = pg_temp.id('fec2')) = pg_temp.hoy() + 2,
   'la segunda corrección guarda como anterior la primera corregida');
-select test.afirmar((select string_agg(r.detalle, ' ; ' order by r.orden) from public.recorrido_de_ordenes_compra(array[pg_temp.id('oc1')]) r
+select test.afirmar((select string_agg(r.detalle, ' ; ' order by r.orden) from public.recorrido_de_ordenes_compra(array[pg_temp.id('oc2')]) r
                       where r.paso = 'FECHA_CORREGIDA')
                     = format('%s>%s|PROVEEDOR|Avisó que llega el lunes ; %s>%s|TRANSPORTE|',
-                             pg_temp.hoy() - 3, pg_temp.hoy() + 2, pg_temp.hoy() + 2, pg_temp.hoy() + 4),
+                             pg_temp.hoy() + 3, pg_temp.hoy() + 2, pg_temp.hoy() + 2, pg_temp.hoy() + 4),
   'las dos fechas anteriores quedan en el recorrido');
 select test.debe_fallar(format('select public.corregir_fecha_esperada(%L, ''OC'', %L, %L, ''PROVEEDOR'', null)',
-                               gen_random_uuid(), pg_temp.id('oc1'), pg_temp.hoy() + 4),
+                               gen_random_uuid(), pg_temp.id('oc2'), pg_temp.hoy() + 4),
   'la misma fecha que ya tiene no se corrige', 'ya tiene esa fecha');
 select test.debe_fallar(format('select public.corregir_fecha_esperada(%L, ''OC'', %L, %L, ''PROVEEDOR'', null)',
-                               gen_random_uuid(), pg_temp.id('oc1'), pg_temp.hoy() - 30),
+                               gen_random_uuid(), pg_temp.id('oc2'), pg_temp.hoy() - 30),
   'no antes de emitirla', 'anterior al');
 select test.debe_fallar(format('select public.corregir_fecha_esperada(%L, ''OC'', %L, %L, ''PROVEEDOR'', null)',
-                               gen_random_uuid(), pg_temp.id('oc1'), pg_temp.hoy() + 400),
+                               gen_random_uuid(), pg_temp.id('oc2'), pg_temp.hoy() + 400),
   'como mucho a un año', 'un año');
 select test.debe_fallar(format('select public.corregir_fecha_esperada(%L, ''OC'', %L, %L, ''PROVEEDOR'', null)',
                                gen_random_uuid(), pg_temp.id('oc3'), pg_temp.hoy() + 1),
   'la OC que llegó completa ya no se corrige', 'llegó completa');
+select test.debe_fallar(format('select public.corregir_fecha_esperada(%L, ''OC'', %L, %L, ''PROVEEDOR'', null)',
+                               gen_random_uuid(), pg_temp.id('oc1'), pg_temp.hoy() + 1),
+  'la OC que llegó entera y espera la validación de Almacén ya no se corrige: borraría su atraso', 'llegó completa');
 reset role;
 
 -- ============================================ 4. Lo anotado queda
@@ -280,7 +284,7 @@ select pg_temp.como('gerente');
 set local role authenticated;
 select test.afirmar((select count(*) from public.recorrido_de_ordenes_compra(array[pg_temp.id('oc1')]) r where r.paso = 'MOTIVO_ATRASO') = 1,
   'Gerencia, que consulta las compras, lee el recorrido con el motivo');
-select test.afirmar((select count(*) from public.seguimiento_de_compras where orden_compra_id = pg_temp.id('oc1')) = 3,
+select test.afirmar((select count(*) from public.seguimiento_de_compras where orden_compra_id in (pg_temp.id('oc1'), pg_temp.id('oc2'))) = 3,
   'Gerencia lee el seguimiento de la OC que ve');
 select test.debe_fallar(format('select public.anotar_motivo_atraso(%L, ''OC'', %L, ''PAGO'', null)', gen_random_uuid(), pg_temp.id('oc1')),
   'Gerencia no anota el motivo', 'permiso');

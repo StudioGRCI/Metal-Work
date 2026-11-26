@@ -1,19 +1,19 @@
 /**
- * Clic real sobre la migración 20261126420000 (Plan 4.2): quién tiene cada
+ * Clic real sobre la migración 20261126462000 (Plan 4.2): quién tiene cada
  * compra y por qué se atrasó. Con la cuenta de cada puesto, nunca ADMIN:
  *
  *   1. Logística, en «Órdenes de compra», ve en cada OC quién la tiene y hace
  *      cuántos días: lo mismo que da la base con su sesión.
  *   2. Anota el motivo del atraso de una OC atrasada tocando «Anotar» tres
  *      veces: entra una sola fila, con su puesto, y la fila lo dice.
- *   3. Corrige la fecha prometida de otra: la fila dice «(corregida)», la fecha
+ *   3. Corrige la fecha prometida de otra: la fila dice «(corregida; antes …)», la fecha
  *      anterior queda en el recorrido y la OC no cambia en la base.
  *   4. En «Órdenes de servicio», el motivo de la OS atrasada.
  *   5. Gerencia y Almacén ven el recorrido y el motivo, sin los botones.
  *   6. En el teléfono (390) nada se sale de la pantalla. Capturas en 390 y 1440.
  *
- * Escribe en el banco (las anotaciones no se borran: son evidencia). Usa las OC
- * y OS atrasadas que dejó la semilla de la 4.1. Variables: BANCO_CLAVE, BASE
+ * Escribe en el banco (las anotaciones no se borran: son evidencia). Usa dos OC
+ * y una OS atrasadas, y emite las que falten. Variables: BANCO_CLAVE, BASE
  * (http://localhost:3111), BANCO_BASE (mw_demo), BANCO_CHROMIUM, CAPTURAS.
  */
 import { mkdirSync } from 'node:fs'
@@ -118,21 +118,95 @@ async function sinDesborde(pagina, donde) {
 
 const hoy = (await consulta(`select to_char((now() at time zone 'America/Lima')::date, 'YYYY-MM-DD') as d`))[0].d
 
+/**
+ * Cada corrida corrige la fecha de una OC atrasada y la saca de «Atrasadas», y
+ * la fecha nueva no puede ir hacia atrás. Para no depender de lo que dejaron
+ * otras corridas, la prueba emite lo que falte: Logística emite, la fecha
+ * prometida se corre al pasado como dueño (la base no deja emitir con fecha
+ * vencida) y Gerencia aprueba. Queda en el banco, como todo lo que la prueba anota.
+ */
+async function conLaCuenta(puesto, sql, valores = []) {
+  const [cuenta] = await consulta('select id from public.usuarios where correo = $1', [correoDe(puesto)])
+  await base.query(`select set_config('request.jwt.claim.sub', $1, true), set_config('request.jwt.claim.role', 'authenticated', true),
+    set_config('request.jwt.claims', json_build_object('sub', $1::text, 'role', 'authenticated')::text, true)`, [cuenta.id])
+  await base.query('set local role authenticated')
+  const filas = (await base.query(sql, valores)).rows
+  await base.query('reset role')
+  return filas
+}
+async function sembrarLoQueFalta(ocs, os) {
+  if (ocs <= 0 && os <= 0) return
+  const [{ proveedor }] = await consulta(
+    `select p.id as proveedor from public.proveedores p where p.activo order by p.razon_social limit 1`,
+  )
+  const [{ material }] = await consulta(
+    `select d.material_id as material from public.orden_compra_material_detalles d
+       join public.materiales m on m.id = d.material_id where m.activo limit 1`,
+  )
+  await base.query('begin')
+  try {
+    const ids = { oc: [], os: [] }
+    for (let i = 0; i < ocs; i++) {
+      const [{ id }] = await consulta('select gen_random_uuid() as id')
+      await conLaCuenta(
+        'logistica',
+        `select public.emitir_compra_directa($1::uuid, $2, 'COT-PRUEBA-' || left($1::text, 8), 'Discos para el almacén',
+           jsonb_build_array(jsonb_build_object('material_id', $3::uuid, 'cantidad', 4, 'precio', 10)),
+           (now() at time zone 'America/Lima')::date + 3, 'CONTADO', 0, 'PEN', true, 'PLANTA')`,
+        [id, proveedor, material],
+      )
+      ids.oc.push(id)
+    }
+    for (let i = 0; i < os; i++) {
+      const [{ id }] = await consulta('select gen_random_uuid() as id')
+      await conLaCuenta(
+        'logistica',
+        `select public.emitir_orden_servicio($1, $2, null, (select id from public.areas where codigo = 'ACB'), 'PLANTA',
+           'Torneado de ejes del volquete', null, (now() at time zone 'America/Lima')::date - 8,
+           (now() at time zone 'America/Lima')::date - 3, 'PEN', 450, 'CONTADO', 0, '025', null)`,
+        [id, proveedor],
+      )
+      ids.os.push(id)
+    }
+    await base.query('set constraints all immediate')
+    await base.query('set constraints all deferred')
+    if (ids.oc.length)
+      await consulta(
+        `update public.ordenes_compra_materiales set fecha_estimada = (now() at time zone 'America/Lima')::date - 4
+          where id = any($1::uuid[])`,
+        [ids.oc],
+      )
+    for (const id of ids.oc) await conLaCuenta('gerencia', 'select public.aprobar_compra($1)', [id])
+    for (const id of ids.os) await conLaCuenta('gerencia', 'select public.aprobar_orden_servicio($1)', [id])
+    for (const id of ids.os)
+      await conLaCuenta('logistica', `select public.avanzar_orden_servicio($1, 'EN_EJECUCION', null)`, [id])
+    await base.query('commit')
+  } catch (e) {
+    await base.query('rollback')
+    throw e
+  }
+}
+
 // ------------------------------------------------ armazón: dos OC atrasadas y una OS atrasada
-const atrasadas = await comoCuenta(
-  'logistica',
-  `select c.id, coalesce(c.numero, c.referencia) as nombre, p.esperada::text as esperada
-     from public.ordenes_compra_materiales c
-     cross join lateral public.plazos_de_compras(array[c.id]) p
-    where p.atrasada order by p.dias_atraso desc, c.numero`,
-)
-if (atrasadas.length < 2) throw new Error('El banco necesita al menos dos OC atrasadas: corre la semilla de la 4.1.')
+const atrasadasDeLogistica = () =>
+  comoCuenta(
+    'logistica',
+    `select c.id, coalesce(c.numero, c.referencia) as nombre, p.esperada::text as esperada
+       from public.ordenes_compra_materiales c
+       cross join lateral public.plazos_de_compras(array[c.id]) p
+      where p.atrasada order by p.dias_atraso desc, c.numero`,
+  )
+const osAtrasadasDeLogistica = () =>
+  comoCuenta(
+    'logistica',
+    `select s.id, s.numero as nombre from public.ordenes_servicio s cross join lateral public.plazos_de_servicios(array[s.id]) p
+      where p.atrasada order by s.numero limit 1`,
+  )
+await sembrarLoQueFalta(2 - (await atrasadasDeLogistica()).length, 1 - (await osAtrasadasDeLogistica()).length)
+const atrasadas = await atrasadasDeLogistica()
 const [ocMotivo, ocFecha] = atrasadas
-const [osAtrasada] = await comoCuenta(
-  'logistica',
-  `select s.id, s.numero as nombre from public.ordenes_servicio s cross join lateral public.plazos_de_servicios(array[s.id]) p
-    where p.atrasada order by s.numero limit 1`,
-)
+const [osAtrasada] = await osAtrasadasDeLogistica()
+if (!ocFecha || !osAtrasada) throw new Error('No se pudo dejar en el banco dos OC y una OS atrasadas.')
 const fila = (pagina, nombre) => pagina.locator(`tr[data-compra="${nombre}"]`)
 
 // ------------------------------------------------ 1. Quién la tiene
@@ -145,7 +219,7 @@ const fila = (pagina, nombre) => pagina.locator(`tr[data-compra="${nombre}"]`)
       `select puesto, dias from public.recorrido_de_ordenes_compra(array[$1::uuid]) where situacion = 'AHORA' order by orden limit 1`,
       [oc.id],
     )
-    const resumen = limpio(await fila(pagina, oc.nombre).locator('[data-recorrido-ahora]').textContent().catch(() => ''))
+    const resumen = limpio(await fila(pagina, oc.nombre).locator('[data-recorrido-ahora]:visible').textContent().catch(() => ''))
     comprobar(
       ahora ? resumen.includes(`La tiene ${ahora.puesto}`) : resumen === '',
       `${oc.nombre}: la fila dice quién la tiene como la base (${ahora?.puesto ?? 'nadie'}; dice «${resumen}»)`,
@@ -171,7 +245,7 @@ const fila = (pagina, nombre) => pagina.locator(`tr[data-compra="${nombre}"]`)
   )
   comprobar(filas.length === antes + 1, `tres toques en «Anotar» dejan una sola fila (${filas.length - antes})`)
   comprobar(filas[0]?.motivo === 'PROVEEDOR' && filas[0]?.puesto === 'Logística', `el motivo queda con el puesto de Logística (${filas[0]?.puesto})`)
-  const ultimo = limpio(await fila(pagina, ocMotivo.nombre).locator('[data-ultimo-motivo]').first().textContent())
+  const ultimo = limpio(await fila(pagina, ocMotivo.nombre).locator('[data-ultimo-motivo]:visible').first().textContent())
   comprobar(ultimo.startsWith('Atraso: Proveedor · El proveedor no tenía stock') && ultimo.includes('Logística'), `la fila dice el motivo: «${ultimo}»`)
 
   // ------------------------------------------------ 3. La fecha corregida
@@ -181,7 +255,7 @@ const fila = (pagina, nombre) => pagina.locator(`tr[data-compra="${nombre}"]`)
   )
   const nueva = (await consulta(`select to_char($1::date + $2::int, 'YYYY-MM-DD') as d`, [hoy, 3 + corregidas]))[0].d
   const [{ fecha_estimada: original }] = await consulta('select fecha_estimada::text from public.ordenes_compra_materiales where id = $1', [ocFecha.id])
-  await fila(pagina, ocFecha.nombre).getByRole('button', { name: /corregir la fecha/i }).click()
+  await fila(pagina, ocFecha.nombre).getByRole('button', { name: /corregir fecha/i }).click()
   await ventana.getByLabel('Fecha nueva que prometió el proveedor').fill(nueva)
   await ventana.getByLabel('Por qué cambia').selectOption('TRANSPORTE')
   await ventana.getByRole('button', { name: 'Corregir' }).click()
@@ -189,12 +263,12 @@ const fila = (pagina, nombre) => pagina.locator(`tr[data-compra="${nombre}"]`)
   await pagina.waitForLoadState('networkidle')
   // El aviso sale con la respuesta de la acción; la fila se repinta con el refresco que viene detrás.
   const celda = fila(pagina, ocFecha.nombre).locator('td').nth(3).locator('[data-plazo]')
-  await celda.filter({ hasText: '(corregida)' }).waitFor({ timeout: 10000 }).catch(() => {})
+  await celda.filter({ hasText: '(corregida' }).waitFor({ timeout: 10000 }).catch(() => {})
   const plazo = limpio(await celda.textContent())
-  comprobar(plazo.includes(`Prometida ${ddmm(nueva)} (corregida)`), `la fila dice la fecha nueva, corregida: «${plazo}»`)
+  comprobar(plazo.includes(`Prometida ${ddmm(nueva)} (corregida`), `la fila dice la fecha nueva, corregida: «${plazo}»`)
   const [{ fecha_estimada: despues }] = await consulta('select fecha_estimada::text from public.ordenes_compra_materiales where id = $1', [ocFecha.id])
   comprobar(despues === original, `la OC no cambia en la base (${original} → ${despues})`)
-  await fila(pagina, ocFecha.nombre).locator('[data-recorrido] summary').click()
+  await fila(pagina, ocFecha.nombre).locator('[data-recorrido]:visible summary').click()
   const corregido = limpio(await fila(pagina, ocFecha.nombre).locator('[data-recorrido-paso="FECHA_CORREGIDA"]').last().textContent())
   comprobar(corregido.includes(`al ${ddmm(nueva)}`) && corregido.includes('Transporte'), `el recorrido guarda la fecha anterior y la nueva: «${corregido}»`)
   await ir(pagina, '/compras/ordenes?ver=atrasadas')
@@ -213,9 +287,9 @@ if (osAtrasada) {
   await ventana.getByRole('button', { name: 'Anotar' }).click()
   await pagina.getByRole('status').filter({ hasText: 'Motivo del atraso anotado' }).first().waitFor({ timeout: 15000 })
   await pagina.waitForLoadState('networkidle')
-  const ultimo = limpio(await filaOs.locator('[data-ultimo-motivo]').first().textContent())
+  const ultimo = limpio(await filaOs.locator('[data-ultimo-motivo]:visible').first().textContent())
   comprobar(ultimo.startsWith('Atraso: Pago'), `la OS dice su motivo: «${ultimo}»`)
-  const resumen = limpio(await filaOs.locator('[data-recorrido-ahora]').textContent().catch(() => ''))
+  const resumen = limpio(await filaOs.locator('[data-recorrido-ahora]:visible').textContent().catch(() => ''))
   comprobar(resumen.length > 0, `la OS dice quién la tiene: «${resumen}»`)
   await contexto.close()
 } else {
@@ -227,7 +301,7 @@ for (const puesto of ['gerencia', 'almacen']) {
   const { pagina, contexto } = await entrar(puesto)
   await ir(pagina, '/compras/ordenes')
   const f = fila(pagina, ocMotivo.nombre)
-  comprobar((await f.locator('[data-recorrido]').count()) === 1, `${puesto} ve el recorrido de ${ocMotivo.nombre}`)
+  comprobar((await f.locator('[data-recorrido]:visible').count()) === 1, `${puesto} ve el recorrido de ${ocMotivo.nombre}`)
   comprobar((await f.locator('[data-ultimo-motivo]').count()) > 0, `${puesto} ve el motivo del atraso`)
   comprobar((await pagina.getByRole('button', { name: /motivo del atraso|corregir la fecha/i }).count()) === 0, `${puesto} no tiene los botones para anotar`)
   await contexto.close()
@@ -237,8 +311,8 @@ for (const puesto of ['gerencia', 'almacen']) {
 for (const ancho of [390, 1440]) {
   const { pagina, contexto } = await entrar('logistica', ancho)
   for (const [ruta, archivo, abrir] of [
-    ['/compras/ordenes?ver=atrasadas', 'seguimiento-oc', `tr[data-compra="${ocMotivo.nombre}"] [data-recorrido] summary`],
-    ['/compras/servicios', 'seguimiento-os', osAtrasada ? `tr[data-servicio="${osAtrasada.nombre}"] [data-recorrido] summary` : null],
+    ['/compras/ordenes?ver=atrasadas', 'seguimiento-oc', `tr[data-compra="${ocMotivo.nombre}"] [data-recorrido]:visible summary`],
+    ['/compras/servicios', 'seguimiento-os', osAtrasada ? `tr[data-servicio="${osAtrasada.nombre}"] [data-recorrido]:visible summary` : null],
   ]) {
     await ir(pagina, ruta)
     if (abrir) await pagina.locator(abrir).click()

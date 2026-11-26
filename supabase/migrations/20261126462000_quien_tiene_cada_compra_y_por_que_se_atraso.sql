@@ -45,7 +45,9 @@ create table if not exists public.seguimiento_de_compras (
   fecha_anterior    date,
   fecha_nueva       date,
   registrado_por    uuid not null references public.usuarios (id) default public.usuario_actual(),
-  registrado_en     timestamptz not null default now(),
+  -- La hora del reloj, no la de la transacción: dos correcciones seguidas en la
+  -- misma transacción quedan en orden y la última es la que vale.
+  registrado_en     timestamptz not null default clock_timestamp(),
   creado_en         timestamptz not null default now(),
   actualizado_en    timestamptz not null default now(),
   constraint ck_seguimiento_un_documento check (num_nonnulls(orden_compra_id, orden_servicio_id) = 1),
@@ -73,6 +75,7 @@ create index if not exists ix_seguimiento_de_compras_oc
 create index if not exists ix_seguimiento_de_compras_os
   on public.seguimiento_de_compras (orden_servicio_id, registrado_en) where orden_servicio_id is not null;
 
+alter table public.seguimiento_de_compras alter column registrado_en set default clock_timestamp();
 alter table public.seguimiento_de_compras enable row level security;
 
 -- Lo lee quien ve el documento: la política de la OC o de la OS decide, fila
@@ -296,7 +299,11 @@ begin
     if not found then
       raise exception 'La orden de compra no existe.' using errcode = 'check_violation';
     end if;
-    select p.completa_en into v_completa from public.plazos_de_compras(array[p_documento]) p;
+    -- Completa, o ya llegó todo y solo falta que Almacén lo valide: en los dos casos
+    -- el proveedor ya cumplió, y corregir la fecha borraría el atraso con que llegó.
+    select coalesce(p.completa_en, case when p.llego_en is not null and jsonb_array_length(coalesce(p.por_llegar, '[]'::jsonb)) = 0
+                                        then p.llego_en end)
+      into v_completa from public.plazos_de_compras(array[p_documento]) p;
   else
     select o.numero, o.estado <> 'ANULADA' and o.aprobacion <> 'RECHAZADA',
            greatest(public.fecha_de_lima(o.creado_en), o.fecha_inicio)
@@ -605,13 +612,13 @@ begin
   guia as (
     select distinct on (g.orden_compra_id) g.orden_compra_id as oc, g.cargada_por, g.cargada_en
       from public.guias_remision_compra g
-     where g.orden_compra_id = any(p_ids) and g.anulada_en is null
+     where g.orden_compra_id in (select o.id from oc o) and g.anulada_en is null
      order by g.orden_compra_id, g.cargada_en desc
   ),
   ingresos as (
     select ip.orden_compra_id as oc, ip.estado, ip.validado_por, ip.validado_en, ip.dejado_en
       from public.ingresos_pendientes_almacen ip
-     where ip.orden_compra_id = any(p_ids)
+     where ip.orden_compra_id in (select o.id from oc o)
   ),
   -- Lo devuelto al proveedor, por OC; y lo que todavía espera su reposición.
   devoluciones as (
@@ -621,19 +628,19 @@ begin
                                                   where x.repone_devolucion = m.id), 0) as por_reponer
       from public.movimientos_materiales m
       join public.orden_compra_material_detalles d on d.id = m.orden_compra_detalle_id
-     where m.tipo = 'DEVOLUCION_PROVEEDOR' and d.orden_compra_id = any(p_ids)
+     where m.tipo = 'DEVOLUCION_PROVEEDOR' and d.orden_compra_id in (select o.id from oc o)
   ),
   -- Cada vez que el conductor fue y no la pudo recoger (migración 20261125500000):
   -- la OC vuelve a Logística y pierde la hora de salida, que queda aquí.
   no_logrados as (
     select n.orden_compra_id as oc, n.motivo, n.salio_en, n.programado_en, n.registrado_por, n.registrado_en
       from public.recojos_no_logrados n
-     where n.orden_compra_id = any(p_ids)
+     where n.orden_compra_id in (select o.id from oc o)
   ),
   seguimiento as (
     select s.orden_compra_id as oc, s.tipo, s.motivo, s.nota, s.fecha_anterior, s.fecha_nueva, s.registrado_por, s.registrado_en
       from public.seguimiento_de_compras s
-     where s.orden_compra_id = any(p_ids)
+     where s.orden_compra_id in (select o.id from oc o)
   ),
   -- Quién la tiene ahora. La guía va aparte, porque corre a la par del conductor.
   ahora as (
@@ -659,7 +666,7 @@ begin
             80, 'VALIDACION', 'Almacén', 'VALIDAR',
             (select min(i.dejado_en) from ingresos i where i.oc = o.id and i.estado = 'PENDIENTE')),
          (exists (select 1 from devoluciones d where d.oc = o.id and d.por_reponer),
-            80, 'VALIDACION', 'El proveedor', 'REPONER',
+            80, 'VALIDACION', 'el proveedor', 'REPONER',
             (select max(d.registrado_en) from devoluciones d where d.oc = o.id and d.por_reponer)),
          (exists (select 1 from ingresos i where i.oc = o.id and i.estado = 'OBSERVADO'),
             80, 'VALIDACION', coalesce(public.puesto_de(o.creado_por), 'Logística'), 'OBSERVADO',
@@ -713,7 +720,9 @@ begin
     select n.oc, 50, 'SALIDA', 'HECHO', n.registrado_por, null, n.salio_en, null, null
       from no_logrados n where n.salio_en is not null
     union all
-    select n.oc, 55, 'NO_SE_PUDO_RECOGER', 'HECHO', n.registrado_por, null, n.registrado_en, null, n.motivo
+    -- El motivo lo lee quien lee la tabla (Logística, que programa); los demás ven el paso sin él.
+    select n.oc, 55, 'NO_SE_PUDO_RECOGER', 'HECHO', n.registrado_por, null, n.registrado_en, null,
+           case when public.es_admin() or public.tiene_permiso('compras.programar_recojo') then n.motivo end
       from no_logrados n
     union all
     -- 45 · Contabilidad cargó la guía de remisión
@@ -850,7 +859,7 @@ begin
     select o.id as os,
            case when o.aprobacion = 'POR_APROBAR' then 20 when o.estado = 'EMITIDA' then 30 else 40 end as canon,
            case when o.aprobacion = 'POR_APROBAR' then 'APROBACION' when o.estado = 'EMITIDA' then 'INICIO' else 'EJECUCION' end as paso,
-           case when o.aprobacion = 'POR_APROBAR' then 'Gerencia' when o.estado = 'EMITIDA' then 'Logística' else 'El proveedor' end as puesto,
+           case when o.aprobacion = 'POR_APROBAR' then 'Gerencia' when o.estado = 'EMITIDA' then 'Logística' else 'el proveedor' end as puesto,
            case when o.aprobacion = 'POR_APROBAR' then 'APROBACION' when o.estado = 'EMITIDA' then 'INICIAR' else 'EJECUTAR' end as espera,
            case when o.aprobacion = 'POR_APROBAR' then o.creado_en when o.estado = 'EMITIDA' then coalesce(o.aprobado_en, o.creado_en)
                 else o.iniciado_en end as desde

@@ -189,6 +189,16 @@ export function ultimoSeguimiento(pasos: readonly PasoDelRecorrido[] | undefined
   return ultimo && lo ? { paso: ultimo, ...lo } : null
 }
 
+/** Si Logística corrigió la fecha prometida, la que valía antes de la última corrección. */
+export function correccionDeLaFecha(pasos: readonly PasoDelRecorrido[] | null | undefined): { antes: string | null } | null {
+  const ultima = [...(pasos ?? [])]
+    .filter((p) => p.situacion === 'HECHO' && p.paso === 'FECHA_CORREGIDA')
+    .sort((a, b) => a.orden - b.orden)
+    .at(-1)
+  if (!ultima) return null
+  return { antes: partirSeguimiento(ultima.paso, ultima.detalle)?.anterior ?? null }
+}
+
 function notaDelSeguimiento(paso: string) {
   return (detalle: string) => {
     const s = partirSeguimiento(paso, detalle)

@@ -3,6 +3,8 @@
 import { CalendarClock, MessageSquareText } from 'lucide-react'
 import { useState } from 'react'
 
+import { useAvisar } from '@/app/(app)/requerimientos/atencion/avisos'
+
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { EnvioAnterior } from '@/components/ui/envio-anterior'
@@ -42,34 +44,33 @@ export function SeguimientoDeLaCompra({
   /** La fecha prometida que vale hoy, si se puede corregir (vigente y sin llegar completa); `undefined` si no. */
   fecha?: string | null
 }) {
-  // El aviso de «listo» queda siempre puesto y se vacía al abrir otra ventana:
-  // así el lector de pantalla anuncia cada vez que cambia.
-  const [aviso, setAviso] = useState('')
+  // Lo que dijo la base va arriba de la lista, con el cursor (`ConAvisos`): con
+  // «Atrasadas», corregir la fecha saca la fila, y con ella el botón y su aviso.
+  const avisar = useAvisar()
+  const alTerminar = (texto: string) => avisar(`${documento.nombre}: ${texto}`)
   if (!motivo && fecha === undefined) return null
+  // Sin envoltorio propio: los botones se suman al renglón de `AccionesDeFila`.
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2">
-      {motivo && <AnotarMotivo documento={documento} alAbrir={() => setAviso('')} alTerminar={setAviso} />}
-      {fecha !== undefined && <CorregirFecha documento={documento} actual={fecha} alAbrir={() => setAviso('')} alTerminar={setAviso} />}
-      <p role="status" className="basis-full text-right text-xs text-exito empty:hidden">
-        {aviso}
-      </p>
-    </div>
+    <>
+      {motivo && <AnotarMotivo documento={documento} alTerminar={alTerminar} />}
+      {fecha !== undefined && <CorregirFecha documento={documento} actual={fecha} alTerminar={alTerminar} />}
+    </>
   )
 }
 
-function AnotarMotivo({ documento, alAbrir, alTerminar }: { documento: Documento; alAbrir: () => void; alTerminar: (texto: string) => void }) {
+function AnotarMotivo({ documento, alTerminar }: { documento: Documento; alTerminar: (texto: string) => void }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
-  const envio = useIdDelEnvio('motivo_atraso')
+  // Cada fila guarda su envío: sin `donde`, el pendiente de una OC lo tomaba la ventana de otra.
+  const envio = useIdDelEnvio('motivo_atraso', undefined, `${documento.tipo}:${documento.id}`)
   return (
     <>
       <Boton
         type="button"
         variante="contorno"
         tamano="sm"
-        aria-label={`Anotar el motivo del atraso de la ${documento.nombre}`}
+        aria-label={`Motivo del atraso de la ${documento.nombre}`}
         onClick={() => {
-          alAbrir()
           envio.abrir()
           setVez((v) => v + 1)
           setAbierta(true)
@@ -107,17 +108,15 @@ function AnotarMotivo({ documento, alAbrir, alTerminar }: { documento: Documento
 function CorregirFecha({
   documento,
   actual,
-  alAbrir,
   alTerminar,
 }: {
   documento: Documento
   actual: string | null
-  alAbrir: () => void
   alTerminar: (texto: string) => void
 }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
-  const envio = useIdDelEnvio('fecha_prometida')
+  const envio = useIdDelEnvio('fecha_prometida', undefined, `${documento.tipo}:${documento.id}`)
   const servicio = documento.tipo === 'OS'
   return (
     <>
@@ -125,9 +124,8 @@ function CorregirFecha({
         type="button"
         variante="contorno"
         tamano="sm"
-        aria-label={`Corregir la fecha prometida de la ${documento.nombre}`}
+        aria-label={`Corregir fecha prometida de la ${documento.nombre}`}
         onClick={() => {
-          alAbrir()
           envio.abrir()
           setVez((v) => v + 1)
           setAbierta(true)
@@ -142,8 +140,8 @@ function CorregirFecha({
         titulo={servicio ? `Cuándo vuelve la ${documento.nombre}` : `Cuándo llega la ${documento.nombre}`}
         descripcion={
           actual
-            ? `Hoy vale el ${formatoFecha(actual)}. La fecha anterior queda en el recorrido; el documento y su PDF no cambian.`
-            : 'La fecha anterior queda en el recorrido; el documento y su PDF no cambian.'
+            ? `La fecha prometida es el ${formatoFecha(actual)}. Esa queda en el recorrido; el documento y su PDF no cambian.`
+            : 'Todavía no tiene fecha prometida. La que pongas queda en el recorrido; el documento y su PDF no cambian.'
         }
       >
         <EnvioAnterior texto={envio.anterior} />
