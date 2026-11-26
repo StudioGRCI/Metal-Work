@@ -435,7 +435,7 @@ export async function cargarTiposDetraccion(): Promise<TipoDetraccion[]> {
 
 /** La detracción tal como la guarda y la calcula la base. */
 export const COLUMNAS_DETRACCION =
-  'id, codigo_interno, detraccion_afecta, detraccion_codigo, detraccion_porcentaje, detraccion_minimo, detraccion_motivo, total_con_igv_pen, detraccion_monto'
+  'id, codigo_interno, detraccion_afecta, detraccion_codigo, detraccion_porcentaje, detraccion_minimo, detraccion_motivo, total_con_igv_pen, detraccion_monto, creado_en'
 
 type FilaDetraccion = {
   id: string
@@ -447,6 +447,7 @@ type FilaDetraccion = {
   detraccion_motivo: string | null
   total_con_igv_pen: number | null
   detraccion_monto: number | null
+  creado_en: string
 }
 
 const SIN_DEFINIR: DetraccionDeServicio = {
@@ -472,6 +473,7 @@ export function detraccionDeFila(f: FilaDetraccion | undefined, tipos: TipoDetra
     motivo: f.detraccion_motivo,
     total_con_igv_pen: numeroONulo(f.total_con_igv_pen),
     monto: numeroONulo(f.detraccion_monto),
+    emitida_en: f.creado_en,
   }
 }
 
