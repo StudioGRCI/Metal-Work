@@ -95,15 +95,49 @@ export function quienAtiende(perfil: Pick<PerfilSesion, 'permisos' | 'rol'>): Qu
   }
 }
 
+// Lo que espera a otro puesto: a quien pidió (el sustento, lo que la compra no
+// alcanzó), a Diseño, a Gerencia o al conductor. El recojo es del área que pidió.
+const ESPERAS_DE_OTROS = new Set([
+  'SUSTENTO', 'VISTO_DISENO', 'COMPRA_CORTA', 'OC_POR_APROBAR', 'PENDIENTE_RECOJO', 'EN_RECOJO', 'RECOGIDO',
+])
+
 /**
- * Si un requerimiento abierto espera a quien mira en la bandeja de atención: el
+ * Si quien mira tiene hoy el RQ, según lo que espera su recorrido
+ * (`recorrido_de_requerimientos`, la fila `AHORA`). «N esperan por ti» y el
+ * globo del menú cuentan lo que tiene hoy su puesto, no lo que pasará por él
+ * (DKS, 2026-11-26).
+ *
+ * Se decide por la clave de la espera, no por el puesto que muestra la
+ * insignia: ese texto es el nombre del área en el RQ listo (y hay un área
+ * «Almacén»), y el cargo de quien lo pidió en el que espera su sustento.
+ * Almacén tiene lo que revisa, lo que llegó y falta validar o dejar listo, y lo
+ * que ya salió del kardex y falta marcar entregado; quien compra, lo suyo que
+ * falta comprar o volver a traer. Programar el recojo es de Logística, también
+ * el de un RQA. El RQ listo que el área todavía recoge es de quien mira solo
+ * si es de su área (el del área Almacén lo recoge el almacenero). Una espera
+ * que no está en la lista va a quien compra, como en la base.
+ */
+export function loTieneQuienAtiende(
+  espera: string | null | undefined,
+  rq: { tipo: string | null; area_id: string | null },
+  p: QuienAtiende,
+  areaDeQuienMira: string | null,
+): boolean {
+  if (!espera || ESPERAS_DE_OTROS.has(espera)) return false
+  if (espera === 'RECOJO_DEL_AREA') return areaDeQuienMira != null && rq.area_id === areaDeQuienMira
+  if (espera === 'REVISION_STOCK' || espera === 'POR_VALIDAR' || espera === 'YA_LLEGO_TODO') return p.recibe
+  if (espera === 'POR_ENTREGAR') return p.despacha
+  if (espera === 'POR_PROGRAMAR') return p.compraDe.OPERACION
+  return p.compraDe[tipoDeRequerimiento(rq)]
+}
+
+/**
+ * La regla de antes, para cuando no se pudo leer la espera del recorrido: si
+ * un requerimiento abierto espera a quien mira en la bandeja de atención: el
  * que revisa el stock lo recibe por revisar, el que compra lo suyo sin stock, y
  * el que despacha lo listo en almacén. En compra, al que revisa el stock le toca
- * solo cuando lo comprado ya llegó y falta dejarlo listo: lo dice el recorrido
- * (`loTiene`, el puesto que lo tiene ahora). Antes contaba todo lo que estaba en
- * compra y la bandeja decía «62 esperan por ti» con 42 esperando a Logística,
- * mientras el globo del menú decía 20. La misma regla para la bandeja y para el
- * globo, para que digan lo mismo.
+ * solo cuando el recorrido dice que lo tiene (`loTiene`). La usa la bandeja sin
+ * recorrido, y la revisión del stock en el globo del menú.
  */
 export function leTocaAtender(rq: { estado: string | null; tipo: string | null }, p: QuienAtiende, loTiene?: string | null): boolean {
   const loTieneAlmacen = p.recibe && loTiene === PUESTO_ALMACEN
@@ -116,9 +150,6 @@ export function leTocaAtender(rq: { estado: string | null; tipo: string | null }
 
 /** Cómo nombra el recorrido de un RQ a Almacén cuando lo tiene (`recorrido_de_requerimientos`). */
 export const PUESTO_ALMACEN = 'Almacén'
-
-/** Los estados en compra en que Almacén recibe lo que llega: le tocan solo si el recorrido dice que lo tiene. */
-export const RQ_EN_COMPRA = ['SIN_STOCK', 'EN_ATENCION'] as const
 
 /**
  * En qué etapa va cada insumo del RQ, con su porcentaje. Lo calcula la base

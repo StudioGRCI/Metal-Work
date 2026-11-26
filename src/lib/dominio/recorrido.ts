@@ -121,6 +121,8 @@ const ESPERAS_DEL_REQUERIMIENTO: Record<string, (oc: string | null) => string> =
   COMPRA_CORTA: (oc) => `La ${oc ?? 'orden de compra'} compró menos: pide el resto en un RQ nuevo.`,
   // Ya no le falta llegar nada, aunque su orden de compra siga abierta: lo dice igual la insignia de la tarjeta.
   YA_LLEGO_TODO: () => 'Ya llegó todo: falta marcarlo listo para recoger.',
+  // Ya salió del kardex todo lo pedido (20261126170000): solo falta cerrarlo.
+  POR_ENTREGAR: () => 'Ya salió todo del kardex: falta marcarlo entregado.',
   RECOJO_DEL_AREA: () => 'Lo recoge en Almacén.',
 }
 
