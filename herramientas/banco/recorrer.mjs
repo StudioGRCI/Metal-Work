@@ -94,6 +94,8 @@ const RUTAS = [
   ['rrhh-horas-extras', '/rrhh/horas-extras'],
   ['rrhh-tiempos-de-entrega', '/rrhh/tiempos-de-entrega'],
   ['planilla-diaria', '/planilla-diaria'],
+  ['equipos', '/equipos'],
+  ['equipos-de-baja', '/equipos?ver=de-baja'],
   ['subcontratos', '/subcontratos'],
   ['subcontratistas', '/subcontratos?vista=subcontratistas'],
   subcontratoId && ['subcontrato-detalle', `/subcontratos/${subcontratoId}`],
