@@ -50,7 +50,7 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
     // entrega 3.2). Sin ellos la lista sigue con todo lo demás: solo no dice los días.
     diasEnEspera(registros.map((r) => (!r.salida_en && !r.anulado_en ? r.ingreso_en : null))).catch((e: unknown) => {
       console.error('Vehículos: no se pudieron contar los días en planta.', e)
-      return registros.map(() => null)
+      return null
     }),
   ])
 
@@ -75,6 +75,13 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
         }))}
       />
 
+      {dias === null && enPlanta.length > 0 && (
+        <p className="mb-3 rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-texto" role="status" data-dias-sin-leer>
+          No se pudieron contar los días que lleva cada vehículo en la planta. Siguen del que entró primero al último; vuelve a cargar la
+          pantalla en un momento para ver los días.
+        </p>
+      )}
+
       <Tarjeta className="overflow-hidden">
         <Tabla>
           <TablaCabecera>
@@ -96,7 +103,7 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
               />
             ) : (
               registros.map((r, i) => (
-                <FilaVehiculo key={r.id} registro={r} registra={registra} cuentaId={perfil.id} estado={estados.get(r.id)} dias={dias[i]} />
+                <FilaVehiculo key={r.id} registro={r} registra={registra} cuentaId={perfil.id} estado={estados.get(r.id)} dias={dias?.[i] ?? null} />
               ))
             )}
           </tbody>
@@ -130,7 +137,7 @@ function FilaVehiculo({
           {r.placa ?? (r.chasis ? `Chasis ${r.chasis}` : r.codigo_interno)}
         </Link>
         {r.placa && r.chasis && <p className="tabular text-xs text-texto-suave">Chasis {r.chasis}</p>}
-        {r.codigo_interno && (r.placa || r.chasis) && <p className="tabular text-xs text-texto-suave">{r.codigo_interno}</p>}
+        {r.codigo_interno && (r.placa || r.chasis) && <p className="tabular text-xs text-texto-suave">Código {r.codigo_interno}</p>}
         <p className="text-xs text-texto">
           {r.unidad} · {r.empresa}
         </p>
@@ -153,33 +160,41 @@ function FilaVehiculo({
             Entró {fechaHora(r.ingreso_en)}
             {r.ingreso_puesto && ` · lo registró ${r.ingreso_puesto}`}
           </p>
-          {r.salida_en && r.salida_puesto && <p className="text-xs text-texto-suave">Su salida la registró {r.salida_puesto}</p>}
           <Situacion registro={r} estado={estado} dias={dias} />
+          {r.salida_en && r.salida_puesto && <p className="text-xs text-texto-suave">Su salida la registró {r.salida_puesto}</p>}
+          {estado?.falta_para_salir && (
+            <p className="max-w-sm text-xs text-texto-suave" data-bloqueo-salida>
+              {estado.falta_para_salir}
+            </p>
+          )}
         </div>
-        {estado?.falta_para_salir && (
-          <p id={`veh-bloqueo-${r.id}`} className="mt-1 max-w-sm text-xs text-texto-suave" data-bloqueo-salida>
-            {estado.falta_para_salir}
-          </p>
-        )}
       </TD>
       <TD className="hidden align-top md:table-cell">
         {motivo ? <Insignia tono={motivo.tono}>{motivo.etiqueta}</Insignia> : r.motivo}
       </TD>
       <TD className="hidden align-top sm:table-cell">
         <p className="tabular text-xs text-texto whitespace-nowrap">{fechaHora(r.ingreso_en)}</p>
-        {r.ingreso_puesto && <p className="text-xs text-texto-suave" data-registro-ingreso>Lo registró {r.ingreso_puesto}</p>}
+        {r.ingreso_puesto && <p className="text-xs whitespace-nowrap text-texto-suave" data-registro-ingreso>Lo registró {r.ingreso_puesto}</p>}
         {r.observacion_ingreso && <p className="mt-1 max-w-xs text-xs text-texto-suave">{r.observacion_ingreso}</p>}
       </TD>
       <TD className="hidden align-top sm:table-cell">
         {r.salida_en ? (
           <>
             <p className="tabular text-xs text-texto whitespace-nowrap">{fechaHora(r.salida_en)}</p>
-            {r.salida_puesto && <p className="text-xs text-texto-suave" data-registro-salida>La registró {r.salida_puesto}</p>}
+            {r.salida_puesto && <p className="text-xs whitespace-nowrap text-texto-suave" data-registro-salida>La registró {r.salida_puesto}</p>}
             <p className="text-xs text-texto-suave">{textoEstuvo(diasEntre(diaLima(r.ingreso_en), diaLima(r.salida_en)))}</p>
             {r.observacion_salida && <p className="mt-1 max-w-xs text-xs text-texto-suave">{r.observacion_salida}</p>}
           </>
         ) : (
-          <Situacion registro={r} estado={estado} dias={dias} />
+          <>
+            <Situacion registro={r} estado={estado} dias={dias} />
+            {/* Lo que le falta va junto a su estado; el «Marcar salida» apagado lo cita por su id. */}
+            {estado?.falta_para_salir && (
+              <p id={`veh-bloqueo-${r.id}`} className="mt-1 max-w-sm text-xs text-texto-suave" data-bloqueo-salida>
+                {estado.falta_para_salir}
+              </p>
+            )}
+          </>
         )}
       </TD>
       <TD className="text-right align-top">
@@ -218,16 +233,24 @@ function Situacion({ registro: r, estado, dias }: { registro: RegistroVehiculo; 
     )
   return (
     <div className="flex flex-wrap items-center gap-1">
-      <Insignia tono="aviso">En planta</Insignia>
-      {dias != null && (
-        <Insignia className="tabular" title={`Entró el ${fechaHora(r.ingreso_en)}`} data-dias-en-planta={dias}>
+      {/* Una sola insignia: «En planta» y sus días; sin los días, solo «En planta». El color
+          queda para lo que decide la salida: verde si puede salir, ámbar si le falta algo. */}
+      {dias != null ? (
+        <Insignia className="tabular" data-dias-en-planta={dias}>
           <Clock aria-hidden className="size-3" />
           {textoEnPlanta(dias)}
         </Insignia>
+      ) : (
+        <Insignia>En planta</Insignia>
       )}
       {estado && !estado.falta_para_salir && (
         <Insignia tono="exito" data-puede-salir>
           Puede salir
+        </Insignia>
+      )}
+      {estado?.falta_para_salir && (
+        <Insignia tono="aviso" data-falta-para-salir>
+          Falta para salir
         </Insignia>
       )}
       {/* Garantía y mantenimiento esperan que Administración dé por terminado el trabajo de su OT. */}

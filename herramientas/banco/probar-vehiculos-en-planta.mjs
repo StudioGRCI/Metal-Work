@@ -194,6 +194,7 @@ const filas = (pagina) =>
         dias: dias ? Number(dias.dataset.diasEnPlanta) : null,
         textoDias: dias?.textContent?.trim() ?? null,
         puedeSalir: visible('[data-puede-salir]') !== null,
+        faltaParaSalir: visible('[data-falta-para-salir]') !== null,
         falta: visible('[data-bloqueo-salida]')?.textContent?.trim() ?? null,
         ingreso: visible('[data-registro-ingreso]')?.textContent?.trim() ?? null,
         salida: visible('[data-registro-salida]')?.textContent?.trim() ?? null,
@@ -211,7 +212,15 @@ for (const puesto of ['requerimientos', 'gerencia']) {
   comprobar(de('hoy')?.textoDias === 'Entró hoy', `${puesto}: ${placa.hoy} dice «Entró hoy» (${de('hoy')?.textoDias})`)
   comprobar(de('fabrica')?.textoDias === '3 días en planta', `${puesto}: ${placa.fabrica} dice «3 días en planta» (${de('fabrica')?.textoDias})`)
   comprobar(de('cochera')?.puedeSalir && de('hoy')?.puedeSalir, `${puesto}: los de cochera y «otro» dicen «Puede salir»`)
-  comprobar(!de('fabrica')?.puedeSalir && /va en 0 %/.test(de('fabrica')?.falta ?? ''), `${puesto}: el de fabricación no dice «Puede salir» y sí lo que falta («${de('fabrica')?.falta}»)`)
+  comprobar(!de('fabrica')?.puedeSalir && de('fabrica')?.faltaParaSalir && /va en 0 %/.test(de('fabrica')?.falta ?? ''),
+    `${puesto}: el de fabricación dice «Falta para salir» y qué le falta («${de('fabrica')?.falta}»), no «Puede salir»`)
+  comprobar(!de('cochera')?.faltaParaSalir, `${puesto}: el de cochera no dice «Falta para salir»`)
+  comprobar((de('fabrica')?.texto ?? '').includes(`Código S${sufijo}`), `${puesto}: el de fabricación rotula su código interno («Código S${sufijo}»)`)
+  if (puesto === 'requerimientos') {
+    // Lo que falta va en la columna de la salida, junto a su estado, con el id que cita «Marcar salida».
+    const enSalida = await pagina.locator(`#veh-bloqueo-${ids.fabrica}`).evaluate((e) => e.closest('td')?.cellIndex ?? -1)
+    comprobar(enSalida === 3, `lo que falta va en la columna de la salida (columna ${enSalida})`)
+  }
   comprobar(['cochera', 'hoy', 'fabrica'].every((c) => de(c)?.ingreso === 'Lo registró Requerimientos'), `${puesto}: cada ingreso dice «Lo registró Requerimientos»`)
   comprobar(!de('salio'), `${puesto}: el que salió no está en «En planta»`)
   const conDias = todas.filter((f) => f.dias !== null).map((f) => f.dias)
@@ -255,6 +264,11 @@ for (const puesto of ['requerimientos', 'gerencia']) {
 }
 
 comprobar(errores.length === 0, `sin errores de consola ni de hidratación ${errores.slice(0, 5).join(' | ')}`)
+
+// Lo sembrado no se queda en la planta del banco: Requerimientos lo anula, con motivo, como se haría con un ingreso mal anotado.
+for (const clave of ['cochera', 'hoy', 'fabrica']) {
+  await como('requerimientos', 'select public.anular_registro_vehiculo($1, $2)', [ids[clave], 'Registro de la sonda 3.2 del banco de pruebas'])
+}
 
 await navegador.close()
 await base.end()
