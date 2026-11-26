@@ -581,8 +581,11 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
         const falta = (c: { monto_venta: number | null; incluye_igv: boolean | null; facturado: number | null }) =>
           Math.max(0, (total(c) ?? 0) - Number(c.facturado ?? 0))
         // Sin factura, o facturada en parte: el monto es lo que falta facturar (Plan 10.1).
+        // Con una factura en otra moneda no se compara, como en la base (20261126470000).
         const porFacturar = (bandeja.data ?? []).filter(
-          (c) => c.codigo_interno && ((c.facturas ?? 0) === 0 || (total(c) !== null && falta(c) > 0.005)),
+          (c) =>
+            c.codigo_interno &&
+            ((c.facturas ?? 0) === 0 || (Number(c.facturado_otra_moneda ?? 0) === 0 && total(c) !== null && falta(c) > 0.005)),
         )
         // La bandeja trae las 300 más nuevas, y una factura en otra moneda no se compara:
         // si no son las mismas que cuenta la base, un monto corto mentiría; va solo la cuenta.

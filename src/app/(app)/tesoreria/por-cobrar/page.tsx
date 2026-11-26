@@ -12,6 +12,7 @@ import { solicitudesPendientesTesoreria } from '@/lib/datos/costos-ot'
 import { COBRADAS_A_LA_VISTA, cotizacionesAprobadas, facturasDeVenta } from '@/lib/datos/facturacion'
 import { PERMISOS_BAJAR_COTIZACION, rutaParaBajarCotizacion } from '@/lib/descarga'
 import { revisionesDeSalidaPendientes } from '@/lib/datos/vehiculos'
+import { nombreMoneda } from '@/lib/dominio/caja'
 import { resumenPorMoneda, totalConIgv } from '@/lib/dominio/finanzas'
 import { hoyLima, moneda, parteDe, porcentaje, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -64,12 +65,29 @@ export default async function PaginaPorCobrar() {
     if (!c.codigo_interno) continue
     const total = totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
     const previo = cobrosPorCodigo[c.codigo_interno]
+    // Lo facturado en la otra moneda va aparte, sin sumarse ni compararse con el total (20261126960000).
+    const facturadoOtra = Number(c.facturado_otra_moneda ?? 0)
+    const cobradoOtra = Number(c.cobrado_otra_moneda ?? 0)
     if (!previo) {
-      cobrosPorCodigo[c.codigo_interno] = { total, facturado: Number(c.facturado ?? 0), cobrado: Number(c.cobrado ?? 0), moneda: codigo(c.moneda), cotizaciones: 1, monedasDistintas: false }
+      cobrosPorCodigo[c.codigo_interno] = {
+        total,
+        facturado: Number(c.facturado ?? 0),
+        cobrado: Number(c.cobrado ?? 0),
+        moneda: codigo(c.moneda),
+        cotizaciones: 1,
+        monedasDistintas: false,
+        otraMoneda: facturadoOtra > 0 ? { facturado: facturadoOtra, cobrado: cobradoOtra } : null,
+      }
     } else if (previo.moneda !== codigo(c.moneda)) {
       previo.monedasDistintas = true
       previo.cotizaciones += 1
     } else {
+      if (facturadoOtra > 0) {
+        previo.otraMoneda = {
+          facturado: (previo.otraMoneda?.facturado ?? 0) + facturadoOtra,
+          cobrado: (previo.otraMoneda?.cobrado ?? 0) + cobradoOtra,
+        }
+      }
       previo.total = previo.total === null || total === null ? null : previo.total + total
       previo.facturado += Number(c.facturado ?? 0)
       previo.cobrado += Number(c.cobrado ?? 0)
@@ -173,6 +191,8 @@ export default async function PaginaPorCobrar() {
           <TarjetaCuerpo className="space-y-2">
             {cotizaciones.map((c) => {
               const m = codigo(c.moneda)
+              const mOtra: CodigoMoneda = m === 'USD' ? 'PEN' : 'USD'
+              const otra = Number(c.facturado_otra_moneda) > 0
               const total = totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
               return (
                 <div
@@ -186,14 +206,26 @@ export default async function PaginaPorCobrar() {
                       {' '}
                       · {c.cliente ?? 'Cliente sin registrar'} · cotización {c.numero}
                     </span>
-                    <span className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-texto-suave">
+                    <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-texto-suave">
                       {Number(c.facturas) === 0 ? (
                         <Insignia tono="neutro">{c.codigo_interno ? 'Contabilidad aún no la factura' : 'Falta cargar la OT'}</Insignia>
                       ) : (
-                        <span className="tabular">
-                          Facturado {moneda(c.facturado, m)}
-                          {parteDe(c.facturado, total) !== null && ` (${porcentaje(parteDe(c.facturado, total))} de la cotización)`} · cobrado {moneda(c.cobrado, m)}
-                          {parteDe(c.cobrado, total) !== null && ` (${porcentaje(parteDe(c.cobrado, total))} de la cotización)`}
+                        // Facturada solo en la otra moneda, no se pinta «Facturado US$ 0.00 (0 %)»: diría que no se facturó nada.
+                        (Number(c.facturado) > 0 || !otra) && (
+                          <span className="tabular">
+                            Facturado {moneda(c.facturado, m)}
+                            {/* Con una factura en otra moneda no se compara con el total (como facturacion_pendientes). */}
+                            {!otra && parteDe(c.facturado, total) !== null && ` (${porcentaje(parteDe(c.facturado, total))} de la cotización)`} · cobrado{' '}
+                            {moneda(c.cobrado, m)}
+                            {!otra && parteDe(c.cobrado, total) !== null && ` (${porcentaje(parteDe(c.cobrado, total))} de la cotización)`}
+                          </span>
+                        )
+                      )}
+                      {/* La factura en otra moneda no se suma a lo de arriba (20261126960000): en su propio renglón. */}
+                      {otra && (
+                        <span className="tabular basis-full" data-otra-moneda>
+                          {Number(c.facturado) > 0 ? 'Y en ' : 'Facturada en '}
+                          {nombreMoneda(mOtra)}: {Number(c.facturado) > 0 && 'facturado '}{moneda(c.facturado_otra_moneda, mOtra)} · cobrado {moneda(c.cobrado_otra_moneda, mOtra)}
                         </span>
                       )}
                       {c.url && (
