@@ -84,7 +84,7 @@ await base.query(`select set_config('request.jwt.claim.sub', $1, true), set_conf
 await base.query('set local role authenticated')
 await base.query(
   `select public.averias_anular(v.id, 'Limpieza del banco antes de la prueba de averías.')
-     from public.averias_visibles(null) v where v.equipo_codigo = $1 and v.estado = 'REPORTADA'`,
+     from public.averias_visibles(null) v where v.equipo_codigo = $1 and v.estado in ('REPORTADA', 'EN_ATENCION')`,
   [EQUIPO],
 )
 await base.query('commit')

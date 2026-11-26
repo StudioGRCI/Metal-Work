@@ -147,19 +147,33 @@ const ESPERAS_DE_LA_COTIZACION: Record<string, (detalle: string | null) => strin
   FACTURA: () => 'Registra su factura.',
 }
 
+/** «1 hora», «26,5 horas», como `horas` de averias.ts (aquí sin importarla: el test corre sin el alias). */
+function horasParado(valor: number): string {
+  const texto = Number.isInteger(valor) ? String(valor) : valor.toFixed(1).replace('.', ',')
+  return `${texto} ${valor === 1 ? 'hora' : 'horas'}`
+}
+
 const PASOS_DE_LA_AVERIA: Record<string, Frases> = {
   REPORTE: {
     hecho: (d) => (d === 'PARADO' ? 'Reportada: el equipo quedó parado' : 'Reportada'),
     falta: 'Reporte',
   },
-  ATENCION: { hecho: 'Mantenimiento la atendió', falta: 'Atención de Mantenimiento' },
-  CIERRE: { hecho: 'Mantenimiento la cerró', falta: 'Cierre: el equipo vuelve a operativo' },
+  ATENCION: { hecho: 'Mantenimiento anotó su diagnóstico', falta: 'Diagnóstico de Mantenimiento' },
+  CIERRE: {
+    hecho: 'Mantenimiento la cerró',
+    falta: 'Cierre: el equipo vuelve a operativo',
+    // Las horas que estuvo parado, como las anotó Mantenimiento.
+    nota: (h) => (h && Number.isFinite(Number(h)) ? `Parado: ${horasParado(Number(h))}` : null),
+  },
+  REAPERTURA: { hecho: 'No quedó bien: volvió a Mantenimiento', falta: 'Reapertura' },
   CONFIRMACION: { hecho: 'Quien la reportó confirmó que quedó bien', falta: 'Quien la reportó confirma que quedó bien' },
   ANULACION: { hecho: 'Anulada por Mantenimiento', falta: 'Anulación' },
 }
 
 const ESPERAS_DE_LA_AVERIA: Record<string, (detalle: string | null) => string> = {
-  ATENCION: () => 'La revisa, anota qué tiene y qué se hizo.',
+  ATENCION: () => 'La revisa y anota qué tiene.',
+  CIERRE: () => 'La arregla y la cierra con el trabajo hecho y las horas parado.',
+  CONFIRMACION: () => 'Prueba el equipo y dice si quedó bien.',
 }
 
 function describir(

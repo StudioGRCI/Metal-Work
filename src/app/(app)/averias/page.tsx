@@ -1,4 +1,4 @@
-import { Camera } from 'lucide-react'
+import { Camera, Link2 } from 'lucide-react'
 import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
@@ -8,7 +8,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { equiposParaReportar, listarAverias, MAXIMO_AVERIAS, type Averia } from '@/lib/datos/averias'
-import { ESTADO_AVERIA, TIPO_AVERIA } from '@/lib/dominio/averias'
+import { ESTADO_AVERIA, ordenarBandeja, TIPO_AVERIA } from '@/lib/dominio/averias'
 import { fechaHora } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
 
@@ -18,10 +18,31 @@ export const metadata = { title: 'Averías de equipos' }
 
 const FORMA_DE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+/**
+ * La bandeja de Mantenimiento (Plan 16.3): lo que le toca, por gravedad y días
+ * en espera; lo que espera que quien la reportó confirme; lo que ya quedó bien;
+ * y lo anulado.
+ */
 const VISTAS = [
-  { valor: 'vigentes', titulo: 'Vigentes' },
-  { valor: 'anuladas', titulo: 'Anuladas' },
+  { valor: 'por-atender', titulo: 'Por atender', estados: ['REPORTADA', 'EN_ATENCION'] },
+  { valor: 'por-confirmar', titulo: 'Por confirmar', estados: ['CERRADA'] },
+  { valor: 'cerradas', titulo: 'Quedaron bien', estados: ['CONFIRMADA'] },
+  { valor: 'anuladas', titulo: 'Anuladas', estados: ['ANULADA'] },
 ] as const
+type Vista = (typeof VISTAS)[number]['valor']
+
+const VACIO_DE: Record<Vista, { titulo: string; descripcion: string }> = {
+  'por-atender': {
+    titulo: 'Nada por atender',
+    descripcion: 'Cuando alguien reporte una avería o una posible avería, aparece aquí y en la campana, la más grave primero.',
+  },
+  'por-confirmar': {
+    titulo: 'Nada esperando confirmación',
+    descripcion: 'Al cerrar una avería, queda aquí hasta que quien la reportó diga si quedó bien.',
+  },
+  cerradas: { titulo: 'Todavía ninguna confirmada', descripcion: 'Las averías que quien las reportó dio por arregladas.' },
+  anuladas: { titulo: 'No hay reportes anulados', descripcion: 'Un reporte mal hecho se anula desde su ficha, con su motivo.' },
+}
 
 /**
  * Los reportes de avería (Plan 16.2). Entra cualquier cuenta: reportar no pide
@@ -31,8 +52,9 @@ const VISTAS = [
 export default async function PaginaAverias({ searchParams }: PageProps<'/averias'>) {
   const perfil = await exigirSesion()
   const veTodo = puede(perfil, ['averias.atender', 'averias.ver'])
+  const atiende = puede(perfil, 'averias.atender')
   const params = await searchParams
-  const vista = veTodo && params.vista === 'anuladas' ? 'anuladas' : 'vigentes'
+  const vista: Vista = VISTAS.find((v) => v.valor === params.vista)?.valor ?? 'por-atender'
   const equipoInicial = typeof params.equipo === 'string' && FORMA_DE_ID.test(params.equipo) ? params.equipo : ''
 
   const [averias, equipos] = await Promise.all([listarAverias(), equiposParaReportar()])
@@ -41,17 +63,22 @@ export default async function PaginaAverias({ searchParams }: PageProps<'/averia
   // Sin equipos en el padrón no hay qué elegir: en vez de una ventana que no deja
   // enviar, se dice por qué y qué hacer.
   const boton = equipos.length > 0 ? <ReportarAveria cuentaId={perfil.id} equipos={equipos} equipoInicial={equipoInicial} /> : null
-  const sinPadron = equipos.length === 0 && <PadronVacio />
+  const sinPadron = equipos.length === 0 && <PadronVacio carga={puede(perfil, 'equipos.gestionar')} />
 
   if (veTodo) {
-    const vigentes = averias.filter((a) => a.estado !== 'ANULADA')
-    const anuladas = averias.filter((a) => a.estado === 'ANULADA')
-    const lista = vista === 'anuladas' ? anuladas : vigentes
+    const de = (v: (typeof VISTAS)[number]) => averias.filter((a) => (v.estados as readonly string[]).includes(a.estado))
+    const actual = VISTAS.find((v) => v.valor === vista) ?? VISTAS[0]
+    // Lo que le toca a Mantenimiento, la más grave primero; lo demás, lo más reciente primero.
+    const lista = vista === 'por-atender' ? ordenarBandeja(de(actual)) : de(actual)
     return (
       <>
         <EncabezadoPagina
           titulo="Averías de equipos"
-          ayuda="Cada avería o posible avería que reporta la gente desde su teléfono, con su número AV. Llega aquí y a la campana de Mantenimiento apenas se envía. La que detiene el trabajo deja el equipo parado en el padrón. Un reporte no se borra: si está mal, Mantenimiento lo anula con su motivo."
+          ayuda={
+            atiende
+              ? 'Cada avería o posible avería que reporta la gente desde su teléfono, con su número AV, la más grave primero y, entre las iguales, la que lleva más días esperando. Ábrela para anotar el diagnóstico, enlazar el RQ de los repuestos y cerrarla con el trabajo hecho: el equipo vuelve a operativo y quien la reportó confirma si quedó bien. Un reporte no se borra: si está mal, se anula con su motivo.'
+              : 'Cada avería o posible avería que reporta la gente, con su número AV, y cómo la atiende Mantenimiento: la más grave primero y, entre las iguales, la que lleva más días esperando. Aquí se consulta; la atiende Mantenimiento.'
+          }
           migas={[{ titulo: 'Mantenimiento' }]}
           acciones={boton}
           estado={<EstadoDelReporteDeAveria />}
@@ -63,24 +90,13 @@ export default async function PaginaAverias({ searchParams }: PageProps<'/averia
           vistas={VISTAS.map((v) => ({
             clave: v.valor,
             titulo: v.titulo,
-            href: v.valor === 'vigentes' ? '/averias' : `/averias?vista=${v.valor}`,
+            href: v.valor === 'por-atender' ? '/averias' : `/averias?vista=${v.valor}`,
             activa: vista === v.valor,
-            cuenta: v.valor === 'anuladas' ? anuladas.length : vigentes.length,
+            cuenta: de(v).length,
           }))}
         />
         <Tarjeta className="overflow-hidden">
-          <TablaDeAverias
-            averias={lista}
-            conAutor
-            vacio={
-              vista === 'anuladas'
-                ? { titulo: 'No hay reportes anulados', descripcion: 'Un reporte mal hecho se anula desde su ficha, con su motivo.' }
-                : {
-                    titulo: 'Todavía no hay averías reportadas',
-                    descripcion: 'Cuando alguien reporte una avería o una posible avería, aparece aquí y en la campana.',
-                  }
-            }
-          />
+          <TablaDeAverias averias={lista} conAutor vacio={VACIO_DE[vista]} />
         </Tarjeta>
         {alTope && <Tope />}
       </>
@@ -88,9 +104,12 @@ export default async function PaginaAverias({ searchParams }: PageProps<'/averia
   }
 
   const mias = averias.filter((a) => a.alcance === 'PROPIA')
-  const delArea = averias.filter((a) => a.alcance === 'AREA' && a.estado !== 'ANULADA')
+  // Lo que Mantenimiento cerró y espera que la persona diga si quedó bien: va primero.
+  const porConfirmar = mias.filter((a) => a.estado === 'CERRADA')
+  // Lo del área y lo de riesgo: lo que todavía espera a alguien.
+  const delArea = averias.filter((a) => a.alcance === 'AREA' && a.espera_de != null)
   // SSOMA recibe las que son un riesgo para las personas.
-  const deRiesgo = averias.filter((a) => a.alcance === 'RIESGO' && a.estado !== 'ANULADA')
+  const deRiesgo = averias.filter((a) => a.alcance === 'RIESGO' && a.espera_de != null)
   return (
     <>
       <EncabezadoPagina
@@ -102,6 +121,15 @@ export default async function PaginaAverias({ searchParams }: PageProps<'/averia
       />
       {sinPadron}
       <div className="space-y-5">
+        {porConfirmar.length > 0 && (
+          <Tarjeta className="overflow-hidden" data-por-confirmar>
+            <TarjetaCabecera
+              titulo="¿Quedaron bien?"
+              descripcion={`Mantenimiento cerró ${porConfirmar.length === 1 ? 'una avería que reportaste' : `${porConfirmar.length} averías que reportaste`}: ábrela, prueba el equipo y dinos si quedó bien.`}
+            />
+            <TablaDeAverias averias={porConfirmar} vacio={{ titulo: '', descripcion: '' }} />
+          </Tarjeta>
+        )}
         <Tarjeta className="overflow-hidden">
           <TarjetaCabecera titulo="Tus reportes" descripcion={mias.length > 0 ? `${mias.length} ${mias.length === 1 ? 'reporte' : 'reportes'}` : undefined} />
           <TablaDeAverias
@@ -133,16 +161,33 @@ export default async function PaginaAverias({ searchParams }: PageProps<'/averia
   )
 }
 
-/** El padrón todavía vacío: no hay equipo que elegir, y se dice a quién avisar mientras tanto. */
-function PadronVacio() {
+/**
+ * El padrón todavía vacío: no hay equipo que elegir. A quien lo carga se le dice
+ * dónde; a los demás, a quién avisar mientras tanto. A Mantenimiento no se le
+ * pide que se avise a sí mismo.
+ */
+function PadronVacio({ carga }: { carga: boolean }) {
   return (
     <Tarjeta className="mb-5">
       <TarjetaCuerpo data-padron-vacio>
-        <SinDatos
-          compacto
-          titulo="Todavía no hay equipos en el padrón"
-          descripcion="Para reportar una avería se elige el equipo de la lista, y Mantenimiento todavía no la cargó. Mientras tanto, avísale a Mantenimiento por teléfono o en persona."
-        />
+        {carga ? (
+          <SinDatos
+            compacto
+            titulo="Todavía no hay equipos en el padrón"
+            descripcion="Para reportar una avería, la gente elige el equipo de la lista, y la lista sale del padrón. Cárgalo en Equipos."
+            accion={
+              <Link href="/equipos" className="text-sm font-medium text-acento hover:underline">
+                Ir a Equipos
+              </Link>
+            }
+          />
+        ) : (
+          <SinDatos
+            compacto
+            titulo="Todavía no hay equipos en el padrón"
+            descripcion="Para reportar una avería se elige el equipo de la lista, y Mantenimiento todavía no la cargó. Mientras tanto, avísale a Mantenimiento por teléfono o en persona."
+          />
+        )}
       </TarjetaCuerpo>
     </Tarjeta>
   )
@@ -208,14 +253,24 @@ function FilaAveria({ averia: a, conAutor }: { averia: Averia; conAutor: boolean
             {a.numero}
           </Link>
           {tipo ? <Insignia tono={tipo.tono}>{tipo.etiqueta}</Insignia> : a.tipo}
-          {!anulada && <Urgencia averia={a} />}
+          {a.espera_de != null && <Urgencia averia={a} />}
         </div>
         <p className="mt-1 text-sm font-medium text-texto md:hidden">{equipo}</p>
         <p className="mt-1 line-clamp-2 max-w-xl text-sm text-texto">{a.descripcion}</p>
-        {a.fotos > 0 && (
-          <p className="mt-1 inline-flex items-center gap-1 text-xs text-texto-suave">
-            <Camera aria-hidden className="size-3.5" />
-            {a.fotos} {a.fotos === 1 ? 'foto' : 'fotos'}
+        {(a.fotos > 0 || a.rq_enlazados > 0) && (
+          <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-texto-suave">
+            {a.fotos > 0 && (
+              <span className="inline-flex items-center gap-1">
+                <Camera aria-hidden className="size-3.5" />
+                {a.fotos} {a.fotos === 1 ? 'foto' : 'fotos'}
+              </span>
+            )}
+            {a.rq_enlazados > 0 && (
+              <span className="inline-flex items-center gap-1">
+                <Link2 aria-hidden className="size-3.5" />
+                {a.rq_enlazados} RQ de repuestos
+              </span>
+            )}
           </p>
         )}
         {/* En el teléfono, lo demás va aquí: la tabla no se desliza de costado. */}
@@ -250,13 +305,19 @@ function FilaAveria({ averia: a, conAutor }: { averia: Averia; conAutor: boolean
   )
 }
 
-/** En quién está el reporte y desde cuándo. */
+/** En qué va el reporte, quién lo tiene y desde cuándo. */
 function Situacion({ averia: a }: { averia: Averia }) {
   const estado = ESTADO_AVERIA[a.estado]
+  const deQuienReporto = a.espera_de === 'QUIEN_REPORTO'
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {estado ? <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia> : a.estado}
-      <DiasEnEspera dias={a.dias_en_espera} desde={a.creado_en} quien="Mantenimiento" />
+      <DiasEnEspera
+        dias={a.dias_en_espera}
+        desde={a.espera_desde}
+        quien={deQuienReporto ? 'quien la reportó' : 'Mantenimiento'}
+      />
+      {a.veces_reabierta > 0 && a.estado === 'EN_ATENCION' && <Insignia tono="aviso">No quedó bien</Insignia>}
     </div>
   )
 }

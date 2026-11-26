@@ -1,28 +1,40 @@
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { DiasEnEspera } from '@/components/ui/dias-en-espera'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Recorrido } from '@/components/ui/recorrido'
 import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { cargarAveria } from '@/lib/datos/averias'
+import { cargarAveria, rqParaEnlazar, type DetalleAveria } from '@/lib/datos/averias'
 import { recorridoDeAverias } from '@/lib/datos/recorrido'
-import { ESTADO_AVERIA, TIPO_AVERIA } from '@/lib/dominio/averias'
+import { ESTADO_AVERIA, horas, horasParadoSugeridas, TIPO_AVERIA } from '@/lib/dominio/averias'
 import { ESTADO_EQUIPO, type EstadoEquipo } from '@/lib/dominio/equipos'
 import { describirRecorridoDeLaAveria } from '@/lib/dominio/recorrido'
+import { ESTADO_REQUERIMIENTO_DEL_CODIGO } from '@/lib/dominio/requerimientos'
 import { fechaHora } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
 
-import { AnularAveria, AvisoDeLaAnulacion } from './controles'
+import {
+  AnularAveria,
+  AtenderAveria,
+  AvisoDeLaFicha,
+  CerrarAveria,
+  ConfirmarAveria,
+  EnlazarRequerimiento,
+  QuitarRequerimiento,
+} from './controles'
 
 export const metadata = { title: 'Reporte de avería' }
 
 const FORMA_DE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
- * Un reporte de avería: qué le pasa al equipo, su recorrido y sus fotos. Quien
- * lo reportó ve cómo va; su área, también; Mantenimiento y Gerencia, todos. Lo
- * que cada quien ve lo decide la base.
+ * Un reporte de avería: qué le pasa al equipo, cómo lo atiende Mantenimiento,
+ * su recorrido y sus fotos. Quien lo reportó ve cómo va y confirma si quedó
+ * bien; su área, también lo ve; Mantenimiento lo atiende y Gerencia lo consulta.
+ * Lo que cada quien ve lo decide la base.
  */
 export default async function PaginaAveria({ params }: PageProps<'/averias/[id]'>) {
   const perfil = await exigirSesion()
@@ -38,13 +50,35 @@ export default async function PaginaAveria({ params }: PageProps<'/averias/[id]'
   ])
   if (!a) notFound()
 
+  // El mismo permiso que piden las funciones de la base.
+  const atiende = puede(perfil, 'averias.atender')
+  const enAtencion = a.estado === 'EN_ATENCION'
+  const vigenteParaMantenimiento = a.estado === 'REPORTADA' || enAtencion
+  // Solo quien la reportó confirma; la base lo vuelve a mirar.
+  const confirma = a.es_mia && a.estado === 'CERRADA'
+  const opcionesRq = atiende && enAtencion ? await rqParaEnlazar() : []
+
   const tipo = TIPO_AVERIA[a.tipo]
   const estado = ESTADO_AVERIA[a.estado]
   const anulada = a.estado === 'ANULADA'
-  // El mismo permiso que pide `averias_anular`.
-  const anula = puede(perfil, 'averias.atender') && !anulada
   const estadoEquipo = ESTADO_EQUIPO[a.equipo_estado as EstadoEquipo]
   const veTodo = puede(perfil, ['averias.atender', 'averias.ver'])
+
+  const acciones = (
+    <>
+      {confirma && <ConfirmarAveria id={a.id} numero={a.numero} detieneElTrabajo={a.detiene_trabajo} />}
+      {atiende && enAtencion && (
+        <CerrarAveria
+          id={a.id}
+          numero={a.numero}
+          horasSugeridas={horasParadoSugeridas(a.equipo_parado_desde)}
+          dejaOperativo={a.equipo_parado_desde != null}
+        />
+      )}
+      {atiende && vigenteParaMantenimiento && <AtenderAveria id={a.id} numero={a.numero} diagnostico={a.diagnostico} />}
+      {atiende && vigenteParaMantenimiento && <AnularAveria id={a.id} numero={a.numero} paroElEquipo={a.paro_el_equipo} />}
+    </>
+  )
 
   return (
     <>
@@ -52,11 +86,13 @@ export default async function PaginaAveria({ params }: PageProps<'/averias/[id]'
         titulo={<span className="tabular">{a.numero}</span>}
         descripcion={`${tipo?.etiqueta ?? a.tipo} · ${a.equipo_codigo} · ${a.equipo_descripcion}`}
         migas={[{ titulo: veTodo ? 'Averías de equipos' : 'Reportar avería', ruta: '/averias' }, { titulo: a.numero }]}
-        acciones={anula && <AnularAveria id={a.id} numero={a.numero} paroElEquipo={a.paro_el_equipo} />}
-        estado={<AvisoDeLaAnulacion />}
+        acciones={acciones}
+        estado={<AvisoDeLaFicha />}
       />
 
       <div className="space-y-5">
+        <QuienLaTiene averia={a} atiende={atiende} />
+
         <Tarjeta>
           <TarjetaCuerpo className="space-y-4">
             <div className="flex flex-wrap items-start gap-x-8 gap-y-3 text-sm">
@@ -84,9 +120,9 @@ export default async function PaginaAveria({ params }: PageProps<'/averias/[id]'
               <p className="text-xs text-texto-suave">Qué hace el equipo</p>
               <p className="mt-1 max-w-3xl text-sm whitespace-pre-wrap text-texto">{a.descripcion}</p>
             </div>
-            {a.paro_el_equipo && !anulada && (
+            {a.paro_el_equipo && vigenteParaMantenimiento && (
               <p className="text-xs text-texto-suave" data-dejo-parado>
-                Este reporte dejó el equipo parado en el padrón. Vuelve a operativo cuando Mantenimiento cierre la avería.
+                Este reporte tiene el equipo parado en el padrón. Vuelve a operativo cuando Mantenimiento cierre la avería.
               </p>
             )}
             {anulada && (
@@ -100,6 +136,8 @@ export default async function PaginaAveria({ params }: PageProps<'/averias/[id]'
             )}
           </TarjetaCuerpo>
         </Tarjeta>
+
+        <Atencion averia={a} atiende={atiende} opcionesRq={opcionesRq} />
 
         <Tarjeta className="overflow-hidden">
           <Recorrido pasos={recorridos ? describirRecorridoDeLaAveria(recorridos.get(a.id) ?? []) : null} femenino />
@@ -132,6 +170,143 @@ export default async function PaginaAveria({ params }: PageProps<'/averias/[id]'
         </Tarjeta>
       </div>
     </>
+  )
+}
+
+/**
+ * Lo primero que se lee: a quién espera el reporte y qué falta, dicho para
+ * quien mira. Lo que esa persona puede hacer está en los botones de arriba.
+ */
+function QuienLaTiene({ averia: a, atiende }: { averia: DetalleAveria; atiende: boolean }) {
+  let texto: string | null = null
+  if (a.estado === 'REPORTADA') {
+    texto = atiende ? 'Espera tu diagnóstico: revisa el equipo y toca «Atender».' : 'Mantenimiento todavía no la revisa.'
+  } else if (a.estado === 'EN_ATENCION') {
+    texto = atiende
+      ? 'La estás atendiendo. Enlaza el RQ si pediste repuestos, y ciérrala con el trabajo hecho cuando quede.'
+      : 'Mantenimiento la está atendiendo.'
+    if (a.veces_reabierta > 0) texto = `Volvió porque no quedó bien. ${texto}`
+  } else if (a.estado === 'CERRADA') {
+    texto = a.es_mia
+      ? 'Mantenimiento la cerró. Prueba el equipo y toca «¿Quedó bien?».'
+      : 'Mantenimiento la cerró: espera que quien la reportó confirme si quedó bien.'
+  }
+  if (!texto) return null
+  return (
+    <div
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[var(--radius-base)] border border-borde bg-superficie-2 px-4 py-3 text-sm text-texto"
+      data-quien-la-tiene={a.espera_de ?? undefined}
+    >
+      <p className="font-medium">{texto}</p>
+      <DiasEnEspera
+        dias={a.dias_en_espera}
+        desde={a.espera_desde}
+        quien={a.espera_de === 'QUIEN_REPORTO' ? 'quien la reportó' : 'Mantenimiento'}
+      />
+    </div>
+  )
+}
+
+/** Lo que anotó Mantenimiento: diagnóstico, repuestos, trabajo hecho y horas parado; y lo que dijo quien la reportó. */
+function Atencion({
+  averia: a,
+  atiende,
+  opcionesRq,
+}: {
+  averia: DetalleAveria
+  atiende: boolean
+  opcionesRq: Awaited<ReturnType<typeof rqParaEnlazar>>
+}) {
+  const enlaza = atiende && a.estado === 'EN_ATENCION'
+  const cerrada = a.estado === 'CERRADA' || a.estado === 'CONFIRMADA'
+  if (a.estado === 'ANULADA' && !a.diagnostico) return null
+  return (
+    <Tarjeta data-atencion>
+      <TarjetaCabecera titulo="Atención de Mantenimiento" />
+      <TarjetaCuerpo className="space-y-5">
+        {!a.diagnostico ? (
+          <SinDatos compacto titulo="Todavía sin diagnóstico" descripcion="Mantenimiento anota aquí qué tiene el equipo cuando lo revisa." />
+        ) : (
+          <Bloque titulo="Diagnóstico" pie={[a.atendio, a.atendida_en ? fechaHora(a.atendida_en) : null]}>
+            {a.diagnostico}
+          </Bloque>
+        )}
+
+        {a.veces_reabierta > 0 && a.estado === 'EN_ATENCION' && a.nota_de_quien_reporto && (
+          <div className="rounded-[var(--radius-base)] border border-aviso/40 bg-aviso-suave px-3 py-2 text-sm" data-no-quedo-bien>
+            <p className="font-medium text-texto">
+              No quedó bien{a.veces_reabierta > 1 ? ` (${a.veces_reabierta} veces)` : ''}: lo dijo quien la reportó
+            </p>
+            <p className="mt-0.5 whitespace-pre-wrap text-texto">{a.nota_de_quien_reporto}</p>
+          </div>
+        )}
+
+        {(a.diagnostico || a.requerimientos.length > 0) && (
+          <section aria-labelledby={`repuestos-${a.id}`} className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 id={`repuestos-${a.id}`} className="text-xs font-medium text-texto-suave">
+                Repuestos pedidos
+              </h3>
+              {enlaza && <EnlazarRequerimiento averia={a.id} opciones={opcionesRq} />}
+            </div>
+            {a.requerimientos.length === 0 ? (
+              <p className="text-sm text-texto-suave">
+                {enlaza ? 'Si pediste repuestos con un RQ, enlázalo para que se vea cómo va.' : 'Ninguno enlazado.'}
+              </p>
+            ) : (
+              <ul className="divide-y divide-borde rounded-[var(--radius-base)] border border-borde">
+                {a.requerimientos.map((r) => {
+                  const est = ESTADO_REQUERIMIENTO_DEL_CODIGO[r.estado]
+                  return (
+                    <li key={r.enlace} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm" data-rq-enlazado={r.numero}>
+                      {r.puede_abrir ? (
+                        <Link href={`/requerimientos?rq=${r.requerimiento}`} className="tabular inline-flex min-h-11 items-center font-semibold text-acento hover:underline sm:min-h-0">
+                          {r.numero}
+                        </Link>
+                      ) : (
+                        <span className="tabular font-semibold text-texto">{r.numero}</span>
+                      )}
+                      {est ? <Insignia tono={est.tono}>{est.etiqueta}</Insignia> : r.estado}
+                      <span className="min-w-[12rem] flex-1 text-texto">{r.nota}</span>
+                      {enlaza && <QuitarRequerimiento enlace={r.enlace} numero={r.numero} />}
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </section>
+        )}
+
+        {cerrada && a.trabajo_hecho && (
+          <Bloque titulo="Trabajo hecho" pie={[a.cerro, a.cerrada_en ? fechaHora(a.cerrada_en) : null]}>
+            {a.trabajo_hecho}
+            {a.horas_parado != null && (
+              <span className="mt-2 block text-sm" data-horas-parado={a.horas_parado}>
+                <span className="text-texto-suave">Parado: </span>
+                <span className="tabular font-medium">{horas(a.horas_parado)}</span>
+              </span>
+            )}
+          </Bloque>
+        )}
+
+        {a.estado === 'CONFIRMADA' && (
+          <Bloque titulo="Quien la reportó confirmó que quedó bien" pie={[a.confirmada_en ? fechaHora(a.confirmada_en) : null]}>
+            {a.nota_de_quien_reporto ?? 'Sin nota.'}
+          </Bloque>
+        )}
+      </TarjetaCuerpo>
+    </Tarjeta>
+  )
+}
+
+function Bloque({ titulo, pie, children }: { titulo: string; pie: (string | null)[]; children: React.ReactNode }) {
+  const linea = pie.filter(Boolean).join(' · ')
+  return (
+    <div>
+      <p className="text-xs font-medium text-texto-suave">{titulo}</p>
+      <div className="mt-1 max-w-3xl text-sm whitespace-pre-wrap text-texto">{children}</div>
+      {linea && <p className="mt-1 text-xs text-texto-suave">{linea}</p>}
+    </div>
   )
 }
 

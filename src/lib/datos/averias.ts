@@ -36,6 +36,29 @@ export type Averia = {
   anulado_en: string | null
   anulo: string | null
   motivo_anulacion: string | null
+  /** 1 detiene y es un riesgo, 2 detiene, 3 es un riesgo, 4 avería, 5 posible avería. */
+  gravedad: number
+  /** Quién la tiene ahora; `null` si ya no espera a nadie. */
+  espera_de: 'MANTENIMIENTO' | 'QUIEN_REPORTO' | null
+  espera_desde: string | null
+  /** Si la reportó quien mira: solo esa persona confirma. */
+  es_mia: boolean
+  diagnostico: string | null
+  atendida_en: string | null
+  atendio: string | null
+  trabajo_hecho: string | null
+  horas_parado: number | null
+  cerrada_en: string | null
+  cerro: string | null
+  confirmada_en: string | null
+  /** Lo que dijo quien la reportó al confirmar o al decir que no quedó bien. */
+  nota_de_quien_reporto: string | null
+  veces_reabierta: number
+  /** Si la avería dejó el equipo parado cuando se reportó. */
+  paro_al_reportar: boolean
+  /** Desde cuándo está parado el equipo por este reporte, si lo sigue: para proponer las horas al cerrar. */
+  equipo_parado_desde: string | null
+  rq_enlazados: number
 }
 
 type Fila = { [K in keyof Averia]: Averia[K] | null } & { area_id: string | null }
@@ -66,6 +89,23 @@ function aAveria(f: Fila): Averia | null {
     anulado_en: f.anulado_en,
     anulo: f.anulo,
     motivo_anulacion: f.motivo_anulacion,
+    gravedad: f.gravedad ?? 5,
+    espera_de: f.espera_de === 'MANTENIMIENTO' || f.espera_de === 'QUIEN_REPORTO' ? f.espera_de : null,
+    espera_desde: f.espera_desde,
+    es_mia: f.es_mia === true,
+    diagnostico: f.diagnostico,
+    atendida_en: f.atendida_en,
+    atendio: f.atendio,
+    trabajo_hecho: f.trabajo_hecho,
+    horas_parado: f.horas_parado == null ? null : Number(f.horas_parado),
+    cerrada_en: f.cerrada_en,
+    cerro: f.cerro,
+    confirmada_en: f.confirmada_en,
+    nota_de_quien_reporto: f.nota_de_quien_reporto,
+    veces_reabierta: f.veces_reabierta ?? 0,
+    paro_al_reportar: f.paro_al_reportar === true,
+    equipo_parado_desde: f.equipo_parado_desde,
+    rq_enlazados: f.rq_enlazados ?? 0,
   }
 }
 
@@ -87,15 +127,16 @@ export async function listarAverias(): Promise<Averia[]> {
 /** Una foto del reporte, con su enlace firmado por una hora. */
 export type FotoAveria = { id: string; orden: number; enlace: string | null }
 
-export type DetalleAveria = Averia & { fotosDelReporte: FotoAveria[] }
+export type DetalleAveria = Averia & { fotosDelReporte: FotoAveria[]; requerimientos: RqEnlazado[] }
 
 /** Un reporte con sus fotos. `null` si no existe o si quien mira no lo puede ver. */
 export async function cargarAveria(id: string): Promise<DetalleAveria | null> {
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('averias_visibles', { p_id: id })
   if (error) throw new Error(`No se pudo leer el reporte de avería: ${error.message}`)
-  const averia = ((data ?? []) as Fila[]).flatMap((f) => aAveria(f) ?? [])[0]
-  if (!averia) return null
+  const leida = ((data ?? []) as Fila[]).flatMap((f) => aAveria(f) ?? [])[0]
+  if (!leida) return null
+  const averia = { ...leida, requerimientos: leida.rq_enlazados > 0 ? await rqEnlazados(id) : [] }
   if (averia.fotos === 0) return { ...averia, fotosDelReporte: [] }
 
   const { data: filas, error: errorFotos } = await supabase
@@ -155,6 +196,74 @@ export async function equiposParaReportar(): Promise<EquipoParaReportar[]> {
             area: e.area,
             ubicacion: e.ubicacion,
             estado: e.estado ?? '',
+          },
+        ]
+      : [],
+  )
+}
+
+/** Un RQ enlazado a la avería: el número y cómo va, sin precios. */
+export type RqEnlazado = {
+  enlace: string
+  requerimiento: string
+  numero: string
+  estado: string
+  nota: string
+  enlazado_en: string
+  /** Si quien mira lee los RQ: entonces el número lleva a la pantalla del RQ. */
+  puede_abrir: boolean
+}
+
+/** Los RQ de los repuestos de un reporte (`averias_rq_enlazados`): los ve quien ve el reporte. */
+export async function rqEnlazados(averia: string): Promise<RqEnlazado[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('averias_rq_enlazados', { p_averias: [averia] })
+  if (error) throw new Error(`No se pudieron leer los RQ de los repuestos: ${error.message}`)
+  return (data ?? []).flatMap((r) =>
+    r.enlace && r.requerimiento && r.numero
+      ? [
+          {
+            enlace: r.enlace,
+            requerimiento: r.requerimiento,
+            numero: r.numero,
+            estado: r.estado ?? '',
+            nota: r.nota ?? '',
+            enlazado_en: r.enlazado_en ?? '',
+            puede_abrir: r.puede_abrir === true,
+          },
+        ]
+      : [],
+  )
+}
+
+export type RqParaEnlazar = {
+  id: string
+  numero: string
+  tipo: string
+  area: string | null
+  codigo_interno: string | null
+  estado: string
+  justificacion: string | null
+  creado_en: string
+}
+
+/** Los RQ vivos de los últimos seis meses, para que Mantenimiento enlace el de los repuestos (`averias_rq_para_enlazar`). */
+export async function rqParaEnlazar(): Promise<RqParaEnlazar[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('averias_rq_para_enlazar')
+  if (error) throw new Error(`No se pudo leer la lista de RQ: ${error.message}`)
+  return (data ?? []).flatMap((r) =>
+    r.id && r.numero
+      ? [
+          {
+            id: r.id,
+            numero: r.numero,
+            tipo: r.tipo ?? '',
+            area: r.area,
+            codigo_interno: r.codigo_interno,
+            estado: r.estado ?? '',
+            justificacion: r.justificacion,
+            creado_en: r.creado_en ?? '',
           },
         ]
       : [],
