@@ -45,11 +45,13 @@ import {
   ESTADO_SERVICIO_CODIGO,
   TIPO_DOCUMENTO_CODIGO,
   VISTAS_CODIGO,
+  CODIGO_FIJO_OFICINA,
   cambioDesdeElCierre,
   costoDelCodigo,
   dolaresAlCambio,
   dondeAparece,
   enlaceCodigo,
+  esCodigoDeOt,
   faltaElPrecio,
   faltaParaCerrar,
   montoMixto,
@@ -88,6 +90,10 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
   // Solo a dónde fue lo que se le cargó y sus requerimientos.
   const aTodos = codigo === CODIGO_TODOS_LOS_ACTIVOS
   // La ficha de taller la ve quien la veía en la OT (`seccionesDeOrden`) y es solo de una unidad.
+  // De la cotización al cobro es de la unidad que se vende. PLANTA, TODOS LOS ACTIVOS y OFICINA no se venden, y
+  // el código de una OT de mantenimiento o garantía (`OT 2921-2026`) se costea aparte, sin cotización ni factura:
+  // la tarjeta les diría «Sin OT» o «Sin factura» de algo que no les toca (auditoría de la 12.3).
+  const tieneRecorrido = !noEsUnidad(codigo) && codigo !== CODIGO_FIJO_OFICINA.codigo && !esCodigoDeOt(codigo)
   const veFicha = !noEsUnidad(codigo) && puede(perfil, ['ordenes.editar', 'produccion.ver', 'diseno.planos'])
   const vistas = VISTAS_CODIGO.filter((v) =>
     aTodos
@@ -103,8 +109,8 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
 
   const [{ codigos: conDocumentos, diseno: deDiseno, avances }, facturado, reparto, horasDelMes, faltaOficina, faltaPlanilla, lineas, delRecorrido] = await Promise.all([
     leerListaDeCodigos(),
-    // Lo facturado va en el recorrido de arriba, que PLANTA y TODOS LOS ACTIVOS no tienen.
-    veFacturas && !noEsUnidad(codigo)
+    // Lo facturado va en el recorrido de arriba, que solo tiene la unidad que se vende.
+    veFacturas && tieneRecorrido
       ? facturadoDelCodigo(codigo, puede(perfil, ['contabilidad.facturar', 'cotizaciones.ver_aprobadas']))
       : Promise.resolve(null),
     aTodos ? repartoATodosLosActivos() : Promise.resolve<RepartoATodosFila[]>([]),
@@ -117,7 +123,7 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
     aTodos ? Promise.resolve([]) : costeoDelCodigo(codigo),
     // La cotización y la OT del recorrido de arriba, que elige la base, y el recorrido de esa cotización
     // para quien la abre. Si no se leen, el recorrido lo dice en esos pasos y la página sigue.
-    noEsUnidad(codigo) ? Promise.resolve(null) : leerElRecorrido(codigo, puede(perfil, 'cotizaciones.ver_pdf_comercial')),
+    !tieneRecorrido ? Promise.resolve(null) : leerElRecorrido(codigo, puede(perfil, 'cotizaciones.ver_pdf_comercial')),
   ])
   const ajuste = ajusteDePlanilla(lineas)
   const esperaElMes = horasDelMes.some((r) => r.codigo === codigo)
@@ -209,8 +215,8 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
             ) : (
               <>
                 {/* De la cotización al cobro, en una fila: cada paso lleva a donde se ve entero (plan 12, entrega 12.3). */}
-                {/* PLANTA no se cotiza ni se factura: no tiene recorrido. */}
-                {!noEsUnidad(codigo) && (
+                {/* PLANTA, OFICINA y el código de una OT no se cotizan ni se facturan: no tienen recorrido. */}
+                {tieneRecorrido && (
                   <RecorridoDelCodigo
                     codigo={codigo}
                     c={resumen}

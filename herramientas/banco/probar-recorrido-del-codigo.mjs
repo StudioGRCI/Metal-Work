@@ -169,6 +169,13 @@ try {
         de.facturado.texto.includes(`falta facturar ${dinero(venta.vendido - venta.facturado, venta.moneda)}`),
       `lo facturado en parte va en curso, no hecho: ${facturadoEsperado}`,
     )
+    const [igv] = await consulta(
+      `select ig.incluye_igv from public.cotizaciones_pdf c left join public.cotizaciones_pdf_igv ig on ig.cotizacion_id = c.id where c.numero = $1`,
+      [sembrado.cotizacion],
+    )
+    if (igv.incluye_igv === null) {
+      comprobar(de.facturado.texto.includes('falta confirmar si la cotización incluye IGV'), 'con el IGV sin confirmar, lo facturado lo dice, como la bandeja')
+    }
     comprobar(
       de.cobrado?.situacion === 'AHORA' && de.cobrado.texto.includes('US$ 10,000.00') && de.cobrado.texto.includes('por cobrar US$ 19,500.00 de lo facturado'),
       'lo cobrado, en curso, con lo que falta cobrar de lo facturado',
@@ -203,9 +210,11 @@ try {
     await quieta(pagina)
     comprobar(await llega(pagina, `${sembrado.cotizacion}Aprobada`), `«Ver la cotización» abre la ${sembrado.cotizacion}`)
 
-    // PLANTA no se cotiza: no tiene recorrido.
-    await ir(pagina, detalle('PLANTA'))
-    comprobar((await recorrido(pagina).count()) === 0, 'PLANTA no tiene recorrido')
+    // PLANTA, OFICINA y el código de una OT (mantenimiento, garantía) no se cotizan: no tienen recorrido.
+    for (const sin of ['PLANTA', 'OFICINA', 'OT 0014-2026']) {
+      await ir(pagina, detalle(sin))
+      comprobar((await recorrido(pagina).count()) === 0, `${sin} no tiene recorrido`)
+    }
     await contexto.close()
   }
 

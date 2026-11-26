@@ -23,16 +23,14 @@
 -- pantalla no las calle.
 --
 -- Solo lectura, sin montos. La pide `codigos_internos.ver`, como la lista de
--- documentos del código. Cambia la forma de lo que devuelve si ya existía: se
--- quita antes de crearla, y volver a correrla deja lo mismo.
+-- documentos del código. Volver a correrla deja lo mismo (`create or replace`;
+-- las dos funciones son nuevas, sin `drop`, que cuelga `apply_migration`).
 --
 -- Al final, `codigo_interno_lo_vendido`: lo vendido y lo facturado de cada
 -- cotización del código, para que la cabecera compare como la bandeja de
 -- Contabilidad sin pasar por su tope de 300 cotizaciones.
 
-drop function if exists public.codigo_interno_recorrido(text);
-
-create function public.codigo_interno_recorrido(p_codigo text)
+create or replace function public.codigo_interno_recorrido(p_codigo text)
 returns table (
   cotizacion_id     uuid,
   cotizacion_numero text,
@@ -110,9 +108,7 @@ grant execute on function public.codigo_interno_recorrido(text) to authenticated
 -- sin haberse comparado. Esta la lee por código, sin tope, con la misma puerta
 -- que la bandeja (`contabilidad.facturar` o `cotizaciones.ver_aprobadas`) y las
 -- mismas cotizaciones: no anuladas, aprobadas alguna vez y de este código.
-drop function if exists public.codigo_interno_lo_vendido(text);
-
-create function public.codigo_interno_lo_vendido(p_codigo text)
+create or replace function public.codigo_interno_lo_vendido(p_codigo text)
 returns table (
   cotizacion_id          uuid,
   numero                 text,

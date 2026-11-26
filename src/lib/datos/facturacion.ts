@@ -197,6 +197,8 @@ export type FacturadoContraVendido = {
   falta: Record<CodigoMoneda, number>
   /** En qué va cada cotización. */
   como: ComoVaLaFactura[]
+  /** Alguna sin confirmar si su monto incluye IGV: lo vendido se toma con IGV, como en la bandeja, y puede faltar el 18 %. */
+  igvSinConfirmar: boolean
 }
 
 /** Lo facturado de un código, en cada moneda, sin las anuladas, y cómo va contra lo vendido. */
@@ -207,7 +209,7 @@ export type FacturadoDelCodigo = {
   saldo: Record<CodigoMoneda, number>
   contraVendido: FacturadoContraVendido | null
   /** Por qué no se comparó, si no se comparó. */
-  sinComparar: 'SIN_PERMISO' | 'SIN_MONTO' | 'NO_SE_PUDO' | null
+  sinComparar: 'SIN_PERMISO' | 'SIN_MONTO' | 'NO_SE_PUDO' | 'SIN_COTIZACION' | null
 }
 
 /**
@@ -230,7 +232,7 @@ export async function facturadoDelCodigo(codigo: string, leeLoVendido: boolean):
     const filas = ventas.data ?? []
     if (filas.some((v) => v.monto_venta === null)) sinComparar = 'SIN_MONTO'
     else if (filas.length > 0) {
-      contraVendido = { vendido: cero(), falta: cero(), como: [] }
+      contraVendido = { vendido: cero(), falta: cero(), como: [], igvSinConfirmar: filas.some((v) => v.incluye_igv === null) }
       for (const v of filas) {
         const m: CodigoMoneda = v.moneda === 'USD' ? 'USD' : 'PEN'
         const total = totalConIgv(Number(v.monto_venta), v.incluye_igv) ?? 0
@@ -245,7 +247,7 @@ export async function facturadoDelCodigo(codigo: string, leeLoVendido: boolean):
         if (como === 'POR_FACTURAR' || como === 'EN_PARTE') contraVendido.falta[m] += Math.round((total - Number(v.facturado_en_su_moneda)) * 100) / 100
         contraVendido.como.push(como)
       }
-    }
+    } else sinComparar = 'SIN_COTIZACION'
   }
   const r: FacturadoDelCodigo = { facturas: 0, total: cero(), cobrado: cero(), saldo: cero(), contraVendido, sinComparar }
   for (const f of data ?? []) {

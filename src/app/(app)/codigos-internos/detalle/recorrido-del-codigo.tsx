@@ -44,6 +44,7 @@ const SIN_COMPARAR: Record<NonNullable<FacturadoDelCodigo['sinComparar']>, strin
   SIN_PERMISO: 'sin comparar con lo vendido',
   SIN_MONTO: 'no se compara: una cotización no tiene monto',
   NO_SE_PUDO: 'no se pudo comparar con lo vendido',
+  SIN_COTIZACION: 'no se compara: el código no tiene cotización aprobada',
 }
 
 const ENTREGADA = new Set(['ENTREGADA', 'FACTURADA'])
@@ -193,19 +194,27 @@ export function RecorridoDelCodigo({
     const enParte = Boolean(v?.como.some((c) => c === 'EN_PARTE' || c === 'POR_FACTURAR'))
     const otraMoneda = Boolean(v?.como.includes('OTRA_MONEDA'))
     const sinComparar = facturado.sinComparar ? SIN_COMPARAR[facturado.sinComparar] : null
+    // Sin confirmar el IGV, lo vendido se toma con IGV, como en la bandeja: puede faltar el 18 %, y no se da por hecho.
+    const igvSinConfirmar = Boolean(v?.igvSinConfirmar)
     pasos.push({
       clave: 'facturado',
       titulo: 'Facturado',
-      situacion: sinFactura ? 'FALTA' : !v || enParte || otraMoneda ? 'AHORA' : 'HECHO',
+      situacion: sinFactura ? 'FALTA' : !v || enParte || otraMoneda || igvSinConfirmar ? 'AHORA' : 'HECHO',
       valor: sinFactura ? 'Sin factura' : enParte && v ? `${montos(facturado.total)} de ${montos(v.vendido)}` : montos(facturado.total),
       pie: sinFactura
         ? v
           ? `por facturar ${montos(v.vendido)} con IGV · la registra Contabilidad`
           : 'La registra Contabilidad sobre la cotización aprobada'
-        : [cuantas, enParte && v && `falta facturar ${montos(v.falta)}`, otraMoneda && 'en otra moneda que la cotización: no se compara', sinComparar]
+        : [
+            cuantas,
+            enParte && v && `falta facturar ${montos(v.falta)}`,
+            otraMoneda && 'en otra moneda que la cotización: no se compara',
+            igvSinConfirmar && 'falta confirmar si la cotización incluye IGV',
+            sinComparar,
+          ]
             .filter(Boolean)
             .join(' · '),
-      pieEnAviso: enParte || otraMoneda || Boolean(sinComparar),
+      pieEnAviso: enParte || otraMoneda || igvSinConfirmar || Boolean(sinComparar),
       tono: enParte ? 'aviso' : undefined,
       enlace: { href: `${enlaceCodigo(codigo, 'facturacion')}#seccion-elegida`, texto: 'Ver factura y cobro' },
     })
