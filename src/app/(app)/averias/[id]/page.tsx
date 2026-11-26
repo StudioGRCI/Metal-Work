@@ -73,6 +73,7 @@ export default async function PaginaAveria({ params }: PageProps<'/averias/[id]'
           numero={a.numero}
           horasSugeridas={horasParadoSugeridas(a.equipo_parado_desde)}
           dejaOperativo={a.equipo_parado_desde != null}
+          avisaAQuienReporto={!a.es_mia}
         />
       )}
       {atiende && vigenteParaMantenimiento && <AtenderAveria id={a.id} numero={a.numero} diagnostico={a.diagnostico} />}

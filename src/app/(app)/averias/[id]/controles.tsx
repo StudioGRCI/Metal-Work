@@ -230,12 +230,15 @@ export function CerrarAveria({
   numero,
   horasSugeridas,
   dejaOperativo,
+  avisaAQuienReporto,
 }: {
   id: string
   numero: string
   horasSugeridas: number | null
   /** Si el equipo sigue parado por este reporte: al cerrar vuelve a operativo. */
   dejaOperativo: boolean
+  /** Si la reportó otra persona: a ella se le avisa para que confirme. */
+  avisaAQuienReporto: boolean
 }) {
   const v = useVentanaDeLaFicha(id, cerrarAveria)
   return (
@@ -248,11 +251,14 @@ export function CerrarAveria({
         abierta={v.abierta}
         alCerrar={v.cerrar}
         titulo={`Cerrar el reporte ${numero}`}
-        descripcion={
-          dejaOperativo
-            ? 'El equipo vuelve a operativo en el padrón y le avisamos a quien la reportó para que confirme si quedó bien.'
-            : 'Le avisamos a quien la reportó para que confirme si quedó bien.'
-        }
+        descripcion={[
+          dejaOperativo ? 'El equipo vuelve a operativo en el padrón.' : null,
+          avisaAQuienReporto
+            ? 'Le avisamos a quien la reportó para que confirme si quedó bien.'
+            : 'La reportaste tú: después confirmas si quedó bien.',
+        ]
+          .filter(Boolean)
+          .join(' ')}
         ancho="md"
       >
         <form onSubmit={v.alEnviar} className="space-y-4">

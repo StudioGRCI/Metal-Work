@@ -705,6 +705,7 @@ declare
   v_av      public.averias%rowtype;
   r         record;
   v_activo  boolean;
+  v_otro    text;
 begin
   perform public.averias_exigir_mantenimiento();
   if char_length(v_trabajo) not between 10 and 2000 then
@@ -733,6 +734,16 @@ begin
 
   -- Primero se suelta el equipo (sigue en atención: el paro todavía es suyo).
   select * into r from public.averias_soltar_el_equipo(p_id, 'OPERATIVO');
+  -- Si esta no tenía el paro, puede tenerlo otra vigente del mismo equipo: se
+  -- dice cuál, para que nadie lo pase a operativo a mano con ese reporte abierto.
+  if r.vuelve_a is null and r.sigue_parado_por is null then
+    select a2.numero into v_otro
+      from public.averias a2
+     where a2.equipo_id = v_av.equipo_id and a2.id <> p_id and a2.paro_el_equipo
+       and a2.estado in ('REPORTADA', 'EN_ATENCION')
+     order by a2.creado_en
+     limit 1;
+  end if;
   update public.averias
      set estado = 'CERRADA', trabajo_hecho = v_trabajo, horas_parado = round(p_horas, 1), nota_de_quien_reporto = null
    where id = p_id;
@@ -745,7 +756,7 @@ begin
     values (v_av.registrado_por, left('Mantenimiento cerró tu reporte ' || v_av.numero || ': confirma si quedó bien', 200),
             left(v_trabajo, 500), '/averias/' || p_id::text, 'averias', p_id);
   end if;
-  return query select p_id, r.vuelve_a, r.sigue_parado_por, v_av.registrado_por <> v_yo and coalesce(v_activo, false),
+  return query select p_id, r.vuelve_a, coalesce(r.sigue_parado_por, v_otro), v_av.registrado_por <> v_yo and coalesce(v_activo, false),
                       (select e.estado from public.equipos e where e.id = v_av.equipo_id);
 end;
 $$;
@@ -795,12 +806,13 @@ begin
   end if;
   if not p_quedo_bien and v_av.estado = 'EN_ATENCION' and v_av.veces_reabierta > 0
      and v_av.nota_de_quien_reporto is not distinct from v_nota then
-    -- A quién le llegó la primera vez.
+    -- A quién le llegó la primera vez (o, si quien la devolvió es de Mantenimiento, a su propia bandeja).
     return query select p_id, v_av.estado, v_av.paro_el_equipo,
+      case when public.tiene_permiso('averias.atender') then 'SU_BANDEJA' else
       (select case when n.titulo like '% (%' then 'GERENCIA' else 'MANTENIMIENTO' end
          from public.notificaciones n
         where n.origen_tabla = 'averias' and n.origen_id = p_id and n.titulo like 'No quedó bien: %' and n.creado_en >= v_av.reabierta_en
-        order by n.creado_en desc limit 1);
+        order by n.creado_en desc limit 1) end;
     return;
   end if;
   if v_av.estado <> 'CERRADA' then
@@ -845,6 +857,10 @@ begin
   if exists (select 1 from public.notificaciones n
               where n.origen_tabla = 'averias' and n.origen_id = p_id and n.titulo = v_titulo and n.creado_en = now()) then
     v_a_quien := 'MANTENIMIENTO';
+  elsif public.tiene_permiso('averias.atender') then
+    -- Quien la devuelve es de Mantenimiento (reportó la suya): vuelve a su
+    -- bandeja, y no es que falte nadie que la reciba.
+    v_a_quien := 'SU_BANDEJA';
   else
     perform public.avisar_a_permiso('averias.ver', v_titulo || ' (no hay cuenta de Mantenimiento que la reciba)', v_nota,
                                     '/averias/' || p_id::text, 'averias', p_id);

@@ -124,12 +124,20 @@ const [reporte] = await como(ventas, `select * from public.averias_reportar($1, 
 comprobar(reporte.equipo_parado, `[Ventas] reportó ${reporte.numero_averia} y el equipo quedó parado`)
 const NUMERO = reporte.numero_averia
 // Que lleve unas horas parado, para que la pantalla proponga algo que no sea 0.
-await base.query(`alter table public.equipos disable trigger trg_equipo_normalizar`)
-await base.query(`update public.equipos set estado_desde = now() - interval '5 hours 10 minutes' where id = $1`, [equipoId])
-await base.query(`alter table public.equipos enable trigger trg_equipo_normalizar`)
-await base.query(`alter table public.averias disable trigger trg_averia_guardia`)
-await base.query(`update public.averias set equipo_parado_desde = (select estado_desde from public.equipos where id = $2) where id = $1`, [id, equipoId])
-await base.query(`alter table public.averias enable trigger trg_averia_guardia`)
+// En una transacción: si algo falla, las guardias no quedan apagadas en el banco.
+await base.query('begin')
+try {
+  await base.query(`alter table public.equipos disable trigger trg_equipo_normalizar`)
+  await base.query(`update public.equipos set estado_desde = now() - interval '5 hours 10 minutes' where id = $1`, [equipoId])
+  await base.query(`alter table public.equipos enable trigger trg_equipo_normalizar`)
+  await base.query(`alter table public.averias disable trigger trg_averia_guardia`)
+  await base.query(`update public.averias set equipo_parado_desde = (select estado_desde from public.equipos where id = $2) where id = $1`, [id, equipoId])
+  await base.query(`alter table public.averias enable trigger trg_averia_guardia`)
+  await base.query('commit')
+} catch (e) {
+  await base.query('rollback')
+  throw e
+}
 
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
 

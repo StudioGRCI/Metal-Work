@@ -55,7 +55,7 @@ values (pg_temp.id('rq2'), 'RQ-CHK466-2', (select id from public.areas where cod
         'Pedido repetido de la prueba', :'admin_id', 'ANULADO', :'admin_id', now(), 'Se pidió dos veces lo mismo');
 
 do $$ begin
-  perform set_config('prueba.av' || n, gen_random_uuid()::text, true) from generate_series(1, 6) n;
+  perform set_config('prueba.av' || n, gen_random_uuid()::text, true) from generate_series(1, 9) n;
   perform set_config('prueba.enlace' || n, gen_random_uuid()::text, true) from generate_series(1, 4) n;
 end $$;
 
@@ -473,6 +473,54 @@ begin
     'el equipo que Mantenimiento paró a mano sigue parado al cerrar, y el cierre lo dice para que lo cambie en Equipos');
 end $$;
 reset role;
+
+-- 12. El paro lo tiene otro reporte abierto: el cierre lo dice --------------------------------------
+-- av7 detiene el trabajo en el equipo 1; av8, una posible avería del mismo
+-- equipo, se cierra: el equipo sigue parado por av7, y el cierre dice cuál.
+select test.como_usuario(:'rep_id');
+set local role authenticated;
+select * from public.averias_reportar(pg_temp.id('av7'), pg_temp.id('e1'), 'AVERIA', true, false,
+  'Otra vez se apaga sola, ahora al encenderla.', '[]') \gset r7_
+select * from public.averias_reportar(pg_temp.id('av8'), pg_temp.id('e1'), 'POSIBLE_AVERIA', false, false,
+  'El cable hace un chasquido al moverlo.', '[]') \gset r8_
+reset role;
+select test.como_usuario(:'mnt_id');
+set local role authenticated;
+do $$
+declare r record;
+begin
+  perform public.averias_atender(pg_temp.id('av8'), 'Prensacable flojo en la entrada del cable.');
+  select * into r from public.averias_cerrar(pg_temp.id('av8'), 'Se ajustó el prensacable de la entrada.', 0);
+  perform test.afirmar(r.equipo_vuelve_a is null and r.sigue_parado_por = (select numero from public.averias where id = pg_temp.id('av7')),
+    'cerrada la que no tenía el paro, dice qué otro reporte abierto tiene el equipo parado');
+  perform public.averias_anular(pg_temp.id('av7'), 'Prueba: se reportó para ver el cierre de la otra.');
+end $$;
+reset role;
+
+-- 13. Mantenimiento devuelve la suya: vuelve a su bandeja, sin alarmar a Gerencia ------------------
+select test.como_usuario(:'admin_id');
+update public.usuarios set activo = false where id in (select id from mnt_activos) or id = :'mnt2_id';
+update public.usuarios set activo = true where id = :'mnt_id';
+select test.como_usuario(:'mnt_id');
+set local role authenticated;
+select * from public.averias_reportar(pg_temp.id('av9'), pg_temp.id('e1'), 'POSIBLE_AVERIA', false, false,
+  'Vibra un poco más de lo normal al cortar.', '[]') \gset r9_
+do $$
+declare r record;
+begin
+  perform public.averias_atender(pg_temp.id('av9'), 'Disco desbalanceado por el desgaste.');
+  perform public.averias_cerrar(pg_temp.id('av9'), 'Se cambió el disco por uno nuevo.', 0);
+  select * into r from public.averias_confirmar(pg_temp.id('av9'), false, 'Sigue vibrando con el disco nuevo.');
+  perform test.afirmar(r.estado = 'EN_ATENCION' and r.avisado_a = 'SU_BANDEJA', 'la de Mantenimiento que no quedó bien vuelve a su bandeja');
+  select * into r from public.averias_confirmar(pg_temp.id('av9'), false, 'Sigue vibrando con el disco nuevo.');
+  perform test.afirmar(r.avisado_a = 'SU_BANDEJA', 'y el mismo envío dice lo mismo');
+end $$;
+reset role;
+select test.afirmar(
+  not exists (select 1 from public.notificaciones where origen_id = pg_temp.id('av9') and titulo like '%no hay cuenta de Mantenimiento%'),
+  'sin avisarle a Gerencia que falta Mantenimiento');
+select test.como_usuario(:'admin_id');
+update public.usuarios set activo = true where id in (select id from mnt_activos) or id = :'mnt2_id';
 
 -- 10. Nadie borra ni corrige por debajo ----------------------------------------------------------
 select test.como_usuario(:'admin_id');

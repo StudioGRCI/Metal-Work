@@ -303,7 +303,9 @@ export async function confirmarAveria(_previo: unknown, formulario: FormData): P
     mensaje: `Vuelve a Mantenimiento con lo que contaste${
       data.avisado_a === 'MANTENIMIENTO'
         ? '; ya le avisamos.'
-        : data.avisado_a === 'GERENCIA'
+        : data.avisado_a === 'SU_BANDEJA'
+          ? ': queda en tu bandeja de «Por atender».'
+          : data.avisado_a === 'GERENCIA'
           ? '. No hay cuenta de Mantenimiento activa: le avisamos a Gerencia.'
           : '. No hay ninguna cuenta activa que reciba el aviso: díselo a Mantenimiento en persona.'
     }${data.equipo_parado ? ' El equipo quedó parado otra vez.' : ''}`,
