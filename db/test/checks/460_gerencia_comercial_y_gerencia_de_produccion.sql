@@ -24,13 +24,15 @@ select test.afirmar(
 -- Ninguno de los dos registra: ningún permiso de escritura salvo el visto del
 -- reporte y, Gerencia Comercial, el reclamo de garantía que trae el cliente, que
 -- registra Ventas (plan «Las demás áreas», A.2, aprobado por DKS el 2026-11-26).
+-- Gerencia Comercial consulta además, como Ventas, los trámites de las unidades
+-- de los clientes (plan «El puesto de Tramitador», entrega 1, 2026-11-26).
 select test.afirmar(not exists (
     select 1 from public.roles_permisos rp join public.roles r on r.id = rp.rol_id
      where r.codigo in ('GERENTE_COMERCIAL', 'GERENTE_PRODUCCION')
        and rp.permiso_codigo not in ('clientes.ver', 'cotizaciones.ver_pdf_comercial', 'ordenes.listar', 'ordenes.ver',
                                      'reporte_diario.ver', 'reporte_diario.validar_gerencia',
                                      'codigos_internos.seguimiento', 'produccion.ver', 'rrhh.tiempos_entrega')
-       and not (r.codigo = 'GERENTE_COMERCIAL' and rp.permiso_codigo = 'garantias.registrar')),
+       and not (r.codigo = 'GERENTE_COMERCIAL' and rp.permiso_codigo in ('garantias.registrar', 'tramites.ver_de_unidades'))),
   'los dos puestos solo consultan, salvo el visto de Gerencia al reporte y el reclamo de garantía de Ventas');
 
 -- La cotización es de Ventas, como en el uso real: con una propia, el RLS deja
