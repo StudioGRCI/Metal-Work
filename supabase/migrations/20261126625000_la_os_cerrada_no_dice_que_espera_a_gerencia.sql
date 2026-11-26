@@ -5,7 +5,7 @@
 -- «La orden de servicio … se inicia cuando Gerencia la aprueba» (migración
 -- 20261012111000). Es falso: Gerencia ya la aprobó, o no hay nada que aprobar,
 -- y Logística se quedaba esperando una aprobación que no iba a llegar. Ahora
--- dice cómo está: anulada, con conformidad o esperando a Gerencia.
+-- dice cómo está: anulada, con conformidad, rechazada o esperando a Gerencia.
 --
 -- Solo cambia ese mensaje. El resto de `avanzar_orden_servicio` queda igual:
 -- se toma su texto vivo y se reemplaza esa línea, como en 20261026160000, para
@@ -21,10 +21,12 @@ declare
         raise exception 'La orden de servicio % está anulada: ya no se ejecuta.', v_os.numero using errcode = 'check_violation';
       elsif v_os.estado = 'CONFORME' then
         raise exception 'La orden de servicio % ya tiene conformidad: no vuelve a ejecución.', v_os.numero using errcode = 'check_violation';
+      elsif v_os.aprobacion = 'RECHAZADA' then
+        raise exception 'La orden de servicio % fue rechazada por Gerencia: emite otra si todavía hace falta.', v_os.numero using errcode = 'check_violation';
       end if;
       raise exception 'La orden de servicio % se inicia cuando Gerencia la aprueba.', v_os.numero using errcode = 'check_violation';$v$;
 begin
-  select pg_get_functiondef(p.oid) into v_def
+  select replace(pg_get_functiondef(p.oid), E'\r', '') into v_def
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = 'avanzar_orden_servicio';
   if v_def is null then

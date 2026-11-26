@@ -9,11 +9,12 @@
 -- generadas), así que Tesorería no sabía cuánto detraer. Lo vio Tesorería.
 --
 -- Ahora, al registrar o corregir un tipo de cambio, cada OS en dólares que siga
--- sin monto en soles lo toma:
---   · con el cambio del día en que se emitió (o el último anterior), como al
---     emitir;
---   · si no hay ninguno de ese día ni de antes, con el primero que se registró
---     después: es el más cercano que hay.
+-- sin monto en soles lo toma con el cambio de venta del día en que se emitió
+-- (fecha de Lima), o el último de los diez días anteriores: `cambio_del_dia`,
+-- el mismo criterio del costeo (20261001150000). No se busca hacia adelante: el
+-- cambio de otro día dejaría una cifra que depende del orden en que se
+-- registran. Si falta el de ese día, la OS sigue sin monto en soles hasta que
+-- se registre.
 -- Solo se completa lo vacío: el monto en soles que ya tiene una OS no cambia.
 -- No toca la anulada (es evidencia) ni la rechazada (se emite otra).
 --
@@ -41,10 +42,7 @@ begin
   update public.ordenes_servicio s
      set monto_pen = round(s.monto * x.tc, 2)
     from (select o.id,
-                 coalesce(public.tipo_cambio_venta(public.fecha_de_lima(o.creado_en)),
-                          (select t.venta from public.tipos_de_cambio t
-                            where t.fecha > public.fecha_de_lima(o.creado_en)
-                            order by t.fecha limit 1)) as tc
+                 public.cambio_del_dia(public.fecha_de_lima(o.creado_en), 'VENTA') as tc
             from public.ordenes_servicio o
            where o.monto_pen is null
              and o.moneda <> 'PEN'
@@ -59,7 +57,7 @@ begin
 end;
 $$;
 comment on function public.completar_monto_pen_de_servicios() is
-  'Pone el monto en soles a las OS en dólares que no lo tenían: con el cambio del día de emisión o, si no hay, el primero registrado después. Solo lo vacío.';
+  'Pone el monto en soles a las OS en dólares que no lo tenían, con el cambio de venta del día de emisión (cambio_del_dia). Solo lo vacío; sin cambio de ese día, sigue vacío.';
 revoke all on function public.completar_monto_pen_de_servicios() from public, anon, authenticated;
 
 create or replace function public.fn_tipo_de_cambio_completa_servicios()
@@ -98,7 +96,8 @@ declare
     return new;
   end if;$v$;
 begin
-  select pg_get_functiondef('public.fn_os_guardia()'::regprocedure) into v_def;
+  -- Sin los \r que deja una migración aplicada desde Windows: el ancla es de varias líneas.
+  select replace(pg_get_functiondef('public.fn_os_guardia()'::regprocedure), E'\r', '') into v_def;
   if position('metalwork.completando_monto_pen' in v_def) > 0 then
     return;
   end if;
@@ -119,7 +118,9 @@ begin
   -- El monto en soles que completa la base al registrar un tipo de cambio no lo
   -- cambia Administración (20261126626000).
   if current_setting('metalwork.completando_monto_pen', true) = 'si' and tg_op = 'UPDATE'
-     and old.monto_pen is null and new.monto_pen is not null then
+     and old.monto_pen is null and new.monto_pen is not null
+     and (to_jsonb(new) - array['monto_pen', 'total_con_igv_pen', 'detraccion_monto', 'actualizado_en'])
+         = (to_jsonb(old) - array['monto_pen', 'total_con_igv_pen', 'detraccion_monto', 'actualizado_en']) then
     return new;
   end if;
   if public.compra_solo_su_rqa() then

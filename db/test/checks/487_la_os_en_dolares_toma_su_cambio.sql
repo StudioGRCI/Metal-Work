@@ -2,15 +2,18 @@
 -- cambio se registra después (migración 20261126626000). Con la cuenta de cada
 -- puesto —nunca ADMIN— y `set local role authenticated`. Termina en rollback.
 --
--- Sin ningún tipo de cambio en la base, Logística emite cuatro OS en dólares:
---   1. aprobada y en ejecución, afecta a detracción;
---   2. aprobada y conforme;
---   3. aprobada y anulada: queda como estaba;
---   4. en soles: ya tiene su monto y no cambia.
--- Administración registra el primer tipo de cambio: la 1 y la 2 toman su monto
--- en soles, y la 1 su total con IGV y su detracción. Contabilidad lo corrige
--- después: lo que ya se completó no cambia. Y la guarda de la OS conforme sigue
--- frenando cualquier otro cambio.
+-- Sin ningún tipo de cambio en la base, Logística emite cinco OS:
+--   1. en dólares, aprobada y en ejecución, afecta a detracción;
+--   2. en dólares, aprobada y conforme;
+--   3. en dólares, aprobada y anulada: queda como estaba;
+--   4. en soles: ya tiene su monto y no cambia;
+--   5. en dólares, rechazada por Gerencia.
+-- Primero Administración registra el cambio de mañana: no se busca hacia
+-- adelante, nadie se completa. Después registra el de hoy: la 1 y la 2 toman su
+-- monto en soles, y la 1 su total con IGV y su detracción. Contabilidad lo
+-- corrige después: lo que ya se completó no cambia. La guarda de la OS conforme
+-- sigue frenando cualquier otro cambio, también con la marca puesta. Y «En
+-- ejecución» sobre la anulada y la rechazada dice cómo están (20261126625000).
 \set ON_ERROR_STOP on
 begin;
 
@@ -36,7 +39,7 @@ begin
    order by r limit 1
   on conflict (tipo_documento, numero_documento) do update set activo = true;
   perform set_config('prueba.proveedor', (select id::text from public.proveedores where razon_social = 'PROVEEDOR DE PRUEBA 487'), true);
-  foreach v in array array['os1', 'os2', 'os3', 'os4', 'tc'] loop
+  foreach v in array array['os1', 'os2', 'os3', 'os4', 'os5', 'tc', 'tc2'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
 end $$;
@@ -48,6 +51,7 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', current_setting('prueba.' || p_clave), 'role', 'authenticated')::text, true);
 end $$;
 create or replace function pg_temp.id(p text) returns uuid language sql as $$ select current_setting('prueba.' || p)::uuid $$;
+create or replace function pg_temp.hoy() returns date language sql as $$ select (now() at time zone 'America/Lima')::date $$;
 create or replace function pg_temp.os(p text) returns public.ordenes_servicio language sql as $$
   select * from public.ordenes_servicio where id = pg_temp.id(p);
 $$;
@@ -60,7 +64,7 @@ set local role authenticated;
 do $$
 declare v text;
 begin
-  foreach v in array array['os1', 'os2', 'os3'] loop
+  foreach v in array array['os1', 'os2', 'os3', 'os5'] loop
     perform public.emitir_orden_servicio(pg_temp.id(v), pg_temp.id('proveedor'), null, (select id from public.areas where codigo = 'ACB'),
       'PLANTA', 'Arenado del chasis, prueba 487 ' || v, null, current_date, current_date + 5, 'USD', 1000, 'CONTADO', 0, '025', null);
   end loop;
@@ -77,6 +81,7 @@ set local role authenticated;
 select public.aprobar_orden_servicio(pg_temp.id('os1'));
 select public.aprobar_orden_servicio(pg_temp.id('os2'));
 select public.aprobar_orden_servicio(pg_temp.id('os3'));
+select public.rechazar_orden_servicio(pg_temp.id('os5'), 'El precio no corresponde al trabajo');
 reset role;
 
 select pg_temp.como('comprador');
@@ -85,13 +90,24 @@ select public.avanzar_orden_servicio(pg_temp.id('os1'), 'EN_EJECUCION', null);
 select public.avanzar_orden_servicio(pg_temp.id('os2'), 'EN_EJECUCION', null);
 select public.avanzar_orden_servicio(pg_temp.id('os2'), 'CONFORME', 'Volvió bien arenado');
 select public.avanzar_orden_servicio(pg_temp.id('os3'), 'ANULADA', 'Se encargó a otro proveedor');
+select test.debe_fallar(format('select public.avanzar_orden_servicio(%L, ''EN_EJECUCION'', null)', pg_temp.id('os3')),
+  'la OS anulada no se ejecuta y lo dice', 'está anulada');
+select test.debe_fallar(format('select public.avanzar_orden_servicio(%L, ''EN_EJECUCION'', null)', pg_temp.id('os5')),
+  'la OS rechazada no se ejecuta y lo dice', 'fue rechazada');
 reset role;
 
 -- ============================================ Administración registra el cambio
 select pg_temp.como('administracion');
 set local role authenticated;
 insert into public.tipos_de_cambio (id, fecha, compra, venta, fuente, registrado_por)
-values (pg_temp.id('tc'), current_date, 3.70, 3.75, 'SUNAT', pg_temp.id('administracion'));
+values (pg_temp.id('tc2'), pg_temp.hoy() + 1, 3.60, 3.65, 'SUNAT', pg_temp.id('administracion'));
+reset role;
+select test.afirmar((pg_temp.os('os1')).monto_pen is null,
+  'el cambio de un día después de la emisión no se usa: no se busca hacia adelante');
+select pg_temp.como('administracion');
+set local role authenticated;
+insert into public.tipos_de_cambio (id, fecha, compra, venta, fuente, registrado_por)
+values (pg_temp.id('tc'), pg_temp.hoy(), 3.70, 3.75, 'SUNAT', pg_temp.id('administracion'));
 reset role;
 select test.afirmar((pg_temp.os('os1')).monto_pen = 3750.00,
   format('la OS en ejecución toma su monto en soles con el cambio registrado (dice %s)', (pg_temp.os('os1')).monto_pen));
@@ -101,6 +117,7 @@ select test.afirmar((pg_temp.os('os1')).total_con_igv_pen = 4425.00 and (pg_temp
 select test.afirmar((pg_temp.os('os2')).monto_pen = 3750.00 and (pg_temp.os('os2')).estado = 'CONFORME',
   'la OS conforme también toma su monto en soles, y sigue conforme');
 select test.afirmar((pg_temp.os('os3')).monto_pen is null, 'la OS anulada queda como estaba: es evidencia');
+select test.afirmar((pg_temp.os('os5')).monto_pen is null, 'la OS rechazada tampoco se toca');
 select test.afirmar((pg_temp.os('os4')).monto_pen = 900, 'la OS en soles no cambia');
 
 -- ============================================ Contabilidad corrige el cambio: lo completado no cambia
@@ -115,6 +132,12 @@ select test.afirmar((pg_temp.os('os1')).monto_pen = 3750.00,
 select test.debe_fallar(
   format('update public.ordenes_servicio set monto_pen = 1 where id = %L', pg_temp.id('os2')),
   'sin pasar por la base, la OS conforme sigue sin cambiar', 'queda como evidencia');
+-- Con la marca puesta, la guarda deja llenar el monto vacío y nada más.
+select set_config('metalwork.completando_monto_pen', 'si', true);
+select test.debe_fallar(
+  format('update public.ordenes_servicio set descripcion = ''Otra cosa'' where id = %L', pg_temp.id('os2')),
+  'con la marca puesta, la OS conforme sigue sin cambiar otra cosa', 'queda como evidencia');
+select set_config('metalwork.completando_monto_pen', '', true);
 select pg_temp.como('comprador');
 set local role authenticated;
 select test.debe_fallar('select public.completar_monto_pen_de_servicios()',
