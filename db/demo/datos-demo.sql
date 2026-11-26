@@ -638,3 +638,62 @@ begin
   perform set_config('request.jwt.claim.sub', '', true);
 end;
 $$;
+
+-- -----------------------------------------------------------------------------
+-- SSOMA 15.4 (migración 20261126997500): dos puntos propios de un área y dos
+-- inspecciones, para que la lista, «Por área» y la ficha tengan qué mostrar:
+-- una de Producción con dos hallazgos (una acción vencida y otra en plazo) y
+-- una de Almacén con todo conforme. Maestranza queda sin inspeccionar. Con la
+-- cuenta de administrador de la demostración: las del banco todavía no están.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_admin uuid;
+  v_alm   uuid;
+  v_prd   uuid := (select id from public.areas where codigo = 'PRD');
+  v_almac uuid := (select id from public.areas where codigo = 'ALM');
+  v_mtz   uuid := (select id from public.areas where codigo = 'MTZ');
+  v_ins   uuid := gen_random_uuid();
+  v_hoy   date := (now() at time zone 'America/Lima')::date;
+begin
+  if exists (select 1 from public.ssoma_inspecciones) then
+    return;
+  end if;
+  select u.id into v_admin from public.usuarios u join public.roles r on r.id = u.rol_id where r.codigo = 'ADMIN' and u.activo limit 1;
+  select u.id into v_alm from public.usuarios u where u.correo = 'almacen@metalworkperusac.com' and u.activo;
+  if v_admin is null or v_alm is null or v_prd is null or v_almac is null or v_mtz is null then
+    return;
+  end if;
+
+  perform set_config('request.jwt.claim.sub', v_admin::text, true);
+  perform public.ssoma_agregar_punto(gen_random_uuid(), v_prd, 'Máquinas de soldar con su cable de tierra y su pinza en buen estado');
+  perform public.ssoma_agregar_punto(gen_random_uuid(), v_mtz, 'Plegadora y guillotina con su parada de emergencia probada');
+
+  perform public.ssoma_registrar_inspeccion(v_ins, v_prd, v_hoy - 6, 'PLANEADA', 'Recorrido con el supervisor del turno.',
+    (select jsonb_agg(
+       case p.id
+         when '5a150001-0000-4000-8000-000000000001' then jsonb_build_object('punto', p.id, 'resultado', 'NO_CONFORME',
+           'hallazgo', 'Dos soldadores trabajando sin lentes en la nave 1.',
+           'accion', jsonb_build_object('que', 'Entregar lentes a los soldadores de la nave 1 y recordar su uso antes de empezar el turno.',
+                                        'responsable', v_alm, 'fecha_limite', v_hoy))
+         when '5a150001-0000-4000-8000-000000000004' then jsonb_build_object('punto', p.id, 'resultado', 'NO_CONFORME',
+           'hallazgo', 'El extintor de la columna 4 está tapado por parihuelas y con la carga vencida.',
+           'accion', jsonb_build_object('que', 'Despejar el acceso al extintor de la columna 4 y mandarlo a recargar.',
+                                        'responsable', v_alm, 'fecha_limite', v_hoy + 4))
+         when '5a150001-0000-4000-8000-000000000009' then jsonb_build_object('punto', p.id, 'resultado', 'NO_APLICA')
+         else jsonb_build_object('punto', p.id, 'resultado', 'CONFORME')
+       end)
+       from public.ssoma_lista_puntos p where p.activo and (p.area_id is null or p.area_id = v_prd)));
+  perform public.ssoma_registrar_inspeccion(gen_random_uuid(), v_almac, v_hoy - 20, 'NO_PLANEADA', null,
+    (select jsonb_agg(jsonb_build_object('punto', p.id, 'resultado', 'CONFORME'))
+       from public.ssoma_lista_puntos p where p.activo and (p.area_id is null or p.area_id = v_almac)));
+
+  -- Solo en la demostración: la primera acción quedó vencida hace dos días.
+  perform set_config('session_replication_role', 'replica', true);
+  update public.ssoma_acciones a set fecha_limite = v_hoy - 2
+    from public.ssoma_inspeccion_respuestas r
+   where r.id = a.respuesta_id and r.inspeccion_id = v_ins and r.punto_id = '5a150001-0000-4000-8000-000000000001';
+  perform set_config('session_replication_role', 'origin', true);
+  perform set_config('request.jwt.claim.sub', '', true);
+end;
+$$;

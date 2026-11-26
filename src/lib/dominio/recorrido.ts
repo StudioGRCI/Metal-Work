@@ -2,9 +2,9 @@
  * El recorrido de un documento numerado: por dónde pasó, quién hizo cada paso y
  * cuándo, quién lo tiene ahora y hace cuántos días (migración 20261125130000).
  * La base da las claves (`recorrido_de_requerimientos`,
- * `recorrido_de_cotizaciones`, `recorrido_de_informes_diseno`, `recorrido_de_planillas`);
- * las frases viven aquí. Un documento nuevo suma su función con la misma forma y
- * su mapa de pasos en este archivo.
+ * `recorrido_de_cotizaciones`, `recorrido_de_informes_diseno`, `recorrido_de_planillas`,
+ * `recorrido_de_reportes_diarios`); las frases viven aquí. Un documento nuevo suma su
+ * función con la misma forma y su mapa de pasos en este archivo.
  */
 
 // Sin imports de valores: `recorrido.test.mjs` lo carga con `node --test`, que no
@@ -41,6 +41,8 @@ export type PasoDescrito = PasoDelRecorrido & {
   titulo: string
   /** Una línea más: qué se espera de quien lo tiene, o el dato del paso. */
   nota: string | null
+  /** Lo tienen dos a la vez («Gerencia y Recursos Humanos»): «lo tienen», no «lo tiene». */
+  plural?: boolean
   /**
    * Una anotación al margen del circuito (el motivo del atraso, la fecha
    * corregida): no dice en qué terminó el documento, así que el resumen de un
@@ -176,6 +178,16 @@ const PASOS_DE_LA_COTIZACION: Record<string, Frases> = {
   CORRECCION: { hecho: 'Corrección subida', falta: 'Corrección', nota: (version) => `Pasó a la ${version}` },
   // El número de la OT llega solo a quien lee las órdenes.
   CODIGO_Y_OT: { hecho: 'Con código interno y OT', falta: 'Código interno y OT', nota: (ot) => ot },
+  // Su OT pasó a otro comprador con «Editar OT» (migración 20261126988000): esa
+  // unidad ya no lleva OT. Solo se dice hecho; el número, a quien lee las órdenes.
+  OTRO_COMPRADOR: {
+    hecho: 'Pasó a otro comprador',
+    falta: 'Paso a otro comprador',
+    nota: (ots) => {
+      const cuantas = ots.split(', ').length
+      return cuantas === 1 ? `La OT ${ots} ya no es de esta venta` : `Las OT ${ots.replace(/, ([^,]*)$/, ' y $1')} ya no son de esta venta`
+    },
+  },
   // En parte, solo a quien lee las facturas (migración 20261126470000): «Facturada» con la mitad sin facturar confundía.
   FACTURA: { hecho: (d) => (d === 'EN_PARTE' ? 'Facturada en parte' : 'Facturada'), falta: 'Factura' },
   // Facturada en parte: la factura de lo que falta del total (migración 20261126470000). Solo espera, nunca se dice hecha.
@@ -188,13 +200,19 @@ const PASOS_DE_LA_COTIZACION: Record<string, Frases> = {
 const ESPERAS_DE_LA_COTIZACION: Record<string, (detalle: string | null) => string> = {
   REVISION: () => 'La aprueba o la rechaza.',
   CORRECCION: () => 'Sube la corrección con el mismo número.',
-  // Con varias unidades el detalle dice cuántas OT lleva de cuántas («1/3»).
+  // Con varias unidades el detalle dice cuántas OT lleva de cuántas («1/3»), y
+  // cuántas pasaron a otro comprador si alguna («1/3/1», migración 20261126988000).
   CODIGO_Y_OT: (d) => {
-    const [lleva, de] = (d ?? '').split('/').map(Number)
+    const [lleva, de, pasaron = 0] = (d ?? '').split('/').map(Number)
     if (!de) return 'Le da el código interno de la unidad y sube la OT.'
-    const faltan = de - lleva
+    const faltan = de - lleva - pasaron
+    const falta = faltan === 1 ? 'falta la de 1 unidad, con su código interno' : `faltan las de ${faltan} unidades, cada una con su código interno`
+    if (pasaron) {
+      const paso = pasaron === 1 ? '1 pasó a otro comprador' : `${pasaron} pasaron a otro comprador`
+      return lleva ? `De ${de} unidades, lleva ${lleva} OT y ${paso}: ${falta}.` : `De ${de} unidades, ${paso}: ${falta}.`
+    }
     return lleva
-      ? `Lleva ${lleva} de ${de} OT: ${faltan === 1 ? 'falta la de 1 unidad, con su código interno' : `faltan las de ${faltan} unidades, cada una con su código interno`}.`
+      ? `Lleva ${lleva} de ${de} OT: ${falta}.`
       : `Le da a cada una de las ${de} unidades su código interno y sube su OT.`
   },
   FACTURA: () => 'Registra su factura.',
@@ -264,6 +282,26 @@ const ESPERAS_DE_LA_AVERIA: Record<string, (detalle: string | null) => string> =
     d === 'SIN_CUENTA'
       ? 'Quien la reportó ya no tiene cuenta activa: prueba el equipo y dice si quedó bien.'
       : 'Prueba el equipo y dice si quedó bien.',
+}
+
+const PASOS_DEL_REPORTE: Record<string, Frases> = {
+  ENVIO: { hecho: (d) => (d === 'CORRIGE' ? 'Subió la corrección de un reporte observado' : 'Subido'), falta: 'Subida' },
+  VISTO_RRHH: { hecho: 'Visto bueno de Recursos Humanos', falta: 'Visto bueno de Recursos Humanos' },
+  VISTO_GERENCIA: { hecho: 'Visto bueno de Gerencia', falta: 'Visto bueno de Gerencia' },
+  VALIDACION: { hecho: 'Validado', falta: 'Visto bueno de Gerencia y de Recursos Humanos' },
+  OBSERVACION: {
+    hecho: (area) => `Observado por ${area === 'GERENCIA' ? 'Gerencia' : area === 'RRHH' ? 'Recursos Humanos' : 'quien lo valida'}`,
+    falta: 'Observación',
+  },
+  CORRECCION: { hecho: 'Corregido y subido de nuevo', falta: 'Corrección' },
+  ANULACION: { hecho: 'Anulado', falta: 'Anulación' },
+}
+
+const ESPERAS_DEL_REPORTE: Record<string, (detalle: string | null) => string> = {
+  VALIDACION: () => 'Le dan su visto bueno, en cualquier orden, o lo observan.',
+  VISTO_RRHH: () => 'Le da su visto bueno a la gente y sus horas, o lo observa.',
+  VISTO_GERENCIA: () => 'Le da su visto bueno al trabajo y su avance, o lo observa.',
+  CORRECCION: () => 'Lo corrige y lo sube de nuevo.',
 }
 
 function describir(
@@ -476,3 +514,10 @@ export const describirRecorridoDeLaAveria = (pasos: readonly PasoDelRecorrido[])
     // Sin la cuenta de quien la reportó, la confirma otra persona: el título no la nombra.
     p.situacion === 'AHORA' && p.paso === 'CONFIRMACION' && p.detalle === 'SIN_CUENTA' ? { ...p, titulo: 'Confirmación: si quedó bien' } : p,
   )
+
+/**
+ * El recorrido de un reporte diario, en palabras. Recién subido lo tienen
+ * Gerencia y Recursos Humanos a la vez: ese paso va en plural.
+ */
+export const describirRecorridoDelReporte = (pasos: readonly PasoDelRecorrido[]) =>
+  describir(pasos, PASOS_DEL_REPORTE, ESPERAS_DEL_REPORTE).map((p) => (p.espera === 'VALIDACION' ? { ...p, plural: true } : p))
