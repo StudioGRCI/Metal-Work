@@ -29,7 +29,7 @@ insert into public.sedes (codigo, nombre) values ('QA473', 'Taller prueba de la 
 do $$
 declare v text; v_id uuid;
 begin
-  foreach v in array array['VENDEDOR:GCO', 'GERENTE:GGE', 'ADMINISTRACION:ADM', 'ALMACENERO:ALM'] loop
+  foreach v in array array['VENDEDOR:GCO', 'GERENTE:GGE', 'ADMINISTRACION:ADM', 'ALMACENERO:ALM', 'SUPERVISOR_GENERAL:PRD'] loop
     v_id := gen_random_uuid();
     insert into auth.users (id, email) values (v_id, lower(replace(v, ':', '.')) || '.473@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id, sede_id, documento)
@@ -210,6 +210,16 @@ select pg_temp.como('almacenero');
 set local role authenticated;
 select test.debe_fallar(format('select * from public.unidades_del_cliente_con_su_entrega(%L::uuid)', current_setting('prueba.cliente')),
   'Almacén, sin clientes.ver, no la lee', 'No tienes permiso para ver los clientes');
+reset role;
+
+-- Supervisión General ve clientes pero no las OT (20261016120000): la ficha no
+-- le dice la OT ni en qué va cada unidad, y tampoco le da un error (20261126452000).
+select pg_temp.como('supervisor_general');
+set local role authenticated;
+select test.afirmar(
+  (select count(*) from public.unidades u where u.cliente_id = pg_temp.id('cliente')) > 0
+  and (select count(*) from public.unidades_del_cliente_con_su_entrega(pg_temp.id('cliente'))) = 0,
+  'Supervisión General ve las unidades del cliente, pero no su OT ni en qué va');
 reset role;
 
 -- Sin `ordenes.ver`, Ventas no lee la OT, y la función le dice igual cómo va:
