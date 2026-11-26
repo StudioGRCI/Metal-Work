@@ -408,9 +408,7 @@ const rechaza = async (pagina, ruta) => {
   comprobar(pago.includes('Pagar en Cuentas por pagar'), `y desde la fila salta a pagar el saldo («${pago}»)`)
   comprobar((await pagina.getByRole('button', { name: 'Cargar guía' }).count()) === 0, 'Tesorería no carga guías')
   comprobar((await abrir(contexto, globalThis.hrefGuia)).estado === 200, 'pero abre la guía anulada, que queda como evidencia')
-  // Desde la 20261126310000 consulta la gestión (`compras.ver_gestion`), sin programar nada.
-  comprobar(!(await rechaza(pagina, '/compras/gestion')), 'y consulta Gestión de compras')
-  comprobar((await pagina.getByRole('button', { name: /Poner en la lista|Quitar de la lista|Guardar/ }).count()) === 0, 'sin botones para programar el recojo')
+  comprobar(await rechaza(pagina, '/compras/gestion'), 'y no entra a Gestión de compras')
   await contexto.close()
 }
 {
@@ -461,7 +459,9 @@ const rechaza = async (pagina, ruta) => {
   const pago = await columna(fila(pagina, oc[1]), 6)
   comprobar(pago.includes('Ver en Cuentas por pagar') && !pago.includes('Pagar en'), `a Gerencia, que no paga, la fila la manda a mirar («${pago}»)`)
   comprobar(!limpio(await pagina.locator('main').innerText()).includes('Guía por cargar ('), 'sin el filtro de guías, que es de Contabilidad')
-  comprobar(await rechaza(pagina, '/compras/gestion'), 'y no entra a Gestión de compras')
+  // Desde la 20261126310000 consulta la gestión (`compras.ver_gestion`), sin programar nada.
+  comprobar(!(await rechaza(pagina, '/compras/gestion')), 'y consulta Gestión de compras')
+  comprobar((await pagina.getByRole('button', { name: /Poner en la lista|Quitar de la lista|Guardar/ }).count()) === 0, 'sin botones para programar el recojo')
   await contexto.close()
 }
 {
