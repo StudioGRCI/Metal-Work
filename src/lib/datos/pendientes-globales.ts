@@ -64,7 +64,7 @@ const enMonedas = <T,>(filas: T[], moneda: (f: T) => string | null, monto: (f: T
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`
 
 /** Pendientes que son de la persona y no de su puesto: se cuentan aunque su pantalla no esté en su menú de trabajo. */
-const DE_CUALQUIER_PUESTO = new Set(['ssoma_acciones_vencidas', 'ssoma_acciones_abiertas'])
+const DE_CUALQUIER_PUESTO = new Set(['ssoma_acciones_vencidas', 'ssoma_acciones_abiertas', 'averias_por_confirmar'])
 
 /**
  * Con `cache`: el layout lo lee para los globos y el Dashboard para su cifra

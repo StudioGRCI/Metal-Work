@@ -108,6 +108,7 @@ export default async function PaginaAverias({ searchParams }: PageProps<'/averia
   // Lo que Mantenimiento cerró y espera que la persona diga si quedó bien: va
   // primero, y no se repite en «Tus reportes».
   const porConfirmar = mias.filter((a) => a.estado === 'CERRADA')
+  const otrasMias = mias.filter((a) => a.estado !== 'CERRADA')
   // Lo del área y lo de riesgo: lo que todavía espera a alguien.
   const delArea = averias.filter((a) => a.alcance === 'AREA' && a.espera_de != null)
   // SSOMA recibe las que son un riesgo para las personas.
@@ -125,9 +126,9 @@ export default async function PaginaAverias({ searchParams }: PageProps<'/averia
       <div className="space-y-5">
         <PorConfirmar averias={porConfirmar} />
         <Tarjeta className="overflow-hidden">
-          <TarjetaCabecera titulo="Tus reportes" descripcion={mias.length > 0 ? `${mias.length} ${mias.length === 1 ? 'reporte' : 'reportes'}` : undefined} />
+          <TarjetaCabecera titulo="Tus reportes" descripcion={otrasMias.length > 0 ? `${otrasMias.length} ${otrasMias.length === 1 ? 'reporte' : 'reportes'}` : undefined} />
           <TablaDeAverias
-            averias={mias.filter((a) => a.estado !== 'CERRADA')}
+            averias={otrasMias}
             vacio={{
               titulo: 'Todavía no has reportado nada',
               descripcion: 'Si una máquina falla o hace algo raro, toca «Reportar avería». Toma un minuto.',
@@ -247,7 +248,8 @@ function FilaAveria({ averia: a, conAutor }: { averia: Averia; conAutor: boolean
             {a.numero}
           </Link>
           {tipo ? <Insignia tono={tipo.tono}>{tipo.etiqueta}</Insignia> : a.tipo}
-          {a.espera_de != null && <Urgencia averia={a} />}
+          {/* En rojo solo mientras espera a Mantenimiento: cerrada, el equipo ya no está parado por ella. */}
+          {a.espera_de === 'MANTENIMIENTO' && <Urgencia averia={a} />}
         </div>
         <p className="mt-1 text-sm font-medium text-texto md:hidden">{equipo}</p>
         <p className="mt-1 line-clamp-2 max-w-xl text-sm text-texto">{a.descripcion}</p>

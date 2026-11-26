@@ -181,8 +181,15 @@ const PASOS_DE_LA_AVERIA: Record<string, Frases> = {
   CIERRE: {
     hecho: 'Mantenimiento la cerró',
     falta: 'Cierre: el equipo vuelve a operativo',
-    // Las horas que estuvo parado, como las anotó Mantenimiento.
-    nota: (h) => (h && Number.isFinite(Number(h)) ? `Parado: ${horasParado(Number(h))}` : null),
+    // Las horas que estuvo parado y el trabajo hecho («26.5|Se cambió…»): si no
+    // quedó bien, la ficha ya no muestra el primer trabajo, y quien la vuelve a
+    // atender lo lee aquí.
+    nota: (d) => {
+      const [h, ...resto] = d.split('|')
+      const trabajo = resto.join('|').trim()
+      const parado = h && Number.isFinite(Number(h)) ? `Parado: ${horasParado(Number(h))}` : null
+      return [parado, trabajo || null].filter(Boolean).join('. ') || null
+    },
   },
   // Lo que dijo quien la reportó: la ficha muestra solo la última vez.
   REAPERTURA: { hecho: 'No quedó bien: volvió a Mantenimiento', falta: 'Reapertura', nota: (t) => (t ? `«${t}»` : null) },

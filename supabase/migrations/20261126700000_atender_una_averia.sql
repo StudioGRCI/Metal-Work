@@ -1000,7 +1000,8 @@ begin
     -- Lo hecho después, en el orden en que pasó. El cierre dice las horas parado;
     -- la reapertura, que no quedó bien.
     select p.averia_id, 20, p.paso, 'HECHO', p.hecho_por, null, p.hecho_en, null,
-           case when p.paso = 'CIERRE' then trim(to_char(p.horas_parado, 'FM9999990.0'))
+           -- El cierre: las horas parado y el trabajo hecho, «26.5|Se cambió…».
+           case when p.paso = 'CIERRE' then trim(to_char(p.horas_parado, 'FM9999990.0')) || coalesce('|' || left(p.texto, 300), '')
                 -- Lo que dijo quien la reportó al devolverla: la ficha solo guarda la última.
                 when p.paso = 'REAPERTURA' then left(p.texto, 300) end
       from public.averia_pasos p

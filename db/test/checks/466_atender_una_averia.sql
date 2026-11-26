@@ -325,7 +325,8 @@ begin
   perform test.afirmar(
     (select string_agg(paso || ':' || situacion || coalesce(':' || detalle, ''), ' ' order by orden)
        from public.recorrido_de_averias(array[pg_temp.id('av1')]))
-    = 'REPORTE:HECHO:PARADO ATENCION:HECHO CIERRE:HECHO:26.5 REAPERTURA:HECHO:Se volvió a apagar a la media hora. CIERRE:HECHO:3.0 CONFIRMACION:HECHO',
+    = 'REPORTE:HECHO:PARADO ATENCION:HECHO CIERRE:HECHO:26.5|Se cambió el interruptor y los carbones. '
+      || 'REAPERTURA:HECHO:Se volvió a apagar a la media hora. CIERRE:HECHO:3.0|Se cambió el relé térmico, que cortaba la corriente. CONFIRMACION:HECHO',
     'el recorrido cuenta todo, en orden: reportada, atendida, cerrada (26.5 h), no quedó bien (con lo que dijo), cerrada (3 h) y confirmada');
   perform test.afirmar(
     not exists (select 1 from public.recorrido_de_averias(array[pg_temp.id('av1')]) where puesto is null),
