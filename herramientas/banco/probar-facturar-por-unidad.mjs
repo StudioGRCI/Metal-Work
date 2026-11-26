@@ -43,6 +43,7 @@ const CLAVE = process.env.BANCO_CLAVE
 const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
 const CAPTURAS = process.env.CAPTURAS ?? '/tmp/banco-capturas'
 const ALMACEN = process.env.BANCO_ARCHIVOS ?? '/tmp/banco-archivos'
+const COSTOS = process.env.COSTOS ?? 'costos.cobrar@banco.test'
 const CUENTAS = {
   contabilidad: process.env.CONTABILIDAD ?? 'contabilidad.local@metalwork.test',
   tesoreria: process.env.TESORERIA ?? 'tesoreria.local@metalwork.test',
@@ -361,10 +362,21 @@ async function llenar(v, { numero, total, unidad }) {
   await ir(pagina, `${BASE}/contabilidad/facturacion`)
   comprobar(limpio(await tarjeta.textContent()).includes(`Códigos ${C1} · ${C2} · ${C3}`) && !limpio(await tarjeta.textContent()).includes('Falta que Administración'),
     'con la tercera OT, la tarjeta dice los tres códigos y ya no pide ninguna OT')
+  // «Facturar», junto a la unidad 3: la ventana se abre con esa unidad elegida.
+  await tarjeta.locator('li[data-unidad="3"] [data-facturar-unidad="3"]').click()
+  comprobar((await v.locator('select[name="unidad"]').inputValue()) === '3', '«Facturar» de la unidad 3 abre la ventana con la unidad 3 ya elegida')
+  comprobar((await tarjeta.locator('li[data-unidad="2"] [data-facturar-unidad]').count()) === 1 && (await pagina.locator(`li[data-cotizacion="${una.numero}"] [data-facturar-unidad]`).count()) === 0,
+    'cada unidad que espera lleva su «Facturar»; la cotización de una unidad no lo lleva')
+  await v.getByRole('button', { name: 'Cancelar' }).click()
   await tarjeta.getByRole('button', { name: 'Registrar factura' }).click()
   const toda = await v.locator('select[name="unidad"] option[value="0"]').evaluate((o) => ({ texto: o.textContent.trim(), apagada: o.disabled }))
   comprobar(!toda.apagada && toda.texto.includes('3 unidades, en partes iguales'), `«Toda la cotización» ya se puede elegir («${toda.texto}»)`)
+  // La unidad 2 ya lleva 5 900 de 11 800: con 20 000 por toda la cotización su parte (6 666.67) la pasa, y lo dice.
+  await llenar(v, { numero: F_TODA, total: 20000, unidad: 0 })
+  const sePasan = limpio(await v.locator('[data-se-pasan]').textContent().catch(() => ''))
+  comprobar(sePasan.includes('la unidad 2 pasa de lo que le toca'), `la factura por toda la cotización avisa de la unidad que se pasa («${sePasan}»)`)
   await llenar(v, { numero: F_TODA, total: 10000, unidad: 0 })
+  comprobar((await v.locator('[data-se-pasan]').count()) === 0, 'con 10 000 ninguna se pasa y no avisa')
   await v.locator('input[name="concepto"]').fill('Adelanto')
   await v.getByRole('button', { name: 'Registrar la factura' }).click()
   const e2 = await esperarVentana(pagina)
@@ -405,10 +417,48 @@ async function llenar(v, { numero, total, unidad }) {
   comprobar(solaDespues.includes('Facturada') && !solaDespues.includes('Unidad 1 de 1') && (await fila(C0).count()) === 0,
     'queda «Facturada», sin decir «Unidad 1 de 1», y sale de «Por facturar»')
   comprobar((await cuenta(pagina, '/contabilidad/facturacion')) === antes.facturar + 3, 'el globo cuenta las tres unidades de la primera, todas en parte')
+  // En el inicio, «Te toca» dice unidades (hay una cotización de varias) y lo que falta facturar de ellas.
+  await ir(pagina, `${BASE}/`)
+  const teToca = limpio(await pagina.locator('a[href="/contabilidad/facturacion"]').filter({ hasText: /por facturar/ }).first().textContent().catch(() => '(no está)'))
+  comprobar(/unidades con su OT por facturar/.test(teToca) && /S\/\s?[\d,]+\.\d\d/.test(teToca), `el inicio dice las unidades por facturar con su monto («${teToca}»)`)
   await contexto.close()
 }
 
 // -------------------------------------------------------------- 4. Tesorería
+// La unidad 2 pide salir del taller: una salida por revisar con su código.
+const PLACA = `QF2-${sello.slice(2)}`
+/** El renglón del cobro en la tarjeta de la salida de ese vehículo. */
+const delaSalida = (pagina, que) => pagina.locator('li, article').filter({ hasText: PLACA }).filter({ has: pagina.locator(que) }).last().locator(que).first()
+{
+  const { id: pide } = await uno(`select u.id from public.usuarios u join public.roles r on r.id = u.rol_id where r.codigo = 'REQUERIMIENTOS' and u.activo limit 1`)
+  await base.query('begin')
+  try {
+    await base.query('set local session_replication_role = replica')
+    const { id: registro } = await uno(
+      `insert into public.registro_vehiculos (id, placa, unidad, empresa, motivo, codigo_interno, ingreso_en, ingreso_por)
+       values (gen_random_uuid(), $1, 'CAMABAJA DE PRUEBA', $2, 'FABRICACION', $3, now() - interval '2 days', $4) returning id`,
+      [PLACA, CLIENTE, C2, pide],
+    )
+    await consulta(`insert into public.registro_vehiculo_revisiones (registro_id, concepto, solicitado_por) values ($1, 'Salida de la camabaja terminada', $2)`, [registro, pide])
+    await base.query('commit')
+  } catch (e) {
+    await base.query('rollback')
+    throw e
+  }
+  // La cuenta de Costos, si no está (la misma de probar-por-cobrar-de-costos.mjs).
+  if (!process.env.COSTOS) {
+    let fila = await uno('select id from public.usuarios where correo = $1', [COSTOS])
+    if (!fila) {
+      fila = await uno(`insert into auth.users (id, email) values (gen_random_uuid(), $1) returning id`, [COSTOS])
+      await consulta(
+        `insert into public.usuarios (id, nombres, apellidos, correo, rol_id)
+         select $1, 'COSTOS', 'Banco por cobrar', $2, r.id from public.roles r where r.codigo = 'COSTOS'`,
+        [fila.id, COSTOS],
+      )
+    }
+    await consulta(`update auth.users set encrypted_password = crypt($2, gen_salt('bf')) where email = $1`, [COSTOS, CLAVE])
+  }
+}
 {
   const caja = await crearCajaDePrueba(consulta, CUENTAS.tesoreria)
   const { pagina, contexto } = await entrar(CUENTAS.tesoreria)
@@ -418,8 +468,9 @@ async function llenar(v, { numero, total, unidad }) {
   const t1 = limpio(await deUnidad.textContent())
   const t2 = limpio(await deToda.textContent())
   comprobar(t1.includes('Unidad 2 de 3') && t1.includes(`código ${C2}`) && t1.includes(`cotización ${tres.numero}`), `Tesorería ve de qué unidad es la factura y su código («${t1.slice(0, 110)}…»)`)
-  comprobar(t2.includes('Toda la cotización · 3 unidades') && t2.includes(`códigos ${C1}, ${C2}, ${C3}`) && t2.includes(`Unidad 3 · código ${C3} · S/ 3,333.33`),
-    `y la de toda la cotización, con sus tres códigos y lo de cada una («${t2.slice(0, 110)}…»)`)
+  comprobar(t2.includes('Toda la cotización · 3 unidades') && t2.includes(`Unidad 1 · código ${C1} · S/ 3,333.33`) && t2.includes(`Unidad 3 · código ${C3} · S/ 3,333.33`)
+    && t2.split(C1).length === 2,
+    `y la de toda la cotización, con sus tres códigos una sola vez y lo de cada una («${t2.slice(0, 110)}…»)`)
   const t0 = limpio(await pagina.locator(`article[data-factura="${F_UNA}"]`).textContent())
   comprobar(t0.includes(`código ${C0}`) && !t0.includes('Unidad 1') && !t0.includes('Toda la cotización'), 'la de una unidad, como siempre')
 
@@ -442,7 +493,23 @@ async function llenar(v, { numero, total, unidad }) {
     `abajo, la cotización aprobada con sus tres códigos («${aprobada.slice(0, 120)}…»)`)
   await deToda.scrollIntoViewIfNeeded()
   await pagina.screenshot({ path: join(CAPTURAS, 'unidad-1440-por-cobrar.png'), fullPage: true })
+
+  // La revisión de salida del vehículo de la unidad 2: lo cobrado y lo que falta, de esa unidad.
+  await ir(pagina, `${BASE}/tesoreria/por-cobrar`)
+  const salida = limpio(await delaSalida(pagina, '[data-cobro-del-codigo]').textContent().catch(() => '(no está)'))
+  comprobar(salida.includes('Cobrado S/ 333.34') && salida.includes('de lo que le toca a la unidad 2 de 3 de su cotización, S/ 11,800.00') && !salida.includes('de la cotización de'),
+    `Tesorería ve en la salida del vehículo lo cobrado de la unidad 2, contra lo que le toca («${salida}»)`)
+  await delaSalida(pagina, '[data-cobro-del-codigo]').scrollIntoViewIfNeeded().catch(() => {})
+  await pagina.screenshot({ path: join(CAPTURAS, 'unidad-1440-salida-del-vehiculo.png') })
   await contexto.close()
+
+  // Costos responde la misma salida sin leer cotizaciones: lo por cobrar de las facturas de ese código.
+  const costos = await entrar(COSTOS)
+  await ir(costos.pagina, `${BASE}/tesoreria/por-cobrar`)
+  const paraCostos = limpio(await delaSalida(costos.pagina, '[data-por-cobrar-de-facturas]').textContent().catch(() => '(no está)'))
+  comprobar(paraCostos.includes('2 facturas') && paraCostos.includes('S/ 8,900.00'),
+    `Costos ve lo por cobrar del código de la unidad 2: su factura y su parte de la de toda la cotización («${paraCostos}»)`)
+  await costos.contexto.close()
 
   const telefono = await entrar(CUENTAS.tesoreria, { width: 390, height: 844 })
   await ir(telefono.pagina, `${BASE}/tesoreria/por-cobrar`)
@@ -464,6 +531,11 @@ async function llenar(v, { numero, total, unidad }) {
   comprobar(facturas1.length === 1 && facturas1[0] === F_TODA, `y solo la factura por toda la cotización, no la de la unidad 2 (${facturas1.join(', ')})`)
   const parte1 = limpio(await pagina.locator(`article[data-factura="${F_TODA}"] li[data-parte="1"]`).textContent())
   comprobar(parte1.includes('este código') && parte1.includes('S/ 3,333.33'), `con la parte de este código marcada («${parte1}»)`)
+  const facturaEnFicha = pagina.locator(`article[data-factura="${F_TODA}"]`)
+  const saldoEnFicha = limpio(await facturaEnFicha.locator('[data-saldo-de-la-factura]').textContent())
+  const deEste = limpio(await facturaEnFicha.locator('[data-de-este-codigo]').textContent())
+  comprobar(saldoEnFicha === 'Saldo de este código S/ 3,000.00' && deEste.includes('A este código le tocan S/ 3,333.33 · cobrado S/ 333.33') && deEste.includes('la factura es por S/ 10,000.00, con saldo de S/ 9,000.00'),
+    `y la cifra que manda es la de este código, no el saldo de toda la factura («${saldoEnFicha}» · «${deEste}»)`)
   await pagina.screenshot({ path: join(CAPTURAS, 'unidad-1440-ficha-del-codigo.png'), fullPage: true })
 
   await ir(pagina, ficha(C2))

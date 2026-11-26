@@ -33,7 +33,7 @@ begin
     v_id := test.crear_usuario(initcap(v), 'Check 492', lower(v) || '.492@prueba.local', v, (select id from public.sedes where codigo = 'QA492'));
     perform set_config('prueba.' || lower(v), v_id::text, true);
   end loop;
-  foreach v in array array['cot3', 'cot1', 'ot1', 'ot2', 'ot3', 'ots', 'f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'fx', 'fd', 'c1', 'c2'] loop
+  foreach v in array array['cot3', 'cot1', 'ot1', 'ot2', 'ot3', 'ot3b', 'ots', 'f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'fx', 'fd', 'c1', 'c2'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
   -- El PDF de cada factura va en su carpeta; el voucher del cobro, en la de la factura que cobra.
@@ -401,6 +401,60 @@ select test.afirmar(pg_temp.partes('fd') = '3:QA-492 U3:250.00',
   'la factura que entra directo a la tabla nace con su parte, en la unidad de su código (' || coalesce(pg_temp.partes('fd'), 'sin parte') || ')');
 select test.afirmar((select unidades_cubiertas = 1 and numero_de_unidad = 3 and unidades_de_la_cotizacion = 3 from public.v_facturas_venta where id = pg_temp.id('fd')),
   'y la vista dice que es de la unidad 3 de 3');
+
+-- ============================================ 8. La OT se anula y se carga otra con otro código
+-- La unidad 3 ya tiene facturas (su parte del anticipo y la que entró directo).
+-- Su OT se anula y Administración carga otra con otro código: la unidad es la
+-- misma venta, y lo facturado se lee en el código que tiene hoy. Con dos llaves
+-- (el número de unidad y el código guardado), la ficha del código nuevo decía
+-- «facturado» y «sin facturas» a la vez (auditoría de funcionamiento, 26/11).
+do $$
+begin
+  set local session_replication_role = replica;
+  update public.ordenes_trabajo set estado = 'ANULADA', motivo_anulacion = 'Se cargó con el código equivocado' where id = pg_temp.id('ot3');
+  set local session_replication_role = origin;
+end $$;
+select pg_temp.como('administracion');
+set local role authenticated;
+select pg_temp.cargar('cot3', 'ot3b', 'qa-492 u3b', '94933');
+reset role;
+
+select pg_temp.como('tesoreria');
+set local role authenticated;
+do $$
+declare v record; v_por_codigo numeric;
+begin
+  select * into v from pg_temp.unidad('cot3', 3);
+  perform test.afirmar(v.codigo_interno = 'QA-492 U3B' and v.facturas > 0,
+    'la OT nueva es la unidad 3, con su código nuevo y las facturas que ya tenía (' || v.codigo_interno || ', ' || v.facturas || ')');
+  select coalesce(sum(p.monto), 0) into v_por_codigo
+    from public.v_facturas_venta_por_unidad p
+   where p.codigo_interno = 'QA-492 U3B' and p.anulada_en is null and p.moneda = 'PEN';
+  perform test.afirmar(v_por_codigo = v.facturado and v.facturado > 0,
+    'lo facturado del código nuevo es lo de su unidad: por código ' || v_por_codigo || ', por unidad ' || v.facturado);
+  perform test.afirmar(not exists (select 1 from public.v_facturas_venta_por_unidad p where p.codigo_interno = 'QA-492 U3'),
+    'y el código de la OT anulada ya no lleva facturas');
+  perform test.afirmar((select bool_and(p.codigo_al_facturar = 'QA-492 U3') from public.v_facturas_venta_por_unidad p
+                         where p.codigo_interno = 'QA-492 U3B'),
+    'el código que tenía al facturar queda guardado');
+  perform test.afirmar((select l.facturado_en_su_moneda from public.codigo_interno_lo_vendido('QA-492 U3B') l) = v.facturado,
+    'la cabecera del código nuevo dice lo mismo');
+end $$;
+reset role;
+
+-- Quien no ve facturas no saca por esta puerta el código de una unidad.
+select pg_temp.como('almacenero');
+set local role authenticated;
+select test.afirmar(public.codigo_de_la_unidad_de_cotizacion(pg_temp.id('cot3'), 3) is null,
+  'el almacenero no lee el código de la unidad por la función de las facturas');
+reset role;
+
+-- El número repetido de una factura por toda la cotización nombra la cotización, no un solo código.
+select pg_temp.como('contabilidad');
+set local role authenticated;
+select test.debe_fallar(pg_temp.facturar_sql('f7', 'cot3', 'E001-4922', 100, '1'),
+  'el número de la factura por toda la cotización no se repite, y lo dice por su cotización', 'ya está registrada en la cotización QA-492-3, por todas sus unidades');
+reset role;
 
 -- La bitácora no guarda copia del reparto: se leería con solo `auditoria.ver`.
 select test.afirmar(not exists (select 1 from public.audit_log where tabla = 'facturas_venta_unidades'),

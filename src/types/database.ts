@@ -13296,6 +13296,7 @@ export type Database = {
           cobrado: number | null
           saldo: number | null
           unidades_cubiertas: number | null
+          codigo_al_facturar: string | null
         }
         Relationships: []
       }
@@ -14815,6 +14816,13 @@ export type Database = {
       codigo_de_la_ot: {
         Args: {
           p_numero: string | null
+        }
+        Returns: string
+      }
+      codigo_de_la_unidad_de_cotizacion: {
+        Args: {
+          p_cotizacion: string | null
+          p_unidad: number | null
         }
         Returns: string
       }

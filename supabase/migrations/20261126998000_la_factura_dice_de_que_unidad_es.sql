@@ -19,10 +19,13 @@
 --
 -- Cómo queda:
 --   · `facturas_venta_unidades` guarda, al registrar, qué unidades cubre cada
---     factura, con qué código y cuánto de su total va a cada una. Se anota una
---     vez y no se recalcula al leer: si después cambia una OT, lo facturado de
---     cada código no se mueve solo. Los céntimos que sobran del reparto quedan
---     en alguna de las partes, y las partes suman siempre el total.
+--     factura, con qué código y cuánto de su total va a cada una. El reparto
+--     (qué unidad y cuánto) se anota una vez y no se recalcula al leer. Los
+--     céntimos que sobran quedan en alguna de las partes, y las partes suman
+--     siempre el total.
+--   · La factura es de la unidad, no del código: si la OT de esa unidad se
+--     anula y se carga otra con otro código, lo facturado se lee en el código
+--     que la unidad tiene hoy. El que tenía al facturar queda guardado.
 --   · Las facturas que ya existen quedan con una sola parte, por su total, en
 --     la unidad de su código. En producción todas son de cotizaciones de una
 --     unidad (se miró el 26/11: ninguna cotización de varias).
@@ -74,7 +77,7 @@ begin
   loop
     if r.huella not in (
          -- registrar_factura_venta: la de la 20261022160000, y la de esta migración
-         'fb6522dbed0662933c896540bad089da', '87854295605d73b9bf8775f53292147d',
+         'fb6522dbed0662933c896540bad089da', '858d284aac1ee766daf4b6e84c79b97e',
          -- facturacion_pendientes: la de la 20261126470000, y la de esta
          '3d3540342785bc9757f912d140e84bdf', 'f2efed16de051fe76a88b95270a58171',
          -- codigo_interno_lo_vendido: la de la 20261126640000, y la de esta
@@ -126,9 +129,9 @@ create table if not exists public.facturas_venta_unidades (
 comment on table public.facturas_venta_unidades is
   'Qué unidades de su cotización cubre cada factura de venta, con el código interno de cada una y cuánto del total le toca. Se anota al registrar la factura y no cambia: se anula la factura. Migración 20261126998000.';
 
--- (b) Cuentas por cobrar, la ficha del código y la revisión de salida filtran por
--- el código. La llave hacia la factura ya la cubre el índice único, que empieza por ella.
-create index if not exists ix_facturas_venta_unidades_codigo on public.facturas_venta_unidades (codigo_interno);
+-- Sin índice propio: la llave hacia la factura ya la cubre el índice único, que
+-- empieza por ella, y por el código guardado no filtra nadie (lo facturado de un
+-- código se busca por el código que su unidad tiene hoy, sección 4).
 
 select public.activar_timestamps('facturas_venta_unidades');
 select public.activar_registro_de_prueba('facturas_venta_unidades');
@@ -236,6 +239,14 @@ select f.id, public.unidad_de_la_factura_por_su_codigo(c.id, f.codigo_interno), 
   join public.cotizaciones_pdf c on c.id = f.cotizacion_pdf_id
  where not exists (select 1 from public.facturas_venta_unidades p where p.factura_id = f.id);
 
+-- La parte de una factura que es de un lote de prueba es del mismo lote: sin
+-- esto quedaría colgando de la prueba un dato que la prueba no conoce.
+insert into public.pruebas_filas (lote_id, tabla, fila_id)
+select pf.lote_id, 'facturas_venta_unidades', p.id
+  from public.facturas_venta_unidades p
+  join public.pruebas_filas pf on pf.tabla = 'facturas_venta' and pf.fila_id = p.factura_id
+on conflict (tabla, fila_id) do nothing;
+
 -- 4. La factura con sus unidades, y cada parte con lo suyo ------------------------------
 -- Las columnas nuevas van al final: las de antes no se mueven. La vista sigue
 -- mirando con el rol de quien consulta.
@@ -261,23 +272,55 @@ select f.id, f.codigo_interno, f.cotizacion_pdf_id, f.cotizacion_numero, f.clien
 revoke all on public.v_facturas_venta from public, anon, authenticated;
 grant select on public.v_facturas_venta to authenticated;
 
+-- El código que la unidad k de una cotización tiene hoy: el de su OT vigente. La
+-- parte guarda el que tenía al facturar, pero si esa OT se anula y Administración
+-- carga otra con otro código, la unidad es la misma venta: su factura la sigue.
+-- Con dos llaves (unas lecturas por el número de unidad y otras por el código
+-- guardado), la ficha del código nuevo decía «facturado S/ 5,900» y «sin
+-- facturas» en la misma pantalla (auditoría de funcionamiento, 26/11). La lee
+-- quien lee las facturas, la misma puerta que el reparto: la OT no la ven todos.
+create or replace function public.codigo_de_la_unidad_de_cotizacion(p_cotizacion uuid, p_unidad integer)
+returns text
+language sql
+stable
+security definer
+set search_path to 'public'
+as $$
+  select public.normalizar_codigo_interno(u.codigo_interno)
+    from public.ordenes_trabajo o
+    join public.unidades u on u.id = o.unidad_id
+   where o.cotizacion_pdf_id = p_cotizacion and o.estado <> 'ANULADA'
+     and coalesce(o.numero_de_unidad, 1) = p_unidad
+     and public.normalizar_codigo_interno(u.codigo_interno) is not null
+     and (public.es_admin() or public.tiene_permiso('contabilidad.facturar')
+          or public.tiene_permiso('cotizaciones.ver_aprobadas') or public.tiene_permiso('tesoreria.ver_documentos'))
+   order by o.creado_en desc
+   limit 1
+$$;
+
+revoke all on function public.codigo_de_la_unidad_de_cotizacion(uuid, integer) from public, anon;
+grant execute on function public.codigo_de_la_unidad_de_cotizacion(uuid, integer) to authenticated;
+
 -- Una fila por parte. Lo cobrado y el saldo de la factura se reparten como su
 -- total, con la misma cuenta de acumulados: las partes suman lo de la factura.
+-- `codigo_interno` es el que la unidad tiene hoy (el guardado, si hoy no tiene
+-- OT); `codigo_al_facturar`, el que quedó anotado.
 create or replace view public.v_facturas_venta_por_unidad with (security_invoker = true) as
 select p.id, p.factura_id, p.numero_de_unidad::integer as numero_de_unidad, p.de_unidades::integer as de_unidades,
-       p.codigo_interno, p.monto,
+       coalesce(public.codigo_de_la_unidad_de_cotizacion(f.cotizacion_pdf_id, p.numero_de_unidad::integer), p.codigo_interno) as codigo_interno,
+       p.monto,
        f.cotizacion_pdf_id, f.cotizacion_numero, f.cliente, f.numero, f.fecha_emision, f.fecha_vencimiento,
        f.moneda, f.total, f.concepto, f.creado_en, f.anulada_en, f.cancelada,
        (round(f.cobrado * p.acumulado / f.total, 2) - round(f.cobrado * (p.acumulado - p.monto) / f.total, 2))::numeric(14, 2) as cobrado,
        (round(f.saldo * p.acumulado / f.total, 2) - round(f.saldo * (p.acumulado - p.monto) / f.total, 2))::numeric(14, 2) as saldo,
-       f.unidades_cubiertas
+       f.unidades_cubiertas, p.codigo_interno as codigo_al_facturar
   from (select u.id, u.factura_id, u.numero_de_unidad, u.de_unidades, u.codigo_interno, u.monto,
                sum(u.monto) over (partition by u.factura_id order by u.numero_de_unidad) as acumulado
           from public.facturas_venta_unidades u) p
   join public.v_facturas_venta f on f.id = p.factura_id;
 
 comment on view public.v_facturas_venta_por_unidad is
-  'Cada factura de venta partida por unidad: el código de la unidad, lo que le toca del total y, en la misma proporción, lo cobrado y el saldo. La ve quien ve las facturas. Migración 20261126998000.';
+  'Cada factura de venta partida por unidad: el código que la unidad tiene hoy (y el que tenía al facturar), lo que le toca del total y, en la misma proporción, lo cobrado y el saldo. La ve quien ve las facturas. Migración 20261126998000.';
 
 revoke all on public.v_facturas_venta_por_unidad from public, anon, authenticated;
 grant select on public.v_facturas_venta_por_unidad to authenticated;
@@ -373,9 +416,12 @@ begin
   if v_numero is null then
     raise exception 'Escribe el número de la factura como sale en SUNAT: la serie, un guion y el número (E001-626).' using errcode = 'check_violation';
   end if;
-  select codigo_interno into v_otra from public.facturas_venta where numero = v_numero and anulada_en is null;
+  select case when (select count(*) from public.facturas_venta_unidades x where x.factura_id = fv.id) > 1
+              then 'la cotización ' || fv.cotizacion_numero || ', por todas sus unidades'
+              else 'el código ' || fv.codigo_interno end
+    into v_otra from public.facturas_venta fv where fv.numero = v_numero and fv.anulada_en is null;
   if found then
-    raise exception 'La factura % ya está registrada en el código %.', v_numero, v_otra using errcode = 'unique_violation';
+    raise exception 'La factura % ya está registrada en %.', v_numero, v_otra using errcode = 'unique_violation';
   end if;
   if p_fecha_emision is null or p_fecha_emision > v_hoy or p_fecha_emision < v_hoy - 730 then
     raise exception 'Elige la fecha de emisión de la factura: de hoy hacia atrás.' using errcode = 'check_violation';
@@ -450,7 +496,7 @@ begin
   perform public.exigir_permiso('contabilidad.facturar');
   select c.numero, c.cantidad_unidades into v_numero, v_unidades from public.cotizaciones_pdf c where c.id = p_cotizacion;
   if v_unidades > 1 and not exists (select 1 from public.facturas_venta f where f.id = p_id) then
-    raise exception 'La cotización % es de % unidades y ahora la factura dice de cuál es: recarga la pantalla y regístrala de nuevo.', v_numero, v_unidades
+    raise exception 'La cotización % es de % unidades y ahora la factura dice de cuál es: recarga la pantalla y regístrala de nuevo. Si al abrir «Registrar factura» no te pregunta «De qué unidad es», el sistema se está actualizando: inténtalo en unos minutos.', v_numero, v_unidades
       using errcode = 'check_violation';
   end if;
   return public.registrar_factura_venta_de_unidad(p_id, p_cotizacion, p_numero, p_fecha_emision, p_fecha_vencimiento,

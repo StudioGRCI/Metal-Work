@@ -169,6 +169,16 @@ export type UnidadDeCotizacion = {
   cobradoOtraMoneda: number
 }
 
+/**
+ * Lo que le toca a la unidad `k` de `n` al repartir `total` en partes iguales, con la misma
+ * cuenta de acumulados que la base (`parte_de_unidad`): 100 entre 3 da 33.33, 33.34 y 33.33,
+ * y las partes suman siempre el total.
+ */
+export function parteDeUnidad(total: number, n: number, k: number): number {
+  const acumulado = (hasta: number) => Math.round((total * hasta * 100) / n) / 100
+  return Math.round((acumulado(k) - acumulado(k - 1)) * 100) / 100
+}
+
 export type ComoVaLaUnidad = ComoVaLaFactura | 'SIN_OT'
 
 /**

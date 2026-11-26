@@ -1,7 +1,7 @@
 'use client'
 
 import { Ban, FilePlus2 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
@@ -11,7 +11,7 @@ import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirArchivoFinanzas } from '@/lib/archivos-finanzas'
-import { BUCKET_FACTURAS_VENTA, MAXIMO_MB_FINANZAS } from '@/lib/dominio/finanzas'
+import { BUCKET_FACTURAS_VENTA, MAXIMO_MB_FINANZAS, parteDeUnidad } from '@/lib/dominio/finanzas'
 import { useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { moneda } from '@/lib/format'
 
@@ -38,6 +38,32 @@ export type UnidadPorFacturar = {
 
 /** El valor de «toda la cotización» en el campo de la unidad: así lo espera `registrar_factura_venta_de_unidad`. */
 const TODA = '0'
+/** El pedido de «Facturar» de una unidad: lo oye la ventana de su cotización, que lleva el id del envío. */
+const PEDIR_FACTURA = 'metalwork:facturar-unidad'
+type PedidoDeFactura = { cotizacion: string; unidad: number }
+
+/**
+ * «Facturar», junto a la unidad que espera su factura: abre la ventana de su
+ * cotización con esa unidad ya elegida. Sin él, quien venía de la fila de la
+ * unidad 3 tenía que acordarse de cuál era y volver a elegirla entre cuatro
+ * opciones (auditoría de diseño del 26/11). La ventana es una por cotización
+ * (su envío lleva un solo id): este botón solo se la pide.
+ */
+export function FacturarUnidad({ cotizacionId, unidad }: { cotizacionId: string; unidad: number }) {
+  return (
+    <Boton
+      type="button"
+      variante="contorno"
+      tamano="sm"
+      data-facturar-unidad={unidad}
+      aria-label={`Facturar la unidad ${unidad}`}
+      onClick={() => window.dispatchEvent(new CustomEvent<PedidoDeFactura>(PEDIR_FACTURA, { detail: { cotizacion: cotizacionId, unidad } }))}
+    >
+      <FilePlus2 aria-hidden className="size-4" />
+      Facturar
+    </Boton>
+  )
+}
 
 /**
  * Contabilidad registra la factura que emitió en SUNAT. El PDF sube primero a
@@ -89,14 +115,32 @@ export function RegistrarFactura({
   const yaFacturado = elegida ? elegida.facturado : facturado
   const conEsta = yaFacturado + (Number(total) || 0)
   const pasa = tope !== null && monedaFactura === monedaCotizacion && conEsta > tope + 0.005
+  // La de toda la cotización se reparte en partes iguales: una unidad que ya lleva lo suyo
+  // facturado se puede pasar aunque la cotización entera no se pase.
+  const sePasan =
+    unidad === TODA && unidades && monedaFactura === monedaCotizacion && Number(total) > 0
+      ? unidades.filter((u) => u.parte !== null && u.facturado + parteDeUnidad(Number(total), unidades.length, u.numero) > u.parte + 0.005)
+      : []
 
-  function abrir() {
+  function abrir(unidadPedida?: string) {
     setTotal('')
     setMonedaFactura(monedaCotizacion)
-    setUnidad(unidadInicial)
+    setUnidad(unidadPedida ?? unidadInicial)
     factura.abrir()
     setAbierta(true)
   }
+  // «Facturar» de una unidad de esta cotización: se abre con esa unidad elegida.
+  const alPedirla = useEffectEvent((e: Event) => {
+    const pedido = (e as CustomEvent<PedidoDeFactura>).detail
+    if (pedido?.cotizacion !== cotizacionId || abierta) return
+    if (!unidades?.some((u) => u.numero === pedido.unidad && u.codigo)) return
+    abrir(String(pedido.unidad))
+  })
+  useEffect(() => {
+    const oir = (e: Event) => alPedirla(e)
+    window.addEventListener(PEDIR_FACTURA, oir)
+    return () => window.removeEventListener(PEDIR_FACTURA, oir)
+  }, [])
 
   async function registrar(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
     const archivo = sacarArchivo(datos)
@@ -121,7 +165,7 @@ export function RegistrarFactura({
 
   return (
     <>
-      <Boton type="button" tamano="sm" onClick={abrir} data-registrar-factura={cotizacionId}>
+      <Boton type="button" tamano="sm" onClick={() => abrir()} data-registrar-factura={cotizacionId}>
         <FilePlus2 aria-hidden className="size-4" />
         Registrar factura
       </Boton>
@@ -131,7 +175,7 @@ export function RegistrarFactura({
         titulo={unidades ? `Factura de la cotización ${numeroCotizacion}` : `Factura del código ${codigoInterno}`}
         descripcion={
           unidades
-            ? `La cotización es de ${unidades.length} unidades: di de cuál es la factura, o si es por toda la cotización. Los datos como salen en la factura que emitiste en SUNAT, con su PDF; entra sola a las cuentas por cobrar de Tesorería. Cada unidad puede llevar varias: la inicial y el saldo.`
+            ? `La cotización es de ${unidades.length} unidades: di de cuál es la factura, o si es por toda la cotización. Los datos como salen en la factura que emitiste en SUNAT, con su PDF.`
             : `Por la cotización ${numeroCotizacion}. Los datos como salen en la factura que emitiste en SUNAT, con su PDF; entra sola a las cuentas por cobrar de Tesorería. Una cotización puede llevar varias: la inicial y el saldo.`
         }
         ancho="md"
@@ -173,7 +217,11 @@ export function RegistrarFactura({
             <Campo etiqueta="Número de factura" htmlFor={campo('numero')} requerido ayuda="La serie, un guion y el número: E001-626.">
               <Entrada id={campo('numero')} name="numero" required maxLength={20} autoComplete="off" placeholder="E001-626" className="tabular uppercase" />
             </Campo>
-            <Campo etiqueta="Concepto" htmlFor={campo('concepto')} ayuda="Opcional: «Inicial 50 %», «Saldo».">
+            <Campo
+              etiqueta="Concepto"
+              htmlFor={campo('concepto')}
+              ayuda={unidades ? 'Opcional: «Inicial 50 %», «Saldo». Cada unidad puede llevar varias facturas.' : 'Opcional: «Inicial 50 %», «Saldo», «Unidad 2 de 3».'}
+            >
               <Entrada id={campo('concepto')} name="concepto" maxLength={200} autoComplete="off" />
             </Campo>
             <Campo etiqueta="Fecha de emisión" htmlFor={campo('emision')} requerido>
@@ -224,6 +272,14 @@ export function RegistrarFactura({
               {elegida
                 ? `Con esta factura lo facturado de la unidad ${elegida.numero} llega a ${moneda(conEsta, monedaCotizacion)} y le tocan ${moneda(tope, monedaCotizacion)}.`
                 : `Con esta factura lo facturado llega a ${moneda(conEsta, monedaCotizacion)} y la cotización es por ${moneda(tope, monedaCotizacion)}.`}{' '}
+              Revisa el total; si está bien, regístrala igual.
+            </p>
+          )}
+          {!pasa && sePasan.length > 0 && (
+            <p role="status" className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-aviso" data-se-pasan>
+              {sePasan.length === 1
+                ? `Con su parte de esta factura, lo facturado de la unidad ${sePasan[0]?.numero} pasa de lo que le toca.`
+                : `Con su parte de esta factura, lo facturado de las unidades ${sePasan.map((u) => u.numero).join(', ')} pasa de lo que les toca.`}{' '}
               Revisa el total; si está bien, regístrala igual.
             </p>
           )}

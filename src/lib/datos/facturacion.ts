@@ -30,9 +30,15 @@ type FilaFactura = Pick<
   | 'fecha_vencimiento' | 'moneda' | 'total' | 'concepto' | 'ruta_storage' | 'anulada_en' | 'motivo_anulacion'
   | 'cobrado' | 'cancelada' | 'saldo' | 'creado_en' | 'unidades_cubiertas' | 'numero_de_unidad' | 'unidades_de_la_cotizacion'
 >
-/** Lo que le toca a una unidad de una factura que cubre toda la cotización (migración 20261126998000). */
-export type ParteDeFactura = Pick<Tablas<'facturas_venta_unidades'>, 'factura_id' | 'numero_de_unidad' | 'codigo_interno' | 'monto'>
-/** `partes` viene vacío si la factura es de una sola unidad: su código y su total ya son los de la factura. */
+/**
+ * Lo que le toca a una unidad de una factura (migración 20261126998000): el código que la unidad
+ * tiene hoy, su parte del total y, en la misma proporción, lo cobrado y el saldo.
+ */
+export type ParteDeFactura = Pick<
+  Vistas<'v_facturas_venta_por_unidad'>,
+  'factura_id' | 'numero_de_unidad' | 'codigo_interno' | 'monto' | 'cobrado' | 'saldo'
+>
+/** `partes` trae una por unidad que cubre la factura: una sola, salvo la que es por toda la cotización. */
 export type FacturaVenta = FilaFactura & { url: string | null; cobros: CobroFactura[]; partes: ParteDeFactura[] }
 
 type FilaCotizacion = Funciones<'cotizaciones_para_facturar'>['Returns'][number]
@@ -74,7 +80,7 @@ export async function enlaces(bucket: string, rutas: (string | null)[], segundos
  * con IGV y lo facturado y cobrado de esa unidad (`facturacion_por_unidad`,
  * migración 20261126998000). Lo lee quien lee las cotizaciones aprobadas.
  */
-async function unidadesDeCotizaciones(ids: string[]): Promise<Map<string, UnidadDeCotizacion[]>> {
+export async function unidadesDeCotizaciones(ids: string[]): Promise<Map<string, UnidadDeCotizacion[]>> {
   const mapa = new Map<string, UnidadDeCotizacion[]>()
   const unicos = [...new Set(ids)]
   if (unicos.length === 0) return mapa
@@ -106,23 +112,6 @@ async function unidadesDeCotizaciones(ids: string[]): Promise<Map<string, Unidad
   return mapa
 }
 
-/** La cotización entera como su única unidad, si la base no dio sus unidades: la pantalla no se queda sin ella. */
-function comoUnaUnidad(f: FilaCotizacion): UnidadDeCotizacion {
-  return {
-    numero: 1,
-    de: 1,
-    codigo: f.codigo_interno,
-    desde: null,
-    dias: null,
-    parte: totalConIgv(f.monto_venta === null ? null : Number(f.monto_venta), f.incluye_igv),
-    facturas: Number(f.facturas ?? 0),
-    facturado: Number(f.facturado ?? 0),
-    cobrado: Number(f.cobrado ?? 0),
-    facturadoOtraMoneda: Number(f.facturado_otra_moneda ?? 0),
-    cobradoOtraMoneda: Number(f.cobrado_otra_moneda ?? 0),
-  }
-}
-
 /**
  * Cada cotización aprobada y vigente, con sus unidades (cada una con el código
  * interno de su OT, nulo mientras Administración no la cargue), el cliente, el
@@ -134,9 +123,12 @@ export async function cotizacionesAprobadas(codigo?: string): Promise<Cotizacion
   const { data, error } = await supabase.rpc('cotizaciones_para_facturar')
   if (error) throw new Error(`No se pudieron leer las cotizaciones aprobadas: ${error.message}`)
   const unidades = await unidadesDeCotizaciones((data ?? []).flatMap((f) => (f.cotizacion_id ? [f.cotizacion_id] : [])))
-  const unidadesDe = (f: FilaCotizacion) => {
+  // La base da siempre al menos una unidad por cotización. Si faltara, no se inventa: pintarla
+  // como de una unidad cargaría lo de varias al código de la última OT sin que nadie lo note.
+  const unidadesDe = (f: FilaCotizacion): UnidadDeCotizacion[] => {
     const lista = f.cotizacion_id ? unidades.get(f.cotizacion_id) : undefined
-    return lista && lista.length > 0 ? lista : [comoUnaUnidad(f)]
+    if (!lista || lista.length === 0) throw new Error(`No se pudieron leer las unidades de la cotización ${f.numero ?? ''}.`)
+    return lista
   }
   // Con `codigo`, solo las que tienen una unidad con ese código interno: no se firman enlaces de las demás.
   // La de varias unidades lleva un código por unidad (migración 20261126998000).
@@ -251,23 +243,22 @@ export async function facturasDelCodigo(codigo: string): Promise<FacturaVenta[]>
   return conCobros(filas.sort((a, b) => (a.creado_en ?? '').localeCompare(b.creado_en ?? '')))
 }
 
-/** Le pega a cada factura sus cobros, sus partes si cubre varias unidades, y los enlaces a la factura y a cada voucher. */
+/** Le pega a cada factura sus cobros, sus partes (una por unidad que cubre), y los enlaces a la factura y a cada voucher. */
 async function conCobros(filas: FilaFactura[]): Promise<FacturaVenta[]> {
   const supabase = await createClient()
   const ids = filas.flatMap((f) => (f.id ? [f.id] : []))
-  // Solo las que cubren más de una unidad: la de una sola ya dice su unidad y su código en la fila.
-  const conPartes = filas.flatMap((f) => (f.id && Number(f.unidades_cubiertas ?? 1) > 1 ? [f.id] : []))
-  const partes = await enTandas(conPartes, async (tanda) => {
-    const r = await supabase
-      .from('facturas_venta_unidades')
-      .select('factura_id, numero_de_unidad, codigo_interno, monto')
-      .in('factura_id', tanda)
-      .order('numero_de_unidad')
-    if (r.error) throw new Error(`No se pudo leer el reparto de las facturas: ${r.error.message}`)
-    return r.data ?? []
-  })
-  const cobros = {
-    data: await enTandas(ids, async (tanda) => {
+  // Las partes y los cobros no dependen uno del otro: se leen a la vez.
+  const [partes, filasDeCobros] = await Promise.all([
+    enTandas(ids, async (tanda) => {
+      const r = await supabase
+        .from('v_facturas_venta_por_unidad')
+        .select('factura_id, numero_de_unidad, codigo_interno, monto, cobrado, saldo')
+        .in('factura_id', tanda)
+        .order('numero_de_unidad')
+      if (r.error) throw new Error(`No se pudo leer el reparto de las facturas: ${r.error.message}`)
+      return r.data ?? []
+    }),
+    enTandas(ids, async (tanda) => {
       const r = await supabase
         .from('cobros_factura_venta')
         .select('id, factura_id, fecha, monto, cancela, operacion, archivo_ruta, archivo_mime, anulado_en, motivo_anulacion')
@@ -277,7 +268,8 @@ async function conCobros(filas: FilaFactura[]): Promise<FacturaVenta[]> {
       if (r.error) throw new Error(`No se pudieron leer los cobros: ${r.error.message}`)
       return r.data ?? []
     }),
-  }
+  ])
+  const cobros = { data: filasDeCobros }
   const [urlsFactura, urlsVoucher] = await Promise.all([
     enlaces(BUCKET_FACTURAS_VENTA, filas.map((f) => f.ruta_storage)),
     enlaces(BUCKET_COBROS_VENTA, (cobros.data ?? []).map((c) => c.archivo_ruta)),

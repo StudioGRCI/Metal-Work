@@ -17,7 +17,7 @@ import { describirRecorridoDeLaCotizacion, haceDias } from '@/lib/dominio/recorr
 import { fecha, hoyLima, moneda, parteDe, porcentaje, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
-import { AnularFactura, RegistrarFactura } from './acciones-factura'
+import { AnularFactura, FacturarUnidad, RegistrarFactura } from './acciones-factura'
 
 export const metadata = { title: 'Facturación' }
 
@@ -142,7 +142,9 @@ export default async function PaginaFacturacion() {
     <>
       <EncabezadoPagina
         titulo="Facturación"
-        ayuda="Las cotizaciones aprobadas, por código interno: registra la factura que emitiste en SUNAT y Tesorería la tiene por cobrar. La cotización de varias unidades lleva un código por unidad: la factura dice de cuál es, o que es por toda la cotización."
+        ayuda={`Las cotizaciones aprobadas, por código interno: registra la factura que emitiste en SUNAT y Tesorería la tiene por cobrar.${
+          bandeja.some((c) => c.unidades.length > 1) ? ' La cotización de varias unidades lleva un código por unidad: la factura dice de cuál es, o que es por toda la cotización.' : ''
+        }`}
       />
 
       <div className="space-y-5">
@@ -277,7 +279,7 @@ export default async function PaginaFacturacion() {
                       </p>
                     )}
 
-                    {varias && <Unidades cotizacion={c} moneda={m} recorridos={recorridos} />}
+                    {varias && <Unidades cotizacion={c} moneda={m} recorridos={recorridos} factura={factura} />}
 
                     {c.facturas.length > 0 && (
                       <div className="space-y-2 border-t border-borde pt-3">
@@ -336,7 +338,18 @@ export default async function PaginaFacturacion() {
  * con el código de su OT, en qué va su factura, lo que le toca del total y lo
  * que le falta. La que espera factura dice desde cuándo.
  */
-function Unidades({ cotizacion: c, moneda: m, recorridos }: { cotizacion: CotizacionParaFacturar; moneda: CodigoMoneda; recorridos: Recorridos | null }) {
+function Unidades({
+  cotizacion: c,
+  moneda: m,
+  recorridos,
+  factura,
+}: {
+  cotizacion: CotizacionParaFacturar
+  moneda: CodigoMoneda
+  recorridos: Recorridos | null
+  /** Quien mira registra facturas: cada unidad que espera lleva su «Facturar». */
+  factura: boolean
+}) {
   const otra: CodigoMoneda = m === 'USD' ? 'PEN' : 'USD'
   return (
     <section aria-label={`Unidades de la cotización ${c.numero}`} className="border-t border-borde pt-3">
@@ -350,9 +363,12 @@ function Unidades({ cotizacion: c, moneda: m, recorridos }: { cotizacion: Cotiza
             <li key={u.numero} data-unidad={u.numero} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2 text-sm last:pb-0">
               <p className="flex flex-wrap items-center gap-2">
                 <span className="font-medium text-texto">Unidad {u.numero}</span>
-                {u.codigo && <span className="tabular text-texto-suave">código {u.codigo}</span>}
+                {u.codigo && <span className="tabular whitespace-nowrap text-texto-suave">código {u.codigo}</span>}
                 <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
                 {espera && <DiasEnEspera dias={espera.dias} desde={espera.desde} quien={espera.quien} />}
+                {factura && c.cotizacion_id && u.codigo && esperaFactura(u) && !c.en_correccion && (
+                  <FacturarUnidad cotizacionId={c.cotizacion_id} unidad={u.numero} />
+                )}
               </p>
               <p className="tabular text-xs text-texto-suave">
                 {u.parte === null ? (
@@ -371,7 +387,10 @@ function Unidades({ cotizacion: c, moneda: m, recorridos }: { cotizacion: Cotiza
                 {u.facturado > 0 && falta !== null && falta > 0.005 && (
                   <>
                     {' '}
-                    · falta <span className="whitespace-nowrap text-aviso">{moneda(falta, m)}</span>
+                    ·{' '}
+                    <span className="whitespace-nowrap">
+                      falta <span className="text-aviso">{moneda(falta, m)}</span>
+                    </span>
                   </>
                 )}
                 {u.facturadoOtraMoneda > 0 && (
@@ -402,10 +421,20 @@ function PorFacturar({ pendientes, recorridos }: { pendientes: Pendiente[]; reco
     const d = c.en_correccion ? null : u.dias
     return d === null ? max : Math.max(max ?? 0, d)
   }, null)
+  // Mientras todas las cotizaciones son de una unidad, se dice como siempre: «cotizaciones».
+  const porUnidad = pendientes.some(({ c }) => c.unidades.length > 1)
   const descripcion =
     pendientes.length === 0
       ? null
-      : `${pendientes.length === 1 ? 'Una unidad espera' : `${pendientes.length} unidades esperan`} su factura${
+      : `${
+          porUnidad
+            ? pendientes.length === 1
+              ? 'Una unidad espera'
+              : `${pendientes.length} unidades esperan`
+            : pendientes.length === 1
+              ? 'Una cotización espera'
+              : `${pendientes.length} cotizaciones esperan`
+        } su factura${
           masAntigua !== null && masAntigua > 0 ? `; la que más espera, desde ${haceDias(masAntigua)}` : ''
         }.`
   return (
@@ -413,7 +442,11 @@ function PorFacturar({ pendientes, recorridos }: { pendientes: Pendiente[]; reco
       <TarjetaCabecera
         titulo="Por facturar"
         descripcion={descripcion}
-        ayuda="Cada unidad de una cotización aprobada que ya tiene su OT con código interno y no tiene factura, o la tiene por una parte de lo que le toca. La cotización de varias unidades sale una vez por cada unidad que espera. Los días se cuentan desde que la OT tiene código interno, con la fecha de Lima, también los de la que está facturada en parte. La que está en corrección va al final: la tiene Gerencia o Ventas y no se factura hasta que vuelva aprobada. Toca una para ir a su tarjeta y registrar la factura."
+        ayuda={
+          porUnidad
+            ? 'Cada unidad de una cotización aprobada que ya tiene su OT con código interno y no tiene factura, o la tiene por una parte de lo que le toca. La cotización de varias unidades sale una vez por cada unidad que espera. Los días se cuentan desde que la OT tiene código interno, con la fecha de Lima, también los de la que está facturada en parte. La que está en corrección va al final: la tiene Gerencia o Ventas y no se factura hasta que vuelva aprobada. Toca una para ir a su tarjeta y registrar la factura.'
+            : 'Las cotizaciones aprobadas que ya tienen su OT con código interno y no tienen factura, o la tienen por una parte del total. Los días se cuentan desde que la OT tiene código interno, con la fecha de Lima, también los de la que está facturada en parte. La que está en corrección va al final: la tiene Gerencia o Ventas y no se factura hasta que vuelva aprobada. Toca una para ir a su tarjeta y registrar la factura.'
+        }
       />
       {pendientes.length === 0 ? (
         <div className="px-4 py-4">
@@ -424,7 +457,7 @@ function PorFacturar({ pendientes, recorridos }: { pendientes: Pendiente[]; reco
           />
         </div>
       ) : (
-        <Tabla aria-label="Unidades por facturar, de la que más espera a la que menos">
+        <Tabla aria-label={`${porUnidad ? 'Unidades' : 'Cotizaciones'} por facturar, de la que más espera a la que menos`}>
           <TablaCabecera>
             <tr>
               <TH>Código interno</TH>

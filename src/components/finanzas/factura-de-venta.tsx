@@ -50,6 +50,12 @@ export function FacturaDeVenta({
       : f.numero_de_unidad != null
         ? `Unidad ${f.numero_de_unidad} de ${f.unidades_de_la_cotizacion}`
         : null
+  // El código que su unidad tiene hoy: si la OT se anuló y se cargó otra, la factura sigue a la unidad.
+  const codigoDeHoy = (!porToda && f.partes[0]?.codigo_interno) || f.codigo_interno
+  // En la ficha de un código, de la factura por toda la cotización manda lo de ese código:
+  // con el saldo de la factura entera, quien sumaba las facturas del código se pasaba.
+  const mia = porToda && delCodigo !== undefined ? f.partes.find((p) => p.codigo_interno === delCodigo) : undefined
+  const saldoMio = Number(mia?.saldo ?? 0)
   return (
     // Con `id`: el aviso de la campana aterriza en esta factura (`#id`).
     <article
@@ -69,11 +75,17 @@ export function FacturaDeVenta({
           {f.concepto && <span className="text-sm text-texto-suave">{f.concepto}</span>}
         </p>
         {!anulada && (
-          <p className="tabular text-sm font-semibold text-texto">
-            {saldo > 0 ? `Saldo ${moneda(saldo, m)}` : 'Sin saldo'}
-            {/* Lo que falta cobrar como parte del total (DKS, 27/10/2026: porcentaje y costo). */}
-            {saldo > 0 && Number(f.cobrado) > 0 && (
-              <span className="font-normal text-texto-suave"> · {porcentaje(parteDe(saldo, f.total))} del total</span>
+          <p className="tabular text-sm font-semibold text-texto" data-saldo-de-la-factura>
+            {mia ? (
+              saldoMio > 0 ? `Saldo de este código ${moneda(saldoMio, m)}` : 'Sin saldo en este código'
+            ) : (
+              <>
+                {saldo > 0 ? `Saldo ${moneda(saldo, m)}` : 'Sin saldo'}
+                {/* Lo que falta cobrar como parte del total (DKS, 27/10/2026: porcentaje y costo). */}
+                {saldo > 0 && Number(f.cobrado) > 0 && (
+                  <span className="font-normal text-texto-suave"> · {porcentaje(parteDe(saldo, f.total))} del total</span>
+                )}
+              </>
             )}
           </p>
         )}
@@ -82,20 +94,44 @@ export function FacturaDeVenta({
         <p className="mt-0.5 text-sm text-texto">
           {f.cliente}
           <span className="text-texto-suave">
-            {' '}
-            · {porToda ? 'códigos' : 'código'}{' '}
-            <span className="font-medium text-texto">{porToda ? f.partes.map((p) => p.codigo_interno).join(', ') : f.codigo_interno}</span> · cotización{' '}
-            {f.cotizacion_numero}
+            {/* La de toda la cotización nombra sus códigos abajo, con lo que le toca a cada uno. */}
+            {!porToda && (
+              <>
+                {' '}
+                · código <span className="whitespace-nowrap font-medium text-texto">{codigoDeHoy}</span>
+              </>
+            )}{' '}
+            · cotización {f.cotizacion_numero}
           </span>
         </p>
       )}
       <p className="mt-0.5 text-xs text-texto-suave">
-        Total <span className="tabular font-medium text-texto">{moneda(f.total, m)}</span>
-        {Number(f.cobrado) > 0 && (
+        {mia ? (
+          <span data-de-este-codigo>
+            A este código le tocan <span className="tabular font-medium text-texto">{moneda(mia.monto, m)}</span>
+            {Number(mia.cobrado) > 0 && (
+              <>
+                {' '}
+                · cobrado <span className="tabular">{moneda(mia.cobrado, m)}</span>
+              </>
+            )}{' '}
+            · la factura es por <span className="tabular">{moneda(f.total, m)}</span>
+            {!anulada && saldo > 0 && (
+              <>
+                , con saldo de <span className="tabular">{moneda(saldo, m)}</span>
+              </>
+            )}
+          </span>
+        ) : (
           <>
-            {' '}
-            · cobrado <span className="tabular">{moneda(f.cobrado, m)}</span>
-            {parteDe(f.cobrado, f.total) !== null && ` · ${porcentaje(parteDe(f.cobrado, f.total))} de la factura`}
+            Total <span className="tabular font-medium text-texto">{moneda(f.total, m)}</span>
+            {Number(f.cobrado) > 0 && (
+              <>
+                {' '}
+                · cobrado <span className="tabular">{moneda(f.cobrado, m)}</span>
+                {parteDe(f.cobrado, f.total) !== null && ` · ${porcentaje(parteDe(f.cobrado, f.total))} de la factura`}
+              </>
+            )}
           </>
         )}{' '}
         · emitida el {fecha(f.fecha_emision)}
@@ -112,7 +148,7 @@ export function FacturaDeVenta({
             const este = delCodigo !== undefined && p.codigo_interno === delCodigo
             return (
               <li key={p.numero_de_unidad} className={este ? 'font-medium text-texto' : undefined} data-parte={p.numero_de_unidad}>
-                Unidad {p.numero_de_unidad} · {este ? 'este código' : `código ${p.codigo_interno}`} ·{' '}
+                Unidad {p.numero_de_unidad} · <span className="whitespace-nowrap">{este ? 'este código' : `código ${p.codigo_interno}`}</span> ·{' '}
                 <span className="tabular whitespace-nowrap">{moneda(p.monto, m)}</span>
               </li>
             )

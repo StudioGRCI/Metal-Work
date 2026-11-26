@@ -90,13 +90,16 @@ export default async function PaginaPorCobrar() {
           cobrado: u.cobrado,
           moneda: codigo(c.moneda),
           cotizaciones: 1,
+          unidad: u.de > 1 ? { numero: u.numero, de: u.de } : null,
           monedasDistintas: false,
           otraMoneda: facturadoOtra > 0 ? { facturado: facturadoOtra, cobrado: cobradoOtra } : null,
         }
       } else if (previo.moneda !== codigo(c.moneda)) {
         previo.monedasDistintas = true
         previo.cotizaciones += 1
+        previo.unidad = null
       } else {
+        previo.unidad = null
         if (facturadoOtra > 0) {
           previo.otraMoneda = {
             facturado: (previo.otraMoneda?.facturado ?? 0) + facturadoOtra,
