@@ -14894,6 +14894,8 @@ export type Database = {
           facturas: number | null
           facturado: number | null
           cobrado: number | null
+          facturado_otra_moneda: number | null
+          cobrado_otra_moneda: number | null
         }[]
       }
       crear_compra_agrupada: {

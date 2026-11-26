@@ -21,6 +21,8 @@ export type CobroDelCodigo = {
   cotizaciones: number
   /** El código tiene cotizaciones en monedas distintas: lo de arriba es solo de la primera moneda. */
   monedasDistintas: boolean
+  /** Alguna factura va en otra moneda que su cotización: no se suma a lo cobrado de arriba. */
+  facturasEnOtraMoneda: boolean
 }
 
 /**
@@ -109,6 +111,7 @@ function RevisionPorResponder({ revision: v, cobro, abreVehiculos }: { revision:
               {cobro.cotizaciones > 1 ? ` de las ${cobro.cotizaciones} cotizaciones, que suman` : ' de la cotización de'}{' '}
               {moneda(cobro.total, cobro.moneda)}
               {cobro.monedasDistintas && ' (las de otra moneda no se suman aquí)'}
+              {cobro.facturasEnOtraMoneda && ' · hay facturas en otra moneda, que no se suman aquí: míralas en Por cobrar'}
               {porCobrar !== null && porCobrar > 0.005 && (
                 <>
                   {' '}

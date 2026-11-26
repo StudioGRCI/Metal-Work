@@ -1631,6 +1631,7 @@ async function VistaFacturacion({ codigo, perfil }: { codigo: string; perfil: Pe
   const puedeBajar = puede(perfil, PERMISOS_BAJAR_COTIZACION)
   const [cotizaciones, facturas] = await Promise.all([cotizacionesAprobadas(codigo), facturasDelCodigo(codigo)])
   const deMoneda = (m: string | null): CodigoMoneda => (m === 'USD' ? 'USD' : 'PEN')
+  const otraMoneda = (m: CodigoMoneda): CodigoMoneda => (m === 'USD' ? 'PEN' : 'USD')
   return (
     <>
       <Tarjeta>
@@ -1657,6 +1658,13 @@ async function VistaFacturacion({ codigo, perfil }: { codigo: string; perfil: Pe
                       <p className="tabular text-xs text-texto-suave">
                         {Number(c.facturas) === 0 ? 'Contabilidad aún no la factura' : `Facturado ${moneda(c.facturado, m)} · cobrado ${moneda(c.cobrado, m)}`}
                       </p>
+                      {/* Lo facturado en la otra moneda va aparte: sumarlo mezclaba soles con dólares (20261126960000). */}
+                      {Number(c.facturado_otra_moneda) > 0 && (
+                        <p className="tabular text-xs text-texto-suave" data-otra-moneda>
+                          Y en {m === 'USD' ? 'soles' : 'dólares'}: facturado {moneda(c.facturado_otra_moneda, otraMoneda(m))} · cobrado{' '}
+                          {moneda(c.cobrado_otra_moneda, otraMoneda(m))}
+                        </p>
+                      )}
                       {c.url && (
                         <a
                           href={c.url}

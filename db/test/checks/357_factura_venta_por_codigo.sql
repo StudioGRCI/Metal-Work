@@ -79,6 +79,8 @@ select set_config('prueba.f3', gen_random_uuid()::text, true);
 select set_config('prueba.f1_ruta', current_setting('prueba.f1') || '/' || gen_random_uuid() || '.pdf', true);
 select set_config('prueba.f2_ruta', current_setting('prueba.f2') || '/' || gen_random_uuid() || '.pdf', true);
 select set_config('prueba.f3_ruta', current_setting('prueba.f3') || '/' || gen_random_uuid() || '.pdf', true);
+select set_config('prueba.f4', gen_random_uuid()::text, true);
+select set_config('prueba.f4_ruta', current_setting('prueba.f4') || '/' || gen_random_uuid() || '.pdf', true);
 select set_config('prueba.c1', gen_random_uuid()::text, true);
 select set_config('prueba.c2', gen_random_uuid()::text, true);
 select set_config('prueba.c3', gen_random_uuid()::text, true);
@@ -268,6 +270,15 @@ do $$ begin
   perform test.afirmar((select facturas = 2 and facturado = 59000 and cobrado = 29500 from public.cotizaciones_para_facturar()
                          where cotizacion_id = current_setting('prueba.cot1')::uuid),
     'Facturación suma lo facturado y lo cobrado sin la anulada');
+  -- Una factura en soles de la cotización en dólares no se suma a lo facturado en dólares (20261126960000).
+  insert into storage.objects (bucket_id, name, owner_id, metadata)
+  values ('facturas-venta', current_setting('prueba.f4_ruta'), current_setting('prueba.conta'), '{"mimetype": "application/pdf", "size": 900}');
+  perform public.registrar_factura_venta(current_setting('prueba.f4')::uuid, current_setting('prueba.cot1')::uuid, 'E001-628',
+    current_setting('prueba.hoy')::date, current_setting('prueba.hoy')::date, 'PEN', 1000, 'Flete', current_setting('prueba.f4_ruta'), 'E001-628.pdf');
+  perform test.afirmar((select facturas = 3 and facturado = 59000 and cobrado = 29500
+                               and facturado_otra_moneda = 1000 and cobrado_otra_moneda = 0
+                          from public.cotizaciones_para_facturar() where cotizacion_id = current_setting('prueba.cot1')::uuid),
+    'la factura en otra moneda va aparte: lo facturado y lo cobrado son de la moneda de la cotización');
   reset role;
   perform test.afirmar(exists (select 1 from public.notificaciones n
                                 where n.usuario_id = current_setting('prueba.teso')::uuid
@@ -279,7 +290,7 @@ end $$;
 do $$ begin
   perform test.como_usuario(current_setting('prueba.gerente')::uuid);
   set local role authenticated;
-  perform test.afirmar((select count(*) from public.v_facturas_venta where cotizacion_pdf_id = current_setting('prueba.cot1')::uuid) = 3,
+  perform test.afirmar((select count(*) from public.v_facturas_venta where cotizacion_pdf_id = current_setting('prueba.cot1')::uuid) = 4,
     'Gerencia ve las facturas del código');
   reset role;
 

@@ -65,11 +65,20 @@ export default async function PaginaPorCobrar() {
     const total = totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
     const previo = cobrosPorCodigo[c.codigo_interno]
     if (!previo) {
-      cobrosPorCodigo[c.codigo_interno] = { total, facturado: Number(c.facturado ?? 0), cobrado: Number(c.cobrado ?? 0), moneda: codigo(c.moneda), cotizaciones: 1, monedasDistintas: false }
+      cobrosPorCodigo[c.codigo_interno] = {
+        total,
+        facturado: Number(c.facturado ?? 0),
+        cobrado: Number(c.cobrado ?? 0),
+        moneda: codigo(c.moneda),
+        cotizaciones: 1,
+        monedasDistintas: false,
+        facturasEnOtraMoneda: Number(c.facturado_otra_moneda ?? 0) > 0,
+      }
     } else if (previo.moneda !== codigo(c.moneda)) {
       previo.monedasDistintas = true
       previo.cotizaciones += 1
     } else {
+      if (Number(c.facturado_otra_moneda ?? 0) > 0) previo.facturasEnOtraMoneda = true
       previo.total = previo.total === null || total === null ? null : previo.total + total
       previo.facturado += Number(c.facturado ?? 0)
       previo.cobrado += Number(c.cobrado ?? 0)
@@ -194,6 +203,13 @@ export default async function PaginaPorCobrar() {
                           Facturado {moneda(c.facturado, m)}
                           {parteDe(c.facturado, total) !== null && ` (${porcentaje(parteDe(c.facturado, total))} de la cotización)`} · cobrado {moneda(c.cobrado, m)}
                           {parteDe(c.cobrado, total) !== null && ` (${porcentaje(parteDe(c.cobrado, total))} de la cotización)`}
+                        </span>
+                      )}
+                      {/* La factura en otra moneda no se suma a lo de arriba (20261126960000). */}
+                      {Number(c.facturado_otra_moneda) > 0 && (
+                        <span className="tabular" data-otra-moneda>
+                          Y en {m === 'USD' ? 'soles' : 'dólares'}: facturado {moneda(c.facturado_otra_moneda, m === 'USD' ? 'PEN' : 'USD')} · cobrado{' '}
+                          {moneda(c.cobrado_otra_moneda, m === 'USD' ? 'PEN' : 'USD')}
                         </span>
                       )}
                       {c.url && (
