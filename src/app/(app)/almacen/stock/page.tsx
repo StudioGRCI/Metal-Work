@@ -75,7 +75,9 @@ export default async function PaginaStockEnAlmacen({ searchParams }: PageProps<'
         }
       />
 
-      <div className="mb-4 space-y-3">
+      {/* 20 px entre los filtros y lo que muestran, como entre bloques (la escala de la skill diseno). */}
+      <div className="space-y-5">
+      <div className="space-y-3">
         <BuscadorSimple ruta="/almacen/stock" etiqueta="Buscar en el stock" marcador="Material, código interno o RQ" />
         <PastillaFiltro
           ruta="/almacen/stock"
@@ -94,14 +96,15 @@ export default async function PaginaStockEnAlmacen({ searchParams }: PageProps<'
 
       {grupos.length === 0 ? (
         <Tarjeta>
-          <TarjetaCuerpo>
-            <p className="text-sm font-medium text-texto">{q ? `Nada con «${q}»` : 'Almacén todavía no tiene materiales en su kardex'}</p>
-            <p className="text-sm text-texto-suave">
-              {q
+          <SinDatos
+            enTabla={false}
+            titulo={q ? `Nada con «${q}»` : 'Almacén todavía no tiene materiales en su kardex'}
+            descripcion={
+              q
                 ? `Prueba con otra palabra, con el código del material o con el código interno.${pide ? ' Si Almacén no lo tiene, pídelo con un requerimiento.' : ''}`
-                : 'Aparecen aquí apenas Almacén registra su primer ingreso o su conteo.'}
-            </p>
-          </TarjetaCuerpo>
+                : 'Aparecen aquí apenas Almacén registra su primer ingreso o su conteo.'
+            }
+          />
         </Tarjeta>
       ) : (
         <div className="space-y-5">
@@ -120,6 +123,7 @@ export default async function PaginaStockEnAlmacen({ searchParams }: PageProps<'
           ))}
         </div>
       )}
+      </div>
     </>
   )
 }

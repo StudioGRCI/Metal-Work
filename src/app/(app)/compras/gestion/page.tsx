@@ -55,14 +55,16 @@ export default async function PaginaGestionCompras() {
         }
       />
 
-      <p className="mb-4 text-sm text-texto-suave">
-        <span className="tabular font-semibold text-texto">{enLista.length}</span> en la lista del conductor ·{' '}
-        <span className="tabular font-semibold text-texto">{enCamino.length}</span> en camino ·{' '}
-        <span className={sinGuia > 0 ? 'tabular font-semibold text-aviso' : 'tabular font-semibold text-texto'}>{sinGuia}</span> sin guía de
-        remisión · <span className="tabular font-semibold text-texto">{porProgramar.length}</span> por programar
-      </p>
+      {/* El resumen y cada sección, a 20 px: bloques de la pantalla (escala de
+          separaciones, entrega 4 del plan de orden y diseño). Eran 16 y 32. */}
+      <div className="space-y-5">
+        <p className="text-sm text-texto-suave">
+          <span className="tabular font-semibold text-texto">{enLista.length}</span> en la lista del conductor ·{' '}
+          <span className="tabular font-semibold text-texto">{enCamino.length}</span> en camino ·{' '}
+          <span className={sinGuia > 0 ? 'tabular font-semibold text-aviso' : 'tabular font-semibold text-texto'}>{sinGuia}</span> sin guía de
+          remisión · <span className="tabular font-semibold text-texto">{porProgramar.length}</span> por programar
+        </p>
 
-      <div className="space-y-8">
         <section className="space-y-3" aria-labelledby="titulo-por-programar">
           <h2 id="titulo-por-programar" className="text-base font-semibold text-texto">
             Por programar <span className="tabular text-texto-suave">({porProgramar.length})</span>

@@ -98,7 +98,8 @@ export function ControlesVehiculo({
   }
 
   return (
-    <div className="flex flex-col items-end gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+    // `contents`: sus botones entran al renglón de la fila (`AccionesDeFila`).
+    <div className="contents">
       <Boton
         type="button"
         variante="secundario"
@@ -137,7 +138,7 @@ export function ControlesVehiculo({
         desenlace={fotosSalida.desenlace}
         registro="La salida"
         femenino
-        className="sm:basis-full sm:text-right"
+        className="order-last basis-full md:text-right"
       />
       <EstadoDelEnvio
         id={fotosAnular.idDelEstado}
@@ -145,7 +146,7 @@ export function ControlesVehiculo({
         desenlace={fotosAnular.desenlace}
         registro="La anulación"
         femenino
-        className="sm:basis-full sm:text-right"
+        className="order-last basis-full md:text-right"
       />
       <Ventana
         abierta={paso !== null}
