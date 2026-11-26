@@ -7,9 +7,8 @@
  * su mapa de pasos en este archivo.
  */
 
-import { fecha } from '@/lib/format'
-
-import { motivoDeAtraso } from './plazos'
+// Sin imports de valores: `recorrido.test.mjs` lo carga con `node --test`, que no
+// resuelve el alias `@/` ni las rutas sin extensión.
 
 /** HECHO: alguien lo hizo. AHORA: alguien lo tiene. PENDIENTE: todavía no le toca a nadie. */
 export type SituacionDelPaso = 'HECHO' | 'AHORA' | 'PENDIENTE'
@@ -121,6 +120,8 @@ const ESPERAS_DEL_REQUERIMIENTO: Record<string, (oc: string | null) => string> =
   COMPRA_CORTA: (oc) => `La ${oc ?? 'orden de compra'} compró menos: pide el resto en un RQ nuevo.`,
   // Ya no le falta llegar nada, aunque su orden de compra siga abierta: lo dice igual la insignia de la tarjeta.
   YA_LLEGO_TODO: () => 'Ya llegó todo: falta marcarlo listo para recoger.',
+  // Ya salió del kardex todo lo pedido (20261126170000): solo falta cerrarlo.
+  POR_ENTREGAR: () => 'Ya salió todo del kardex: falta marcarlo entregado.',
   RECOJO_DEL_AREA: () => 'Lo recoge en Almacén.',
 }
 
@@ -153,10 +154,24 @@ const PASOS_DE_LA_COTIZACION: Record<string, Frases> = {
 const ESPERAS_DE_LA_COTIZACION: Record<string, (detalle: string | null) => string> = {
   REVISION: () => 'La aprueba o la rechaza.',
   CORRECCION: () => 'Sube la corrección con el mismo número.',
-  CODIGO_Y_OT: () => 'Le da el código interno de la unidad y sube la OT.',
+  // Con varias unidades el detalle dice cuántas OT lleva de cuántas («1/3»).
+  CODIGO_Y_OT: (d) => {
+    const [lleva, de] = (d ?? '').split('/').map(Number)
+    if (!de) return 'Le da el código interno de la unidad y sube la OT.'
+    const faltan = de - lleva
+    return lleva
+      ? `Lleva ${lleva} de ${de} OT: ${faltan === 1 ? 'falta la de 1 unidad, con su código interno' : `faltan las de ${faltan} unidades, cada una con su código interno`}.`
+      : `Le da a cada una de las ${de} unidades su código interno y sube su OT.`
+  },
   FACTURA: () => 'Registra su factura.',
   FACTURA_RESTO: () => 'Registra la factura de lo que falta del total.',
   COBRO: (detalle) => (detalle === 'EN_PARTE' ? 'Cobra lo que falta: ya cobró una parte.' : 'Cobra sus facturas.'),
+}
+
+/** «1 hora», «26.5 horas», como `horas` de averias.ts (aquí sin importarla: el test corre sin el alias). */
+function horasParado(valor: number): string {
+  const texto = Number.isInteger(valor) ? String(valor) : valor.toFixed(1)
+  return `${texto} ${valor === 1 ? 'hora' : 'horas'}`
 }
 
 const PASOS_DEL_INFORME_DISENO: Record<string, Frases> = {
@@ -182,14 +197,30 @@ const PASOS_DE_LA_AVERIA: Record<string, Frases> = {
     hecho: (d) => (d === 'PARADO' ? 'Reportada: el equipo quedó parado' : 'Reportada'),
     falta: 'Reporte',
   },
-  ATENCION: { hecho: 'Mantenimiento la atendió', falta: 'Atención de Mantenimiento' },
-  CIERRE: { hecho: 'Mantenimiento la cerró', falta: 'Cierre: el equipo vuelve a operativo' },
+  ATENCION: { hecho: 'Mantenimiento anotó su diagnóstico', falta: 'Diagnóstico de Mantenimiento' },
+  CIERRE: {
+    hecho: 'Mantenimiento la cerró',
+    falta: 'Cierre: el equipo vuelve a operativo',
+    // Las horas que estuvo parado y el trabajo hecho («26.5|Se cambió…»): si no
+    // quedó bien, la ficha ya no muestra el primer trabajo, y quien la vuelve a
+    // atender lo lee aquí.
+    nota: (d) => {
+      const [h, ...resto] = d.split('|')
+      const trabajo = resto.join('|').trim()
+      const parado = h && Number.isFinite(Number(h)) ? `Parado: ${horasParado(Number(h))}` : null
+      return [parado, trabajo || null].filter(Boolean).join('. ') || null
+    },
+  },
+  // Lo que dijo quien la reportó: la ficha muestra solo la última vez.
+  REAPERTURA: { hecho: 'No quedó bien: volvió a Mantenimiento', falta: 'Reapertura', nota: (t) => (t ? `«${t}»` : null) },
   CONFIRMACION: { hecho: 'Quien la reportó confirmó que quedó bien', falta: 'Quien la reportó confirma que quedó bien' },
   ANULACION: { hecho: 'Anulada por Mantenimiento', falta: 'Anulación' },
 }
 
 const ESPERAS_DE_LA_AVERIA: Record<string, (detalle: string | null) => string> = {
-  ATENCION: () => 'La revisa, anota qué tiene y qué se hizo.',
+  ATENCION: () => 'La revisa y anota qué tiene.',
+  CIERRE: () => 'La arregla y la cierra con el trabajo hecho y las horas parado.',
+  CONFIRMACION: () => 'Prueba el equipo y dice si quedó bien.',
 }
 
 function describir(
@@ -255,6 +286,32 @@ export function correccionDeLaFecha(pasos: readonly PasoDelRecorrido[] | null | 
     .at(-1)
   if (!ultima) return null
   return { antes: partirSeguimiento(ultima.paso, ultima.detalle)?.anterior ?? null }
+}
+
+/**
+ * Por qué se atrasó una compra, de la lista corta que decidió el plan 4.2
+ * (migración 20261126462000). Con «Otro», la nota es obligatoria.
+ */
+export const MOTIVOS_DE_ATRASO = ['PROVEEDOR', 'PAGO', 'TRANSPORTE', 'APROBACION', 'OTRO'] as const
+export type MotivoDeAtraso = (typeof MOTIVOS_DE_ATRASO)[number]
+
+export const MOTIVO_DE_ATRASO: Record<MotivoDeAtraso, string> = {
+  PROVEEDOR: 'Proveedor',
+  PAGO: 'Pago',
+  TRANSPORTE: 'Transporte',
+  APROBACION: 'Aprobación',
+  OTRO: 'Otro',
+}
+
+/** El motivo en palabras; una clave que la pantalla no conoce, en llano. */
+export function motivoDeAtraso(clave: string): string {
+  return MOTIVO_DE_ATRASO[clave as MotivoDeAtraso] ?? clave.replaceAll('_', ' ').toLowerCase()
+}
+
+/** Una fecha `YYYY-MM-DD` como DD/MM/AAAA, reordenada como texto, igual que `fecha()` de `format.ts`. */
+function fecha(valor: string): string {
+  const partes = /^(\d{4})-(\d{2})-(\d{2})$/.exec(valor.trim())
+  return partes ? `${partes[3]}/${partes[2]}/${partes[1]}` : valor
 }
 
 function notaDelSeguimiento(paso: string) {

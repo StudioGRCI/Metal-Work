@@ -390,6 +390,125 @@ export type Database = {
           }
         ]
       }
+      averia_pasos: {
+        Row: {
+          id: string
+          averia_id: string
+          paso: string
+          hecho_por: string
+          hecho_en: string
+          texto: string | null
+          horas_parado: number | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          averia_id: string
+          paso: string
+          hecho_por: string
+          hecho_en?: string
+          texto?: string | null
+          horas_parado?: number | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          averia_id?: string
+          paso?: string
+          hecho_por?: string
+          hecho_en?: string
+          texto?: string | null
+          horas_parado?: number | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "averia_pasos_averia_id_fkey"
+            columns: ["averia_id"]
+            isOneToOne: false
+            referencedRelation: "averias"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "averia_pasos_hecho_por_fkey"
+            columns: ["hecho_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      averia_requerimientos: {
+        Row: {
+          id: string
+          averia_id: string
+          requerimiento_id: string
+          nota: string
+          enlazado_por: string
+          enlazado_en: string
+          quitado_por: string | null
+          quitado_en: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          averia_id: string
+          requerimiento_id: string
+          nota: string
+          enlazado_por: string
+          enlazado_en?: string
+          quitado_por?: string | null
+          quitado_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          averia_id?: string
+          requerimiento_id?: string
+          nota?: string
+          enlazado_por?: string
+          enlazado_en?: string
+          quitado_por?: string | null
+          quitado_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "averia_requerimientos_averia_id_fkey"
+            columns: ["averia_id"]
+            isOneToOne: false
+            referencedRelation: "averias"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "averia_requerimientos_enlazado_por_fkey"
+            columns: ["enlazado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "averia_requerimientos_quitado_por_fkey"
+            columns: ["quitado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "averia_requerimientos_requerimiento_id_fkey"
+            columns: ["requerimiento_id"]
+            isOneToOne: false
+            referencedRelation: "requerimientos"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       averias: {
         Row: {
           id: string
@@ -411,6 +530,20 @@ export type Database = {
           motivo_anulacion: string | null
           creado_en: string
           actualizado_en: string
+          diagnostico: string | null
+          atendida_por: string | null
+          atendida_en: string | null
+          trabajo_hecho: string | null
+          horas_parado: number | null
+          cerrada_por: string | null
+          cerrada_en: string | null
+          confirmada_en: string | null
+          nota_de_quien_reporto: string | null
+          veces_reabierta: number
+          reabierta_en: string | null
+          diagnostico_por: string | null
+          diagnostico_en: string | null
+          paro_al_reportar: boolean
         }
         Insert: {
           id?: string
@@ -432,6 +565,20 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          diagnostico?: string | null
+          atendida_por?: string | null
+          atendida_en?: string | null
+          trabajo_hecho?: string | null
+          horas_parado?: number | null
+          cerrada_por?: string | null
+          cerrada_en?: string | null
+          confirmada_en?: string | null
+          nota_de_quien_reporto?: string | null
+          veces_reabierta?: number
+          reabierta_en?: string | null
+          diagnostico_por?: string | null
+          diagnostico_en?: string | null
+          paro_al_reportar?: boolean
         }
         Update: {
           id?: string
@@ -453,6 +600,20 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          diagnostico?: string | null
+          atendida_por?: string | null
+          atendida_en?: string | null
+          trabajo_hecho?: string | null
+          horas_parado?: number | null
+          cerrada_por?: string | null
+          cerrada_en?: string | null
+          confirmada_en?: string | null
+          nota_de_quien_reporto?: string | null
+          veces_reabierta?: number
+          reabierta_en?: string | null
+          diagnostico_por?: string | null
+          diagnostico_en?: string | null
+          paro_al_reportar?: boolean
         }
         Relationships: [
           {
@@ -467,6 +628,27 @@ export type Database = {
             columns: ["area_id"]
             isOneToOne: false
             referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "averias_atendida_por_fkey"
+            columns: ["atendida_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "averias_cerrada_por_fkey"
+            columns: ["cerrada_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "averias_diagnostico_por_fkey"
+            columns: ["diagnostico_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           },
           {
@@ -823,6 +1005,7 @@ export type Database = {
           motivo_anulacion: string | null
           creado_en: string
           actualizado_en: string
+          captura_ruta: string | null
         }
         Insert: {
           id?: string
@@ -840,6 +1023,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          captura_ruta?: string | null
         }
         Update: {
           id?: string
@@ -857,6 +1041,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          captura_ruta?: string | null
         }
         Relationships: [
           {
@@ -1991,6 +2176,7 @@ export type Database = {
           anulado_por: string | null
           anulado_en: string | null
           motivo_correccion: string | null
+          cantidad_unidades: number
         }
         Insert: {
           id?: string
@@ -2016,6 +2202,7 @@ export type Database = {
           anulado_por?: string | null
           anulado_en?: string | null
           motivo_correccion?: string | null
+          cantidad_unidades?: number
         }
         Update: {
           id?: string
@@ -2041,6 +2228,7 @@ export type Database = {
           anulado_por?: string | null
           anulado_en?: string | null
           motivo_correccion?: string | null
+          cantidad_unidades?: number
         }
         Relationships: [
           {
@@ -5484,6 +5672,7 @@ export type Database = {
           diseno_lider_id: string | null
           diseno_lider_entrega_nombre: string | null
           plan_etapas_manual: boolean
+          numero_de_unidad: number | null
         }
         Insert: {
           id?: string
@@ -5533,6 +5722,7 @@ export type Database = {
           diseno_lider_id?: string | null
           diseno_lider_entrega_nombre?: string | null
           plan_etapas_manual?: boolean
+          numero_de_unidad?: number | null
         }
         Update: {
           id?: string
@@ -5582,6 +5772,7 @@ export type Database = {
           diseno_lider_id?: string | null
           diseno_lider_entrega_nombre?: string | null
           plan_etapas_manual?: boolean
+          numero_de_unidad?: number | null
         }
         Relationships: [
           {
@@ -5594,7 +5785,7 @@ export type Database = {
           {
             foreignKeyName: "ordenes_trabajo_cotizacion_pdf_id_fkey"
             columns: ["cotizacion_pdf_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "cotizaciones_pdf"
             referencedColumns: ["id"]
           },
@@ -12515,6 +12706,10 @@ export type Database = {
           monto_venta: number | null
           moneda: Database["public"]["Enums"]["moneda"] | null
           codigo_interno: string | null
+          cantidad_unidades: number | null
+          ordenes: Json | null
+          ordenes_vigentes: number | null
+          ordenes_faltantes: number | null
         }
         Relationships: []
       }
@@ -13501,6 +13696,12 @@ export type Database = {
         }
         Returns: string
       }
+      averia_la_ve: {
+        Args: {
+          p_id: string | null
+        }
+        Returns: boolean
+      }
       averias_a_quien_se_aviso: {
         Args: {
           p_averia: string | null
@@ -13534,6 +13735,55 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string[]
       }
+      averias_atender: {
+        Args: {
+          p_id: string | null
+          p_diagnostico: string | null
+        }
+        Returns: {
+          averia: string | null
+          estado: string | null
+        }[]
+      }
+      averias_cerrar: {
+        Args: {
+          p_id: string | null
+          p_trabajo: string | null
+          p_horas: number | null
+        }
+        Returns: {
+          averia: string | null
+          equipo_vuelve_a: string | null
+          sigue_parado_por: string | null
+          avisada: boolean | null
+          equipo_estado: string | null
+        }[]
+      }
+      averias_confirmar: {
+        Args: {
+          p_id: string | null
+          p_quedo_bien: boolean | null
+          p_nota: string | null
+        }
+        Returns: {
+          averia: string | null
+          estado: string | null
+          equipo_parado: boolean | null
+          avisado_a: string | null
+        }[]
+      }
+      averias_enlazar_rq: {
+        Args: {
+          p_enlace: string | null
+          p_averia: string | null
+          p_requerimiento: string | null
+          p_nota: string | null
+        }
+        Returns: {
+          enlace: string | null
+          numero_rq: string | null
+        }[]
+      }
       averias_equipos_para_elegir: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -13548,11 +13798,24 @@ export type Database = {
           estado: string | null
         }[]
       }
+      averias_exigir_mantenimiento: {
+        Args: Record<PropertyKey, never>
+        Returns: null
+      }
       averias_foto_anotada: {
         Args: {
           p_ruta: string | null
         }
         Returns: boolean
+      }
+      averias_quitar_rq: {
+        Args: {
+          p_enlace: string | null
+        }
+        Returns: {
+          enlace: string | null
+          numero_rq: string | null
+        }[]
       }
       averias_reportar: {
         Args: {
@@ -13573,6 +13836,44 @@ export type Database = {
           aviso_responsable: boolean | null
           aviso_ssoma: boolean | null
           aviso_gerencia: boolean | null
+        }[]
+      }
+      averias_rq_enlazados: {
+        Args: {
+          p_averias: string[] | null
+        }
+        Returns: {
+          enlace: string | null
+          averia: string | null
+          requerimiento: string | null
+          numero: string | null
+          estado: string | null
+          nota: string | null
+          enlazado_en: string | null
+          puede_abrir: boolean | null
+        }[]
+      }
+      averias_rq_para_enlazar: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          numero: string | null
+          tipo: string | null
+          area: string | null
+          codigo_interno: string | null
+          estado: string | null
+          justificacion: string | null
+          creado_en: string | null
+        }[]
+      }
+      averias_soltar_el_equipo: {
+        Args: {
+          p_id: string | null
+          p_vuelve_a: string | null
+        }
+        Returns: {
+          vuelve_a: string | null
+          sigue_parado_por: string | null
         }[]
       }
       averias_ve_las_de_riesgo: {
@@ -13608,6 +13909,25 @@ export type Database = {
           anulado_en: string | null
           anulo: string | null
           motivo_anulacion: string | null
+          gravedad: number | null
+          espera_de: string | null
+          espera_desde: string | null
+          es_mia: boolean | null
+          diagnostico: string | null
+          atendida_en: string | null
+          atendio: string | null
+          trabajo_hecho: string | null
+          horas_parado: number | null
+          cerrada_en: string | null
+          cerro: string | null
+          confirmada_en: string | null
+          nota_de_quien_reporto: string | null
+          veces_reabierta: number | null
+          paro_al_reportar: boolean | null
+          equipo_parado_desde: string | null
+          rq_enlazados: number | null
+          diagnostico_de: string | null
+          diagnostico_en: string | null
         }[]
       }
       avisar_a_diseno: {
@@ -14016,6 +14336,7 @@ export type Database = {
           p_fecha: string | null
           p_saldo_banco: number | null
           p_observaciones: string | null
+          p_captura_ruta: string | null
         }
         Returns: string
       }
@@ -14626,6 +14947,40 @@ export type Database = {
           subido_en: string | null
           recibido_en: string | null
           recibido_por_area: string | null
+        }[]
+      }
+      codigo_interno_lo_vendido: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          cotizacion_id: string | null
+          numero: string | null
+          moneda: string | null
+          monto_venta: number | null
+          incluye_igv: boolean | null
+          facturas: number | null
+          facturado_en_su_moneda: number | null
+          en_otra_moneda: boolean | null
+        }[]
+      }
+      codigo_interno_recorrido: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          cotizacion_id: string | null
+          cotizacion_numero: string | null
+          cotizacion_estado: string | null
+          cotizacion_fecha: string | null
+          cotizaciones: number | null
+          ot_id: string | null
+          ot_numero: string | null
+          ot_estado: string | null
+          ot_tipo: string | null
+          ot_del_taller: boolean | null
+          ot_entregada_el: string | null
+          ordenes: number | null
         }[]
       }
       codigo_interno_reparto_a_todos: {
@@ -15290,6 +15645,8 @@ export type Database = {
           facturas: number | null
           facturado: number | null
           cobrado: number | null
+          facturado_otra_moneda: number | null
+          cobrado_otra_moneda: number | null
         }[]
       }
       crear_compra_agrupada: {
@@ -15433,6 +15790,24 @@ export type Database = {
           p_config: Json | null
         }
         Returns: number
+      }
+      decisiones_tomadas: {
+        Args: {
+          p_desde: string | null
+          p_hasta: string | null
+        }
+        Returns: {
+          tipo: string | null
+          documento: string | null
+          nombre: string | null
+          detalle: string | null
+          codigo: string | null
+          decision: string | null
+          decidido_en: string | null
+          puesto: string | null
+          motivo: string | null
+          enlace: string | null
+        }[]
       }
       dejar_de_esperar_reposicion: {
         Args: {
@@ -16320,6 +16695,36 @@ export type Database = {
           recojo: string | null
         }[]
       }
+      historia_cierres_caja: {
+        Args: {
+          p_desde: string | null
+          p_hasta: string | null
+        }
+        Returns: {
+          id: string | null
+          caja_id: string | null
+          cuenta: string | null
+          tipo: string | null
+          banco: string | null
+          moneda: string | null
+          cuenta_activa: boolean | null
+          con_captura: boolean | null
+          fecha: string | null
+          saldo_inicial: number | null
+          ingresos: number | null
+          egresos: number | null
+          saldo_final: number | null
+          saldo_banco: number | null
+          diferencia: number | null
+          observaciones: string | null
+          cerrado_por: string | null
+          cerrado_en: string | null
+          reabierto_por: string | null
+          reabierto_en: string | null
+          motivo_reapertura: string | null
+          con_captura_del_dia: boolean | null
+        }[]
+      }
       horas_en_texto: {
         Args: {
           p_horas: number | null
@@ -17010,6 +17415,12 @@ export type Database = {
           pdf_nombre: string | null
           creado_en: string | null
         }[]
+      }
+      ordenes_de_cotizacion: {
+        Args: {
+          p_cotizacion: string | null
+        }
+        Returns: Json
       }
       ordenes_servicio_listado: {
         Args: Record<PropertyKey, never>
