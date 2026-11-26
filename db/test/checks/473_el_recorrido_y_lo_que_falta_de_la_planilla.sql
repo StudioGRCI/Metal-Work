@@ -42,11 +42,11 @@ begin
          case when x.anulado then 'Se cargó dos veces el mismo día' end,
          now() - interval '3 days'
     from (values
-      ('47200000-0000-4000-8000-0000000000a1'::uuid, date_trunc('month', current_date)::date,     'Espera a RR. HH.', false, false, false),
-      ('47200000-0000-4000-8000-0000000000a2'::uuid, date_trunc('month', current_date)::date,     'Ya tiene el visto', true,  false, false),
-      ('47200000-0000-4000-8000-0000000000a3'::uuid, date_trunc('month', current_date)::date,     'Observado', false, true, false),
-      ('47200000-0000-4000-8000-0000000000a4'::uuid, date_trunc('month', current_date)::date,     'Anulado', false, false, true),
-      ('47200000-0000-4000-8000-0000000000a5'::uuid, (date_trunc('month', current_date) - interval '1 day')::date, 'Del mes anterior', false, false, false)
+      ('47200000-0000-4000-8000-0000000000a1'::uuid, date '2031-03-01',     'Espera a RR. HH.', false, false, false),
+      ('47200000-0000-4000-8000-0000000000a2'::uuid, date '2031-03-01',     'Ya tiene el visto', true,  false, false),
+      ('47200000-0000-4000-8000-0000000000a3'::uuid, date '2031-03-01',     'Observado', false, true, false),
+      ('47200000-0000-4000-8000-0000000000a4'::uuid, date '2031-03-01',     'Anulado', false, false, true),
+      ('47200000-0000-4000-8000-0000000000a5'::uuid, (date '2031-03-01' - interval '1 day')::date, 'Del mes anterior', false, false, false)
     ) as x(id, fecha, asunto, visto, observado, anulado);
   set local session_replication_role = origin;
 end $$;
@@ -69,9 +69,9 @@ select pg_temp.como('recursos_humanos');
 set local role authenticated;
 
 insert into public.planillas (id, tipo, periodo, registrado_por)
-values ('47200000-0000-4000-8000-0000000000b1', 'TALLER', date_trunc('month', current_date)::date, public.usuario_actual());
+values ('47200000-0000-4000-8000-0000000000b1', 'TALLER', date '2031-03-01', public.usuario_actual());
 insert into public.planillas (id, tipo, periodo, registrado_por)
-values ('47200000-0000-4000-8000-0000000000b2', 'SUBCONTRATOS', date_trunc('month', current_date)::date, public.usuario_actual());
+values ('47200000-0000-4000-8000-0000000000b2', 'SUBCONTRATOS', date '2031-03-01', public.usuario_actual());
 
 -- Un Excel con Ana y Beto; Zeta, a mano.
 insert into public.planilla_personas (planilla_id, nombre, documento, monto, registrado_por, importacion_id)
