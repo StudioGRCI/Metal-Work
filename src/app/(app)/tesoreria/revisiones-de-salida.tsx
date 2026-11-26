@@ -30,7 +30,13 @@ export type CobroDelCodigo = {
 }
 
 /** Lo que falta cobrar de las facturas registradas del código, por moneda: lo ve quien no lee las cotizaciones. */
-export type PorCobrarDelCodigo = { saldo: Record<CodigoMoneda, number>; facturas: number }
+export type PorCobrarDelCodigo = {
+  saldo: Record<CodigoMoneda, number>
+  /** Las facturas registradas del código, sin las anuladas. */
+  facturas: number
+  /** Cuántas de ellas tienen saldo por cobrar. */
+  conSaldo: number
+}
 
 /**
  * Los vehículos que Requerimientos quiere entregar y esperan la revisión de
@@ -182,21 +188,25 @@ function RevisionPorResponder({
       {/* Sin leer la cotización no se sabe cuánto falta facturar, pero sí lo que falta cobrar de lo facturado: con la tarjeta muda se liberaba a ciegas. */}
       {!veCobros && v.codigo_interno && (
         <p className="mt-1 tabular text-xs text-texto-suave" data-por-cobrar-de-facturas>
-          {deFacturas ? (
+          {!deFacturas || deFacturas.facturas === 0 ? (
+            // Sin facturas no hay nada cobrado: decir «no tienen saldo» se leía como cobrado.
+            'Este código no tiene facturas registradas: pregúntale a Tesorería si falta facturar.'
+          ) : deFacturas.conSaldo > 0 ? (
             <>
-              Por cobrar de {deFacturas.facturas === 1 ? 'su factura' : `sus ${deFacturas.facturas} facturas`}:{' '}
-              <span className="font-medium text-aviso">
-                {(['PEN', 'USD'] as const)
-                  .filter((m) => deFacturas.saldo[m] > 0.005)
-                  .map((m) => moneda(deFacturas.saldo[m], m))
-                  .join(' + ')}
-              </span>
-              .
+              Por cobrar en {deFacturas.conSaldo === 1 ? '1 factura' : `${deFacturas.conSaldo} facturas`}:{' '}
+              {(['PEN', 'USD'] as const)
+                .filter((m) => deFacturas.saldo[m] > 0)
+                .map((m, i) => (
+                  <span key={m}>
+                    {i > 0 && ' y '}
+                    <span className="whitespace-nowrap font-medium text-aviso">{moneda(deFacturas.saldo[m], m)}</span>
+                  </span>
+                ))}
+              . Lo que falta facturar de la cotización lo ve Tesorería.
             </>
           ) : (
-            'Las facturas registradas del código no tienen saldo por cobrar.'
-          )}{' '}
-          Lo que falta facturar de la cotización lo ve Tesorería.
+            `${deFacturas.facturas === 1 ? 'Su factura registrada ya está cobrada' : `Sus ${deFacturas.facturas} facturas registradas ya están cobradas`}. Lo que falta facturar de la cotización lo ve Tesorería.`
+          )}
         </p>
       )}
       <p className="mt-1 text-xs text-texto-suave">

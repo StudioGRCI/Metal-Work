@@ -9,7 +9,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { cajaDeLosPagos, cuentasParaPagar } from '@/lib/datos/caja'
 import { solicitudesPendientesTesoreria } from '@/lib/datos/costos-ot'
-import { COBRADAS_A_LA_VISTA, cotizacionesAprobadas, facturasDeVenta } from '@/lib/datos/facturacion'
+import { COBRADAS_A_LA_VISTA, cotizacionesAprobadas, facturasDeVenta, saldoDeFacturasPorCodigo } from '@/lib/datos/facturacion'
 import { PERMISOS_BAJAR_COTIZACION, rutaParaBajarCotizacion } from '@/lib/descarga'
 import { revisionesDeSalidaPendientes } from '@/lib/datos/vehiculos'
 import { nombreMoneda } from '@/lib/dominio/caja'
@@ -18,7 +18,7 @@ import { hoyLima, moneda, parteDe, porcentaje, type CodigoMoneda } from '@/lib/f
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { AnularCobro, CobrarFactura } from '../formularios'
-import { RevisionesDeSalida, type CobroDelCodigo, type PorCobrarDelCodigo } from '../revisiones-de-salida'
+import { RevisionesDeSalida, type CobroDelCodigo } from '../revisiones-de-salida'
 import { SolicitudesOT } from '../solicitudes-ot'
 
 export const metadata = { title: 'Cuentas por cobrar' }
@@ -66,17 +66,12 @@ export default async function PaginaPorCobrar() {
   // (antes quedaba solo la más vieja); en monedas distintas no se suman y se dice.
   const cobrosPorCodigo: Record<string, CobroDelCodigo> = {}
   // Quien responde las salidas sin leer las cotizaciones aprobadas (Costos) ve al
-  // menos lo que falta cobrar de las facturas del código: las pendientes llegan
-  // todas, no solo las últimas, así que esa cifra es entera.
-  const porCobrarPorCodigo: Record<string, PorCobrarDelCodigo> = {}
-  if (!veCotizaciones) {
-    for (const f of pendientes) {
-      if (!f.codigo_interno) continue
-      const fila = (porCobrarPorCodigo[f.codigo_interno] ??= { saldo: { PEN: 0, USD: 0 }, facturas: 0 })
-      fila.saldo[codigo(f.moneda)] += Number(f.saldo)
-      fila.facturas += 1
-    }
-  }
+  // menos lo que falta cobrar de las facturas de cada código que pide salir,
+  // contadas todas (la lista de abajo trae solo las últimas cobradas).
+  const porCobrarPorCodigo =
+    !veCotizaciones && salidas.length > 0
+      ? await saldoDeFacturasPorCodigo(salidas.flatMap((s) => (s.codigo_interno ? [s.codigo_interno] : [])))
+      : {}
   for (const c of cotizaciones) {
     if (!c.codigo_interno) continue
     const total = totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)

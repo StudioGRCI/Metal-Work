@@ -135,12 +135,12 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     const lineaDe = async (clave) =>
       limpio(await pagina.locator(`[data-revision="${salidas[clave]}"] [data-por-cobrar-de-facturas]`).innerText().catch(() => ''))
     const deSaldo = await lineaDe('conSaldo')
-    comprobar(/^Por cobrar de (su factura|sus \d+ facturas): (S\/|US\$) [\d,.]+.*Lo que falta facturar de la cotización lo ve Tesorería\.$/.test(deSaldo),
+    comprobar(/^Por cobrar en \d+ facturas?: (S\/|US\$) [\d,.]+( y US\$ [\d,.]+)?\. Lo que falta facturar de la cotización lo ve Tesorería\.$/.test(deSaldo),
       `Costos ${w}: en la salida de ${conSaldo.codigo_interno} ve lo que falta cobrar de sus facturas («${deSaldo}»)`)
     if (w === 1440) {
       const deNada = await lineaDe('sinFacturas')
-      comprobar(deNada === 'Las facturas registradas del código no tienen saldo por cobrar. Lo que falta facturar de la cotización lo ve Tesorería.',
-        `Costos ${w}: en la del código sin facturas, que no tienen saldo («${deNada}»)`)
+      comprobar(deNada === 'Este código no tiene facturas registradas: pregúntale a Tesorería si falta facturar.',
+        `Costos ${w}: en la del código sin facturas, que no tiene facturas («${deNada}»)`)
     }
     const ancho = await pagina.evaluate(() => document.documentElement.scrollWidth)
     comprobar(ancho <= w, `Costos ${w}: no se corre de costado (${ancho} px)`)
