@@ -52,14 +52,19 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
 
   // Quién tiene cada cotización y hace cuántos días: el paso que espera de su
   // recorrido. Se pide apenas llegan las cotizaciones, sin esperar al resto.
+  // Si no se pueden leer, la ficha sigue con lo que ya tenía y lo dice en la tarjeta.
   const cotizacionesConRecorrido = async () => {
-    const delCliente = await cotizacionesDelCliente(id)
+    const delCliente = await cotizacionesDelCliente(id).catch((e: unknown) => {
+      console.error('Ficha del cliente: no se pudieron leer sus cotizaciones.', e)
+      return null
+    })
+    if (!delCliente) return { delCliente: null, recorridos: null, fallo: true }
     const ids = delCliente.cotizaciones.flatMap((c) => (c.id ? [c.id] : []))
     const recorridos = ids.length === 0 ? null : await recorridoDeCotizaciones(ids).catch((e: unknown) => {
       console.error('Ficha del cliente: no se pudo leer el recorrido de sus cotizaciones.', e)
       return null
     })
-    return { delCliente, recorridos }
+    return { delCliente, recorridos, fallo: false }
   }
   const [unidades, contactos, { ordenes, total: totalOrdenes }, entregas, cotizaciones] = await Promise.all([
     listarUnidades({ clienteId: id }),
@@ -194,6 +199,16 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
           </TarjetaCuerpo>
         </Tarjeta>
 
+        {cotizaciones?.fallo && (
+          <Tarjeta className="lg:col-span-3">
+            <TarjetaCabecera titulo="Cotizaciones" />
+            <TarjetaCuerpo>
+              <p role="status" className="text-sm text-aviso">
+                No se pudieron leer las cotizaciones de este cliente. Recarga la página; si continúa, avisa al administrador.
+              </p>
+            </TarjetaCuerpo>
+          </Tarjeta>
+        )}
         {delCliente && (
           <Tarjeta className="lg:col-span-3">
             <TarjetaCabecera
@@ -208,9 +223,9 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
                   : null,
               ].filter(Boolean).join(' ')}
               acciones={
-                // Cotización busca por la razón social: ahí están todas, también las anuladas.
+                // Cotización busca por la razón social entre sus 200 más recientes, también las anuladas.
                 <EnlaceBoton href={`/cotizaciones/pdf?q=${encodeURIComponent(cliente.razon_social)}`} variante="contorno">
-                  Ver todas en Cotización
+                  Buscar en Cotización
                 </EnlaceBoton>
               }
             />
@@ -400,10 +415,14 @@ function EntregaDeLaUnidad({ entrega }: { entrega: EntregaDeUnidad | undefined }
     <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-texto-suave" data-entrega-unidad>
       <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
       {entrega.ot && <span className="tabular">OT {entrega.ot}</span>}
-      <span>
-        {entrega.estado === 'ENTREGADA' ? 'Se prometió para el ' : 'Entrega comprometida: '}
-        <span className="tabular font-medium text-texto">{entrega.fecha ? fecha(entrega.fecha) : 'sin fecha'}</span>
-      </span>
+      {entrega.fecha ? (
+        <span>
+          {entrega.estado === 'ENTREGADA' ? 'Se prometió para el ' : 'Entrega comprometida: '}
+          <span className="tabular font-medium text-texto">{fecha(entrega.fecha)}</span>
+        </span>
+      ) : (
+        <span>Sin fecha prometida</span>
+      )}
     </p>
   )
 }

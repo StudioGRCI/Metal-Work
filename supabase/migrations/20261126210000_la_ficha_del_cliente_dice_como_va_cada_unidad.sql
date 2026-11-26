@@ -24,9 +24,14 @@
 --   PAUSADA         la OT está pausada
 --   EN_FABRICACION  la OT está en proceso o en control de calidad, o su código
 --                   ya tiene avance
+--   POR_APROBAR     el taller abrió la OT (`abierta_en_taller`) y sigue en
+--                   borrador, sin avance: falta que la aprueben
 --   APROBADA        tiene OT aprobada (o programada) y todavía no empieza
--- La OT en BORRADOR no cuenta: todavía no la aprueban y su fecha no se le
--- prometió a nadie. Tampoco tapa a la vigente que la unidad ya tenga.
+-- La OT en BORRADOR de la oficina no cuenta: todavía no la aprueban y su fecha
+-- no se le prometió a nadie, y no tapa a la vigente que la unidad ya tenga. La
+-- que abrió el taller sí: el vehículo ya está adentro y se trabaja mientras la
+-- revisan (migración 20260101000098); sin ella, una unidad que volvió diría
+-- «Entregada» por su OT anterior.
 -- La OT de una cotización se queda en APROBADA aunque el taller avance (su
 -- avance es el de su código interno, migración 20261026160000); por eso se mira
 -- el avance del código, con el mismo cálculo que `avance_de_ordenes`. El
@@ -68,7 +73,8 @@ begin
       from public.ordenes_trabajo o
       join public.unidades u on u.id = o.unidad_id
      where u.cliente_id = p_cliente
-       and o.estado not in ('ANULADA', 'BORRADOR')
+       and o.estado <> 'ANULADA'
+       and (o.estado <> 'BORRADOR' or o.abierta_en_taller)
      order by o.unidad_id, o.creado_en desc, o.id
   ),
   avance as materialized (
@@ -95,6 +101,7 @@ begin
            when ot.estado = 'PAUSADA' then 'PAUSADA'
            when ot.estado in ('EN_PROCESO', 'CONTROL_CALIDAD')
                 or coalesce(a.avance, case when ot.codigo is null then ot.avance_porcentaje end, 0) > 0 then 'EN_FABRICACION'
+           when ot.estado = 'BORRADOR' then 'POR_APROBAR'
            else 'APROBADA'
          end,
          ot.fecha_entrega_comprometida
@@ -104,7 +111,7 @@ end;
 $$;
 
 comment on function public.unidades_del_cliente_con_su_entrega(uuid) is
-  'Para la ficha del cliente (Plan 9.2): de cada unidad del cliente con OT vigente, el número de la OT, su estado en una palabra (ENTREGADA, TERMINADA, PAUSADA, EN_FABRICACION, APROBADA) y la fecha de entrega comprometida. Sin costo, margen, avance ni id de la OT. Exige clientes.ver.';
+  'Para la ficha del cliente (Plan 9.2): de cada unidad del cliente con OT vigente, el número de la OT, su estado en una palabra (ENTREGADA, TERMINADA, PAUSADA, EN_FABRICACION, POR_APROBAR, APROBADA) y la fecha de entrega comprometida. Sin costo, margen, avance ni id de la OT. Exige clientes.ver.';
 
 revoke all on function public.unidades_del_cliente_con_su_entrega(uuid) from public, anon;
 grant execute on function public.unidades_del_cliente_con_su_entrega(uuid) to authenticated;

@@ -41,6 +41,7 @@ export const ESTADO_COTIZACION: Record<string, Def> = {
  * mostrando «Órdenes de trabajo» a quien tiene `ordenes.ver`).
  */
 export const ESTADO_DE_LA_UNIDAD: Record<string, Def> = {
+  POR_APROBAR: { etiqueta: 'Por aprobar', tono: 'aviso', descripcion: 'El taller abrió su OT y falta que la aprueben' },
   APROBADA: { etiqueta: 'Aprobada', tono: 'info', descripcion: 'Tiene su OT; el taller todavía no empieza' },
   EN_FABRICACION: { etiqueta: 'En fabricación', tono: 'acento', descripcion: 'El taller ya la está trabajando' },
   PAUSADA: { etiqueta: 'Pausada', tono: 'aviso', descripcion: 'Detenida; consulta el motivo con Producción' },
