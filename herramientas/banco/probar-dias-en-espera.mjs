@@ -189,7 +189,29 @@ for (const puesto of ['gerencia', 'logistica']) {
   await contexto.close()
 }
 
+// ------------------------------------------------ armazón: RQ listos de las áreas Almacén y Administración
+// Dos RQ listos que el área todavía recoge pasan un momento a las áreas Almacén y
+// Administración: los recoge quien es de esa área (el almacenero, la
+// administradora), y a Logística no le cuentan. Se devuelven a su área al
+// terminar la sección 2.
+const areasDeAntes = await consulta(
+  `select r.id, r.area_id, a.id as nueva
+     from (select r.id, r.area_id, row_number() over (order by r.numero) as n
+             from public.requerimientos r
+            where r.estado = 'LISTO_EN_ALMACEN'
+              and exists (select 1 from public.v_rq_lineas_para_salida v where v.requerimiento_id = r.id and v.pendiente > 0)) r
+     join public.areas a on a.nombre = (case r.n when 1 then 'Almacén' else 'Administración' end)
+    where r.n <= 2`,
+)
+comprobar(areasDeAntes.length === 2, `armazón: dos RQ listos pasan a las áreas Almacén y Administración (${areasDeAntes.length})`)
+await base.query('begin')
+await base.query('set local session_replication_role = replica')
+for (const r of areasDeAntes) await base.query('update public.requerimientos set area_id = $2 where id = $1', [r.id, r.nueva])
+await base.query('commit')
+
 // ------------------------------------------------ 2. Atención de requerimiento
+// Las áreas del armazón se devuelven aunque algo de esta sección se caiga.
+try {
 for (const puesto of ['almacen', 'logistica', 'administracion']) {
   const { pagina, contexto } = await entrar(puesto)
   await ir(pagina, '/requerimientos/atencion')
@@ -234,10 +256,69 @@ for (const puesto of ['almacen', 'logistica', 'administracion']) {
   comprobar(grupos.every((g, i) => g !== '' && (i === 0 || grupos[i - 1] <= g)), `${puesto}: los grupos van en orden (${grupos.join(' ')})`)
   const desordenados = [...new Set(grupos)].filter((g) => !enOrden(filas.filter((f) => f.grupo === g).map((f) => f.desde)))
   comprobar(desordenados.length === 0, `${puesto}: en cada grupo, del más antiguo al más nuevo (${desordenados.join(', ') || 'todos'})`)
-  // Lo que tiene su puesto, primero dentro del grupo: ninguna fila «propia» queda debajo de una ajena del mismo grupo.
-  const suyo = { almacen: 'Almacén', logistica: 'Logística', administracion: 'Administración' }[puesto]
-  const mal = filas.filter((f) => f.grupo.endsWith('0') !== f.visible.startsWith(`${suyo} ·`))
-  comprobar(mal.length === 0, `${puesto}: lo que tiene ${suyo} va primero en su grupo (${mal.map((f) => `${f.numero} ${f.visible}`).join(', ') || 'bien'})`)
+  // De quién es cada RQ abierto según lo que espera su recorrido (DKS,
+  // 2026-11-26), escrito aparte en SQL para no copiar la regla de la aplicación:
+  // por la clave de la espera, no por el nombre que muestra la insignia.
+  // Programar el recojo es de Logística también en un RQA, y el recojo del RQ
+  // listo es de quien es del área que lo pidió.
+  const deQuien = await comoCuenta(
+    puesto,
+    `select q.id::text as id, q.numero, q.estado,
+            case
+              when r.espera in ('REVISION_STOCK', 'POR_VALIDAR', 'YA_LLEGO_TODO', 'POR_ENTREGAR') then 'almacen'
+              when r.espera = 'POR_PROGRAMAR' then 'logistica'
+              -- El recojo, solo a quien es del área que lo pidió.
+              when r.espera = 'RECOJO_DEL_AREA' then
+                case when q.area_id = (select u.area_id from public.usuarios u where u.correo = $1) then $2 end
+              when r.espera in ('SUSTENTO', 'VISTO_DISENO', 'COMPRA_CORTA', 'OC_POR_APROBAR', 'PENDIENTE_RECOJO',
+                                'EN_RECOJO', 'RECOGIDO') then null
+              when q.tipo = 'ADMINISTRACION' then 'administracion'
+              else 'logistica'
+            end as quien
+       from public.recorrido_de_requerimientos(array(select id from public.requerimientos where estado not in ('ENTREGADO', 'ANULADO'))) r
+       join public.requerimientos q on q.id = r.documento
+      where r.situacion = 'AHORA'`,
+    [correoDe(puesto), puesto],
+  )
+  const suyosIds = new Set(deQuien.filter((d) => d.quien === puesto).map((d) => d.id))
+  // Lo que tiene su puesto, primero dentro de su grupo, y en el grupo de arriba justo eso.
+  const mal = filas.filter((f) => f.grupo.endsWith('0') !== suyosIds.has(f.id))
+  comprobar(mal.length === 0, `${puesto}: lo que tiene su puesto va primero en su grupo (${mal.map((f) => `${f.numero} ${f.visible}`).join(', ') || 'bien'})`)
+  const textoLeyenda = limpio(await pagina.getByText(/espera(n)? por ti\.$/).first().textContent())
+  const dice = /^Ninguno/.test(textoLeyenda) ? 0 : Number(textoLeyenda.match(/^(\d+)/)?.[1])
+  const enBandeja = filas.filter((f) => suyosIds.has(f.id)).length
+  comprobar(dice === enBandeja, `${puesto}: «${textoLeyenda}» cuenta los que tiene su puesto (${enBandeja} de ${filas.length})`)
+  const arriba = filas.filter((f) => f.grupo.startsWith('0') !== suyosIds.has(f.id))
+  comprobar(arriba.length === 0, `${puesto}: arriba van justo los que tiene su puesto (${arriba.map((f) => `${f.numero} ${f.visible}`).join(', ') || 'bien'})`)
+  // «Te toca» y el globo: lo que tiene su puesto después de la revisión del stock
+  // (la revisión va en su propia línea), con la cuenta de la base.
+  const teEsperanBase = deQuien.filter((d) => d.quien === puesto && d.estado !== 'POR_ATENDER').length
+  const [{ n: revisionBase }] = puesto === 'almacen'
+    ? await comoCuenta(puesto, `select count(*)::int as n from public.requerimientos where estado = 'POR_ATENDER'`)
+    : [{ n: 0 }]
+  await ir(pagina, '/')
+  const teToca = await pagina.locator('[data-te-toca] a').evaluateAll((as) =>
+    as.map((a) => ({ texto: a.innerText.replace(/\s+/g, ' ').trim(), href: a.getAttribute('href') ?? '', cantidad: Number(a.dataset.cantidad ?? 'NaN') })),
+  )
+  const teEsperan = teToca.filter((t) => t.href.startsWith('/requerimientos/atencion') && /esperan? por ti/.test(t.texto))
+  comprobar(
+    teEsperanBase === 0 ? teEsperan.length === 0 : teEsperan.length === 1 && teEsperan[0].cantidad === teEsperanBase,
+    `${puesto}: «Te toca» cuenta lo que tiene su puesto: ${teEsperanBase} en la base (dice ${teEsperan.map((t) => t.texto).join(' | ') || 'nada'})`,
+  )
+  const viejas = teToca.filter((t) => /sin stock por comprar|listos? por entregar al área|en compra esperan? por ti/.test(t.texto))
+  comprobar(viejas.length === 0, `${puesto}: ya no salen los textos de antes (${viejas.map((t) => t.texto).join(' | ') || 'nada'})`)
+  const globo = await pagina.evaluate(() => {
+    for (const a of document.querySelectorAll('a[href="/requerimientos/atencion"]')) {
+      const l = a.getAttribute('aria-label') ?? ''
+      if (/no se pudo comprobar/.test(l)) return '!'
+      const m = l.match(/, (\d+) pendientes?$/)
+      if (m) return Number(m[1])
+    }
+    return 0
+  })
+  const revisa = teToca.find((t) => /por revisar insumo por insumo/.test(t.texto))?.cantidad ?? 0
+  comprobar(globo === revisa + teEsperanBase, `${puesto}: el globo del menú suma la revisión (${revisa}) y lo que tiene su puesto (${teEsperanBase}): dice ${globo}`)
+  if (puesto === 'almacen') comprobar(revisa <= revisionBase, `${puesto}: la revisión cuenta a lo más los ${revisionBase} por revisar`)
   await ir(pagina, '/requerimientos/atencion?vista=todos')
   const historial = await pagina.locator('tr[id^="rq-"]').evaluateAll((trs) =>
     trs.map((tr) => ({
@@ -250,6 +331,13 @@ for (const puesto of ['almacen', 'logistica', 'administracion']) {
   comprobar(cerrados.length > 0 && cerrados.every((f) => !f.dias), `${puesto}: en el historial, los ${cerrados.length} entregados o anulados no llevan días`)
   comprobar(abiertos.every((f) => f.dias), `${puesto}: y los ${abiertos.length} abiertos sí`)
   await contexto.close()
+}
+
+} finally {
+  await base.query('begin')
+  await base.query('set local session_replication_role = replica')
+  for (const r of areasDeAntes) await base.query('update public.requerimientos set area_id = $2 where id = $1', [r.id, r.area_id])
+  await base.query('commit')
 }
 
 // ------------------------------------------------ 2b. Por comprar, la vista de trabajo de Logística
@@ -303,6 +391,17 @@ try {
     const visible = (await aviso.count()) === 1 && (await aviso.isVisible())
     const insignias = await pagina.locator('[data-dias-en-espera]').count()
     comprobar(visible && insignias === 0, `${puesto}: si no se pudieron contar los días, ${ruta} lo dice («${visible ? limpio(await aviso.innerText()) : 'sin aviso'}»)`)
+    if (puesto === 'almacen') {
+      // Sin el recorrido no se cuenta con otra regla: la leyenda lo dice y el globo sale con «!».
+      const leyenda = await pagina.getByText('No se pudo contar cuántos esperan por ti.').count()
+      comprobar(leyenda === 1, `almacen: sin el recorrido, la bandeja dice que no pudo contar cuántos esperan por él`)
+      await ir(pagina, '/')
+      const globo = await pagina.evaluate(() =>
+        [...document.querySelectorAll('a[href="/requerimientos/atencion"]')].some((a) => /no se pudo comprobar/.test(a.getAttribute('aria-label') ?? '')))
+      const teToca = await pagina.locator('[data-te-toca] a').evaluateAll((as) => as.map((a) => a.innerText.replace(/\s+/g, ' ').trim()))
+      comprobar(globo && !teToca.some((t) => /esperan? por ti/.test(t)),
+        `almacen: sin el recorrido, el globo sale con «!» y «Te toca» no cuenta con otra regla (${teToca.join(' | ') || 'nada'})`)
+    }
     await contexto.close()
   }
 } finally {
@@ -328,6 +427,9 @@ for (const ancho of [390, 1440]) {
     ['almacen', '/requerimientos/atencion', 'dias-atencion-almacen'],
     ['gerencia', '/compras/aprobacion', 'dias-aprobacion-gerencia'],
     ['logistica', '/requerimientos/atencion?vista=comprar', 'dias-por-comprar-logistica'],
+    ['logistica', '/requerimientos/atencion', 'te-esperan-atencion-logistica'],
+    ['almacen', '/', 'te-esperan-inicio-almacen'],
+    ['logistica', '/', 'te-esperan-inicio-logistica'],
   ]) {
     const { pagina, contexto } = await entrar(puesto, ancho)
     await ir(pagina, ruta)
