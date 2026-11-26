@@ -868,10 +868,13 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
           '/seguimiento?vista=materiales',
           '/almacen/reposicion',
           '/equipos',
+          // Las averías que reporta la gente (Plan 16.2), junto a sus equipos:
+          // las consulta, sin anular. Van aquí y no en un grupo «Mantenimiento»
+          // propio porque su cabecera no entraba en un monitor con la OT por
+          // aprobar en «Por aprobar» (648 de 635 px, 2026-11-26).
+          '/averias',
         ],
       },
-      // Las averías que reporta la gente (Plan 16.2): las consulta, sin anular.
-      { titulo: 'Mantenimiento', consulta: true, rutas: ['/averias'] },
       {
         titulo: 'Logística',
         consulta: true,
