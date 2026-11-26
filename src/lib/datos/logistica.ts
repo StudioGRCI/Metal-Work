@@ -289,6 +289,7 @@ export async function cargarRecojos(): Promise<CompraParaRecojo[]> {
     en_recojo_en: c.en_recojo_en,
     recogido_en: c.recogido_en,
     dejado_en: c.dejado_en,
+    // La que vale hoy: la corregida, si Logística la corrigió (20261126946000).
     fecha_estimada: c.fecha_estimada,
     creado_en: c.creado_en,
     ordenes: c.ordenes ?? [],
@@ -435,7 +436,7 @@ export async function cargarTiposDetraccion(): Promise<TipoDetraccion[]> {
 
 /** La detracción tal como la guarda y la calcula la base. */
 export const COLUMNAS_DETRACCION =
-  'id, codigo_interno, detraccion_afecta, detraccion_codigo, detraccion_porcentaje, detraccion_minimo, detraccion_motivo, total_con_igv_pen, detraccion_monto'
+  'id, codigo_interno, detraccion_afecta, detraccion_codigo, detraccion_porcentaje, detraccion_minimo, detraccion_motivo, total_con_igv_pen, detraccion_monto, creado_en'
 
 type FilaDetraccion = {
   id: string
@@ -447,6 +448,7 @@ type FilaDetraccion = {
   detraccion_motivo: string | null
   total_con_igv_pen: number | null
   detraccion_monto: number | null
+  creado_en: string
 }
 
 const SIN_DEFINIR: DetraccionDeServicio = {
@@ -472,6 +474,7 @@ export function detraccionDeFila(f: FilaDetraccion | undefined, tipos: TipoDetra
     motivo: f.detraccion_motivo,
     total_con_igv_pen: numeroONulo(f.total_con_igv_pen),
     monto: numeroONulo(f.detraccion_monto),
+    emitida_en: f.creado_en,
   }
 }
 

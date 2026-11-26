@@ -33,9 +33,14 @@ type Paso = {
 /** El símbolo y la cifra no se separan de renglón: «US$» arriba y «29,500.00» abajo no se lee. */
 const sinPartir = (t: string) => t.replace(/(S\/|US\$) /g, '$1\u00a0')
 const monto = (n: number, m: CodigoMoneda = 'PEN') => sinPartir(moneda(n, m))
-const montos = (r: Record<CodigoMoneda, number>) =>
+/**
+ * Las cifras de cada moneda que trae. Con `en`, también las de las monedas que ahí
+ * tienen algo, aunque aquí sean cero: lo cobrado de una factura en dólares sin
+ * cobros es «US$ 0.00», no «S/ 0.00» (lo vio Contabilidad).
+ */
+const montos = (r: Record<CodigoMoneda, number>, en?: Record<CodigoMoneda, number>) =>
   (['PEN', 'USD'] as const)
-    .filter((m) => r[m] > 0)
+    .filter((m) => r[m] > 0 || (en?.[m] ?? 0) > 0)
     .map((m) => monto(r[m], m))
     .join(' + ') || monto(0)
 
@@ -222,7 +227,7 @@ export function RecorridoDelCodigo({
       clave: 'cobrado',
       titulo: 'Cobrado',
       situacion: sinFactura ? 'FALTA' : porCobrar ? 'AHORA' : 'HECHO',
-      valor: sinFactura ? '—' : montos(facturado.cobrado),
+      valor: sinFactura ? '—' : montos(facturado.cobrado, facturado.total),
       pie: sinFactura
         ? null
         : porCobrar
