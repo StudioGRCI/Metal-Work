@@ -220,6 +220,8 @@ function repintarDocumentos() {
  * OS, ya subido a `documentos-servicio/{orden de servicio}/…` (migración
  * 20261020210000). El número va solo con la factura, la boleta y el recibo. El
  * id llega de la pantalla: un reintento no anota otro.
+ * La factura de una OS en otra moneda lleva su fecha de emisión: con ella la
+ * base le pone a la OS el tipo de cambio de ese día (migración 20261126947000).
  */
 export async function adjuntarDocumentoServicio(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
@@ -232,6 +234,8 @@ export async function adjuntarDocumentoServicio(_previo: unknown, formulario: Fo
       numero: z.string().trim().max(30, 'El número pasa de 30 caracteres.'),
       nombre: z.string().trim().min(1, 'Adjunta el archivo.').max(200),
       ruta: z.string().min(1, 'Adjunta el archivo.').max(200),
+      // Solo la trae la factura de una OS en otra moneda; la base dice si falta.
+      fecha_emision: z.union([z.literal(''), z.iso.date('Escribe la fecha de emisión de la factura.')]),
     })
     .safeParse({
       id: dato(formulario, 'id'),
@@ -240,6 +244,7 @@ export async function adjuntarDocumentoServicio(_previo: unknown, formulario: Fo
       numero: dato(formulario, 'numero'),
       nombre: dato(formulario, 'nombre'),
       ruta: dato(formulario, 'ruta'),
+      fecha_emision: dato(formulario, 'fecha_emision'),
     })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el documento.' }
   const d = analisis.data
@@ -254,6 +259,8 @@ export async function adjuntarDocumentoServicio(_previo: unknown, formulario: Fo
     p_numero: comprobante ? d.numero : null,
     p_nombre: d.nombre,
     p_ruta: d.ruta,
+    // Con la fecha de su factura la OS en otra moneda toma el cambio de ese día; lo hace la base.
+    p_fecha_emision: d.tipo === 'FACTURA' && d.fecha_emision ? d.fecha_emision : null,
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.id) return { ok: false, error: 'El documento no se anotó. Recarga la pantalla.' }

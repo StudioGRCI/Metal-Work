@@ -15,6 +15,7 @@ import type { DocumentoDeServicio } from '@/lib/datos/logistica'
 import { COMPROBANTES_DE_SERVICIO, etiquetaDocumentoServicio, TIPO_DOCUMENTO_SERVICIO } from '@/lib/dominio/adquisiciones'
 import { BUCKET_DOCUMENTOS_SERVICIO, MAXIMO_MB_FINANZAS, TIPOS_COMPROBANTE_PAGO } from '@/lib/dominio/finanzas'
 import { useEnvio, useIdDelEnvio } from '@/lib/envio'
+import { fecha, hoyLima } from '@/lib/format'
 
 import { adjuntarDocumentoServicio, anularDocumentoServicio } from './acciones'
 
@@ -43,6 +44,8 @@ export function ListaDocumentosServicio({ documentos, anula }: { documentos: Doc
               <span className="tabular truncate">{etiquetaDocumentoServicio(d)}</span>
             </span>
           )}
+          {/* La fecha que dice el comprobante: la de la factura decide el cambio de la OS en dólares. */}
+          {d.fecha_emision && <span className="tabular text-texto-suave">emitida el {fecha(d.fecha_emision)}</span>}
           {/* Antes del «Anular» que recomienda: el archivo que ya no está no vuelve recargando. */}
           {!d.url &&
             (d.faltaArchivo ? (
@@ -69,7 +72,16 @@ export function ListaDocumentosServicio({ documentos, anula }: { documentos: Doc
  * anota otro, y si aquel entró, la ventana lo dice al volver a abrirse y el
  * siguiente lleva otro.
  */
-export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenServicioId: string; numero: string }) {
+export function AdjuntarDocumentoServicio({
+  ordenServicioId,
+  numero,
+  enOtraMoneda,
+}: {
+  ordenServicioId: string
+  numero: string
+  /** La OS no está en soles: su factura lleva la fecha de emisión, que decide su tipo de cambio (20261126947000). */
+  enOtraMoneda: boolean
+}) {
   const documento = useIdDelEnvio('documento_servicio', undefined, ordenServicioId)
   const [abierta, setAbierta] = useState(false)
   const [tipo, setTipo] = useState('FACTURA')
@@ -96,6 +108,7 @@ export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenSe
   )
   const campo = (nombre: string) => `${nombre}-documento-os-${ordenServicioId}`
   const pideNumero = esComprobante(tipo)
+  const pideFecha = enOtraMoneda && tipo === 'FACTURA'
 
   return (
     <>
@@ -139,6 +152,16 @@ export function AdjuntarDocumentoServicio({ ordenServicioId, numero }: { ordenSe
               </Campo>
             )}
           </div>
+          {pideFecha && (
+            <Campo
+              etiqueta="Fecha de emisión de la factura"
+              htmlFor={campo('fecha-emision')}
+              requerido
+              ayuda="La que dice la factura. La orden toma el tipo de cambio de ese día para su monto en soles y su detracción."
+            >
+              <Entrada id={campo('fecha-emision')} name="fecha_emision" type="date" required max={hoyLima()} className="tabular" />
+            </Campo>
+          )}
           <Campo etiqueta="Archivo" htmlFor={campo('archivo')} requerido>
             <ElegirArchivo id={campo('archivo')} name="archivo" accept={ACEPTA} hastaMb={MAXIMO_MB_FINANZAS} required />
           </Campo>

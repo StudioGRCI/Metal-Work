@@ -13,7 +13,7 @@ import { serviciosPorPagar, type ServicioPorPagar } from '@/lib/datos/facturacio
 import { AdjuntarDocumentoServicio } from '@/app/(app)/compras/servicios/documentos-servicio'
 import { etiquetaDocumentoServicio } from '@/lib/dominio/adquisiciones'
 import type { CuentaParaPagar } from '@/lib/dominio/caja'
-import { faltaDelServicio, resumenDetraccion } from '@/lib/dominio/detraccion'
+import { diaDelCambio, faltaDelServicio, resumenDetraccion } from '@/lib/dominio/detraccion'
 import { faltaDelServicio as queLeFaltaAlServicio } from '@/lib/dominio/lo-que-falta'
 import { resumenPorMoneda } from '@/lib/dominio/finanzas'
 import { ESTADO_SERVICIO } from '@/lib/dominio/logistica'
@@ -219,7 +219,7 @@ function Servicio({
             saldoDetraccion: saldo.saldoDetraccion,
             detraccionSinDefinir: s.detraccion.afecta === null,
             sinTipoDeCambio,
-            cambioDel: s.detraccion.emitida_en ? fecha(s.detraccion.emitida_en) : null,
+            cambioDel: diaDelCambio(s.detraccion),
           })}
         />
         <ParaPagar documentos={documentos} cuentas={s.cancelada ? [] : s.cuentas} monedaDocumento={m} sinCuentas={s.cancelada ? null : sinCuentas} />
@@ -243,7 +243,7 @@ function Servicio({
                 }
               />
             )}
-            {adjunta && <AdjuntarDocumentoServicio ordenServicioId={s.id} numero={s.numero ?? 'orden de servicio'} />}
+            {adjunta && <AdjuntarDocumentoServicio ordenServicioId={s.id} numero={s.numero ?? 'orden de servicio'} enOtraMoneda={m !== 'PEN'} />}
           </div>
         )}
       </div>

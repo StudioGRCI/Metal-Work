@@ -365,6 +365,8 @@ export type DocumentoDeServicio = {
   numero: string | null
   nombre: string
   creado_en: string
+  /** La fecha de emisión que dice el comprobante; la de la factura decide el cambio de la OS en dólares (20261126947000). */
+  fecha_emision: string | null
   /** Null si la firma falló o la política de quien mira no lo deja abrir: el documento se lista igual. */
   url: string | null
   /** Storage firmó la tanda y este archivo no estaba: hay que anularlo y adjuntarlo de nuevo. */
@@ -385,7 +387,7 @@ export async function documentosDeServicios(ids: string[]): Promise<Map<string, 
     tandas.map(async (tanda) => {
       const { data, error } = await supabase
         .from('documentos_orden_servicio')
-        .select('id, orden_servicio_id, tipo, numero, nombre_archivo, ruta_storage, creado_en')
+        .select('id, orden_servicio_id, tipo, numero, nombre_archivo, ruta_storage, creado_en, fecha_emision')
         .in('orden_servicio_id', tanda)
         .is('anulado_en', null)
         .order('creado_en')
@@ -414,6 +416,7 @@ export async function documentosDeServicios(ids: string[]): Promise<Map<string, 
       numero: f.numero,
       nombre: f.nombre_archivo,
       creado_en: f.creado_en,
+      fecha_emision: f.fecha_emision,
       url: urls.get(f.ruta_storage) ?? null,
       faltaArchivo: faltan.has(f.ruta_storage),
     })
@@ -436,7 +439,7 @@ export async function cargarTiposDetraccion(): Promise<TipoDetraccion[]> {
 
 /** La detracción tal como la guarda y la calcula la base. */
 export const COLUMNAS_DETRACCION =
-  'id, codigo_interno, detraccion_afecta, detraccion_codigo, detraccion_porcentaje, detraccion_minimo, detraccion_motivo, total_con_igv_pen, detraccion_monto, creado_en'
+  'id, codigo_interno, detraccion_afecta, detraccion_codigo, detraccion_porcentaje, detraccion_minimo, detraccion_motivo, total_con_igv_pen, detraccion_monto, creado_en, fecha_cambio'
 
 type FilaDetraccion = {
   id: string
@@ -449,6 +452,7 @@ type FilaDetraccion = {
   total_con_igv_pen: number | null
   detraccion_monto: number | null
   creado_en: string
+  fecha_cambio: string | null
 }
 
 const SIN_DEFINIR: DetraccionDeServicio = {
@@ -474,7 +478,9 @@ export function detraccionDeFila(f: FilaDetraccion | undefined, tipos: TipoDetra
     motivo: f.detraccion_motivo,
     total_con_igv_pen: numeroONulo(f.total_con_igv_pen),
     monto: numeroONulo(f.detraccion_monto),
-    emitida_en: f.creado_en,
+    // El día cuyo cambio le toca: el de su factura; sin factura, el día en que se emitió.
+    dia_del_cambio: f.fecha_cambio ?? f.creado_en,
+    cambio_por_factura: f.fecha_cambio !== null,
   }
 }
 

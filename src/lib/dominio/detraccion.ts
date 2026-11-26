@@ -38,10 +38,19 @@ export type DetraccionDeServicio = {
   total_con_igv_pen: number | null
   monto: number | null
   /**
-   * Cuándo se emitió la OS: en dólares, su monto en soles sale del cambio de ese
-   * día (20261126626000), y el aviso dice cuál falta.
+   * El día cuyo tipo de cambio le toca a la OS en dólares: la fecha de emisión de
+   * su factura (20261126947000) o, sin factura, el día en que se emitió la OS
+   * (20261126626000). El aviso dice cuál falta.
    */
-  emitida_en?: string | null
+  dia_del_cambio?: string | null
+  /** Ese día es el de su factura, no el de la emisión de la OS. */
+  cambio_por_factura?: boolean
+}
+
+/** «23/11/2026, la fecha de su factura» o «23/11/2026»: el día del cambio, como se le dice a quien paga. */
+export function diaDelCambio(d: Pick<DetraccionDeServicio, 'dia_del_cambio' | 'cambio_por_factura'>): string | null {
+  if (!d.dia_del_cambio) return null
+  return `${fecha(d.dia_del_cambio)}${d.cambio_por_factura ? ', la fecha de su factura' : ''}`
 }
 
 /** Lo que la OS dice de su detracción, en una línea y su detalle. */
@@ -55,7 +64,7 @@ export function resumenDetraccion(d: DetraccionDeServicio): { texto: string; det
   if (d.total_con_igv_pen === null) {
     // Tesorería, que lo ve, no registra el cambio: el detalle dice de qué día y quién (DKS,
     // 2026-11-26). La insignia no lleva la fecha: no se parte y salía de la tarjeta en el teléfono.
-    const dia = d.emitida_en ? ` del ${fecha(d.emitida_en)}` : ''
+    const dia = d.dia_del_cambio ? ` del ${diaDelCambio(d)}` : ''
     return {
       texto: `Detracción ${porcentaje}: falta el tipo de cambio`,
       detalle: `${tipo ? `${tipo}. ` : ''}Falta el tipo de cambio${dia}: lo registran Contabilidad o Administración.`,
@@ -74,7 +83,8 @@ export function resumenDetraccion(d: DetraccionDeServicio): { texto: string; det
   const alProveedor = Math.round((d.total_con_igv_pen - d.monto) * 100) / 100
   return {
     texto: `Detracción ${porcentaje}: ${moneda(d.monto)}`,
-    detalle: `${tipo} · sobre ${moneda(d.total_con_igv_pen)} con IGV (IGV ${moneda(igv)}) · al proveedor ${moneda(alProveedor)} · ${pct(parteDe(alProveedor, d.total_con_igv_pen))}`,
+    // Con el cambio de su factura se dice: es otro que el del día en que se emitió la OS.
+    detalle: `${tipo} · sobre ${moneda(d.total_con_igv_pen)} con IGV (IGV ${moneda(igv)}) · al proveedor ${moneda(alProveedor)} · ${pct(parteDe(alProveedor, d.total_con_igv_pen))}${d.cambio_por_factura && d.dia_del_cambio ? ` · con el cambio del ${fecha(d.dia_del_cambio)}, el día de su factura` : ''}`,
     tono: 'info',
   }
 }

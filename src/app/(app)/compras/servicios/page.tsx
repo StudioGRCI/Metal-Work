@@ -270,7 +270,7 @@ function FilaServicio({
               anular={false}
             />
           )}
-          {adjunta && vigente && <AdjuntarDocumentoServicio ordenServicioId={s.id} numero={s.numero} />}
+          {adjunta && vigente && <AdjuntarDocumentoServicio ordenServicioId={s.id} numero={s.numero} enOtraMoneda={s.moneda !== 'PEN'} />}
           {corrigeDetraccion && vigente && (
             <CorregirServicio
               id={s.id}
