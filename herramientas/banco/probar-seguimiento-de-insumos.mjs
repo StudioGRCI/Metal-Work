@@ -164,12 +164,14 @@ await armazon(
 const codigos = await comoCuenta('sup.mtz', `select codigo from public.codigos_internos_para_elegir() where registrada and not cerrado and codigo = 'QA-SEGUIMIENTO'`)
 if (codigos.length === 0) throw new Error('El banco no tiene ninguna unidad en el padrón: corre preparar.sh.')
 const codigo = codigos[0].codigo
-const material = async (sql) => (await consulta(`select m.id from public.materiales m join public.categorias_material c on c.id = m.categoria_id where m.activo and ${sql} order by m.codigo limit 1`))[0]?.id
+const material = async (sql, cual = 0) =>
+  (await consulta(`select m.id from public.materiales m join public.categorias_material c on c.id = m.categoria_id where m.activo and ${sql} order by m.codigo limit 1 offset ${cual}`))[0]?.id
 const plancha = await material(`c.almacen = 'MATERIA_PRIMA' and m.descripcion ilike 'plancha%'`)
 const tubo = await material(`c.almacen = 'MATERIA_PRIMA' and m.descripcion ilike 'tubo%'`)
 const conos = await material(`c.almacen = 'ACCESORIOS'`)
 const disco = await material(`c.almacen = 'CONSUMIBLES'`)
-if (![plancha, tubo, conos, disco].every(Boolean)) throw new Error('El banco no tiene los materiales de prueba (plancha, tubo, un accesorio y un consumible).')
+const guantes = await material(`c.almacen = 'CONSUMIBLES'`, 1)
+if (![plancha, tubo, conos, disco, guantes].every(Boolean)) throw new Error('El banco no tiene los materiales de prueba (plancha, tubo, un accesorio y un consumible).')
 
 // Diseño metra 10 planchas para la unidad (una vez: en otra corrida ya están).
 const yaMetrado = await consulta(`select 1 from public.codigo_materiales where codigo_interno = $1 and material_id = $2 and quitado_en is null`, [codigo, plancha])
@@ -182,7 +184,7 @@ const emitir = (id, justificacion, lineas) =>
   comoCuenta('sup.mtz', `select public.emitir_requerimiento($1, 'OPERACION', $2, $3, $4, null, $5::jsonb)`, [
     id, mtz.area_id, codigo, justificacion, JSON.stringify(lineas),
   ])
-await emitir(ids.compra, `${sello} Tubos, conos y discos para el armado`, [linea(tubo, 6), linea(conos, 4), linea(disco, 10)])
+await emitir(ids.compra, `${sello} Tubos, conos y discos para el armado`, [linea(tubo, 6), linea(conos, 4), linea(disco, 10), linea(guantes, 2)])
 await emitir(ids.metrado, `${sello} Planchas para el refuerzo del piso`, [linea(plancha, 500)])
 await emitir(ids.entregado, `${sello} Conos para delimitar la zona`, [linea(conos, 2)])
 const numeros = Object.fromEntries(
@@ -200,7 +202,7 @@ await armazon(
   [ids.compra],
 )
 await armazon(
-  `update public.requerimiento_lineas set cantidad_en_stock = case item when 3 then cantidad else 0 end,
+  `update public.requerimiento_lineas set cantidad_en_stock = case when item in (3, 4) then cantidad else 0 end,
           stock_revisado_en = now(), stock_revisado_por = $2
     where requerimiento_id = $1`,
   [ids.compra, almacen.id],
@@ -223,6 +225,7 @@ const salida = (rq, item, material_id, cantidad, quien) =>
     [rq, item, material_id, cantidad, `Salida ${sello}`, quien, codigo, almacen.id],
   )
 await salida(ids.compra, 3, disco, 4, `Juan Quispe ${sello}`)
+await salida(ids.compra, 4, guantes, 2, `Luis Mamani ${sello}`)
 
 // El entregado: Almacén lo tenía y ya lo entregó. Todo después de emitirlo, como en el taller: la revisión de antes del RQ no cuenta para el metrado.
 await armazon(
@@ -244,7 +247,7 @@ const desde = async (puesto) =>
   ])
 const delSupervisor = await desde('sup.mtz')
 const fila = (rq, item) => delSupervisor.find((f) => f.requerimiento_id === rq && f.item === item)
-comprobar(delSupervisor.length === 5, `la base le da al supervisor sus 5 insumos (${delSupervisor.length})`)
+comprobar(delSupervisor.length === 6, `la base le da al supervisor sus 6 insumos (${delSupervisor.length})`)
 comprobar(fila(ids.compra, 1)?.fecha_esperada === llega, `el tubo se espera el ${llega}: ${fila(ids.compra, 1)?.fecha_esperada}`)
 comprobar(fila(ids.compra, 3)?.recibido_por === `Juan Quispe ${sello}`, 'los discos los recibió Juan')
 comprobar(fila(ids.metrado, 1)?.visto_diseno === 'SIN_SUSTENTO', `las planchas se pasan del metrado y esperan su sustento: ${fila(ids.metrado, 1)?.visto_diseno}`)
@@ -279,7 +282,13 @@ for (const ancho of [390, 1440]) {
   comprobar((await paso(ids.compra, 3)) === 'EN_ALMACEN', `${ancho}: los discos están en almacén (${await paso(ids.compra, 3)})`)
   const pasosDisco = await insumo(ids.compra, 3).locator('[data-paso-del-insumo]').evaluateAll((e) => e.map((x) => x.getAttribute('data-paso-del-insumo')))
   comprobar(!pasosDisco.includes('EN_COMPRA') && !pasosDisco.includes('EN_CAMINO'), `${ancho}: los discos que tenía Almacén no pasan por la compra: ${pasosDisco.join(' > ')}`)
-  comprobar((await texto(ids.compra, 3)).includes(`Lo recibió Juan Quispe ${sello}`), `${ancho}: los discos dicen quién los recibió: «${await texto(ids.compra, 3)}»`)
+  comprobar((await texto(ids.compra, 3)).includes(`Salieron 4 de 10`) && (await texto(ids.compra, 3)).includes(`los recibió Juan Quispe ${sello}`),
+    `${ancho}: de los discos salió una parte, y dice cuánto y quién: «${await texto(ids.compra, 3)}»`)
+  comprobar((await paso(ids.compra, 4)) === 'ENTREGADO' && (await texto(ids.compra, 4)).includes(`Lo recibió Luis Mamani ${sello}`),
+    `${ancho}: el insumo que salió entero va entregado aunque otro del RQ siga en compra: «${await texto(ids.compra, 4)}»`)
+  const resumenCompra = limpio(await rq(ids.compra).locator('[data-resumen-de-insumos]').innerText())
+  comprobar(resumenCompra.includes('1 en compra') && resumenCompra.includes(`llega aprox. el ${ddmm(llega)}`),
+    `${ancho}: cerrado, el pliegue ya dice en qué va cada insumo y cuándo llega: «${resumenCompra}»`)
   const pasosTubo = await insumo(ids.compra, 1).locator('[data-paso-del-insumo]').evaluateAll((e) =>
     e.map((x) => `${x.getAttribute('data-paso-del-insumo')}${x.getAttribute('aria-current') ? '*' : ''}`),
   )
@@ -287,9 +296,15 @@ for (const ancho of [390, 1440]) {
 
   comprobar((await paso(ids.metrado, 1)) === 'VISTO_DISENO', `${ancho}: las planchas esperan el visto de Diseño (${await paso(ids.metrado, 1)})`)
   comprobar((await texto(ids.metrado, 1)).includes('falta el sustento'), `${ancho}: dicen que falta el sustento: «${await texto(ids.metrado, 1)}»`)
+  const resumenMetrado = limpio(await rq(ids.metrado).locator('[data-resumen-de-insumos]').innerText())
+  comprobar(resumenMetrado.includes('Falta tu sustento para Diseño'), `${ancho}: cerrado, el pliegue ya dice que falta su sustento: «${resumenMetrado}»`)
+  comprobar((await rq(ids.metrado).locator(`[data-pide-sustento] a[href="/requerimientos?rq=${ids.metrado}"]`).count()) === 1,
+    `${ancho}: y lleva al RQ para escribirlo`)
 
   comprobar((await paso(ids.entregado, 1)) === 'ENTREGADO', `${ancho}: el entregado de esta semana sigue en la tarjeta, entregado (${await paso(ids.entregado, 1)})`)
   comprobar((await texto(ids.entregado, 1)).includes(`Lo recibió Rosa Huamán ${sello}`), `${ancho}: y dice quién lo recibió: «${await texto(ids.entregado, 1)}»`)
+  const pasosEntregado = await insumo(ids.entregado, 1).locator('[data-paso-del-insumo]').evaluateAll((e) => e.map((x) => x.getAttribute('data-paso-del-insumo')))
+  comprobar(pasosEntregado.join(' > ') === 'POR_ATENDER > EN_ALMACEN > ENTREGADO', `${ancho}: lo que Almacén tenía no aparece como comprado: ${pasosEntregado.join(' > ')}`)
 
   const todo = await pagina.locator('main').innerText()
   comprobar(!todo.includes(proveedor) && !todo.includes(`REF-${sello}`), `${ancho}: de la compra no sale el proveedor ni su referencia`)

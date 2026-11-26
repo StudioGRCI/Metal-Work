@@ -44,7 +44,8 @@ const abierto = (r: RequerimientoListado) => (ESTADOS_RQ_ABIERTOS as readonly st
 const recienEntregado = (r: RequerimientoListado, desde: string) =>
   r.estado === 'ENTREGADO' && r.entregado_en !== null && diaLima(r.entregado_en) >= desde
 /** Al área todavía le falta algo con la unidad: una etapa sin terminar, un plano por recibir o un RQ que no llega. */
-const sigueEnElArea = (u: DeLaUnidad) => u.porRecibir > 0 || u.etapas.some((e) => !e.fin_real) || u.rqs.some(abierto)
+const sigueEnElArea = (u: DeLaUnidad, desde: string) =>
+  u.porRecibir > 0 || u.etapas.some((e) => !e.fin_real) || u.rqs.some((r) => abierto(r) || recienEntregado(r, desde))
 /** Ya se trabaja en ella: la etapa empezó o tiene fecha, o hay un plano por recibir. */
 const enMarcha = (u: DeLaUnidad) => u.porRecibir > 0 || u.etapas.some((e) => !e.fin_real && (e.inicio_real || e.inicio_plan))
 
@@ -75,8 +76,9 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
 
   // Los RQ en camino se leen aparte: la lista de recientes llega hasta 300, y
   // un RQ abierto más viejo que eso sacaría a su unidad de la pantalla.
-  const delArea = area ? cargarRequerimientos({ area, tipo: 'OPERACION' }) : Promise.resolve([])
-  const abiertos = area ? cargarRequerimientos({ area, tipo: 'OPERACION', soloAbiertos: true }) : Promise.resolve([])
+  // Con lo entregado de cada insumo: el que ya salió entero va entregado aunque otro del RQ siga en compra.
+  const delArea = area ? cargarRequerimientos({ area, tipo: 'OPERACION', conEntregado: true }) : Promise.resolve([])
+  const abiertos = area ? cargarRequerimientos({ area, tipo: 'OPERACION', soloAbiertos: true, conEntregado: true }) : Promise.resolve([])
   // Lo que el supervisor no lee de cada insumo (el visto de Diseño, cuándo
   // llega, quién lo recibió), de los RQ que la tarjeta pinta, en cuanto llegan.
   const desde = sumarDias(hoyLima(), -DIAS_DEL_ENTREGADO)
@@ -129,7 +131,7 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
 
   // Una unidad entregada sale aunque Diseño no haya cerrado sus etapas; si le
   // queda un RQ en camino, se ve para seguirlo, sin «Nuevo RQ».
-  const enElArea = [...porCodigo.entries()].filter(([codigo, u]) => (cerrados.has(codigo) ? u.rqs.some(abierto) : sigueEnElArea(u)))
+  const enElArea = [...porCodigo.entries()].filter(([codigo, u]) => (cerrados.has(codigo) ? u.rqs.some(abierto) : sigueEnElArea(u, desde)))
   const unidades = enElArea
     .filter(([codigo]) => buscado(codigo))
     .sort(([a, ua], [b, ub]) => Number(enMarcha(ub)) - Number(enMarcha(ua)) || (a < b ? -1 : a > b ? 1 : 0))
@@ -170,13 +172,19 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
         descripcion={`${areaFija.nombre} · ${enElArea.length} ${enElArea.length === 1 ? 'unidad' : 'unidades'}${
           conRqAbierto > 0 ? `, ${conRqAbierto} con requerimientos en camino` : ''
         }`}
-        ayuda="Cada unidad que tiene trabajo en tu área, con sus etapas y sus requerimientos. Pide el material de una unidad con «Nuevo RQ» en su tarjeta: el código y el área ya van puestos y le llega a Almacén. Una unidad sale de aquí cuando tu área termina sus etapas, recibe sus planos y le entregan todo lo pedido. Debajo están las demás unidades del taller, para pedir aunque Diseño todavía no cargue el trabajo de tu área. Lo que no es de una unidad, pídelo en PLANTA, al final."
+        ayuda="Cada unidad que tiene trabajo en tu área, con sus etapas y sus requerimientos. Pide el material de una unidad con «Nuevo RQ» en su tarjeta: el código y el área ya van puestos y le llega a Almacén. En cada requerimiento, «Cómo va cada insumo» dice en qué paso va cada uno, cuándo llega lo que se compra y quién lo recibió del almacén. Una unidad sale de aquí una semana después de que tu área termina sus etapas, recibe sus planos y le entregan todo lo pedido. Debajo están las demás unidades del taller, para pedir aunque Diseño todavía no cargue el trabajo de tu área. Lo que no es de una unidad, pídelo en PLANTA, al final."
         migas={[{ titulo: 'Requerimientos', ruta: '/requerimientos' }, { titulo: 'Por unidad' }]}
         acciones={<BotonPedirParaUnidad codigo={null}>Nuevo RQ con otro código</BotonPedirParaUnidad>}
         estado={<AvisoDeLaUnidad codigo={null} />}
       />
 
       <div className="mb-4 space-y-3">
+        {seguimiento === null && (
+          <p role="status" className="text-sm text-aviso" data-seguimiento-sin-leer>
+            No se pudo leer el visto de Diseño, la fecha en que llega cada compra ni quién recibió cada insumo: los pasos salen sin eso. Recarga la
+            página; si continúa, avisa al administrador.
+          </p>
+        )}
         <Vistas etiqueta="Requerimiento" vistas={vistas} />
         <BuscadorSimple ruta="/requerimientos/unidades" etiqueta="Buscar unidad" marcador="Código interno, placa o marca" />
       </div>

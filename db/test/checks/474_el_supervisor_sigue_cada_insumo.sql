@@ -146,6 +146,16 @@ select gen_random_uuid(), 'SALIDA', pg_temp.id('pla'), x.cantidad, 'SALIDA_GENER
        (select l.id from public.requerimiento_lineas l where l.requerimiento_id = pg_temp.id('rq1') and l.item = 1),
        'CHK_474_U1', pg_temp.id('requerimientos'), x.en
   from (values (1, 'Juan Prueba', now() - interval '2 days'), (1, 'Rosa Prueba', now() - interval '1 day')) as x(cantidad, quien, en);
+-- Una tercera salida volvió entera al almacén: quien la recibió ya no tiene nada.
+insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, recibido_por_nombre,
+                                           requerimiento_linea_id, codigo_unidad, registrado_por, registrado_en)
+select '00000000-0000-4000-8000-000000000474', 'SALIDA', pg_temp.id('pla'), 1, 'SALIDA_GENERAL', 'Salida 474', 'Pedro Devolvió',
+       l.id, 'CHK_474_U1', pg_temp.id('requerimientos'), now() - interval '3 days'
+  from public.requerimiento_lineas l where l.requerimiento_id = pg_temp.id('rq1') and l.item = 1;
+insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, devolucion_de,
+                                           codigo_unidad, registrado_por, registrado_en)
+values (gen_random_uuid(), 'INGRESO', pg_temp.id('pla'), 1, 'DEVOLUCION', 'Devolución 474', '00000000-0000-4000-8000-000000000474',
+        'CHK_474_U1', pg_temp.id('requerimientos'), now() - interval '3 days');
 set local session_replication_role = origin;
 
 select pg_temp.como('sup_mtz');
@@ -156,7 +166,7 @@ select test.afirmar((select fecha_esperada from public.seguimiento_de_insumos(ar
   'la OC rechazada no da fecha');
 select test.afirmar((select recibido_por = 'Juan Prueba, Rosa Prueba' and recibido_en > now() - interval '25 hours'
                        from public.seguimiento_de_insumos(array[pg_temp.id('rq1')])),
-  'quién recibió el insumo del almacén y cuándo fue la última salida');
+  'quién recibió el insumo del almacén y cuándo fue la última salida; la que volvió entera no cuenta');
 reset role;
 
 select test.afirmar(

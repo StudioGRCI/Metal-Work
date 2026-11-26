@@ -292,22 +292,32 @@ export const VISTO_DEL_INSUMO: Record<string, { etiqueta: string; tono: Tono }> 
   AUTORIZADO: { etiqueta: 'Diseño autorizó lo que se pasa del metrado', tono: 'exito' },
 }
 
+/** El visto de Diseño que el supervisor tiene que mover: escribir el sustento o corregirlo. */
+export const VISTO_QUE_PIDE_SUSTENTO = ['SIN_SUSTENTO', 'RECHAZADO']
+
 /**
- * En qué paso va el insumo y cuáles no le tocan. `null` si no se sabe (el RQ
- * anulado no tiene etapa). Lo que no le toca no se pinta: el visto de Diseño,
- * si no se pasa del metrado; la compra y el camino, si Almacén ya lo tenía.
+ * En qué paso va el insumo y cuáles le tocan. `null` si no se sabe (el RQ
+ * anulado no tiene etapa).
+ *
+ * - El visto de Diseño sale si Diseño lo autorizó, o mientras lo frena; si el
+ *   insumo ya siguió sin él (Almacén lo revisó en regla), no se pinta.
+ * - La compra y el camino no le tocan si Almacén ya lo tenía entero.
+ * - Entregado es por insumo: el que ya salió entero va entregado aunque otro
+ *   del mismo RQ siga en compra (`entregado`, de `entregado_de_requerimientos`).
  */
 export function pasoDelInsumo(
-  etapa: string | null,
+  l: { etapa: string | null; cantidad: number; en_stock: number | null; entregado: number | null },
   visto: string | null,
-): { pasos: PasoDelInsumo[]; actual: PasoDelInsumo; terminado: boolean } | null {
-  const segun = etapa ? PASO_DE_LA_ETAPA[etapa] : undefined
+): { pasos: PasoDelInsumo[]; actual: PasoDelInsumo; terminado: boolean; frenado: boolean } | null {
+  const segun = l.etapa ? PASO_DE_LA_ETAPA[l.etapa] : undefined
   if (!segun) return null
   const frenado = visto !== null && VISTO_QUE_FRENA.includes(visto) && segun === 'POR_ATENDER'
-  const pasos = PASOS_DEL_INSUMO.filter(
-    (p) => (p !== 'VISTO_DISENO' || visto !== null) && ((p !== 'EN_COMPRA' && p !== 'EN_CAMINO') || etapa !== 'EN_STOCK'),
-  )
-  return { pasos, actual: frenado ? 'VISTO_DISENO' : segun, terminado: segun === 'ENTREGADO' }
+  const conVisto = visto === 'AUTORIZADO' || frenado
+  const deStock = l.etapa === 'EN_STOCK' || (l.en_stock !== null && l.en_stock >= l.cantidad)
+  const salioEntero = l.entregado !== null && l.cantidad > 0 && l.entregado >= l.cantidad
+  const actual: PasoDelInsumo = frenado ? 'VISTO_DISENO' : salioEntero ? 'ENTREGADO' : segun
+  const pasos = PASOS_DEL_INSUMO.filter((p) => (p !== 'VISTO_DISENO' || conVisto) && ((p !== 'EN_COMPRA' && p !== 'EN_CAMINO') || !deStock))
+  return { pasos, actual, terminado: actual === 'ENTREGADO', frenado }
 }
 
 /** Las dos etapas del recojo que Gerencia quiere distinguir de un vistazo. */

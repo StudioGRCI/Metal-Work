@@ -7,8 +7,10 @@
 -- del almacén (Plan 1, Supervisión, entrega 1.2, 2026-11-26).
 --
 -- La etapa de cada insumo ya la da `avance_de_requerimientos` (por revisar, en
--- compra, en camino, en almacén, entregado). Faltaban tres datos que el
--- supervisor no puede leer, porque viven en tablas que no son suyas:
+-- compra, en camino, en almacén, entregado). Faltaban la fecha y quién lo
+-- recibió, que viven en la compra y en el kardex, tablas que el supervisor no
+-- lee; y el visto de Diseño, que ya da `metrado_de_requerimientos`, va aquí
+-- también para leer todo de una vez:
 --
 --   visto_diseno    si lo que pide se pasa del metrado de Diseño, en qué va su
 --                   visto: SIN_SUSTENTO, POR_AUTORIZAR, AUTORIZADO o RECHAZADO
@@ -20,7 +22,8 @@
 --                   proveedor ni el precio (decisión de DKS en el plan).
 --   recibido_por    el nombre que Almacén escribió al entregarlo
 --   recibido_en     (`movimientos_materiales.recibido_por_nombre` de las
---                   salidas de ese insumo), y cuándo fue la última.
+--                   salidas de ese insumo), y cuándo fue la última. La salida
+--                   que se devolvió entera no cuenta: nadie se lo quedó.
 --
 -- Quién la lee: solo el RQ de su área. Con `requerimientos.area`, los RQ del
 -- área de su cuenta; con `requerimientos.administracion`, los de tipo
@@ -86,6 +89,9 @@ begin
      where s.tipo = 'SALIDA'
        and s.requerimiento_linea_id in (select l.id from public.requerimiento_lineas l where l.requerimiento_id in (select id from rq))
        and nullif(btrim(s.recibido_por_nombre), '') is not null
+       -- Lo devuelto vuelve como ingreso con `devolucion_de` (como en `entregado_de_requerimientos`).
+       and s.cantidad > coalesce((select sum(d.cantidad) from public.movimientos_materiales d
+                                   where d.devolucion_de = s.id and d.tipo = 'INGRESO'), 0)
      group by s.requerimiento_linea_id
   )
   select l.requerimiento_id,

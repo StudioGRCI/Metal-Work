@@ -1,11 +1,15 @@
+import Link from 'next/link'
+
 import type { Tono } from '@/components/ui/etiqueta-estado'
 import { Pliegue } from '@/components/ui/seccion-desplegable'
-import type { RequerimientoListado, SeguimientoDelInsumo } from '@/lib/datos/requerimientos'
+import type { LineaRequerimiento, RequerimientoListado, SeguimientoDelInsumo } from '@/lib/datos/requerimientos'
 import {
   ETAPA_AVANCE_RQ,
+  PASOS_DEL_INSUMO,
   pasoDelInsumo,
   TITULO_PASO_DEL_INSUMO,
   VISTO_DEL_INSUMO,
+  VISTO_QUE_PIDE_SUSTENTO,
   type PasoDelInsumo,
 } from '@/lib/dominio/requerimientos'
 import { cantidad, fecha, hoyLima } from '@/lib/format'
@@ -25,13 +29,35 @@ const TEXTO: Record<Tono, string> = {
 /** Lo que se espera de la compra mientras no llega al almacén. */
 const ESPERA_COMPRA: readonly PasoDelInsumo[] = ['EN_COMPRA', 'EN_CAMINO']
 
+/** Cómo se cuenta cada paso en el resumen del pliegue: «2 en compra». */
+const EN_EL_RESUMEN: Record<PasoDelInsumo, string> = {
+  VISTO_DISENO: 'esperando a Diseño',
+  POR_ATENDER: 'por atender',
+  EN_COMPRA: 'en compra',
+  EN_CAMINO: 'en camino',
+  EN_ALMACEN: 'en almacén',
+  ENTREGADO: 'entregado',
+}
+
+type Insumo = {
+  linea: LineaRequerimiento
+  seguimiento: SeguimientoDelInsumo | null
+  paso: ReturnType<typeof pasoDelInsumo>
+  /** La fecha en que se espera, solo mientras se compra o viene en camino. */
+  llega: string | null
+}
+
 /**
  * Cómo va cada insumo de un RQ, de principio a fin, para el supervisor que lo
  * pidió (Plan 1, entrega 1.2): sus pasos, la etapa en palabras, el visto de
  * Diseño si se pasa del metrado, la fecha en que se espera su compra y quién
  * lo recibió del almacén. De la compra no sale nada más: ni proveedor ni
  * precio. `seguimiento` es `null` si la base no lo pudo dar: los pasos salen
- * igual, de la etapa, y se dice qué falta.
+ * igual, de la etapa, y la página lo dice una vez arriba.
+ *
+ * El pliegue llega cerrado, pero su título ya dice lo que más se pregunta: en
+ * qué va cada insumo y cuándo llega lo que falta; y si el área tiene que
+ * escribir el sustento para Diseño, lo dice primero.
  */
 export function InsumosDelRequerimiento({
   rq,
@@ -42,28 +68,46 @@ export function InsumosDelRequerimiento({
 }) {
   if (rq.lineas.length === 0 || rq.estado === 'ANULADO') return null
   const hoy = hoyLima()
+  const insumos: Insumo[] = rq.lineas.map((l) => {
+    const s = seguimiento?.get(`${rq.id}:${l.item}`) ?? null
+    const paso = pasoDelInsumo(l, s?.visto_diseno ?? null)
+    const llega = paso !== null && ESPERA_COMPRA.includes(paso.actual) ? (s?.fecha_esperada ?? null) : null
+    return { linea: l, seguimiento: s, paso, llega }
+  })
+  const pideSustento = insumos.some((i) => i.paso?.frenado && VISTO_QUE_PIDE_SUSTENTO.includes(i.seguimiento?.visto_diseno ?? ''))
+
   return (
     <Pliegue
       enCaja
-      titulo={rq.lineas.length === 1 ? 'Cómo va su insumo' : `Cómo va cada insumo (${rq.lineas.length})`}
+      titulo={<TituloDelPliegue insumos={insumos} pideSustento={pideSustento} terminado={rq.estado === 'ENTREGADO'} />}
       className="mt-1"
       data-insumos-del-rq={rq.id}
     >
-      {seguimiento === null && (
-        <p role="status" className="mb-2 text-xs text-aviso">
-          No se pudo leer el visto de Diseño, la fecha en que llega ni quién lo recibió. Recarga la página; si continúa, avisa al administrador.
+      {pideSustento && (
+        <p className="mb-2 text-sm text-aviso" data-pide-sustento>
+          Se pasa del metrado de Diseño y espera el sustento de tu área.{' '}
+          <Link href={`/requerimientos?rq=${rq.id}`} className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0">
+            Escribe el sustento en el RQ
+          </Link>
         </p>
       )}
       <ol className="divide-y divide-borde" aria-label={`Insumos de ${rq.numero}`}>
-        {rq.lineas.map((l) => {
-          const s = seguimiento?.get(`${rq.id}:${l.item}`) ?? null
+        {insumos.map(({ linea: l, seguimiento: s, paso, llega }) => {
           const visto = s?.visto_diseno ?? null
-          const paso = pasoDelInsumo(l.etapa, visto)
           const etapa = l.etapa ? ETAPA_AVANCE_RQ[l.etapa] : undefined
-          const vistoDice = visto ? VISTO_DEL_INSUMO[visto] : undefined
-          // Solo mientras se compra o viene en camino: después ya llegó.
-          const llega = paso !== null && ESPERA_COMPRA.includes(paso.actual) ? (s?.fecha_esperada ?? null) : null
+          // El visto solo se dice si sigue valiendo: autorizado, o frenando ahora.
+          const vistoDice = visto && (paso?.frenado || visto === 'AUTORIZADO') ? VISTO_DEL_INSUMO[visto] : undefined
           const atrasada = llega !== null && llega < hoy
+          const salio = l.entregado !== null && l.entregado > 0 ? l.entregado : null
+          const parte = salio !== null && salio < l.cantidad
+          const titulo = paso ? TITULO_PASO_DEL_INSUMO[paso.actual] : null
+          // La línea de abajo: el freno de Diseño, o la etapa; si ya salió entero, «Entregado».
+          const dice =
+            paso?.frenado && vistoDice
+              ? vistoDice
+              : paso?.actual === 'ENTREGADO'
+                ? { etiqueta: 'Entregado', tono: 'neutro' as Tono }
+                : etapa
           return (
             <li key={l.id} className="space-y-1.5 py-2.5 first:pt-0 last:pb-0" data-insumo={l.item} data-paso={paso?.actual}>
               <p className="text-sm break-words text-texto">
@@ -73,20 +117,13 @@ export function InsumosDelRequerimiento({
                   {cantidad(l.cantidad)} {l.unidad}
                 </span>
               </p>
-              {paso && <PasosDelInsumo item={l.item} {...paso} rechazado={visto === 'RECHAZADO'} />}
+              {paso && <PasosDelInsumo item={l.item} {...paso} rechazado={visto === 'RECHAZADO' && paso.frenado} />}
               <p className="text-xs break-words text-texto-suave">
-                {/* En el teléfono no se ven los nombres de los pasos: el de ahora va aquí, si la etapa no lo dice ya. */}
-                {paso && TITULO_PASO_DEL_INSUMO[paso.actual] !== etapa?.etiqueta && (
-                  <span className="font-medium text-texto sm:hidden">{TITULO_PASO_DEL_INSUMO[paso.actual]} · </span>
-                )}
-                {paso?.actual === 'VISTO_DISENO' && vistoDice ? (
-                  <span className={TEXTO[vistoDice.tono]}>{vistoDice.etiqueta}</span>
-                ) : (
-                  // Con los nombres a la vista, «Entregado» bajo «Entregado» sobra.
-                  <span className={cn(TEXTO[etapa?.tono ?? 'neutro'], paso && TITULO_PASO_DEL_INSUMO[paso.actual] === etapa?.etiqueta && 'sm:hidden')}>
-                    {etapa?.etiqueta ?? 'Sin etapa'}
-                  </span>
-                )}
+                {/* En el teléfono no se ven los nombres de los pasos: el de ahora va aquí, si la línea no lo dice ya. */}
+                {titulo && titulo !== dice?.etiqueta && <span className="font-medium text-texto sm:hidden">{titulo} · </span>}
+                <span className={cn(TEXTO[dice?.tono ?? 'neutro'], titulo === dice?.etiqueta && 'sm:hidden')}>
+                  {dice?.etiqueta ?? 'Sin etapa'}
+                </span>
                 {llega && (
                   <span className={atrasada ? 'text-aviso' : undefined} data-llega={llega}>
                     {' · '}
@@ -95,10 +132,15 @@ export function InsumosDelRequerimiento({
                 )}
               </p>
               {/* El visto ya dado se dice aparte: el insumo siguió su camino. */}
-              {vistoDice && paso?.actual !== 'VISTO_DISENO' && <p className={cn('text-xs', TEXTO[vistoDice.tono])}>{vistoDice.etiqueta}</p>}
+              {vistoDice && !paso?.frenado && <p className={cn('text-xs', TEXTO[vistoDice.tono])}>{vistoDice.etiqueta}</p>}
               {s?.recibido_por && (
                 <p className="text-xs break-words text-texto-suave" data-recibio>
-                  Lo recibió <span className="font-medium text-texto">{s.recibido_por}</span>
+                  {parte && (
+                    <span className="tabular">
+                      Salieron {cantidad(salio)} de {cantidad(l.cantidad)} {l.unidad}:{' '}
+                    </span>
+                  )}
+                  {parte ? 'los recibió' : 'Lo recibió'} <span className="font-medium text-texto">{s.recibido_por}</span>
                   {s.recibido_en && ` · ${fecha(s.recibido_en)}`}
                 </p>
               )}
@@ -111,9 +153,35 @@ export function InsumosDelRequerimiento({
 }
 
 /**
+ * El título del pliegue, que se lee cerrado: si falta el sustento, eso
+ * primero; después cuántos insumos van en cada paso, del más atrasado al más
+ * adelantado, y la fecha más cercana en que llega lo que se compra.
+ */
+function TituloDelPliegue({ insumos, pideSustento, terminado }: { insumos: Insumo[]; pideSustento: boolean; terminado: boolean }) {
+  const cuenta = new Map<PasoDelInsumo, number>()
+  for (const i of insumos) if (i.paso) cuenta.set(i.paso.actual, (cuenta.get(i.paso.actual) ?? 0) + 1)
+  // Con un solo insumo, el número sobra: «en compra».
+  const enPasos = PASOS_DEL_INSUMO.filter((p) => cuenta.has(p)).map((p) =>
+    insumos.length === 1 ? EN_EL_RESUMEN[p] : `${cuenta.get(p) ?? 0} ${EN_EL_RESUMEN[p]}`,
+  )
+  const llegan = insumos
+    .map((i) => i.llega)
+    .filter((d): d is string => d !== null)
+    .sort()
+  const resumen = [...enPasos, llegan.length > 0 ? `llega aprox. el ${fecha(llegan[0])}` : null].filter(Boolean).join(', ')
+  return (
+    <span className="block py-1.5" data-resumen-de-insumos>
+      {pideSustento && <span className="block font-semibold text-aviso">Falta tu sustento para Diseño</span>}
+      <span className="block">{insumos.length === 1 ? 'Cómo va su insumo' : `Cómo va cada insumo (${insumos.length})`}</span>
+      {resumen && !terminado && <span className="block text-xs font-normal text-texto-suave first-letter:uppercase">{resumen}</span>}
+    </span>
+  )
+}
+
+/**
  * La línea de pasos del insumo: hecho en verde, el de ahora en acento (rojo si
- * Diseño no lo autorizó), lo que falta en gris. En el teléfono los nombres no
- * entran bajo cada tramo: el de ahora se dice en la línea de abajo.
+ * Diseño no lo autorizó), lo que falta con su borde. En el teléfono los
+ * nombres no entran bajo cada tramo: el de ahora se dice en la línea de abajo.
  */
 function PasosDelInsumo({
   item,
@@ -140,7 +208,7 @@ function PasosDelInsumo({
               aria-hidden
               className={cn(
                 'block h-1.5 rounded-full',
-                hecho ? 'bg-exito' : ahora ? (rechazado ? 'bg-peligro' : 'bg-acento') : 'bg-neutro-suave',
+                hecho ? 'bg-exito' : ahora ? (rechazado ? 'bg-peligro' : 'bg-acento') : 'border border-texto-tenue bg-superficie',
               )}
             />
             <span
