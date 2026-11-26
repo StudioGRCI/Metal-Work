@@ -81,7 +81,7 @@ as $$
 $$;
 
 comment on function public.cuenta_que_registra_cotizaciones(boolean, uuid) is
-  'Si una cuenta con ese estado y ese rol registra cotizaciones: activa y con cotizaciones.crear, o administrador del sistema. Ayudante interno (migración 20261126998000).';
+  'Si una cuenta con ese estado y ese rol registra cotizaciones: activa y con cotizaciones.crear, o administrador del sistema. Ayudante interno (migración 20261126998600).';
 
 revoke all on function public.cuenta_que_registra_cotizaciones(boolean, uuid) from public, anon, authenticated;
 
@@ -98,7 +98,7 @@ as $$
 $$;
 
 comment on function public.quien_registro_la_puede_cancelar(uuid) is
-  'Si quien registró esa cotización sigue con cuenta activa en un puesto que registra cotizaciones. Ayudante interno (migración 20261126998000).';
+  'Si quien registró esa cotización sigue con cuenta activa en un puesto que registra cotizaciones. Ayudante interno (migración 20261126998600).';
 
 revoke all on function public.quien_registro_la_puede_cancelar(uuid) from public, anon, authenticated;
 
@@ -127,7 +127,7 @@ as $$
 $$;
 
 comment on function public.puede_cancelar_la_venta(uuid) is
-  'Si quien llama puede cancelar esa venta: registró la cotización o es Gerencia (cotizaciones.revisar), está aprobada, se reabrió porque su OT pasó a otro comprador y se anuló, no tiene OT vigente ni factura vigente (migraciones 20261126988000 y 20261126998000).';
+  'Si quien llama puede cancelar esa venta: registró la cotización o es Gerencia (cotizaciones.revisar), está aprobada, se reabrió porque su OT pasó a otro comprador y se anuló, no tiene OT vigente ni factura vigente (migraciones 20261126988000 y 20261126998600).';
 
 revoke all on function public.puede_cancelar_la_venta(uuid) from public, anon;
 grant execute on function public.puede_cancelar_la_venta(uuid) to authenticated;
@@ -199,7 +199,7 @@ end;
 $$;
 
 comment on function public.cancelar_venta_reabierta(uuid, text) is
-  'Cancela la venta que se reabrió porque su OT pasó a otro comprador y se anuló: anula la cotización con su motivo (no se borra). Quien la registró o Gerencia (cotizaciones.revisar), aprobada, sin OT vigente ni factura vigente (migraciones 20261126988000 y 20261126998000).';
+  'Cancela la venta que se reabrió porque su OT pasó a otro comprador y se anuló: anula la cotización con su motivo (no se borra). Quien la registró o Gerencia (cotizaciones.revisar), aprobada, sin OT vigente ni factura vigente (migraciones 20261126988000 y 20261126998600).';
 
 revoke all on function public.cancelar_venta_reabierta(uuid, text) from public, anon;
 grant execute on function public.cancelar_venta_reabierta(uuid, text) to authenticated;
@@ -303,7 +303,7 @@ end;
 $$;
 
 comment on function public.fn_usuario_deja_su_venta_reabierta() is
-  'Cuando una cuenta deja de poder registrar cotizaciones (baja o cambio de puesto) y tiene ventas reabiertas, avisa a Gerencia, que las puede cancelar (migración 20261126998000).';
+  'Cuando una cuenta deja de poder registrar cotizaciones (baja o cambio de puesto) y tiene ventas reabiertas, avisa a Gerencia, que las puede cancelar (migración 20261126998600).';
 
 revoke all on function public.fn_usuario_deja_su_venta_reabierta() from public, anon, authenticated;
 
@@ -336,7 +336,7 @@ end;
 $$;
 
 comment on function public.fn_cotizacion_anulada_cierra_sus_avisos() is
-  'Al anularse una cotización, da por leídos los avisos de que su venta volvió a esperar su OT: ya no piden nada (migración 20261126998000).';
+  'Al anularse una cotización, da por leídos los avisos de que su venta volvió a esperar su OT: ya no piden nada (migración 20261126998600).';
 
 revoke all on function public.fn_cotizacion_anulada_cierra_sus_avisos() from public, anon, authenticated;
 
@@ -377,7 +377,7 @@ end;
 $$;
 
 comment on function public.unidades_que_pasaron_a_otro_comprador(uuid[]) is
-  'De las cotizaciones dadas, las aprobadas de varias unidades de las que alguna pasó a otro comprador y otra sigue siendo de esta venta: cuántas pasaron y de cuántas. Facturación lo avisa junto al total, que sigue siendo el de la cotización entera (migración 20261126998000).';
+  'De las cotizaciones dadas, las aprobadas de varias unidades de las que alguna pasó a otro comprador y otra sigue siendo de esta venta: cuántas pasaron y de cuántas. Facturación lo avisa junto al total, que sigue siendo el de la cotización entera (migración 20261126998600).';
 
 revoke all on function public.unidades_que_pasaron_a_otro_comprador(uuid[]) from public, anon;
 grant execute on function public.unidades_que_pasaron_a_otro_comprador(uuid[]) to authenticated;
@@ -407,7 +407,7 @@ as $$
 $$;
 
 comment on function public.venta_reabierta(uuid) is
-  'Si la venta de esa cotización se reabrió (su OT pasó a otro comprador y allí se anuló): el número de esa OT, a quien lee las órdenes, y si quien registró la cotización ya no la puede cancelar (sin cuenta activa o en otro puesto), a quien revisa cotizaciones. NULL si no se reabrió (migraciones 20261126988000 y 20261126998000).';
+  'Si la venta de esa cotización se reabrió (su OT pasó a otro comprador y allí se anuló): el número de esa OT, a quien lee las órdenes, y si quien registró la cotización ya no la puede cancelar (sin cuenta activa o en otro puesto), a quien revisa cotizaciones. NULL si no se reabrió (migraciones 20261126988000 y 20261126998600).';
 
 revoke all on function public.venta_reabierta(uuid) from public, anon;
 grant execute on function public.venta_reabierta(uuid) to authenticated;

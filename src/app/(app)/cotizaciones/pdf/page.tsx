@@ -197,7 +197,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
   const cancelaComoAutor = (c: (typeof cotizaciones)[number]) =>
     puedeSubir && c.estado === 'APROBADA' && c.reabierta_por_ot_anulada !== null && c.registrado_por === perfil.id && !c.facturada
   // Gerencia también tiene el botón, por si quien la registró ya no está
-  // (StudioGRCI, 2026-11-26; migración 20261126998000). No se le sube arriba
+  // (StudioGRCI, 2026-11-26; migración 20261126998600). No se le sube arriba
   // como suya mientras esa persona siga con cuenta: la decide primero quien la
   // vendió. Si ya no tiene cuenta activa o cambió de puesto, la decide Gerencia y sí sube.
   const puedeCancelar = (c: (typeof cotizaciones)[number]) =>

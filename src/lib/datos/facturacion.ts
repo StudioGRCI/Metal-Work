@@ -43,7 +43,7 @@ export type CotizacionAprobada = FilaCotizacion & { url: string | null; paso_a_o
  * En la bandeja de Contabilidad, `facturas` deja de ser la cuenta y trae las facturas mismas.
  * `unidades_a_otro_comprador`: de una cotización de varias unidades, cuántas pasaron a otro
  * comprador mientras otra sigue siendo de esta venta. El total no descuenta nada (la cotización
- * guarda un solo monto): Facturación lo avisa y Contabilidad decide (migración 20261126998000).
+ * guarda un solo monto): Facturación lo avisa y Contabilidad decide (migración 20261126998600).
  */
 export type CotizacionParaFacturar = Omit<CotizacionAprobada, 'facturas'> & {
   facturas: FacturaVenta[]

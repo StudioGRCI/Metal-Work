@@ -1,5 +1,5 @@
 -- Gerencia también cancela la venta que se reabrió, y Facturación sabe cuántas
--- unidades pasaron a otro comprador (migración 20261126998000; StudioGRCI,
+-- unidades pasaron a otro comprador (migración 20261126998600; StudioGRCI,
 -- 2026-11-26: «Sí, también Gerencia» y «Avisar a Contabilidad»).
 --
 --   * La venta reabierta (su OT pasó a otro comprador y allí se anuló) la cancela

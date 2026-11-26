@@ -1,6 +1,6 @@
 /**
  * Recorre con clic real las dos decisiones de StudioGRCI del 2026-11-26 sobre la
- * venta cuya OT pasó a otro comprador (migración 20261126998000), con la cuenta
+ * venta cuya OT pasó a otro comprador (migración 20261126998600), con la cuenta
  * de cada puesto (nunca ADMIN):
  *
  *   1. «Sí, también Gerencia». Dos ventas se reabren (su OT pasó a otro

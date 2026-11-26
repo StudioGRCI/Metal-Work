@@ -42,7 +42,7 @@ export type CotizacionPdf = Omit<Vistas<'v_cotizaciones_pdf'>, 'ordenes' | 'unid
    * hasta que Ventas la cancele (migración 20261126988000). Con el número de esa OT si se puede leer.
    * `sin_quien_la_registro`: quien la registró ya no la puede cancelar (no tiene cuenta activa o
    * cambió de puesto); lo sabe solo quien revisa cotizaciones, que entonces es quien la cancela
-   * (migración 20261126998000).
+   * (migración 20261126998600).
    */
   reabierta_por_ot_anulada: { numero: string | null; sin_quien_la_registro: boolean } | null
   url: string | null
