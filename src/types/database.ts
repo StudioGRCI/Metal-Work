@@ -17498,6 +17498,30 @@ export type Database = {
         }
         Returns: string
       }
+      mantenimiento_ots: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          orden: string | null
+          numero: string | null
+          codigo: string | null
+          estado: string | null
+          prioridad: string | null
+          cliente: string | null
+          placa: string | null
+          vehiculo: string | null
+          descripcion: string | null
+          registrada: string | null
+          entrega: string | null
+          motivo_pausa: string | null
+          en_planta: boolean | null
+          ingreso_en: string | null
+          salida_en: string | null
+          abierta: boolean | null
+          terminada_en: string | null
+          ultimo_reporte: string | null
+          reportes: number | null
+        }[]
+      }
       marcar_asistencia: {
         Args: {
           p_id: string | null

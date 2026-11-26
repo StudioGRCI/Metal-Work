@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
@@ -16,9 +17,10 @@ import {
 } from '@/lib/datos/requerimientos'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { CODIGO_FIJO_PLANTA, llaveParecido, normalizarCodigo } from '@/lib/dominio/codigos-internos'
+import { PERMISO_OTS_DE_MANTENIMIENTO } from '@/lib/dominio/mantenimiento'
 import { ESTADOS_RQ_ABIERTOS, estadoDelRequerimiento } from '@/lib/dominio/requerimientos'
 import { diaLima, fecha, hoyLima, porcentaje, sumarDias } from '@/lib/format'
-import { exigirPermiso } from '@/lib/sesion'
+import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { InsumosDelRequerimiento } from './insumos'
 import { AvisoDeLaUnidad, BotonPedirParaUnidad, PedirPorUnidad } from './pedir'
@@ -70,6 +72,9 @@ function estadoDeEtapa(e: EtapaDeCodigo): { texto: string; tono: Tono } {
  */
 export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/requerimientos/unidades'>) {
   const perfil = await exigirPermiso('requerimientos.area')
+  // Mantenimiento no trabaja unidades de fabricación: pide por el N.º de su OT,
+  // desde su lista de OT (A.3). Esta pantalla lee planos y etapas, que no ve.
+  if (!puede(perfil, 'requerimientos.emitir') && puede(perfil, PERMISO_OTS_DE_MANTENIMIENTO)) redirect('/mantenimiento')
   const params = await searchParams
   const q = typeof params.q === 'string' ? params.q.trim() : ''
   const area = perfil.area_id
