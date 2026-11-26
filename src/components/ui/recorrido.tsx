@@ -65,7 +65,7 @@ export function Recorrido({
         {ahora ? (
           <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-texto-suave" data-recorrido-ahora>
             <span className="min-w-0 break-words">
-              {femenino ? 'La' : 'Lo'} tiene <span className="font-medium text-texto">{ahora.puesto ?? 'alguien'}</span>
+              {femenino ? 'La' : 'Lo'} {ahora.plural ? 'tienen' : 'tiene'} <span className="font-medium text-texto">{ahora.puesto ?? 'alguien'}</span>
             </span>
             {ahora.dias !== null && <Insignia>{haceDias(ahora.dias)}</Insignia>}
           </span>
@@ -98,7 +98,9 @@ export function Recorrido({
               {p.situacion === 'AHORA' && (
                 <>
                   <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-texto">
-                    <span className="min-w-0 break-words">Ahora {lo} tiene {p.puesto ?? 'alguien'}</span>
+                    <span className="min-w-0 break-words">
+                      Ahora {lo} {p.plural ? 'tienen' : 'tiene'} {p.puesto ?? 'alguien'}
+                    </span>
                     {p.dias !== null && <Insignia>{haceDias(p.dias)}</Insignia>}
                   </p>
                   {/* Qué se espera de quien lo tiene; si la base no lo dice, el paso. */}

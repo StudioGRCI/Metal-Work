@@ -34,6 +34,8 @@ export type PasoDescrito = PasoDelRecorrido & {
   titulo: string
   /** Una línea más: qué se espera de quien lo tiene, o el dato del paso. */
   nota: string | null
+  /** Lo tienen dos a la vez («Gerencia y Recursos Humanos»): «lo tienen», no «lo tiene». */
+  plural?: boolean
 }
 
 /** «desde hoy», «hace 1 día», «hace 3 días». Los días los cuenta la base, por fecha de Lima. */
@@ -147,7 +149,7 @@ const ESPERAS_DEL_REPORTE: Record<string, (detalle: string | null) => string> = 
   VALIDACION: () => 'Le dan su visto bueno, en cualquier orden, o lo observan.',
   VISTO_RRHH: () => 'Le da su visto bueno a la gente y sus horas, o lo observa.',
   VISTO_GERENCIA: () => 'Le da su visto bueno al trabajo y su avance, o lo observa.',
-  CORRECCION: () => 'Lo corrige y lo sube de nuevo con «Corregir y subir de nuevo».',
+  CORRECCION: () => 'Lo corrige y lo sube de nuevo.',
 }
 
 function describir(
@@ -178,6 +180,9 @@ export const describirRecorridoDelRequerimiento = (pasos: readonly PasoDelRecorr
 export const describirRecorridoDeLaCotizacion = (pasos: readonly PasoDelRecorrido[]) =>
   describir(pasos, PASOS_DE_LA_COTIZACION, ESPERAS_DE_LA_COTIZACION)
 
-/** El recorrido de un reporte diario, en palabras. */
+/**
+ * El recorrido de un reporte diario, en palabras. Recién subido lo tienen
+ * Gerencia y Recursos Humanos a la vez: ese paso va en plural.
+ */
 export const describirRecorridoDelReporte = (pasos: readonly PasoDelRecorrido[]) =>
-  describir(pasos, PASOS_DEL_REPORTE, ESPERAS_DEL_REPORTE)
+  describir(pasos, PASOS_DEL_REPORTE, ESPERAS_DEL_REPORTE).map((p) => (p.espera === 'VALIDACION' ? { ...p, plural: true } : p))

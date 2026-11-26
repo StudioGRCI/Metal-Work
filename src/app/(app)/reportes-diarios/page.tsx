@@ -212,7 +212,9 @@ function ObservadosPorCorregir({ reportes, recorridos }: { reportes: ReporteObse
                 <p className="text-xs text-texto-suave first-letter:uppercase">
                   {fechaLarga(r.fecha)} · <span className="font-mono text-texto">{r.codigo_interno}</span>
                 </p>
-                <p className="font-semibold break-words text-texto">{r.asunto}</p>
+                <p id={`observado-${r.id}`} className="font-semibold break-words text-texto">
+                  {r.asunto}
+                </p>
                 <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-texto">
                   <span className="font-medium">Observado por {AREA_QUE_VALIDA[r.observacion_area ?? 'RRHH']}</span>
                   <DiasEnEspera dias={espera?.dias} desde={espera?.en ?? r.observado_en} />
@@ -220,11 +222,11 @@ function ObservadosPorCorregir({ reportes, recorridos }: { reportes: ReporteObse
                 {r.observacion && <p className="text-sm break-words text-texto-suave">{r.observacion}</p>}
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <EnlaceBoton href={`/reportes-diarios/nuevo?corrige=${r.id}`} tamano="sm">
+                <EnlaceBoton href={`/reportes-diarios/nuevo?corrige=${r.id}`} tamano="sm" aria-describedby={`observado-${r.id}`}>
                   <PencilLine aria-hidden className="size-4" />
                   Corregir y subir de nuevo
                 </EnlaceBoton>
-                <EnlaceBoton href={`/reportes-diarios/${r.id}`} variante="secundario" tamano="sm">
+                <EnlaceBoton href={`/reportes-diarios/${r.id}`} variante="secundario" tamano="sm" aria-describedby={`observado-${r.id}`}>
                   Ver el reporte
                 </EnlaceBoton>
               </div>
@@ -291,7 +293,10 @@ function FilaReporte({
         </p>
       </Link>
       {/* Quién lo tiene y hace cuánto, sin abrirlo; abierto, cada paso con su puesto y su hora. */}
-      <Recorrido pasos={recorridos ? describirRecorridoDelReporte(recorridos.get(r.id) ?? []) : null} className="border-t border-borde" />
+      <Recorrido
+        pasos={recorridos ? describirRecorridoDelReporte(recorridos.get(r.id) ?? []) : null}
+        className={`border-t border-borde ${anulado ? 'opacity-60' : ''}`}
+      />
     </div>
   )
 }

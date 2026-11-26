@@ -211,7 +211,7 @@ for (const ancho of [390, 1440]) {
     const resumen = limpio(await tarjeta.locator('[data-recorrido] summary').innerText().catch(() => ''))
     const espera = ahora[clave]
     if (espera) {
-      comprobar(resumen.includes(`Lo tiene ${espera.puesto}`) && resumen.includes(haceDias(espera.dias)),
+      comprobar(resumen.includes(`Lo ${espera.espera === 'VALIDACION' ? 'tienen' : 'tiene'} ${espera.puesto}`) && resumen.includes(haceDias(espera.dias)),
         `${ancho}: «${asuntos[clave].slice(sello.length + 1)}» dice quién lo tiene y hace cuánto, como la base: «${resumen}»`)
     } else {
       comprobar(resumen.includes('Visto bueno de Gerencia'), `${ancho}: el validado dice su último paso: «${resumen}»`)
