@@ -33,7 +33,7 @@ import { fecha, fechaHora, hoyLima } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { cn } from '@/lib/utils'
 
-import { AgregarAccion, AnularAccion, AnularReporte, CerrarAccion, ClasificarReporte, ReabrirAccion, ReasignarAccion } from './controles'
+import { AgregarAccion, AnularAccion, AnularReporte, AvisoDelCierre, CerrarAccion, ClasificarReporte, ReabrirAccion, ReasignarAccion } from './controles'
 
 export const metadata = { title: 'Reporte de seguridad' }
 
@@ -378,6 +378,7 @@ function FilaAccion({
               {a.nota_cierre && <p className="mt-1 whitespace-pre-wrap">{a.nota_cierre}</p>}
             </div>
           )}
+          <AvisoDelCierre accionId={a.id} />
           {a.estado === 'ANULADA' && a.motivo_anulacion && <p className="text-xs text-texto-suave">Anulada: {a.motivo_anulacion}</p>}
           {ultimoCierre && ultimoCierre.fotosDelCierre.length > 0 && a.estado === 'CERRADA' && (
             <div className="pt-2">

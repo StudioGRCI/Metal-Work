@@ -13,16 +13,8 @@ export const TIPOS_REPORTE_SSOMA = ['ACCIDENTE', 'INCIDENTE', 'CONDICION_INSEGUR
 export type TipoReporteSsoma = (typeof TIPOS_REPORTE_SSOMA)[number]
 
 export const TIPO_REPORTE_SSOMA: Record<string, Def> = {
-  ACCIDENTE: {
-    etiqueta: 'Accidente',
-    tono: 'peligro',
-    descripcion: 'Alguien se lastimó, aunque sea leve.',
-  },
-  INCIDENTE: {
-    etiqueta: 'Incidente',
-    tono: 'aviso',
-    descripcion: 'Pasó algo que pudo lastimar a alguien y no lo hizo.',
-  },
+  ACCIDENTE: { etiqueta: 'Accidente', tono: 'peligro', descripcion: 'Alguien se lastimó, aunque sea leve.' },
+  INCIDENTE: { etiqueta: 'Incidente', tono: 'aviso', descripcion: 'Pasó algo que pudo lastimar a alguien y no lo hizo.' },
   CONDICION_INSEGURA: {
     etiqueta: 'Condición insegura',
     tono: 'info',

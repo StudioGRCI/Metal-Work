@@ -625,4 +625,76 @@ begin
     'la evidencia no se borra', 'no se cambia');
 end $$;
 
+-- ============================================================ 10. Lo que espera por SSOMA y quién recibe el cierre
+-- `ssoma_por_atender` (cifra del Dashboard y globo) y `ssoma_hay_quien_reciba_el_cierre`
+-- (el texto de «Cerrar») corren con privilegios de dueño: se prueban con el rol real.
+select set_config('prueba.r3', gen_random_uuid()::text, true);
+do $$
+declare
+  v_antes record;
+  v_ahora record;
+begin
+  perform test.como_usuario(current_setting('prueba.ssoma')::uuid);
+  set local role authenticated;
+  select * into v_antes from public.ssoma_por_atender();
+  reset role;
+
+  -- Un reporte nuevo espera su clasificación: la cifra sube en uno.
+  perform test.como_usuario(current_setting('prueba.almacen')::uuid);
+  set local role authenticated;
+  perform public.ssoma_reportar(current_setting('prueba.r3')::uuid, 'INCIDENTE', current_setting('prueba.alm')::uuid,
+    'Rampa de descarga', 'Una caja cayó de la rampa sin golpear a nadie', null, null, null, '[]'::jsonb);
+  perform test.afirmar((select por_clasificar = 0 and sin_accion = 0 from public.ssoma_por_atender()),
+    'a quien no es SSOMA ni Gerencia, ssoma_por_atender le da ceros');
+  reset role;
+
+  perform test.como_usuario(current_setting('prueba.ssoma')::uuid);
+  set local role authenticated;
+  select * into v_ahora from public.ssoma_por_atender();
+  perform test.afirmar(v_ahora.por_clasificar = v_antes.por_clasificar + 1 and v_ahora.sin_accion = v_antes.sin_accion,
+    'un reporte nuevo suma uno a «por clasificar»');
+  -- Clasificado y sin acción: pasa de una cifra a la otra.
+  perform public.ssoma_clasificar(current_setting('prueba.r3')::uuid, 'INCIDENTE', null, null, 'La rampa no tiene borde de contención');
+  select * into v_ahora from public.ssoma_por_atender();
+  perform test.afirmar(v_ahora.por_clasificar = v_antes.por_clasificar and v_ahora.sin_accion = v_antes.sin_accion + 1,
+    'clasificado sin acción: sale de «por clasificar» y entra en «sin acción»');
+  reset role;
+
+  perform test.como_usuario(current_setting('prueba.gerente')::uuid);
+  set local role authenticated;
+  perform test.afirmar((select por_clasificar = v_antes.por_clasificar and sin_accion = v_antes.sin_accion + 1 from public.ssoma_por_atender()),
+    'Gerencia ve las mismas cifras que SSOMA');
+  reset role;
+
+  perform test.como_usuario(current_setting('prueba.vendedor')::uuid);
+  set local role authenticated;
+  perform test.afirmar((select por_clasificar = 0 and sin_accion = 0 from public.ssoma_por_atender()),
+    'Ventas recibe ceros');
+  reset role;
+
+  -- Con otra cuenta de SSOMA activa, el cierre le llega a alguien.
+  perform test.como_usuario(current_setting('prueba.ssoma')::uuid);
+  set local role authenticated;
+  perform test.afirmar(public.ssoma_hay_quien_reciba_el_cierre(), 'con otra cuenta de SSOMA activa, el cierre le llega a alguien');
+  reset role;
+end $$;
+
+-- Sin ninguna otra cuenta de SSOMA activa (se apagan dentro de la transacción).
+select test.como_usuario(:'admin_id');
+update public.usuarios u set activo = false
+ where u.id <> current_setting('prueba.ssoma')::uuid and u.activo
+   and exists (select 1 from public.roles_permisos rp where rp.rol_id = u.rol_id and rp.permiso_codigo = 'ssoma.gestionar');
+do $$
+begin
+  perform test.como_usuario(current_setting('prueba.ssoma')::uuid);
+  set local role authenticated;
+  perform test.afirmar(not public.ssoma_hay_quien_reciba_el_cierre(),
+    'si la única cuenta de SSOMA es quien cierra, no hay a quién avisarle');
+  reset role;
+  perform test.como_usuario(current_setting('prueba.almacen2')::uuid);
+  set local role authenticated;
+  perform test.afirmar(public.ssoma_hay_quien_reciba_el_cierre(), 'si cierra otra persona, la cuenta de SSOMA recibe el aviso');
+  reset role;
+end $$;
+
 rollback;

@@ -38,10 +38,7 @@ export type ReporteSsoma = {
   motivo_anulacion: string | null
 }
 
-type Fila = { [K in keyof ReporteSsoma]: ReporteSsoma[K] | null } & {
-  area_id: string | null
-  area_codigo: string | null
-}
+type Fila = { [K in keyof ReporteSsoma]: ReporteSsoma[K] | null } & { area_id: string | null; area_codigo: string | null }
 
 function aReporte(f: Fila): ReporteSsoma | null {
   if (!f.id || !f.numero || !f.tipo || !f.estado || !f.creado_en || !f.ocurrido_en) return null
@@ -78,9 +75,11 @@ export const MAXIMO_REPORTES_SSOMA = 200
  * más viejo al más nuevo, y se piden aparte: el tope de la lista no se lleva al
  * que más espera.
  */
-export async function listarReportesSsoma({ porClasificarPrimero = false }: { porClasificarPrimero?: boolean } = {}): Promise<
-  ReporteSsoma[]
-> {
+export async function listarReportesSsoma({ porClasificarPrimero = false }: { porClasificarPrimero?: boolean } = {}): Promise<{
+  reportes: ReporteSsoma[]
+  /** Qué consulta llegó al tope: la lista dice cuál se cortó. */
+  cortados: { porClasificar: boolean; recientes: boolean }
+}> {
   const supabase = await createClient()
   const recientes = supabase
     .rpc('ssoma_reportes_visibles', { p_id: null })
@@ -100,22 +99,24 @@ export async function listarReportesSsoma({ porClasificarPrimero = false }: { po
   ])
   const error = porClasificar?.error ?? resto.error
   if (error) throw new Error(`No se pudieron leer los reportes de seguridad: ${error.message}`)
-  return ([...(porClasificar?.data ?? []), ...(resto.data ?? [])] as Fila[]).flatMap((f) => aReporte(f) ?? [])
+  return {
+    reportes: ([...(porClasificar?.data ?? []), ...(resto.data ?? [])] as Fila[]).flatMap((f) => aReporte(f) ?? []),
+    cortados: {
+      porClasificar: (porClasificar?.data?.length ?? 0) >= MAXIMO_REPORTES_SSOMA,
+      recientes: (resto.data?.length ?? 0) >= MAXIMO_REPORTES_SSOMA,
+    },
+  }
 }
 
 /** Una foto del reporte, con su enlace firmado por una hora. */
 export type FotoSsoma = { id: string; orden: number; enlace: string | null }
 
-export type DetalleReporteSsoma = ReporteSsoma & {
-  fotosDelReporte: FotoSsoma[]
-}
+export type DetalleReporteSsoma = ReporteSsoma & { fotosDelReporte: FotoSsoma[] }
 
 /** Un reporte con sus fotos. `null` si no existe o si quien mira no lo puede ver. */
 export async function cargarReporteSsoma(id: string): Promise<DetalleReporteSsoma | null> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('ssoma_reportes_visibles', {
-    p_id: id,
-  })
+  const { data, error } = await supabase.rpc('ssoma_reportes_visibles', { p_id: id })
   if (error) throw new Error(`No se pudo leer el reporte de seguridad: ${error.message}`)
   const reporte = ((data ?? []) as Fila[]).flatMap((f) => aReporte(f) ?? [])[0]
   if (!reporte) return null
@@ -130,14 +131,7 @@ export async function cargarReporteSsoma(id: string): Promise<DetalleReporteSsom
   if (errorFotos) throw new Error(`No se pudieron leer las fotos del reporte: ${errorFotos.message}`)
   const fotos = filas ?? []
   const enlaces = await enlacesDeFotos(fotos.map((f) => f.ruta))
-  return {
-    ...reporte,
-    fotosDelReporte: fotos.map((f) => ({
-      id: f.id,
-      orden: f.orden,
-      enlace: enlaces[f.ruta] ?? null,
-    })),
-  }
+  return { ...reporte, fotosDelReporte: fotos.map((f) => ({ id: f.id, orden: f.orden, enlace: enlaces[f.ruta] ?? null })) }
 }
 
 /** Enlaces temporales para ver las fotos: el bucket es privado y la política decide quién. */
@@ -166,12 +160,7 @@ export async function areasParaReportar(): Promise<AreaParaReportar[]> {
   return data ?? []
 }
 
-export type PersonaParaReportar = {
-  id: string
-  nombre: string
-  cargo: string | null
-  area: string | null
-}
+export type PersonaParaReportar = { id: string; nombre: string; cargo: string | null; area: string | null }
 
 /**
  * La lista de RR. HH. para reportar a nombre de un trabajador sin cuenta: solo

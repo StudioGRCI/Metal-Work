@@ -48,7 +48,7 @@ export default async function PaginaSsoma({ searchParams }: PageProps<'/ssoma'>)
   const params = await searchParams
   const vista = veTodo && (params.vista === 'anulados' || params.vista === 'acciones') ? params.vista : 'vigentes'
 
-  const [reportes, areas, personal, acciones] = await Promise.all([
+  const [{ reportes, cortados }, areas, personal, acciones] = await Promise.all([
     // A SSOMA, lo que espera por ella primero.
     listarReportesSsoma({ porClasificarPrimero: gestiona }),
     areasParaReportar(),
@@ -57,12 +57,10 @@ export default async function PaginaSsoma({ searchParams }: PageProps<'/ssoma'>)
   ])
   // Cómo va cada reporte de la lista: pide los que se muestran, no «todos».
   const porReporte = await seguimientoDeReportes(reportes.map((r) => r.id))
-  const alTope = reportes.length >= MAXIMO_REPORTES_SSOMA
+  const alTope = cortados.porClasificar || cortados.recientes
   const accionesAlTope = acciones.length >= MAXIMO_ACCIONES_SSOMA
   // Lo que la persona tiene a su cargo: las vencidas arriba (`listarAccionesSsoma` ya las ordena).
   const mias = acciones.filter((a) => a.responsable_id === perfil.id && a.estado !== 'ANULADA')
-  const miasAbiertas = mias.filter((a) => a.estado === 'ABIERTA')
-  const miasVencidas = miasAbiertas.filter((a) => (a.dias_para_vencer ?? 0) < 0)
 
   const boton = (
     <ReportarIncidente
@@ -96,6 +94,12 @@ export default async function PaginaSsoma({ searchParams }: PageProps<'/ssoma'>)
           acciones={boton}
           estado={<EstadoDelReporteSsoma />}
         />
+        {/* Gerencia o SSOMA también pueden tener una acción a su cargo: no se pierde entre las demás. */}
+        {mias.some((a) => a.estado === 'ABIERTA') && (
+          <div className="mb-5">
+            <TusAcciones mias={mias} cuentaId={perfil.id} />
+          </div>
+        )}
         <Vistas
           etiqueta="Vista"
           className="mb-3"
@@ -141,7 +145,7 @@ export default async function PaginaSsoma({ searchParams }: PageProps<'/ssoma'>)
             />
           </Tarjeta>
         )}
-        {alTope && vista !== 'acciones' && <Tope />}
+        {alTope && vista !== 'acciones' && <Tope cortados={cortados} />}
         {accionesAlTope && vista === 'acciones' && (
           <p className="mt-3 text-xs text-texto-suave">
             Se muestran {MAXIMO_ACCIONES_SSOMA} acciones: primero las vencidas y las abiertas.
@@ -152,7 +156,6 @@ export default async function PaginaSsoma({ searchParams }: PageProps<'/ssoma'>)
   }
 
   const mios = reportes.filter((r) => r.alcance === 'PROPIO')
-  const miasCerradas = mias.filter((a) => a.estado === 'CERRADA')
   const delArea = reportes.filter((r) => r.alcance === 'AREA')
   return (
     <>
@@ -165,42 +168,9 @@ export default async function PaginaSsoma({ searchParams }: PageProps<'/ssoma'>)
         estado={<EstadoDelReporteSsoma />}
       />
       <div className="space-y-5">
-        {mias.length > 0 && (
-          <Tarjeta className="overflow-hidden" data-tus-acciones>
-            <TarjetaCabecera
-              titulo="Tus acciones correctivas"
-              descripcion={
-                miasAbiertas.length === 0
-                  ? 'Todas cerradas.'
-                  : [
-                      `${miasAbiertas.length} ${miasAbiertas.length === 1 ? 'abierta' : 'abiertas'}`,
-                      miasVencidas.length > 0 && `${miasVencidas.length} ${miasVencidas.length === 1 ? 'vencida' : 'vencidas'}`,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')
-              }
-              ayuda="Lo que SSOMA te encargó corregir. Ábrela, haz lo que pide y ciérrala con fotos de lo que hiciste: SSOMA recibe el aviso."
-            />
-            {miasAbiertas.length > 0 && (
-              <TablaDeAcciones acciones={miasAbiertas} cuentaId={perfil.id} conReporte vacio={{ titulo: '', descripcion: '' }} />
-            )}
-            {/* Las cerradas no empujan hacia abajo lo que sí falta: van plegadas. */}
-            {miasCerradas.length > 0 && (
-              <div className="border-t border-borde px-4">
-                <Pliegue titulo={`Ver las cerradas (${miasCerradas.length})`} data-tus-cerradas="">
-                  <div className="-mx-4 border-t border-borde">
-                    <TablaDeAcciones acciones={miasCerradas} cuentaId={perfil.id} conReporte vacio={{ titulo: '', descripcion: '' }} />
-                  </div>
-                </Pliegue>
-              </div>
-            )}
-          </Tarjeta>
-        )}
+        {mias.length > 0 && <TusAcciones mias={mias} cuentaId={perfil.id} />}
         <Tarjeta className="overflow-hidden">
-          <TarjetaCabecera
-            titulo="Tus reportes"
-            descripcion={mios.length > 0 ? `${mios.length} ${mios.length === 1 ? 'reporte' : 'reportes'}` : undefined}
-          />
+          <TarjetaCabecera titulo="Tus reportes" descripcion={mios.length > 0 ? `${mios.length} ${mios.length === 1 ? 'reporte' : 'reportes'}` : undefined} />
           <TablaDeReportes
             reportes={mios}
             porReporte={porReporte}
@@ -220,13 +190,20 @@ export default async function PaginaSsoma({ searchParams }: PageProps<'/ssoma'>)
           </Tarjeta>
         )}
       </div>
-      {alTope && <Tope />}
+      {alTope && <Tope cortados={cortados} />}
     </>
   )
 }
 
-function Tope() {
-  return <p className="mt-3 text-xs text-texto-suave">Se muestran los {MAXIMO_REPORTES_SSOMA} reportes más recientes.</p>
+/** Dice cuál de las dos consultas se cortó: la de los que esperan clasificación (solo SSOMA) o la de los recientes. */
+function Tope({ cortados }: { cortados: { porClasificar: boolean; recientes: boolean } }) {
+  const texto =
+    cortados.porClasificar && cortados.recientes
+      ? `Se muestran los ${MAXIMO_REPORTES_SSOMA} reportes por clasificar más antiguos y, del resto, los ${MAXIMO_REPORTES_SSOMA} más recientes.`
+      : cortados.porClasificar
+        ? `Se muestran los ${MAXIMO_REPORTES_SSOMA} reportes por clasificar más antiguos.`
+        : `Se muestran los ${MAXIMO_REPORTES_SSOMA} reportes más recientes.`
+  return <p className="mt-3 text-xs text-texto-suave">{texto}</p>
 }
 
 function TablaDeReportes({
@@ -288,10 +265,7 @@ function FilaReporte({
       <TD className="align-top">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           {/* En el teléfono, un blanco de 44 px de alto: el número es el único camino a la ficha. */}
-          <Link
-            href={`/ssoma/${r.id}`}
-            className="tabular inline-flex min-h-11 items-center font-semibold text-acento hover:underline sm:min-h-0"
-          >
+          <Link href={`/ssoma/${r.id}`} className="tabular inline-flex min-h-11 items-center font-semibold text-acento hover:underline sm:min-h-0">
             {r.numero}
           </Link>
           {tipo ? <Insignia tono={tipo.tono}>{tipo.etiqueta}</Insignia> : r.tipo}
@@ -469,4 +443,42 @@ function EstadoDeAccion({ accion: a }: { accion: AccionSsoma }) {
   const vencida = a.estado === 'ABIERTA' && (a.dias_para_vencer ?? 0) < 0
   const estado = vencida ? { etiqueta: 'Vencida', tono: 'peligro' as const } : ESTADO_ACCION_SSOMA[a.estado]
   return estado ? <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia> : <>{a.estado}</>
+}
+
+/** Lo que SSOMA le encargó a quien mira: las abiertas (la vencida arriba) y las cerradas plegadas. */
+function TusAcciones({ mias, cuentaId }: { mias: AccionSsoma[]; cuentaId: string }) {
+  const miasAbiertas = mias.filter((a) => a.estado === 'ABIERTA')
+  const miasVencidas = miasAbiertas.filter((a) => (a.dias_para_vencer ?? 0) < 0)
+  const miasCerradas = mias.filter((a) => a.estado === 'CERRADA')
+  return (
+    <Tarjeta className="overflow-hidden" data-tus-acciones>
+      <TarjetaCabecera
+        titulo="Tus acciones correctivas"
+        descripcion={
+          miasAbiertas.length === 0
+            ? 'Todas cerradas.'
+            : [
+                `${miasAbiertas.length} ${miasAbiertas.length === 1 ? 'abierta' : 'abiertas'}`,
+                miasVencidas.length > 0 && `${miasVencidas.length} ${miasVencidas.length === 1 ? 'vencida' : 'vencidas'}`,
+              ]
+                .filter(Boolean)
+                .join(' · ')
+        }
+        ayuda="Lo que SSOMA te encargó corregir. Ábrela, haz lo que pide y ciérrala con fotos de lo que hiciste: SSOMA recibe el aviso."
+      />
+      {miasAbiertas.length > 0 && (
+        <TablaDeAcciones acciones={miasAbiertas} cuentaId={cuentaId} conReporte vacio={{ titulo: '', descripcion: '' }} />
+      )}
+      {/* Las cerradas no empujan hacia abajo lo que sí falta: van plegadas. */}
+      {miasCerradas.length > 0 && (
+        <div className="border-t border-borde px-4">
+          <Pliegue titulo={`Ver las cerradas (${miasCerradas.length})`} data-tus-cerradas="">
+            <div className="-mx-4 border-t border-borde">
+              <TablaDeAcciones acciones={miasCerradas} cuentaId={cuentaId} conReporte vacio={{ titulo: '', descripcion: '' }} />
+            </div>
+          </Pliegue>
+        </div>
+      )}
+    </Tarjeta>
+  )
 }

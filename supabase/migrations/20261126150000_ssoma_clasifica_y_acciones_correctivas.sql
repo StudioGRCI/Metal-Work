@@ -961,7 +961,8 @@ comment on function public.ssoma_reportes_visibles(uuid) is
 revoke all on function public.ssoma_reportes_visibles(uuid) from public, anon;
 grant execute on function public.ssoma_reportes_visibles(uuid) to authenticated;
 
--- Cómo va cada reporte visible: la clasificación (solo SSOMA y Gerencia) y sus acciones.
+-- Cómo va cada reporte visible: la clasificación (solo SSOMA y Gerencia; la fecha en que
+-- se clasificó, todo el que ve el reporte, para su recorrido) y sus acciones.
 -- Recibe los reportes que la pantalla muestra, no «todos»: con «todos», el tope de
 -- filas de la API cortaba la respuesta y un reporte decía «sin acciones aún» sin serlo.
 create or replace function public.ssoma_seguimiento_de_reportes(p_ids uuid[])
@@ -976,7 +977,7 @@ language sql stable security definer set search_path to 'public' rows 200 as $$
          case when v.alcance = 'TODOS' then c.dias_perdidos end,
          case when v.alcance = 'TODOS' then c.causa end,
          case when v.alcance = 'TODOS' then public.ssoma_nombre_de(c.clasificado_por) end,
-         case when v.alcance = 'TODOS' then c.creado_en end,
+         c.creado_en,  -- la fecha la ve todo el que ve el reporte (su recorrido); lo privado es la causa
          r.cerrado_en,
          coalesce(n.acciones, 0), coalesce(n.abiertas, 0), coalesce(n.vencidas, 0), coalesce(n.cerradas, 0)
     from (select distinct x.id from unnest(p_ids) as x(id) where x.id is not null) i
@@ -994,7 +995,7 @@ language sql stable security definer set search_path to 'public' rows 200 as $$
     ) n on true;
 $$;
 comment on function public.ssoma_seguimiento_de_reportes(uuid[]) is
-  'Cómo va cada uno de esos reportes, si quien pregunta lo ve: la última clasificación con su causa (solo SSOMA y Gerencia) y cuántas acciones tiene abiertas, vencidas y cerradas.';
+  'Cómo va cada uno de esos reportes, si quien pregunta lo ve: la última clasificación con su causa (solo SSOMA y Gerencia; la fecha en que se clasificó, todos los que lo ven) y cuántas acciones tiene abiertas, vencidas y cerradas.';
 revoke all on function public.ssoma_seguimiento_de_reportes(uuid[]) from public, anon;
 grant execute on function public.ssoma_seguimiento_de_reportes(uuid[]) to authenticated;
 

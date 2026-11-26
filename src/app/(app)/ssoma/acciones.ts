@@ -58,11 +58,12 @@ export async function reportarIncidente(_previo: unknown, formulario: FormData):
   const analisis = z
     .object({
       operacion_id: z.guid(),
-      tipo: z.enum(TIPOS_REPORTE_SSOMA, {
-        message: 'Elige qué reportas: un accidente, un incidente o una condición insegura.',
-      }),
+      tipo: z.enum(TIPOS_REPORTE_SSOMA, { message: 'Elige qué reportas: un accidente, un incidente o una condición insegura.' }),
       area_id: z.guid('Elige el área donde pasó.'),
-      lugar: z.string().min(3, 'Escribe el lugar exacto: la nave, la máquina o la zona.').max(120, 'El lugar pasa de 120 caracteres.'),
+      lugar: z
+        .string()
+        .min(3, 'Escribe el lugar exacto: la nave, la máquina o la zona.')
+        .max(120, 'El lugar pasa de 120 caracteres.'),
       descripcion: z
         .string()
         .min(10, 'Cuenta qué pasó o qué viste, en al menos 10 caracteres.')
@@ -85,11 +86,7 @@ export async function reportarIncidente(_previo: unknown, formulario: FormData):
       trabajador_id: dato(formulario, 'trabajador_id'),
       fotos: json(formulario, 'fotos'),
     })
-  if (!analisis.success)
-    return {
-      ok: false,
-      error: analisis.error.issues[0]?.message ?? 'Revisa el reporte.',
-    }
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el reporte.' }
   const d = analisis.data
 
   const cuando = d.ocurrido_en ? horaDeLima(d.ocurrido_en) : null
@@ -97,10 +94,7 @@ export async function reportarIncidente(_previo: unknown, formulario: FormData):
   if (d.tipo === 'ACCIDENTE' && !d.hubo_atencion) return { ok: false, error: 'Marca si hubo atención médica.' }
   // El mismo permiso que pide la base para reportar a nombre de otra persona.
   if (d.trabajador_id && !puede(perfil, 'ssoma.reportar_por_otro')) {
-    return {
-      ok: false,
-      error: 'No tienes permiso para reportar a nombre de otra persona.',
-    }
+    return { ok: false, error: 'No tienes permiso para reportar a nombre de otra persona.' }
   }
 
   const supabase = await createClient()
@@ -119,10 +113,7 @@ export async function reportarIncidente(_previo: unknown, formulario: FormData):
   if (error) return { ok: false, error: mensajeDeError(error) }
   const fila = data?.[0]
   if (!fila?.reporte || !fila.numero_reporte || fila.reporte !== d.operacion_id) {
-    return {
-      ok: false,
-      error: 'El reporte no quedó registrado. Recarga la pantalla.',
-    }
+    return { ok: false, error: 'El reporte no quedó registrado. Recarga la pantalla.' }
   }
 
   revalidatePath('/ssoma', 'layout')
@@ -143,21 +134,11 @@ export async function anularReporteSsoma(_previo: unknown, formulario: FormData)
       id: z.guid(),
       motivo: z.string().min(10, 'Cuenta por qué se anula, en al menos 10 caracteres.').max(500, 'El motivo pasa de 500 caracteres.'),
     })
-    .safeParse({
-      id: formulario.get('id'),
-      motivo: dato(formulario, 'motivo'),
-    })
-  if (!analisis.success)
-    return {
-      ok: false,
-      error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.',
-    }
+    .safeParse({ id: formulario.get('id'), motivo: dato(formulario, 'motivo') })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('ssoma_anular_reporte', {
-    p_id: analisis.data.id,
-    p_motivo: analisis.data.motivo,
-  })
+  const { data, error } = await supabase.rpc('ssoma_anular_reporte', { p_id: analisis.data.id, p_motivo: analisis.data.motivo })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== analisis.data.id) return { ok: false, error: 'El reporte no se anuló. Recarga la pantalla.' }
 

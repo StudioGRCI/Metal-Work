@@ -62,6 +62,9 @@ const enMonedas = <T,>(filas: T[], moneda: (f: T) => string | null, monto: (f: T
 
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`
 
+/** Pendientes que son de la persona y no de su puesto: se cuentan aunque su pantalla no esté en su menú de trabajo. */
+const DE_CUALQUIER_PUESTO = new Set(['ssoma_acciones_vencidas', 'ssoma_acciones_abiertas'])
+
 /**
  * Con `cache`: el layout lo lee para los globos y el Dashboard para su cifra
  * de lo que espera, en la misma carga, y las consultas se hacen una sola vez.
@@ -1086,7 +1089,9 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
   // que el puesto solo consulta tampoco es suyo: Gerencia ve todas las áreas
   // desde el 2026-11-25, y sus globos siguen siendo lo que espera su visto.
   const enMenu = rutasDeTrabajo(perfil.permisos, perfil.rol.codigo === 'ADMIN', perfil.rol.codigo)
-  const suyas = tareas.filter((t) => enMenu.has(t.ruta.split(/[?#]/)[0]))
+  // Salvo la acción correctiva a su cargo: SSOMA se la puede encargar a cualquier
+  // cuenta, también a una que solo consulta `/ssoma` (Gerencia), y es suya igual.
+  const suyas = tareas.filter((t) => DE_CUALQUIER_PUESTO.has(t.clave) || enMenu.has(t.ruta.split(/[?#]/)[0]))
 
   const cuentas = await Promise.all(suyas.map((t) => t.contar().catch(() => null)))
 

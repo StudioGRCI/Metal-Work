@@ -365,6 +365,8 @@ export function AgregarAccion({
     <div className="flex flex-col items-end gap-1">
       <Boton
         type="button"
+        // En un reporte ya corregido no es lo que más llama: la ficha terminó.
+        variante={corregido ? 'secundario' : 'primario'}
         data-agregar-accion
         onClick={() => {
           limpiar()
@@ -503,6 +505,20 @@ function FormularioAccion({
  * formulario, y el id del cierre (la carpeta de sus fotos) también, para que
  * tras «No llegó la respuesta» volver a abrir pregunte si aquel entró.
  */
+/**
+ * El verde del cierre, en la fila de la acción y siempre montado: el botón
+ * «Cerrar con evidencia» desaparece cuando la acción queda cerrada, y el aviso
+ * que vivía en él duraba una décima de segundo.
+ */
+export function AvisoDelCierre({ accionId }: { accionId: string }) {
+  const [entro] = useEstadoCompartido<string | null>(`ssoma:cierre:${accionId}:aviso`, null)
+  return (
+    <p role="status" className={entro ? 'mt-1 text-xs text-exito' : 'sr-only'}>
+      {entro}
+    </p>
+  )
+}
+
 export function CerrarAccion({
   accionId,
   cuentaId,
@@ -542,7 +558,8 @@ export function CerrarAccion({
   const { sigue } = envio
   const ocupado = sigue || (enviando && !abierta)
   return (
-    <div className="space-y-1">
+    // Sin `space-y`: los avisos ocultos le sumaban margen y el botón quedaba corrido junto a los demás.
+    <div>
       <Boton
         type="button"
         tamano="sm"
@@ -562,10 +579,8 @@ export function CerrarAccion({
         {!ocupado && <CheckCircle2 aria-hidden className="size-4" />}
         Cerrar con evidencia
       </Boton>
-      <p role="status" className={entro ? 'text-xs text-exito' : 'sr-only'}>
-        {entro}
-      </p>
-      <EstadoDelEnvio id={idDelEstado} sigue={sigue} desenlace={envio.desenlace} registro="El cierre" className="text-xs" />
+      {/* El verde («…ya le avisamos a SSOMA») lo pinta `AvisoDelCierre` en la fila: este botón se va con la acción cerrada. */}
+      <EstadoDelEnvio id={idDelEstado} sigue={sigue} desenlace={envio.desenlace} registro="El cierre" className="mt-1 text-xs" />
       <Ventana abierta={abierta} alCerrar={cerrar} titulo="Cerrar la acción con evidencia" descripcion={descripcion} ancho="lg">
         <EnvioAnterior texto={id.anterior} />
         {id.id && (
@@ -641,7 +656,7 @@ function FormularioCierre({
             Fotos de lo que se hizo
             <span className="ml-0.5 text-peligro">*</span>
           </p>
-          <p className="text-xs text-texto-suave">SSOMA las revisa para dar la acción por cerrada. No fotografíes caras.</p>
+          <p className="text-xs text-texto-suave">Al enviarlas, la acción queda cerrada. SSOMA ve las fotos y puede reabrirla si no bastan. No fotografíes caras.</p>
           <SelectorFotos
             fotos={fotos}
             alCambiar={setFotos}
