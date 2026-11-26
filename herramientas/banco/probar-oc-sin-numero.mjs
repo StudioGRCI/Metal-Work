@@ -5,7 +5,7 @@
  * Gerencia no tenía Adquisiciones en su menú (2026-10-22). Con clic real y la
  * cuenta de cada puesto (nunca ADMIN), consultando la base después del clic:
  *
- *   1. Gerencia tiene Adquisiciones en «Consultas» y la abre; la OC sin número
+ *   1. Gerencia tiene Adquisiciones en su menú y la abre; la OC sin número
  *      sale «OC sin número» con su referencia aparte. En Aprobación, la lista de
  *      las que puede anular la nombra igual, porque el nombre lo arma la base
  *      (migración 20261022220000), y en el teléfono no ensancha la página.
@@ -260,12 +260,19 @@ writeFileSync(
   const items = await menu(pagina)
   console.log('     menú de Gerencia:', items.join(' · '))
   comprobar(items.includes('Adquisiciones') && items.indexOf('Adquisiciones') < items.indexOf('Cuentas por cobrar'),
-    'Gerencia tiene Adquisiciones en «Consultas», antes de Cuentas por cobrar')
+    'Gerencia tiene Adquisiciones en su menú, antes de Cuentas por cobrar')
   // Sin el enlace, por su dirección: lo demás se comprueba igual.
-  // «Consultas» nace plegado (entrega 2 del plan de orden y diseño): se abre antes de tocar su enlace.
+  // Su grupo nace plegado (entrega 2 del plan de orden y diseño): se abre antes de tocar su enlace.
+  // Se busca el grupo que contiene /adquisiciones, no su nombre: desde el #190 Gerencia lo
+  // tiene en «Finanzas», y antes en «Consultas».
   {
+    const lista = await pagina
+      .locator('nav[aria-label="Menú principal"] ul[id]', { has: pagina.locator('a[href="/adquisiciones"]') })
+      .first()
+      .getAttribute('id')
+      .catch(() => null)
     // Hasta que hidrata el botón no responde: se toca hasta que se abre.
-    const grupo = pagina.locator('nav[aria-label="Menú principal"] button[aria-expanded]', { hasText: 'Consultas' })
+    const grupo = pagina.locator(`nav[aria-label="Menú principal"] button[aria-controls="${lista}"]`)
     for (let i = 0; i < 20 && (await grupo.getAttribute('aria-expanded').catch(() => null)) === 'false'; i++) {
       await grupo.click()
       await pagina.waitForTimeout(300)
