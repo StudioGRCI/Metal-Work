@@ -99,12 +99,12 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
         }
       />
 
-      <div className="mb-4">
-        <BuscadorSimple ruta="/compras/servicios" clave="codigo" etiqueta="Buscar por código interno" marcador="Código interno, por ejemplo SR_04" />
-      </div>
+      {/* 20 px entre el buscador y la lista, como entre bloques (la escala de la skill diseno). */}
+      <div className="space-y-5">
+      <BuscadorSimple ruta="/compras/servicios" clave="codigo" etiqueta="Buscar por código interno" marcador="Código interno, por ejemplo SR_04" />
 
       {plazos === null && (
-        <p role="status" className="mb-3 text-sm text-aviso">
+        <p role="status" className="text-sm text-aviso">
           No se pudo leer el plazo de las órdenes de servicio: la lista sale sin los días de atraso. Recarga la página; si continúa, avisa al administrador.
         </p>
       )}
@@ -115,7 +115,6 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
           params={params}
           activo={soloAtrasadas ? FILTRO_ATRASADAS : null}
           etiqueta="Todas o solo las atrasadas"
-          className="mb-3"
           opciones={[
             { valor: null, etiqueta: `Todas (${delCodigo.length})` },
             { valor: FILTRO_ATRASADAS, etiqueta: `Atrasadas (${atrasadas})` },
@@ -125,17 +124,22 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
 
       {/* Lo que dijo la ventana del motivo o de la fecha va arriba: con «Atrasadas», corregir la fecha saca la fila de la lista. */}
       <ConAvisos>
+      {/* En el teléfono cada orden es una ficha con sus botones en un renglón
+          (entrega 4 del plan de orden y diseño): apilados en una columna
+          angosta, una orden con cinco botones medía 230 px de alto. */}
       <Tarjeta className="overflow-hidden">
         <Tabla apilada>
           <TablaCabecera>
             <tr>
               <TH>Orden</TH>
-              {/* «Para» espera a 1 280 px: entre 768 y 1 279 la columna «Orden» quedaba de 90 px y partía el número. Su dato va bajo la OS. */}
+              {/* «Para» desde 1280 px: entre 768 y 1279 (una laptop con el zoom de
+                  Windows) los botones iban uno por renglón. Hasta ahí, el código
+                  y el área bajan a la celda de la orden. */}
               <TH className="hidden xl:table-cell">Para</TH>
               <TH className="hidden text-right md:table-cell">Monto sin IGV</TH>
               <TH className="hidden md:table-cell">En qué va</TH>
-              {/* El ancho, solo para quien tiene los botones: siete mandos caben en dos renglones. */}
-              <TH className={cn('text-right', emite && 'md:w-80')}>
+              {/* El ancho, solo para quien emite: a quien consulta le dejaba 448 px para un «PDF». */}
+              <TH className={cn('text-right', emite && 'md:w-80 xl:w-[28rem]')}>
                 <span className="sr-only">Acciones</span>
               </TH>
             </tr>
@@ -167,6 +171,7 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
         </Tabla>
       </Tarjeta>
       </ConAvisos>
+      </div>
     </>
   )
 }
@@ -233,7 +238,9 @@ function FilaServicio({
       <TD className="hidden md:table-cell">
         <EnQueVa servicio={s} plazo={plazo} recorrido={recorrido} />
       </TD>
-      <TD className="text-right">
+      <TD>
+        {/* Un renglón: el PDF primero, como en las órdenes de compra; después lo
+            que mueve la orden y sus papeles, y al final «Anular», sin borde. */}
         <AccionesDeFila>
           {/* El papel para el contratista: la aprobada, y la anulada después con su marca. */}
           {!servicioSinPapel(s.aprobacion, s.estado) && (
@@ -260,7 +267,7 @@ function FilaServicio({
               numero={s.numero}
               iniciar={s.aprobacion === 'APROBADA' && s.estado === 'EMITIDA'}
               conformar={s.aprobacion === 'APROBADA'}
-              anular
+              anular={false}
             />
           )}
           {adjunta && vigente && <AdjuntarDocumentoServicio ordenServicioId={s.id} numero={s.numero} />}
@@ -276,6 +283,9 @@ function FilaServicio({
               codigos={codigos}
               cambiaCodigo={emite && abierta}
             />
+          )}
+          {emite && s.aprobacion !== 'RECHAZADA' && abierta && (
+            <AvanceServicio id={s.id} numero={s.numero} iniciar={false} conformar={false} anular />
           )}
         </AccionesDeFila>
       </TD>

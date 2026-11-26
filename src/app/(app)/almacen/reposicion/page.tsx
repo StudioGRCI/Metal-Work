@@ -80,7 +80,9 @@ export default async function PaginaReposicion({ searchParams }: PageProps<'/alm
       />
 
       {/* En el teléfono las cifras ya van en las pastillas de abajo: las tarjetas ocupaban media pantalla. */}
-      <div className="mb-4 hidden gap-3 sm:grid sm:grid-cols-3" data-resumen-reposicion>
+      {/* 20 px entre bloques, como dice la escala de la skill diseno (iban a 12 y 16). */}
+      <div className="space-y-5">
+      <div className="hidden gap-3 sm:grid sm:grid-cols-3" data-resumen-reposicion>
         <Indicador
           titulo="Por reponer"
           valor={porReponer.length}
@@ -108,7 +110,6 @@ export default async function PaginaReposicion({ searchParams }: PageProps<'/alm
 
       <Vistas
         etiqueta="Vista"
-        className="mb-3"
         vistas={VISTAS.map((v) => ({
           clave: v.valor,
           titulo: v.titulo,
@@ -119,12 +120,12 @@ export default async function PaginaReposicion({ searchParams }: PageProps<'/alm
         }))}
       />
 
-      <div className="mb-3 max-w-md">
+      <div className="max-w-md">
         <BuscadorSimple ruta="/almacen/reposicion" etiqueta="Buscar material" marcador="Código o descripción, por ejemplo disco" />
       </div>
 
       {compra && porReponer.length > 0 && (
-        <p className="mb-3 text-sm text-texto-suave">
+        <p className="text-sm text-texto-suave">
           Lo que se repone se compra con una OC directa, para el almacén:{' '}
           <Link href="/compras/ordenes" className="font-medium text-acento hover:underline">
             Órdenes de compra
@@ -133,15 +134,21 @@ export default async function PaginaReposicion({ searchParams }: PageProps<'/alm
         </p>
       )}
 
+      {/* En el teléfono cada material es una ficha (la lista común, `apilada`,
+          entrega 4 del plan de orden y diseño). Sus cifras van con el nombre a
+          la izquierda y el número a la derecha, no con el rótulo encima: así se
+          comparan de un vistazo y la ficha no dobla su alto. */}
       <Tarjeta className="overflow-hidden">
-        <Tabla>
-          <TablaCabecera className="hidden sm:table-header-group">
+        <Tabla apilada>
+          <TablaCabecera>
             <tr>
               <TH>Material</TH>
               <TH className="text-right">Hay</TH>
               <TH className="text-right">En camino</TH>
               <TH className="text-right">Mínimo</TH>
-              <TH className="text-right">Salió en 90 días</TH>
+              {/* Desde 1280 px: a 768 y 1024 la tabla se salía de costado y cortaba
+                  «Cambiar». Hasta ahí, la cifra baja a la celda del material. */}
+              <TH className="hidden text-right xl:table-cell">Salió en 90 días</TH>
               <TH className="text-right">Comprar</TH>
               {fija && (
                 <TH className="text-right">
@@ -159,15 +166,16 @@ export default async function PaginaReposicion({ searchParams }: PageProps<'/alm
           </tbody>
         </Tabla>
       </Tarjeta>
+      </div>
     </>
   )
 }
 
 /** Una cifra con su nombre en el teléfono, donde la fila va apilada y no hay cabecera. */
-function Cifra({ nombre, children, className }: { nombre: string; children: React.ReactNode; className?: string }) {
+function Cifra({ nombre, children, className, desdeXl = false }: { nombre: string; children: React.ReactNode; className?: string; desdeXl?: boolean }) {
   return (
-    <TD className={`flex items-baseline justify-between gap-3 py-0.5 sm:table-cell sm:py-2 sm:text-right ${className ?? ''}`}>
-      <span className="text-xs text-texto-suave sm:hidden">{nombre}</span>
+    <TD className={`flex items-baseline justify-between gap-3 ${desdeXl ? 'md:hidden xl:table-cell xl:text-right' : 'md:table-cell md:text-right'} ${className ?? ''}`}>
+      <span className="text-xs text-texto-suave md:hidden">{nombre}</span>
       <span className="tabular text-right">{children}</span>
     </TD>
   )
@@ -177,8 +185,8 @@ function Fila({ m, fija }: { m: MaterialParaReponer; fija: boolean }) {
   const u = m.unidad ?? ''
   const almacen = m.almacen && esAlmacen(m.almacen) ? ALMACENES[m.almacen].etiqueta : 'Por clasificar'
   return (
-    <TR className="block py-2 sm:table-row sm:py-0" data-material={m.codigo}>
-      <TD className="block pt-1 pb-1 sm:table-cell sm:py-2">
+    <TR data-material={m.codigo}>
+      <TD>
         <p className="break-words text-texto">{m.descripcion}</p>
         <p className="text-xs text-texto-suave">
           <span className="font-mono">{m.codigo}</span> · {almacen}
@@ -189,6 +197,10 @@ function Fila({ m, fija }: { m: MaterialParaReponer; fija: boolean }) {
             {m.comprar > 0 ? 'Bajo el mínimo' : m.en_camino > 0 ? 'Bajo el mínimo, ya viene' : 'Bajo el mínimo, en una OC por aprobar'}
           </Insignia>
         )}
+        {/* La columna «Salió en 90 días» no se ve de 768 a 1279 px. */}
+        <p className="hidden text-xs text-texto-suave md:block xl:hidden">
+          Salió en 90 días: <span className="tabular">{cantidad(m.salio_90_dias)} {u}</span>
+        </p>
       </TD>
       <Cifra nombre="Hay">
         {cantidad(m.existencia)} {u}
@@ -229,7 +241,7 @@ function Fila({ m, fija }: { m: MaterialParaReponer; fija: boolean }) {
           </span>
         )}
       </Cifra>
-      <Cifra nombre="Salió en 90 días">
+      <Cifra nombre="Salió en 90 días" desdeXl>
         {cantidad(m.salio_90_dias)} {u}
       </Cifra>
       <Cifra nombre="Comprar" className="font-semibold">
@@ -242,7 +254,7 @@ function Fila({ m, fija }: { m: MaterialParaReponer; fija: boolean }) {
         )}
       </Cifra>
       {fija && (
-        <TD className="block pt-2 pb-1 sm:table-cell sm:py-2 sm:text-right">
+        <TD className="md:text-right" data-rotulo="Stock de seguridad">
           <StockDeSeguridad
             materialId={m.material_id}
             descripcion={m.descripcion}

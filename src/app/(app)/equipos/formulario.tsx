@@ -470,8 +470,9 @@ export function AccionesEquipo({
   }
 
   return (
-    // En el teléfono, de a dos por renglón: tres apilados alargaban cada fila.
-    <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap">
+    // Sin caja propia: sus botones entran en el renglón de `AccionesDeFila`
+    // de la fila (entrega 4 del plan de orden y diseño).
+    <div className="contents">
       {gestiona && (
         <>
           <Boton type="button" tamano="sm" variante="contorno" aria-label={`Estado de ${equipo.codigo}`} onClick={() => abrir('estado')}>

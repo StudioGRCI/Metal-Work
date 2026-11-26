@@ -72,7 +72,7 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
         migas={[{ titulo: 'Compras' }, { titulo: 'Valorización' }]}
       />
 
-      <dl className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <dl className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Cifra etiqueta="Materiales con saldo" valor={cantidad(enAlmacen.length)} />
         <Cifra
           etiqueta="Con saldo y sin precio"
@@ -89,7 +89,7 @@ export default async function PaginaValorizacion({ searchParams }: PageProps<'/c
         <Cifra etiqueta="Valor en almacén (dólares)" valor={todoSinPrecio ? 'Sin calcular' : moneda(valor.USD, 'USD')} />
       </dl>
 
-      <div className="mb-4 space-y-3">
+      <div className="mb-5 space-y-3">
         <BuscadorSimple ruta="/compras/valorizacion" etiqueta="Buscar material" marcador="Código o descripción" />
         <PastillaFiltro ruta="/compras/valorizacion" clave="ver" opciones={VER} params={params}
           activo={ver || null} etiqueta="Qué materiales mostrar" />

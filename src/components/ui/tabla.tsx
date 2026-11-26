@@ -142,7 +142,7 @@ export function SinDatos(props: VacioGrande | VacioCompacto) {
  * cerrarlo— y hasta que exista van al final y sin borde.
  */
 export function AccionesDeFila({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('flex flex-wrap items-center gap-x-2 gap-y-1 md:justify-end', className)} {...props} />
+  return <div data-acciones-fila="" className={cn('flex flex-wrap items-center gap-x-2 gap-y-1 md:justify-end', className)} {...props} />
 }
 
 /**
