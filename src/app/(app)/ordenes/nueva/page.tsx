@@ -1,5 +1,3 @@
-import Link from 'next/link'
-
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { reclamoParaAbrirSuOt } from '@/lib/datos/garantias'
 import { catalogosOrden } from '@/lib/datos/ordenes'
@@ -30,15 +28,9 @@ export default async function PaginaNuevaOrden({ searchParams }: PageProps<'/ord
         titulo="Orden sin cotización"
         ayuda="Para una reparación, una garantía o un trabajo que no salió de una cotización. Va con el número y el PDF de su papel, como la de una cotización, que se emite desde «Cotizaciones». Nace en borrador y Gerencia la aprueba; recién ahí se generan sus etapas."
       />
-      {pedido && !reclamo && (
-        <p className="mb-4 max-w-4xl rounded-[var(--radius-base)] border border-borde bg-aviso-suave px-3 py-2 text-sm text-texto" data-reclamo-sin-efecto>
-          Ese reclamo de garantía ya no espera su OT, o no lo puedes enlazar: esta orden nace sin él.{' '}
-          <Link href={`/garantias/${pedido}`} className="font-medium text-acento underline underline-offset-2">
-            Ver el reclamo
-          </Link>
-        </p>
-      )}
-      <FormularioOrden catalogos={catalogos} reclamo={reclamo} />
+      {/* El aviso del reclamo sin efecto lo pinta el formulario: al registrarse la
+          OT la página se repinta, y no debe decir «nace sin él» junto a «quedó registrada». */}
+      <FormularioOrden catalogos={catalogos} reclamo={reclamo} reclamoSinEfecto={pedido && !reclamo ? pedido : null} />
     </>
   )
 }

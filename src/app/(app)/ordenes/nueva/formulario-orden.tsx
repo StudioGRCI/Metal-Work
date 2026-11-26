@@ -46,7 +46,19 @@ const PRIORIDADES = opciones(PRIORIDAD)
 /** El reclamo de garantía del que nace la OT (`/ordenes/nueva?reclamo=`, A.2): al registrarse queda enlazada a él. */
 type ReclamoDeLaOt = { id: string; numero: string; cliente_id: string; cliente: string; unidad_id: string; unidad: string; descripcion: string }
 
-export function FormularioOrden({ catalogos, reclamo = null }: { catalogos: Catalogos; reclamo?: ReclamoDeLaOt | null }) {
+export function FormularioOrden({
+  catalogos,
+  reclamo: reclamoAlAbrir = null,
+  reclamoSinEfecto = null,
+}: {
+  catalogos: Catalogos
+  reclamo?: ReclamoDeLaOt | null
+  /** El reclamo pedido en la dirección que ya no espera su OT (o que quien mira no enlaza). */
+  reclamoSinEfecto?: string | null
+}) {
+  // El reclamo con el que se abrió: la página se repinta al registrar la OT y, si
+  // el reclamo se cerró entretanto, llega sin él; la pantalla no cambia por eso.
+  const [reclamo] = useState(reclamoAlAbrir)
   // Un envío por toque, como `useEnvio`; aquí a mano porque el PDF viaja antes
   // que la orden. El id se decide al abrir: un reintento tras perder la señal
   // encuentra la orden ya registrada en vez de crear otra.
@@ -429,6 +441,14 @@ export function FormularioOrden({ catalogos, reclamo = null }: { catalogos: Cata
 
   return (
     <form onSubmit={enviar} className="max-w-4xl space-y-4">
+      {!reclamo && reclamoSinEfecto && !quedo && (
+        <p className="rounded-[var(--radius-base)] border border-borde bg-aviso-suave px-3 py-2 text-sm text-texto" data-reclamo-sin-efecto>
+          Ese reclamo de garantía ya no espera su OT, o no lo puedes enlazar: esta orden nace sin él.{' '}
+          <Link href={`/garantias/${reclamoSinEfecto}`} className="font-medium text-acento underline underline-offset-2">
+            Ver el reclamo
+          </Link>
+        </p>
+      )}
       {reclamo && (
         <>
           <input type="hidden" name="reclamo_id" value={reclamo.id} />
@@ -775,7 +795,7 @@ const idaAlReclamo = (id: string, numero: string, noSeEnlazo: string | null, ord
   noSeEnlazo
     ? {
         url: `/ordenes/${orden}`,
-        dice: `La orden quedó registrada, pero no se enlazó al reclamo ${numero}: ${noSeEnlazo} Si ya no hace falta, anúlala desde su ficha.`,
+        dice: `La orden quedó registrada en borrador, pero no se enlazó al reclamo ${numero}: ${noSeEnlazo} Si atiende otro reclamo de la misma unidad, enlázala desde ese reclamo; si no, Gerencia la anula al revisarla.`,
         enlace: 'Ver la orden',
       }
     : { url: `/garantias/${id}`, dice: `La orden quedó registrada y enlazada al reclamo ${numero}.`, enlace: `Ver el reclamo ${numero}` }
