@@ -27,6 +27,7 @@ import {
   pasoDelRequerimiento,
   quienCompra,
   tieneParaRecoger,
+  vistoDelMetrado,
   YA_LLEGO_TODO,
   yaLlegoTodo,
   type PartesDelInsumo,
@@ -539,7 +540,7 @@ function InsumosConPartes({
             notas={conformidad?.notas}
             comoVa={
               pasosPorInsumo && rq.estado !== 'ANULADO' ? (
-                <ComoVaElInsumo linea={l} visto={vistoDeDiseno(metrado?.get(l.id))} hoy={hoy} quienCompra={quienCompra(rq)} />
+                <ComoVaElInsumo linea={l} visto={vistoDelMetrado(metrado?.get(l.id)?.estado)} hoy={hoy} quienCompra={quienCompra(rq)} />
               ) : null
             }
           />
@@ -551,10 +552,6 @@ function InsumosConPartes({
     </details>
   )
 }
-
-/** En qué va el visto de Diseño del insumo, como lo lee `pasoDelInsumo`; vacío si no espera a Diseño. */
-const vistoDeDiseno = (m: MetradoDelInsumo | undefined) =>
-  m && ['SIN_SUSTENTO', 'POR_AUTORIZAR', 'AUTORIZADO', 'RECHAZADO'].includes(m.estado) ? m.estado : null
 
 /** Lo que no salió del kardex al entregar el RQ con faltante; 0 en los demás. */
 const sinSalida = (l: LineaRequerimiento, rq: RequerimientoListado) => (rq.estado === 'ENTREGADO' ? Math.max(l.sin_salida ?? 0, 0) : 0)

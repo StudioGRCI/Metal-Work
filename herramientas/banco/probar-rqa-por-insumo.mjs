@@ -253,8 +253,8 @@ for (const ancho of [390, 1440]) {
   comprobar((await pasos(1)) === 'POR_ATENDER > EN_COMPRA > EN_CAMINO* > EN_ALMACEN > ENTREGADO', `${ancho}: las sillas, de principio a fin: ${await pasos(1)}`)
   comprobar((await texto(1)).includes(`Llega aprox. el ${ddmm(llega)}`), `${ancho}: dicen cuándo llegan: «${await texto(1)}»`)
   comprobar((await paso(2)) === 'EN_COMPRA', `${ancho}: el tóner va en compra (${await paso(2)})`)
-  comprobar((await texto(2)).includes(`Administración lo esperaba el ${ddmm(seEsperaba)}`) && !(await texto(2)).toLowerCase().includes('llega aprox.') && !(await texto(2)).includes('Logística'),
-    `${ancho}: la OC por aprobar con la fecha pasada no promete un día que ya pasó, y la fecha es de quien compra: «${await texto(2)}»`)
+  comprobar((await texto(2)).includes(`Se esperaba el ${ddmm(seEsperaba)}; la compra sigue por aprobar`) && !(await texto(2)).toLowerCase().includes('llega aprox.') && !(await texto(2)).includes('Logística'),
+    `${ancho}: la OC por aprobar con la fecha pasada no promete un día que ya pasó y dice que la compra sigue por aprobar: «${await texto(2)}»`)
   comprobar((await paso(3)) === 'EN_ALMACEN', `${ancho}: el papel está en almacén (${await paso(3)})`)
   comprobar((await pasos(3)) === 'POR_ATENDER > EN_ALMACEN* > ENTREGADO', `${ancho}: el papel que tenía Almacén no pasa por la compra: ${await pasos(3)}`)
   comprobar((await paso(4)) === 'ENTREGADO' && (await pasos(4)) === 'POR_ATENDER > EN_ALMACEN > ENTREGADO',
@@ -263,6 +263,7 @@ for (const ancho of [390, 1440]) {
   comprobar((await paso(5)) === 'EN_COMPRA' && !(await texto(5)).includes('Llega'),
     `${ancho}: la cinta, sin compra, no dice que llega (${await paso(5)}: «${await texto(5)}»)`)
   if (ancho === 390) {
+    comprobar((await leyenda(2)).startsWith('Gerencia aprueba'), `390: con la OC por aprobar, el paso lo tiene Gerencia: «${await leyenda(2)}»`)
     comprobar((await leyenda(5)) === 'Administración compra', `390: la cinta sin OC dice quién la compra: «${await leyenda(5)}»`)
     comprobar((await leyenda(1)).startsWith('En camino'), `390: en el teléfono el paso de ahora se dice en palabras: «${await leyenda(1)}»`)
     comprobar((await leyenda(4)) === 'Entregado', `390: y el entregado lo dice: «${await leyenda(4)}»`)
@@ -298,14 +299,21 @@ for (const puesto of ['almacen', 'logistica']) {
   const ve = await tarjeta(pagina, ids.compra).count()
   await abrirInsumos(pagina, ids.compra)
   const pasos = await pagina.locator('[data-como-va-el-insumo]').count()
-  comprobar(pasos === 0, `${puesto}: ${ve ? 've el RQA' : 'no ve el RQA'} y sin los pasos de Administración (${pasos})`)
+  comprobar(ve === 1 && pasos === 0, `${puesto}: ve el RQA, sin los pasos de Administración (${ve} tarjeta, ${pasos} pasos)`)
   await contexto.close()
 }
 
 comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores.join(' | ')}` : ''}`)
 await navegador.close()
 
-// Lo que quedó se anula, no se borra: un RQ numerado es evidencia.
+// Lo que quedó se anula, no se borra: un RQ numerado es evidencia. Las dos OC
+// se cierran como Gerencia, para que no queden en su bandeja.
+await comoCuenta('gerencia', `select public.rechazar_compra($1, $2)`, [ocPorAprobar, `Prueba del banco ${sello}`]).catch((e) =>
+  console.log(`  (no se pudo rechazar la OC por aprobar: ${e.message})`),
+)
+await comoCuenta('gerencia', `select public.anular_orden_compra($1, $2)`, [oc, `Prueba del banco ${sello}`]).catch((e) =>
+  console.log(`  (no se pudo anular la OC aprobada: ${e.message})`),
+)
 await comoCuenta('administracion', `select public.anular_requerimiento($1, $2)`, [ids.nuevo, `Prueba del banco ${sello}`]).catch((e) =>
   console.log(`  (no se pudo anular ${numeros[ids.nuevo]}: ${e.message})`),
 )

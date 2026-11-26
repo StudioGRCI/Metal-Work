@@ -3,6 +3,7 @@ import { CODIGO_FIJO_OFICINA, CODIGO_FIJO_PLANTA } from '@/lib/dominio/codigos-i
 import type { PerfilSesion } from '@/lib/sesion'
 
 import { ESTADOS_CON_ALGO_POR_ENTREGAR } from '@/lib/dominio/plazo-rq'
+import { fecha } from '@/lib/format'
 
 type Def = { etiqueta: string; tono: Tono; descripcion: string }
 
@@ -315,6 +316,25 @@ export const VISTO_DEL_INSUMO: Record<string, { etiqueta: string; tono: Tono }> 
   POR_AUTORIZAR: { etiqueta: 'Se pasa del metrado: Diseño revisa el sustento', tono: 'aviso' },
   RECHAZADO: { etiqueta: 'Diseño no autorizó lo que se pasa del metrado', tono: 'peligro' },
   AUTORIZADO: { etiqueta: 'Diseño autorizó lo que se pasa del metrado', tono: 'exito' },
+}
+
+/** En qué va el visto de Diseño del insumo, como lo lee `pasoDelInsumo`; vacío si no espera a Diseño. */
+export const vistoDelMetrado = (estado: string | null | undefined) => (estado && estado in VISTO_DEL_INSUMO ? estado : null)
+
+/** Mientras se compra o viene en camino, se dice cuándo llega. */
+export const ESPERA_LA_COMPRA: readonly PasoDelInsumo[] = ['EN_COMPRA', 'EN_CAMINO']
+
+/**
+ * Cuándo llega lo que se compra, dicho igual en «RQ por unidad» y en el RQA. Si
+ * la fecha ya pasó, no se promete; si Gerencia no aprobó la compra, llegar
+ * depende de que la apruebe. `quienCompra` nombra a quien puso la fecha cuando
+ * quien lee es otro (el supervisor lee la de Logística); `null` si es quien lee.
+ */
+export function cuandoLlega({ llega, atrasada, porAprobar, quienCompra }: { llega: string; atrasada: boolean; porAprobar: boolean; quienCompra: string | null }): string {
+  if (porAprobar && atrasada)
+    return quienCompra ? `${quienCompra} lo esperaba el ${fecha(llega)}` : `Se esperaba el ${fecha(llega)}; la compra sigue por aprobar`
+  if (porAprobar) return `Si Gerencia aprueba la compra, llega aprox. el ${fecha(llega)}`
+  return atrasada ? `Se esperaba el ${fecha(llega)}` : `Llega aprox. el ${fecha(llega)}`
 }
 
 /** El visto de Diseño que el supervisor tiene que mover: escribir el sustento o corregirlo. */

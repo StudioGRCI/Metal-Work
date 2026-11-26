@@ -6,6 +6,8 @@ import type { LineaRequerimiento, RequerimientoListado, SeguimientoDelInsumo } f
 import {
   ETAPA_AVANCE_RQ,
   PASOS_DEL_INSUMO,
+  cuandoLlega,
+  ESPERA_LA_COMPRA,
   pasoDelInsumo,
   quienCompra,
   TITULO_PASO_DEL_INSUMO,
@@ -16,7 +18,7 @@ import {
 import { cantidad, fecha, hoyLima } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-import { cuandoLlega, ESPERA_LA_COMPRA, PasosDelInsumo } from '../pasos-del-insumo'
+import { PasosDelInsumo } from '../pasos-del-insumo'
 
 const TEXTO: Record<Tono, string> = {
   neutro: 'text-texto-suave',
