@@ -18,7 +18,7 @@ import { recorridoDeRequerimientos } from '@/lib/datos/recorrido'
 import { cargarRequerimientos, catalogoParaRequerimiento, type MaterialParaRequerimiento, type RequerimientoListado } from '@/lib/datos/requerimientos'
 import { stockEnAlmacen, type MaterialEnStock } from '@/lib/datos/stock-almacen'
 import { ESTADO_METRADO, FRENO_DEL_RQ, frenaElRq, frenoDelRq, listaDeItems, queFaltaDelFreno } from '@/lib/dominio/metrado-rq'
-import { estadoDelRequerimiento, leTocaAtender, quienAtiende, tipoDeRequerimiento, type CompraDe } from '@/lib/dominio/requerimientos'
+import { estadoDelRequerimiento, leTocaAtender, puestosDeQuienAtiende, quienAtiende, tipoDeRequerimiento, type CompraDe } from '@/lib/dominio/requerimientos'
 import { describirRecorridoDelRequerimiento, type PasoDelRecorrido, type PasoDescrito } from '@/lib/dominio/recorrido'
 import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -127,9 +127,16 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
   const metrado = metradoLeido ?? new Map<string, MetradoDelInsumo>()
   const stockDelCatalogo = stock === 'no_se_pudo' ? null : hayNuevos ? Object.fromEntries([...stock].map(([id, m]) => [id, sistemaDe(m)])) : {}
 
-  // El que espera el sustento o el visto de Diseño todavía no le toca a Almacén:
-  // no cuenta como suyo y va después de los que sí puede revisar.
-  const leToca = (r: RequerimientoListado) => leTocaAtender(r, { recibe, despacha, compraDe }) && !frenoDelRq(r, metrado)
+  // Le toca lo que hoy tiene su puesto según el recorrido del RQ (DKS,
+  // 2026-11-26): lo que espera a Gerencia, al conductor o al área no cuenta como
+  // suyo aunque después pase por él. Sin el recorrido, la regla de antes: el que
+  // espera el sustento o el visto de Diseño todavía no le toca a Almacén.
+  const propios = puestosDeQuienAtiende({ recibe, despacha, compraDe })
+  const leToca = (r: RequerimientoListado) => {
+    if (recorridos === null) return leTocaAtender(r, { recibe, despacha, compraDe }) && !frenoDelRq(r, metrado)
+    const quien = espera.get(r.id)?.puesto
+    return quien != null && propios.has(quien)
+  }
   const meToca = requerimientos.filter(leToca).length
   // En qué grupo va cada RQ de «Por atender», para leer el orden (`data-grupo`).
   const grupoDe = new Map<string, string>()
@@ -139,11 +146,6 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
     // (Almacén, Logística o la administradora, según su recorrido) y después lo
     // demás; en cada parte, el que más espera arriba (plan 0): desde que lo tiene
     // quien lo tiene. Sin el recorrido queda el orden de antes.
-    const propios = new Set([
-      ...(recibe || despacha ? ['Almacén'] : []),
-      ...(compraDe.OPERACION ? ['Logística'] : []),
-      ...(compraDe.ADMINISTRACION ? ['Administración'] : []),
-    ])
     const ajeno = (r: RequerimientoListado) => {
       const quien = espera.get(r.id)?.puesto
       return quien && propios.has(quien) ? 0 : 1

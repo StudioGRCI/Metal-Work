@@ -4,13 +4,14 @@ import { cache } from 'react'
 
 import type { Tono } from '@/components/ui/etiqueta-estado'
 import { codigosDeDiseno, planosDeCodigo } from '@/lib/datos/diseno-codigos'
+import { recorridoDeRequerimientos } from '@/lib/datos/recorrido'
 import { planillaAjusteDesde } from '@/lib/datos/rrhh'
 import { todasLasFilas } from '@/lib/datos/todas-las-filas'
 import { ESTADOS_ACTIVOS_OT } from '@/lib/dominio/estados'
 import { totalConIgv } from '@/lib/dominio/finanzas'
 import { devueltaEntera } from '@/lib/dominio/pago-de-boleta'
 import { estadoDePlanilla } from '@/lib/dominio/planilla-diaria'
-import { ESTADOS_RQ_ABIERTOS, leTocaAtender, quienAtiende, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
+import { ESTADOS_RQ_ABIERTOS, leTocaAtender, puestosDeQuienAtiende, quienAtiende, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
 import { hoyLima } from '@/lib/format'
 import { rutasDeTrabajo } from '@/lib/navegacion'
 import { apruebaSinOrden, puede, type PerfilSesion } from '@/lib/sesion'
@@ -763,8 +764,28 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       return data ?? []
     })())
   const atiende = quienAtiende(perfil)
-  const rqQueTeTocan = (estado: string) => async () =>
-    (await rqAbiertos()).filter((r) => r.estado === estado && leTocaAtender(r, atiende)).length
+  // Quién tiene hoy cada RQ abierto, según su recorrido: el globo cuenta solo lo
+  // que tiene el puesto de quien mira, igual que «N esperan por ti» en la
+  // bandeja (DKS, 2026-11-26). Sin el recorrido, la regla de antes.
+  let tenencia: Promise<Map<string, string> | null> | null = null
+  const quienLoTiene = () =>
+    (tenencia ??= (async () => {
+      const ids = (await rqAbiertos()).map((r) => r.id)
+      if (ids.length === 0) return new Map<string, string>()
+      try {
+        const recorridos = await recorridoDeRequerimientos(ids)
+        const quien = new Map<string, string>()
+        for (const [id, pasos] of recorridos) {
+          const ahora = pasos.find((p) => p.situacion === 'AHORA')
+          if (ahora?.puesto) quien.set(id, ahora.puesto)
+        }
+        return quien
+      } catch (e) {
+        console.error('Pendientes: no se pudo leer quién tiene cada requerimiento.', e)
+        return null
+      }
+    })())
+  const propios = puestosDeQuienAtiende(atiende)
   // Los RQ con algún insumo que se pasa del metrado de Diseño sin su visto
   // (migración 20261120400000), y con cuál falta el sustento de quien pidió.
   let frenados: Promise<{ frenados: Set<string>; sinSustento: Set<string> }> | null = null
@@ -823,16 +844,23 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       return (data ?? []).length
     },
   })
-  if (atiende.compraDe.OPERACION || atiende.compraDe.ADMINISTRACION) tareas.push({
-    clave: 'rq_por_comprar', ruta: '/requerimientos/atencion', tono: 'aviso',
-    texto: n => plural(n, 'requerimiento sin stock por comprar', 'requerimientos sin stock por comprar'),
-    contar: async () =>
-      (await rqAbiertos()).filter((r) => r.estado === 'SIN_STOCK' && atiende.compraDe[tipoDeRequerimiento(r)]).length,
-  })
-  if (atiende.despacha) tareas.push({
-    clave: 'rq_por_entregar', ruta: '/requerimientos/atencion', tono: 'acento',
-    texto: n => plural(n, 'requerimiento listo por entregar al área', 'requerimientos listos por entregar al área'),
-    contar: rqQueTeTocan('LISTO_EN_ALMACEN'),
+  // Lo que tiene su puesto después de la revisión del stock: a quien compra, lo
+  // que falta comprar, programar o volver a traer; a Almacén, lo que llegó y
+  // falta validar o dejar listo. Lo que espera a Gerencia, al conductor o al área
+  // que lo recoge no cuenta (DKS, 2026-11-26). La revisión va en su propia línea.
+  if (propios.size > 0) tareas.push({
+    clave: 'rq_te_esperan', ruta: '/requerimientos/atencion', tono: 'aviso',
+    texto: n => plural(n, 'requerimiento en compra espera por ti', 'requerimientos en compra esperan por ti'),
+    contar: async () => {
+      const [lista, quien] = await Promise.all([rqAbiertos(), quienLoTiene()])
+      const despues = lista.filter((r) => r.estado !== 'POR_ATENDER')
+      if (quien === null) {
+        return despues.filter((r) =>
+          (r.estado === 'SIN_STOCK' && atiende.compraDe[tipoDeRequerimiento(r)]) ||
+          (r.estado === 'LISTO_EN_ALMACEN' && leTocaAtender(r, atiende))).length
+      }
+      return despues.filter((r) => propios.has(quien.get(r.id) ?? '')).length
+    },
   })
   // El supervisor recoge de Almacén lo que su área pidió.
   if (puede(perfil, 'reporte_diario.registrar') && perfil.area_id && perfil.rol.codigo !== 'ADMIN') {

@@ -96,7 +96,23 @@ export function quienAtiende(perfil: Pick<PerfilSesion, 'permisos' | 'rol'>): Qu
 }
 
 /**
- * Si un requerimiento abierto espera a quien mira en la bandeja de atención: el
+ * Los puestos con los que el recorrido del RQ (`recorrido_de_requerimientos`)
+ * nombra a quien mira cuando el RQ lo tiene él: Almacén a quien recibe o
+ * despacha, Logística a quien compra lo de operación y Administración a quien
+ * compra lo suyo. «N esperan por ti» y el globo del menú cuentan los RQ que
+ * tiene hoy alguno de estos puestos, no los que pasarán por él (DKS, 2026-11-26).
+ */
+export function puestosDeQuienAtiende(p: QuienAtiende): ReadonlySet<string> {
+  return new Set([
+    ...(p.recibe || p.despacha ? ['Almacén'] : []),
+    ...(p.compraDe.OPERACION ? ['Logística'] : []),
+    ...(p.compraDe.ADMINISTRACION ? ['Administración'] : []),
+  ])
+}
+
+/**
+ * La regla de antes, para cuando no se pudo leer el recorrido: si un
+ * requerimiento abierto espera a quien mira en la bandeja de atención: el
  * que revisa el stock lo recibe por revisar y en compra (para recepcionarlo), el
  * que compra lo suyo sin stock, y el que despacha lo listo en almacén. La misma
  * regla para la bandeja y para el globo del menú, para que digan lo mismo.

@@ -238,6 +238,36 @@ for (const puesto of ['almacen', 'logistica', 'administracion']) {
   const suyo = { almacen: 'Almacén', logistica: 'Logística', administracion: 'Administración' }[puesto]
   const mal = filas.filter((f) => f.grupo.endsWith('0') !== f.visible.startsWith(`${suyo} ·`))
   comprobar(mal.length === 0, `${puesto}: lo que tiene ${suyo} va primero en su grupo (${mal.map((f) => `${f.numero} ${f.visible}`).join(', ') || 'bien'})`)
+  // «N esperan por ti» cuenta los RQ que hoy tiene su puesto según el recorrido,
+  // y son los que van arriba (DKS, 2026-11-26): lo que espera a Gerencia, al
+  // conductor o al área no cuenta aunque después pase por él.
+  const textoLeyenda = limpio(await pagina.getByText(/espera(n)? por ti\.$/).first().textContent())
+  const dice = /^Ninguno/.test(textoLeyenda) ? 0 : Number(textoLeyenda.match(/^(\d+)/)?.[1])
+  const suyos = filas.filter((f) => f.visible.startsWith(`${suyo} ·`)).length
+  comprobar(dice === suyos, `${puesto}: «${textoLeyenda}» cuenta los que tiene ${suyo} (${suyos} de ${filas.length})`)
+  const arriba = filas.filter((f) => f.grupo.startsWith('0') !== f.visible.startsWith(`${suyo} ·`))
+  comprobar(arriba.length === 0, `${puesto}: arriba van justo los que tiene ${suyo} (${arriba.map((f) => `${f.numero} ${f.visible}`).join(', ') || 'bien'})`)
+  // El globo y «Te toca» cuentan lo mismo: los RQ en compra que tiene su puesto
+  // (la revisión del stock va en su propia línea), con la cuenta de la base.
+  const [{ n: enCompraBase }] = await comoCuenta(
+    puesto,
+    `select count(*)::int as n
+       from public.recorrido_de_requerimientos(array(select id from public.requerimientos where estado not in ('ENTREGADO', 'ANULADO'))) r
+       join public.requerimientos q on q.id = r.documento
+      where r.situacion = 'AHORA' and r.puesto = $1 and q.estado <> 'POR_ATENDER'`,
+    [suyo],
+  )
+  await ir(pagina, '/')
+  const teToca = await pagina.locator('[data-te-toca] a').evaluateAll((as) =>
+    as.map((a) => ({ texto: a.innerText.replace(/\s+/g, ' ').trim(), cantidad: Number(a.dataset.cantidad ?? 'NaN') })),
+  )
+  const enCompra = teToca.filter((t) => /en compra esperan? por ti/.test(t.texto))
+  comprobar(
+    enCompraBase === 0 ? enCompra.length === 0 : enCompra.length === 1 && enCompra[0].cantidad === enCompraBase,
+    `${puesto}: «Te toca» cuenta los RQ en compra que tiene ${suyo}: ${enCompraBase} en la base (dice ${enCompra.map((t) => t.texto).join(' | ') || 'nada'})`,
+  )
+  const viejas = teToca.filter((t) => /sin stock por comprar|listos? por entregar al área/.test(t.texto))
+  comprobar(viejas.length === 0, `${puesto}: ya no cuenta lo que espera a otro puesto (${viejas.map((t) => t.texto).join(' | ') || 'nada'})`)
   await ir(pagina, '/requerimientos/atencion?vista=todos')
   const historial = await pagina.locator('tr[id^="rq-"]').evaluateAll((trs) =>
     trs.map((tr) => ({
@@ -328,6 +358,9 @@ for (const ancho of [390, 1440]) {
     ['almacen', '/requerimientos/atencion', 'dias-atencion-almacen'],
     ['gerencia', '/compras/aprobacion', 'dias-aprobacion-gerencia'],
     ['logistica', '/requerimientos/atencion?vista=comprar', 'dias-por-comprar-logistica'],
+    ['logistica', '/requerimientos/atencion', 'te-esperan-atencion-logistica'],
+    ['almacen', '/', 'te-esperan-inicio-almacen'],
+    ['logistica', '/', 'te-esperan-inicio-logistica'],
   ]) {
     const { pagina, contexto } = await entrar(puesto, ancho)
     await ir(pagina, ruta)
