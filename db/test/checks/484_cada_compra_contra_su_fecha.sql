@@ -4,10 +4,13 @@
 -- Logística emite cuatro OC directas y dos OS; Gerencia las aprueba.
 --   1. OC «a medias»: prometida hace 5 días, el conductor la deja y Almacén
 --      recibe 6 de 10 discos: atrasada, 5 días, faltan 4 discos y nada del perno.
---      Almacén devuelve 1 disco que el proveedor repone: falta 5. Recibe la
+--      Almacén devuelve 1 disco que el proveedor repone: siguen faltando 4 (lo
+--      devuelto ya llegó una vez; lo dice «Espera reposición»). Recibe la
 --      reposición y los 4 por otro ingreso: completa hoy, llegó con 5 días.
 --   2. OC «a tiempo»: prometida en 3 días, sin llegar: no atrasada, 0 días.
---   3. OC «tarde»: prometida hace 2 días, llega completa hoy: no atrasada, 2 días.
+--   3. OC «tarde»: prometida hace 2 días, dejada ayer y validada hoy: 1 día.
+--      Almacén devuelve 1 disco que se repone: no vuelve a «Atrasada» y sigue
+--      con 1 día; la reposición no le mueve la fecha en que quedó completa.
 --   4. OC anulada, prometida hace 9 días: no se atrasa.
 --   5. OS en ejecución con fin hace 4 días: atrasada, 4 días. La OS conforme
 --      que debía volver hace 1 día y vuelve hoy: 1 día, no atrasada.
@@ -21,16 +24,16 @@ declare v text; v_id uuid;
 begin
   foreach v in array array['COMPRADOR:LOG', 'GERENTE:GGE', 'CONDUCTOR:LOG', 'ALMACENERO:ALM', 'VENDEDOR:VEN'] loop
     v_id := gen_random_uuid();
-    insert into auth.users (id, email) values (v_id, lower(replace(v, ':', '.')) || '.472@prueba.local');
+    insert into auth.users (id, email) values (v_id, lower(replace(v, ':', '.')) || '.484@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
-    select v_id, split_part(v, ':', 1), 'Check 472', lower(replace(v, ':', '.')) || '.472@prueba.local', r.id,
+    select v_id, split_part(v, ':', 1), 'Check 484', lower(replace(v, ':', '.')) || '.484@prueba.local', r.id,
            (select id from public.areas where codigo = split_part(v, ':', 2))
       from public.roles r where r.codigo = split_part(v, ':', 1);
     perform set_config('prueba.' || lower(split_part(v, ':', 1)), v_id::text, true);
   end loop;
-  perform test.afirmar((select count(*) from public.usuarios where apellidos = 'Check 472') = 5,
+  perform test.afirmar((select count(*) from public.usuarios where apellidos = 'Check 484') = 5,
     'se crearon los cinco usuarios del check, uno por puesto');
-  foreach v in array array['oc1', 'oc2', 'oc3', 'oc4', 'os1', 'os2', 'mov1', 'mov3', 'dev', 'rep', 'mov_resto'] loop
+  foreach v in array array['oc1', 'oc2', 'oc3', 'oc4', 'os1', 'os2', 'mov1', 'mov3', 'dev', 'rep', 'mov_resto', 'dev3', 'rep3'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
 end $$;
@@ -52,18 +55,18 @@ declare
   v_m uuid;
 begin
   insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id)
-  values ('CHK472-1', 'Disco de corte de prueba 472', v_cat, v_um) returning id into v_m;
+  values ('CHK484-1', 'Disco de corte de prueba 484', v_cat, v_um) returning id into v_m;
   perform set_config('prueba.disco', v_m::text, true);
   insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id)
-  values ('CHK472-2', 'Perno de prueba 472', v_cat, v_um) returning id into v_m;
+  values ('CHK484-2', 'Perno de prueba 484', v_cat, v_um) returning id into v_m;
   perform set_config('prueba.perno', v_m::text, true);
   insert into public.proveedores (id, numero_documento, razon_social)
-  select gen_random_uuid(), r, 'PROVEEDOR DE PRUEBA 472'
-    from (select '2069' || lpad(n::text, 6, '0') || d::text as r from generate_series(472000, 472200) n, generate_series(0, 9) d) x
+  select gen_random_uuid(), r, 'PROVEEDOR DE PRUEBA 484'
+    from (select '2069' || lpad(n::text, 6, '0') || d::text as r from generate_series(484000, 484200) n, generate_series(0, 9) d) x
    where public.ruc_es_valido(r)
    order by r limit 1
   on conflict (tipo_documento, numero_documento) do update set activo = true;
-  perform set_config('prueba.proveedor', (select id::text from public.proveedores where razon_social = 'PROVEEDOR DE PRUEBA 472'), true);
+  perform set_config('prueba.proveedor', (select id::text from public.proveedores where razon_social = 'PROVEEDOR DE PRUEBA 484'), true);
 end $$;
 
 -- Logística emite: cada OC con su fecha prometida (la que puso al emitir).
@@ -72,19 +75,19 @@ set local role authenticated;
 do $$
 declare v text;
 begin
-  perform public.emitir_compra_directa(pg_temp.id('oc1'), pg_temp.id('proveedor'), 'COT-472-1', 'Discos y pernos para el almacén',
+  perform public.emitir_compra_directa(pg_temp.id('oc1'), pg_temp.id('proveedor'), 'COT-484-1', 'Discos y pernos para el almacén',
     jsonb_build_array(jsonb_build_object('material_id', pg_temp.id('disco'), 'cantidad', 10, 'precio', 8),
                       jsonb_build_object('material_id', pg_temp.id('perno'), 'cantidad', 20, 'precio', 1)),
     pg_temp.hoy() + 10, 'CONTADO', 0, 'PEN', true, 'PLANTA');
   foreach v in array array['oc2', 'oc3', 'oc4'] loop
-    perform public.emitir_compra_directa(pg_temp.id(v), pg_temp.id('proveedor'), 'COT-472-' || v, 'Discos para el almacén',
+    perform public.emitir_compra_directa(pg_temp.id(v), pg_temp.id('proveedor'), 'COT-484-' || v, 'Discos para el almacén',
       jsonb_build_array(jsonb_build_object('material_id', pg_temp.id('disco'), 'cantidad', 5, 'precio', 8)),
       pg_temp.hoy() + 3, 'CONTADO', 0, 'PEN', true, 'PLANTA');
   end loop;
   perform public.emitir_orden_servicio(pg_temp.id('os1'), pg_temp.id('proveedor'), null, (select id from public.areas where codigo = 'ACB'),
-    'PLANTA', 'Torneado de ejes, prueba 472', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'PEN', 500, 'CONTADO', 0, '025', null);
+    'PLANTA', 'Torneado de ejes, prueba 484', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'PEN', 500, 'CONTADO', 0, '025', null);
   perform public.emitir_orden_servicio(pg_temp.id('os2'), pg_temp.id('proveedor'), null, (select id from public.areas where codigo = 'ACB'),
-    'PLANTA', 'Pintura de la tolva, prueba 472', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'PEN', 700, 'CONTADO', 0, '025', null);
+    'PLANTA', 'Pintura de la tolva, prueba 484', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'PEN', 700, 'CONTADO', 0, '025', null);
 end $$;
 reset role;
 set constraints all immediate;
@@ -176,11 +179,11 @@ begin
   perform test.afirmar(r.atrasada and r.dias_atraso = 5, format('la OC a medias está atrasada 5 días (dice %s)', r.dias_atraso));
   perform test.afirmar(jsonb_array_length(r.por_llegar) = 2, 'de la OC a medias faltan dos materiales');
   perform test.afirmar(exists (select 1 from jsonb_array_elements(r.por_llegar) x
-                                where x ->> 'material' = 'Disco de corte de prueba 472' and (x ->> 'falta')::numeric = 4
+                                where x ->> 'material' = 'Disco de corte de prueba 484' and (x ->> 'falta')::numeric = 4
                                   and (x ->> 'pedido')::numeric = 10 and x ->> 'unidad' = 'UND'),
     'faltan 4 de los 10 discos, en UND');
   perform test.afirmar(exists (select 1 from jsonb_array_elements(r.por_llegar) x
-                                where x ->> 'material' = 'Perno de prueba 472' and (x ->> 'falta')::numeric = 20),
+                                where x ->> 'material' = 'Perno de prueba 484' and (x ->> 'falta')::numeric = 20),
     'faltan los 20 pernos');
 
   select * into r from public.plazos_de_compras(array[pg_temp.id('oc2')]);
@@ -222,29 +225,29 @@ begin
 end $$;
 reset role;
 
--- Almacén devuelve 1 disco que se repone: la OC vuelve a esperar 5.
+-- Almacén devuelve 1 disco que se repone: lo devuelto no cuenta contra el plazo.
 select pg_temp.como('almacenero');
 set local role authenticated;
-select public.devolver_al_proveedor(pg_temp.id('dev'), pg_temp.id('mov1'), 1, 'GR-472', 'Un disco llegó rajado de fábrica', true);
+select public.devolver_al_proveedor(pg_temp.id('dev'), pg_temp.id('mov1'), 1, 'GR-484', 'Un disco llegó rajado de fábrica', true);
 reset role;
 select pg_temp.como('comprador');
 set local role authenticated;
 select test.afirmar((select (x ->> 'falta')::numeric from public.plazos_de_compras(array[pg_temp.id('oc1')]) p,
-                            jsonb_array_elements(p.por_llegar) x where x ->> 'material' = 'Disco de corte de prueba 472') = 5,
-  'lo devuelto que el proveedor repone vuelve a faltar');
+                            jsonb_array_elements(p.por_llegar) x where x ->> 'material' = 'Disco de corte de prueba 484') = 4,
+  'lo devuelto que el proveedor repone no vuelve a faltar: ya llegó una vez');
 reset role;
 
 -- Llega la reposición y el resto por un ingreso suelto: completa.
 select pg_temp.como('almacenero');
 set local role authenticated;
-select public.recibir_reposicion(pg_temp.id('rep'), pg_temp.id('dev'), 1, 'GR-472-R');
+select public.recibir_reposicion(pg_temp.id('rep'), pg_temp.id('dev'), 1, 'GR-484-R');
 reset role;
 insert into public.movimientos_materiales (id, tipo, orden_compra_detalle_id, material_id, cantidad, documento_referencia, registrado_por)
 select pg_temp.id('mov_resto'), 'INGRESO', d.id, d.material_id, case when d.material_id = pg_temp.id('disco') then 4 else 20 end,
-       'GR-472-2', pg_temp.id('almacenero')
+       'GR-484-2', pg_temp.id('almacenero')
   from public.orden_compra_material_detalles d where d.orden_compra_id = pg_temp.id('oc1') and d.material_id = pg_temp.id('disco');
 insert into public.movimientos_materiales (id, tipo, orden_compra_detalle_id, material_id, cantidad, documento_referencia, registrado_por)
-select gen_random_uuid(), 'INGRESO', d.id, d.material_id, 20, 'GR-472-2', pg_temp.id('almacenero')
+select gen_random_uuid(), 'INGRESO', d.id, d.material_id, 20, 'GR-484-2', pg_temp.id('almacenero')
   from public.orden_compra_material_detalles d where d.orden_compra_id = pg_temp.id('oc1') and d.material_id = pg_temp.id('perno');
 select pg_temp.como('comprador');
 set local role authenticated;
@@ -254,6 +257,34 @@ begin
   select * into r from public.plazos_de_compras(array[pg_temp.id('oc1')]);
   perform test.afirmar(r.completa_en is not null and not r.atrasada and r.dias_atraso = 5 and r.por_llegar is null,
     format('con todo adentro la OC queda completa hoy y llegó con 5 días (dice %s, completa %s)', r.dias_atraso, r.completa_en));
+end $$;
+reset role;
+
+-- La OC 3, completa con 1 día, y Almacén devuelve 1 disco que se repone: no
+-- vuelve a «Atrasada» ni suma días; la reposición no le mueve la fecha.
+select set_config('prueba.completa3', (select completa_en::text from public.plazos_de_compras(array[pg_temp.id('oc3')])), true);
+select pg_temp.como('almacenero');
+set local role authenticated;
+select public.devolver_al_proveedor(pg_temp.id('dev3'), pg_temp.id('mov3'), 1, 'GR-484-3', 'Un disco llegó rajado de fábrica', true);
+do $$
+declare r record;
+begin
+  -- Almacén también consulta las OC: lee el mismo plazo.
+  select * into r from public.plazos_de_compras(array[pg_temp.id('oc3')]);
+  perform test.afirmar(not r.atrasada and r.dias_atraso = 1 and r.completa_en = current_setting('prueba.completa3')::timestamptz
+                       and r.por_llegar is null,
+    format('Almacén ve que la OC 3 sigue completa con 1 día tras devolver lo que se repone (dice %s, atrasada %s)', r.dias_atraso, r.atrasada));
+end $$;
+select public.recibir_reposicion(pg_temp.id('rep3'), pg_temp.id('dev3'), 1, 'GR-484-3R');
+reset role;
+select pg_temp.como('comprador');
+set local role authenticated;
+do $$
+declare r record;
+begin
+  select * into r from public.plazos_de_compras(array[pg_temp.id('oc3')]);
+  perform test.afirmar(not r.atrasada and r.dias_atraso = 1 and r.completa_en = current_setting('prueba.completa3')::timestamptz,
+    'la reposición no le mueve a la OC 3 la fecha en que quedó completa');
 end $$;
 reset role;
 
