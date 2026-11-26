@@ -1,13 +1,17 @@
+import type { ReactNode } from 'react'
+
 import type { CumplimientoDelProveedor } from '@/lib/datos/proveedores'
 import { cn } from '@/lib/utils'
 
 const veces = (n: number, una: string, varias: string) => `${n} ${n === 1 ? una : varias}`
 
 /**
- * Cómo le fue a un proveedor (Plan 4.3): cuántas compras se le hicieron, de las
- * que ya llegaron cuántas a tiempo contra la fecha que prometió al emitirlas, y
- * de cuántas OC Almacén le devolvió algo. Solo cuentas, sin importes. En la
- * columna va en renglones; en el teléfono, en uno solo bajo el nombre.
+ * Cómo le fue a un proveedor (Plan 4.3): cuántas compras se le hicieron; de las
+ * que llegaron, cuántas a tiempo contra la fecha que prometió al emitirlas;
+ * cuántas pasaron esa fecha sin llegar, y de cuántas OC Almacén le devolvió
+ * algo. Lo que pesa contra el proveedor va en tono de aviso, siempre con su
+ * texto. Solo cuentas, sin importes. En la columna va en renglones; bajo el
+ * nombre, en uno solo.
  */
 export function Cumplimiento({
   datos,
@@ -18,44 +22,51 @@ export function Cumplimiento({
   enLinea?: boolean
   className?: string
 }) {
-  const c = datos ?? { compras: 0, medidas: 0, a_tiempo: 0, devueltas: 0 }
-  const partes =
-    c.compras === 0
-      ? [<span key="nada">Sin compras todavía</span>]
-      : [
-          <span key="compras" className="text-texto">
-            {veces(c.compras, 'compra', 'compras')}
-          </span>,
-          <span key="tiempo">
-            {c.medidas === 0 ? (
-              'ninguna llegó todavía'
-            ) : (
-              <>
-                <span className="tabular">
-                  {c.a_tiempo} de {c.medidas}
-                </span>{' '}
-                a tiempo
-              </>
-            )}
-          </span>,
-          ...(c.devueltas > 0
-            ? [
-                <span key="devueltas" className="text-aviso">
-                  {c.devueltas} con devolución
-                </span>,
-              ]
-            : []),
-        ]
+  const c = datos ?? { compras: 0, llegaron: 0, medidas: 0, a_tiempo: 0, devueltas: 0, atrasadas: 0 }
+  const partes: { clave: string; texto: ReactNode; aviso?: boolean; fuerte?: boolean }[] = []
+  if (c.compras === 0) {
+    partes.push({ clave: 'nada', texto: 'Sin compras todavía' })
+  } else {
+    partes.push({ clave: 'compras', texto: veces(c.compras, 'compra', 'compras'), fuerte: true })
+    if (c.llegaron === 0) partes.push({ clave: 'tiempo', texto: 'Ninguna llegó completa todavía' })
+    else if (c.medidas > 0)
+      partes.push({
+        clave: 'tiempo',
+        texto: (
+          <>
+            <span className="tabular">
+              {c.a_tiempo} de {c.medidas}
+            </span>{' '}
+            a tiempo
+          </>
+        ),
+        aviso: c.a_tiempo < c.medidas,
+      })
+    if (c.llegaron > c.medidas)
+      partes.push({
+        clave: 'sin-fecha',
+        texto: `${veces(c.llegaron - c.medidas, 'llegó', 'llegaron')} sin fecha prometida`,
+      })
+    if (c.atrasadas > 0)
+      partes.push({ clave: 'atrasadas', texto: `${veces(c.atrasadas, 'atrasada', 'atrasadas')} sin llegar completa${c.atrasadas === 1 ? '' : 's'}`, aviso: true })
+    partes.push(
+      c.devueltas > 0
+        ? { clave: 'devueltas', texto: `${c.devueltas} con devolución`, aviso: true }
+        : { clave: 'devueltas', texto: 'Sin devoluciones' },
+    )
+  }
   return (
-    <p data-cumplimiento className={cn('text-xs text-texto-suave', enLinea ? '' : 'flex flex-col', className)}>
-      {enLinea
-        ? partes.map((parte, i) => (
-            <span key={i}>
-              {i > 0 && ' · '}
-              {parte}
-            </span>
-          ))
-        : partes}
+    <p
+      data-cumplimiento
+      className={cn('text-texto-suave', enLinea ? 'text-xs' : 'flex flex-col text-sm', className)}
+    >
+      {partes.map((p, i) => (
+        <span key={p.clave} className={cn(p.fuerte && 'text-texto', p.aviso && 'text-aviso')}>
+          {/* Entre partes, un separador: a la vista «·» en el renglón; al lector, una coma también en la columna. */}
+          {i > 0 && (enLinea ? ' · ' : <span className="sr-only">, </span>)}
+          {enLinea && i > 0 && typeof p.texto === 'string' ? p.texto.charAt(0).toLowerCase() + p.texto.slice(1) : p.texto}
+        </span>
+      ))}
     </p>
   )
 }

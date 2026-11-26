@@ -49,7 +49,7 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
         descripcion={busqueda
           ? total === 0 ? `Ningún proveedor con «${busqueda}»` : `${total === 1 ? '1 proveedor' : `${total} proveedores`} con «${busqueda}»`
           : total === 1 ? '1 proveedor en el padrón' : `${total} proveedores en el padrón`}
-        ayuda="La orden de compra elige el proveedor de este padrón. «Cumplimiento» cuenta las OC y OS aprobadas que se le hicieron; de las que ya llegaron, cuántas llegaron a más tardar la fecha que prometió al emitirlas (no la corregida después), y de cuántas OC Almacén le devolvió algo. Sin importes."
+        ayuda="La orden de compra elige el proveedor de este padrón. «Cumplimiento» cuenta las OC y OS aprobadas que se le hicieron; de las que llegaron, cuántas llegaron a más tardar en la fecha que prometió al emitirlas (no la corregida después); cuántas pasaron esa fecha sin llegar completas, y de cuántas OC Almacén le devolvió algo."
         acciones={
           <div className="flex flex-wrap items-center gap-3">
             {edita && <NuevoProveedor />}
@@ -84,7 +84,8 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
                   caben el RUC y Editar sin correr la tabla de lado. */}
               <TH className="hidden sm:table-cell">Contacto</TH>
               <TH className="hidden sm:table-cell">Pago</TH>
-              <TH className="hidden md:table-cell">Cumplimiento</TH>
+              {/* Desde 1 280 px: a 1 024, con «Cuentas», la tabla se corría de costado y cortaba «Dar de baja». */}
+              <TH className="hidden xl:table-cell">Cumplimiento</TH>
               {verCuentas && <TH className="hidden lg:table-cell">Cuentas</TH>}
               {edita && <TH>Acciones</TH>}
             </tr>
@@ -124,8 +125,8 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
                       <p className="text-xs text-texto-suave sm:hidden">
                         {[`${p.tipo_documento} ${p.numero_documento}`, pago, contacto].filter(Boolean).join(' · ')}
                       </p>
-                      {/* En el teléfono y la tableta el cumplimiento baja aquí, en un renglón. */}
-                      {cumplimiento && <Cumplimiento datos={cumplimiento.get(p.id)} enLinea className="mt-1 md:hidden" />}
+                      {/* Hasta que cabe su columna (1 280 px), el cumplimiento va aquí, en un renglón. */}
+                      {cumplimiento && <Cumplimiento datos={cumplimiento.get(p.id)} enLinea className="mt-1 xl:hidden" />}
                     </TD>
                     <TD className="hidden whitespace-nowrap sm:table-cell">
                       <span className="text-texto-suave">{p.tipo_documento} </span><span className="tabular">{p.numero_documento}</span>
@@ -135,7 +136,7 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
                       {p.correo && <p className="text-xs">{p.correo}</p>}
                     </TD>
                     <TD className="hidden whitespace-nowrap text-texto-suave sm:table-cell">{pago}</TD>
-                    <TD className="hidden md:table-cell">
+                    <TD className="hidden xl:table-cell">
                       {cumplimiento ? <Cumplimiento datos={cumplimiento.get(p.id)} /> : <span className="text-texto-tenue">—</span>}
                     </TD>
                     {verCuentas && (

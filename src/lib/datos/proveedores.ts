@@ -96,12 +96,16 @@ export async function proveedoresParaCompra(): Promise<ProveedorParaCompra[]> {
 export type CumplimientoDelProveedor = {
   /** OC aprobadas y OS aprobadas no anuladas. */
   compras: number
-  /** De las que ya llegaron, las que tenían fecha prometida: las que se pueden medir. */
+  /** Las que ya llegaron (la OC entera en almacén, la OS conforme). */
+  llegaron: number
+  /** De las que llegaron, las que tenían fecha prometida: las que se pueden medir. */
   medidas: number
   /** De las medidas, las que llegaron a más tardar la fecha prometida al emitirlas. */
   a_tiempo: number
   /** OC de las que Almacén le devolvió algo. */
   devueltas: number
+  /** Las que pasaron la fecha prometida al emitirlas y no llegaron (o llegaron a medias). */
+  atrasadas: number
 }
 
 /** El cumplimiento de esos proveedores. Lo lee quien ve el padrón; a los demás la base les dice que no. */
@@ -115,9 +119,11 @@ export async function cumplimientoDeProveedores(ids: string[]): Promise<Map<stri
     if (!f.proveedor) continue
     porProveedor.set(f.proveedor, {
       compras: Number(f.compras ?? 0),
+      llegaron: Number(f.llegaron ?? 0),
       medidas: Number(f.medidas ?? 0),
       a_tiempo: Number(f.a_tiempo ?? 0),
       devueltas: Number(f.devueltas ?? 0),
+      atrasadas: Number(f.atrasadas ?? 0),
     })
   }
   return porProveedor

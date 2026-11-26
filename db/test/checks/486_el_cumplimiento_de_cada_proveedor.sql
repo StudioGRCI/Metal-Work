@@ -8,11 +8,15 @@
 --   b. OC prometida hace 2 días; Logística corrige la fecha a mañana y llega
 --      hoy, sin validar: la lista de OC dice 0 días (contra la corregida), pero
 --      el proveedor no llegó a tiempo contra lo que prometió al emitirla.
---   c. OC aprobada que no llega: cuenta como compra, no se mide.
+--   c. OC aprobada, prometida para ayer, que no llega: cuenta como compra, no se
+--      mide y sale «atrasada sin llegar».
 --   d. OC que espera a Gerencia: no cuenta.
+--   e. OC sin fecha prometida que llega: cuenta como llegada, no se mide.
 --   e. OS que vuelve conforme antes de su fin: a tiempo. OS anulada: no cuenta.
--- Total: 4 compras (a, b, c, OS), 3 medidas, 2 a tiempo, 1 con devolución.
--- Lo leen Logística y Almacén (proveedores.ver); Ventas no; sin sesión, nadie.
+-- Total: 5 compras (a, b, c, e, OS), 4 llegaron, 3 medidas, 2 a tiempo, 1 con devolución,
+-- 1 atrasada.
+-- Lo leen Logística, Almacén y Requerimientos (proveedores.ver), con las mismas cifras
+-- aunque Requerimientos vea compras de otra manera; Ventas no; sin sesión, nadie.
 -- Y la lista de OC sigue dando lo mismo por el envoltorio nuevo.
 \set ON_ERROR_STOP on
 begin;
@@ -21,7 +25,7 @@ set local timezone = 'UTC';
 do $$
 declare v text; v_id uuid;
 begin
-  foreach v in array array['COMPRADOR:LOG', 'GERENTE:GGE', 'CONDUCTOR:LOG', 'ALMACENERO:ALM', 'VENDEDOR:VEN'] loop
+  foreach v in array array['COMPRADOR:LOG', 'GERENTE:GGE', 'CONDUCTOR:LOG', 'ALMACENERO:ALM', 'VENDEDOR:VEN', 'REQUERIMIENTOS:ACB'] loop
     v_id := gen_random_uuid();
     insert into auth.users (id, email) values (v_id, lower(replace(v, ':', '.')) || '.486@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
@@ -30,9 +34,9 @@ begin
       from public.roles r where r.codigo = split_part(v, ':', 1);
     perform set_config('prueba.' || lower(split_part(v, ':', 1)), v_id::text, true);
   end loop;
-  perform test.afirmar((select count(*) from public.usuarios where apellidos = 'Check 486') = 5,
-    'se crearon los cinco usuarios del check, uno por puesto');
-  foreach v in array array['oca', 'ocb', 'occ', 'ocd', 'os1', 'os2', 'mova', 'deva'] loop
+  perform test.afirmar((select count(*) from public.usuarios where apellidos = 'Check 486') = 6,
+    'se crearon los seis usuarios del check, uno por puesto');
+  foreach v in array array['oca', 'ocb', 'occ', 'ocd', 'oce', 'os1', 'os2', 'mova', 'deva'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
 end $$;
@@ -68,7 +72,7 @@ end $$;
 -- Sin compras todavía: el proveedor sale con ceros, no desaparece.
 select pg_temp.como('comprador');
 set local role authenticated;
-select test.afirmar((select compras = 0 and medidas = 0 and a_tiempo = 0 and devueltas = 0
+select test.afirmar((select compras = 0 and medidas = 0 and a_tiempo = 0 and devueltas = 0 and atrasadas = 0
                        from public.cumplimiento_de_proveedores(array[pg_temp.id('proveedor')])),
   'el proveedor sin compras sale con todo en cero');
 
@@ -80,6 +84,9 @@ begin
       jsonb_build_array(jsonb_build_object('material_id', pg_temp.id('disco'), 'cantidad', 5, 'precio', 8)),
       pg_temp.hoy() + 3, 'CONTADO', 0, 'PEN', true, 'PLANTA');
   end loop;
+  perform public.emitir_compra_directa(pg_temp.id('oce'), pg_temp.id('proveedor'), 'COT-486-oce', 'Discos sin fecha prometida',
+    jsonb_build_array(jsonb_build_object('material_id', pg_temp.id('disco'), 'cantidad', 5, 'precio', 8)),
+    null, 'CONTADO', 0, 'PEN', true, 'PLANTA');
   perform public.emitir_orden_servicio(pg_temp.id('os1'), pg_temp.id('proveedor'), null, (select id from public.areas where codigo = 'ACB'),
     'PLANTA', 'Torneado de ejes, prueba 486', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'PEN', 500, 'CONTADO', 0, '025', null);
   perform public.emitir_orden_servicio(pg_temp.id('os2'), pg_temp.id('proveedor'), null, (select id from public.areas where codigo = 'ACB'),
@@ -92,12 +99,15 @@ set constraints all deferred;
 
 -- La b se emitió prometida para hace 2 días: como dueño se corre hacia atrás.
 update public.ordenes_compra_materiales set fecha_estimada = pg_temp.hoy() - 2 where id = pg_temp.id('ocb');
+-- La c, para ayer: no llega y queda atrasada.
+update public.ordenes_compra_materiales set fecha_estimada = pg_temp.hoy() - 1 where id = pg_temp.id('occ');
 
 select pg_temp.como('gerente');
 set local role authenticated;
 select public.aprobar_compra(pg_temp.id('oca'));
 select public.aprobar_compra(pg_temp.id('ocb'));
 select public.aprobar_compra(pg_temp.id('occ'));
+select public.aprobar_compra(pg_temp.id('oce'));
 select public.aprobar_orden_servicio(pg_temp.id('os1'));
 select public.aprobar_orden_servicio(pg_temp.id('os2'));
 reset role;
@@ -107,6 +117,7 @@ set local role authenticated;
 select public.corregir_fecha_esperada(gen_random_uuid(), 'OC', pg_temp.id('ocb'), pg_temp.hoy() + 1, 'PROVEEDOR', 'Avisó que llega mañana');
 select public.programar_recojo(pg_temp.id('oca'), 10, null);
 select public.programar_recojo(pg_temp.id('ocb'), 10, null);
+select public.programar_recojo(pg_temp.id('oce'), 10, null);
 select public.avanzar_orden_servicio(pg_temp.id('os1'), 'EN_EJECUCION', null);
 select public.avanzar_orden_servicio(pg_temp.id('os1'), 'CONFORME', null);
 select public.avanzar_orden_servicio(pg_temp.id('os2'), 'ANULADA', 'El proveedor no puede hacer el trabajo');
@@ -118,6 +129,8 @@ select public.marcar_compra_recogida(pg_temp.id('oca'));
 select public.marcar_compra_dejada_almacen(pg_temp.id('oca'));
 select public.marcar_compra_recogida(pg_temp.id('ocb'));
 select public.marcar_compra_dejada_almacen(pg_temp.id('ocb'));
+select public.marcar_compra_recogida(pg_temp.id('oce'));
+select public.marcar_compra_dejada_almacen(pg_temp.id('oce'));
 reset role;
 
 -- Almacén valida la a entera y le devuelve un disco que se repone. La b queda sin validar.
@@ -137,12 +150,18 @@ do $$
 declare r record;
 begin
   select * into r from public.cumplimiento_de_proveedores(array[pg_temp.id('proveedor')]);
-  perform test.afirmar(r.compras = 4,
+  perform test.afirmar(r.compras = 5,
     format('cuentan las OC aprobadas y la OS no anulada; no la que espera a Gerencia ni la anulada (dice %s)', r.compras));
+  perform test.afirmar(r.llegaron = 4, format('llegaron a, b, e y la OS; la e sin fecha prometida (dice %s)', r.llegaron));
   perform test.afirmar(r.medidas = 3, format('se miden las que ya llegaron: a, b y la OS (dice %s)', r.medidas));
   perform test.afirmar(r.a_tiempo = 2,
     format('a tiempo la a y la OS; la b no, aunque se corrigió la fecha (dice %s)', r.a_tiempo));
   perform test.afirmar(r.devueltas = 1, format('una OC con devolución (dice %s)', r.devueltas));
+  perform test.afirmar(r.atrasadas = 1,
+    format('la c pasó su fecha sin llegar; la b llegó tarde y ya no cuenta como atrasada (dice %s)', r.atrasadas));
+
+  select * into r from public.cumplimiento_de_proveedores(array[pg_temp.id('proveedor'), pg_temp.id('proveedor')]);
+  perform test.afirmar(r.compras = 5, format('el mismo proveedor pedido dos veces no duplica las cifras (dice %s)', r.compras));
 
   -- La lista de OC, contra la fecha corregida, no la ve atrasada: son dos preguntas distintas.
   select * into r from public.plazos_de_compras(array[pg_temp.id('ocb')]);
@@ -165,6 +184,12 @@ select pg_temp.como('almacenero');
 set local role authenticated;
 select test.afirmar((select a_tiempo = 2 and devueltas = 1 from public.cumplimiento_de_proveedores(array[pg_temp.id('proveedor')])),
   'Almacén, que ve el padrón, lee las mismas cifras');
+reset role;
+select pg_temp.como('requerimientos');
+set local role authenticated;
+select test.afirmar((select compras = 5 and a_tiempo = 2 and atrasadas = 1
+                       from public.cumplimiento_de_proveedores(array[pg_temp.id('proveedor')])),
+  'Requerimientos, que ve el padrón, lee las mismas cifras: el cumplimiento no depende de qué compras ve cada uno');
 reset role;
 select pg_temp.como('vendedor');
 set local role authenticated;

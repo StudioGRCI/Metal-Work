@@ -69,17 +69,32 @@ as $$
                           where ip.orden_compra_detalle_id = d.id and ip.estado = 'PENDIENTE') pv on true
      where d.orden_compra_id = any(p_ids)
   ),
+  -- El último ingreso y lo último dejado sin validar de cada OC, en una pasada
+  -- agrupada: con una subconsulta por OC el cálculo crecía al cuadrado con el
+  -- historial (2 000 OC, 1,7 s; lo midió la auditoría de la 4.3).
+  ingresos as (
+    select l.oc, max(coalesce(ip.dejado_en, m.registrado_en)) as ultimo_ingreso
+      from lineas l
+      join public.movimientos_materiales m on m.orden_compra_detalle_id = l.id
+      left join public.ingresos_pendientes_almacen ip on ip.movimiento_id = m.id
+     where m.tipo = 'INGRESO' and m.repone_devolucion is null
+     group by l.oc
+  ),
+  pendientes as (
+    select ip.orden_compra_id as oc, max(ip.dejado_en) as ultimo_por_validar
+      from public.ingresos_pendientes_almacen ip
+     where ip.orden_compra_id = any(p_ids) and ip.estado = 'PENDIENTE'
+     group by ip.orden_compra_id
+  ),
   cuenta as (
     select l.oc,
            count(*) filter (where l.falta > 0) as con_falta,
            count(*) filter (where l.por_validar > 0) as con_por_validar,
-           (select max(ip.dejado_en) from public.ingresos_pendientes_almacen ip
-             where ip.orden_compra_id = l.oc and ip.estado = 'PENDIENTE') as ultimo_por_validar,
-           (select max(coalesce(ip.dejado_en, m.registrado_en)) from public.movimientos_materiales m
-              left join public.ingresos_pendientes_almacen ip on ip.movimiento_id = m.id
-             where m.tipo = 'INGRESO' and m.repone_devolucion is null
-               and m.orden_compra_detalle_id in (select x.id from lineas x where x.oc = l.oc)) as ultimo_ingreso
+           max(p.ultimo_por_validar) as ultimo_por_validar,
+           max(i.ultimo_ingreso) as ultimo_ingreso
       from lineas l
+      left join ingresos i on i.oc = l.oc
+      left join pendientes p on p.oc = l.oc
      group by l.oc
   ),
   -- La OC de antes del conductor la marcaba entregada Logística, sin ingreso por
@@ -108,22 +123,27 @@ as $$
       from oc o
       left join cuenta c on c.oc = o.id
       left join antigua a on a.oc = o.id
+  ),
+  -- Lo que le falta a cada OC, agrupado de una vez (por OC era otra vuelta
+  -- por la lista entera de líneas).
+  faltas as (
+    select l.oc, jsonb_agg(jsonb_build_object(
+             'material', coalesce(mat.descripcion, 'Material sin catálogo'),
+             'unidad', um.codigo,
+             'pedido', l.cantidad,
+             'falta', l.falta) order by mat.descripcion) as por_llegar
+      from lineas l
+      left join public.materiales mat on mat.id = l.material_id
+      left join public.unidades_medida um on um.id = mat.unidad_medida_id
+     where l.falta > 0
+     group by l.oc
   )
   select e.id, e.original, e.esperada, e.vigente, e.llego_en, e.llego_todo_en, e.completa_en,
          -- Lo que falta, solo de la que llegó a medias: antes de llegar falta todo.
-         case when e.llego_en is not null and e.completa_en is null then (
-           select coalesce(jsonb_agg(jsonb_build_object(
-                    'material', coalesce(mat.descripcion, 'Material sin catálogo'),
-                    'unidad', um.codigo,
-                    'pedido', l.cantidad,
-                    'falta', l.falta) order by mat.descripcion), '[]'::jsonb)
-             from lineas l
-             left join public.materiales mat on mat.id = l.material_id
-             left join public.unidades_medida um on um.id = mat.unidad_medida_id
-            where l.oc = e.id and l.falta > 0)
-         end,
+         case when e.llego_en is not null and e.completa_en is null then coalesce(f.por_llegar, '[]'::jsonb) end,
          e.por_validar
-    from estado e;
+    from estado e
+    left join faltas f on f.oc = e.id;
 $$;
 
 comment on function public.plazos_de_compras_calculados(uuid[]) is
@@ -197,13 +217,21 @@ grant execute on function public.plazos_de_compras(uuid[]) to authenticated;
 -- =============================================================================
 -- 3. EL CUMPLIMIENTO DE CADA PROVEEDOR
 -- =============================================================================
+-- El padrón pide las compras de cada proveedor por `proveedor_id`, y ninguna de
+-- las dos tablas tenía un índice que empezara por esa columna. Cumple el
+-- criterio (b) de la skill `datos`: la aplicación filtra de verdad por ella.
+create index if not exists ix_ordenes_compra_materiales_proveedor on public.ordenes_compra_materiales (proveedor_id);
+create index if not exists ix_ordenes_servicio_proveedor on public.ordenes_servicio (proveedor_id);
+
 create or replace function public.cumplimiento_de_proveedores(p_ids uuid[])
 returns table (
   proveedor uuid,
   compras   integer,
+  llegaron  integer,
   medidas   integer,
   a_tiempo  integer,
-  devueltas integer
+  devueltas integer,
+  atrasadas integer
 )
 language plpgsql
 stable
@@ -255,18 +283,23 @@ begin
   )
   select pr.id,
          count(t.proveedor_id)::integer,
+         -- Las que llegaron; de ellas se miden las que tenían fecha prometida.
+         count(*) filter (where t.llego is not null)::integer,
          count(*) filter (where t.llego is not null and t.original is not null)::integer,
          count(*) filter (where t.llego is not null and t.original is not null
                             and public.fecha_de_lima(t.llego) <= t.original)::integer,
-         count(*) filter (where t.devuelta)::integer
-    from unnest(p_ids) as pr(id)
+         count(*) filter (where t.devuelta)::integer,
+         -- Las que pasaron la fecha que prometió al emitirlas y no llegaron (o llegaron a medias).
+         count(*) filter (where t.llego is null and t.original is not null
+                            and t.original < public.fecha_de_lima(now()))::integer
+    from (select distinct u.id from unnest(p_ids) as u(id)) as pr
     left join todas t on t.proveedor_id = pr.id
    group by pr.id;
 end;
 $$;
 
 comment on function public.cumplimiento_de_proveedores(uuid[]) is
-  'De cada proveedor: cuántas compras se le hicieron (OC aprobadas u OS aprobadas no anuladas), cuántas de las que ya llegaron tenían fecha prometida (medidas), cuántas de esas llegaron a tiempo contra la fecha prometida al emitirlas (la OC cuando se dejó lo último en almacén, la OS cuando volvió conforme; por fecha de Lima) y de cuántas OC Almacén le devolvió algo. Lo lee quien ve el padrón (proveedores.ver). Solo cuentas, sin importes.';
+  'De cada proveedor: cuántas compras se le hicieron (OC aprobadas u OS aprobadas no anuladas), cuántas llegaron, cuántas de esas tenían fecha prometida (medidas), cuántas de esas llegaron a tiempo contra la fecha prometida al emitirlas (la OC cuando se dejó lo último en almacén, la OS cuando volvió conforme; por fecha de Lima) de cuántas OC Almacén le devolvió algo y cuántas pasaron la fecha prometida al emitirlas sin llegar (atrasadas; la OC a medias cuenta como sin llegar). Lo lee quien ve el padrón (proveedores.ver). Solo cuentas, sin importes.';
 
 revoke all on function public.cumplimiento_de_proveedores(uuid[]) from public, anon;
 grant execute on function public.cumplimiento_de_proveedores(uuid[]) to authenticated;

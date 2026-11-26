@@ -114,17 +114,22 @@ async function sinDesborde(pagina, donde) {
   comprobar(sobra <= 0, `${donde}: nada se sale de la pantalla (sobran ${sobra} px)`)
 }
 
-/** Lo que la pantalla tiene que decir, armado igual que `Cumplimiento`. */
+/** Lo que la pantalla tiene que decir, armado igual que `Cumplimiento`, en minúsculas para comparar. */
 function esperado(c) {
-  if (!c || c.compras === 0) return 'Sin compras todavía'
-  const partes = [`${c.compras} ${c.compras === 1 ? 'compra' : 'compras'}`]
-  partes.push(c.medidas === 0 ? 'ninguna llegó todavía' : `${c.a_tiempo} de ${c.medidas} a tiempo`)
-  if (c.devueltas > 0) partes.push(`${c.devueltas} con devolución`)
+  if (!c || c.compras === 0) return 'sin compras todavía'
+  const veces = (n, una, varias) => `${n} ${n === 1 ? una : varias}`
+  const partes = [veces(c.compras, 'compra', 'compras')]
+  if (c.llegaron === 0) partes.push('ninguna llegó completa todavía')
+  else if (c.medidas > 0) partes.push(`${c.a_tiempo} de ${c.medidas} a tiempo`)
+  if (c.llegaron > c.medidas) partes.push(`${veces(c.llegaron - c.medidas, 'llegó', 'llegaron')} sin fecha prometida`)
+  if (c.atrasadas > 0) partes.push(`${veces(c.atrasadas, 'atrasada', 'atrasadas')} sin llegar completa${c.atrasadas === 1 ? '' : 's'}`)
+  partes.push(c.devueltas > 0 ? `${c.devueltas} con devolución` : 'sin devoluciones')
   return partes
 }
 function dice(texto, c) {
   const e = esperado(c)
-  return Array.isArray(e) ? e.every((p) => texto.includes(p)) : texto === e
+  const t = texto.toLowerCase()
+  return Array.isArray(e) ? e.every((p) => t.includes(p)) && t.split(/,|·/).length === e.length : t === e
 }
 
 /** Cada fila del padrón en pantalla, con lo que dice su cumplimiento visible. */
@@ -142,7 +147,7 @@ async function cuadraConLaBase(pagina, puesto, ancho) {
   comprobar(filas.length > 0, `${puesto} a ${ancho}: el padrón tiene filas (${filas.length})`)
   const datos = await comoCuenta(
     puesto,
-    'select proveedor::text as id, compras, medidas, a_tiempo, devueltas from public.cumplimiento_de_proveedores($1::uuid[])',
+    'select proveedor::text as id, compras, llegaron, medidas, a_tiempo, devueltas, atrasadas from public.cumplimiento_de_proveedores($1::uuid[])',
     [filas.map((f) => f.id)],
   )
   const porId = new Map(datos.map((d) => [d.id, d]))
