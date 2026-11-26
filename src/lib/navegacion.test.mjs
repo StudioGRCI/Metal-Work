@@ -17,14 +17,14 @@ const GERENCIA = [
 
 const rutas = (grupos) => grupos.flatMap((g) => g.items.map((i) => i.ruta))
 
-test('Gerencia ve por área las 36 pantallas que su permiso le abre, cada una una vez', () => {
+test('Gerencia ve por área las 37 pantallas que su permiso le abre, cada una una vez', () => {
   const grupos = menuDe(GERENCIA, false, 'GERENTE')
   assert.deepEqual(grupos.map((g) => g.titulo), [
     'Principal', 'Por aprobar', 'Ventas', 'Requerimientos', 'Almacén', 'Logística', 'Administración', 'Finanzas', 'Recursos Humanos',
   ])
   const todas = rutas(grupos)
-  assert.equal(todas.length, 36)
-  assert.equal(new Set(todas).size, 36)
+  assert.equal(todas.length, 37)
+  assert.equal(new Set(todas).size, 37)
   // Las cuatro que el catálogo pide con un permiso de registro le abren con el de lectura.
   assert.ok(todas.includes('/equipos'))
   for (const r of ['/requerimientos/atencion', '/compras/ordenes', '/compras/servicios', '/contabilidad/facturacion']) {
@@ -39,14 +39,15 @@ test('Gerencia ve por área las 36 pantallas que su permiso le abre, cada una un
 test('lo que Gerencia consulta no es su trabajo; lo que ya tenía en su menú, sí', () => {
   const grupos = menuDe(GERENCIA, false, 'GERENTE')
   assert.deepEqual(grupos.filter((g) => !g.consulta).map((g) => g.titulo), ['Principal', 'Por aprobar'])
-  // Las mismas once rutas que su menú tiene en main: ni un pendiente ni una cifra de más o de menos.
+  // Las once rutas que su menú tenía en main, más «Por decidir» (plan 12.1), que no lleva
+  // pendiente propio: ni un pendiente ni una cifra de más o de menos.
   assert.deepEqual([...rutasDeTrabajo(GERENCIA, false, 'GERENTE')].sort(), [
     '/', '/adquisiciones', '/avance/trabajos', '/codigos-internos', '/compras/aprobacion', '/costos/gastos-generales',
-    '/cotizaciones/pdf', '/reportes-diarios', '/rrhh/tiempos-de-entrega', '/tesoreria/por-cobrar', '/tesoreria/por-pagar',
+    '/cotizaciones/pdf', '/por-decidir', '/reportes-diarios', '/rrhh/tiempos-de-entrega', '/tesoreria/por-cobrar', '/tesoreria/por-pagar',
   ])
   assert.ok(!rutasDeTrabajo(GERENCIA, false, 'GERENTE').has('/ordenes'))
   assert.deepEqual(rutas(modulosDelInicio(GERENCIA, false, 'GERENTE')), [
-    '/', '/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos',
+    '/', '/codigos-internos', '/por-decidir', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos',
     '/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales', '/rrhh/tiempos-de-entrega',
   ])
   assert.deepEqual(pestanasDe(GERENCIA, false, 'GERENTE').map((p) => p.ruta), [

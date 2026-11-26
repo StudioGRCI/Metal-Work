@@ -268,7 +268,8 @@ function CompraPorAprobar({ compra: c, aprueba, dias }: { compra: CompraParaApro
   const deRq = c.requerimientos.length > 0
   const origen = ORIGEN_COMPRA[c.origen === 'DIRECTA' && deRq ? 'RQ' : c.origen]
   return (
-    <Tarjeta>
+    // Con su ancla: «Por decidir» salta a esta compra y la resalta.
+    <Tarjeta id={`${c.tipo}-${c.id}`} className="scroll-mt-20 target:border-acento">
       <TarjetaCabecera
         titulo={`${c.sin_numero ? 'OC sin número' : c.numero} · ${c.proveedor}`}
         descripcion={[

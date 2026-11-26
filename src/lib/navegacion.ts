@@ -28,6 +28,7 @@ import {
   Handshake,
   Hash,
   IdCard,
+  Inbox,
   Landmark,
   Layers,
   LayoutDashboard,
@@ -135,6 +136,16 @@ export const NAVEGACION = [
         icono: Hash,
         permiso: 'codigos_internos.ver',
         descripcion: 'Cada código con sus etapas, planos, materiales, avance y lo que lleva costado',
+        disponible: true,
+      },
+      // Lo que espera la decisión de Gerencia, reunido de sus pantallas (plan 12,
+      // entrega 12.1). No se aprueba ahí: cada fila salta a la suya.
+      {
+        titulo: 'Por decidir',
+        ruta: '/por-decidir',
+        icono: Inbox,
+        permiso: ['cotizaciones.revisar', 'codigos_internos.cerrar'],
+        descripcion: 'Lo que espera tu decisión en cada pantalla, lo más antiguo primero',
         disponible: true,
       },
       {
@@ -795,7 +806,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       {
         titulo: 'Por aprobar',
         pliegue: 'fijo',
-        rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'],
+        rutas: ['/por-decidir', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'],
       },
       { titulo: 'Ventas', consulta: true, rutas: ['/clientes', '/unidades'] },
       { titulo: 'Requerimientos', consulta: true, rutas: ['/requerimientos', '/vehiculos'] },
@@ -1215,6 +1226,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/recojos', corto: 'Recojos' },
   { ruta: '/compras/ordenes', corto: 'OC' },
   { ruta: '/compras/aprobacion', corto: 'Aprobar' },
+  { ruta: '/por-decidir', corto: 'Decidir' },
   { ruta: '/compras/gestion', corto: 'Gestión' },
   { ruta: '/compras/servicios', corto: 'OS' },
   { ruta: '/requerimientos', corto: 'RQ' },
