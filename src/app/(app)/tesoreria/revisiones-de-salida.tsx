@@ -69,8 +69,8 @@ export function RevisionesDeSalida({
 
 function RevisionPorResponder({ revision: v, cobro, abreVehiculos }: { revision: RevisionPendiente; cobro?: CobroDelCodigo; abreVehiculos: boolean }) {
   const { alEnviar, enviando, error, resultado } = useEnvio(responderRevisionSalida, undefined, { documento: v.id })
-  // Con facturas en la otra moneda no se dice cuánto falta: parte de lo cobrado está en esa otra moneda.
-  const porCobrar = cobro?.total === null || cobro === undefined || cobro.otraMoneda ? null : Math.max(0, cobro.total - cobro.cobrado)
+  // Con facturas en la otra moneda, lo que falta es solo de la moneda de la cotización, y así se dice.
+  const porCobrar = cobro?.total === null || cobro === undefined ? null : Math.max(0, cobro.total - cobro.cobrado)
   const otra = cobro?.otraMoneda ?? null
   const mOtra: CodigoMoneda = cobro?.moneda === 'USD' ? 'PEN' : 'USD'
   return (
@@ -118,30 +118,31 @@ function RevisionPorResponder({ revision: v, cobro, abreVehiculos }: { revision:
               <span className="text-texto">{moneda(cobro.total, cobro.moneda)}</span>
               {cobro.monedasDistintas && ' (las de otra moneda no se suman aquí)'}, facturada en{' '}
               <span data-otra-moneda>
-                {nombreMoneda(mOtra)}: facturado <span className="font-medium text-texto">{moneda(otra.facturado, mOtra)}</span> · cobrado{' '}
+                {nombreMoneda(mOtra)}: <span className="font-medium text-texto">{moneda(otra.facturado, mOtra)}</span> · cobrado{' '}
                 <span className="font-medium text-texto">{moneda(otra.cobrado, mOtra)}</span>
               </span>
-              . En otra moneda no se compara con el total.
+              . Para ver si está cancelada, cuéntalo con el tipo de cambio.
             </>
           ) : (
             <>
               Cobrado <span className="font-medium text-texto">{moneda(cobro.cobrado, cobro.moneda)}</span>
-              {!otra && parteDe(cobro.cobrado, cobro.total) !== null && ` · ${porcentaje(parteDe(cobro.cobrado, cobro.total))}`}
+              {parteDe(cobro.cobrado, cobro.total) !== null && ` · ${porcentaje(parteDe(cobro.cobrado, cobro.total))}`}
               {cobro.cotizaciones > 1 ? ` de las ${cobro.cotizaciones} cotizaciones, que suman` : ' de la cotización de'}{' '}
               {moneda(cobro.total, cobro.moneda)}
               {cobro.monedasDistintas && ' (las de otra moneda no se suman aquí)'}
-              {otra && (
-                <span data-otra-moneda>
-                  {' '}
-                  · y en {nombreMoneda(mOtra)}: facturado <span className="font-medium text-texto">{moneda(otra.facturado, mOtra)}</span> · cobrado{' '}
-                  <span className="font-medium text-texto">{moneda(otra.cobrado, mOtra)}</span>, que no se compara con el total
-                </span>
-              )}
               {porCobrar !== null && porCobrar > 0.005 && (
                 <>
                   {' '}
                   · falta <span className="text-aviso">{moneda(porCobrar, cobro.moneda)}</span>
+                  {otra && ` sin contar lo de ${nombreMoneda(mOtra)}`}
                 </>
+              )}
+              {otra && (
+                <span data-otra-moneda>
+                  {' '}
+                  · y en {nombreMoneda(mOtra)}: facturado <span className="font-medium text-texto">{moneda(otra.facturado, mOtra)}</span> · cobrado{' '}
+                  <span className="font-medium text-texto">{moneda(otra.cobrado, mOtra)}</span>. Para ver si está cancelada, cuéntalo con el tipo de cambio.
+                </span>
               )}
             </>
           )}

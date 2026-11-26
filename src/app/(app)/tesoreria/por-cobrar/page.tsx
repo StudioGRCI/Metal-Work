@@ -225,7 +225,7 @@ export default async function PaginaPorCobrar() {
                       {otra && (
                         <span className="tabular basis-full" data-otra-moneda>
                           {Number(c.facturado) > 0 ? 'Y en ' : 'Facturada en '}
-                          {nombreMoneda(mOtra)}: facturado {moneda(c.facturado_otra_moneda, mOtra)} · cobrado {moneda(c.cobrado_otra_moneda, mOtra)}
+                          {nombreMoneda(mOtra)}: {Number(c.facturado) > 0 && 'facturado '}{moneda(c.facturado_otra_moneda, mOtra)} · cobrado {moneda(c.cobrado_otra_moneda, mOtra)}
                         </span>
                       )}
                       {c.url && (

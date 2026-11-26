@@ -1666,7 +1666,7 @@ async function VistaFacturacion({ codigo, perfil }: { codigo: string; perfil: Pe
                       {Number(c.facturado_otra_moneda) > 0 && (
                         <p className="tabular text-xs text-texto-suave" data-otra-moneda>
                           {Number(c.facturado) > 0 ? 'Y en ' : 'Facturada en '}
-                          {nombreMoneda(otraMoneda(m))}: facturado {moneda(c.facturado_otra_moneda, otraMoneda(m))} · cobrado{' '}
+                          {nombreMoneda(otraMoneda(m))}: {Number(c.facturado) > 0 && 'facturado '}{moneda(c.facturado_otra_moneda, otraMoneda(m))} · cobrado{' '}
                           {moneda(c.cobrado_otra_moneda, otraMoneda(m))}
                         </p>
                       )}
