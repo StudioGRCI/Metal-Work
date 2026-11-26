@@ -161,7 +161,9 @@ test('Calidad lleva sus inspecciones arriba y consulta los códigos y las OT sin
   const grupos = menuDe(permisos, false, 'CALIDAD')
   assert.deepEqual(rutas(grupos), ['/', '/calidad', '/seguimiento', '/ordenes', '/ssoma', '/averias'])
   assert.equal(grupos[0].items[1].titulo, 'Inspecciones de calidad')
-  assert.deepEqual(pestanasDe(permisos, false, 'CALIDAD').map((p) => p.ruta), ['/calidad', '/seguimiento', '/ordenes', '/'])
+  assert.deepEqual(pestanasDe(permisos, false, 'CALIDAD').map((p) => p.ruta), ['/calidad', '/seguimiento', '/'])
+  // Con la causa de la garantía (A.2), como lo tiene el puesto: anota la causa en el teléfono.
+  assert.deepEqual(pestanasDe([...permisos, 'garantias.causa'], false, 'CALIDAD').map((p) => p.ruta), ['/calidad', '/garantias', '/seguimiento', '/'])
   assert.ok(!rutasDeTrabajo(permisos, false, 'CALIDAD').has('/seguimiento'))
 })
 

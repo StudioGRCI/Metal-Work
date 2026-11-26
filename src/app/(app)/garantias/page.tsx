@@ -9,9 +9,9 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { listarReclamos, MAXIMO_ABIERTOS, MAXIMO_RECLAMOS, unidadesParaReclamar, type ReclamoGarantia } from '@/lib/datos/garantias'
-import { CAUSA_GARANTIA, SITUACION_RECLAMO, SITUACIONES_ABIERTAS } from '@/lib/dominio/garantias'
+import { CAUSA_GARANTIA, PERMISOS_GARANTIAS, SITUACION_RECLAMO, SITUACIONES_ABIERTAS } from '@/lib/dominio/garantias'
 import { fechaHora } from '@/lib/format'
-import { exigirSesion, puede } from '@/lib/sesion'
+import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { EstadoDelReclamo, RegistrarReclamo } from './formulario'
 
@@ -36,7 +36,8 @@ const leToca = (r: ReclamoGarantia) => r.puede_causa || r.puede_enlazar
  * hacer en cada uno lo decide la base (`garantias_reclamos_visibles`).
  */
 export default async function PaginaGarantias({ searchParams }: PageProps<'/garantias'>) {
-  const perfil = await exigirSesion()
+  // Quien no tiene ninguno de los cuatro no ve ningún reclamo: va a «Sin permiso», no a una lista vacía que promete.
+  const perfil = await exigirPermiso([...PERMISOS_GARANTIAS])
   // El mismo permiso que pide `garantias_registrar`.
   const registra = puede(perfil, 'garantias.registrar')
   const soloConsulta = !puede(perfil, ['garantias.registrar', 'garantias.atender', 'garantias.causa'])
@@ -66,14 +67,14 @@ export default async function PaginaGarantias({ searchParams }: PageProps<'/gara
               ? `${toca} ${toca === 1 ? 'reclamo espera' : 'reclamos esperan'} lo que te toca.`
               : undefined
         }
-        ayuda="El cliente vuelve con su unidad por algo que hizo el taller. Ventas registra el reclamo con su número RG, Administración abre su OT de garantía (o lo cierra como «No procede», con su motivo) y, cuando la garantía está terminada, Calidad anota por qué falló y el reclamo se cierra. Un reclamo no se borra: sin OT, se anula con su motivo."
+        ayuda="El cliente vuelve con su unidad por algo que hizo el taller. Ventas registra el reclamo con su número RG, Administración abre su OT de garantía (o lo cierra como «No procede», con su motivo) y, cuando la garantía está terminada, Calidad anota por qué falló y el reclamo se cierra. Un reclamo no se borra: sin OT, o con su OT anulada, se anula con su motivo."
         migas={[{ titulo: 'Garantías' }]}
         acciones={unidades && unidades.length > 0 && <RegistrarReclamo cuentaId={perfil.id} unidades={unidades} />}
         estado={registra ? <EstadoDelReclamo /> : undefined}
       />
       {unidades && unidades.length === 0 && <SinUnidades />}
-      <div className="mb-3 space-y-3">
-        <BuscadorSimple ruta="/garantias" clave="buscar" etiqueta="Buscar reclamos" marcador="Número RG, placa, código interno, cliente u OT" />
+      <div className="mb-5 space-y-3">
+        <BuscadorSimple ruta="/garantias" clave="buscar" etiqueta="Buscar reclamos" marcador="RG, placa, código, cliente u OT" />
         <Vistas
           etiqueta="Vista"
           vistas={VISTAS.map((v) => ({
@@ -105,7 +106,7 @@ export default async function PaginaGarantias({ searchParams }: PageProps<'/gara
         />
       </Tarjeta>
       {alTope && (
-        <p className="mt-3 text-xs text-texto-suave">
+        <p className="mt-5 text-xs text-texto-suave">
           Se muestran todos los abiertos y los {MAXIMO_RECLAMOS} cerrados o anulados más recientes. Busca para encontrar uno más viejo.
         </p>
       )}

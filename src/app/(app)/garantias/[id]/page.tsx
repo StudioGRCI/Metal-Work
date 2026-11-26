@@ -10,9 +10,9 @@ import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cargarReclamo, otsParaEnlazar } from '@/lib/datos/garantias'
 import { definir, ESTADO_OT } from '@/lib/dominio/estados'
-import { CAUSA_GARANTIA, SITUACION_RECLAMO } from '@/lib/dominio/garantias'
+import { CAUSA_GARANTIA, PERMISOS_GARANTIAS, SITUACION_RECLAMO } from '@/lib/dominio/garantias'
 import { fechaHora } from '@/lib/format'
-import { exigirSesion, puede } from '@/lib/sesion'
+import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { AnotarCausa, AnularReclamo, AvisoDelReclamo, EnlazarOt, NoProcede } from './controles'
 
@@ -26,7 +26,7 @@ const FORMA_DE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
  * la base (`puede_*`), con el mismo permiso que la función que escribe.
  */
 export default async function PaginaReclamo({ params }: PageProps<'/garantias/[id]'>) {
-  const perfil = await exigirSesion()
+  const perfil = await exigirPermiso([...PERMISOS_GARANTIAS])
   const { id } = await params
   if (!FORMA_DE_ID.test(id)) notFound()
   const r = await cargarReclamo(id)
@@ -99,7 +99,7 @@ export default async function PaginaReclamo({ params }: PageProps<'/garantias/[i
                   <p className="text-xs text-texto-suave">OT de garantía</p>
                   <p className="mt-0.5 flex flex-wrap items-center gap-2">
                     {veOt && r.orden_id ? (
-                      <Link href={`/ordenes/${r.orden_id}`} className="tabular font-semibold text-acento hover:underline">
+                      <Link href={`/ordenes/${r.orden_id}`} className="tabular inline-flex min-h-11 items-center font-semibold text-acento hover:underline sm:min-h-0">
                         {r.orden_numero}
                       </Link>
                     ) : (
@@ -110,6 +110,13 @@ export default async function PaginaReclamo({ params }: PageProps<'/garantias/[i
                   {r.ot_enlazada_en && (
                     <p className="text-xs text-texto-suave">
                       Enlazada{r.enlazo ? ` por ${r.enlazo}` : ''}, {fechaHora(r.ot_enlazada_en)}
+                    </p>
+                  )}
+                  {/* La OT sigue «Aprobada» al terminar la garantía: lo que cuenta para la causa es esto. */}
+                  {r.garantia_terminada_en && (
+                    <p className="mt-1 text-xs text-texto" data-garantia-terminada>
+                      <span className="font-medium">Garantía terminada</span>
+                      {r.garantia_termino ? ` por ${r.garantia_termino}` : ''}, {fechaHora(r.garantia_terminada_en)}
                     </p>
                   )}
                 </div>

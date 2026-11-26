@@ -138,7 +138,7 @@ export function NoProcede({ id, numero }: { id: string; numero: string }) {
         </>
       }
       titulo={`El reclamo ${numero} no procede`}
-      descripcion="Cuando no es una garantía: el daño es de otro taller, venció el plazo o lo que se reclama no lo hizo Metal Work. Se cierra sin OT, con tu motivo, y le avisamos a quien lo registró."
+      descripcion="Cuando no es una garantía: el daño es de otro taller, venció el plazo o lo que se reclama no lo hizo Metal Work. Se cierra sin OT, o con la suya anulada, con tu motivo."
       enviar="Cerrar como «No procede»"
     >
       <Campo etiqueta="Por qué no procede" htmlFor={`no-procede-${id}`} requerido>
@@ -206,7 +206,7 @@ export function AnotarCausa({ id, numero }: { id: string; numero: string }) {
   )
 }
 
-/** Ventas o Administración anulan el reclamo que todavía no tiene OT, con su motivo. */
+/** Ventas o Administración anulan el reclamo sin OT, o con su OT anulada, con su motivo. */
 export function AnularReclamo({ id, numero }: { id: string; numero: string }) {
   return (
     <AccionDelReclamo

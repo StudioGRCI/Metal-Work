@@ -1,6 +1,7 @@
 'use client'
 
 import { X } from 'lucide-react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState, useTransition, type FormEvent } from 'react'
 
@@ -43,7 +44,7 @@ const TIPOS_TRABAJO = opciones(TIPO_TRABAJO)
 const PRIORIDADES = opciones(PRIORIDAD)
 
 /** El reclamo de garantía del que nace la OT (`/ordenes/nueva?reclamo=`, A.2): al registrarse queda enlazada a él. */
-type ReclamoDeLaOt = { id: string; numero: string; cliente_id: string; unidad_id: string; descripcion: string }
+type ReclamoDeLaOt = { id: string; numero: string; cliente_id: string; cliente: string; unidad_id: string; unidad: string; descripcion: string }
 
 export function FormularioOrden({ catalogos, reclamo = null }: { catalogos: Catalogos; reclamo?: ReclamoDeLaOt | null }) {
   // Un envío por toque, como `useEnvio`; aquí a mano porque el PDF viaja antes
@@ -423,8 +424,11 @@ export function FormularioOrden({ catalogos, reclamo = null }: { catalogos: Cata
         <>
           <input type="hidden" name="reclamo_id" value={reclamo.id} />
           <p className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 px-3 py-2 text-sm text-texto" data-desde-el-reclamo>
-            Esta OT de garantía atiende el reclamo <span className="tabular font-semibold">{reclamo.numero}</span>. Al registrarla queda
-            enlazada a él y le avisamos a quien lo registró. Va con la misma unidad del reclamo.
+            Esta OT de garantía atiende el reclamo{' '}
+            <Link href={`/garantias/${reclamo.id}`} className="tabular font-semibold text-acento hover:underline">
+              {reclamo.numero}
+            </Link>
+            . Al registrarla queda enlazada a él y le avisamos a quien lo registró. Va con el cliente y la unidad del reclamo.
           </p>
         </>
       )}
@@ -432,6 +436,23 @@ export function FormularioOrden({ catalogos, reclamo = null }: { catalogos: Cata
       <fieldset disabled={pendiente || Boolean(quedo)} className="min-w-0 space-y-4">
         <Tarjeta>
           <TarjetaCabecera titulo="Cliente y unidad" />
+          {reclamo ? (
+            // Desde el reclamo, fijos: la base solo enlaza la OT de garantía de
+            // su misma unidad, y una OT registrada con otra ya no se borra.
+            <TarjetaCuerpo className="grid gap-4 sm:grid-cols-2" data-fijos-del-reclamo>
+              <input type="hidden" name="cliente_id" value={reclamo.cliente_id} />
+              <input type="hidden" name="unidad_id" value={reclamo.unidad_id} />
+              <div>
+                <p className="text-xs font-medium text-texto-suave">Cliente</p>
+                <p className="mt-1 text-sm text-texto">{reclamo.cliente}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-texto-suave">Unidad</p>
+                <p className="tabular mt-1 text-sm text-texto">{reclamo.unidad}</p>
+                <p className="mt-1 text-xs text-texto-suave">Los del reclamo {reclamo.numero}: no se cambian aquí.</p>
+              </div>
+            </TarjetaCuerpo>
+          ) : (
           <TarjetaCuerpo className="grid gap-4 sm:grid-cols-2">
             <Campo
               etiqueta="Cliente"
@@ -525,6 +546,7 @@ export function FormularioOrden({ catalogos, reclamo = null }: { catalogos: Cata
               <RegistradoAparte dice={aparte.unidad} alQuitar={() => quitarAparte('unidad')} />
             </Campo>
           </TarjetaCuerpo>
+          )}
         </Tarjeta>
 
         <Tarjeta>
@@ -560,15 +582,23 @@ export function FormularioOrden({ catalogos, reclamo = null }: { catalogos: Cata
               <RegistradoAparte dice={aparte.carroceria} alQuitar={() => quitarAparte('carroceria')} />
             </Campo>
 
-            <Campo etiqueta="Tipo de trabajo" htmlFor="tipo_trabajo" requerido>
-              <Seleccion id="tipo_trabajo" name="tipo_trabajo" value={tipoTrabajo} onChange={(e) => setTipoTrabajo(e.target.value)}>
-                {TIPOS_TRABAJO.map((o) => (
-                  <option key={o.valor} value={o.valor}>
-                    {o.etiqueta}
-                  </option>
-                ))}
-              </Seleccion>
-            </Campo>
+            {reclamo ? (
+              <div data-tipo-fijo>
+                <input type="hidden" name="tipo_trabajo" value="GARANTIA" />
+                <p className="text-xs font-medium text-texto-suave">Tipo de trabajo</p>
+                <p className="mt-1 text-sm text-texto">{TIPOS_TRABAJO.find((o) => o.valor === 'GARANTIA')?.etiqueta ?? 'Garantía'}</p>
+              </div>
+            ) : (
+              <Campo etiqueta="Tipo de trabajo" htmlFor="tipo_trabajo" requerido>
+                <Seleccion id="tipo_trabajo" name="tipo_trabajo" value={tipoTrabajo} onChange={(e) => setTipoTrabajo(e.target.value)}>
+                  {TIPOS_TRABAJO.map((o) => (
+                    <option key={o.valor} value={o.valor}>
+                      {o.etiqueta}
+                    </option>
+                  ))}
+                </Seleccion>
+              </Campo>
+            )}
 
             <Campo etiqueta="Prioridad" htmlFor="prioridad" requerido>
               <Seleccion id="prioridad" name="prioridad" defaultValue="NORMAL">
@@ -718,7 +748,7 @@ export function FormularioOrden({ catalogos, reclamo = null }: { catalogos: Cata
       <YaQuedo ida={quedo} />
 
       <div className="flex justify-end gap-2">
-        <EnlaceBoton href="/ordenes" variante="fantasma">
+        <EnlaceBoton href={reclamo ? `/garantias/${reclamo.id}` : '/ordenes'} variante="fantasma">
           Cancelar
         </EnlaceBoton>
         <Boton type="submit" cargando={pendiente} disabled={Boolean(quedo)}>

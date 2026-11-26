@@ -1,3 +1,5 @@
+import Link from 'next/link'
+
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { reclamoParaAbrirSuOt } from '@/lib/datos/garantias'
 import { catalogosOrden } from '@/lib/datos/ordenes'
@@ -29,8 +31,11 @@ export default async function PaginaNuevaOrden({ searchParams }: PageProps<'/ord
         ayuda="Para una reparación, una garantía o un trabajo que no salió de una cotización. Va con el número y el PDF de su papel, como la de una cotización, que se emite desde «Cotizaciones». Nace en borrador y Gerencia la aprueba; recién ahí se generan sus etapas."
       />
       {pedido && !reclamo && (
-        <p className="mb-4 max-w-4xl text-sm text-texto-suave" data-reclamo-sin-efecto>
-          Ese reclamo de garantía ya no espera su OT, o no lo puedes enlazar: esta orden nace sin él.
+        <p className="mb-4 max-w-4xl rounded-[var(--radius-base)] border border-borde bg-aviso-suave px-3 py-2 text-sm text-texto" data-reclamo-sin-efecto>
+          Ese reclamo de garantía ya no espera su OT, o no lo puedes enlazar: esta orden nace sin él.{' '}
+          <Link href={`/garantias/${pedido}`} className="font-medium text-acento underline underline-offset-2">
+            Ver el reclamo
+          </Link>
         </p>
       )}
       <FormularioOrden catalogos={catalogos} reclamo={reclamo} />

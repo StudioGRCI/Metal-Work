@@ -26,7 +26,7 @@ export const SITUACION_RECLAMO: Record<string, Def & { quien?: string }> = {
     etiqueta: 'Su OT se anuló',
     tono: 'peligro',
     quien: 'Administración',
-    descripcion: 'La OT de garantía se anuló: Administración le enlaza otra.',
+    descripcion: 'La OT de garantía se anuló: Administración le enlaza otra o lo cierra como «No procede».',
   },
   EN_TALLER: {
     etiqueta: 'En el taller',

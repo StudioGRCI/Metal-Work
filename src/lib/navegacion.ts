@@ -1200,7 +1200,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   CALIDAD: {
     principal: ['/calidad', '/garantias'],
     grupos: [{ titulo: 'Consultas', consulta: true, rutas: ['/seguimiento', '/ordenes'] }],
-    telefono: ['/calidad', '/seguimiento', '/ordenes', '/'],
+    // Anota la causa en el teléfono: los reclamos, en su barra (A.2).
+    telefono: ['/calidad', '/garantias', '/seguimiento', '/'],
   },
 }
 // El líder de Diseño hace el trabajo de Diseño y además revisa el de su equipo

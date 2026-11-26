@@ -52,6 +52,8 @@ select pg_temp.orden('8495-2026', :'unidad_a', 'FABRICACION') as fab_a \gset
 select pg_temp.orden('9495-2026', :'unidad_a', 'GARANTIA') as gar_a \gset
 select pg_temp.orden('9496-2026', :'unidad_b', 'GARANTIA') as gar_b1 \gset
 select pg_temp.orden('9497-2026', :'unidad_b', 'GARANTIA') as gar_b2 \gset
+select pg_temp.orden('9498-2026', :'unidad_b', 'GARANTIA') as gar_b3 \gset
+select pg_temp.orden('9499-2026', :'unidad_b', 'GARANTIA') as gar_b4 \gset
 
 select set_config('prueba.ven', :'ven_id', true), set_config('prueba.gco', :'gco_id', true),
        set_config('prueba.adm', :'adm_id', true), set_config('prueba.cal', :'cal_id', true),
@@ -62,7 +64,10 @@ select set_config('prueba.ven', :'ven_id', true), set_config('prueba.gco', :'gco
        set_config('prueba.gar_b1', :'gar_b1', true), set_config('prueba.gar_b2', :'gar_b2', true),
        set_config('prueba.rg1', gen_random_uuid()::text, true), set_config('prueba.rg2', gen_random_uuid()::text, true),
        set_config('prueba.rg3', gen_random_uuid()::text, true), set_config('prueba.rg4', gen_random_uuid()::text, true),
-       set_config('prueba.rg5', gen_random_uuid()::text, true);
+       set_config('prueba.rg5', gen_random_uuid()::text, true),
+       set_config('prueba.gar_b3', :'gar_b3', true), set_config('prueba.gar_b4', :'gar_b4', true),
+       set_config('prueba.rg6', gen_random_uuid()::text, true), set_config('prueba.rg7', gen_random_uuid()::text, true),
+       set_config('prueba.rg8', gen_random_uuid()::text, true);
 select set_config('prueba.foto1', :'ven_id' || '/' || current_setting('prueba.rg1') || '/' || gen_random_uuid() || '.jpg', true);
 create or replace function pg_temp.id(p_clave text) returns uuid language sql as $$
   select current_setting('prueba.' || p_clave)::uuid;
@@ -357,9 +362,9 @@ set local role authenticated;
 do $$
 declare r record;
 begin
-  perform test.afirmar((select situacion = 'OT_ANULADA' and puede_enlazar and not puede_anular
+  perform test.afirmar((select situacion = 'OT_ANULADA' and puede_enlazar and puede_no_procede and puede_anular
                           from public.garantias_reclamos_visibles(pg_temp.id('rg4'))),
-    'con su OT anulada, pide otra');
+    'con su OT anulada, pide otra, o se cierra como «No procede», o se anula');
   select * into r from public.garantias_enlazar_ot(pg_temp.id('rg4'), pg_temp.id('gar_b2'));
   perform test.afirmar(r.numero_ot = '9497-2026'
                        and (select situacion = 'EN_TALLER' from public.garantias_reclamos_visibles(pg_temp.id('rg4'))),
@@ -371,6 +376,76 @@ set local role authenticated;
 do $$ begin
   perform test.debe_fallar(format('select public.garantias_anotar_causa(%L, %L, %L)', current_setting('prueba.rg4'), 'MONTAJE', 'La baranda se montó con pernos cortos'),
     'la nueva OT todavía no está terminada', 'todavía no está terminada');
+end $$;
+reset role;
+
+-- 7b. Con su OT anulada, también se cierra o se anula; si no, quedaba sin salida ---------
+-- (lo vio el auditor: Gerencia anula la OT porque no era garantía, y el reclamo
+-- se quedaba para siempre en el globo de Administración).
+select test.como_usuario(:'ven_id');
+set local role authenticated;
+select reclamo from public.garantias_registrar(pg_temp.id('rg6'), :'unidad_b', 'La puerta lateral roza al cerrar', null, null, '[]');
+select reclamo from public.garantias_registrar(pg_temp.id('rg7'), :'unidad_b', 'El piso de la tolva suena al cargar', null, null, '[]');
+reset role;
+select test.como_usuario(:'adm_id');
+set local role authenticated;
+select numero_ot from public.garantias_enlazar_ot(pg_temp.id('rg6'), :'gar_b3');
+select numero_ot from public.garantias_enlazar_ot(pg_temp.id('rg7'), :'gar_b4');
+do $$ begin
+  perform test.debe_fallar(format('select public.garantias_no_procede(%L, %L)', current_setting('prueba.rg6'), 'No es una garantía del taller'),
+    'con su OT viva, no se cierra como «No procede»', 'tiene su OT de garantía');
+end $$;
+reset role;
+select test.como_usuario(:'admin_id');
+update public.ordenes_trabajo set estado = 'ANULADA', motivo_anulacion = 'No era garantía: el daño es de un choque'
+ where id in (:'gar_b3', :'gar_b4');
+reset role;
+select test.como_usuario(:'adm_id');
+set local role authenticated;
+do $$ begin
+  perform test.afirmar(public.garantias_no_procede(pg_temp.id('rg6'), 'El daño es de un choque, no del trabajo del taller') = pg_temp.id('rg6'),
+    'con su OT anulada, Administración lo cierra como «No procede»');
+  perform test.afirmar((select situacion = 'NO_PROCEDE' and orden_numero = '9498-2026' and not (puede_enlazar or puede_no_procede or puede_anular)
+                          from public.garantias_reclamos_visibles(pg_temp.id('rg6'))),
+    'queda cerrado y la OT anulada sigue nombrada como evidencia');
+end $$;
+reset role;
+select test.afirmar(pg_temp.avisos('ven', 'rg6') = 2, 'a Ventas le llegó la OT y después que no procede');
+select test.como_usuario(:'ven_id');
+set local role authenticated;
+do $$ begin
+  perform test.afirmar(public.garantias_anular(pg_temp.id('rg7'), 'Era el mismo reclamo que la puerta lateral') = pg_temp.id('rg7'),
+    'con su OT anulada, Ventas lo anula con su motivo');
+  perform test.afirmar((select situacion = 'ANULADO' and orden_numero = '9499-2026' from public.garantias_reclamos_visibles(pg_temp.id('rg7'))),
+    'queda anulado, con su OT anulada nombrada');
+end $$;
+reset role;
+select test.debe_fallar(format('update public.garantia_reclamos set orden_id = null where id = %L', current_setting('prueba.rg6')),
+  'cerrado con su OT anulada, queda como evidencia', 'ya está cerrado');
+
+-- 7c. Enlazar una OT cuya garantía ya estaba terminada avisa a Calidad ---------------------
+-- Su OT nace aquí: antes, la sección 4 la habría ofrecido junto a la del reclamo 1.
+select test.como_usuario(:'admin_id');
+select pg_temp.orden('9500-2026', :'unidad_a', 'GARANTIA') as gar_a2 \gset
+reset role;
+select test.como_usuario(:'adm_id');
+set local role authenticated;
+select public.dar_por_terminada_la_garantia(:'gar_a2', 'Se cambió el gancho antes del reclamo');
+reset role;
+select test.como_usuario(:'ven_id');
+set local role authenticated;
+select reclamo from public.garantias_registrar(pg_temp.id('rg8'), :'unidad_a', 'El gancho volvió a soltarse', null, null, '[]');
+reset role;
+select test.como_usuario(:'adm_id');
+set local role authenticated;
+select numero_ot from public.garantias_enlazar_ot(pg_temp.id('rg8'), :'gar_a2');
+reset role;
+select test.afirmar(pg_temp.avisos('cal', 'rg8') = 1, 'al enlazar una OT ya terminada, a Calidad le llega que anote la causa');
+select test.como_usuario(:'cal_id');
+set local role authenticated;
+do $$ begin
+  perform test.afirmar((select situacion = 'POR_CAUSA' and puede_causa from public.garantias_reclamos_visibles(pg_temp.id('rg8'))),
+    'y el reclamo ya espera su causa');
 end $$;
 reset role;
 

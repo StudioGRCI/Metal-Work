@@ -110,10 +110,12 @@ create table if not exists public.garantia_reclamos (
     or (estado = 'CERRADO' and orden_id is not null and causa is not null
        and char_length(btrim(coalesce(causa_detalle, ''))) between 10 and 1000
        and no_procede_motivo is null and cerrado_por is not null and cerrado_en is not null and anulado_en is null)
-    or (estado = 'NO_PROCEDE' and orden_id is null and causa is null
+    -- Sin OT, o con la suya anulada (la guarda de cada función lo exige): la
+    -- OT anulada queda nombrada como evidencia.
+    or (estado = 'NO_PROCEDE' and causa is null
        and char_length(btrim(coalesce(no_procede_motivo, ''))) between 10 and 500
        and cerrado_por is not null and cerrado_en is not null and anulado_en is null)
-    or (estado = 'ANULADO' and orden_id is null and anulado_en is not null and anulado_por is not null
+    or (estado = 'ANULADO' and causa is null and anulado_en is not null and anulado_por is not null
        and char_length(btrim(coalesce(motivo_anulacion, ''))) between 10 and 500))
 );
 comment on table public.garantia_reclamos is
@@ -484,7 +486,8 @@ returns table (orden uuid, numero text, estado text, creada date)
 language plpgsql stable security definer set search_path to 'public' as $$
 #variable_conflict use_column
 begin
-  if public.usuario_actual() is null or not (public.es_admin() or public.tiene_permiso('garantias.atender')) then
+  if public.usuario_actual() is null or not public.es_usuario_activo()
+     or not (public.es_admin() or public.tiene_permiso('garantias.atender')) then
     raise exception 'La OT de garantía la enlaza Administración.' using errcode = 'insufficient_privilege';
   end if;
   return query
@@ -501,6 +504,32 @@ comment on function public.garantias_ots_para_enlazar(uuid) is
   'Las OT de garantía de la unidad del reclamo que se le pueden enlazar: sin anular y sin otro reclamo. Exige garantias.atender.';
 revoke all on function public.garantias_ots_para_enlazar(uuid) from public, anon;
 grant execute on function public.garantias_ots_para_enlazar(uuid) to authenticated;
+
+-- 11b. El aviso a Calidad de que ya puede anotar la causa ----------------------------------------
+-- Lo usan el disparador de la garantía terminada (sección 17) y el enlace de
+-- una OT cuya garantía ya estaba terminada. Si no hay cuenta de Calidad, a Gerencia.
+create or replace function public.garantias_avisar_la_causa(p_reclamo uuid)
+returns void language plpgsql security definer set search_path to 'public' as $$
+declare
+  v_r public.garantia_reclamos%rowtype;
+  v_titulo text;
+begin
+  select * into v_r from public.garantia_reclamos where id = p_reclamo and estado = 'CON_OT';
+  if not found then
+    return;
+  end if;
+  v_titulo := 'Anota la causa del reclamo ' || v_r.numero || ': su garantía está terminada';
+  perform public.avisar_a_permiso('garantias.causa', v_titulo, left(v_r.descripcion, 300),
+                                  '/garantias/' || v_r.id::text, 'garantia_reclamos', v_r.id);
+  if not exists (select 1 from public.usuarios u
+                   join public.roles_permisos rp on rp.rol_id = u.rol_id and rp.permiso_codigo = 'garantias.causa'
+                  where u.activo) then
+    perform public.avisar_a_permiso('garantias.ver', v_titulo || ' (no hay cuenta de Calidad que la anote)', left(v_r.descripcion, 300),
+                                    '/garantias/' || v_r.id::text, 'garantia_reclamos', v_r.id);
+  end if;
+end;
+$$;
+revoke all on function public.garantias_avisar_la_causa(uuid) from public, anon, authenticated;
 
 -- 12. Enlazar su OT ----------------------------------------------------------------------------
 -- Administración enlaza la OT de garantía que abrió para el reclamo. Si la que
@@ -548,6 +577,11 @@ begin
   end if;
 
   update public.garantia_reclamos set estado = 'CON_OT', orden_id = p_orden where id = p_reclamo;
+  -- Si la garantía de esa OT ya estaba terminada, el reclamo espera la causa
+  -- desde ya: el aviso del disparador de `ot_garantia_terminada` ya pasó.
+  if public.orden_garantia_terminada(p_orden) then
+    perform public.garantias_avisar_la_causa(p_reclamo);
+  end if;
 
   if v_r.registrado_por is distinct from v_yo then
     insert into public.notificaciones (usuario_id, titulo, cuerpo, ruta, origen_tabla, origen_id)
@@ -581,7 +615,10 @@ begin
   if v_r.estado = 'NO_PROCEDE' and v_r.no_procede_motivo = btrim(p_motivo) and v_r.cerrado_por = v_yo then
     return p_reclamo;
   end if;
-  if v_r.estado <> 'REGISTRADO' then
+  -- Sin OT, o con su OT anulada (Gerencia la anuló porque no era garantía): si
+  -- no, el reclamo se quedaba sin salida en el globo de Administración.
+  if v_r.estado <> 'REGISTRADO'
+     and not (v_r.estado = 'CON_OT' and exists (select 1 from public.ordenes_trabajo o where o.id = v_r.orden_id and o.estado = 'ANULADA')) then
     raise exception 'El reclamo % ya no espera su OT: %.', v_r.numero,
       case v_r.estado when 'CON_OT' then 'tiene su OT de garantía' when 'ANULADO' then 'está anulado' else 'ya está cerrado' end
       using errcode = 'check_violation';
@@ -596,7 +633,7 @@ begin
 end;
 $$;
 comment on function public.garantias_no_procede(uuid, text) is
-  'Administración (garantias.atender) cierra como «No procede», con su motivo, un reclamo que todavía no tiene OT. Avisa a quien lo registró.';
+  'Administración (garantias.atender) cierra como «No procede», con su motivo, un reclamo sin OT o con su OT anulada. Avisa a quien lo registró.';
 revoke all on function public.garantias_no_procede(uuid, text) from public, anon;
 grant execute on function public.garantias_no_procede(uuid, text) to authenticated;
 
@@ -672,7 +709,8 @@ begin
     raise exception 'El reclamo % ya estaba anulado, con este motivo: «%». No se cambia.', v_r.numero, v_r.motivo_anulacion
       using errcode = 'check_violation';
   end if;
-  if v_r.estado <> 'REGISTRADO' then
+  if v_r.estado <> 'REGISTRADO'
+     and not (v_r.estado = 'CON_OT' and exists (select 1 from public.ordenes_trabajo o where o.id = v_r.orden_id and o.estado = 'ANULADA')) then
     raise exception 'El reclamo % %: ya no se anula.', v_r.numero,
       case v_r.estado when 'CON_OT' then 'tiene su OT de garantía' else 'ya está cerrado' end
       using errcode = 'check_violation';
@@ -688,7 +726,7 @@ begin
 end;
 $$;
 comment on function public.garantias_anular(uuid, text) is
-  'Ventas (garantias.registrar) o Administración (garantias.atender) anulan con su motivo un reclamo que todavía no tiene OT. No se borra.';
+  'Ventas (garantias.registrar) o Administración (garantias.atender) anulan con su motivo un reclamo sin OT o con su OT anulada. No se borra.';
 revoke all on function public.garantias_anular(uuid, text) from public, anon;
 grant execute on function public.garantias_anular(uuid, text) to authenticated;
 
@@ -708,7 +746,8 @@ returns table (
   no_procede_motivo text, causa text, causa_detalle text, cerrado_en timestamptz, cerro text, cerro_puesto text,
   registro text, registro_puesto text, fotos integer,
   anulado_en timestamptz, anulo text, motivo_anulacion text,
-  puede_enlazar boolean, puede_no_procede boolean, puede_causa boolean, puede_anular boolean)
+  puede_enlazar boolean, puede_no_procede boolean, puede_causa boolean, puede_anular boolean,
+  garantia_terminada_en timestamptz, garantia_termino text)
 language plpgsql stable security definer set search_path to 'public' rows 200 as $$
 #variable_conflict use_column
 declare
@@ -749,9 +788,12 @@ begin
          (select count(*)::integer from public.garantia_reclamo_fotos f where f.reclamo_id = s.id),
          s.anulado_en, btrim(an.nombres || ' ' || an.apellidos), s.motivo_anulacion,
          v_atiende and s.sit in ('POR_ABRIR_OT', 'OT_ANULADA'),
-         v_atiende and s.sit = 'POR_ABRIR_OT',
+         v_atiende and s.sit in ('POR_ABRIR_OT', 'OT_ANULADA'),
          v_causa and s.sit = 'POR_CAUSA',
-         (v_atiende or v_registra) and s.estado = 'REGISTRADO'
+         (v_atiende or v_registra) and s.sit in ('POR_ABRIR_OT', 'OT_ANULADA'),
+         -- Cuándo y quién dio la garantía por terminada: la OT sigue «Aprobada»
+         -- y, sin esto, la ficha decía «terminada» junto a esa insignia.
+         gt.terminada_en, btrim(tu.nombres || ' ' || tu.apellidos)
     from con_situacion s
     join public.unidades u on u.id = s.unidad_id
     left join public.tipos_carroceria tc on tc.id = u.tipo_carroceria_id
@@ -762,6 +804,8 @@ begin
     left join public.usuarios ce on ce.id = s.cerrado_por
     left join public.roles rce on rce.id = ce.rol_id
     left join public.usuarios an on an.id = s.anulado_por
+    left join public.ot_garantia_terminada gt on gt.orden_id = s.orden_id
+    left join public.usuarios tu on tu.id = gt.terminada_por
    order by s.creado_en desc;
 end;
 $$;
@@ -777,21 +821,11 @@ grant execute on function public.garantias_reclamos_visibles(uuid) to authentica
 create or replace function public.fn_garantia_terminada_avisa_a_calidad()
 returns trigger language plpgsql security definer set search_path to 'public' as $$
 declare
-  v_r public.garantia_reclamos%rowtype;
-  v_titulo text;
+  v_id uuid;
 begin
-  select * into v_r from public.garantia_reclamos where orden_id = new.orden_id and estado = 'CON_OT';
-  if not found then
-    return new;
-  end if;
-  v_titulo := 'Anota la causa del reclamo ' || v_r.numero || ': su garantía está terminada';
-  perform public.avisar_a_permiso('garantias.causa', v_titulo, left(v_r.descripcion, 300),
-                                  '/garantias/' || v_r.id::text, 'garantia_reclamos', v_r.id);
-  if not exists (select 1 from public.usuarios u
-                   join public.roles_permisos rp on rp.rol_id = u.rol_id and rp.permiso_codigo = 'garantias.causa'
-                  where u.activo) then
-    perform public.avisar_a_permiso('garantias.ver', v_titulo || ' (no hay cuenta de Calidad que la anote)', left(v_r.descripcion, 300),
-                                    '/garantias/' || v_r.id::text, 'garantia_reclamos', v_r.id);
+  select r.id into v_id from public.garantia_reclamos r where r.orden_id = new.orden_id and r.estado = 'CON_OT';
+  if found then
+    perform public.garantias_avisar_la_causa(v_id);
   end if;
   return new;
 end;

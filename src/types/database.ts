@@ -16353,6 +16353,8 @@ export type Database = {
           puede_no_procede: boolean | null
           puede_causa: boolean | null
           puede_anular: boolean | null
+          garantia_terminada_en: string | null
+          garantia_termino: string | null
         }[]
       }
       garantias_registrar: {

@@ -294,10 +294,14 @@ let numeroOt = null
   const desde = await pagina.locator('[data-desde-el-reclamo]').waitFor({ timeout: 20000 }).then(() => true, () => false)
   if (!desde) await pagina.screenshot({ path: join(CAPTURAS, 'a2-falla-ot-nueva.png'), fullPage: true })
   comprobar(desde, '[Administración 1440] la orden nueva dice que atiende el reclamo')
-  comprobar((await pagina.locator('#tipo_trabajo').inputValue()) === 'GARANTIA', '[Administración 1440] nace como garantía')
-  comprobar((await pagina.locator('select[name="cliente_id"]').inputValue()) === unidad.cliente_id, '[Administración 1440] con el cliente del reclamo')
-  const unidadPuesta = await hasta(() => pagina.locator('select[name="unidad_id"]').inputValue(), (v) => v === unidad.id, 15000)
-  comprobar(unidadPuesta === unidad.id, '[Administración 1440] con la unidad del reclamo')
+  // Fijos, no editables: con otra unidad u otro tipo la OT numerada quedaba registrada y sin enlazar.
+  comprobar((await pagina.locator('input[type="hidden"][name="tipo_trabajo"]').inputValue()) === 'GARANTIA'
+            && (await pagina.locator('#tipo_trabajo').count()) === 0, '[Administración 1440] nace como garantía, sin poder cambiarla')
+  comprobar((await pagina.locator('input[type="hidden"][name="cliente_id"]').inputValue()) === unidad.cliente_id
+            && (await pagina.locator('select[name="cliente_id"]').count()) === 0, '[Administración 1440] con el cliente del reclamo, fijo')
+  comprobar((await pagina.locator('input[type="hidden"][name="unidad_id"]').inputValue()) === unidad.id
+            && limpio(await pagina.locator('[data-fijos-del-reclamo]').innerText()).includes(unidad.placa), '[Administración 1440] con la unidad del reclamo, fija y a la vista')
+  comprobar((await pagina.locator(`[data-desde-el-reclamo] a[href="/garantias/${rg?.id}"]`).count()) === 1, '[Administración 1440] el número del reclamo lleva de vuelta a él')
   comprobar((await pagina.locator('#descripcion').inputValue()).startsWith(`Garantía del reclamo ${rg?.numero}:`), '[Administración 1440] con lo que reclama en la descripción')
   for (let n = 0; n < 50 && !numeroOt; n++) {
     const candidato = String(800000 + Math.floor(Math.random() * 99999))
@@ -425,10 +429,13 @@ let noProcede = null
   const { pagina, contexto } = await entrar(CUENTAS.tesoreria)
   await ir(pagina, `${BASE}/`)
   comprobar(!/Garantías/.test(await textoDelMenu(pagina)), '[Tesorería 1440] sin Garantías en su menú')
+  // Por su dirección, «Sin permiso»: ni una lista vacía que promete reclamos, ni la ficha.
   await ir(pagina, `${BASE}/garantias`)
-  comprobar((await pagina.locator('[data-reclamo]').count()) === 0, '[Tesorería 1440] por su dirección, la lista sale vacía')
+  comprobar(new URL(pagina.url()).pathname === '/sin-permiso' && (await pagina.locator('[data-reclamo]').count()) === 0,
+    `[Tesorería 1440] por su dirección, la lista la lleva a «Sin permiso» (${new URL(pagina.url()).pathname})`)
   await ir(pagina, `${BASE}/garantias/${rg?.id}`)
-  comprobar(!limpio(await pagina.locator('main').innerText()).includes(QUE_RECLAMA), '[Tesorería 1440] la ficha no existe para ella')
+  comprobar(new URL(pagina.url()).pathname === '/sin-permiso' && !limpio(await pagina.locator('main').innerText()).includes(QUE_RECLAMA),
+    '[Tesorería 1440] la ficha también')
   await contexto.close()
 }
 

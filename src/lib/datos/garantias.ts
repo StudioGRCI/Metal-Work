@@ -51,6 +51,9 @@ export type ReclamoGarantia = {
   puede_no_procede: boolean
   puede_causa: boolean
   puede_anular: boolean
+  /** Cuándo y quién dio la garantía por terminada en su OT (la OT sigue «Aprobada»). */
+  garantia_terminada_en: string | null
+  garantia_termino: string | null
 }
 
 type Fila = { [K in keyof ReclamoGarantia]: ReclamoGarantia[K] | null }
@@ -93,6 +96,8 @@ function aReclamo(f: Fila): ReclamoGarantia | null {
     puede_no_procede: f.puede_no_procede === true,
     puede_causa: f.puede_causa === true,
     puede_anular: f.puede_anular === true,
+    garantia_terminada_en: f.garantia_terminada_en,
+    garantia_termino: f.garantia_termino,
   }
 }
 
@@ -105,7 +110,7 @@ export const MAXIMO_RECLAMOS = 200
 /** Los estados del reclamo que todavía esperan a alguien. */
 const ESTADOS_ABIERTOS_RECLAMO = ['REGISTRADO', 'CON_OT'] as const
 
-const SELECT = 'id, numero, estado, situacion, creado_en, dias_en_espera, descripcion, trae, contacto, unidad_id, placa, codigo_interno, carroceria, cliente, orden_id, orden_numero, orden_estado, ot_enlazada_en, enlazo, no_procede_motivo, causa, causa_detalle, cerrado_en, cerro, cerro_puesto, registro, registro_puesto, fotos, anulado_en, anulo, motivo_anulacion, puede_enlazar, puede_no_procede, puede_causa, puede_anular'
+const SELECT = 'id, numero, estado, situacion, creado_en, dias_en_espera, descripcion, trae, contacto, unidad_id, placa, codigo_interno, carroceria, cliente, orden_id, orden_numero, orden_estado, ot_enlazada_en, enlazo, no_procede_motivo, causa, causa_detalle, cerrado_en, cerro, cerro_puesto, registro, registro_puesto, fotos, anulado_en, anulo, motivo_anulacion, puede_enlazar, puede_no_procede, puede_causa, puede_anular, garantia_terminada_en, garantia_termino'
 
 /**
  * Los reclamos que ve quien pregunta, del más reciente al más viejo: todos los
@@ -233,5 +238,13 @@ export async function reclamoParaAbrirSuOt(id: string) {
   const { data, error } = await supabase.from('garantia_reclamos').select('cliente_id').eq('id', id).maybeSingle()
   if (error) throw new Error(`No se pudo leer el cliente del reclamo: ${error.message}`)
   if (!data?.cliente_id) return null
-  return { id: reclamo.id, numero: reclamo.numero, cliente_id: data.cliente_id, unidad_id: reclamo.unidad_id, descripcion: reclamo.descripcion }
+  return {
+    id: reclamo.id,
+    numero: reclamo.numero,
+    cliente_id: data.cliente_id,
+    cliente: reclamo.cliente,
+    unidad_id: reclamo.unidad_id,
+    unidad: [reclamo.placa ?? 'Sin placa', reclamo.codigo_interno, reclamo.carroceria].filter(Boolean).join(' · '),
+    descripcion: reclamo.descripcion,
+  }
 }

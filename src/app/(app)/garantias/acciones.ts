@@ -102,6 +102,15 @@ export async function registrarReclamo(
   }
 }
 
+/**
+ * «Le avisamos a quien lo registró» solo si es otra persona: la base no se
+ * avisa a sí misma (`registrado_por is distinct from` quien actúa).
+ */
+async function avisoAQuienRegistro(supabase: Awaited<ReturnType<typeof createClient>>, reclamo: string, yo: string, texto: string) {
+  const { data } = await supabase.from('garantia_reclamos').select('registrado_por').eq('id', reclamo).maybeSingle()
+  return data && data.registrado_por !== yo ? ` ${texto}` : ''
+}
+
 /** Administración enlaza al reclamo la OT de garantía de su unidad. Mismo permiso que `garantias_enlazar_ot`. */
 export async function enlazarOt(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
@@ -120,7 +129,8 @@ export async function enlazarOt(_previo: unknown, formulario: FormData): Promise
   if (data?.reclamo !== analisis.data.id || !data.numero_ot) return { ok: false, error: 'La OT no se enlazó. Recarga la pantalla.' }
 
   revalidatePath('/garantias', 'layout')
-  return { ok: true, mensaje: `Enlazada la OT ${data.numero_ot}. Le avisamos a quien registró el reclamo.` }
+  const aviso = await avisoAQuienRegistro(supabase, analisis.data.id, perfil.id, 'Le avisamos a quien registró el reclamo.')
+  return { ok: true, mensaje: `Enlazada la OT ${data.numero_ot}.${aviso}` }
 }
 
 /** Administración cierra sin OT el reclamo que no procede, con su motivo. Mismo permiso que `garantias_no_procede`. */
@@ -139,7 +149,8 @@ export async function noProcede(_previo: unknown, formulario: FormData): Promise
   if (data !== analisis.data.id) return { ok: false, error: 'El reclamo no se cerró. Recarga la pantalla.' }
 
   revalidatePath('/garantias', 'layout')
-  return { ok: true, mensaje: 'Cerrado como «No procede», con su motivo. Le avisamos a quien lo registró.' }
+  const aviso = await avisoAQuienRegistro(supabase, analisis.data.id, perfil.id, 'Le avisamos a quien lo registró.')
+  return { ok: true, mensaje: `Cerrado como «No procede», con su motivo.${aviso}` }
 }
 
 /** Calidad anota por qué falló, cuando la garantía está terminada, y el reclamo se cierra. Mismo permiso que `garantias_anotar_causa`. */
@@ -166,7 +177,8 @@ export async function anotarCausa(_previo: unknown, formulario: FormData): Promi
   if (data !== analisis.data.id) return { ok: false, error: 'La causa no quedó anotada. Recarga la pantalla.' }
 
   revalidatePath('/garantias', 'layout')
-  return { ok: true, mensaje: 'Causa anotada: el reclamo quedó cerrado. Le avisamos a quien lo registró.' }
+  const aviso = await avisoAQuienRegistro(supabase, analisis.data.id, perfil.id, 'Le avisamos a quien lo registró.')
+  return { ok: true, mensaje: `Causa anotada: el reclamo quedó cerrado.${aviso}` }
 }
 
 /** Ventas o Administración anulan el reclamo que todavía no tiene OT, con su motivo; no se borra. Mismo permiso que `garantias_anular`. */

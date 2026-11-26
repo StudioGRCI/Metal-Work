@@ -63,6 +63,25 @@ export async function crearOrden(
   }
   const supabase = await createClient()
 
+  // La OT que nace de un reclamo de garantía va con su cliente y su unidad, y
+  // es de garantía: si no, la base no la enlaza, y una OT numerada ya no se
+  // borra. Se mira antes de registrarla, no después.
+  if (v.reclamo_id) {
+    const { data: rec, error: errorRec } = await supabase
+      .from('garantia_reclamos')
+      .select('numero, cliente_id, unidad_id')
+      .eq('id', v.reclamo_id)
+      .maybeSingle()
+    if (errorRec) return { ok: false, error: mensajeDeError(errorRec) }
+    if (!rec) return { ok: false, error: 'Ese reclamo de garantía ya no está a la vista: ábrelo otra vez desde Garantías.' }
+    if (v.tipo_trabajo !== 'GARANTIA' || rec.cliente_id !== v.cliente_id || rec.unidad_id !== (v.unidad_id || null)) {
+      return {
+        ok: false,
+        error: `La OT del reclamo ${rec.numero} es de garantía y va con su mismo cliente y su misma unidad. No se registró: vuelve a abrirla desde el reclamo.`,
+      }
+    }
+  }
+
   const { data, error } = await supabase.rpc('registrar_orden_sin_cotizacion', {
     p_orden: v.orden_id,
     p_numero: v.numero,
