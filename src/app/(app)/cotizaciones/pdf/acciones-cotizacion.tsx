@@ -826,10 +826,24 @@ export function CargarCodigoYOt({
    * La unidad que se carga y cuántas lleva la cotización (migración
    * 20261126760000): con más de una, el botón y la ventana dicen cuál es, y
    * `otras` los códigos que ya tienen las demás, para no repetirlos de memoria.
+   * `facturadas`, las unidades sin OT que ya tienen una factura propia (su OT se
+   * anuló después de facturarla) cuando falta cargar más de una: la factura
+   * sigue al número de la unidad, y la OT que lo ocupe se queda con ella
+   * (migración 20261126998000).
    */
-  unidad?: { cual: number; de: number; otras?: { unidad: number; codigo: string }[] }
+  unidad?: { cual: number; de: number; otras?: { unidad: number; codigo: string }[]; facturadas?: { unidad: number; codigo: string }[] }
 }) {
   const varias = unidad && unidad.de > 1 ? unidad : null
+  const estaYaFacturada = varias?.facturadas?.find((f) => f.unidad === varias.cual) ?? null
+  // Las demás libres que ya tienen factura: se nombran todas, no solo la primera.
+  const otrasYaFacturadas = varias?.facturadas?.filter((f) => f.unidad !== varias.cual) ?? []
+  const hayYaFacturadas = estaYaFacturada !== null || otrasYaFacturadas.length > 0
+  const lasOtras = otrasYaFacturadas.map((f, i) => (
+    <span key={f.unidad}>
+      {i > 0 && (i === otrasYaFacturadas.length - 1 ? ' y ' : ', ')}
+      la unidad {f.unidad} (código <span className="font-mono whitespace-nowrap">{f.codigo}</span>)
+    </span>
+  ))
   const router = useRouter()
   const [abierto, setAbierto] = useState(false)
   const [archivo, setArchivo] = useState<File | null>(null)
@@ -1071,6 +1085,29 @@ export function CargarCodigoYOt({
           <div className="space-y-4 lg:-ml-2 lg:min-h-0 lg:overflow-y-auto lg:pr-2 lg:pl-2">
           {/* Mientras se registra, nada se cambia: queda lo que se envió. */}
           <fieldset disabled={enviando} className="min-w-0 space-y-4">
+          {varias && hayYaFacturadas && (
+            <p
+              id={`eo-facturada-${cotizacionId}`}
+              role="note"
+              data-unidad-ya-facturada
+              className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-aviso"
+            >
+              {estaYaFacturada ? (
+                <>
+                  Esta OT va a quedar como la unidad {varias.cual}, que ya tiene factura: se facturó con el código{' '}
+                  <span className="font-mono whitespace-nowrap">{estaYaFacturada.codigo}</span>, de una OT que se anuló. Cárgala ahora solo si es
+                  ese mismo vehículo. Si es otro, carga primero la OT que reemplaza a la anulada: la que entre ahora se queda con esa factura.
+                  {otrasYaFacturadas.length > 0 && <> También ya {otrasYaFacturadas.length === 1 ? 'tiene' : 'tienen'} factura {lasOtras}.</>}
+                </>
+              ) : (
+                <>
+                  Esta OT va a quedar como la unidad {varias.cual}, sin factura. Ya {otrasYaFacturadas.length === 1 ? 'tiene' : 'tienen'} factura,
+                  de una OT que se anuló, {lasOtras}. Las OT ocupan las unidades libres en orden: la que reemplaza a una anulada se carga cuando
+                  esta ventana diga su unidad.
+                </>
+              )}
+            </p>
+          )}
           <Campo
             etiqueta="Código interno"
             htmlFor="eo-codigo-interno"
@@ -1097,7 +1134,12 @@ export function CargarCodigoYOt({
                 setCodigo(e.target.value)
               }}
               // Los códigos que ya tienen las otras unidades también se leen al llegar al campo.
-              aria-describedby={varias?.otras?.length ? `eo-otras-${cotizacionId}` : undefined}
+              // Y el aviso de la unidad ya facturada: el cursor cae aquí, y sin esto el lector de pantalla lo salta.
+              aria-describedby={
+                [varias && hayYaFacturadas ? `eo-facturada-${cotizacionId}` : null, varias?.otras?.length ? `eo-otras-${cotizacionId}` : null]
+                  .filter(Boolean)
+                  .join(' ') || undefined
+              }
               className="font-mono"
             />
           </Campo>

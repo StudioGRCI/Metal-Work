@@ -27,9 +27,11 @@ function repintar() {
  * Contabilidad registra la factura que emitió en SUNAT: número, fechas, moneda,
  * total y el PDF, que el navegador ya subió a `facturas-venta/{id}/…`. Queda
  * colgada del código interno de la cotización y entra sola a las cuentas por
- * cobrar de Tesorería. Mismo permiso que `registrar_factura_venta`
+ * cobrar de Tesorería. Mismo permiso que `registrar_factura_venta_de_unidad`
  * (`contabilidad.facturar`). El id llega de la pantalla: un reintento no
- * registra otra.
+ * registra otra. `unidad` llega solo de la cotización de varias unidades
+ * (migración 20261126998000): su número, o 0 si la factura es por toda la
+ * cotización; sin él, la base toma la única unidad o pide elegirla.
  */
 export async function registrarFactura(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
@@ -50,6 +52,7 @@ export async function registrarFactura(_previo: unknown, formulario: FormData): 
       concepto: z.string().max(200, 'El concepto pasa de 200 caracteres.'),
       ruta: z.string().min(1, 'Adjunta el PDF de la factura.').max(200),
       nombre_archivo: z.string().max(200),
+      unidad: z.string().regex(/^\d{0,2}$/, 'Elige de qué unidad es la factura, o toda la cotización.'),
     })
     .safeParse({
       id: dato(formulario, 'id'),
@@ -62,13 +65,14 @@ export async function registrarFactura(_previo: unknown, formulario: FormData): 
       concepto: dato(formulario, 'concepto'),
       ruta: dato(formulario, 'ruta'),
       nombre_archivo: dato(formulario, 'nombre_archivo'),
+      unidad: dato(formulario, 'unidad'),
     })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa la factura.' }
   const d = analisis.data
   if (d.fecha_vencimiento < d.fecha_emision) return { ok: false, error: 'El vencimiento no puede ser antes de la emisión.' }
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('registrar_factura_venta', {
+  const { data, error } = await supabase.rpc('registrar_factura_venta_de_unidad', {
     p_id: d.id,
     p_cotizacion: d.cotizacion_id,
     p_numero: d.numero,
@@ -79,6 +83,7 @@ export async function registrarFactura(_previo: unknown, formulario: FormData): 
     p_concepto: d.concepto || null,
     p_ruta: d.ruta,
     p_nombre_archivo: d.nombre_archivo || null,
+    p_unidad: d.unidad === '' ? null : Number(d.unidad),
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.id) return { ok: false, error: 'La factura no se registró. Recarga la pantalla.' }
