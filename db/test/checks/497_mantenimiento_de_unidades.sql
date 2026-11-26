@@ -15,6 +15,9 @@
 --      las terminadas.
 --   7. Quien no tiene el permiso (Tesorería, la supervisión de Producción) no
 --      ve la lista.
+--   8. Lee los RQ de su área y ninguno de otra (el RQ, sus insumos, su
+--      sustento y sus correcciones); el supervisor, Requerimientos y Almacén
+--      siguen leyendo todos; sin área en la cuenta, ninguno.
 --
 -- Cada paso con el puesto que lo hace —nunca ADMIN— y `set local role
 -- authenticated`. El armazón lo pone el administrador. Termina en rollback.
@@ -75,6 +78,7 @@ insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_
    (select id from public.categorias_material where activo order by codigo limit 1),
    (select id from public.unidades_medida where codigo = 'UND')) returning id as material \gset
 
+select set_config('prueba.admin', :'admin_id', true);
 select set_config('prueba.mnt', :'mnt_id', true);
 select set_config('prueba.req', :'req_id', true);
 select set_config('prueba.adm', :'adm_id', true);
@@ -88,7 +92,7 @@ select set_config('prueba.hoy', ((now() at time zone 'America/Lima')::date)::tex
 do $$
 declare v text;
 begin
-  foreach v in array array['rq1', 'rq2', 'rq3', 'rq4', 'rep', 'rep2', 'veh', 'veh2', 'juan', 'lucia'] loop
+  foreach v in array array['rq1', 'rq2', 'rq3', 'rq4', 'rq5', 'rep', 'rep2', 'veh', 'veh2', 'juan', 'lucia'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
 end $$;
@@ -122,6 +126,18 @@ begin
 end $$;
 grant execute on function pg_temp.como(text), pg_temp.id(text), pg_temp.txt(text), pg_temp.lineas(numeric), pg_temp.area(text),
   pg_temp.foto(text, text) to authenticated;
+
+-- Producción ya reportó ayer un apoyo en la misma OT: ese reporte no es de
+-- Mantenimiento, y su lista no lo cuenta. Por debajo: aquí no se prueba el
+-- reporte de la supervisión.
+do $$
+begin
+  set local session_replication_role = replica;
+  insert into public.reportes_diarios (fecha, codigo_interno, asunto, descripcion, area_id, registrado_por)
+  values (pg_temp.txt('hoy')::date - 1, 'OT 9497-2026', 'Apoyo de soldadura',
+          'Producción apoyó con una soldadura en el chasis.', pg_temp.area('PRD'), pg_temp.id('sup'));
+  set local session_replication_role = origin;
+end $$;
 
 -- RR. HH. da de alta a la persona que va en el reporte.
 do $$
@@ -166,7 +182,7 @@ select test.afirmar(
           and descripcion like 'Prueba 497%' and entrega = pg_temp.txt('hoy')::date + 10 and abierta and not en_planta
           and ingreso_en is null and terminada_en is null and ultimo_reporte is null and reportes = 0 and motivo_pausa is null
      from public.mantenimiento_ots() where numero = '9497-2026'),
-  '2. con su código, su cliente, su placa, su vehículo, lo que hay que hacer y la fecha comprometida; abierta y sin vehículo todavía');
+  '2. con su código, su cliente, su placa, su vehículo, lo que hay que hacer y la fecha comprometida; abierta, sin vehículo todavía y sin contar el reporte que subió Producción');
 select test.afirmar(
   (select cliente = 'QA CLIENTE 497' and placa is null and vehiculo is null from public.mantenimiento_ots() where numero = '9498-2026'),
   '2. la que no tiene unidad, con su cliente');
@@ -238,7 +254,7 @@ select test.afirmar(
   '4. Mantenimiento subió su reporte diario por el N.º de la OT, a nombre de su área');
 select test.afirmar(
   (select ultimo_reporte = pg_temp.txt('hoy')::date and reportes = 1 from public.mantenimiento_ots() where numero = '9497-2026'),
-  '4. y la lista de sus OT dice cuándo fue el último reporte');
+  '4. y la lista de sus OT dice cuándo fue el último reporte de su área: uno, sin el de Producción');
 select test.afirmar(
   (select ultimo_reporte is null and reportes = 0 from public.mantenimiento_ots() where numero = '9498-2026'),
   '4. la otra OT sigue sin reporte');
@@ -288,6 +304,30 @@ select test.afirmar(
   (select array_agg(numero order by numero) = array['9498-2026'] from public.mantenimiento_ots() where abierta),
   '6. abierta queda solo la otra');
 reset role;
+-- La otra se termina dos días después: las terminadas van de la última a la más antigua.
+do $$
+begin
+  set local session_replication_role = replica;
+  update public.ot_garantia_terminada set terminada_en = terminada_en - interval '2 days' where orden_id = pg_temp.id('mant');
+  set local session_replication_role = origin;
+end $$;
+select pg_temp.como('adm');
+set local role authenticated;
+select public.dar_por_terminada_la_garantia(pg_temp.id('mant_sin'), 'Cambio de aceite hecho');
+reset role;
+select pg_temp.como('mnt');
+set local role authenticated;
+select test.afirmar(
+  (select array_agg(t.numero order by t.orden) = array['9498-2026', '9497-2026']
+     from public.mantenimiento_ots() with ordinality as t(a, numero, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, orden)),
+  '6. las terminadas salen de la última a la más antigua');
+reset role;
+-- El administrador ve los reportes de todas las áreas en el mismo código.
+select pg_temp.como('admin');
+set local role authenticated;
+select test.afirmar((select reportes = 2 from public.mantenimiento_ots() where numero = '9497-2026'),
+  '6. al administrador la lista le cuenta los reportes de todas las áreas');
+reset role;
 
 -- ===================================================== 7. Quien no tiene el permiso
 select pg_temp.como('tes');
@@ -300,5 +340,112 @@ select test.debe_fallar('select * from public.mantenimiento_ots()', '7. la super
 reset role;
 select test.afirmar(not has_function_privilege('anon', 'public.mantenimiento_ots()', 'execute'),
   '7. y quien no entró no puede ni llamarla');
+
+-- ===================================================== 8. Cada área lee sus RQ
+-- La supervisión de Producción pide para su área con el mismo N.º de OT.
+select pg_temp.como('sup');
+set local role authenticated;
+select public.emitir_requerimiento(pg_temp.id('rq5'), 'OPERACION', pg_temp.area('PRD'), 'OT 9497-2026',
+  'Soldadura para el apoyo en el chasis', null, pg_temp.lineas(3));
+reset role;
+-- Un sustento y una corrección en cada RQ, por debajo: aquí se prueba quién los lee.
+do $$
+begin
+  set local session_replication_role = replica;
+  insert into public.requerimiento_sustentos (requerimiento_linea_id, cantidad, exceso, sustento, sustentado_por)
+  select l.id, 1, 1, 'Sustento de prueba 497 del exceso', pg_temp.id('req')
+    from public.requerimiento_lineas l where l.requerimiento_id in (pg_temp.id('rq1'), pg_temp.id('rq5'));
+  insert into public.correcciones (documento, documento_id, numero, motivo, antes, despues,
+                                   justificante_ruta, justificante_nombre, justificante_mime, justificante_tamano, corregido_por)
+  select 'REQUERIMIENTO', r.id, r.numero, 'Corrección de prueba 497', '{}', '{}',
+         'prueba/497/' || r.id || '.pdf', 'sustento.pdf', 'application/pdf', 1000, pg_temp.id('req')
+    from public.requerimientos r where r.id in (pg_temp.id('rq1'), pg_temp.id('rq5'));
+  -- Y una salida de cada uno que «no llegó», con su nota.
+  insert into public.movimientos_materiales (id, tipo, origen, cantidad, material_id, registrado_por,
+                                             documento_referencia, recibido_por_nombre, codigo_unidad)
+  select md5('mov497' || l.requerimiento_id::text)::uuid, 'SALIDA', 'SALIDA_GENERAL', 1, l.material_id, pg_temp.id('req'),
+         'PRUEBA-497', 'Juan Mecánico', 'OT 9497-2026'
+    from public.requerimiento_lineas l where l.requerimiento_id in (pg_temp.id('rq1'), pg_temp.id('rq5'));
+  insert into public.conformidad_salidas (movimiento_id, requerimiento_id, requerimiento_linea_id, tipo, nota, registrado_por)
+  select md5('mov497' || l.requerimiento_id::text)::uuid, l.requerimiento_id, l.id, 'NO_LLEGO', 'Prueba 497: la salida no llegó', pg_temp.id('req')
+    from public.requerimiento_lineas l where l.requerimiento_id in (pg_temp.id('rq1'), pg_temp.id('rq5'));
+  set local session_replication_role = origin;
+end $$;
+
+select pg_temp.como('mnt');
+set local role authenticated;
+select test.afirmar(
+  (select count(*) = 3 and bool_and(area_id = pg_temp.area('MNT')) from public.requerimientos)
+  and (select count(*) = 0 from public.requerimientos where id = pg_temp.id('rq5')),
+  '8. Mantenimiento lee los tres RQ de su área (los dos suyos y el que le registró Requerimientos) y no el de Producción');
+select test.afirmar(
+  (select count(*) = 1 from public.requerimiento_lineas where requerimiento_id = pg_temp.id('rq1'))
+  and (select count(*) = 0 from public.requerimiento_lineas where requerimiento_id = pg_temp.id('rq5'))
+  and not exists (select 1 from public.requerimiento_lineas l
+                   where l.requerimiento_id not in (pg_temp.id('rq1'), pg_temp.id('rq3'), pg_temp.id('rq4'))),
+  '8. ni sus insumos: lee los de sus RQ');
+select test.afirmar(
+  (select count(*) = 1 from public.requerimiento_sustentos)
+  and (select count(*) = 1 and bool_and(documento_id = pg_temp.id('rq1')) from public.correcciones),
+  '8. ni su sustento ni sus correcciones: lee los de su RQ');
+select test.afirmar(
+  (select count(*) = 1 and bool_and(requerimiento_id = pg_temp.id('rq1')) from public.conformidad_salidas)
+  and (select count(*) = 1 and bool_and(requerimiento_id = pg_temp.id('rq1')) from public.notas_de_conformidad())
+  and (select count(*) = 0 from public.notas_de_conformidad(array[pg_temp.id('rq5')]))
+  and (select count(*) = 1 from public.notas_de_conformidad(null, true)),
+  '8. ni las notas de sus salidas: la tabla y la lista de notas le dan la de su RQ, también pidiendo las abiertas o la del RQ ajeno por su id');
+reset role;
+
+select pg_temp.como('sup');
+set local role authenticated;
+select test.afirmar(
+  (select count(*) = 2 from public.requerimientos where id in (pg_temp.id('rq1'), pg_temp.id('rq5')))
+  and (select count(*) = 2 from public.requerimiento_lineas where requerimiento_id in (pg_temp.id('rq1'), pg_temp.id('rq5')))
+  and (select count(*) = 2 from public.correcciones where documento_id in (pg_temp.id('rq1'), pg_temp.id('rq5'))),
+  '8. el supervisor de Producción sigue leyendo los RQ de todas las áreas (requerimientos.ver), como antes');
+select test.afirmar((select count(*) = 2 from public.notas_de_conformidad(array[pg_temp.id('rq1'), pg_temp.id('rq5')])),
+  '8. y las notas de sus salidas');
+reset role;
+select pg_temp.como('req');
+set local role authenticated;
+select test.afirmar(
+  (select count(*) = 2 from public.requerimientos where id in (pg_temp.id('rq1'), pg_temp.id('rq5')))
+  and (select count(*) = 2 from public.requerimiento_sustentos s join public.requerimiento_lineas l on l.id = s.requerimiento_linea_id
+        where l.requerimiento_id in (pg_temp.id('rq1'), pg_temp.id('rq5'))),
+  '8. y Requerimientos también');
+reset role;
+select pg_temp.como('tes');
+set local role authenticated;
+select test.afirmar((select count(*) = 2 from public.requerimientos where id in (pg_temp.id('rq1'), pg_temp.id('rq5'))),
+  '8. y quien los consulta (requerimientos.ver)');
+reset role;
+
+-- Sin área en la cuenta no hay «los de su área»: no lee ninguno.
+select test.como_usuario(:'admin_id');
+update public.usuarios set area_id = null where id = :'mnt_id';
+select pg_temp.como('mnt');
+set local role authenticated;
+select test.afirmar((select count(*) = 0 from public.requerimientos) and (select count(*) = 0 from public.requerimiento_lineas)
+                    and (select count(*) = 0 from public.correcciones),
+  '8. una cuenta sin área, con requerimientos.area, no lee ningún RQ');
+reset role;
+
+-- Las dos listas dicen lo mismo salvo requerimientos.area: si una cambia, cambia la otra.
+select test.afirmar(
+  (select regexp_replace(replace(a.prosrc, $q$ or public.tiene_permiso('requerimientos.area')$q$, ''), '\s+', ' ', 'g')
+        = regexp_replace(b.prosrc, '\s+', ' ', 'g')
+     from pg_proc a, pg_proc b
+    where a.oid = 'public.puede_ver_requerimientos()'::regprocedure
+      and b.oid = 'public.puede_ver_todos_los_requerimientos()'::regprocedure),
+  '8. puede_ver_todos_los_requerimientos() es puede_ver_requerimientos() sin requerimientos.area');
+-- Y solo Mantenimiento tiene requerimientos.area sin requerimientos.ver: es a quien acota.
+select test.afirmar(
+  (select array_agg(r.codigo order by r.codigo) = array['MANTENIMIENTO']
+     from public.roles r
+    where exists (select 1 from public.roles_permisos x where x.rol_id = r.id and x.permiso_codigo = 'requerimientos.area')
+      and not exists (select 1 from public.roles_permisos x where x.rol_id = r.id
+                       and x.permiso_codigo in ('requerimientos.ver', 'requerimientos.emitir', 'requerimientos.administracion',
+                                                'compras.crear', 'almacen.recibir', 'almacen.despachar'))),
+  '8. el único puesto que lee solo los RQ de su área es Mantenimiento');
 
 rollback;

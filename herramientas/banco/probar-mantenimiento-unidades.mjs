@@ -90,16 +90,16 @@ const [cliente] = await consulta(
 )
 if (!cliente?.sede_id) throw new Error('El banco no tiene clientes ni órdenes: rehaz la base con preparar.sh.')
 // La de garantía va con la unidad que vuelve (la base lo exige): una cualquiera del banco.
-const sembrar = (numero, tipo, estado, descripcion, dias) =>
+const sembrar = (numero, tipo, estado, descripcion, dias, prioridad = 'NORMAL') =>
   consulta(
     `insert into public.ordenes_trabajo (numero, cliente_id, sede_id, tipo_trabajo, prioridad, descripcion, estado, fecha_entrega_comprometida, unidad_id)
-     select $1, $2, $3, $4::public.tipo_trabajo_ot, 'NORMAL', $5, $6::public.estado_ot, $7::date + $8::int,
+     select $1, $2, $3, $4::public.tipo_trabajo_ot, $9::public.prioridad_ot, $5, $6::public.estado_ot, $7::date + $8::int,
             case when $4::text = 'GARANTIA' then (select u.id from public.unidades u order by u.creado_en limit 1) end
       where not exists (select 1 from public.ordenes_trabajo where numero = $1)`,
-    [numero, cliente.id, cliente.sede_id, tipo, descripcion, estado, hoy, dias],
+    [numero, cliente.id, cliente.sede_id, tipo, descripcion, estado, hoy, dias, prioridad],
   )
 await sembrar(OT.enPlanta, 'MANTENIMIENTO', 'APROBADA', 'Cambio de bocinas del eje posterior y engrase general.\nRevisar la fuga de aire de la suspensión.', 6)
-await sembrar(OT.espera, 'MANTENIMIENTO', 'APROBADA', 'Cambio de zapatas de freno y regulación.', -2)
+await sembrar(OT.espera, 'MANTENIMIENTO', 'APROBADA', 'Cambio de zapatas de freno y regulación.', -2, 'URGENTE')
 await sembrar(OT.terminada, 'MANTENIMIENTO', 'APROBADA', 'Reparación del sistema de luces de la carrocería.', -8)
 await sembrar(OT.borrador, 'MANTENIMIENTO', 'BORRADOR', 'Mantenimiento que Gerencia todavía no aprueba.', 12)
 await sembrar(OT.garantia, 'GARANTIA', 'APROBADA', 'Garantía del banco: no es del puesto de Mantenimiento.', 9)
@@ -116,12 +116,21 @@ await consulta(
    select $1, $2, 'Luces reparadas y probadas' where not exists (select 1 from public.ot_garantia_terminada where orden_id = $1)`,
   [ordenes[OT.terminada], usuarios[CUENTAS.administracion]],
 )
-// Los reportes que dejó una vuelta anterior se anulan (es la base local del
-// banco): con uno de hoy, el Dashboard ya no pediría el reporte del día.
+// Los reportes de hoy que dejó una vuelta anterior se anulan (es la base local
+// del banco, por debajo): con uno de hoy, el Dashboard ya no pediría el reporte
+// del día. Solo los de hoy: los de otros días no estorban y no son de esta prueba.
 await consulta(
-  `update public.reportes_diarios set anulado_en = now(), anulado_por = $2, motivo_anulacion = 'Vuelta anterior del banco de pruebas'
-    where registrado_por = $1 and anulado_en is null`,
-  [usuarios[CUENTAS.mantenimiento], usuarios[CUENTAS.administracion]],
+  `update public.reportes_diarios set anulado_en = now(), anulado_por = $1, motivo_anulacion = 'Vuelta anterior del banco de pruebas'
+    where registrado_por = $1 and anulado_en is null and fecha = $2::date`,
+  [usuarios[CUENTAS.mantenimiento], hoy],
+)
+// Producción ya reportó ayer un apoyo en la misma OT: a Mantenimiento no se le cuenta.
+await consulta(
+  `insert into public.reportes_diarios (fecha, codigo_interno, asunto, descripcion, area_id, registrado_por)
+   select $1::date - 1, $2, 'Apoyo de soldadura', 'Producción apoyó con una soldadura en el chasis (banco A.3).',
+          (select id from public.areas where codigo = 'PRD'), $3
+    where not exists (select 1 from public.reportes_diarios where codigo_interno = $2 and registrado_por = $3)`,
+  [hoy, CODIGO, usuarios[CUENTAS.produccion]],
 )
 // Su gente: una persona de planilla de taller en Mantenimiento, nueva en cada
 // corrida para no chocar con el tope de horas del día.
@@ -226,6 +235,14 @@ async function elegir(pagina, etiqueta, texto) {
     `la que no tiene vehículo lo dice, y su fecha vencida también («${entrega2}»)`)
   comprobar((await t1.getByRole('link', { name: /Reportar el día/ }).count()) === 1 && (await t1.getByRole('button', { name: `Nuevo RQ para ${CODIGO}` }).count()) === 1,
     'cada OT abierta trae «Reportar el día» y «Nuevo RQ»')
+  const claseDe = async (t) => (await t.getByRole('link', { name: /Reportar el día/ }).getAttribute('class')) ?? ''
+  comprobar((await claseDe(t1)).includes('bg-acento') && !(await claseDe(t2)).includes('bg-acento'),
+    '«Reportar el día» va lleno solo en la OT con el vehículo en la planta; en la que lo espera, de contorno')
+  const urgente = limpio(await t2.locator('[data-prioridad]').innerText().catch(() => ''))
+  comprobar(/urgente/i.test(urgente) && (await t1.locator('[data-prioridad]').count()) === 0,
+    `la OT urgente lo dice («${urgente}»); la de prioridad normal no lleva insignia`)
+  const sinReporte = limpio(await t1.locator('[data-ultimo-reporte]').innerText())
+  comprobar(sinReporte === 'Ninguno todavía', `el reporte que subió Producción en la misma OT no se le cuenta a Mantenimiento («${sinReporte}»)`)
   comprobar((await pagina.locator(`a[href^="/ordenes/"]`).count()) === 0, 'sin enlaces a la OT: no la abre')
   await pagina.screenshot({ path: join(carpeta, '1-lista-1440.png'), fullPage: true })
 
@@ -295,6 +312,24 @@ async function elegir(pagina, etiqueta, texto) {
   await ir(pagina, `${BASE}/requerimientos?area=todas`)
   const conTodas = limpio(await pagina.locator('main').innerText())
   comprobar(ajenos.every((a) => !conTodas.includes(a.numero)), 'ni escribiendo «?area=todas» en la dirección')
+  // Ni con el enlace directo al RQ de otra área: la base no se lo deja leer.
+  const [ajeno] = await consulta(`select r.id, r.numero from public.requerimientos r join public.areas a on a.id = r.area_id where a.codigo <> 'MNT' and r.estado <> 'ANULADO' order by r.creado_en desc limit 1`)
+  await ir(pagina, `${BASE}/requerimientos?rq=${ajeno?.id}`)
+  await pagina.getByText('Ese requerimiento no está o no lo puedes ver').first().waitFor({ timeout: 20000 }).catch(() => {})
+  const directo = limpio(await pagina.locator('main').innerText())
+  comprobar(Boolean(ajeno) && directo.includes('Ese requerimiento no está o no lo puedes ver') && !directo.includes(ajeno.numero),
+    `ni con el enlace directo al ${ajeno?.numero}, de otra área: «Ese requerimiento no está o no lo puedes ver»`)
+  // Y en la base, con su cuenta: los RQ que lee son todos de su área.
+  await consulta('begin')
+  await consulta(`select set_config('request.jwt.claim.sub', $1, true), set_config('request.jwt.claims', json_build_object('sub', $1::text, 'role', 'authenticated')::text, true)`, [usuarios[CUENTAS.mantenimiento]])
+  await consulta('set local role authenticated')
+  const [lee] = await consulta(
+    `select (select count(*) from public.requerimientos)::int as rq,
+            (select count(*) from public.requerimientos r join public.areas a on a.id = r.area_id where a.codigo <> 'MNT')::int as ajenos,
+            (select count(*) from public.requerimiento_lineas l where l.requerimiento_id = $1)::int as lineas_ajenas`, [ajeno?.id])
+  await consulta('rollback')
+  comprobar(lee.rq > 0 && lee.ajenos === 0 && lee.lineas_ajenas === 0,
+    `en la base, con su cuenta: lee ${lee.rq} RQ, ${lee.ajenos} de otra área y ${lee.lineas_ajenas} insumos del ${ajeno?.numero}`)
   await pagina.screenshot({ path: join(carpeta, '5-requerimientos-1440.png'), fullPage: true })
   await ir(pagina, `${BASE}/requerimientos/unidades`)
   comprobar(new URL(pagina.url()).pathname === '/mantenimiento', `«RQ por unidad» lo devuelve a su lista de OT (${new URL(pagina.url()).pathname})`)
@@ -331,7 +366,7 @@ async function elegir(pagina, etiqueta, texto) {
     `con su gente de Mantenimiento y sus horas (${JSON.stringify(reportes[0]?.gente)})`)
   await ir(pagina, `${BASE}/mantenimiento`)
   const ultimo = limpio(await tarjeta(pagina, OT.enPlanta).locator('[data-ultimo-reporte]').innerText())
-  comprobar(/^\d{2}\/\d{2}\/\d{4}/.test(ultimo), `la tarjeta de la OT dice su último reporte («${ultimo}»)`)
+  comprobar(ultimo.startsWith('Hoy'), `la tarjeta de la OT dice que su último reporte es de hoy, sin sumar el de Producción («${ultimo}»)`)
   await pagina.screenshot({ path: join(carpeta, '7-ot-con-reporte-1440.png'), fullPage: true })
   await ir(pagina, `${BASE}/reportes-diarios`)
   comprobar(limpio(await pagina.locator('main').innerText()).includes(`Mantenimiento ${sello}`), 'y su reporte está en «Reporte diario»')
@@ -383,6 +418,12 @@ for (const [puesto, correo] of [['Tesorería', CUENTAS.tesoreria], ['El supervis
   const pestanas = (await pagina.getByRole('navigation', { name: 'Requerimiento' }).getByRole('link').allInnerTexts().catch(() => [])).map(limpio)
   comprobar(pestanas.some((p) => p.startsWith('Por unidad')) && pestanas.some((p) => p.startsWith('Todas las áreas')) && !pestanas.some((p) => p.startsWith('Por OT')),
     `el supervisor de Producción sigue con «Por unidad» y «Todas las áreas» (${pestanas.join(' | ')})`)
+  // Y sigue abriendo el RQ de otra área, como antes: lee todos (requerimientos.ver).
+  const [deMnt] = await consulta(`select r.id, r.numero from public.requerimientos r join public.areas a on a.id = r.area_id where a.codigo = 'MNT' and r.estado <> 'ANULADO' order by r.creado_en desc limit 1`)
+  await ir(pagina, `${BASE}/requerimientos?rq=${deMnt?.id}`)
+  await pagina.getByText(`Solo el ${deMnt?.numero}`).first().waitFor({ timeout: 20000 }).catch(() => {})
+  comprobar(Boolean(deMnt) && limpio(await pagina.locator('main').innerText()).includes(`Solo el ${deMnt.numero}`),
+    `y sigue abriendo el RQ de otra área (${deMnt?.numero}, de Mantenimiento)`)
   await contexto.close()
 }
 

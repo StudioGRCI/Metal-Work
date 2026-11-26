@@ -111,6 +111,7 @@ con los roles reales en la base local (check 349) y en producción con las cuent
 | Corregir un RQ «Listo en almacén» | Quien lo registra, con su justificante (`corregir_requerimiento` con `rq_exigir_del_area(tipo, 'CORREGIR', área, quien lo registró)`: el supervisor, solo los suyos) | Desde la migración `20261020196000` la cantidad solo baja: lo listo ya está separado y lo de más no lo separó nadie. Para pedir más se registra otro RQ, y lo listo se entrega sin esperar (check 416) |
 | Hacer la OC de lo que falta | El de operación, Logística; el de Administración, la administradora, que para eso tiene `compras.crear`, `compras.ver` y `proveedores.ver`. Un proveedor nuevo lo registra Logística | `rq_exigir(tipo, 'COMPRAR')` dentro de `rq_marcar_en_atencion` y `emitir_compra_del_requerimiento`. Logística no compra lo de Administración y la administradora no compra lo de operación |
 | Ver los requerimientos | Quien los ve hasta ahora y la administradora | `puede_ver_requerimientos()` suma `requerimientos.administracion` |
+| Ver los requerimientos **solo de su área** | `requerimientos.area` sin ningún otro permiso de RQ: hoy, Mantenimiento | Desde la `20261126996000` las políticas de lectura (`requerimientos`, sus insumos, sus sustentos, sus correcciones y las notas de sus salidas) piden `puede_ver_todos_los_requerimientos()` —la lista de siempre sin `requerimientos.area`— o que el RQ sea del área de la cuenta (`area_de_mis_requerimientos()`). El supervisor de área no cambia: lee todos por `requerimientos.ver` |
 | Ver cuánto se entregó ya de cada insumo y cuánto llegó de su compra (la barra de cada insumo en `/requerimientos`) | Quien ve los requerimientos, aunque no lea el kardex (Supervisión) | `entregado_de_requerimientos(ids)`, migración `20261020191000`: solo cantidades, la entregada de cada línea (salidas menos sus devoluciones) y la que entró al kardex por la línea de su OC (repartida en el orden de los RQ cuando la línea junta varios), sin precio, proveedor ni quién recibió (check 420, corrido el 2026-10-20 en la base local con el rol real) |
 | Elegir el código interno de una lista, con su unidad (requerimiento, caja diaria, costeo de horas, observaciones de RR. HH., OC directa, OC desde los materiales de una OT, orden de servicio, subcontrato, salida del almacén sin RQ; el reporte diario la toma cuando entre su rediseño) | `requerimientos.emitir`, `requerimientos.administracion`, `tesoreria.caja`, `rrhh.personal`, `reporte_diario.registrar`, `compras.crear`, `subcontratos.gestionar` y, desde la migración `20261021131000`, `almacen.despachar` (Almacén, en la salida del kardex sin RQ): los que piden esos formularios. El check 420 prueba cada uno solo con su rol real (corrido el 2026-10-21 en la base local). La portería no: no registra nada con código interno | `codigos_internos_para_elegir()`, migración `20261020190000`: el código, la placa y marca de su unidad, si Gerencia cerró su costeo (sin montos) y si es de una unidad del padrón. Muestra la placa y la marca a quien no lee Unidades ni la portería, a propósito: es lo que se busca. El de costeo cerrado no se ofrece; escrito, el campo avisa. Lo que no está en la lista no se envía sin confirmar «usa … como código nuevo», y la variante casi igual (O y cero, guion y barra) se avisa diciendo cuál es la del padrón (check 420, corrido el 2026-10-20 en la base local con el rol real) |
 
@@ -531,7 +532,7 @@ administrador; se anula con motivo, quién y cuándo, y queda congelado.
 | Anular un reporte mal hecho, con motivo de 10 a 500 letras | `averias.atender` (`averias_anular`; la pantalla pide el mismo). Por atender o en atención; la que Mantenimiento ya cerró no se anula | Mantenimiento |
 | Atenderla: anotar o corregir el diagnóstico | `averias.atender` (`averias_atender`; la acción `atenderAveria` pide el mismo). La tabla no tiene `grant update`: la única puerta es la función | Mantenimiento |
 | Enlazar o quitar el RQ de los repuestos, con qué repuesto | `averias.atender` (`averias_enlazar_rq`, `averias_quitar_rq`, y `averias_rq_para_enlazar` para buscarlo: los RQ vivos de los últimos 180 días). Solo en atención. El enlace no se borra: se quita con quién y cuándo (`averia_requerimientos`, sin `grant` de escritura) | Mantenimiento |
-| Ver los RQ enlazados y cómo van | quien ve la avería (`averias_rq_enlazados`, política de `averia_requerimientos`): el número, el estado y qué repuesto. El enlace a la pantalla del RQ sale solo a quien puede verlo (`puede_ver_requerimientos()`) | Quien ve la avería |
+| Ver los RQ enlazados y cómo van | quien ve la avería (`averias_rq_enlazados`, política de `averia_requerimientos`): el número, el estado y qué repuesto. El enlace a la pantalla del RQ sale solo a quien puede leer **ese** RQ (desde la `20261126996000`: todos, o los de su área con `requerimientos.area`) | Quien ve la avería |
 | Cerrarla con el trabajo hecho y las horas parado | `averias.atender` (`averias_cerrar`; la acción `cerrarAveria` pide el mismo). El equipo vuelve a operativo si seguía parado por ella; si otro reporte vigente lo detiene, sigue parado por ese | Mantenimiento |
 | Confirmar que quedó bien, o devolverla con lo que sigue fallando (10 a 500 letras) | ninguno: quien la reportó; si su cuenta ya no está activa, el responsable activo del área del equipo (`areas.jefe_id`) o quien tiene `averias.atender` (`averias_puede_confirmar`, desde la `20261126995000`; la usan `averias_confirmar` y la guarda `fn_averia_guardia`, y la acción `confirmarAveria` no exige permiso). «No quedó bien» la reabre y, si detenía el trabajo, deja el equipo parado otra vez | Quien la reportó, cualquier puesto; sin su cuenta, el responsable del área o Mantenimiento |
 
@@ -607,7 +608,7 @@ puesto de Mantenimiento, que es uno solo (el de Equipos y Averías).
 
 | Qué | Permiso (acción y política o función) | Quién |
 | --- | --- | --- |
-| Ver las OT de mantenimiento aprobadas (`/mantenimiento`): cliente, placa y vehículo (los de la unidad, o los que se anotaron en su ingreso si la OT no tiene unidad), qué hay que hacer, fecha comprometida, si el vehículo está en la planta, si ya se dio por terminada y su último reporte. Las abiertas y las 30 últimas terminadas; nunca el borrador ni la anulada, ni la de garantía, que sigue con Producción | `mantenimiento.ots` (`mantenimiento_ots()`; la pantalla exige el mismo). Sin montos, y sin `ordenes.ver`: la tabla de órdenes sigue cerrada para el puesto | Mantenimiento |
+| Ver las OT de mantenimiento aprobadas (`/mantenimiento`): cliente, placa y vehículo (los de la unidad, o los que se anotaron en su ingreso si la OT no tiene unidad), qué hay que hacer, fecha comprometida, la prioridad cuando es alta o urgente, si el vehículo está en la planta, si ya se dio por terminada y el último reporte de su área. Las abiertas (por fecha comprometida) y las 30 últimas terminadas; nunca el borrador ni la anulada, ni la de garantía, que sigue con Producción | `mantenimiento.ots` (`mantenimiento_ots()`; la pantalla exige el mismo). Sin montos, y sin `ordenes.ver`: la tabla de órdenes sigue cerrada para el puesto | Mantenimiento |
 | Pedir los materiales de una OT («Nuevo RQ» en su tarjeta): RQ de operación de su área, con el N.º de la OT como código | `requerimientos.area` (`emitir_requerimiento` → `rq_exigir_del_area`: solo su área y solo de operación). Corrige y anula solo los que registró. El área MNT pide por el RQ de operación (`areas.requerimiento`) desde esta migración | Mantenimiento (y los supervisores, cada uno para su área) |
 | Subir el reporte del día de una OT («Reportar el día»), con personal, horas y fotos | `reporte_diario.registrar` (`registrar_reporte_diario`). Lo validan Gerencia y RR. HH. como a los demás. Desde esta migración la lista de personal y el disparador aceptan también a la gente de planilla de taller del área de Mantenimiento, además de Maestranza, Producción y Acabados (`reporte_diario_personal_disponible`, `fn_reporte_diario_solo_gente_del_taller`) | Mantenimiento |
 | Registrar el ingreso y la salida del vehículo por la OT | `vehiculos.registrar` (sin cambio) | Requerimientos |
@@ -616,9 +617,26 @@ puesto de Mantenimiento, que es uno solo (el de Equipos y Averías).
 
 - **En Requerimientos** (`/requerimientos`) Mantenimiento ve «Por OT» (su lista
   de OT) y «De tu área»; la pantalla no le ofrece «Todas las áreas» ni «RQ por
-  unidad», que lo devuelve a su lista. La política de lectura de los RQ es la
-  misma de los supervisores (`puede_ver_requerimientos`): lo que la pantalla no
-  muestra, la base sí lo deja leer con ese permiso.
+  unidad», que lo devuelve a su lista.
+- **Lee solo los RQ de su área, también en la base.** `requerimientos.area`
+  dejaba leer los de todas (`puede_ver_requerimientos()`), y no se notaba porque
+  el supervisor de área tiene además `requerimientos.ver`. Mantenimiento es el
+  primer puesto que lo recibe solo, y la migración acota las cinco políticas de
+  lectura del RQ al área de la cuenta. El enlace `?rq=` de un RQ de otra área le
+  dice «Ese requerimiento no está o no lo puedes ver». Una cuenta sin área no
+  lee ninguno. Las notas de las salidas (`notas_de_conformidad`), la única
+  función de los RQ que lista sin que le pasen ids, también quedan por área.
+  **Lo que queda abierto:** las funciones que dan el avance, lo
+  entregado, el metrado, el recorrido y las salidas de los RQ **que se les
+  pasan por su id** (`avance_de_requerimientos` y las demás, con
+  `puede_ver_requerimientos()`) siguen contestando a quien trabaja con RQ: no
+  listan nada, pero no miran el área. Mantenimiento recibe el id de un RQ de
+  otra área cuando lo elige para enlazarlo a una avería
+  (`averias_rq_para_enlazar`), y con ese id esas funciones le contestarían por
+  la API, aunque ninguna pantalla se lo ofrezca. Cerrarlo es reescribir seis
+  funciones y queda anotado para hacerlo aparte.
+- **El último reporte** de cada OT es el del área de quien mira: si Producción
+  reporta un apoyo en la misma OT, a Mantenimiento no se le cuenta como suyo.
 - **El reporte de hoy** se le pide solo el día en que una OT de mantenimiento
   abierta y sin pausa tiene su vehículo en la planta: el puesto no trabaja
   unidades todos los días.

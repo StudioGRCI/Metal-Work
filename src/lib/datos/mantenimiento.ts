@@ -21,7 +21,6 @@ export type OtDeMantenimiento = {
   placa: string | null
   vehiculo: string | null
   descripcion: string
-  registrada: string | null
   entrega: string | null
   motivo_pausa: string | null
   /** El vehículo entró por esta OT y todavía no sale. */
@@ -32,7 +31,7 @@ export type OtDeMantenimiento = {
   abierta: boolean
   /** Cuándo lo dio por terminado Administración; `null` si la OT se cerró por su estado. */
   terminada_en: string | null
-  /** El último reporte diario de su código, de cualquier área. */
+  /** El último reporte diario de su código que subió el área de quien mira (todas, para el administrador). */
   ultimo_reporte: string | null
   reportes: number
 }
@@ -55,7 +54,6 @@ export async function otsDeMantenimiento(): Promise<OtDeMantenimiento[]> {
             placa: o.placa,
             vehiculo: o.vehiculo,
             descripcion: o.descripcion ?? '',
-            registrada: o.registrada,
             entrega: o.entrega,
             motivo_pausa: o.motivo_pausa,
             en_planta: o.en_planta === true,

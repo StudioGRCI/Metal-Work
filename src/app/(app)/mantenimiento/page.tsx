@@ -12,7 +12,8 @@ import { otsDeMantenimiento, type OtDeMantenimiento } from '@/lib/datos/mantenim
 import { cargarRequerimientos, catalogosDelRequerimiento, type RequerimientoListado } from '@/lib/datos/requerimientos'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { normalizarCodigo } from '@/lib/dominio/codigos-internos'
-import { PERMISO_OTS_DE_MANTENIMIENTO, situacionDeLaOt } from '@/lib/dominio/mantenimiento'
+import { definir, PRIORIDAD } from '@/lib/dominio/estados'
+import { PERMISO_OTS_DE_MANTENIMIENTO, situacionDeLaOt, tieneTrabajoHoy } from '@/lib/dominio/mantenimiento'
 import { ESTADOS_RQ_ABIERTOS, estadoDelRequerimiento } from '@/lib/dominio/requerimientos'
 import { fecha, hoyLima } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -46,12 +47,16 @@ export default async function PaginaOtsDeMantenimiento({ searchParams }: PagePro
   const pide = puede(perfil, 'requerimientos.area') && area !== null
   const reporta = puede(perfil, 'reporte_diario.registrar')
 
-  const [ots, rqs, catalogos] = await Promise.all([
+  const [ots, recientes, enCaminoDelArea, catalogos] = await Promise.all([
     otsDeMantenimiento(),
     // Los RQ que pidió su área: los de cada OT se reconocen por su código.
     pide && area ? cargarRequerimientos({ area, tipo: 'OPERACION', conEntregado: true }) : Promise.resolve([]),
+    // Los que van en camino se leen aparte, como en «RQ por unidad»: la lista de
+    // recientes llega hasta 300, y uno abierto más viejo que eso no saldría en su OT.
+    pide && area ? cargarRequerimientos({ area, tipo: 'OPERACION', soloAbiertos: true, conEntregado: true }) : Promise.resolve([]),
     pide ? catalogosDelRequerimiento() : Promise.resolve(null),
   ])
+  const rqs = [...new Map([...recientes, ...enCaminoDelArea].map((r) => [r.id, r])).values()]
   const areaFija = pide ? catalogos?.areas.find((a) => a.id === area && a.requerimiento === 'OPERACION') : undefined
 
   const porCodigo = new Map<string, RequerimientoListado[]>()
@@ -162,6 +167,10 @@ function TarjetaDeLaOt({
   reporta: boolean
 }) {
   const situacion = situacionDeLaOt(ot)
+  // La prioridad se dice solo cuando no es la de siempre: una insignia en cada tarjeta no diría nada.
+  const prioridad = ot.abierta && (ot.prioridad === 'ALTA' || ot.prioridad === 'URGENTE') ? definir(PRIORIDAD, ot.prioridad) : null
+  // «Reportar el día» es lo primero solo donde hay trabajo hoy: el vehículo en la planta y la OT sin pausa.
+  const hayTrabajoHoy = tieneTrabajoHoy(ot)
   const vencida = ot.abierta && ot.entrega !== null && ot.entrega < hoy
   const deLaUnidad = [ot.placa, ot.vehiculo].filter(Boolean).join(' · ')
   return (
@@ -174,9 +183,18 @@ function TarjetaDeLaOt({
             {deLaUnidad && <span> · {deLaUnidad}</span>}
           </>
         }
-        acciones={<Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>}
+        acciones={
+          <span className="flex flex-wrap items-center gap-1.5">
+            {prioridad && (
+              <Insignia tono={prioridad.tono} data-prioridad={ot.prioridad}>
+                Prioridad {prioridad.etiqueta.toLowerCase()}
+              </Insignia>
+            )}
+            <Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>
+          </span>
+        }
       />
-      <TarjetaCuerpo className="space-y-3">
+      <TarjetaCuerpo className="space-y-4">
         <AvisoDeLaUnidad codigo={ot.codigo} />
         {ot.motivo_pausa && (
           <p className="text-sm text-aviso" data-motivo-pausa>
@@ -203,15 +221,17 @@ function TarjetaDeLaOt({
                 ? `En la planta desde el ${fecha(ot.ingreso_en)}`
                 : ot.salida_en
                   ? `Salió el ${fecha(ot.salida_en)}`
-                  : 'Todavía no ingresa'}
+                  : ot.abierta
+                    ? 'Todavía no ingresa'
+                    : 'No ingresó por esta OT'}
             </dd>
           </div>
           <div>
-            <dt className="text-xs font-medium text-texto-suave">{ot.abierta ? 'Último reporte diario' : 'Terminada'}</dt>
+            <dt className="text-xs font-medium text-texto-suave">{ot.abierta ? 'Último reporte de tu área' : 'Terminada'}</dt>
             <dd className="text-texto" data-ultimo-reporte>
               {ot.abierta
                 ? ot.ultimo_reporte
-                  ? `${fecha(ot.ultimo_reporte)}${ot.reportes > 1 ? ` · ${ot.reportes} en total` : ''}`
+                  ? `${ot.ultimo_reporte === hoy ? 'Hoy' : fecha(ot.ultimo_reporte)}${ot.reportes > 1 ? ` · ${ot.reportes} en total` : ''}`
                   : 'Ninguno todavía'
                 : ot.terminada_en
                   ? `El ${fecha(ot.terminada_en)}, por Administración`
@@ -225,7 +245,11 @@ function TarjetaDeLaOt({
         {ot.abierta && (pide || reporta) && (
           <div className="flex flex-wrap gap-2 border-t border-borde pt-3">
             {reporta && (
-              <EnlaceBoton href={`/reportes-diarios/nuevo?codigo=${encodeURIComponent(ot.codigo)}`} variante="primario" tamano="sm">
+              <EnlaceBoton
+                href={`/reportes-diarios/nuevo?codigo=${encodeURIComponent(ot.codigo)}`}
+                variante={hayTrabajoHoy ? 'primario' : 'contorno'}
+                tamano="sm"
+              >
                 <ClipboardPen aria-hidden className="size-4" />
                 Reportar el día<span className="sr-only"> de la {ot.codigo}</span>
               </EnlaceBoton>

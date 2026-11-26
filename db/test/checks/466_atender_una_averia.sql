@@ -166,13 +166,14 @@ begin
     exists (select 1 from public.averias_rq_para_enlazar() where numero = 'RQ-CHK466-1' and estado = 'POR_ATENDER')
     and not exists (select 1 from public.averias_rq_para_enlazar() where numero = 'RQ-CHK466-2'),
     'Mantenimiento elige entre los RQ vivos, sin los anulados');
-  -- Hasta la 20261126996000 Mantenimiento no leía la tabla de RQ. Desde ella pide
-  -- los materiales de sus OT de mantenimiento con el RQ de operación de su área
-  -- (`requerimientos.area`), y con ese permiso lee los RQ como los supervisores:
-  -- por eso el RQ enlazado a la avería ahora se le abre (`puede_abrir`).
-  perform test.afirmar((select count(*) from public.requerimientos where id = pg_temp.id('rq1')) = 1
+  -- Desde la 20261126996000 Mantenimiento pide los materiales de sus OT con el
+  -- RQ de operación de su área (`requerimientos.area`) y lee los RQ DE SU ÁREA,
+  -- nada más. Este es de Maestranza: lo elige de la lista para enlazarlo, pero
+  -- no lo lee de la tabla.
+  perform test.afirmar((select count(*) from public.requerimientos where id = pg_temp.id('rq1')) = 0
+                       and (select count(*) from public.requerimientos) = 0
                        and public.tiene_permiso('requerimientos.area') and not public.tiene_permiso('requerimientos.emitir'),
-    'y lee los RQ porque pide los de su área (requerimientos.area), sin el permiso de Requerimientos');
+    'sin leer de la tabla el RQ de otra área, aunque pida los de la suya (requerimientos.area)');
   perform test.debe_fallar(format('select * from public.averias_enlazar_rq(%L, %L, %L, ''Interruptor'')',
       current_setting('prueba.enlace1'), current_setting('prueba.av1'), current_setting('prueba.rq2')),
     'un RQ anulado no se enlaza', 'anulado');
@@ -196,8 +197,34 @@ begin
   perform test.afirmar((select count(*) from public.averia_requerimientos where averia_id = pg_temp.id('av1')) = 2
                        and (select rq_enlazados from public.averias_visibles(pg_temp.id('av1'))) = 1,
     'se enlaza de nuevo; el quitado queda, con quién y cuándo, y la lista cuenta uno');
+  perform test.afirmar(
+    (select numero = 'RQ-CHK466-1' and not puede_abrir from public.averias_rq_enlazados(array[pg_temp.id('av1')])),
+    'el RQ de otra área se le muestra con su número y cómo va, sin ofrecerle abrirlo');
 end $$;
 reset role;
+-- Si el RQ fuera de su área, lo abre: `puede_abrir` sigue al RQ, no al puesto.
+-- (El área de un RQ registrado no se cambia así: aquí, por debajo, solo para la prueba.
+-- La cuenta de esta prueba no tiene área: se le pone la suya mientras dura.)
+select set_config('prueba.mnt_area', coalesce((select area_id::text from public.usuarios where id = :'mnt_id'), ''), true);
+do $$ begin
+  set local session_replication_role = replica;
+  update public.requerimientos set area_id = (select id from public.areas where codigo = 'MNT') where id = pg_temp.id('rq1');
+  update public.usuarios set area_id = (select id from public.areas where codigo = 'MNT') where id = pg_temp.id('mnt');
+  set local session_replication_role = origin;
+end $$;
+select test.como_usuario(:'mnt_id');
+set local role authenticated;
+select test.afirmar(
+  (select puede_abrir from public.averias_rq_enlazados(array[pg_temp.id('av1')]))
+  and (select count(*) from public.requerimientos where id = pg_temp.id('rq1')) = 1,
+  'el RQ de su área sí se le abre, y lo lee');
+reset role;
+do $$ begin
+  set local session_replication_role = replica;
+  update public.requerimientos set area_id = (select id from public.areas where codigo = 'MTZ') where id = pg_temp.id('rq1');
+  update public.usuarios set area_id = nullif(current_setting('prueba.mnt_area'), '')::uuid where id = pg_temp.id('mnt');
+  set local session_replication_role = origin;
+end $$;
 select test.afirmar(
   (select quitado_por = pg_temp.id('mnt') and quitado_en is not null from public.averia_requerimientos where id = pg_temp.id('enlace1')),
   'el enlace quitado guarda quién lo quitó');

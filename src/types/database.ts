@@ -13920,6 +13920,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      area_de_mis_requerimientos: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
       armar_ficha_ot: {
         Args: {
           p_orden: string | null
@@ -17532,7 +17536,6 @@ export type Database = {
           placa: string | null
           vehiculo: string | null
           descripcion: string | null
-          registrada: string | null
           entrega: string | null
           motivo_pausa: string | null
           en_planta: boolean | null
@@ -18568,6 +18571,10 @@ export type Database = {
         Returns: boolean
       }
       puede_ver_todas_las_averias: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      puede_ver_todos_los_requerimientos: {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
