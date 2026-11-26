@@ -15,7 +15,7 @@ import { AnularTareo, CargarHoras } from './formulario'
 
 export const metadata = { title: 'Costeo por código interno' }
 
-type PorPersona = { id: string; nombre: string; cargo: string | null; horas: number; costo: number; labores: Set<string>; reportes: Set<string> }
+type PorPersona = { id: string; nombre: string; cargo: string | null; horas: number; costo: number; labores: Set<string>; reportes: Set<string>; aMano: number }
 type PorCodigo = { codigo: string; horas: number; costo: number; cargas: number; personas: Map<string, PorPersona> }
 
 /** Suma lo vigente del mes por código interno y, dentro, por persona. */
@@ -36,11 +36,13 @@ function agrupar(tareos: Tareo[]): PorCodigo[] {
       costo: 0,
       labores: new Set(),
       reportes: new Set(),
+      aMano: 0,
     }
     p.horas += t.horas
     p.costo += t.costo
     if (t.labor) p.labores.add(t.labor)
     if (t.reporte) p.reportes.add(t.reporte.id)
+    else p.aMano += 1
     c.personas.set(t.trabajador_id, p)
     codigos.set(t.codigo_interno, c)
   }
@@ -251,7 +253,12 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
                                   {moneda(p.costo)}
                                 </Link>
                                 <p className="text-xs whitespace-nowrap text-texto-suave">
-                                  {p.reportes.size > 0 ? `${p.reportes.size} ${p.reportes.size === 1 ? 'reporte' : 'reportes'}` : 'a mano'}
+                                  {[
+                                    p.reportes.size > 0 && `${p.reportes.size} ${p.reportes.size === 1 ? 'reporte' : 'reportes'}`,
+                                    p.aMano > 0 && (p.reportes.size > 0 ? `${p.aMano} a mano` : p.aMano === 1 ? 'a mano' : `${p.aMano} a mano`),
+                                  ]
+                                    .filter(Boolean)
+                                    .join(' y ')}
                                 </p>
                               </TD>
                             </TR>

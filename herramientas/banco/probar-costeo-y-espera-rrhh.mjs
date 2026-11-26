@@ -173,6 +173,8 @@ try {
     // El importe de la persona abre solo sus cargas en ese código.
     await pagina.goto(`${BASE}/rrhh/costeo?mes=${mes}`, { waitUntil: 'networkidle' })
     await pagina.locator('details', { hasText: CODIGO }).first().locator('summary').click()
+    const bajoElImporte = await texto(pagina.locator(`a[data-importe-persona="${pedro.id}"]`).first().locator('xpath=following-sibling::p[1]'))
+    comprobar(bajoElImporte === '3 reportes y 1 a mano', `${ancho}: bajo el importe de la persona se cuentan también las cargas a mano: «${bajoElImporte}»`)
     await pagina.locator(`a[data-importe-persona="${pedro.id}"]`).first().click()
     await pagina.waitForURL(/persona=/, { timeout: 20000 })
     const dePedro = await texto(pagina.locator('#dia'))
