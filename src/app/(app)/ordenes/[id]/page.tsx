@@ -483,7 +483,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
             <SeccionDesplegable titulo="Cliente y unidad" descripcion={cliente?.razon_social ?? 'Datos de identificación de esta OT'} abierta={puedeEditarDatos}>
               {puedeEditarDatos && (
                 <div className="mb-2 flex justify-end">
-                  <EditarOrden orden={orden} cotizaciones={nuevasCotizaciones} abrirAlEntrar={query.editar === '1'} />
+                  <EditarOrden orden={orden} cotizaciones={nuevasCotizaciones} />
                 </div>
               )}
               <div>

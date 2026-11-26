@@ -274,6 +274,17 @@ let otId = null
   comprobar(tituloVe === `Editar OT ${N}-${anio}`, `y abre «Editar OT» sola («${tituloVe}»)`)
   comprobar(!new URL(pagina.url()).searchParams.has('editar'), 'y quita «editar» de la dirección, para no abrirla otra vez al recargar')
   await pagina.screenshot({ path: join(CAPTURAS, '8-1-administracion-1440-3-poner-la-fecha.png'), fullPage: false })
+  // Cancelar, ir a otra pestaña y volver con «Atrás»: no se abre sola otra vez.
+  await ve.getByRole('button', { name: 'Cancelar' }).click()
+  await ve.waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {})
+  await pagina.getByRole('link', { name: 'Historial', exact: true }).first().click()
+  await pagina.waitForURL((u) => u.searchParams.get('vista') === 'bitacora' || u.pathname.endsWith('/historial'), { timeout: 30000 }).catch(() => {})
+  await pagina.waitForLoadState('networkidle')
+  await pagina.goBack({ waitUntil: 'networkidle' })
+  await pagina.waitForTimeout(800)
+  comprobar((await pagina.locator('[role="dialog"]').count()) === 0, 'cancelada y de vuelta con «Atrás», «Editar OT» no se abre sola')
+  await pagina.getByRole('button', { name: 'Editar OT / cambiar cliente' }).click()
+  await ve.waitFor({ timeout: 10000 }).catch(() => {})
   const dia = (await uno(`select to_char((now() at time zone 'America/Lima')::date + 20, 'YYYY-MM-DD') as d`)).d
   await ve.locator('input[name="fecha_entrega_comprometida"]').fill(dia)
   await ve.locator('textarea[name="motivo"]').fill('El cliente confirmó la fecha de entrega')

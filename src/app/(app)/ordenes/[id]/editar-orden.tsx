@@ -9,23 +9,28 @@ import type { obtenerOrden } from '@/lib/datos/ordenes'
 import type { cotizacionesParaCambio } from '@/lib/datos/edicion-ot'
 import { editarOrdenConHistorial } from './acciones-edicion'
 
-export function EditarOrden({ orden, cotizaciones, abrirAlEntrar = false }: {
+export function EditarOrden({ orden, cotizaciones }: {
   orden: NonNullable<Awaited<ReturnType<typeof obtenerOrden>>>
   cotizaciones: Awaited<ReturnType<typeof cotizacionesParaCambio>>
-  /** Llega de «Por completar» de la lista de OT (`?editar=1`): se abre sola. */
-  abrirAlEntrar?: boolean
 }) {
-  // Sale abierta al entrar (la `Ventana` se pinta recién hidratada) y se quita
-  // `editar` de la dirección, para que recargar o volver atrás no la abra otra vez.
-  const [abierta, abrir] = useState(abrirAlEntrar)
+  const [abierta, abrir] = useState(false)
+  // «Por completar», en la lista de OT, llega con `?editar=1`: se abre sola y se
+  // quita `editar` de la dirección. Se lee de la dirección y no de la página: el
+  // árbol que Next guarda para «Atrás» y «Adelante» traía el pedido y la volvía a
+  // abrir sin que nadie la pidiera. Fuera del efecto (un tic después) porque el
+  // doble montaje del modo estricto cancela el primero; el segundo la abre.
   useEffect(() => {
-    if (!abrirAlEntrar) return
-    const url = new URL(window.location.href)
-    url.searchParams.delete('editar')
-    // Con `null`, Next se entera (Linking and Navigating › replaceState): si se le
-    // pasa su estado, el refresco tras guardar volvía a poner `editar=1`.
-    window.history.replaceState(null, '', url)
-  }, [abrirAlEntrar])
+    if (new URLSearchParams(window.location.search).get('editar') !== '1') return
+    const t = setTimeout(() => {
+      const url = new URL(window.location.href)
+      url.searchParams.delete('editar')
+      // Con `null`, Next se entera (Linking and Navigating › replaceState): si se le
+      // pasa su estado, el refresco tras guardar volvía a poner `editar=1`.
+      window.history.replaceState(null, '', url)
+      abrir(true)
+    })
+    return () => clearTimeout(t)
+  }, [])
   const [nueva, elegir] = useState('')
   const [mensaje, avisar] = useState('')
   // Corrige lo que la OT muestra: se cierra con la OT ya al día (`corrige`).

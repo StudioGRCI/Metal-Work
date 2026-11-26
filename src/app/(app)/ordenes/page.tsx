@@ -159,7 +159,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
         }
       />
 
-      {pendientes !== undefined && <PendientesDeLasOt pendientes={pendientes} />}
+      {pendientes !== undefined && <PendientesDeLasOt pendientes={pendientes} corrige={puede(perfil, 'ordenes.editar')} />}
 
       <FiltrosOrdenes />
 

@@ -24,7 +24,11 @@ const A_LA_VISTA = 3
  *
  * `null` es que no se pudo leer: se dice, nunca se presenta como «nada pendiente».
  */
-export function PendientesDeLasOt({ pendientes: leidos }: { pendientes: Pendientes | null }) {
+export function PendientesDeLasOt({ pendientes: leidos, corrige }: {
+  pendientes: Pendientes | null
+  /** Tiene `ordenes.editar`: sin él, «Editar OT» no se le abre y la fila solo lleva a la OT. */
+  corrige: boolean
+}) {
   const pendientes = leidos?.filas ?? null
   if (pendientes === null) {
     return (
@@ -75,7 +79,7 @@ export function PendientesDeLasOt({ pendientes: leidos }: { pendientes: Pendient
       />
       <ul className="divide-y divide-borde border-t border-borde">
         {vista.map((p) => (
-          <Fila key={`${p.clase}-${p.documento}`} p={p} />
+          <Fila key={`${p.clase}-${p.documento}`} p={p} corrige={corrige} />
         ))}
       </ul>
       {resto.length > 0 && (
@@ -86,7 +90,7 @@ export function PendientesDeLasOt({ pendientes: leidos }: { pendientes: Pendient
         >
           <ul className="-mx-4 divide-y divide-borde border-t border-borde">
             {resto.map((p) => (
-              <Fila key={`${p.clase}-${p.documento}`} p={p} />
+              <Fila key={`${p.clase}-${p.documento}`} p={p} corrige={corrige} />
             ))}
           </ul>
         </Pliegue>
@@ -101,11 +105,12 @@ const CODIGO_BLOQUEADO = {
   UNIDAD_COMPARTIDA: 'Su unidad está también en otra OT y sus datos no se cambian desde una sola: desde la OT no se puede poner el código, y por ahora la aplicación no tiene otro lugar.',
 } as const
 
-function Fila({ p }: { p: PendienteDeOt }) {
+function Fila({ p, corrige }: { p: PendienteDeOt; corrige: boolean }) {
   const esCotizacion = p.clase === 'COTIZACION'
   // Lo que «Editar OT» sí puede completar en esta OT.
-  const codigoAqui = p.faltaCodigo && !p.codigoBloqueado
-  const completa = esCotizacion || codigoAqui || p.faltaFecha
+  const codigoAqui = corrige && p.faltaCodigo && !p.codigoBloqueado
+  const fechaAqui = corrige && p.faltaFecha
+  const completa = esCotizacion || codigoAqui || fechaAqui
   // La cotización se completa en su tarjeta, buscada por su número; la OT, en su
   // detalle con «Editar OT» ya abierta.
   const destino = esCotizacion
@@ -115,11 +120,11 @@ function Fila({ p }: { p: PendienteDeOt }) {
       : `/ordenes/${p.documento}`
   const accion = esCotizacion
     ? 'Cargar la OT'
-    : codigoAqui && p.faltaFecha
+    : codigoAqui && fechaAqui
       ? 'Completar'
       : codigoAqui
         ? 'Poner el código'
-        : p.faltaFecha
+        : fechaAqui
           ? 'Poner la fecha'
           : 'Ver la OT'
   const documento = esCotizacion ? `Cotización ${p.numero}` : `OT ${p.numero}`
