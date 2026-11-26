@@ -22,6 +22,30 @@
 -- Va en una migración aparte porque la 20261126315000 ya está en producción.
 -- =============================================================================
 
+-- 0. Las dos funciones que se reemplazan son las que conoce el repositorio ---------
+-- Si alguien cambió a mano en producción el tablero o la revisión, no se pisa:
+-- se detiene y avisa. Cada una acepta su texto anterior (20261125100000 y
+-- 20261126315000) y el de esta migración, para que se pueda correr de nuevo.
+do $$
+declare
+  conocidas jsonb := jsonb_build_object(
+    'tiempos_de_entrega_codigos_calculado(text)', jsonb_build_array('3b4563a713fd9f3b9b8c78c05d47c195', '356289daa4f3c25f9572e97ece8849ee'),
+    'revisar_tiempos_de_entrega(date)', jsonb_build_array('c94466ddbb71d66b1cc50d99b074fa12', 'bf7bff3bc13fc1ed606a93d85c28e71e'));
+  firma text;
+  huella text;
+begin
+  for firma in select jsonb_object_keys(conocidas) loop
+    select md5(replace(p.prosrc, E'\r', '')) into huella
+      from pg_proc p where p.oid = to_regprocedure('public.' || firma);
+    if huella is null then
+      raise exception 'Falta la función %: esta base no tiene las migraciones anteriores.', firma;
+    end if;
+    if not conocidas -> firma ? huella then
+      raise exception 'La función % no es la que conoce el repositorio (se cambió a mano): no se reemplaza. Avisa antes de seguir.', firma;
+    end if;
+  end loop;
+end $$;
+
 -- 1. Lo avisado de una entrega se anota por código -------------------------------
 alter table public.tiempos_entrega_avisos add column if not exists codigo text;
 comment on column public.tiempos_entrega_avisos.codigo is
@@ -252,7 +276,7 @@ begin
            case when cardinality(v_ya_vencidas) = 1 then 'Al empezar los avisos de la entrega al cliente, la de ' || v_ya_vencidas[1] || ' ya estaba vencida'
                 else 'Al empezar los avisos de la entrega al cliente, ' || cardinality(v_ya_vencidas) || ' entregas ya estaban vencidas: '
                      || array_to_string(v_ya_vencidas, ', ') end
-             || '. Desde ahora cada entrega avisa al vencer, y las vencidas se recuerdan cada 2 días hábiles.',
+             || '. Desde ahora cada entrega avisa al vencer.',
            '/rrhh/tiempos-de-entrega?ver=vencidos', 'tiempos_entrega_avisos', null, clock_timestamp()
       from public.usuarios u
      where u.activo
