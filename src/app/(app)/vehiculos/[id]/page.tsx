@@ -21,6 +21,7 @@ import { conQueVuelveDelArenado, MOTIVO_VEHICULO } from '@/lib/dominio/requerimi
 import { fechaHora, porcentaje } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
+import { AccionesDeFila } from '@/components/ui/tabla'
 import { ControlesVehiculo } from '../controles'
 import { AdjuntarEscaneo, DescargarFicha, FichaDelVehiculo, PedirRevision } from './ficha'
 
@@ -66,15 +67,17 @@ export default async function PaginaVehiculo({ params }: PageProps<'/vehiculos/[
         acciones={
           registra &&
           enPlanta && (
-            <ControlesVehiculo
-              id={r.id}
-              nombre={nombre}
-              cuentaId={perfil.id}
-              bloqueoSalida={estado?.falta_para_salir ?? null}
-              // Al arenado sale solo el de una unidad del padrón: la base lo exige (20261020168000).
-              alArenado={Boolean(estado?.exige) && r.unidad_id !== null}
-              vuelveDelArenado={conQueVuelveDelArenado(r.motivo, r.codigo_interno)}
-            />
+            <AccionesDeFila>
+              <ControlesVehiculo
+                id={r.id}
+                nombre={nombre}
+                cuentaId={perfil.id}
+                bloqueoSalida={estado?.falta_para_salir ?? null}
+                // Al arenado sale solo el de una unidad del padrón: la base lo exige (20261020168000).
+                alArenado={Boolean(estado?.exige) && r.unidad_id !== null}
+                vuelveDelArenado={conQueVuelveDelArenado(r.motivo, r.codigo_interno)}
+              />
+            </AccionesDeFila>
           )
         }
       />

@@ -3,7 +3,7 @@ import { FileDown } from 'lucide-react'
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
-import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
+import { AccionesDeFila, SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import {
   areasSolicitantes,
@@ -69,15 +69,18 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
         <BuscadorSimple ruta="/compras/servicios" clave="codigo" etiqueta="Buscar por código interno" marcador="Código interno, por ejemplo SR_04" />
       </div>
 
+      {/* En el teléfono cada orden es una ficha con sus botones en un renglón
+          (entrega 4 del plan de orden y diseño): apilados en una columna
+          angosta, una orden con cinco botones medía 230 px de alto. */}
       <Tarjeta className="overflow-hidden">
-        <Tabla>
+        <Tabla apilada>
           <TablaCabecera>
             <tr>
               <TH>Orden</TH>
               <TH className="hidden md:table-cell">Para</TH>
-              <TH className="hidden text-right sm:table-cell">Monto sin IGV</TH>
-              <TH className="hidden sm:table-cell">En qué va</TH>
-              <TH className="text-right">
+              <TH className="hidden text-right md:table-cell">Monto sin IGV</TH>
+              <TH className="hidden md:table-cell">En qué va</TH>
+              <TH className="text-right md:w-[26rem]">
                 <span className="sr-only">Acciones</span>
               </TH>
             </tr>
@@ -150,7 +153,7 @@ function FilaServicio({
           {para && ` · ${para}`}
         </p>
         {/* En el teléfono, el monto y en qué va van aquí: la tabla no cabe con sus columnas. */}
-        <div className="mt-2 space-y-1 sm:hidden">
+        <div className="mt-2 space-y-1 md:hidden">
           <p className="tabular text-sm font-semibold text-texto">{moneda(s.monto, s.moneda === 'USD' ? 'USD' : 'PEN')} sin IGV</p>
           <EnQueVa servicio={s} />
         </div>
@@ -159,31 +162,21 @@ function FilaServicio({
         <p className={s.codigo_interno ? 'tabular font-medium text-texto' : 'text-aviso'}>{s.codigo_interno ?? 'Sin código interno'}</p>
         {para && <p className="text-xs text-texto-suave">{para}</p>}
       </TD>
-      <TD className="tabular hidden text-right whitespace-nowrap sm:table-cell">{moneda(s.monto, s.moneda === 'USD' ? 'USD' : 'PEN')}</TD>
-      <TD className="hidden sm:table-cell">
+      <TD className="tabular hidden text-right whitespace-nowrap md:table-cell">{moneda(s.monto, s.moneda === 'USD' ? 'USD' : 'PEN')}</TD>
+      <TD className="hidden md:table-cell">
         <EnQueVa servicio={s} />
       </TD>
-      <TD className="text-right">
-        <div className="flex flex-col items-end gap-2">
-          {/* El papel para el contratista: la aprobada, y la anulada después con su marca. */}
-          {!servicioSinPapel(s.aprobacion, s.estado) && (
-            <a
-              href={`/compras/servicios/${s.id}/pdf`}
-              download
-              className="inline-flex min-h-11 items-center gap-1 px-1 text-xs text-acento hover:underline sm:min-h-0 sm:px-0"
-              aria-label={`Descargar el PDF de la orden de servicio ${s.numero}${s.estado === 'ANULADA' ? ', anulada' : ''}`}
-            >
-              <FileDown aria-hidden className="size-4" />
-              PDF
-            </a>
-          )}
+      <TD>
+        {/* Un renglón: primero lo que mueve la orden, después sus papeles y al
+            final «Anular», sin borde. */}
+        <AccionesDeFila>
           {emite && s.aprobacion !== 'RECHAZADA' && abierta && (
             <AvanceServicio
               id={s.id}
               numero={s.numero}
               iniciar={s.aprobacion === 'APROBADA' && s.estado === 'EMITIDA'}
               conformar={s.aprobacion === 'APROBADA'}
-              anular
+              anular={false}
             />
           )}
           {adjunta && vigente && <AdjuntarDocumentoServicio ordenServicioId={s.id} numero={s.numero} />}
@@ -200,7 +193,22 @@ function FilaServicio({
               cambiaCodigo={emite && abierta}
             />
           )}
-        </div>
+          {/* El papel para el contratista: la aprobada, y la anulada después con su marca. */}
+          {!servicioSinPapel(s.aprobacion, s.estado) && (
+            <a
+              href={`/compras/servicios/${s.id}/pdf`}
+              download
+              className="inline-flex min-h-11 items-center gap-1 px-1 text-xs text-acento hover:underline sm:min-h-0 sm:px-0"
+              aria-label={`Descargar el PDF de la orden de servicio ${s.numero}${s.estado === 'ANULADA' ? ', anulada' : ''}`}
+            >
+              <FileDown aria-hidden className="size-4" />
+              PDF
+            </a>
+          )}
+          {emite && s.aprobacion !== 'RECHAZADA' && abierta && (
+            <AvanceServicio id={s.id} numero={s.numero} iniciar={false} conformar={false} anular />
+          )}
+        </AccionesDeFila>
       </TD>
     </TR>
   )

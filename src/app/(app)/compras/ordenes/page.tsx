@@ -2,7 +2,7 @@ import { FileDown } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
-import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
+import { AccionesDeFila, SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
 import { correccionesDe, type CorreccionVista } from '@/lib/datos/correcciones'
@@ -88,18 +88,23 @@ export default async function PaginaOrdenesCompra() {
         </Tarjeta>
       )}
 
+      {/* En el teléfono cada orden es una ficha y sus botones van en un renglón
+          (entrega 4 del plan de orden y diseño); en el monitor la columna de
+          acciones tiene su ancho y ya no los apila uno bajo otro. */}
       <Tarjeta className="overflow-hidden">
-        <Tabla>
+        <Tabla apilada>
           <TablaCabecera>
             <tr>
-              <TH>Orden</TH>
+              {/* Su ancho: con los botones en un renglón, la columna de acciones
+                  se comía la de la orden y cada fila crecía un 21 %. */}
+              <TH className="md:w-1/4">Orden</TH>
               <TH className="hidden md:table-cell">Para</TH>
               {/* En el teléfono el monto y en qué va viajan bajo el número: con sus columnas, la tabla medía 461 px en una pantalla de 390. */}
-              <TH className="hidden text-right sm:table-cell">Monto sin IGV</TH>
-              <TH className="hidden sm:table-cell">En qué va</TH>
-              <TH className="hidden sm:table-cell">Comprobante</TH>
+              <TH className="hidden text-right md:table-cell">Monto sin IGV</TH>
+              <TH className="hidden md:table-cell">En qué va</TH>
+              <TH className="hidden md:table-cell">Comprobante</TH>
               {/* Con `relative`, el rótulo oculto queda dentro de la tabla que se desliza y no ensancha la página en el teléfono. */}
-              <TH className="relative text-right">
+              <TH className="relative text-right md:w-80">
                 <span className="sr-only">Acciones</span>
               </TH>
             </tr>
@@ -174,7 +179,7 @@ function FilaCompra({
         </div>
         {/* Lo único que distingue dos OC sin número del mismo proveedor: va primero, como en Gestión. */}
         {c.numero === null && <p className="text-xs text-texto-suave">Ref. del proveedor: {c.referencia}</p>}
-        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 sm:hidden">
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 md:hidden">
           <span className="tabular text-sm font-semibold text-texto">{moneda(c.monto, divisa(c.moneda))}</span>
           <span className="text-xs text-texto-suave">sin IGV</span>
           <Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>
@@ -208,14 +213,14 @@ function FilaCompra({
         <HistorialDeCorrecciones correcciones={correcciones} />
       </TD>
       <TD className="hidden text-texto-suave md:table-cell">{para || '—'}</TD>
-      <TD className="tabular hidden text-right whitespace-nowrap sm:table-cell">{moneda(c.monto, divisa(c.moneda))}</TD>
-      <TD className="hidden sm:table-cell">
+      <TD className="tabular hidden text-right whitespace-nowrap md:table-cell">{moneda(c.monto, divisa(c.moneda))}</TD>
+      <TD className="hidden md:table-cell">
         <div className="flex flex-wrap gap-1">
           <Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>
           {reposicion}
         </div>
       </TD>
-      <TD className="hidden sm:table-cell">
+      <TD className="hidden md:table-cell">
         {c.tiene_factura ? (
           <Insignia tono="exito">Adjunto</Insignia>
         ) : sinCurso ? (
@@ -236,8 +241,8 @@ function FilaCompra({
           </ul>
         )}
       </TD>
-      <TD className="text-right">
-        <div className="flex flex-wrap items-center justify-end gap-2">
+      <TD>
+        <AccionesDeFila>
           {compraConPdf(c.aprobacion) && (
             <a
               href={`/compras/${c.id}/pdf`}
@@ -265,7 +270,7 @@ function FilaCompra({
               verAdquisiciones={verAdquisiciones}
             />
           )}
-        </div>
+        </AccionesDeFila>
       </TD>
     </TR>
   )

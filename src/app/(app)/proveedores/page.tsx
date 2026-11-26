@@ -4,7 +4,7 @@ import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Paginacion } from '@/components/estructura/paginacion'
 import { Insignia } from '@/components/ui/etiqueta-estado'
-import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
+import { AccionesDeFila, SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { listarProveedores, PROVEEDORES_POR_PAGINA } from '@/lib/datos/proveedores'
 import { palabrasDeBusqueda } from '@/lib/dominio/busqueda'
@@ -61,18 +61,21 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
 
       <BuscadorSimple ruta="/proveedores" etiqueta="Buscar proveedores" marcador="Razón social, RUC o rubro" />
 
+      {/* En el teléfono cada proveedor es una ficha con «Editar» y «Dar de baja»
+          en un renglón (entrega 4 del plan de orden y diseño): en su columna
+          angosta iban uno debajo del otro. */}
       <Tarjeta className="mt-4 overflow-hidden">
-        <Tabla>
+        <Tabla apilada>
           <TablaCabecera>
             <tr>
               <TH>Proveedor</TH>
-              <TH className="hidden sm:table-cell">Documento</TH>
+              <TH className="hidden md:table-cell">Documento</TH>
               {/* En el teléfono, contacto y pago bajan a la celda del nombre: así
                   caben el RUC y Editar sin correr la tabla de lado. */}
-              <TH className="hidden sm:table-cell">Contacto</TH>
-              <TH className="hidden sm:table-cell">Pago</TH>
+              <TH className="hidden md:table-cell">Contacto</TH>
+              <TH className="hidden md:table-cell">Pago</TH>
               {verCuentas && <TH className="hidden lg:table-cell">Cuentas</TH>}
-              {edita && <TH>Acciones</TH>}
+              {edita && <TH className="md:w-56">Acciones</TH>}
             </tr>
           </TablaCabecera>
           <tbody>
@@ -107,18 +110,18 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
                         <p className="text-xs text-texto-suave">{[p.nombre_comercial, p.rubro].filter(Boolean).join(' · ')}</p>
                       )}
                       {/* En el teléfono el RUC baja aquí: su columna aparte dejaba el nombre en cuatro renglones. */}
-                      <p className="text-xs text-texto-suave sm:hidden">
+                      <p className="text-xs text-texto-suave md:hidden">
                         {[`${p.tipo_documento} ${p.numero_documento}`, pago, contacto].filter(Boolean).join(' · ')}
                       </p>
                     </TD>
-                    <TD className="hidden whitespace-nowrap sm:table-cell">
+                    <TD className="hidden whitespace-nowrap md:table-cell">
                       <span className="text-texto-suave">{p.tipo_documento} </span><span className="tabular">{p.numero_documento}</span>
                     </TD>
-                    <TD className="hidden text-texto-suave sm:table-cell">
+                    <TD className="hidden text-texto-suave md:table-cell">
                       {contacto || '—'}
                       {p.correo && <p className="text-xs">{p.correo}</p>}
                     </TD>
-                    <TD className="hidden whitespace-nowrap text-texto-suave sm:table-cell">{pago}</TD>
+                    <TD className="hidden whitespace-nowrap text-texto-suave md:table-cell">{pago}</TD>
                     {verCuentas && (
                       <TD className="hidden text-texto-suave lg:table-cell">
                         {p.cuentas.length === 0 ? (
@@ -135,7 +138,9 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
                     )}
                     {edita && (
                       <TD>
-                        <AccionesProveedor proveedor={p} cuentasVisibles={verCuentas} />
+                        <AccionesDeFila className="md:justify-start">
+                          <AccionesProveedor proveedor={p} cuentasVisibles={verCuentas} />
+                        </AccionesDeFila>
                       </TD>
                     )}
                   </TR>

@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Vistas } from '@/components/estructura/vistas'
 import { Insignia } from '@/components/ui/etiqueta-estado'
-import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
+import { AccionesDeFila, SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import {
   cargarVehiculos,
@@ -63,15 +63,18 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
         }))}
       />
 
+      {/* En el teléfono cada vehículo es una ficha con sus botones en un
+          renglón (entrega 4 del plan de orden y diseño): iban uno debajo del
+          otro en su columna. */}
       <Tarjeta className="overflow-hidden">
-        <Tabla>
+        <Tabla apilada>
           <TablaCabecera>
             <tr>
               <TH>Vehículo</TH>
               <TH className="hidden md:table-cell">Motivo</TH>
-              <TH className="hidden sm:table-cell">Ingreso</TH>
-              <TH className="hidden sm:table-cell">Salida</TH>
-              <TH className="text-right">
+              <TH className="hidden md:table-cell">Ingreso</TH>
+              <TH className="hidden md:table-cell">Salida</TH>
+              <TH className="text-right md:w-96">
                 <span className="sr-only">Acciones</span>
               </TH>
             </tr>
@@ -133,7 +136,7 @@ function FilaVehiculo({
         )}
         {r.motivo_anulacion && <p className="mt-1 text-xs text-peligro">Anulado: {r.motivo_anulacion}</p>}
         {/* En el teléfono, el ingreso y la salida van aquí: la tabla no se desliza de costado. */}
-        <div className="mt-1 space-y-1 sm:hidden">
+        <div className="mt-1 space-y-1 md:hidden">
           <p className="tabular text-xs text-texto-suave">Entró {fechaHora(r.ingreso_en)}</p>
           <Situacion registro={r} estado={estado} />
         </div>
@@ -146,11 +149,11 @@ function FilaVehiculo({
       <TD className="hidden align-top md:table-cell">
         {motivo ? <Insignia tono={motivo.tono}>{motivo.etiqueta}</Insignia> : r.motivo}
       </TD>
-      <TD className="hidden align-top sm:table-cell">
+      <TD className="hidden align-top md:table-cell">
         <p className="tabular text-xs text-texto whitespace-nowrap">{fechaHora(r.ingreso_en)}</p>
         {r.observacion_ingreso && <p className="mt-1 max-w-xs text-xs text-texto-suave">{r.observacion_ingreso}</p>}
       </TD>
-      <TD className="hidden align-top sm:table-cell">
+      <TD className="hidden align-top md:table-cell">
         {r.salida_en ? (
           <>
             <p className="tabular text-xs text-texto whitespace-nowrap">{fechaHora(r.salida_en)}</p>
@@ -160,17 +163,19 @@ function FilaVehiculo({
           <Situacion registro={r} estado={estado} />
         )}
       </TD>
-      <TD className="text-right align-top">
+      <TD className="align-top">
         {registra && !r.salida_en && !anulado && (
-          <ControlesVehiculo
-            id={r.id}
-            nombre={nombre}
-            cuentaId={cuentaId}
-            bloqueoSalida={estado?.falta_para_salir ?? null}
-            // Al arenado sale solo el de una unidad del padrón: la base lo exige (20261020168000).
-            alArenado={Boolean(estado?.exige) && r.unidad_id !== null}
-            vuelveDelArenado={conQueVuelveDelArenado(r.motivo, r.codigo_interno)}
-          />
+          <AccionesDeFila>
+            <ControlesVehiculo
+              id={r.id}
+              nombre={nombre}
+              cuentaId={cuentaId}
+              bloqueoSalida={estado?.falta_para_salir ?? null}
+              // Al arenado sale solo el de una unidad del padrón: la base lo exige (20261020168000).
+              alArenado={Boolean(estado?.exige) && r.unidad_id !== null}
+              vuelveDelArenado={conQueVuelveDelArenado(r.motivo, r.codigo_interno)}
+            />
+          </AccionesDeFila>
         )}
       </TD>
     </TR>

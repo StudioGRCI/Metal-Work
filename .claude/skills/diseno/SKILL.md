@@ -34,7 +34,14 @@ En `src/components/ui/`:
   «Reactivar» a otro renglón. Lo de
   desactivar y eliminar es **provisional**: DKS decidió que vayan dentro de
   un menú «⋯» de la fila (decisión 6 del plan de orden y diseño), y ese menú
-  todavía no existe.
+  todavía no existe. Si los botones vienen de un componente con su propia caja
+  (`AccionesCompra`, `AvanceServicio`, `ControlesVehiculo`,
+  `AccionesProveedor`), su caja va `contents` para que entren al renglón, y
+  quien lo usa lo envuelve en `AccionesDeFila` (también en el encabezado de
+  una ficha). Lo de una vez que viene dentro de ese componente («Anular» de la
+  OS) se pide en un segundo llamado, al final. En el monitor, si la columna de
+  acciones se come la primera, la primera lleva su ancho (`md:w-1/4` en las
+  OC): sin eso las filas crecían un 21 % (entrega 4, 2026-11-26).
 - `SinDatos` tiene dos tamaños: el grande es para la lista que es el trabajo
   de la pantalla; `compacto` para la bandeja que comparte pantalla con otras
   (lo pendiente del Kardex). No se escribe el vacío a mano con un `<p>`.

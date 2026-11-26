@@ -35,8 +35,10 @@ export function AvanceServicio({
   const inicio = useAccion(avanzarOrdenServicio, undefined, { documento: id })
   const cierre = useEnvio(avanzarOrdenServicio, () => setPaso(null))
 
+  // `contents`: sus botones entran al renglón de la fila (`AccionesDeFila`)
+  // como los demás, y «Anular» va en su propio llamado, al final.
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2">
+    <div className="contents">
       {iniciar && (
         <Boton
           type="button"

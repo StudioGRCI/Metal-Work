@@ -76,8 +76,9 @@ export function AccionesCompra({
   const { numero: titulo, referencia } = partesDeNombreDeOc(oc.nombre)
   const deLaReferencia = referencia ? `Ref. del proveedor: ${referencia} · ` : ''
 
+  // `contents`: sus botones entran al renglón de la fila (`AccionesDeFila`).
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2">
+    <div className="contents">
       {recojo && (
         <Boton
           type="button"
