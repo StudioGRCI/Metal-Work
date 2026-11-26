@@ -10765,6 +10765,7 @@ export type Database = {
           avisados: number
           creado_en: string
           actualizado_en: string
+          codigo: string | null
         }
         Insert: {
           id?: string
@@ -10775,6 +10776,7 @@ export type Database = {
           avisados?: number
           creado_en?: string
           actualizado_en?: string
+          codigo?: string | null
         }
         Update: {
           id?: string
@@ -10785,6 +10787,7 @@ export type Database = {
           avisados?: number
           creado_en?: string
           actualizado_en?: string
+          codigo?: string | null
         }
         Relationships: [
           {
@@ -17060,6 +17063,16 @@ export type Database = {
           periodo: string | null
           moneda: string | null
           monto: number | null
+        }[]
+      }
+      revisar_entregas_al_cliente: {
+        Args: {
+          p_hoy: string | null
+        }
+        Returns: {
+          tipo: string | null
+          avisos: number | null
+          cuentas: number | null
         }[]
       }
       revisar_stock_requerimiento: {
