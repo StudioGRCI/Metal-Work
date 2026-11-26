@@ -2,8 +2,9 @@
  * El recorrido de un documento numerado: por dónde pasó, quién hizo cada paso y
  * cuándo, quién lo tiene ahora y hace cuántos días (migración 20261125130000).
  * La base da las claves (`recorrido_de_requerimientos`,
- * `recorrido_de_cotizaciones`, `recorrido_de_planillas`); las frases viven aquí. Un documento nuevo suma
- * su función con la misma forma y su mapa de pasos en este archivo.
+ * `recorrido_de_cotizaciones`, `recorrido_de_informes_diseno`, `recorrido_de_planillas`);
+ * las frases viven aquí. Un documento nuevo suma su función con la misma forma y
+ * su mapa de pasos en este archivo.
  */
 
 import { fecha } from '@/lib/format'
@@ -140,7 +141,12 @@ const PASOS_DE_LA_COTIZACION: Record<string, Frases> = {
   CORRECCION: { hecho: 'Corrección subida', falta: 'Corrección', nota: (version) => `Pasó a la ${version}` },
   // El número de la OT llega solo a quien lee las órdenes.
   CODIGO_Y_OT: { hecho: 'Con código interno y OT', falta: 'Código interno y OT', nota: (ot) => ot },
-  FACTURA: { hecho: 'Facturada', falta: 'Factura' },
+  // En parte, solo a quien lee las facturas (migración 20261126470000): «Facturada» con la mitad sin facturar confundía.
+  FACTURA: { hecho: (d) => (d === 'EN_PARTE' ? 'Facturada en parte' : 'Facturada'), falta: 'Factura' },
+  // Facturada en parte: la factura de lo que falta del total (migración 20261126470000). Solo espera, nunca se dice hecha.
+  FACTURA_RESTO: { hecho: 'Facturado lo que faltaba', falta: 'Factura de lo que falta' },
+  // El cobro lo ve quien lee los cobros; a Ventas la base no se lo da.
+  COBRO: { hecho: 'Cobrada', falta: 'Cobro' },
   ANULACION: { hecho: 'Anulada', falta: 'Anulación' },
 }
 
@@ -149,6 +155,26 @@ const ESPERAS_DE_LA_COTIZACION: Record<string, (detalle: string | null) => strin
   CORRECCION: () => 'Sube la corrección con el mismo número.',
   CODIGO_Y_OT: () => 'Le da el código interno de la unidad y sube la OT.',
   FACTURA: () => 'Registra su factura.',
+  FACTURA_RESTO: () => 'Registra la factura de lo que falta del total.',
+  COBRO: (detalle) => (detalle === 'EN_PARTE' ? 'Cobra lo que falta: ya cobró una parte.' : 'Cobra sus facturas.'),
+}
+
+const PASOS_DEL_INFORME_DISENO: Record<string, Frases> = {
+  REGISTRO: { hecho: 'Borrador empezado', falta: 'Borrador' },
+  ENVIO: { hecho: 'Enviado a Diseño', falta: 'Envío a Diseño' },
+  // El motivo va entero: es lo que el colaborador tiene que corregir.
+  DEVOLUCION: { hecho: 'Devuelto para corregir', falta: 'Devolución', nota: (motivo) => `Motivo: ${motivo}` },
+  CORRECCION: { hecho: 'Corregido', falta: 'Corrección' },
+  APROBACION: { hecho: 'Aprobado por Diseño', falta: 'Aprobación' },
+  // Del circuito anterior, cuando el informe pasaba a Administración (migración 20261001213000).
+  RECEPCION: { hecho: 'Recibido por Administración', falta: 'Recepción de Administración' },
+  REVISION: { hecho: 'Revisado por Diseño', falta: 'Revisión de Diseño' },
+}
+
+const ESPERAS_DEL_INFORME_DISENO: Record<string, () => string> = {
+  ENVIO: () => 'Completa la semana y envía el informe a Diseño.',
+  CORRECCION: () => 'Corrige lo que Diseño observó y vuelve a enviarlo.',
+  REVISION: () => 'Lo aprueba o lo devuelve con su motivo.',
 }
 
 const PASOS_DE_LA_AVERIA: Record<string, Frases> = {
@@ -317,6 +343,10 @@ export function describirRecorridoDeLaCotizacion(pasos: readonly PasoDelRecorrid
     ? descritos.map((p) => (p.paso === 'REVISION' && p.detalle === 'APROBADA' ? { ...p, nota: null } : p))
     : descritos
 }
+
+/** El recorrido de un informe semanal de Diseño, en palabras. */
+export const describirRecorridoDelInformeDiseno = (pasos: readonly PasoDelRecorrido[]) =>
+  describir(pasos, PASOS_DEL_INFORME_DISENO, ESPERAS_DEL_INFORME_DISENO)
 
 /** «1 persona», «12 personas». */
 const personas = (n: string) => (Number(n) === 1 ? '1 persona' : `${n} personas`)

@@ -1530,7 +1530,8 @@ let pagoId
   comprobar(!devuelta.includes('Saldo') && devuelta.includes('Total S/ 361.50') && devuelta.includes('Pagado S/ 411.50 · devuelto S/ 411.50')
       && clasePago.includes('bg-transparent'),
     `ni parece una deuda: sin «Saldo», con lo pagado y lo devuelto, y «Registrar pago» de contorno («${devuelta.slice(0, 260)}»)`)
-  const orden = await tarjeta9.evaluate((a) => [...a.parentElement.querySelectorAll(':scope > article')].map((x) => x.dataset.devuelta === 'true'))
+  // En el orden del documento: desde el plan 11.1 las tarjetas van repartidas en grupos por vencimiento.
+  const orden = await t.pagina.locator('#compras-con-boleta article').evaluateAll((as) => as.map((x) => x.dataset.devuelta === 'true'))
   comprobar(orden.length > 1 && orden.every((d, i) => !d || orden.slice(i).every(Boolean)),
     `y va al final de la lista, con las otras devueltas, no entre las que se deben (${orden.map((d) => (d ? 'D' : '·')).join('')})`)
   comprobar((await pagoSegunAdquisiciones(ocToda)) === 'DEVUELTA', 'Adquisiciones la da por devuelta, no por pagar')

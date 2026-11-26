@@ -9,6 +9,9 @@
  *   3. El supervisor de Producción los ve y el aviso lo lleva a «Planos».
  *   4. Gerencia ve solo el de la vencida.
  *   5. Tesorería no ve ninguno.
+ *   6. La fecha de entrega al cliente (migración 20261126520000): la OT de
+ *      AVI_ENT venció ayer; RR. HH. y Gerencia ven «Entrega vencida», el
+ *      supervisor no.
  *
  * Volver a correrlo rehace AVI_UNO y sus avisos. Variables: BANCO_CLAVE, BASE
  * (http://localhost:3111), BANCO_BASE (mw_demo), CAPTURAS.
@@ -51,18 +54,38 @@ declare
   v_prd uuid := (select id from public.areas where codigo = 'PRD');
 begin
   if v_dis is null then raise exception 'Faltan las cuentas locales: corre preparar.sh'; end if;
-  delete from public.notificaciones where titulo like '%AVI_UNO%';
+  delete from public.notificaciones where titulo like '%AVI_UNO%' or titulo like '%AVI_ENT%';
+  delete from public.tiempos_entrega_avisos where codigo = 'AVI_ENT';
+  -- Que no sea la primera corrida de los avisos de entrega (esa junta las ya
+  -- vencidas en un solo aviso, lo prueba el check 477): un aviso viejo anotado.
+  insert into public.tiempos_entrega_avisos (codigo, tipo, fin_plan, fecha)
+  values ('AVI_PREVIO', 'ENTREGA_POR_VENCER', date '2026-01-02', date '2026-01-02') on conflict do nothing;
   delete from public.tiempos_entrega_avisos a using public.codigo_etapas e where e.id = a.etapa_id and e.codigo_interno = 'AVI_UNO';
   update public.codigo_etapas set quitada_en = now(), quitada_por = v_dis where codigo_interno = 'AVI_UNO' and quitada_en is null;
   insert into public.codigo_etapas (codigo_interno, orden, nombre, area_id, fin_plan, inicio_real, creado_por) values
     ('AVI_UNO', 1, 'Armado de chasis', v_prd, current_date - 2, current_date - 6, v_dis),
     ('AVI_UNO', 2, 'Soldadura de paneles', v_prd, public.sumar_dias_habiles(current_date, 2), null, v_dis);
+  -- AVI_ENT: una OT con la entrega vencida ayer. Una OT no se borra: si ya
+  -- existe de una corrida anterior, solo se le vuelve a poner la fecha.
+  if not exists (select 1 from public.unidades where codigo_interno = 'AVI_ENT') then
+    insert into public.clientes (tipo_documento, numero_documento, razon_social)
+    values ('RUC', '20999000777', 'TRANSPORTES DEL BANCO S.A.C.') on conflict do nothing;
+    insert into public.unidades (cliente_id, codigo_interno, marca)
+    select id, 'AVI_ENT', 'Banco' from public.clientes where numero_documento = '20999000777';
+    insert into public.ordenes_trabajo (cliente_id, unidad_id, abierta_en_taller, sede_id, descripcion, fecha_entrega_comprometida)
+    select u.cliente_id, u.id, true, (select id from public.sedes order by creado_en limit 1), 'Banco · entrega vencida', current_date - 1
+      from public.unidades u where u.codigo_interno = 'AVI_ENT';
+  end if;
+  set local session_replication_role = replica;
+  update public.ordenes_trabajo o set fecha_entrega_comprometida = current_date - 1
+    from public.unidades u where u.id = o.unidad_id and u.codigo_interno = 'AVI_ENT';
 end $$;
 `)
 // Como pg_cron: sin sesión, el laborable de hoy o el siguiente.
 const resultado = sql(`select string_agg(tipo || '=' || avisos, ',' order by tipo) from public.revisar_tiempos_de_entrega(public.sumar_dias_habiles(current_date, 0))`)
 console.log(`     revisión: ${resultado}`)
-comprobar(/POR_VENCER=1/.test(resultado) && /VENCIDA=1/.test(resultado), 'la revisión avisa la etapa por vencer y la vencida de AVI_UNO')
+comprobar(/(^|,)POR_VENCER=1/.test(resultado) && /(^|,)VENCIDA=1/.test(resultado), 'la revisión avisa la etapa por vencer y la vencida de AVI_UNO')
+comprobar(/ENTREGA_VENCIDA=1/.test(resultado), 'la revisión avisa la entrega vencida de AVI_ENT')
 
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
 
@@ -107,6 +130,7 @@ const deAvi = async (panel) => (await panel.innerText()).replace(/\s+/g, ' ')
   const t = await deAvi(panel)
   comprobar(t.includes('Vencida: AVI_UNO · Armado de chasis') && t.includes('Por vencer: AVI_UNO · Soldadura de paneles'), 'RR. HH. ve en la campana la vencida y la por vencer')
   comprobar(t.includes('Nadie la tiene a cargo todavía'), 'el aviso dice que nadie la tiene a cargo')
+  comprobar(t.includes('Entrega vencida: AVI_ENT') && t.includes('TRANSPORTES DEL BANCO S.A.C.'), 'RR. HH. ve la entrega vencida al cliente, con el cliente')
   await pagina.screenshot({ path: `${CAPTURAS}/10-rrhh-avisos-en-la-campana-1440.png` })
   await panel.getByText('Vencida: AVI_UNO · Armado de chasis').first().click()
   await pagina.waitForURL((u) => u.pathname === '/rrhh/tiempos-de-entrega/codigo', { timeout: 60000 })
@@ -133,6 +157,7 @@ const deAvi = async (panel) => (await panel.innerText()).replace(/\s+/g, ' ')
   const panel = await abrirCampana(pagina)
   const t = await deAvi(panel)
   comprobar(t.includes('Vencida: AVI_UNO') && t.includes('Por vencer: AVI_UNO'), 'el supervisor de Producción ve los dos avisos')
+  comprobar(!t.includes('AVI_ENT'), 'el supervisor no recibe el aviso de la entrega al cliente')
   await panel.getByText('Vencida: AVI_UNO · Armado de chasis').first().click()
   await pagina.waitForURL((u) => u.pathname === '/planos', { timeout: 60000 })
   comprobar(new URL(pagina.url()).searchParams.get('q') === 'AVI_UNO', 'el aviso lleva al supervisor a «Planos» con AVI_UNO')
@@ -146,6 +171,7 @@ const deAvi = async (panel) => (await panel.innerText()).replace(/\s+/g, ' ')
   const panel = await abrirCampana(pagina)
   const t = await deAvi(panel)
   comprobar(t.includes('Vencida: AVI_UNO') && !t.includes('Por vencer: AVI_UNO'), 'Gerencia ve la vencida y no la por vencer')
+  comprobar(t.includes('Entrega vencida: AVI_ENT'), 'Gerencia ve la entrega vencida al cliente')
   await contexto.close()
 }
 
