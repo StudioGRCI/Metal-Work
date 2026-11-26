@@ -17,7 +17,7 @@ const texto = (mensaje: string, status: number) =>
   new NextResponse(mensaje, { status, headers: { 'content-type': 'text/plain; charset=utf-8' } })
 
 export async function GET(_request: Request, context: RouteContext<'/planos/dxf/[id]'>) {
-  await exigirPermiso(['diseno.codigos', 'codigos_internos.area'])
+  await exigirPermiso(['diseno.codigos', 'codigos_internos.area', 'diseno.ver_dxf'])
   const { id } = await context.params
   if (!z.guid().safeParse(id).success) return texto('Este DXF no está disponible.', 404)
   const supabase = await createClient()
