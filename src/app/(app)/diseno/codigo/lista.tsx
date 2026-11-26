@@ -68,13 +68,10 @@ export async function ListaDeCodigosDeDiseno({
   vista,
   params,
   seguimiento = false,
-  veLoQueDebe = true,
 }: {
   vista: VistaDiseno
   params: Record<string, string | string[] | undefined>
   seguimiento?: boolean
-  /** Si cada fila lleva lo que Diseño debe (plan 6.1): no en el seguimiento de Almacén. */
-  veLoQueDebe?: boolean
 }) {
   // Almacén entra por «Materiales por código» del menú: el título dice lo mismo que el menú.
   const titulo = seguimiento
@@ -110,10 +107,10 @@ export async function ListaDeCodigosDeDiseno({
       )
     : todos
   const codigos = filtro ? buscados.filter(filtro.cumple) : buscados
-  // Lo que Diseño le debe a cada unidad (plan 6.1): en sus listas y, en
-  // lectura, en el seguimiento de Supervisión general (no en el de Almacén, que
-  // la base no deja leer). Si no se puede leer, cada fila lo dice y la lista sigue.
-  const debe = veLoQueDebe
+  // Lo que Diseño le debe a cada unidad (plan 6.1), solo en sus propias listas:
+  // el seguimiento es de Almacén y del Gerente de producción, que el plan no
+  // nombra. Si no se puede leer, cada fila lo dice y la lista sigue.
+  const debe = !seguimiento
     ? await loQueDebeDiseno(codigos.filter((c) => esUnidadDeDiseno(c.codigo)).map((c) => c.codigo)).catch((e: unknown) => {
         console.error('[diseno] lo que debe Diseño:', e)
         return 'sin-leer' as const

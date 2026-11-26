@@ -29,18 +29,19 @@
 --
 -- La lista la ven Diseño y, en lectura, Supervisión y Administración (decisión
 -- del plan): Diseño (`diseno.codigos`), Gerencia y Administración
--- (`codigos_internos.ver`), el supervisor de cada área
--- (`codigos_internos.area`) y Supervisión general con el Gerente de producción
--- (`codigos_internos.seguimiento`). Almacén tiene ese mismo permiso de
--- seguimiento y no la ve: no la pidió el plan, y por RLS no lee la OT, la
--- ficha ni los DXF que esta lista cuenta. Devuelve solo si cada punto está y
--- cuándo: ni el contenido de los planos, ni los DXF, ni importes.
+-- (`codigos_internos.ver`) y el supervisor de cada área
+-- (`codigos_internos.area`). El seguimiento por código (Almacén y el Gerente
+-- de producción, `codigos_internos.seguimiento`) no la lee: el plan no los
+-- nombra. Devuelve solo si cada punto está y cuándo: ni el contenido de los
+-- planos, ni los DXF, ni importes.
 --
--- Es `security definer` aunque solo lee, y cruza a sabiendas dos límites del
--- RLS: el supervisor de un área ve aquí que el plano de la otra área está y
--- cuándo subió (por RLS solo lee los de la suya), y Administración ve cuántos
--- DXF hay (por RLS no lee `codigo_dxf`). Son cantidades y fechas, nunca el
--- archivo, y es lo que el plan pidió que vieran en lectura.
+-- Es `security definer` aunque solo lee, y cuenta a sabiendas lo que algunos
+-- de esos puestos no leen por RLS: el supervisor de un área, los planos y las
+-- etapas de la otra (y el de Acabados, los DXF); Gerencia y Administración,
+-- los DXF (`codigo_dxf` pide `puede_ver_dxf`); y quien no ve la OT, si tiene
+-- ficha técnica y cuándo. Son cantidades y fechas, nunca el archivo, y es lo
+-- que el plan pidió que vieran en lectura. La pantalla del supervisor pinta
+-- solo el plano de su área.
 --
 -- Idempotente. Sin DROP: en producción la función no existía.
 -- =============================================================================
@@ -82,8 +83,7 @@ begin
   if not (public.es_admin()
           or public.tiene_permiso('diseno.codigos')
           or public.tiene_permiso('codigos_internos.ver')
-          or public.tiene_permiso('codigos_internos.area')
-          or (public.tiene_permiso('codigos_internos.seguimiento') and public.mi_rol() is distinct from 'ALMACENERO')) then
+          or public.tiene_permiso('codigos_internos.area')) then
     raise exception 'No tienes permiso para ver lo que Diseño lleva en cada código.' using errcode = 'insufficient_privilege';
   end if;
   if p_codigos is null or cardinality(p_codigos) = 0 then
@@ -196,7 +196,7 @@ end;
 $$;
 
 comment on function public.lo_que_debe_diseno(text[]) is
-  'Lo que Diseño entrega por código interno, punto por punto (ficha técnica de la OT, planos, materiales, etapas de Diseño y DXF): cuántos hay y desde cuándo. Una fila por área (Maestranza y Producción, siempre las dos): si tiene su etapa de Diseño y cuál da la fecha, la fecha en que el área necesita el plano —el primer inicio de esa etapa— contra la subida del primer plano vigente, con su situación (A_TIEMPO, TARDE, PENDIENTE, VENCIDO, SIN_FECHA, ENTREGADO_SIN_FECHA), los días de atraso o los que faltan y si está por vencer, por fecha de Lima. Con varios juegos de planos mide el primero. La leen Diseño, Gerencia, Administración, los supervisores, Supervisión general y el Gerente de producción; Almacén no. Sin contenido de planos ni DXF ni importes.';
+  'Lo que Diseño entrega por código interno, punto por punto (ficha técnica de la OT, planos, materiales, etapas de Diseño y DXF): cuántos hay y desde cuándo. Una fila por área (Maestranza y Producción, siempre las dos): si tiene su etapa de Diseño y cuál da la fecha, la fecha en que el área necesita el plano —el primer inicio de esa etapa— contra la subida del primer plano vigente, con su situación (A_TIEMPO, TARDE, PENDIENTE, VENCIDO, SIN_FECHA, ENTREGADO_SIN_FECHA), los días de atraso o los que faltan y si está por vencer, por fecha de Lima. Con varios juegos de planos mide el primero. La leen Diseño, Gerencia, Administración y los supervisores de área; el seguimiento por código (Almacén, Gerente de producción) no. Sin contenido de planos ni DXF ni importes.';
 
 revoke all on function public.lo_que_debe_diseno(text[]) from public, anon;
 grant execute on function public.lo_que_debe_diseno(text[]) to authenticated;

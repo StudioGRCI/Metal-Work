@@ -1,8 +1,8 @@
 -- Lo que Diseño le debe a cada código (plan 6, entrega 6.1; migración
 -- 20261126600000): los cinco puntos y el plano de Maestranza y de Producción
 -- contra el día en que el área lo necesita (el inicio de su etapa de Diseño).
--- Lo leen Diseño, Administración, el supervisor y Supervisión general con su
--- sesión (`set local role authenticated`); Logística, Almacén y Ventas no.
+-- Lo leen Diseño, Administración y el supervisor con su sesión (`set local
+-- role authenticated`); Logística, Almacén, el Gerente de producción y Ventas no.
 -- Nunca como ADMIN. Las cifras esperadas están escritas a mano, con lo que NO
 -- debe contar (el plano anulado, la revisión 2, la subetapa del área, el
 -- material y el DXF quitados). Termina en rollback.
@@ -13,7 +13,7 @@ do $$
 declare v text; v_id uuid;
 begin
   foreach v in array array['DISENO:DIS', 'SUPERVISOR:MTZ', 'ADMINISTRACION:ADM', 'COMPRADOR:LOG', 'ALMACENERO:ALM',
-                           'VENDEDOR:VEN', 'SUPERVISOR_GENERAL:PRD'] loop
+                           'VENDEDOR:VEN', 'GERENTE_PRODUCCION:PRD'] loop
     if split_part(v, ':', 1) = 'SUPERVISOR' then
       select u.id into v_id from public.usuarios u
         join public.roles r on r.id = u.rol_id and r.codigo = 'SUPERVISOR'
@@ -120,6 +120,13 @@ select pg_temp.como('diseno');
 set local role authenticated;
 select test.afirmar((select situacion = 'A_TIEMPO' and dias = 0 from pg_temp.fila('MTZ')),
   'si el plano de Maestranza llegó antes de que empezara su etapa, sale a tiempo');
+-- La revisión 2, subida hoy (después de la fecha), no mueve la fecha real: cuenta la primera.
+insert into storage.objects (bucket_id, name, owner, owner_id, metadata)
+values ('planos-codigo', current_setting('prueba.p1') || '/' || current_setting('prueba.r1b') || '.pdf', pg_temp.id('diseno'),
+        current_setting('prueba.diseno'), '{"mimetype":"application/pdf","size":82000}');
+select public.subir_revision_plano(pg_temp.id('p1'), pg_temp.id('r1b'), 'Se alargaron los travesaños', 'p01-r2.pdf');
+select test.afirmar((select situacion = 'A_TIEMPO' and planos = 1 from pg_temp.fila('MTZ')),
+  'la revisión 2 subida hoy no lo vuelve tarde ni cuenta como otro plano');
 reset role;
 
 -- Por vencer: la de Producción empieza mañana y sigue sin plano.
@@ -162,7 +169,7 @@ update public.codigo_materiales set quitado_en = now(), quitado_por = pg_temp.id
  where codigo_interno = current_setting('prueba.codigo') and cantidad = 4;
 update public.codigo_dxf set quitado_en = now(), quitado_por = pg_temp.id('diseno') where id = pg_temp.id('d2');
 
--- ============================================ 4. Supervisión, Administración y Supervisión general la ven, en lectura
+-- ============================================ 4. Supervisión y Administración la ven, en lectura
 select pg_temp.como('supervisor');
 set local role authenticated;
 select test.afirmar(
@@ -179,12 +186,6 @@ set local role authenticated;
 select test.afirmar(
   (select count(*) = 2 and bool_and(planos = 1) from public.lo_que_debe_diseno(array[current_setting('prueba.codigo')])),
   'Administración la ve igual');
-reset role;
-select pg_temp.como('supervisor_general');
-set local role authenticated;
-select test.afirmar(
-  (select count(*) = 2 from public.lo_que_debe_diseno(array[current_setting('prueba.codigo')])),
-  'Supervisión general la ve, en su seguimiento por código');
 reset role;
 
 -- ============================================ 5. Etapas a medias, plano sin fecha y el límite de los juegos
@@ -227,7 +228,12 @@ reset role;
 select pg_temp.como('almacenero');
 set local role authenticated;
 select test.debe_fallar($q$select * from public.lo_que_debe_diseno(array[current_setting('prueba.codigo')])$q$,
-  'Almacén, con el mismo permiso de seguimiento que Supervisión general, no la ve', 'No tienes permiso');
+  'Almacén, con su seguimiento por código, no la ve', 'No tienes permiso');
+reset role;
+select pg_temp.como('gerente_produccion');
+set local role authenticated;
+select test.debe_fallar($q$select * from public.lo_que_debe_diseno(array[current_setting('prueba.codigo')])$q$,
+  'el Gerente de producción, con el mismo seguimiento, tampoco (el plan no lo nombra)', 'No tienes permiso');
 reset role;
 select pg_temp.como('vendedor');
 set local role authenticated;

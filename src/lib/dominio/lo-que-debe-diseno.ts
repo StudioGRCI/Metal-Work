@@ -5,8 +5,8 @@ import { fecha } from '@/lib/format'
  * Lo que Diseño entrega por código interno (plan 6, entrega 6.1; migración
  * 20261126600000): cinco puntos con hecho o pendiente, y el plano de cada área
  * contra la fecha en que el área lo necesita. Puro: lo usan Diseño, Códigos
- * internos (Administración y Gerencia), Seguimiento por código (Supervisión
- * general) y Planos y etapas (el supervisor de cada área).
+ * internos (Administración y Gerencia) y Planos y etapas (el supervisor de
+ * cada área).
  */
 
 export type SituacionDelPlano = 'A_TIEMPO' | 'TARDE' | 'PENDIENTE' | 'VENCIDO' | 'SIN_FECHA' | 'ENTREGADO_SIN_FECHA'
@@ -142,12 +142,18 @@ export function compromisoEnPalabras(c: CompromisoDelPlano): { texto: string; in
         tono: c.porVencer ? 'aviso' : 'neutro',
       }
     case 'ENTREGADO_SIN_FECHA':
-      return { texto: `se subió el ${fecha(c.entregadoEn)}; su etapa todavía no tiene fecha de inicio`, insignia: null, tono: 'neutro' }
+      return {
+        texto: c.tieneEtapa
+          ? `se subió el ${fecha(c.entregadoEn)}; su etapa todavía no tiene fecha de inicio`
+          : `se subió el ${fecha(c.entregadoEn)}; falta la etapa ${ETAPA_DEL_AREA[c.area] ?? 'de Diseño'} de esta área`,
+        insignia: null,
+        tono: 'neutro',
+      }
     default:
       return {
         texto: c.tieneEtapa
-          ? `sin fecha: se toma del inicio de ${c.etapa ?? 'su etapa'}`
-          : `sin fecha: falta la etapa ${ETAPA_DEL_AREA[c.area] ?? 'de Diseño'} de esta área`,
+          ? `todavía sin fecha, se toma del inicio de ${c.etapa ?? 'su etapa'}`
+          : `todavía sin fecha, falta la etapa ${ETAPA_DEL_AREA[c.area] ?? 'de Diseño'} de esta área`,
         insignia: null,
         tono: 'neutro',
       }

@@ -29,7 +29,7 @@ import {
 } from '@/lib/datos/diseno-codigos'
 import { limitePorVencer } from '@/lib/datos/limite-por-vencer'
 import { loQueDebeDiseno } from '@/lib/datos/lo-que-debe-diseno'
-import { normalizarCodigo } from '@/lib/dominio/codigos-internos'
+import { esUnidadDeDiseno, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { AREAS_DE_ETAPA_DE_DISENO, VISTAS_DISENO, vistaDisenoValida, type VistaDiseno } from '@/lib/dominio/diseno-codigos'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
 import { cantidad, fecha, fechaHora, hoyLima } from '@/lib/format'
@@ -77,8 +77,9 @@ export default async function PaginaCodigoDeDiseno({ searchParams }: PageProps<'
     codigosDeDiseno(),
     codigo === 'PLANTA' ? Promise.resolve([]) : ordenesDelCodigo(codigo),
     // Si no se puede leer, la tarjeta lo dice: el resto del código sigue a la vista.
-    codigo === 'PLANTA'
-      ? Promise.resolve(null)
+    // La oficina y «todos los activos» no son unidad: no se les pide nada.
+    !esUnidadDeDiseno(codigo)
+      ? Promise.resolve('no-es-unidad' as const)
       : loQueDebeDiseno([codigo]).catch((e: unknown) => {
           console.error('[diseno/codigo] lo que debe Diseño:', e)
           return null
@@ -122,7 +123,7 @@ export default async function PaginaCodigoDeDiseno({ searchParams }: PageProps<'
               />
             </div>
 
-            <TarjetaLoQueDebeDiseno d={debe === null ? null : debe.get(codigo)} />
+            {debe !== 'no-es-unidad' && <TarjetaLoQueDebeDiseno d={debe === null ? null : debe.get(codigo)} />}
 
             <PastillaFiltro
               ruta="/diseno/codigo"

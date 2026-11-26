@@ -10,8 +10,8 @@
  *   2. Administración, en Códigos internos y en el detalle, ve los cinco puntos
  *      en lectura donde antes decía «Diseño todavía no cargó planos ni etapas».
  *   3. El supervisor de Maestranza, en Planos y etapas, los ve en lectura, con
- *      el plano solo de su área; el Gerente de producción, en su seguimiento.
- *      Almacén, con el mismo seguimiento, no la ve ni la saca de la base.
+ *      el plano solo de su área. El seguimiento por código (Gerente de
+ *      producción y Almacén) no la ve ni la saca de la base.
  *   4. Logística no entra a ninguna de esas pantallas.
  *   5. En el teléfono (390) nada se sale. Capturas en 390 y 1440.
  *
@@ -222,6 +222,12 @@ comprobar(tablas.get('SR-101')?.areas.MTZ.situacion === 'TARDE' && tablas.get('S
   // Lo que ya tenía la pantalla sigue: la OT, las cifras y las secciones.
   comprobar((await pagina.getByText('OT 0003-2026').count()) > 0 && (await pagina.getByRole('link', { name: 'Materiales' }).count()) > 0,
     'el código sigue con su OT y sus secciones')
+  // La oficina y «todos los activos» no son unidad: no llevan la tarjeta.
+  for (const codigo of ['OFICINA', 'TODOS LOS ACTIVOS', 'PLANTA']) {
+    await ir(pagina, `/diseno/codigo?codigo=${encodeURIComponent(codigo)}`)
+    comprobar((await pagina.locator('[data-tarjeta-lo-que-debe]').count()) === 0 && (await pagina.getByText(/de 5 ·/).count()) === 0,
+      `/diseno/codigo?codigo=${codigo} no lleva la tarjeta de los cinco puntos`)
+  }
   await contexto.close()
 }
 
@@ -267,26 +273,15 @@ comprobar(tablas.get('SR-101')?.areas.MTZ.situacion === 'TARDE' && tablas.get('S
   comprobar(despues, 'en la tarjeta del código, la lista va después de las etapas del supervisor')
   await contexto.close()
 }
-{
-  // Supervisión general la ve en su seguimiento por código, con todas las unidades.
-  const { pagina, contexto } = await entrar('gerencia.produccion')
+// El seguimiento por código (Gerente de producción y Almacén) no la lleva, ni la saca de la base.
+for (const puesto of ['gerencia.produccion', 'almacen']) {
+  const { pagina, contexto } = await entrar(puesto)
   await ir(pagina, '/seguimiento')
-  const enPantalla = await listas(pagina)
-  for (const codigo of CODIGOS) {
-    const fila = enPantalla.find((l) => l.codigo === codigo)
-    comprobar(fila && igual(fila.puntos, tablas.get(codigo).puntos), `Seguimiento por código: ${codigo} con sus cinco puntos (Gerente de producción)`)
-  }
-  await contexto.close()
-}
-{
-  // Almacén tiene el mismo seguimiento y no la ve: ni en la pantalla ni pidiéndola a la base.
-  const { pagina, contexto } = await entrar('almacen')
-  await ir(pagina, '/seguimiento?vista=materiales')
   comprobar(new URL(pagina.url()).pathname === '/seguimiento' && (await pagina.locator('[data-lo-que-debe-diseno]').count()) === 0,
-    'Almacén entra a su seguimiento sin la lista de lo que debe Diseño')
+    `${puesto} entra a su seguimiento sin la lista de lo que debe Diseño`)
   await contexto.close()
-  const negado = await comoCuenta('almacen', `select public.lo_que_debe_diseno(array['SR-101'])`).then(() => false, (e) => /No tienes permiso/.test(e.message))
-  comprobar(negado, 'y la base no se la da')
+  const negado = await comoCuenta(puesto, `select public.lo_que_debe_diseno(array['SR-101'])`).then(() => false, (e) => /No tienes permiso/.test(e.message))
+  comprobar(negado, `y la base no se la da a ${puesto}`)
 }
 
 // ------------------------------------------------ 4. Logística no entra

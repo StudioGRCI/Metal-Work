@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils'
  * cinco puntos con hecho o pendiente y, si hay, el plano vencido o por vencer
  * más urgente. El detalle (cuántos, desde cuándo, la fecha de cada área) va en
  * el código. Va en las listas de Diseño, en Códigos internos (Administración y
- * Gerencia), en Seguimiento por código (Supervisión general) y en Planos y
+ * Gerencia) y en Planos y
  * etapas (el supervisor, solo su área con `areas`), en lectura. Los días los
  * cuenta la base; aquí no se calcula nada.
  *
@@ -41,7 +41,7 @@ export function LineaLoQueDebeDiseno({
   return (
     <div className={className} data-lo-que-debe-diseno={d?.codigo}>
       <p className="sr-only">
-        {resumen}.{urgente && ` ${urgente.insignia}.`}
+        {resumen}.{urgente && ` ${urgente.insignia}: ${compromisoEnPalabras(urgente.compromiso).texto}.`}
       </p>
       <ul aria-hidden className="flex flex-wrap items-center gap-2" title={resumen}>
         {puntos.map((p) => (
@@ -54,7 +54,10 @@ export function LineaLoQueDebeDiseno({
         ))}
         {urgente && (
           <li data-compromiso={urgente.compromiso.area} data-situacion={urgente.compromiso.situacion}>
-            <Insignia tono={urgente.tono}>{urgente.insignia}</Insignia>
+            {/* La fecha, al pasar el puntero: en la lista se leía como la de la etapa. */}
+            <Insignia tono={urgente.tono} title={`Plano de ${urgente.compromiso.areaNombre}: ${compromisoEnPalabras(urgente.compromiso).texto}`}>
+              {urgente.insignia}
+            </Insignia>
           </li>
         )}
       </ul>
