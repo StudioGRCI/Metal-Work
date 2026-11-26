@@ -249,7 +249,7 @@ let cotTres
   if (!(await v.locator('#cot-igv').inputValue())) await v.locator('#cot-igv').selectOption('no')
   if (!(await v.locator('#cot-monto').inputValue())) await v.locator('#cot-monto').fill('135000.00')
   const ayuda = limpio(await v.locator('#cot-unidades').locator('xpath=ancestor::div[1]/..').innerText())
-  comprobar(ayuda.includes('tres camabajas son 3'), `el campo explica qué poner («${ayuda}»)`)
+  comprobar(ayuda.includes('Leídas del documento'), `el campo dice que la cantidad salió del documento («${ayuda}»)`)
   await pagina.screenshot({ path: join(CAPTURAS, 'unidades-1-ventas-sube-1440.png') })
   await v.getByRole('button', { name: 'Subir y mandar a Gerencia' }).click()
   await v.waitFor({ state: 'hidden', timeout: 30000 }).catch(() => {})
