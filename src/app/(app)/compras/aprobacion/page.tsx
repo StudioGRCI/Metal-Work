@@ -219,11 +219,8 @@ function ComprasAnulables({ compras }: { compras: CompraAnulable[] }) {
         )}
       </Tarjeta>
       {no.length > 0 && (
-        <details className="rounded-md border border-borde bg-superficie p-3 text-sm">
-          <summary className="flex min-h-11 cursor-pointer items-center font-medium text-texto">
-            {no.length} {no.length === 1 ? 'aprobada que ya no se anula' : 'aprobadas que ya no se anulan'}, y por qué
-          </summary>
-          <ul className="mt-3 space-y-2">
+        <Pliegue enCaja className="bg-superficie text-sm" titulo={`${no.length} ${no.length === 1 ? 'aprobada que ya no se anula' : 'aprobadas que ya no se anulan'}, y por qué`}>
+          <ul className="space-y-2">
             {no.map((c) => (
               <li key={c.id}>
                 <NombreDeLaOrden numero={c.sin_numero ? null : c.numero} referencia={c.referencia} proveedor={c.proveedor} />
@@ -231,7 +228,7 @@ function ComprasAnulables({ compras }: { compras: CompraAnulable[] }) {
               </li>
             ))}
           </ul>
-        </details>
+        </Pliegue>
       )}
     </section>
   )

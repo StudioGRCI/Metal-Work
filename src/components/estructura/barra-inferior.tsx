@@ -4,7 +4,7 @@ import { LayoutGrid } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { type ReactNode } from 'react'
-import { useContextoOrden } from './contexto-orden'
+import { useContextoMenu } from './contexto-menu'
 
 import { InstalarApp } from '@/components/estructura/instalar-app'
 import { Ventana } from '@/components/ui/ventana'
@@ -29,6 +29,7 @@ export function BarraInferior({
   rolCodigo,
   pendientes = {},
   sinComprobar = [],
+  plegado,
   children,
 }: {
   permisos: string[]
@@ -38,10 +39,12 @@ export function BarraInferior({
   pendientes?: Record<string, number>
   /** Rutas con un pendiente que no se pudo contar: el globo dice «!», nunca cero. */
   sinComprobar?: string[]
+  /** La cookie de los grupos plegados, leída en el servidor. */
+  plegado?: string
   children: ReactNode
 }) {
   const ruta = usePathname()
-  const { abierto, abrir: setAbierto } = useContextoOrden()
+  const { abierto, abrir: setAbierto } = useContextoMenu()
 
   const visibles = menuDe(permisos, esAdmin, rolCodigo).flatMap((g) => g.items)
   const pestanas = pestanasDe(permisos, esAdmin, rolCodigo)
@@ -136,7 +139,7 @@ export function BarraInferior({
       </nav>
 
       <Ventana abierta={abierto} alCerrar={()=>setAbierto(false)} titulo="Tus secciones" ancho="sm" cerrarAlTocarFuera>
-        <NavegacionLista permisos={permisos} esAdmin={esAdmin} rolCodigo={rolCodigo} pendientes={pendientes} sinComprobar={sinComprobar} alNavegar={()=>setAbierto(false)}/>
+        <NavegacionLista permisos={permisos} esAdmin={esAdmin} rolCodigo={rolCodigo} pendientes={pendientes} sinComprobar={sinComprobar} plegado={plegado} alNavegar={()=>setAbierto(false)}/>
         {children}
         <div className="border-t border-borde px-3 py-4"><InstalarApp/></div>
       </Ventana>

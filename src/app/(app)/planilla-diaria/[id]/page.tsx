@@ -5,6 +5,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { AvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
 import { CajaDeLaLinea } from '@/components/finanzas/caja-del-pago'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { Pliegue } from '@/components/ui/seccion-desplegable'
 import { TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cajaDeLosPagos, cuentasParaPagar } from '@/lib/datos/caja'
@@ -263,9 +264,8 @@ function Persona({
         {arma && !anulada && g.boleta_ruta && !g.boleta_entregada_en && <EntregarBoleta planillaId={planillaId} personaId={g.id} />}
       </div>
 
-      <details className="text-xs">
-        <summary className="cursor-pointer text-texto-suave hover:text-texto">Ver los días</summary>
-        <Tabla className="mt-2">
+      <Pliegue titulo="Ver los días" className="text-xs">
+        <Tabla>
           <TablaCabecera>
             <tr>
               <TH>Día</TH>
@@ -309,7 +309,7 @@ function Persona({
             ))}
           </tbody>
         </Tabla>
-      </details>
+      </Pliegue>
     </li>
   )
 }

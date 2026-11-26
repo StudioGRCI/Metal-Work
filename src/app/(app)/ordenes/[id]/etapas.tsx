@@ -133,7 +133,7 @@ export function Etapas({
                   key={etapa.etapa_id}
                   id={`etapa-${etapa.etapa_id}`}
                   className={cn(
-                    'scroll-mt-20 rounded-[var(--radius-base)] border p-3 sm:p-4',
+                    'scroll-mt-2 rounded-[var(--radius-base)] border p-3 sm:p-4',
                     programa.vencida ? 'border-peligro/40' : 'border-borde',
                   )}
                 >
