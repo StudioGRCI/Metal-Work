@@ -1,0 +1,15 @@
+-- =============================================================================
+-- LA AVERÍA TIENE NÚMERO
+-- -----------------------------------------------------------------------------
+-- DKS, 2026-11-25, Plan 16 (Mantenimiento de equipos), entrega 16.2: cualquier
+-- persona reporta desde su teléfono la avería, o la posible avería, de una
+-- máquina, una herramienta o un equipo de cómputo del padrón. La empresa no
+-- tiene formato propio de reporte de avería: el número es AV-0001-2026, que
+-- DKS aprobó el 2026-11-26.
+--
+-- Es un documento numerado: no se borra nunca, se anula con su motivo.
+--
+-- Va sola porque Postgres no deja usar en la misma transacción un valor de
+-- enum recién agregado: la migración 20261126100100 crea la serie con él.
+-- =============================================================================
+alter type public.tipo_correlativo add value if not exists 'REPORTE_AVERIA';

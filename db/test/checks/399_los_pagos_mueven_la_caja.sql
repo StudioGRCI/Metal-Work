@@ -486,7 +486,8 @@ begin
   perform test.debe_fallar(format('select public.registrar_pago_factura(gen_random_uuid(), %L, %L, 10, ''OP-398-G'', null, %L, null)',
       current_setting('prueba.adq1'), v_hoy, current_setting('prueba.cpen')),
     'Gerencia consulta, no paga', 'tesoreria.registrar_pagos');
-  perform test.afirmar((select count(*) from public.movimientos_caja) = 0, 'ni ve los movimientos de la caja');
+  -- Los consulta desde la 20261126310000 (`tesoreria.ver_caja`); la auditoría de la caja sigue pidiendo `tesoreria.caja`.
+  perform test.afirmar((select count(*) from public.movimientos_caja) > 0, 'consulta los movimientos de la caja, sin moverla');
   perform test.afirmar((select count(*) from public.audit_log where tabla in ('cajas', 'movimientos_caja', 'cierres_caja')) = 0,
     'ni los lee por la auditoría, aunque tenga auditoria.ver');
   perform test.afirmar((select count(*) from public.audit_log where tabla = 'pagos_adquisicion') > 0,

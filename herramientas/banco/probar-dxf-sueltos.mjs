@@ -271,7 +271,9 @@ for (const [puesto, nombreArea] of [['sup.mtz', 'Maestranza'], ['sup.prd', 'Prod
   const { pagina, contexto } = await entrar('gerencia')
   await ir(pagina, '/diseno/dxf')
   const texto = limpio(await pagina.locator('body').innerText())
-  comprobar(!texto.includes(`Cartelas y piso ${sello}`) && !/Cargar DXF/.test(texto), `Gerencia no entra a los DXF (${pagina.url().replace(BASE, '')})`)
+  // Los consulta desde la 20261126310000 (`diseno.ver_dxf`): los ve y descarga, sin subir ni abrir códigos.
+  comprobar(!pagina.url().includes('sin-permiso') && texto.includes(`Cartelas y piso ${sello}`), `Gerencia consulta los DXF (${pagina.url().replace(BASE, '')})`)
+  comprobar(!/Cargar DXF|Abrir un código|Quitar/.test(texto), 'sin subir, abrir códigos ni quitar')
   await contexto.close()
 }
 

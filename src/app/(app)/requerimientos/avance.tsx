@@ -1,8 +1,9 @@
 import type { Tono } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import type { LineaRequerimiento, RequerimientoListado } from '@/lib/datos/requerimientos'
-import { ENTREGADO_CON_FALTANTE, ETAPA_AVANCE_RQ, resumenDeEtapas } from '@/lib/dominio/requerimientos'
-import { cantidad, fechaHora } from '@/lib/format'
+import { comoVaLaEntrega, cuentaDelInsumo } from '@/lib/dominio/cuenta-del-insumo'
+import { ENTREGADO_CON_FALTANTE, ETAPA_AVANCE_RQ, laCompraQuedoCorta, partesDelInsumo, resumenDeEtapas } from '@/lib/dominio/requerimientos'
+import { cantidad, fecha, fechaHora, hoyLima } from '@/lib/format'
 
 const COLOR: Record<Tono, string> = {
   neutro: 'text-texto-suave',
@@ -99,5 +100,82 @@ export function CompraDelInsumo({ linea: l, estadoRq }: { linea: LineaRequerimie
         </>
       )}
     </>
+  )
+}
+
+/**
+ * Qué falta entregar del insumo, en cifras (plan 2, entrega 2.1): lo entregado
+ * de lo pedido y, de lo que falta, cuánto está separado en almacén, cuánto viene
+ * en su OC (con la fecha en que se espera) y cuánto falta comprar. Es la misma
+ * cuenta que la tarjeta del RQ (`partesDelInsumo`). Sin precios.
+ *
+ * Necesita lo entregado (`cargarRequerimientos` con `conEntregado`); sin eso no
+ * dice nada, porque un cero diría «nada entregado».
+ */
+export function EntregaDelInsumo({ linea: l, estadoRq }: { linea: LineaRequerimiento; estadoRq: string }) {
+  const partes = partesDelInsumo(l, estadoRq)
+  if (!partes) return null
+  // La OC que ya entró entera y compró menos: lo que falta no lo compra nadie
+  // desde Atención (no sale en «Por comprar»), se pide en un RQ nuevo.
+  const corta = laCompraQuedoCorta(l, partes)
+  const compraViva = Boolean(l.orden_compra) && !l.compra_rechazada && !corta
+  const c = cuentaDelInsumo(l.cantidad, partes, compraViva)
+  const como = comoVaLaEntrega(c)
+  // Entregado el RQ, lo que no salió ya lo dice «No salió del kardex» junto al insumo.
+  const cerrado = estadoRq === 'ENTREGADO'
+  if (cerrado && como !== 'PARCIAL') return null
+  // Nada entregado y todo por revisar: la etapa del RQ ya lo dice.
+  if (como === 'NADA' && c.porRevisar === c.falta) return null
+  const u = l.unidad
+  // La fecha de la OC ya pasada se dice en pasado: «se esperaba el …». Sin
+  // color: todavía no hay colores por demora (decisión del plan 0).
+  const vencida = l.fecha_esperada !== null && l.fecha_esperada < hoyLima()
+  const todas = [
+    c.separado > 0 && { clave: 'separado', texto: `Separado ${cantidad(c.separado)}`, clase: 'text-exito' },
+    c.porLlegar > 0 && {
+      clave: 'por-llegar',
+      texto: `Por llegar ${cantidad(c.porLlegar)}${l.fecha_esperada ? ` (${vencida ? 'se esperaba' : 'se espera'} el ${fecha(l.fecha_esperada)})` : ''}`,
+      clase: 'text-info',
+    },
+    c.porComprar > 0 &&
+      (corta
+        ? { clave: 'compra-corta', texto: `Sin compra ${cantidad(c.porComprar)}: pide el resto en un RQ nuevo`, clase: 'text-aviso' }
+        : { clave: 'por-comprar', texto: `Por comprar ${cantidad(c.porComprar)}`, clase: 'text-aviso' }),
+    c.porRevisar > 0 && { clave: 'por-revisar', texto: `Por revisar ${cantidad(c.porRevisar)}`, clase: 'text-texto-suave' },
+  ].filter((p): p is { clave: string; texto: string; clase: string } => Boolean(p))
+  // Nada entregado y todo lo que falta por comprar: «faltan 6» basta junto a la
+  // etapa «Por comprar» del insumo, que ya lo dice.
+  const partesQueFaltan = como === 'NADA' && todas.length === 1 && todas[0].clave === 'por-comprar' ? [] : todas
+  const falta = (n: number) => `${n === 1 ? 'falta' : 'faltan'} ${cantidad(n)}`
+  return (
+    <span
+      className="mt-0.5 block text-xs"
+      data-entrega-insumo={como}
+      data-pedido={c.pedido}
+      data-entregado={c.entregado}
+      data-separado={c.separado}
+      data-por-llegar={c.porLlegar}
+      data-por-comprar={c.porComprar}
+      data-por-revisar={c.porRevisar}
+    >
+      <span className={`tabular font-medium ${como === 'COMPLETA' ? 'text-exito' : 'text-texto'}`}>
+        {como === 'COMPLETA'
+          ? `Entregado completo: ${cantidad(c.pedido)} ${u}`
+          : cerrado
+            ? `Entregado ${cantidad(c.entregado)} de ${cantidad(c.pedido)} ${u}`
+            : como === 'PARCIAL'
+              ? `Entregado ${cantidad(c.entregado)} de ${cantidad(c.pedido)} ${u} · ${falta(c.falta)}`
+              : `Nada entregado · ${falta(c.falta)} ${u}`}
+      </span>
+      {!cerrado &&
+        partesQueFaltan.map((p) => (
+          <span key={p.clave} className="tabular">
+            {' · '}
+            <span className={p.clase} data-parte={p.clave}>
+              {p.texto}
+            </span>
+          </span>
+        ))}
+    </span>
   )
 }

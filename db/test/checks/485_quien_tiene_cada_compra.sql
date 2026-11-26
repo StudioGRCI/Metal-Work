@@ -23,7 +23,7 @@ set local timezone = 'UTC';
 do $$
 declare v text; v_id uuid;
 begin
-  foreach v in array array['COMPRADOR:LOG', 'GERENTE:GGE', 'CONDUCTOR:LOG', 'ALMACENERO:ALM', 'VENDEDOR:VEN'] loop
+  foreach v in array array['COMPRADOR:LOG', 'GERENTE:GGE', 'CONDUCTOR:LOG', 'ALMACENERO:ALM', 'VENDEDOR:VEN', 'ADMINISTRACION:ADM'] loop
     v_id := gen_random_uuid();
     insert into auth.users (id, email) values (v_id, lower(replace(v, ':', '.')) || '.485@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
@@ -32,8 +32,8 @@ begin
       from public.roles r where r.codigo = split_part(v, ':', 1);
     perform set_config('prueba.' || lower(split_part(v, ':', 1)), v_id::text, true);
   end loop;
-  perform test.afirmar((select count(*) from public.usuarios where apellidos = 'Check 485') = 5,
-    'se crearon los cinco usuarios del check, uno por puesto');
+  perform test.afirmar((select count(*) from public.usuarios where apellidos = 'Check 485') = 6,
+    'se crearon los seis usuarios del check, uno por puesto');
   foreach v in array array['oc1', 'oc2', 'oc3', 'os1', 'mot1', 'mot2', 'fec1', 'fec2', 'mov3'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
@@ -288,6 +288,17 @@ select test.afirmar((select count(*) from public.seguimiento_de_compras where or
   'Gerencia lee el seguimiento de la OC que ve');
 select test.debe_fallar(format('select public.anotar_motivo_atraso(%L, ''OC'', %L, ''PAGO'', null)', gen_random_uuid(), pg_temp.id('oc1')),
   'Gerencia no anota el motivo', 'permiso');
+reset role;
+-- Administración tiene compras.crear solo para la OC de su RQA: la OC directa y
+-- la OS las sigue Logística, aunque la acción las mande.
+select pg_temp.como('administracion');
+set local role authenticated;
+select test.debe_fallar(format('select public.anotar_motivo_atraso(%L, ''OC'', %L, ''PAGO'', null)', gen_random_uuid(), pg_temp.id('oc1')),
+  'Administración no anota el motivo de una OC directa', 'su RQA');
+select test.debe_fallar(format('select public.corregir_fecha_esperada(%L, ''OS'', %L, %L, ''PAGO'', null)',
+  gen_random_uuid(), pg_temp.id('os1'), pg_temp.hoy() + 20), 'Administración no corrige la fecha de una OS', 'su RQA');
+select test.debe_fallar(format('select public.corregir_fecha_esperada(%L, ''OC'', %L, %L, ''PAGO'', null)',
+  gen_random_uuid(), pg_temp.id('oc2'), pg_temp.hoy() + 20), 'Administración no corrige la fecha de una OC directa', 'su RQA');
 reset role;
 select pg_temp.como('vendedor');
 set local role authenticated;

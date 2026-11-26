@@ -11,8 +11,8 @@ import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
 import { MOTIVO_DE_ATRASO, MOTIVOS_DE_ATRASO } from '@/lib/dominio/plazos'
-import { useEnvio, useIdDelEnvio } from '@/lib/envio'
-import { fecha as formatoFecha } from '@/lib/format'
+import { useCursorAlRechazo, useEnvio, useIdDelEnvio } from '@/lib/envio'
+import { fecha as formatoFecha, hoyLima, sumarDias } from '@/lib/format'
 
 import { anotarMotivoAtraso, corregirFechaPrometida } from './acciones-seguimiento'
 
@@ -193,16 +193,20 @@ function Formulario({
       envio.otro()
       alTerminar(r.mensaje ?? 'Anotado.')
     },
-    { alYaEntrar: envio.otro },
+    // Cambia lo que la fila muestra (el motivo, la fecha): el aviso sale con la fila ya al día.
+    { alYaEntrar: envio.otro, corrige: true },
   )
+  // El rechazo de la fecha va junto a su campo, con el cursor ahí; los demás, al pie.
+  const deLaFecha = conFecha && error && /^(La fecha nueva|Elige la fecha nueva|La .+ ya tiene esa fecha)/.test(error) ? error : null
+  useCursorAlRechazo(enviando, deLaFecha, () => document.getElementById(`seg-fecha-${id}`))
   return (
     <form onSubmit={alEnviar} className="space-y-3">
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="tipo" value={documento.tipo} />
       <input type="hidden" name="documento" value={documento.id} />
       {conFecha && (
-        <Campo etiqueta={conFecha.servicio ? 'Fecha nueva en que vuelve' : 'Fecha nueva que prometió el proveedor'} htmlFor={`seg-fecha-${id}`} requerido>
-          <Entrada id={`seg-fecha-${id}`} name="fecha" type="date" required className="tabular" />
+        <Campo etiqueta={conFecha.servicio ? 'Fecha nueva en que vuelve' : 'Fecha nueva que prometió el proveedor'} htmlFor={`seg-fecha-${id}`} requerido error={deLaFecha ?? undefined}>
+          <Entrada id={`seg-fecha-${id}`} name="fecha" type="date" required max={sumarDias(hoyLima(), 365)} className="tabular" />
         </Campo>
       )}
       <Campo etiqueta={conFecha ? 'Por qué cambia' : 'Por qué se atrasó'} htmlFor={`seg-motivo-${id}`} requerido>
@@ -233,7 +237,7 @@ function Formulario({
           placeholder="Por ejemplo: el proveedor no tenía stock; avisó que llega el lunes."
         />
       </Campo>
-      <PieDeVentana error={error} enviando={enviando} alCancelar={alCancelar} texto={texto} />
+      <PieDeVentana error={deLaFecha ? null : error} enviando={enviando} alCancelar={alCancelar} texto={texto} />
     </form>
   )
 }
