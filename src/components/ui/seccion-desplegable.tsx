@@ -12,13 +12,18 @@ import { cn } from '@/lib/utils'
  * el atributo y la sección se queda como la dejó la persona aunque la página se
  * refresque. Si se calcula con datos que cambian al guardar, quien la llama lo
  * fija con un `useState`, o se le cierra en la cara a quien está escribiendo.
+ *
+ * El navegador la abre solo antes de que React llegue cuando la dirección trae
+ * el `#` de algo que está adentro (el aviso «Pide el reembolso» a una OC ya
+ * pagada, en Cuentas por pagar), o al buscar con Ctrl+F: ese `open` no es un
+ * error de hidratación, y `suppressHydrationWarning` lo deja pasar.
  */
 export function SeccionDesplegable({ id, titulo, descripcion, children, abierta = false, className }: {
   /** Para llegar con un ancla (`#equipo-diseno`); el `scroll-mt-*` va en `className`. */
   id?: string
   titulo: string; descripcion?: string; children: ReactNode; abierta?: boolean; className?: string
 }) {
-  return <details id={id} open={abierta || undefined} className={cn('group rounded-[var(--radius-base)] border border-borde bg-superficie shadow-[var(--sombra)]', className)}>
+  return <details id={id} open={abierta || undefined} suppressHydrationWarning className={cn('group rounded-[var(--radius-base)] border border-borde bg-superficie shadow-[var(--sombra)]', className)}>
     <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 rounded-[var(--radius-base)] p-4 text-texto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-acento [&::-webkit-details-marker]:hidden">
       <span className="min-w-0"><span className="block text-sm font-semibold">{titulo}</span>
         {descripcion && <span className="mt-1 block text-xs text-texto-suave">{descripcion}</span>}</span>
