@@ -320,7 +320,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
       {/* Los conteos ya hechos se consultan, no esperan a nadie: plegados, para que
           en el teléfono no empujen el tablero y los filtros (plan 2, entrega 2.3). */}
       {!elegido && (conteos === null || conteos.length > 0 || puedeIngreso) && (
-        <SeccionDesplegable id="conteos" className="mb-4 scroll-mt-20" titulo="Conteos físicos" descripcion={resumenDeConteos(conteos, filtros.almacen)}>
+        <SeccionDesplegable id="conteos" className="mb-4 scroll-mt-20" titulo={filtros.material ? 'Conteos físicos del material elegido' : 'Conteos físicos'} descripcion={resumenDeConteos(conteos, filtros.almacen)}>
           <p className="mb-3 text-xs text-texto-suave">
             Lo que contó Almacén, lo que decía el sistema y la diferencia, que quedó como ajuste en el kardex; quién contó, cuándo y por
             qué. Elige un material para ver los suyos.

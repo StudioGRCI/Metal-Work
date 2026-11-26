@@ -185,11 +185,11 @@ async function abrirConteos(pagina) {
   const d = filaConteo(pagina, `PRB-E23-${sufijo}`)
   const t = await texto(d).catch(() => '')
   const celda = async (fila, rotulo) => texto(fila.locator(`[data-rotulo="${rotulo}"]`))
-  comprobar((await d.count()) === 1 && (await celda(d, 'Contó')) === '17 UND', `el conteo del disco: «${t}»`)
+  comprobar((await d.count()) === 1 && (await celda(d, 'Contado')) === '17 UND', `el conteo del disco: «${t}»`)
   comprobar((await d.locator('[data-diferencia]').getAttribute('data-diferencia')) === '-3', 'con la diferencia −3')
   comprobar((await celda(d, 'El sistema decía')) === '20 UND' && t.includes(`Contó ${contador}`), `lo que decía el sistema (20) y quién contó (${contador})`)
   const p = filaConteo(pagina, `PRB-E23M-${sufijo}`)
-  comprobar((await p.locator('[data-diferencia]').getAttribute('data-diferencia')) === '0.3' && (await celda(p, 'Contó')) === '10.3 M' && (await celda(p, 'El sistema decía')) === '10 M',
+  comprobar((await p.locator('[data-diferencia]').getAttribute('data-diferencia')) === '0.3' && (await celda(p, 'Contado')) === '10.3 M' && (await celda(p, 'El sistema decía')) === '10 M',
     `la platina en metros, sin decimales de más: «${await texto(p)}»`)
   await pagina.locator('#por-validar').scrollIntoViewIfNeeded()
   await pagina.screenshot({ path: join(CAPTURAS, '2-3-almacen-1440-por-validar.png') })

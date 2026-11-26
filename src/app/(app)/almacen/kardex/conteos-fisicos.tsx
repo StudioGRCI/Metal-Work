@@ -37,7 +37,7 @@ export function ConteosFisicos({ conteos, conMaterial }: { conteos: ConteoFisico
         <tr>
           <TH>Cuándo y quién</TH>
           {conMaterial && <TH>Material</TH>}
-          <TH className="text-right">Contó</TH>
+          <TH className="text-right">Contado</TH>
           <TH className="text-right">El sistema decía</TH>
           <TH className="text-right">Diferencia</TH>
           <TH>Motivo</TH>
@@ -52,13 +52,14 @@ export function ConteosFisicos({ conteos, conMaterial }: { conteos: ConteoFisico
             </TD>
             {conMaterial && (
               <TD data-rotulo="Material" className="max-w-64">
-                <Link href={`/almacen/kardex?material=${c.materialId}`} className="line-clamp-2 text-sm text-acento hover:underline pointer-coarse:py-3">
-                  {c.material}
+                <Link href={`/almacen/kardex?material=${c.materialId}`} className="block text-sm text-acento hover:underline pointer-coarse:py-3">
+                  {/* El recorte va adentro: con el relleno en la misma caja se asomaba media tercera línea. */}
+                  <span className="line-clamp-2">{c.material}</span>
                 </Link>
                 <span className="block font-mono text-xs text-texto-tenue">{c.codigo}</span>
               </TD>
             )}
-            <TD data-rotulo="Contó" className="tabular md:text-right">
+            <TD data-rotulo="Contado" className="tabular md:text-right">
               {cantidad(c.contado)} <span className="text-xs text-texto-suave">{c.unidad ?? ''}</span>
             </TD>
             <TD data-rotulo="El sistema decía" className="tabular md:text-right">
