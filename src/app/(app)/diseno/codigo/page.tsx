@@ -27,6 +27,7 @@ import {
   type OrdenDelCodigo,
 } from '@/lib/datos/diseno-codigos'
 import { limitePorVencer } from '@/lib/datos/limite-por-vencer'
+import { responsablesDeEtapas } from '@/lib/datos/tiempos-entrega'
 import { normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { AREAS_DE_ETAPA_DE_DISENO, VISTAS_DISENO, vistaDisenoValida, type VistaDiseno } from '@/lib/dominio/diseno-codigos'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
@@ -316,11 +317,12 @@ async function VistaMateriales({ codigo }: { codigo: string }) {
 }
 
 async function VistaEtapas({ codigo }: { codigo: string }) {
-  const [etapas, todasLasAreas, planos, limite] = await Promise.all([
+  const [etapas, todasLasAreas, planos, limite, responsables] = await Promise.all([
     etapasDeCodigo(codigo),
     areasParaEtapas(),
     planosDeCodigo(codigo),
     limitePorVencer(),
+    responsablesDeEtapas(codigo),
   ])
   // Diseño solo pone etapas de Maestranza (habilitado) y de Producción (ensamblaje).
   const areas = todasLasAreas.filter((a) => (AREAS_DE_ETAPA_DE_DISENO as readonly string[]).includes(a.codigo))
@@ -350,6 +352,7 @@ async function VistaEtapas({ codigo }: { codigo: string }) {
               etapas={etapas}
               hoy={hoy}
               limite={limite}
+              responsables={responsables}
               conPlanosConPeso={planos.some((p) => !p.anulado_en && (p.peso ?? 0) > 0)}
               acciones={(e, lugar) =>
                 e.de_area || e.padre_id ? (
