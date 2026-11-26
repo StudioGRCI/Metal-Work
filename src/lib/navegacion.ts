@@ -15,6 +15,7 @@ import {
   ClipboardList,
   Clock,
   ClockAlert,
+  Cog,
   Contact,
   Coins,
   CreditCard,
@@ -719,6 +720,18 @@ export const NAVEGACION = [
   {
     titulo: 'Mantenimiento',
     items: [
+      // El mantenimiento de las unidades de los clientes (plan «Las demás
+      // áreas», A.3): las OT de mantenimiento, sin montos, para el puesto que
+      // hace el trabajo. Gerencia las consulta en Órdenes de trabajo.
+      {
+        titulo: 'OT de mantenimiento',
+        ruta: '/mantenimiento',
+        // No la llave (Órdenes de servicio) ni el taladro (Equipos).
+        icono: Cog,
+        permiso: 'mantenimiento.ots',
+        descripcion: 'Las órdenes de mantenimiento de las unidades de los clientes: qué hay que hacer, su RQ y su reporte',
+        disponible: true,
+      },
       {
         titulo: 'Equipos',
         ruta: '/equipos',
@@ -1143,9 +1156,16 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // El puesto de Mantenimiento (Plan 16): lleva el padrón de equipos de la
   // planta. Las averías y el mantenimiento de las unidades de los clientes se
   // suman a este mismo menú en sus entregas, sin reemplazar este grupo.
+  // Desde A.3 (2026-11-26), arriba, el mantenimiento de las unidades de los
+  // clientes: sus OT, su reporte diario y sus requerimientos (pide desde la
+  // tarjeta de cada OT; la lista dice cuál está listo para recoger).
   MANTENIMIENTO: {
-    grupos: [{ titulo: 'Mantenimiento', rutas: ['/averias', '/equipos'] }],
-    telefono: ['/averias', '/equipos', '/'],
+    grupos: [
+      { titulo: 'Unidades de clientes', rutas: ['/mantenimiento', '/reportes-diarios', '/requerimientos'] },
+      { titulo: 'Mantenimiento', rutas: ['/averias', '/equipos'] },
+    ],
+    // Con cuatro pestañas el Dashboard queda en «Más».
+    telefono: ['/mantenimiento', '/reportes-diarios', '/averias', '/equipos'],
   },
   // Sube su reporte diario, que es su trabajo de cada día. Desde el 2026-10-15,
   // los planos que Diseño carga para su área y las etapas que hace su área van
@@ -1444,6 +1464,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/almacen/reposicion', corto: 'Reposición' },
   { ruta: '/almacen/compras', corto: 'Control' },
   { ruta: '/equipos', corto: 'Equipos' },
+  { ruta: '/mantenimiento', corto: 'OT' },
   // Al final: solo el nombre corto. Antes quitaba una de las cuatro pestañas a
   // los puestos sin menú propio (Operario, Calidad, Costos…).
   { ruta: '/averias', corto: 'Averías' },
