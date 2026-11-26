@@ -31,7 +31,7 @@
 -- Lo que falta se avisa, no frena el cierre: cerrar sigue siendo la decisión de
 -- RR. HH. (`cerrar_planilla`, sin cambios). Una planilla cerrada ya no se edita
 -- desde antes (`fn_planilla_abierta` en planilla_personas y sus
--- distribuciones, y `planillas` sin política de UPDATE): el check 473 lo
+-- distribuciones, y `planillas` sin política de UPDATE): el check 474 lo
 -- prueba con el rol real.
 --
 -- Las dos las lee quien ya ve las planillas (`rrhh.ver_planillas`, como la

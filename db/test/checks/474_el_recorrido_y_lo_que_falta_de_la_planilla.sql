@@ -33,7 +33,7 @@ begin
   insert into public.reportes_diarios (id, fecha, codigo_interno, asunto, descripcion, area_id, registrado_por,
                                        visto_rrhh_por, visto_rrhh_en, observado_por, observado_en, observacion_area, observacion,
                                        anulado_por, anulado_en, motivo_anulacion, creado_en)
-  select x.id, x.fecha, 'CHK472', x.asunto, 'Reporte del check 473', (select id from public.areas where codigo = 'PRD'),
+  select x.id, x.fecha, 'CHK472', x.asunto, 'Reporte del check 474', (select id from public.areas where codigo = 'PRD'),
          current_setting('prueba.gerente')::uuid,
          case when x.visto then current_setting('prueba.recursos_humanos')::uuid end, case when x.visto then now() end,
          case when x.observado then current_setting('prueba.recursos_humanos')::uuid end, case when x.observado then now() end,
