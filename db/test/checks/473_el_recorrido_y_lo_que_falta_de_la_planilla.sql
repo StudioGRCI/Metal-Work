@@ -33,7 +33,7 @@ begin
   insert into public.reportes_diarios (id, fecha, codigo_interno, asunto, descripcion, area_id, registrado_por,
                                        visto_rrhh_por, visto_rrhh_en, observado_por, observado_en, observacion_area, observacion,
                                        anulado_por, anulado_en, motivo_anulacion, creado_en)
-  select x.id, x.fecha, 'CHK472', x.asunto, 'Reporte del check 472', (select id from public.areas where codigo = 'PRD'),
+  select x.id, x.fecha, 'CHK472', x.asunto, 'Reporte del check 473', (select id from public.areas where codigo = 'PRD'),
          current_setting('prueba.gerente')::uuid,
          case when x.visto then current_setting('prueba.recursos_humanos')::uuid end, case when x.visto then now() end,
          case when x.observado then current_setting('prueba.recursos_humanos')::uuid end, case when x.observado then now() end,
@@ -79,13 +79,17 @@ values ('47200000-0000-4000-8000-0000000000b1', 'Ana Prueba Cuatro', '47200001',
        ('47200000-0000-4000-8000-0000000000b1', 'Beto Prueba Cuatro', '47200002', 1400, public.usuario_actual(), '47200000-0000-4000-8000-0000000000c1');
 insert into public.planilla_personas (planilla_id, nombre, documento, monto, registrado_por)
 values ('47200000-0000-4000-8000-0000000000b1', 'Zeta Sin Ficha', null, 900, public.usuario_actual());
+-- Uno que entró a mano por error y se quita: su fila se borra, el recorrido lo recuerda.
+insert into public.planilla_personas (id, planilla_id, nombre, documento, monto, registrado_por)
+values ('47200000-0000-4000-8000-0000000000d1', '47200000-0000-4000-8000-0000000000b1', 'Por Error Cuatro', null, 50, public.usuario_actual());
+delete from public.planilla_personas where id = '47200000-0000-4000-8000-0000000000d1';
 
 -- El recorrido: creada, el Excel con 2, 1 a mano y el cierre que espera a RR. HH.
 select test.afirmar(
   (select array_agg(paso || ':' || situacion || ':' || coalesce(detalle, '-') order by orden)
      from public.recorrido_de_planillas(array['47200000-0000-4000-8000-0000000000b1'::uuid]))
-  = array['CREADA:HECHO:-', 'IMPORTACION:HECHO:2', 'A_MANO:HECHO:1', 'CIERRE:AHORA:-'],
-  'el recorrido de la planilla en preparación: creada, el Excel con 2 personas, 1 a mano y el cierre pendiente');
+  = array['CREADA:HECHO:-', 'IMPORTACION:HECHO:2', 'A_MANO:HECHO:2', 'QUITADAS:HECHO:1', 'CIERRE:AHORA:-'],
+  'el recorrido de la planilla en preparación: creada, el Excel con 2 personas, 2 a mano, 1 quitada y el cierre pendiente');
 select test.afirmar(
   (select puesto = 'Recursos Humanos' and espera = 'CERRAR' and dias = 0
      from public.recorrido_de_planillas(array['47200000-0000-4000-8000-0000000000b1'::uuid]) where situacion = 'AHORA'),
@@ -97,6 +101,15 @@ select test.afirmar(
 select test.afirmar(
   (select espera = 'IMPORTAR' from public.recorrido_de_planillas(array['47200000-0000-4000-8000-0000000000b2'::uuid]) where situacion = 'AHORA'),
   'la planilla vacía espera que se importe su Excel');
+-- Si se importa un Excel y se quita a todos, el Excel que entró sigue en el recorrido.
+insert into public.planilla_personas (planilla_id, nombre, monto, registrado_por, importacion_id)
+values ('47200000-0000-4000-8000-0000000000b2', 'Subcontrato Cuatro', 300, public.usuario_actual(), '47200000-0000-4000-8000-0000000000c2');
+delete from public.planilla_personas where planilla_id = '47200000-0000-4000-8000-0000000000b2';
+select test.afirmar(
+  (select array_agg(paso || ':' || situacion || ':' || coalesce(detalle, coalesce(espera, '-')) order by orden)
+     from public.recorrido_de_planillas(array['47200000-0000-4000-8000-0000000000b2'::uuid]))
+  = array['CREADA:HECHO:-', 'IMPORTACION:HECHO:1', 'QUITADAS:HECHO:1', 'CIERRE:AHORA:IMPORTAR'],
+  'el Excel que se quitó entero sigue en el recorrido, y la planilla vuelve a esperar uno');
 
 -- Lo que falta: el reporte sin visto y el observado del mes; Beto sin cuenta y
 -- Zeta sin ficha. Ni Ana, ni el reporte con visto, ni el anulado, ni el del mes
@@ -141,7 +154,7 @@ reset role;
 select pg_temp.como('admin');
 set local role authenticated;
 select test.afirmar(
-  (select count(*) = 4 from public.recorrido_de_planillas(array['47200000-0000-4000-8000-0000000000b1'::uuid])),
+  (select count(*) = 5 from public.recorrido_de_planillas(array['47200000-0000-4000-8000-0000000000b1'::uuid])),
   'el administrador mira el recorrido');
 select test.debe_fallar($$select public.cerrar_planilla('47200000-0000-4000-8000-0000000000b1')$$,
   'el administrador no cierra la planilla de RR. HH.');
@@ -155,7 +168,7 @@ select public.cerrar_planilla('47200000-0000-4000-8000-0000000000b1');
 select test.afirmar(
   (select array_agg(paso || ':' || situacion order by orden)
      from public.recorrido_de_planillas(array['47200000-0000-4000-8000-0000000000b1'::uuid]))
-  = array['CREADA:HECHO', 'IMPORTACION:HECHO', 'A_MANO:HECHO', 'CIERRE:HECHO'],
+  = array['CREADA:HECHO', 'IMPORTACION:HECHO', 'A_MANO:HECHO', 'QUITADAS:HECHO', 'CIERRE:HECHO'],
   'cerrada, el recorrido termina en el cierre hecho');
 select test.afirmar(
   (select puesto = 'Recursos Humanos' and dias is null

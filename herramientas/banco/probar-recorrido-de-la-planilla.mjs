@@ -201,7 +201,11 @@ try {
     comprobar((await texto(recorrido.locator('summary'))).includes('La tiene Recursos Humanos'), `${ancho}: plegado, el recorrido dice quién la tiene: «${await texto(recorrido.locator('summary'))}»`)
     await recorrido.locator('summary').click()
     const pasos = await recorrido.locator('[data-recorrido-paso]').evaluateAll((l) => l.map((e) => `${e.getAttribute('data-recorrido-paso')}:${e.getAttribute('data-situacion')}`))
-    comprobar(pasos.join(',').endsWith('IMPORTACION:HECHO,A_MANO:HECHO,CIERRE:AHORA') && pasos[0] === 'CREADA:HECHO', `${ancho}: los pasos de la abierta: ${pasos.join(', ')}`)
+    // Las corridas anteriores dejan sus Excel y lo que quitaron al limpiar: también son recorrido.
+    comprobar(
+      pasos[0] === 'CREADA:HECHO' && pasos.includes('IMPORTACION:HECHO') && pasos.includes('A_MANO:HECHO') && pasos.at(-1) === 'CIERRE:AHORA',
+      `${ancho}: los pasos de la abierta: ${pasos.join(', ')}`,
+    )
     comprobar((await texto(recorrido.locator('[data-recorrido-paso="IMPORTACION"]').last())).includes('Entraron 2 personas'), `${ancho}: el Excel dice cuántas personas entraron`)
     comprobar((await texto(recorrido.locator('[data-recorrido-paso="CIERRE"]'))).includes('Revisa lo que falta y la cierra'), `${ancho}: el cierre dice qué se espera`)
     await tarjeta.screenshot({ path: `${CAPTURAS}/13-3-planilla-abierta-rrhh-${ancho}.png` })

@@ -166,7 +166,8 @@ const personas = (n: string) => (Number(n) === 1 ? '1 persona' : `${n} personas`
 const PASOS_DE_LA_PLANILLA: Record<string, Frases> = {
   CREADA: { hecho: 'Creada', falta: 'Creación' },
   IMPORTACION: { hecho: 'Excel importado', falta: 'Excel', nota: (n) => `Entraron ${personas(n)}` },
-  A_MANO: { hecho: 'Agregadas a mano', falta: 'Agregadas a mano', nota: (n) => `${personas(n)} fuera del Excel; la hora es la de la última` },
+  A_MANO: { hecho: 'Agregadas a mano', falta: 'Agregadas a mano', nota: (n) => `${personas(n)} fuera del Excel. La hora es la de la última que se agregó.` },
+  QUITADAS: { hecho: 'Quitadas de la planilla', falta: 'Quitadas', nota: (n) => `${personas(n)}. La hora es la de la última que se quitó.` },
   CIERRE: { hecho: 'Cerrada', falta: 'Cierre' },
 }
 

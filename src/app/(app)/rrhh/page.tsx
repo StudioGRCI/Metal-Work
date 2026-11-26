@@ -88,8 +88,10 @@ export default async function PaginaRRHH() {
       return null
     }),
   ])
-  // Si RR. HH. puede dar el visto a los reportes, la lista la lleva a hacerlo.
+  // Los reportes del mes que faltan los lee quien lee los reportes; «tu visto» y
+  // «Darles el visto» son solo para quien lo da (no el administrador, que mira).
   const veReportes = puede(perfil, 'reporte_diario.ver')
+  const daElVisto = editaComoRrhh(perfil, 'reporte_diario.validar_rrhh')
   const restadoDe = new Map(restados)
   const comoEntra = new Map<string, PersonaAlCosto>(alCosto.flatMap((m) => [...m]))
   const sinPlanillas = (planillas.data ?? []).length === 0
@@ -180,6 +182,7 @@ export default async function PaginaRRHH() {
                     deTaller={p.tipo === 'TALLER'}
                     mes={p.periodo.slice(0, 7)}
                     veReportes={veReportes}
+                    daElVisto={daElVisto}
                     conGente={deEsta.length > 0}
                   />
                 )}
@@ -442,6 +445,7 @@ function LoQueFaltaParaCerrar({
   deTaller,
   mes,
   veReportes,
+  daElVisto,
   conGente,
 }: {
   planillaId: string
@@ -450,6 +454,7 @@ function LoQueFaltaParaCerrar({
   /** `YYYY-MM`, para abrir los reportes del mes. */
   mes: string
   veReportes: boolean
+  daElVisto: boolean
   conGente: boolean
 }) {
   if (faltas === null) {
@@ -494,11 +499,14 @@ function LoQueFaltaParaCerrar({
       </div>
 
       {sinVisto.length > 0 && (
-        <Pliegue titulo={`${cuantos(sinVisto.length, 'reporte espera', 'reportes esperan')} tu visto`} data-falta="REPORTE_SIN_VISTO">
+        <Pliegue
+          titulo={`${cuantos(sinVisto.length, 'reporte espera', 'reportes esperan')} ${daElVisto ? 'tu visto' : 'el visto de RR. HH.'}`}
+          data-falta="REPORTE_SIN_VISTO"
+        >
           <p className="pb-2 text-xs text-texto-suave">
             Sin el visto de RR. HH., sus horas no pasan a la planilla diaria.{' '}
             <Link href={`/reportes-diarios?mes=${mes}&estado=por-validar`} className={enlace}>
-              Darles el visto
+              {daElVisto ? 'Darles el visto' : 'Ver los reportes por validar'}
             </Link>
           </p>
           <FilasDeReportes filas={sinVisto} />

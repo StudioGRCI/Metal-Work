@@ -12,9 +12,12 @@
 --
 -- 1. `recorrido_de_planillas(ids)`, con la misma forma que el recorrido del RQ y
 --    de la cotización (migración 20261125130000): creada → cada Excel importado
---    → lo agregado a mano → cerrada. Mientras está en preparación la tiene RR. HH.
---    y se dice hace cuántos días (fecha de Lima). De cada paso, el puesto de
---    quien lo hizo, nunca su nombre ni un importe.
+--    → lo agregado a mano → lo quitado → cerrada. Mientras está en preparación la
+--    tiene RR. HH. y se dice hace cuántos días (fecha de Lima). De cada paso, el
+--    puesto de quien lo hizo, nunca su nombre ni un importe. Quitar a alguien de
+--    la planilla borra su fila, pero la auditoría guarda la copia: el Excel que
+--    entró y quién quitó a quién no se pierden del recorrido aunque se quite a
+--    todos.
 --
 -- 2. `planilla_lo_que_falta(planilla)`: mientras está en preparación,
 --    - de la de taller, los reportes diarios del mes que esperan el visto de
@@ -28,7 +31,7 @@
 -- Lo que falta se avisa, no frena el cierre: cerrar sigue siendo la decisión de
 -- RR. HH. (`cerrar_planilla`, sin cambios). Una planilla cerrada ya no se edita
 -- desde antes (`fn_planilla_abierta` en planilla_personas y sus
--- distribuciones, y `planillas` sin política de UPDATE): el check 472 lo
+-- distribuciones, y `planillas` sin política de UPDATE): el check 473 lo
 -- prueba con el rol real.
 --
 -- Las dos las lee quien ya ve las planillas (`rrhh.ver_planillas`, como la
@@ -83,33 +86,64 @@ begin
       from public.planillas p
      where p.id = any(p_ids)
   ),
-  -- Cada Excel importado es una importación: quién la hizo, cuándo y cuántas personas dejó.
-  importaciones as (
-    select x.planilla_id, x.importacion_id,
-           min(x.creado_en) as en,
-           (array_agg(x.registrado_por order by x.creado_en))[1] as por,
-           count(*) as personas
+  -- Quien quitó a alguien de la planilla: la auditoría guarda la fila como era.
+  quitados as (
+    select (a.datos_antes ->> 'planilla_id')::uuid as planilla_id,
+           a.datos_antes ->> 'importacion_id' as importacion_id,
+           (a.datos_antes ->> 'creado_en')::timestamptz as creado_en,
+           (a.datos_antes ->> 'registrado_por')::uuid as registrado_por,
+           a.creado_en as quitado_en,
+           a.usuario_id as quitado_por
+      from public.audit_log a
+     where a.tabla = 'planilla_personas' and a.accion = 'DELETE'
+       and (a.datos_antes ->> 'planilla_id')::uuid = any(p_ids)
+  ),
+  -- Todos los que entraron alguna vez: los que siguen y los que se quitaron.
+  entraron as (
+    select x.planilla_id, x.importacion_id::text as importacion_id, x.creado_en, x.registrado_por
       from public.planilla_personas x
-     where x.planilla_id = any(p_ids) and x.importacion_id is not null
-     group by x.planilla_id, x.importacion_id
+     where x.planilla_id = any(p_ids)
+    union all
+    select q.planilla_id, q.importacion_id, q.creado_en, q.registrado_por
+      from quitados q
+  ),
+  -- Cada Excel importado es una importación: quién la hizo, cuándo y cuántas personas entraron.
+  importaciones as (
+    select e.planilla_id, e.importacion_id,
+           min(e.creado_en) as en,
+           (array_agg(e.registrado_por order by e.creado_en))[1] as por,
+           count(*) as personas
+      from entraron e
+     where e.importacion_id is not null
+     group by e.planilla_id, e.importacion_id
   ),
   -- Lo agregado a mano va en un solo paso: la última vez, y cuántas personas.
   a_mano as (
-    select x.planilla_id,
-           max(x.creado_en) as en,
-           (array_agg(x.registrado_por order by x.creado_en desc))[1] as por,
+    select e.planilla_id,
+           max(e.creado_en) as en,
+           (array_agg(e.registrado_por order by e.creado_en desc))[1] as por,
            count(*) as personas
-      from public.planilla_personas x
-     where x.planilla_id = any(p_ids) and x.importacion_id is null
-     group by x.planilla_id
+      from entraron e
+     where e.importacion_id is null
+     group by e.planilla_id
+  ),
+  -- Lo quitado, también en un solo paso: la última vez, quién, y cuántas personas.
+  quitadas as (
+    select q.planilla_id,
+           max(q.quitado_en) as en,
+           (array_agg(q.quitado_por order by q.quitado_en desc))[1] as por,
+           count(*) as personas
+      from quitados q
+     group by q.planilla_id
   ),
   -- Lo último que se le hizo antes de cerrarla: desde ahí espera el cierre.
   ultimo as (
-    select pl.id, greatest(pl.creado_en, max(i.en), max(m.en)) as en,
+    select pl.id, greatest(pl.creado_en, max(i.en), max(m.en), max(qq.en)) as en,
            exists (select 1 from public.planilla_personas x where x.planilla_id = pl.id) as con_gente
       from pl
       left join importaciones i on i.planilla_id = pl.id
       left join a_mano m on m.planilla_id = pl.id
+      left join quitadas qq on qq.planilla_id = pl.id
      group by pl.id, pl.creado_en
   ),
   pasos as (
@@ -123,10 +157,13 @@ begin
     select m.planilla_id, m.en, 3, 'A_MANO', 'HECHO', m.por, null, null, m.personas::text
       from a_mano m
     union all
-    select pl.id, pl.cerrado_en, 4, 'CIERRE', 'HECHO', pl.cerrado_por, null, null, null
+    select qq.planilla_id, qq.en, 4, 'QUITADAS', 'HECHO', qq.por, null, null, qq.personas::text
+      from quitadas qq
+    union all
+    select pl.id, pl.cerrado_en, 5, 'CIERRE', 'HECHO', pl.cerrado_por, null, null, null
       from pl where pl.estado = 'CERRADA'
     union all
-    select pl.id, u.en, 4, 'CIERRE', 'AHORA', null, 'Recursos Humanos',
+    select pl.id, u.en, 5, 'CIERRE', 'AHORA', null, 'Recursos Humanos',
            case when u.con_gente then 'CERRAR' else 'IMPORTAR' end, null
       from pl join ultimo u on u.id = pl.id
      where pl.estado = 'BORRADOR'
@@ -146,7 +183,7 @@ end;
 $$;
 
 comment on function public.recorrido_de_planillas(uuid[]) is
-  'El recorrido de cada planilla del mes, un paso por fila: creada, cada Excel importado (detalle: cuántas personas), lo agregado a mano y el cierre, con el puesto de quien lo hizo y su hora; en preparación, la tiene RR. HH. desde lo último que se le hizo (dias por fecha de Lima). Lo lee quien ve las planillas (rrhh.ver_planillas). Sin importes ni nombres.';
+  'El recorrido de cada planilla del mes, un paso por fila: creada, cada Excel importado (detalle: cuántas personas entraron), lo agregado a mano, lo quitado (de la auditoría) y el cierre, con el puesto de quien lo hizo y su hora; en preparación, la tiene RR. HH. desde lo último que se le hizo (dias por fecha de Lima). Lo lee quien ve las planillas (rrhh.ver_planillas). Sin importes ni nombres.';
 
 revoke all on function public.recorrido_de_planillas(uuid[]) from public, anon;
 grant execute on function public.recorrido_de_planillas(uuid[]) to authenticated;
