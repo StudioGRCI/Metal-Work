@@ -41,7 +41,7 @@ begin
     'se crearon los ocho usuarios del check, uno por puesto');
   perform set_config('prueba.area_mtz', (select id::text from public.areas where codigo = 'MTZ'), true);
   perform set_config('prueba.hoy', (now() at time zone 'America/Lima')::date::text, true);
-  foreach v in array array['rq', 'oc', 'ing', 'f1', 'dev1', 'nc1', 'guia', 'os', 'sin', 'p1', 'p2', 'p3', 'p4', 'rq2', 'rq3', 'ocb', 'oc2', 'ingb', 'devb', 'devb2', 'min', 'p5', 'fb'] loop
+  foreach v in array array['rq', 'oc', 'ing', 'f1', 'dev1', 'nc1', 'guia', 'os', 'sin', 'p1', 'p2', 'p3', 'p4', 'rq2', 'rq3', 'ocb', 'oc2', 'ingb', 'devb', 'devb2', 'devb3', 'devb4', 'min', 'p5', 'fb'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
 end $$;
@@ -450,6 +450,17 @@ do $$ begin
     'con otro comprobante registrado, que no es factura, la OC con boleta no pide nota en ninguna de las dos');
 end $$;
 reset role;
+set local session_replication_role = replica;
+update public.adquisiciones set tipo = 'RECIBO_HONORARIOS' where id = pg_temp.id('fb');
+set local session_replication_role = origin;
+select pg_temp.como('contabilidad');
+set local role authenticated;
+do $$ begin
+  perform test.afirmar(not exists (select 1 from pg_temp.doc('ocb', 'NOTA_CREDITO'))
+                       and not exists (select 1 from public.devoluciones_sin_nota_credito() where devolucion_id = pg_temp.id('devb')),
+    'ni con un recibo por honorarios registrado');
+end $$;
+reset role;
 select test.afirmar(not has_function_privilege('authenticated', 'public.compra_con_factura_registrada(uuid)', 'execute')
                     and not has_function_privilege('anon', 'public.compra_con_factura_registrada(uuid)', 'execute'),
   'la regla la llaman las funciones, no la gente');
@@ -478,6 +489,17 @@ do $$ begin
     'con la factura registrada en soles, las dos piden la nota, contra esa factura');
 end $$;
 reset role;
+-- Con esa factura registrada, lo que Almacén devuelve después de la OC con boleta sí avisa a Contabilidad,
+-- al devolver sin reposición y al dejar de esperar la reposición.
+select pg_temp.como('almacenero');
+set local role authenticated;
+select public.devolver_al_proveedor(pg_temp.id('devb3'), pg_temp.id('ingb'), 1, 'GR-DEV-473D', 'Un disco llegó doblado', false);
+select public.devolver_al_proveedor(pg_temp.id('devb4'), pg_temp.id('ingb'), 1, 'GR-DEV-473E', 'Un disco llegó oxidado', true);
+select public.dejar_de_esperar_reposicion(pg_temp.id('devb4'), 'El proveedor ya no tiene ese disco');
+reset role;
+select test.afirmar((select count(*) from public.notificaciones n where n.usuario_id = pg_temp.id('contabilidad')
+                       and n.origen_id = pg_temp.id('ocb') and n.titulo like 'Espera la nota de crédito%') = 2,
+  'con la factura registrada, de la OC con boleta a Contabilidad le llegan los dos «Espera la nota de crédito»');
 set local session_replication_role = replica;
 update public.adquisiciones set estado = 'BORRADOR', ruta_storage = null where id = pg_temp.id('fb');
 set local session_replication_role = origin;

@@ -824,7 +824,7 @@ export async function devolverAlProveedor(_previo: unknown, formulario: FormData
     ok: true,
     mensaje: v.data.se_repone === 'si'
       ? 'Devuelto al proveedor: la OC vuelve a esperar lo que repone.'
-      : 'Devuelto al proveedor: lo que falte vuelve a la lista de Logística y Contabilidad espera la nota de crédito.',
+      : 'Devuelto al proveedor: lo que falte vuelve a la lista de Logística y, si la OC tiene factura, Contabilidad espera la nota de crédito.',
   }
 }
 
@@ -874,5 +874,5 @@ export async function dejarDeEsperarReposicion(_previo: unknown, formulario: For
   revalidatePath('/almacen/kardex')
   revalidatePath('/compras')
   revalidatePath('/requerimientos')
-  return { ok: true, mensaje: 'Ya no se espera: lo que falte vuelve a la lista de Logística y Contabilidad espera la nota de crédito.' }
+  return { ok: true, mensaje: 'Ya no se espera: lo que falte vuelve a la lista de Logística y, si la OC tiene factura, Contabilidad espera la nota de crédito.' }
 }

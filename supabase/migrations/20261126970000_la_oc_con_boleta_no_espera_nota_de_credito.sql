@@ -34,6 +34,34 @@
 -- mismos permisos y el mismo tope. Idempotente.
 -- =============================================================================
 
+-- Antes de crear nada, las cuatro huellas: si una no es la de producción ni la
+-- que deja esta migración, o falta la función, no se toca ninguna.
+do $$
+declare
+  v_f   record;
+  v_md5 text;
+begin
+  for v_f in
+    select * from (values
+      ('devoluciones_sin_nota_credito', '1ad7345b8cec50593309ec147f6c0056', 'ed4f4a2eb129840a1ab7b1c853b2b845'),  -- 20261022220000
+      ('documentos_de_las_compras',     '4f470602806c484e314d925599ca29cf', '9bdc9fc34c6865ababd8b967f3df11cc'),  -- 20261126480000
+      ('devolver_al_proveedor',         '05764d06eb71172d75eef283edb55633', '9ef47a70f45a5c1deb253175b972cedb'),  -- 20261026130000
+      ('dejar_de_esperar_reposicion',   'f184574800e4b163ddf709cf66303f16', 'f2cb431594e760e8bdadef26a02fcdbb')   -- 20261026130000
+    ) as t (funcion, de_antes, de_ahora)
+  loop
+    select md5(replace(p.prosrc, E'\r', ''))
+      into v_md5
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname = v_f.funcion;
+    if v_md5 is null then
+      raise exception 'Falta la función % en la base: revisa antes de aplicar esta migración.', v_f.funcion;
+    end if;
+    if v_md5 not in (v_f.de_antes, v_f.de_ahora) then
+      raise exception '% cambió en la base (huella %): revisa antes de reemplazarla.', v_f.funcion, v_md5;
+    end if;
+  end loop;
+end $$;
+
 create or replace function public.compra_con_factura_registrada(p_compra uuid)
 returns boolean
 language sql stable security definer set search_path to 'public' as $$
@@ -47,20 +75,6 @@ comment on function public.compra_con_factura_registrada(uuid) is
   'Si la OC tiene una factura registrada contra la cual registrar una nota de crédito: no cuenta el recibo por honorarios ni otro comprobante, que `registrar_nota_credito` rechaza (20261126970000). La llaman las funciones de la nota de crédito, no la gente.';
 
 revoke all on function public.compra_con_factura_registrada(uuid) from public, anon, authenticated;
-
-do $$
-declare
-  v_md5 text;
-begin
-  select md5(replace(p.prosrc, E'\r', ''))
-    into v_md5
-    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-   where n.nspname = 'public' and p.proname = 'devoluciones_sin_nota_credito';
-  -- La de 20261022220000, o esta misma si la migración se vuelve a correr.
-  if v_md5 is not null and v_md5 not in ('1ad7345b8cec50593309ec147f6c0056', 'ed4f4a2eb129840a1ab7b1c853b2b845') then
-    raise exception 'devoluciones_sin_nota_credito cambió en la base (huella %): revisa antes de reemplazarla.', v_md5;
-  end if;
-end $$;
 
 create or replace function public.devoluciones_sin_nota_credito()
 returns table (devolucion_id uuid, fecha timestamptz, compra text, orden_compra_id uuid, proveedor text, material text,
@@ -140,8 +154,8 @@ begin
       into v_md5, v_def
       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
      where n.nspname = 'public' and p.proname = v_f.funcion;
-    if v_md5 is null or v_md5 = v_f.de_ahora then
-      continue;  -- sin la función, o ya con la regla nueva
+    if v_md5 = v_f.de_ahora then
+      continue;  -- ya con la regla nueva
     end if;
     if v_md5 <> v_f.de_antes then
       raise exception '% cambió en la base (huella %): revisa antes de reemplazarla.', v_f.funcion, v_md5;
