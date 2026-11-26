@@ -903,6 +903,25 @@ const CIFRAS = {
       }
     },
   },
+  // Los reportes de avería que esperan a Mantenimiento (Plan 16.2). Se cuentan
+  // por `averias_visibles`, la misma lectura que la lista: Mantenimiento las ve todas.
+  averias_por_atender: {
+    ruta: '/averias',
+    calcular: async (c) => {
+      const r = await c.supabase.rpc('averias_visibles', { p_id: null }).eq('estado', 'REPORTADA').select('detiene_trabajo')
+      fallo(r)
+      const filas = r.data ?? []
+      const detienen = filas.filter((f) => f.detiene_trabajo).length
+      return {
+        titulo: 'Averías por atender',
+        valor: String(filas.length),
+        pie: detienen > 0 ? `${plural(detienen, 'detiene', 'detienen')} el trabajo` : 'reportadas y sin atender',
+        icono: Wrench,
+        tono: detienen > 0 ? 'peligro' : filas.length > 0 ? 'aviso' : 'neutro',
+        href: '/averias',
+      }
+    },
+  },
   // El padrón de equipos de la planta (Plan 16), para Mantenimiento.
   equipos_parados: {
     ruta: '/equipos',
@@ -1018,7 +1037,7 @@ const CIFRAS_POR_PUESTO: Record<string, { titulo: string; cifras: ClaveCifra[] }
   ADMINISTRACION: { titulo: 'Administración', cifras: ['rq_abiertos', 'subcontratos_vigentes', 'gastos_del_mes', 'clientes'] },
   RECURSOS_HUMANOS: { titulo: 'Recursos Humanos', cifras: ['personal_activo', 'entraron_hoy', 'tardanzas_del_mes', 'reportes_del_mes'] },
   PORTERO: { titulo: 'Portería hoy', cifras: ['entraron_hoy', 'salieron_hoy', 'tardanzas_de_hoy'] },
-  MANTENIMIENTO: { titulo: 'Equipos de la planta', cifras: ['equipos_parados', 'equipos_con_observacion', 'equipos_en_el_padron'] },
+  MANTENIMIENTO: { titulo: 'Equipos de la planta', cifras: ['averias_por_atender', 'equipos_parados', 'equipos_con_observacion', 'equipos_en_el_padron'] },
   SUPERVISOR: { titulo: 'Tu área', cifras: ['reportes_del_mes', 'planos_del_area', 'rq_abiertos'] },
   SUPERVISOR_GENERAL: { titulo: 'Seguimiento', cifras: ['seguimiento_en_curso', 'rq_abiertos', 'vehiculos_en_planta', 'bajo_minimo'] },
   VENDEDOR: { titulo: 'Ventas', cifras: ['cotizaciones_en_gerencia', 'aprobadas_del_mes', 'clientes'] },
