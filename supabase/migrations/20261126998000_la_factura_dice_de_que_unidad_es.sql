@@ -49,7 +49,15 @@
 --   · `codigo_interno_lo_vendido` da lo vendido y lo facturado de la unidad de
 --     ese código, no de toda la cotización.
 --
--- La cotización de una unidad se porta exactamente como antes.
+-- La cotización de una unidad se porta como antes, con una diferencia: si su OT
+-- se anula y se carga otra con otro código, su factura se lee en el código
+-- nuevo (antes quedaba en el anulado, y la ficha del nuevo decía «facturado» y
+-- «sin facturas» a la vez).
+--
+-- Y como la factura sigue al número de la unidad, la ventana donde se carga la
+-- OT avisa cuando esa OT puede quedarse con la factura de otro vehículo
+-- (`unidades_libres_ya_facturadas`): pasa si se anuló la OT de una unidad ya
+-- facturada y todavía falta cargar más de una.
 --
 -- Sin auditoría genérica en la tabla nueva: `audit_log` se lee con
 -- `auditoria.ver` y sus filas de `facturas_venta` piden además el permiso de
@@ -167,14 +175,11 @@ create or replace trigger trg_facturas_venta_unidades_codigo_de_ot
 -- Lo ve quien ve la factura: la misma política. Nadie escribe por la API: entra
 -- con la factura, por `registrar_factura_venta_de_unidad`.
 alter table public.facturas_venta_unidades enable row level security;
-do $$ begin
-  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'facturas_venta_unidades' and policyname = 'ver_facturas_venta_unidades') then
-    create policy ver_facturas_venta_unidades on public.facturas_venta_unidades for select to authenticated
-      using ((select public.es_admin()) or (select public.tiene_permiso('contabilidad.facturar'))
-             or (select public.tiene_permiso('cotizaciones.ver_aprobadas'))
-             or (select public.tiene_permiso('tesoreria.ver_documentos')));
-  end if;
-end $$;
+drop policy if exists ver_facturas_venta_unidades on public.facturas_venta_unidades;
+create policy ver_facturas_venta_unidades on public.facturas_venta_unidades for select to authenticated
+  using ((select public.es_admin()) or (select public.tiene_permiso('contabilidad.facturar'))
+         or (select public.tiene_permiso('cotizaciones.ver_aprobadas'))
+         or (select public.tiene_permiso('tesoreria.ver_documentos')));
 revoke all on public.facturas_venta_unidades from public, anon, authenticated;
 grant select on public.facturas_venta_unidades to authenticated;
 
@@ -418,7 +423,10 @@ begin
   end if;
   select case when (select count(*) from public.facturas_venta_unidades x where x.factura_id = fv.id) > 1
               then 'la cotización ' || fv.cotizacion_numero || ', por todas sus unidades'
-              else 'el código ' || fv.codigo_interno end
+              else 'el código ' || coalesce(
+                     public.codigo_de_la_unidad_de_cotizacion(fv.cotizacion_pdf_id,
+                       (select x.numero_de_unidad::integer from public.facturas_venta_unidades x where x.factura_id = fv.id limit 1)),
+                     fv.codigo_interno) end
     into v_otra from public.facturas_venta fv where fv.numero = v_numero and fv.anulada_en is null;
   if found then
     raise exception 'La factura % ya está registrada en %.', v_numero, v_otra using errcode = 'unique_violation';
@@ -537,8 +545,8 @@ comment on function public.codigo_interno_de_ot_desde(uuid) is
 revoke all on function public.codigo_interno_de_ot_desde(uuid) from public, anon, authenticated;
 
 -- 7. Lo que Contabilidad tiene por facturar, unidad por unidad -----------------------
--- Una fila por unidad de cada cotización aprobada que se pide. `codigo_interno`
--- y `desde` vienen vacíos mientras la unidad no tenga su OT. `parte` es lo que
+-- Una fila por unidad de cada cotización aprobada que se pide. `codigo_interno`,
+-- `ot_numero` y `desde` vienen vacíos mientras la unidad no tenga su OT. `parte` es lo que
 -- le toca del total con IGV. Lo facturado y lo cobrado, como en
 -- `cotizaciones_para_facturar`: en la moneda de la cotización, y lo de la otra
 -- moneda aparte. La misma puerta que esa función.
@@ -555,7 +563,8 @@ returns table (
   facturado             numeric,
   cobrado               numeric,
   facturado_otra_moneda numeric,
-  cobrado_otra_moneda   numeric
+  cobrado_otra_moneda   numeric,
+  ot_numero             text
 )
 language plpgsql
 stable
@@ -597,12 +606,12 @@ begin
   select c.id, c.unidades, k.unidad, ot.codigo, ot.desde, public.dias_en_espera(ot.desde),
          public.parte_de_unidad(c.total, c.unidades, k.unidad),
          coalesce(fx.facturas, 0), coalesce(fx.facturado, 0), coalesce(fx.cobrado, 0),
-         coalesce(fx.facturado_otra, 0), coalesce(fx.cobrado_otra, 0)
+         coalesce(fx.facturado_otra, 0), coalesce(fx.cobrado_otra, 0), ot.numero
     from cot c
     cross join lateral generate_series(1, c.unidades) as k(unidad)
     left join lateral (
       select public.normalizar_codigo_interno(u.codigo_interno) as codigo,
-             public.codigo_interno_de_ot_desde(o.id) as desde
+             public.codigo_interno_de_ot_desde(o.id) as desde, o.numero::text as numero
         from public.ordenes_trabajo o
         join public.unidades u on u.id = o.unidad_id
        where o.cotizacion_pdf_id = c.id and o.estado <> 'ANULADA'
@@ -623,7 +632,7 @@ end;
 $$;
 
 comment on function public.facturacion_por_unidad(uuid[]) is
-  'De cada cotización aprobada que se pide, una fila por unidad: su código interno y desde cuándo lo tiene su OT (vacíos sin OT), lo que le toca del total con IGV, y lo facturado y cobrado de esa unidad, en la moneda de la cotización y en la otra. Lo lee quien lee las cotizaciones aprobadas. Migración 20261126998000.';
+  'De cada cotización aprobada que se pide, una fila por unidad: su código interno, el número de su OT y desde cuándo lo tiene (vacíos sin OT), lo que le toca del total con IGV, y lo facturado y cobrado de esa unidad, en la moneda de la cotización y en la otra. Lo lee quien lee las cotizaciones aprobadas. Migración 20261126998000.';
 
 revoke all on function public.facturacion_por_unidad(uuid[]) from public, anon;
 grant execute on function public.facturacion_por_unidad(uuid[]) to authenticated;
@@ -754,3 +763,60 @@ comment on function public.codigo_interno_lo_vendido(text) is
 
 revoke all on function public.codigo_interno_lo_vendido(text) from public, anon;
 grant execute on function public.codigo_interno_lo_vendido(text) to authenticated;
+
+-- 10. La OT que puede quedarse con la factura de otro vehículo ------------------------
+-- La factura sigue al número de la unidad, y la OT nueva ocupa la primera unidad
+-- sin OT vigente (20261126760000). Con una sola unidad libre no hay duda: es la
+-- del vehículo que falta. Con más de una, si alguna ya tiene una factura propia
+-- —se facturó y después se anuló su OT—, el orden en que se cargan decide qué
+-- vehículo se queda con esa factura, y nada lo decía (auditoría de
+-- funcionamiento del 26/11). Esta función se lo dice a quien carga la OT: de
+-- cada cotización que se pide, las unidades libres que ya tienen una factura
+-- vigente solo de ellas, con el código con que se facturaron. Sin montos: quien
+-- carga la OT no tiene por qué ver lo facturado. La factura por toda la
+-- cotización no cuenta: toca a todas por igual.
+create or replace function public.unidades_libres_ya_facturadas(p_ids uuid[])
+returns table (cotizacion uuid, numero_de_unidad integer, codigo_facturado text)
+language plpgsql
+stable
+security definer
+set search_path to 'public'
+rows 10
+as $$
+#variable_conflict use_column
+begin
+  if not (public.es_admin() or public.tiene_permiso('ordenes.crear')) then
+    return;
+  end if;
+  if p_ids is null or cardinality(p_ids) = 0 or cardinality(p_ids) > 500 then
+    return;
+  end if;
+  return query
+  with libres as (
+    select c.id as cot, k.unidad
+      from public.cotizaciones_pdf c
+      cross join lateral generate_series(1, c.cantidad_unidades::integer) as k(unidad)
+     where c.id = any(p_ids) and c.cantidad_unidades > 1
+       and not exists (select 1 from public.ordenes_trabajo o
+                        where o.cotizacion_pdf_id = c.id and o.estado <> 'ANULADA'
+                          and coalesce(o.numero_de_unidad, 1) = k.unidad)
+  )
+  select l.cot, l.unidad, fx.codigos
+    from libres l
+    join lateral (
+      select string_agg(distinct p.codigo_interno, ', ' order by p.codigo_interno) as codigos
+        from public.facturas_venta_unidades p
+        join public.facturas_venta f on f.id = p.factura_id
+       where f.cotizacion_pdf_id = l.cot and f.anulada_en is null
+         and p.numero_de_unidad = l.unidad
+         and (select count(*) from public.facturas_venta_unidades x where x.factura_id = f.id) = 1) fx on fx.codigos is not null
+   where (select count(*) from libres m where m.cot = l.cot) > 1
+   order by l.cot, l.unidad;
+end;
+$$;
+
+comment on function public.unidades_libres_ya_facturadas(uuid[]) is
+  'De cada cotización de varias unidades que se pide y a la que le falta cargar más de una OT: las unidades sin OT vigente que ya tienen una factura vigente solo de ellas (se facturaron y después se anuló su OT), con el código con que se facturaron. Sin montos. Para que la ventana de la OT avise antes de que otro vehículo se quede con esa factura. Solo responde a quien carga órdenes. Migración 20261126998000.';
+
+revoke all on function public.unidades_libres_ya_facturadas(uuid[]) from public, anon;
+grant execute on function public.unidades_libres_ya_facturadas(uuid[]) to authenticated;

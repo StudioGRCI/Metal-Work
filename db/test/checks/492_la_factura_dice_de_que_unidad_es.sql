@@ -33,7 +33,7 @@ begin
     v_id := test.crear_usuario(initcap(v), 'Check 492', lower(v) || '.492@prueba.local', v, (select id from public.sedes where codigo = 'QA492'));
     perform set_config('prueba.' || lower(v), v_id::text, true);
   end loop;
-  foreach v in array array['cot3', 'cot1', 'ot1', 'ot2', 'ot3', 'ot3b', 'ots', 'f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'fx', 'fd', 'c1', 'c2'] loop
+  foreach v in array array['cot3', 'cot1', 'ot1', 'ot2', 'ot3', 'ot3b', 'ot4', 'ots', 'f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'fx', 'fd', 'c1', 'c2'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
   -- El PDF de cada factura va en su carpeta; el voucher del cobro, en la de la factura que cobra.
@@ -454,6 +454,66 @@ select pg_temp.como('contabilidad');
 set local role authenticated;
 select test.debe_fallar(pg_temp.facturar_sql('f7', 'cot3', 'E001-4922', 100, '1'),
   'el número de la factura por toda la cotización no se repite, y lo dice por su cotización', 'ya está registrada en la cotización QA-492-3, por todas sus unidades');
+reset role;
+
+-- El de una factura de una unidad nombra el código que la unidad tiene hoy, que es el que
+-- Contabilidad ve en su pantalla: el de la OT anulada ya no aparece en ningún lado.
+select pg_temp.como('contabilidad');
+set local role authenticated;
+select test.debe_fallar(pg_temp.facturar_sql('f7', 'cot3', 'E001-4929', 100, '1'),
+  'el número repetido de la factura de una unidad nombra el código de hoy', 'ya está registrada en el código QA-492 U3B');
+-- Y la bandeja trae el número de la OT de cada unidad, que es lo que Contabilidad mira junto al código.
+select test.afirmar((select u.ot_numero from public.facturacion_por_unidad(array[pg_temp.id('cot3')]) u where u.numero_de_unidad = 3) like '%94933%',
+  'cada unidad viene con el número de su OT vigente ('
+  || coalesce((select u.ot_numero from public.facturacion_por_unidad(array[pg_temp.id('cot3')]) u where u.numero_de_unidad = 3), 'sin número') || ')');
+reset role;
+
+-- ============================================ 9. La OT que puede quedarse con la factura de otro vehículo
+-- La factura sigue al número de la unidad, y la OT nueva ocupa la primera unidad
+-- libre. Se anulan las OT de las unidades 2 y 3, las dos ya facturadas: la que
+-- se cargue primero queda como unidad 2, con la factura de la 2. Con más de una
+-- libre, quien carga la OT lo tiene que saber antes (auditoría del 26/11).
+select pg_temp.como('administracion');
+set local role authenticated;
+select test.afirmar(not exists (select 1 from public.unidades_libres_ya_facturadas(array[pg_temp.id('cot3'), pg_temp.id('cot1')])),
+  'con todas las OT cargadas no hay nada que avisar');
+reset role;
+do $$
+begin
+  set local session_replication_role = replica;
+  update public.ordenes_trabajo set estado = 'ANULADA', motivo_anulacion = 'Se cargó con el código equivocado'
+   where id in (pg_temp.id('ot2'), pg_temp.id('ot3b'));
+  set local session_replication_role = origin;
+end $$;
+select pg_temp.como('administracion');
+set local role authenticated;
+select test.afirmar(
+  (select string_agg(l.numero_de_unidad || ':' || l.codigo_facturado, ' | ' order by l.numero_de_unidad)
+     from public.unidades_libres_ya_facturadas(array[pg_temp.id('cot3'), pg_temp.id('cot1')]) l) = '2:QA-492 U2 | 3:QA-492 U3',
+  'con dos unidades libres ya facturadas, quien carga la OT sabe cuáles son y con qué código se facturaron ('
+  || coalesce((select string_agg(l.numero_de_unidad || ':' || l.codigo_facturado, ' | ' order by l.numero_de_unidad)
+                 from public.unidades_libres_ya_facturadas(array[pg_temp.id('cot3')]) l), 'nada') || ')');
+reset role;
+-- Sin montos, y solo para quien carga órdenes: Contabilidad y el almacenero no leen nada por aquí.
+do $$
+declare v_puesto text;
+begin
+  foreach v_puesto in array array['contabilidad', 'tesoreria', 'almacenero', 'vendedor'] loop
+    perform pg_temp.como(v_puesto);
+    set local role authenticated;
+    perform test.afirmar(not exists (select 1 from public.unidades_libres_ya_facturadas(array[pg_temp.id('cot3')])),
+      v_puesto || ' no lee las unidades libres ya facturadas: no carga órdenes');
+    reset role;
+  end loop;
+end $$;
+select test.afirmar(not has_function_privilege('anon', 'public.unidades_libres_ya_facturadas(uuid[])', 'execute'),
+  'y sin sesión no se llama');
+-- Cargada una, queda una sola libre: es la del vehículo que falta, y ya no hay duda.
+select pg_temp.como('administracion');
+set local role authenticated;
+select pg_temp.cargar('cot3', 'ot4', 'qa-492 u2b', '94934');
+select test.afirmar(not exists (select 1 from public.unidades_libres_ya_facturadas(array[pg_temp.id('cot3')])),
+  'con una sola unidad libre no hay aviso: es la del vehículo que falta');
 reset role;
 
 -- La bitácora no guarda copia del reparto: se leería con solo `auditoria.ver`.

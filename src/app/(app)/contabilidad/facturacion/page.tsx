@@ -364,10 +364,15 @@ function Unidades({
               <p className="flex flex-wrap items-center gap-2">
                 <span className="font-medium text-texto">Unidad {u.numero}</span>
                 {u.codigo && <span className="tabular whitespace-nowrap text-texto-suave">código {u.codigo}</span>}
+                {u.ot && (
+                  <span className="tabular whitespace-nowrap text-texto-suave" data-ot-de-la-unidad>
+                    OT {u.ot}
+                  </span>
+                )}
                 <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
                 {espera && <DiasEnEspera dias={espera.dias} desde={espera.desde} quien={espera.quien} />}
                 {factura && c.cotizacion_id && u.codigo && esperaFactura(u) && !c.en_correccion && (
-                  <FacturarUnidad cotizacionId={c.cotizacion_id} unidad={u.numero} />
+                  <FacturarUnidad cotizacionId={c.cotizacion_id} unidad={u.numero} codigo={u.codigo} />
                 )}
               </p>
               <p className="tabular text-xs text-texto-suave">

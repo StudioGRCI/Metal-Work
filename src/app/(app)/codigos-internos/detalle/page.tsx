@@ -1704,7 +1704,7 @@ async function VistaFacturacion({ codigo, perfil }: { codigo: string; perfil: Pe
                         </a>
                       )}
                     </div>
-                    <strong className="tabular text-right">
+                    <strong className={unidad ? 'tabular text-left sm:text-right' : 'tabular text-right'}>
                       {total === null ? <span className="font-normal text-texto-suave">Sin total</span> : moneda(total, m)}
                       {unidad && total !== null && <span className="block text-xs font-normal text-texto-suave">lo que le toca a esta unidad</span>}
                     </strong>
@@ -1719,7 +1719,7 @@ async function VistaFacturacion({ codigo, perfil }: { codigo: string; perfil: Pe
       <Tarjeta>
         <TarjetaCabecera
           titulo={`Facturas de venta${facturas.length > 0 ? ` (${facturas.length})` : ''}`}
-          ayuda="Cada factura que registró Contabilidad, con los cobros que registró Tesorería y su voucher. Las anuladas salen tachadas. La factura por toda una cotización de varias unidades sale en el código de cada una, con lo que le toca."
+          ayuda={`Cada factura que registró Contabilidad, con los cobros que registró Tesorería y su voucher. Las anuladas salen tachadas.${facturas.some((f) => (f.unidades_de_la_cotizacion ?? 1) > 1) ? ' La factura por toda una cotización de varias unidades sale en el código de cada una, con lo que le toca.' : ''}`}
         />
         <TarjetaCuerpo className="space-y-3">
           {facturas.length === 0 ? (

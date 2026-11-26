@@ -16905,6 +16905,7 @@ export type Database = {
           cobrado: number | null
           facturado_otra_moneda: number | null
           cobrado_otra_moneda: number | null
+          ot_numero: string | null
         }[]
       }
       facturado_de_compras: {
@@ -21241,6 +21242,16 @@ export type Database = {
           ot_numero: string | null
           estado: string | null
           fecha_entrega: string | null
+        }[]
+      }
+      unidades_libres_ya_facturadas: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          cotizacion: string | null
+          numero_de_unidad: number | null
+          codigo_facturado: string | null
         }[]
       }
       unidades_para_salida_almacen: {

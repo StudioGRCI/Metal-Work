@@ -327,7 +327,9 @@ async function llenar(v, { numero, total, unidad }) {
   comprobar((await v.locator('[role="status"]').count()) === 0, 'sin aviso mientras no pase de lo que le toca')
   await pagina.screenshot({ path: join(CAPTURAS, 'unidad-1440-formulario.png') })
   // Tres toques al mismo envío: una factura.
-  const boton = v.getByRole('button', { name: 'Registrar la factura' })
+  // Por su tipo y no por su nombre: mientras envía el botón cambia de texto, y los toques
+  // de más no encontraban a quién tocar (auditoría de funcionamiento, segunda vuelta).
+  const boton = v.locator('button[type="submit"]')
   await boton.click()
   await boton.click({ timeout: 1000, force: true }).catch(() => {})
   await boton.click({ timeout: 1000, force: true }).catch(() => {})
@@ -362,6 +364,8 @@ async function llenar(v, { numero, total, unidad }) {
   await ir(pagina, `${BASE}/contabilidad/facturacion`)
   comprobar(limpio(await tarjeta.textContent()).includes(`Códigos ${C1} · ${C2} · ${C3}`) && !limpio(await tarjeta.textContent()).includes('Falta que Administración'),
     'con la tercera OT, la tarjeta dice los tres códigos y ya no pide ninguna OT')
+  const otDeLaUna = limpio(await tarjeta.locator('li[data-unidad="1"] [data-ot-de-la-unidad]').textContent().catch(() => ''))
+  comprobar(/^OT \d+-\d{4}$/.test(otDeLaUna) && (await tarjeta.locator('[data-ot-de-la-unidad]').count()) === 3, `cada unidad dice el número de su OT («${otDeLaUna}»)`)
   // «Facturar», junto a la unidad 3: la ventana se abre con esa unidad elegida.
   await tarjeta.locator('li[data-unidad="3"] [data-facturar-unidad="3"]').click()
   comprobar((await v.locator('select[name="unidad"]').inputValue()) === '3', '«Facturar» de la unidad 3 abre la ventana con la unidad 3 ya elegida')
@@ -371,10 +375,11 @@ async function llenar(v, { numero, total, unidad }) {
   await tarjeta.getByRole('button', { name: 'Registrar factura' }).click()
   const toda = await v.locator('select[name="unidad"] option[value="0"]').evaluate((o) => ({ texto: o.textContent.trim(), apagada: o.disabled }))
   comprobar(!toda.apagada && toda.texto.includes('3 unidades, en partes iguales'), `«Toda la cotización» ya se puede elegir («${toda.texto}»)`)
-  // La unidad 2 ya lleva 5 900 de 11 800: con 20 000 por toda la cotización su parte (6 666.67) la pasa, y lo dice.
+  // La unidad 2 ya lleva 5 900 de 11 800: con 20 000 por toda la cotización su parte (6 666.66) la pasa, y lo dice.
   await llenar(v, { numero: F_TODA, total: 20000, unidad: 0 })
   const sePasan = limpio(await v.locator('[data-se-pasan]').textContent().catch(() => ''))
-  comprobar(sePasan.includes('la unidad 2 pasa de lo que le toca'), `la factura por toda la cotización avisa de la unidad que se pasa («${sePasan}»)`)
+  comprobar(sePasan.includes('lo facturado de la unidad 2 llega a S/ 12,566.66 y le tocan S/ 11,800.00') && !sePasan.includes('unidad 1') && !sePasan.includes('unidad 3'),
+    `la factura por toda la cotización avisa de la unidad que se pasa, con sus cifras («${sePasan}»)`)
   await llenar(v, { numero: F_TODA, total: 10000, unidad: 0 })
   comprobar((await v.locator('[data-se-pasan]').count()) === 0, 'con 10 000 ninguna se pasa y no avisa')
   await v.locator('input[name="concepto"]').fill('Adelanto')
@@ -536,6 +541,8 @@ const delaSalida = (pagina, que) => pagina.locator('li, article').filter({ hasTe
   const deEste = limpio(await facturaEnFicha.locator('[data-de-este-codigo]').textContent())
   comprobar(saldoEnFicha === 'Saldo de este código S/ 3,000.00' && deEste.includes('A este código le tocan S/ 3,333.33 · cobrado S/ 333.33') && deEste.includes('la factura es por S/ 10,000.00, con saldo de S/ 9,000.00'),
     `y la cifra que manda es la de este código, no el saldo de toda la factura («${saldoEnFicha}» · «${deEste}»)`)
+  const cobroEnFicha = limpio(await facturaEnFicha.locator('ol li').first().textContent().catch(() => ''))
+  comprobar(cobroEnFicha.includes('S/ 1,000.00 de toda la factura'), `y el cobro dice que es el de toda la factura («${cobroEnFicha}»)`)
   await pagina.screenshot({ path: join(CAPTURAS, 'unidad-1440-ficha-del-codigo.png'), fullPage: true })
 
   await ir(pagina, ficha(C2))
@@ -570,6 +577,44 @@ const delaSalida = (pagina, que) => pagina.locator('li, article').filter({ hasTe
   await pagina.screenshot({ path: join(CAPTURAS, 'unidad-390-formulario.png') })
   await v.locator('input[name="total"]').fill('8466.67')
   comprobar((await desborde(pagina)) <= 0, 'ni con la ventana de la factura abierta')
+  await v.getByRole('button', { name: 'Cancelar' }).click()
+  await contexto.close()
+}
+
+// ------------------- 7. La OT que podría quedarse con la factura de otro vehículo
+// La factura sigue al número de la unidad. Se anulan las OT de las unidades 2 y 3
+// (la 2 ya tiene su factura): quedan dos libres, y la OT que se cargue primero
+// queda como unidad 2, con esa factura. La ventana de la OT lo avisa antes.
+{
+  await base.query('begin')
+  try {
+    await base.query('set local session_replication_role = replica')
+    await consulta(
+      `update public.ordenes_trabajo o set estado = 'ANULADA', motivo_anulacion = 'Se cargó con el código equivocado'
+        where o.cotizacion_pdf_id = $1 and coalesce(o.numero_de_unidad, 1) in (2, 3)`,
+      [tres.id],
+    )
+    await base.query('commit')
+  } catch (e) {
+    await base.query('rollback')
+    throw e
+  }
+  const { pagina, contexto } = await entrar(CUENTAS.administracion)
+  await ir(pagina, `${BASE}/cotizaciones/pdf?${new URLSearchParams({ q: tres.numero })}`)
+  await pagina.getByRole('button', { name: 'Cargar la OT 2 de 3' }).first().click()
+  const v = pagina.locator('[role="dialog"]')
+  const aviso = limpio(await v.locator('[data-unidad-ya-facturada]').textContent({ timeout: 10000 }).catch(() => ''))
+  comprobar(aviso.includes('va a quedar como la unidad 2, que ya tiene factura') && aviso.includes(C2) && aviso.includes('solo si es ese mismo vehículo') && !/S\/\s?\d/.test(aviso),
+    `la ventana de la OT avisa que la unidad 2 ya tiene factura, con su código y sin montos («${aviso}»)`)
+  await pagina.addStyleTag({ content: 'nextjs-portal { display: none !important; }' })
+  await pagina.screenshot({ path: join(CAPTURAS, 'unidad-1440-ventana-de-la-ot.png') })
+  await v.getByRole('button', { name: 'Cancelar' }).click()
+  // La de una unidad, y la que tiene una sola libre, no avisan: cargada una, la que falta es la del otro vehículo.
+  await cargarOt(tres, `QA-FU2B ${sello}`)
+  await ir(pagina, `${BASE}/cotizaciones/pdf?${new URLSearchParams({ q: tres.numero })}`)
+  await pagina.getByRole('button', { name: 'Cargar la OT 3 de 3' }).first().click()
+  await v.locator('#eo-codigo-interno').waitFor({ timeout: 10000 })
+  comprobar((await v.locator('[data-unidad-ya-facturada]').count()) === 0, 'con una sola unidad libre la ventana no avisa nada')
   await v.getByRole('button', { name: 'Cancelar' }).click()
   await contexto.close()
 }

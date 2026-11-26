@@ -715,10 +715,16 @@ export function CargarCodigoYOt({
    * La unidad que se carga y cuántas lleva la cotización (migración
    * 20261126760000): con más de una, el botón y la ventana dicen cuál es, y
    * `otras` los códigos que ya tienen las demás, para no repetirlos de memoria.
+   * `facturadas`, las unidades sin OT que ya tienen una factura propia (su OT se
+   * anuló después de facturarla) cuando falta cargar más de una: la factura
+   * sigue al número de la unidad, y la OT que lo ocupe se queda con ella
+   * (migración 20261126998000).
    */
-  unidad?: { cual: number; de: number; otras?: { unidad: number; codigo: string }[] }
+  unidad?: { cual: number; de: number; otras?: { unidad: number; codigo: string }[]; facturadas?: { unidad: number; codigo: string }[] }
 }) {
   const varias = unidad && unidad.de > 1 ? unidad : null
+  const estaYaFacturada = varias?.facturadas?.find((f) => f.unidad === varias.cual) ?? null
+  const otraYaFacturada = estaYaFacturada ? null : (varias?.facturadas?.[0] ?? null)
   const router = useRouter()
   const [abierto, setAbierto] = useState(false)
   const [archivo, setArchivo] = useState<File | null>(null)
@@ -960,6 +966,26 @@ export function CargarCodigoYOt({
           <div className="space-y-4 lg:-ml-2 lg:min-h-0 lg:overflow-y-auto lg:pr-2 lg:pl-2">
           {/* Mientras se registra, nada se cambia: queda lo que se envió. */}
           <fieldset disabled={enviando} className="min-w-0 space-y-4">
+          {varias && (estaYaFacturada || otraYaFacturada) && (
+            <p role="note" data-unidad-ya-facturada className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-aviso">
+              {estaYaFacturada ? (
+                <>
+                  Esta OT va a quedar como la unidad {varias.cual}, que ya tiene factura: se facturó con el código{' '}
+                  <span className="font-mono whitespace-nowrap">{estaYaFacturada.codigo}</span>, de una OT que se anuló. Cárgala ahora solo si es
+                  ese mismo vehículo. Si es otro, carga primero la OT que reemplaza a la anulada: la que entre ahora se queda con esa factura.
+                </>
+              ) : (
+                otraYaFacturada && (
+                  <>
+                    La unidad {otraYaFacturada.unidad} ya tiene factura (se facturó con el código{' '}
+                    <span className="font-mono whitespace-nowrap">{otraYaFacturada.codigo}</span>, de una OT que se anuló), y esta OT va a quedar
+                    como la unidad {varias.cual}, sin factura. Si esta OT reemplaza a la anulada, carga primero la del otro vehículo: así esta
+                    queda en la unidad {otraYaFacturada.unidad}, con su factura.
+                  </>
+                )
+              )}
+            </p>
+          )}
           <Campo
             etiqueta="Código interno"
             htmlFor="eo-codigo-interno"

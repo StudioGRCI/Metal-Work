@@ -154,6 +154,8 @@ export type UnidadDeCotizacion = {
   de: number
   /** El código interno de su OT; nulo mientras Administración no la cargue. */
   codigo: string | null
+  /** El número de su OT vigente; nulo mientras no la tenga. */
+  ot: string | null
   /** Desde cuándo su OT tiene código, que es cuando se puede facturar, y los días que van (fecha de Lima). */
   desde: string | null
   dias: number | null

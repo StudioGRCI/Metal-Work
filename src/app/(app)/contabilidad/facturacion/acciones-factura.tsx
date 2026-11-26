@@ -49,14 +49,14 @@ type PedidoDeFactura = { cotizacion: string; unidad: number }
  * opciones (auditoría de diseño del 26/11). La ventana es una por cotización
  * (su envío lleva un solo id): este botón solo se la pide.
  */
-export function FacturarUnidad({ cotizacionId, unidad }: { cotizacionId: string; unidad: number }) {
+export function FacturarUnidad({ cotizacionId, unidad, codigo }: { cotizacionId: string; unidad: number; codigo: string }) {
   return (
     <Boton
       type="button"
       variante="contorno"
       tamano="sm"
       data-facturar-unidad={unidad}
-      aria-label={`Facturar la unidad ${unidad}`}
+      aria-label={`Facturar la unidad ${unidad}, código ${codigo}`}
       onClick={() => window.dispatchEvent(new CustomEvent<PedidoDeFactura>(PEDIR_FACTURA, { detail: { cotizacion: cotizacionId, unidad } }))}
     >
       <FilePlus2 aria-hidden className="size-4" />
@@ -277,9 +277,15 @@ export function RegistrarFactura({
           )}
           {!pasa && sePasan.length > 0 && (
             <p role="status" className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-aviso" data-se-pasan>
-              {sePasan.length === 1
-                ? `Con su parte de esta factura, lo facturado de la unidad ${sePasan[0]?.numero} pasa de lo que le toca.`
-                : `Con su parte de esta factura, lo facturado de las unidades ${sePasan.map((u) => u.numero).join(', ')} pasa de lo que les toca.`}{' '}
+              {/* Con sus cifras, como el aviso de la unidad sola: la tarjeta que las dice queda detrás de la ventana. */}
+              Con su parte de esta factura,{' '}
+              {sePasan
+                .map(
+                  (u) =>
+                    `lo facturado de la unidad ${u.numero} llega a ${moneda(u.facturado + parteDeUnidad(Number(total), unidades?.length ?? 1, u.numero), monedaCotizacion)} y le tocan ${moneda(u.parte ?? 0, monedaCotizacion)}`,
+                )
+                .join('; ')}
+              .{' '}
               Revisa el total; si está bien, regístrala igual.
             </p>
           )}

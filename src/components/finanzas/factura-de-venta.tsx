@@ -115,10 +115,10 @@ export function FacturaDeVenta({
                 · cobrado <span className="tabular">{moneda(mia.cobrado, m)}</span>
               </>
             )}{' '}
-            · la factura es por <span className="tabular">{moneda(f.total, m)}</span>
+            · la factura es por <span className="tabular whitespace-nowrap">{moneda(f.total, m)}</span>
             {!anulada && saldo > 0 && (
               <>
-                , con saldo de <span className="tabular">{moneda(saldo, m)}</span>
+                , con saldo de <span className="tabular whitespace-nowrap">{moneda(saldo, m)}</span>
               </>
             )}
           </span>
@@ -185,6 +185,7 @@ export function FacturaDeVenta({
               <span>
                 <span className={b.anulado_en ? 'line-through' : undefined}>
                   Cobro del {fecha(b.fecha)} · <span className="tabular font-medium text-texto">{moneda(b.monto, m)}</span>
+                  {mia && <> de toda la factura</>}
                   {b.operacion && <> · op. {b.operacion}</>}
                   {b.cancela && !b.anulado_en && <> · la canceló</>}
                 </span>

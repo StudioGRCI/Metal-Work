@@ -584,7 +584,10 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
         // El monto es un dato más: si la bandeja no se lee, el globo sigue con su cuenta.
         if (bandeja.error) return cantidad
         const cotizaciones = bandeja.data ?? []
-        const unidades = await unidadesDeCotizaciones(cotizaciones.flatMap((c) => (c.cotizacion_id ? [c.cotizacion_id] : []))).catch(() => null)
+        const unidades = await unidadesDeCotizaciones(cotizaciones.flatMap((c) => (c.cotizacion_id ? [c.cotizacion_id] : []))).catch((e: unknown) => {
+          console.error('[pendientes] No se pudieron leer las unidades por facturar:', e)
+          return null
+        })
         if (!unidades) return cantidad
         const porFacturar = cotizaciones.flatMap((c) =>
           ((c.cotizacion_id && unidades.get(c.cotizacion_id)) || []).filter(esperaFactura).map((u) => ({ c, u })),
