@@ -22,7 +22,7 @@ export const TIPO_AVERIA: Record<string, Def> = {
 }
 
 /**
- * El camino del reporte (migración 20261126700000, Plan 16.3): reportada, en
+ * El camino del reporte (migración 20261126950000, Plan 16.3): reportada, en
  * atención (Mantenimiento anotó su diagnóstico), cerrada (espera que quien la
  * reportó confirme) y confirmada. Si no quedó bien, vuelve a «en atención».
  */

@@ -1,6 +1,6 @@
 /**
  * Clic real sobre la atención de una avería (Plan 16, entrega 16.3, migración
- * 20261126700000), con la cuenta de cada puesto y mirando la base después de
+ * 20261126950000), con la cuenta de cada puesto y mirando la base después de
  * cada toque.
  *
  *  1. Ventas reporta (por su función, como lo haría su pantalla) que la

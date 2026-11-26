@@ -1,4 +1,4 @@
--- Atender una avería (migración 20261126700000, Plan 16.3). Cada paso con su
+-- Atender una avería (migración 20261126950000, Plan 16.3). Cada paso con su
 -- cuenta y `set local role authenticated`: Mantenimiento la toma con su
 -- diagnóstico, enlaza el RQ de los repuestos, la cierra con el trabajo hecho y
 -- las horas parado, y el equipo vuelve a operativo; quien la reportó dice que no
