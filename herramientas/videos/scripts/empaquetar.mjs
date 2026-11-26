@@ -3,11 +3,12 @@
  * El proyecto editable de un video, en un `.tar.gz` que se abre y se vuelve a
  * renderizar en otra máquina:
  *
- *   node scripts/empaquetar.mjs videos/como-pedir-un-rq
+ *   node scripts/empaquetar.mjs videos/como-pedir-un-rq [vertical]
  *
  * Lleva la plantilla, los scripts, la música, la marca y, del video, su guion,
  * sus capturas, su voz y su línea de tiempo. No lleva `node_modules` (se
- * instala con `npm install`), ni los MP4, que se entregan aparte.
+ * instala con `npm install`), ni los MP4, que se entregan aparte. Del vertical,
+ * que no se entrega, no lleva nada si no se pide por su nombre.
  */
 import { spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
@@ -21,6 +22,7 @@ if (!carpeta || !existsSync(join(carpeta, 'guion.json'))) {
   console.error('Uso: node scripts/empaquetar.mjs videos/<video>')
   process.exit(2)
 }
+const conVertical = process.argv.slice(3).includes('vertical')
 const guion = JSON.parse(readFileSync(join(carpeta, 'guion.json'), 'utf8'))
 const nombre = `${guion.id}-proyecto-editable`
 const armado = join(mkdtempSync(join(tmpdir(), 'video-')), nombre)
@@ -37,7 +39,11 @@ const destino = join(armado, 'videos', basename(carpeta))
 cpSync(carpeta, destino, {
   recursive: true,
   // Fuera lo que se rehace solo y pesa: el render sin sonido, lo que Remotion copia, los cuadros de la revisión y los MP4.
-  filter: (origen) => !/generado\/(publico|[^/]+\/(revision|imagen\.mp4))|salida\/.*\.(mp4|tar\.gz)$/.test(origen.replaceAll('\\', '/')),
+  filter: (origen) => {
+    const ruta = origen.replaceAll('\\', '/')
+    if (!conVertical && /\/(capturas|generado)\/vertical(\/|$)|salida\/revision-vertical\.md$/.test(ruta)) return false
+    return !/generado\/(publico|[^/]+\/(revision|imagen\.mp4))|salida\/.*\.(mp4|tar\.gz)$/.test(ruta)
+  },
 })
 
 const salida = join(carpeta, 'salida', `${nombre}.tar.gz`)

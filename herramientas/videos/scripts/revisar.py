@@ -54,9 +54,9 @@ CUADROS_OCR_POR_SEGUNDO = 6
 # cifra con dos decimales es un monto aunque el OCR se haya comido la moneda.
 MONEDA = r'(?:(?<![A-Za-z])S\s?/\.?|(?<![\d/])5\s?/\.?(?!\s*\d{1,2}\s*/)|US\s?\$|\$|\b(?:USD|PEN))'
 DATOS = [
-    ('RUC', re.compile(r'(?<!\d)\d{11}(?!\d)')),
-    ('DNI', re.compile(r'(?<!\d)\d{8}(?!\d)')),
-    ('teléfono', re.compile(r'(?<!\d)(?:\d{7}|\d{9}|\d{10})(?!\d)|(?<![\d-])9\d{2} \d{3} \d{3}(?![\d-])')),
+    ('RUC', re.compile(r'(?<!\d)\d{11}(?!\d)|(?<![\d-])[12]\d \d{3} \d{3} \d{3}(?![\d-])')),
+    ('DNI', re.compile(r'(?<!\d)\d{8}(?!\d)|(?<![\d/.,:-])\d{4} \d{4}(?![\d/.,:-])')),
+    ('teléfono', re.compile(r'(?<!\d)(?:\d{7}|\d{9}|\d{10})(?!\d)|(?<![\d-])9\d{2}[ -]\d{3}[ -]\d{3}(?![\d-])|\(0?\d{1,2}\)\s?\d{3}[ -]?\d{4}(?!\d)')),
     ('monto', re.compile(MONEDA + r'\s*\d[\d.,]*|(?<![\d.,])\d[\d,]*\.\d{2}(?![\d])(?!\s?%)|\d[\d.,]*\s?(?:soles|d[oó]lares)\b', re.I)),
     ('correo', re.compile(r'[\w.+-]+@[\w-]+\.[\w.-]+')),
     ('clave', re.compile(r'contrase[ñn]a|password|\bclave\b|\btoken\b|api[ _-]?key', re.I)),
@@ -146,9 +146,29 @@ def datos_en(texto: str, inventados: tuple[tuple[str, float], ...] = (), vistos:
 
 
 def es_resto_de_inventado(escrito: str, inventados: tuple[tuple[str, float], ...]) -> bool:
-    """Un monto inventado leído a medias: el OCR parte «135,000.00» en «135,» y «000.00»."""
-    leidas = cifras(escrito)
-    return bool(leidas) and any(suyas.startswith(leidas) or suyas.endswith(leidas) for suyas in (f'{valor:.2f}'.replace('.', '') for _, valor in inventados))
+    """Un monto inventado leído a medias: el OCR parte «135,000.00» en «135,» y «000.00», o un fundido tapa el final.
+
+    Se compara con el monto como se escribe («135,000.00»). Con la moneda al
+    lado tiene que ser la declarada y el comienzo del monto («US$ 13»); sin
+    moneda, un comienzo o un final cortado justo en una coma o en el punto
+    («135», «000.00»). Un monto entero distinto («US$ 5,000.00», «S/ 45.00»)
+    no es un trozo: es otro monto.
+    """
+    moneda = moneda_del_monto(escrito)
+    leido = re.sub(r'[^\d.,]', '', re.sub(r'^\s*5\s?/', '', escrito)).strip('.,')
+    if not leido:
+        return False
+    for suya, valor in inventados:
+        entero = f'{valor:,.2f}'
+        if moneda:
+            if moneda == suya and entero.startswith(leido) and leido != entero:
+                return True
+            continue
+        if entero.startswith(leido) and entero[len(leido) : len(leido) + 1] in (',', '.'):
+            return True
+        if entero.endswith(leido) and entero[: len(entero) - len(leido)][-1:] in (',', '.'):
+            return True
+    return False
 
 
 def mismo_dato(hallado: tuple[str, str]) -> tuple[str, object]:
@@ -282,21 +302,37 @@ def revisar(carpeta: Path, formato: str) -> bool:
     anotadas = json.loads((carpeta / 'capturas' / formato / 'capturas.json').read_text())
     cambiadas = [c['archivo'] for c in anotadas.values() if hashlib.sha256((carpeta / 'capturas' / formato / c['archivo']).read_bytes()).hexdigest() != c.get('sha256')]
     inf.paso(not cambiadas, f'las {len(anotadas)} capturas son las que tomó la captura (huella sha256)' if not cambiadas else f"capturas sin huella o cambiadas después de tomarlas: {', '.join(cambiadas)}")
+    # Y el video se armó con esas: Remotion lee la copia que `hacer.mjs` deja en generado/publico
+    # justo antes de armar la imagen. Si se tomaron capturas nuevas y no se rehízo la imagen, lo
+    # que se lee abajo sin perdonar nada no es lo que el video muestra.
+    usadas = carpeta / 'generado' / 'publico' / 'capturas' / formato
+    no_son = [c['archivo'] for c in anotadas.values() if not (usadas / c['archivo']).exists() or hashlib.sha256((usadas / c['archivo']).read_bytes()).hexdigest() != c.get('sha256')]
+    inf.paso(
+        not no_son,
+        'el video se armó con esas mismas capturas (la copia que usó Remotion tiene la misma huella)'
+        if not no_son
+        else f"el video no se armó con estas capturas, o falta la copia que usó Remotion (generado/publico): {', '.join(no_son)}. Rehacer desde la imagen: node scripts/hacer.mjs <video> --desde=imagen",
+    )
 
     capturas = sorted((carpeta / 'capturas' / formato).glob('*.png'))
     with ThreadPoolExecutor(4) as grupo:
         textos = list(grupo.map(leer_texto, capturas))
-    en_capturas = [(c.name, h) for c, t in zip(capturas, textos) for h in datos_en(t, inventados, vistos)]
-    # Lo que las capturas dicen, sin espacios, guiones ni barras. En un cuadro chico el OCR se come
-    # el guion de «9001-2026» o el espacio de «1. 10 KG» y quedan ocho cifras seguidas o un «1.10»,
-    # que parecen un DNI o un monto y no lo son: las capturas, leídas enteras, no los traen.
-    pegados = [re.sub(r'[\s/-]+', '', t) for t in textos]
+    en_capturas = [(c.name, h) for c, t in zip(capturas, textos) for h in datos_en(t, inventados)]
+    # Lo que las capturas dicen, pegado. En un cuadro chico el OCR se come el guion de «9001-2026»
+    # o el espacio de «1. 10 KG» y quedan ocho cifras seguidas o un «1.10», que parecen un DNI o un
+    # monto y no lo son: las capturas, leídas enteras, no los traen. Para el DNI solo se pegan
+    # guiones y barras (un número de documento, una fecha): ocho cifras partidas por un espacio en
+    # la captura sí pueden ser un DNI, y arriba ya se marcan.
+    sin_guiones = [re.sub(r'[/-]+', '', t) for t in textos]
+    sin_espacios = [re.sub(r'\s+', '', t) for t in textos]
 
     def es_texto_pegado(hallado) -> bool:
         clase, valor = hallado
-        if clase not in ('DNI', 'monto') or (clase == 'monto' and moneda_del_monto(valor)):
-            return False
-        return any(re.sub(r'\s+', '', valor) in pegado for pegado in pegados)
+        if clase == 'DNI':
+            return bool(re.fullmatch(r'\d{8}', valor)) and any(re.search(rf'(?<!\d){valor}(?!\d)', pegado) for pegado in sin_guiones)
+        if clase == 'monto' and not moneda_del_monto(valor):
+            return any(re.sub(r'\s+', '', valor) in pegado for pegado in sin_espacios)
+        return False
 
     inf.paso(not en_capturas, f'las {len(capturas)} capturas, leídas a su tamaño completo: {sin_datos}' if not en_capturas else f'en las capturas: {en_capturas}')
 
@@ -327,11 +363,9 @@ def revisar(carpeta: Path, formato: str) -> bool:
     def se_mueve(i: int) -> bool:
         return any(0 <= j < total - 1 and float(np.mean(np.abs(chicos[j + 1] - chicos[j]))) >= 0.05 for j in (i - 1, i))
 
-    def lecturas_del_quieto(i: int, paso: int) -> set:
-        """Lo que se lee, a los tres tamaños, en el cuadro quieto más cercano a `i` hacia un lado; si en un segundo no hay ninguno, en el de 0,6 s (un fundido dura 0,5 s como mucho)."""
-        j = next((k for k in range(i + paso, i + paso * (fps + 1), paso) if 0 <= k < total and not se_mueve(k)), None)
-        if j is None:
-            j = i + paso * round(0.6 * fps)
+    def lecturas_a_medio_segundo(i: int, paso: int) -> set:
+        """Lo que se lee, a los tres tamaños, medio segundo antes o después de `i`: un fundido dura 0,5 s como mucho, y lo que está en pantalla un segundo entero sigue ahí a un lado o al otro."""
+        j = i + paso * round(0.5 * fps)
         if not 0 <= j < total:
             return set()
         png = correr('ffmpeg', '-v', 'error', '-ss', f'{j / fps:.4f}', '-i', str(video), '-frames:v', '1', '-f', 'image2pipe', '-c:v', 'png', '-', binario=True)
@@ -368,10 +402,10 @@ def revisar(carpeta: Path, formato: str) -> bool:
         ]
         # A medio fundido hay dos pantallas encimadas y de dos letras cruzadas sale un «08.24» que
         # se repite al agrandar. Un número suelto (sin moneda) leído en un cuadro en movimiento
-        # cuenta solo si sigue ahí cuando la imagen se detiene, antes o después.
+        # cuenta solo si sigue ahí medio segundo antes o medio segundo después.
         sueltos = [h for h in confirmados if h[0] == 'DNI' or (h[0] == 'monto' and not moneda_del_monto(h[1]))]
         if sueltos and se_mueve(numero):
-            quietos = lecturas_del_quieto(numero, -1) | lecturas_del_quieto(numero, 1)
+            quietos = lecturas_a_medio_segundo(numero, -1) | lecturas_a_medio_segundo(numero, 1)
             confirmados = [h for h in confirmados if h not in sueltos or mismo_dato(h) in quietos]
         if confirmados:
             en_cuadros.append((numero, confirmados))
@@ -396,7 +430,7 @@ def revisar(carpeta: Path, formato: str) -> bool:
         sin_ver = [d for d in inventados if d not in vistos]
         inf.paso(
             not sin_ver,
-            f"los montos inventados que declaró la captura ({', '.join(dicho(d) for d in inventados)}) se leen en pantalla: no hay ninguno declarado de más. Los escribió el propio video en el banco local; no salen de ninguna cotización real"
+            f"los montos inventados que declaró la captura ({', '.join(dicho(d) for d in inventados)}) se leen en los cuadros del video: no hay ninguno declarado de más. Los escribió el propio video en el banco local; no salen de ninguna cotización real"
             if not sin_ver
             else f"la captura declara montos que no salen en el video: {', '.join(dicho(d) for d in sin_ver)}; se quitan de `montosInventados`",
         )

@@ -94,7 +94,9 @@ el ancho se resalta con `cenido(…)`, que toma solo lo escrito: así la cámara
 acerca y la letra se lee. `scripts/captura.mjs` se
 niega a capturar fuera de `localhost` y corta todo lo que el navegador pida a
 otra máquina: nunca se graba metalworkperu.app. Cada imagen queda con su huella
-(sha256) y la revisión comprueba que el video se armó con esas.
+(sha256), y la revisión comprueba que las capturas son esas y que la copia con
+que Remotion armó el video (`generado/publico`) tiene la misma huella: si se
+toman capturas nuevas, se rehace desde la imagen.
 
 Si la tarea pide subir un documento, se inventa ahí mismo con `pdfConTexto`
 (nunca se copia uno real) y **sin RUC ni DNI**: en un video no sale ninguno,
@@ -161,12 +163,22 @@ ellas. En los **cuadros** del video la letra es chica y a medio fundido hay dos
 pantallas encimadas, y el OCR se equivoca («90012026» por «9001-2026»,
 «135,900.00» por «135,000.00»): cada cuadro marcado se lee dos veces más, al
 doble y al triple de tamaño. Lo que sale igual en otra lectura es un dato y
-queda como `DATO-…png` en `generado/<formato>/revision/`; lo que no se repite,
-el trozo de un monto inventado, lo que las capturas dicen con un guion o un
-espacio que el OCR se comió («1. 10 KG» leído «1.10») y el número suelto, sin
-moneda, que solo se lee a medio fundido y ya no está cuando la imagen se
-detiene, queda como `dudoso-…png`, anotado y contado en
-el veredicto. Unos y otros se miran: nada se da por bueno sin mirarlo.
+queda como `DATO-…png` en `generado/<formato>/revision/`. Queda como
+`dudoso-…png`, anotado y contado en el veredicto:
+
+- lo que no se repite en otra lectura;
+- el trozo de un monto inventado: con su moneda, el comienzo («US$ 13»); sin
+  moneda, un comienzo o un final cortado en una coma o en el punto («000.00»).
+  Un monto entero distinto («US$ 5,000.00») no es un trozo;
+- un número suelto que las capturas muestran con un guion, una barra o un
+  espacio que el OCR se comió («9001-2026» leído «90012026», «1. 10 KG» leído
+  «1.10»). Ocho cifras partidas por un espacio no entran aquí: se marcan como
+  DNI en la propia captura;
+- un número suelto, sin moneda, leído en un cuadro en movimiento y que no está
+  medio segundo antes ni medio segundo después (un fundido dura 0,5 s como
+  mucho).
+
+Unos y otros se miran antes de entregar: nada se da por bueno sin mirarlo.
 
 La revisión se probó en rojo con tres videos estropeados a propósito —un RUC y
 un monto pintados un segundo, la voz corrida 0,6 s y una frase muda— y los
