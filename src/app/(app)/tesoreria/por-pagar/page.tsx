@@ -362,6 +362,7 @@ export default async function PaginaPorPagar() {
             {pendientesCredito.map((c) => (
               <div
                 key={c.orden_compra_id}
+                data-compra-credito={c.orden_compra_id ?? undefined}
                 className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 rounded-[var(--radius-base)] border border-borde p-3 text-sm"
               >
                 <span>
@@ -1237,36 +1238,19 @@ function Factura({
             <span className={c.enEspera.compra.startsWith('OC sin número') ? undefined : 'whitespace-nowrap'}>{c.enEspera.compra}</span> va con boleta y se dio por pagada fuera del
             sistema. Contabilidad dice si ya se pagó o si falta pagarla, y entonces se paga aquí lo que corresponda.
           </p>
-        ) : sinAprobar.length > 0 ? (
-          <p className={`text-xs ${rechazada ? 'text-peligro' : 'text-aviso'}`}>
-            {rechazada ? (
-              <>
-                {rechazada.aprobacion === 'ANULADA' ? 'La ' : 'Gerencia rechazó la '}
-                <span className={rechazada.numero ? 'whitespace-nowrap' : undefined}>{nombreDeOc(rechazada)}</span>
-                {rechazada.aprobacion === 'ANULADA' ? ' está anulada' : ''}: esta factura no se paga. Contabilidad ve con el proveedor qué pasa con ella.
-              </>
-            ) : (
-              <>
-                {sinAprobar.length === 1 ? 'La ' : 'Las '}
-                {sinAprobar.map((o, i) => (
-                  <span key={o.id}>
-                    {i > 0 && (i === sinAprobar.length - 1 ? ' y ' : ', ')}
-                    <span className={o.numero ? 'whitespace-nowrap' : undefined}>{nombreDeOc(o)}</span>
-                  </span>
-                ))}{' '}
-                {sinAprobar.length === 1 ? 'todavía espera' : 'todavía esperan'} la aprobación de Gerencia: la factura se paga cuando Gerencia{' '}
-                {sinAprobar.length === 1 ? 'la apruebe' : 'las apruebe'}.
-                {apruebaCompras && (
-                  <>
-                    {' '}
-                    <a href="/compras/aprobacion" className="inline-flex min-h-11 items-center font-medium underline-offset-2 hover:underline sm:min-h-0">
-                      Ir a Aprobación de compras
-                    </a>
-                  </>
-                )}
-              </>
-            )}
+        ) : rechazada ? (
+          <p className="text-xs text-peligro">
+            {rechazada.aprobacion === 'ANULADA' ? 'La ' : 'Gerencia rechazó la '}
+            <span className={rechazada.numero ? 'whitespace-nowrap' : undefined}>{nombreDeOc(rechazada)}</span>
+            {rechazada.aprobacion === 'ANULADA' ? ' está anulada' : ''}: esta factura no se paga. Contabilidad ve con el proveedor qué pasa con ella.
           </p>
+        ) : sinAprobar.length > 0 ? (
+          // Qué falta y de quién ya lo dice la línea de arriba, con sus días; aquí queda solo el camino de quien aprueba.
+          apruebaCompras && (
+            <a href="/compras/aprobacion" className="inline-flex min-h-11 items-center text-xs font-medium text-aviso underline-offset-2 hover:underline sm:min-h-0">
+              Ir a Aprobación de compras
+            </a>
+          )
         ) : espera ? (
           <p className="text-xs text-aviso">
             Espera lo pagado por la boleta de la <span className={espera.numero ? 'whitespace-nowrap' : undefined}>{nombreDeOc(espera)}</span>:{' '}

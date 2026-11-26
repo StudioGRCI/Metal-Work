@@ -133,7 +133,7 @@ function Servicio({
   const cuentasDetraccion = s.cuentas.filter((c) => /naci[oó]n/i.test(c.banco))
   const sinCuentaDetraccion = verCuentas ? 'El proveedor no tiene su cuenta del Banco de la Nación en Proveedores: pídesela a Logística.' : null
   return (
-    <article className="rounded-[var(--radius-base)] border border-borde p-3">
+    <article className="rounded-[var(--radius-base)] border border-borde p-3" data-servicio={s.numero ?? undefined}>
       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
         {/* Con un texto largo, el total sigue en su columna de la derecha. */}
         <div className="min-w-0 sm:flex-1">
@@ -160,11 +160,6 @@ function Servicio({
               Detracción {detraccion.detalle}.
               {m !== 'PEN' && saldo.alProveedor > 0 && ` Al proveedor se le pagan ${moneda(saldo.alProveedor, m)}.`}
               {' '}La detracción va a la cuenta del proveedor en el Banco de la Nación.
-            </p>
-          )}
-          {todoPagado && (
-            <p className="text-xs text-aviso">
-              Ya se pagó todo, pero ningún pago la canceló: anula el último pago y regístralo otra vez con «Sí, queda pagada».
             </p>
           )}
         </div>

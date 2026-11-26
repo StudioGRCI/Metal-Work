@@ -72,6 +72,6 @@ test('la orden de servicio: Logística da la factura y la conformidad; Tesorerí
     faltaDelServicio(servicio({ saldoDetraccion: 30 })).map((f) => f.que),
     ['depositar la detracción en el Banco de la Nación, con su constancia', 'el pago al proveedor, con su voucher'],
   )
-  assert.deepEqual(quien(faltaDelServicio(servicio({ todoPagado: true, saldoProveedor: 0 }))), ['Tesorería'])
+  assert.deepEqual(quien(faltaDelServicio(servicio({ todoPagado: true, saldoProveedor: 0 }))), ['Tesorería!'])
   assert.deepEqual(faltaDelServicio(servicio({ cancelada: true })), [])
 })

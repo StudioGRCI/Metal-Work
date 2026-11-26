@@ -134,7 +134,8 @@ export function faltaDelServicio(s: {
   }
   if (!s.conforme) falta.push({ que: 'la conformidad del servicio', quien: 'Logística', traba: false })
   if (s.todoPagado) {
-    falta.push({ que: 'anular el último pago y registrarlo otra vez con «Sí, queda pagada»', quien: 'Tesorería', traba: false })
+    // Ya se pagó todo pero ningún pago la canceló: otro pago no entra hasta rehacer el último.
+    falta.push({ que: 'anular el último pago y registrarlo otra vez con «Sí, queda pagada»: se pagó todo, pero ningún pago la canceló', quien: 'Tesorería', traba: true })
     return falta
   }
   if (s.saldoDetraccion > 0) falta.push({ que: 'depositar la detracción en el Banco de la Nación, con su constancia', quien: 'Tesorería', traba: false })
