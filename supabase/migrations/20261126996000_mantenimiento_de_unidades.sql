@@ -141,9 +141,9 @@ end $$;
 -- `puede_ver_requerimientos()` se queda como está: sigue diciendo quién trabaja
 -- con RQ, y de ella cuelgan las funciones que dan el avance, lo entregado, el
 -- metrado, el recorrido y las salidas de los RQ QUE SE LES PASAN POR SU ID. Esas
--- no se tocan aquí: no listan nada, y siguen contestando por el id a quien
--- trabaja con RQ (queda dicho en docs/PERMISOS.md). Lo que cambia es la LECTURA
--- DE LAS TABLAS y la única función que lista sin ids (las notas de las salidas):
+-- no se tocan aquí: las acota la 20261126996500, que va a continuación. Lo que
+-- cambia aquí es la LECTURA DE LAS TABLAS y la única función que lista sin ids
+-- (las notas de las salidas):
 --
 --   * `puede_ver_todos_los_requerimientos()`: la misma lista sin
 --     `requerimientos.area`. Requerimientos, Administración, Logística, Almacén,

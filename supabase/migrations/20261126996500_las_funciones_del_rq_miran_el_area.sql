@@ -65,7 +65,10 @@ end $$;
 -- 1. Qué RQ lee quien pregunta ------------------------------------------------------------
 -- Quien tiene `requerimientos.area` y ningún permiso que dé todos lee solo los
 -- de su área. A los demás no se les filtra nada: cada función ya les exigió su
--- permiso (también a quien entra por `almacen.ver` o por autorizar el metrado).
+-- permiso. Hoy el único puesto así es Mantenimiento. Si algún día un puesto
+-- juntara `requerimientos.area` con `requerimientos.autorizar_metrado` y nada
+-- más, el metrado se le filtraría por área aunque la tabla de sustentos se los
+-- deje leer todos: hoy ningún rol combina esos dos permisos.
 create or replace function public.solo_leo_los_rq_de_mi_area()
 returns boolean language sql stable security definer set search_path to 'public' as $$
   select public.tiene_permiso('requerimientos.area') and not public.puede_ver_todos_los_requerimientos();

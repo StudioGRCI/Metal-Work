@@ -411,8 +411,9 @@ select test.afirmar(
   (select count(*) = 1 and bool_and(requerimiento_id = pg_temp.id('rq1')) from public.avance_de_requerimientos(array[pg_temp.id('rq1'), pg_temp.id('rq5')]))
   and (select count(*) >= 1 and bool_and(requerimiento_id = pg_temp.id('rq1')) from public.entregado_de_requerimientos(array[pg_temp.id('rq1'), pg_temp.id('rq5')]))
   and (select count(*) >= 1 and bool_and(documento = pg_temp.id('rq1')) from public.recorrido_de_requerimientos(array[pg_temp.id('rq1'), pg_temp.id('rq5')]))
-  and (select count(*) = 1 and bool_and(requerimiento_id = pg_temp.id('rq1')) from public.salidas_de_requerimientos(array[pg_temp.id('rq1'), pg_temp.id('rq5')])),
-  '8. y con los dos ids, solo lo del suyo');
+  and (select count(*) = 1 and bool_and(requerimiento_id = pg_temp.id('rq1')) from public.salidas_de_requerimientos(array[pg_temp.id('rq1'), pg_temp.id('rq5')]))
+  and (select count(*) = 1 and bool_and(requerimiento_id = pg_temp.id('rq1')) from public.metrado_de_requerimientos(array[pg_temp.id('rq1'), pg_temp.id('rq5')])),
+  '8. y con los dos ids, solo lo del suyo (también el metrado)');
 select test.afirmar(
   public.foto_de_salida_de_requerimiento(md5('mov497' || pg_temp.txt('rq5'))::uuid) is null
   and not public.es_foto_de_salida_de_requerimiento('prueba/497/salida-' || pg_temp.txt('rq5') || '.jpg')
@@ -434,9 +435,11 @@ select test.afirmar(
   (select count(*) = 2 from public.avance_de_requerimientos(array[pg_temp.id('rq1'), pg_temp.id('rq5')]))
   and (select count(distinct documento) = 2 from public.recorrido_de_requerimientos(array[pg_temp.id('rq1'), pg_temp.id('rq5')]))
   and (select count(*) = 2 from public.salidas_de_requerimientos(array[pg_temp.id('rq1'), pg_temp.id('rq5')]))
+  and (select count(distinct requerimiento_id) = 2 from public.entregado_de_requerimientos(array[pg_temp.id('rq1'), pg_temp.id('rq5')]))
+  and (select count(distinct requerimiento_id) = 2 from public.metrado_de_requerimientos(array[pg_temp.id('rq1'), pg_temp.id('rq5')]))
   and public.foto_de_salida_de_requerimiento(md5('mov497' || pg_temp.txt('rq1'))::uuid) is not null
   and public.es_foto_de_salida_de_requerimiento('prueba/497/salida-' || pg_temp.txt('rq5') || '.jpg'),
-  '8. y el avance, el recorrido, las salidas y la foto de los dos, por su id');
+  '8. y el avance, lo entregado, el metrado, el recorrido, las salidas y la foto de los dos, por su id');
 reset role;
 select pg_temp.como('req');
 set local role authenticated;
