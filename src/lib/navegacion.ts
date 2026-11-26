@@ -378,6 +378,17 @@ export const NAVEGACION = [
         descripcion: 'Lo que está bajo su stock de seguridad y cuánto comprar, con lo que ya viene en camino',
         disponible: true,
       },
+      // El CONTROL DE FACTURAS de Almacén, ya sin Excel (25/11/2026): cada OC y
+      // OS del día sale sola y Almacén anota la factura y la guía que le llegan.
+      {
+        titulo: 'Control de compras',
+        ruta: '/almacen/compras',
+        icono: FileCheck2,
+        // Lo anota Almacén; lo leen Contabilidad y Tesorería, como en el Excel.
+        permiso: ['almacen.ver', 'adquisiciones.ver', 'tesoreria.ver_documentos'],
+        descripcion: 'Cada OC y OS del día con su destino, peso y monto; la factura y la guía que llegaron',
+        disponible: true,
+      },
     ],
   },
   {
@@ -643,6 +654,30 @@ export const NAVEGACION = [
       },
     ],
   },
+  // Calidad inspecciona por código interno y etapa (plan «Las demás áreas», A.1,
+  // migración 20261126700000): la lleva Calidad y Gerencia la consulta. La
+  // misma pantalla va otra vez sin permiso para el área que recibe lo
+  // observado: ve solo lo suyo (lo decide la base) y lo marca corregido.
+  {
+    titulo: 'Calidad',
+    items: [
+      {
+        titulo: 'Inspecciones de calidad',
+        ruta: '/calidad',
+        icono: ClipboardCheck,
+        permiso: ['calidad.inspeccionar', 'calidad.ver'],
+        descripcion: 'Cada etapa revisada por código interno, lo no conforme y cómo va su corrección',
+        disponible: true,
+      },
+      {
+        titulo: 'Observaciones de calidad',
+        ruta: '/calidad',
+        icono: ClipboardCheck,
+        descripcion: 'Lo que Calidad observó en el trabajo de tu área, para corregirlo',
+        disponible: true,
+      },
+    ],
+  },
   // El padrón de equipos de la planta (Plan 16). Lo lleva Mantenimiento; Almacén
   // entra a anotar quién tiene cada equipo. Gerencia lo consulta desde su
   // grupo Almacén (2026-11-26).
@@ -795,7 +830,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       { titulo: 'Por atender', rutas: ['/requerimientos/atencion', '/seguimiento?vista=materiales'] },
       // Al final, el padrón de equipos: Almacén entrega la herramienta y anota
       // ahí quién se la lleva (Plan 16.1).
-      { titulo: 'Almacén', rutas: ['/almacen/kardex', '/almacen/reposicion', '/almacen/stock', '/equipos'] },
+      // Y lo que Calidad le observe a Almacén (A.1), para marcarlo corregido.
+      { titulo: 'Almacén', rutas: ['/almacen/kardex', '/almacen/compras', '/almacen/reposicion', '/almacen/stock', '/equipos', '/calidad'] },
     ],
     telefono: ['/requerimientos/atencion', '/seguimiento?vista=materiales', '/almacen/kardex', '/'],
   },
@@ -846,7 +882,10 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       {
         titulo: 'Por aprobar',
         pliegue: 'fijo',
-        rutas: ['/por-decidir', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'],
+        // Las OT por aprobar (`ordenes.aprobar`, solo Gerencia) van aquí y no en
+        // Administración, que es de consulta y no cuenta pendientes: su globo no
+        // las contaba (StudioGRCI, 2026-11-26).
+        rutas: ['/por-decidir', '/cotizaciones/pdf', '/ordenes', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'],
       },
       { titulo: 'Ventas', consulta: true, rutas: ['/clientes', '/unidades', '/carrocerias'] },
       {
@@ -861,20 +900,24 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
         rutas: [
           '/requerimientos/atencion',
           '/almacen/kardex',
+          '/almacen/compras',
           '/almacen/stock',
           '/seguimiento?vista=materiales',
           '/almacen/reposicion',
           '/equipos',
+          // Las averías que reporta la gente (Plan 16.2), junto a sus equipos:
+          // las consulta, sin anular. Van aquí y no en un grupo «Mantenimiento»
+          // propio porque su cabecera no entraba en un monitor con la OT por
+          // aprobar en «Por aprobar» (648 de 635 px, 2026-11-26).
+          '/averias',
         ],
       },
-      // Las averías que reporta la gente (Plan 16.2): las consulta, sin anular.
-      { titulo: 'Mantenimiento', consulta: true, rutas: ['/averias'] },
       {
         titulo: 'Logística',
         consulta: true,
         rutas: ['/compras/ordenes', '/compras/servicios', '/compras/gestion', '/proveedores', '/compras/valorizacion'],
       },
-      { titulo: 'Administración', consulta: true, rutas: ['/ordenes', '/subcontratos'] },
+      { titulo: 'Administración', consulta: true, rutas: ['/subcontratos'] },
       {
         titulo: 'Finanzas',
         consulta: true,
@@ -904,8 +947,10 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
           '/rrhh/tiempos-de-entrega',
         ],
       },
-      // Los reportes de seguridad, en consulta y sin anular (Plan 15).
-      { titulo: 'SSOMA', consulta: true, rutas: ['/ssoma'] },
+      // Los reportes de seguridad (Plan 15) y las inspecciones de calidad (A.1),
+      // en consulta: no registra ni anula. Van en un mismo grupo porque un grupo
+      // más no entra en un monitor de 1440 × 760 (ver Almacén, con Averías).
+      { titulo: 'SSOMA y Calidad', consulta: true, rutas: ['/ssoma', '/calidad'] },
     ],
     // «Por decidir» en lugar de «Aprobar»: lo eligió DKS el 2026-11-26 (plan 12, entrega 12.1).
     telefono: ['/codigos-internos', '/cotizaciones/pdf', '/por-decidir', '/reportes-diarios'],
@@ -934,7 +979,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
           '/planilla-diaria',
         ],
       },
-      { titulo: 'Consultas', rutas: ['/cotizaciones/pdf'] },
+      { titulo: 'Consultas', rutas: ['/cotizaciones/pdf', '/almacen/compras'] },
     ],
     // En el teléfono, en el mismo orden; los pagos de servicio pasan a «Más» (2026-10-17).
     telefono: ['/adquisiciones', '/tesoreria/caja-diaria', '/tesoreria/por-cobrar', '/tesoreria/por-pagar'],
@@ -959,7 +1004,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
         titulo: 'Consultas',
         // Abierto: el tipo de cambio lo registra cada día, aunque viva aquí.
         pliegue: 'abierto',
-        rutas: ['/almacen/kardex', '/tesoreria/recibos-por-honorarios', '/proveedores', '/tesoreria/tipo-de-cambio'],
+        rutas: ['/almacen/kardex', '/almacen/compras', '/tesoreria/recibos-por-honorarios', '/proveedores', '/tesoreria/tipo-de-cambio'],
       },
     ],
     telefono: ['/adquisiciones', '/contabilidad/facturacion', '/compras/servicios', '/almacen/kardex'],
@@ -978,7 +1023,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     grupos: [
       { titulo: 'Por autorizar', rutas: ['/requerimientos/metrado'] },
       { titulo: 'Por código interno', rutas: ['/diseno/planos', '/diseno/materiales', '/diseno/etapas', '/diseno/dxf'] },
-      { titulo: 'Diseño e Ingeniería', rutas: ['/ordenes', '/materiales', '/diseno/informe-semanal', '/diseno/evaluaciones'] },
+      // Al final, lo que Calidad le observa a la etapa de diseño (A.1): lo marca corregido.
+      { titulo: 'Diseño e Ingeniería', rutas: ['/ordenes', '/materiales', '/diseno/informe-semanal', '/diseno/evaluaciones', '/calidad'] },
       // Nace plegado desde el 2026-11-26: con «Reportar» al final, el menú de
       // Diseño no entraba a 760 px. Los catálogos se tocan poco y se abre solo
       // si la pantalla que se abre está dentro.
@@ -992,7 +1038,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // stock de Almacén. Los planos ya no los sube: los sube el encargado.
   DISENO_COLABORADOR: {
     grupos: [
-      { titulo: 'Diseño e Ingeniería', rutas: ['/diseno/informe-semanal', '/ordenes'] },
+      { titulo: 'Diseño e Ingeniería', rutas: ['/diseno/informe-semanal', '/ordenes', '/calidad'] },
       { titulo: 'Material', rutas: ['/requerimientos', '/almacen/stock'] },
     ],
     telefono: ['/diseno/informe-semanal', '/ordenes', '/requerimientos', '/'],
@@ -1065,7 +1111,11 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // de Almacén, que consulta para saber qué hay.
   SUPERVISOR: {
     grupos: [
-      { titulo: 'Supervisión', rutas: ['/reportes-diarios', '/planos', '/subcontratos/area', '/requerimientos/unidades', '/requerimientos', '/almacen/stock'] },
+      // Lo que Calidad le observa a su área va al final: llega también por la campana.
+      {
+        titulo: 'Supervisión',
+        rutas: ['/reportes-diarios', '/planos', '/subcontratos/area', '/requerimientos/unidades', '/requerimientos', '/almacen/stock', '/calidad'],
+      },
     ],
     // En el teléfono, RQ abre la lista, que lleva la cifra de lo listo para
     // recoger; «Por unidad» es su primera pestaña.
@@ -1117,6 +1167,13 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   SSOMA: {
     grupos: [{ titulo: 'SSOMA', rutas: ['/ssoma'] }],
     telefono: ['/ssoma', '/'],
+  },
+  // Control de calidad (A.1): lo que inspecciona y lo que espera su revisión
+  // arriba; los códigos internos y las OT, en consulta y sin montos.
+  CALIDAD: {
+    principal: ['/calidad'],
+    grupos: [{ titulo: 'Consultas', consulta: true, rutas: ['/seguimiento', '/ordenes'] }],
+    telefono: ['/calidad', '/seguimiento', '/ordenes', '/'],
   },
 }
 // El líder de Diseño hace el trabajo de Diseño y además revisa el de su equipo
@@ -1333,8 +1390,10 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   // Al final: así no le quita la pestaña a nadie que no tenga menú propio.
   { ruta: '/almacen/stock', corto: 'Stock' },
   { ruta: '/almacen/reposicion', corto: 'Reposición' },
+  { ruta: '/almacen/compras', corto: 'Control' },
   { ruta: '/equipos', corto: 'Equipos' },
   // Al final: solo el nombre corto. Antes quitaba una de las cuatro pestañas a
   // los puestos sin menú propio (Operario, Calidad, Costos…).
   { ruta: '/averias', corto: 'Averías' },
+  { ruta: '/calidad', corto: 'Calidad' },
 ]

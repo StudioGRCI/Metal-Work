@@ -1,15 +1,21 @@
-import { AlertTriangle, ChevronDown } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronDown } from 'lucide-react'
+import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { DiasEnEspera } from '@/components/ui/dias-en-espera'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { Recorrido } from '@/components/ui/recorrido'
 import { Pliegue } from '@/components/ui/seccion-desplegable'
 import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { loQueFaltaDePlanillas, type LoQueFalta } from '@/lib/datos/planillas'
+import { recorridoDePlanillas } from '@/lib/datos/recorrido'
 import { planillaAjusteDesde, planillaAlCosto, restadoDelMes, type PersonaAlCosto } from '@/lib/datos/rrhh'
 import { TIPO_PLANILLA, definir } from '@/lib/dominio/estados'
 import { avisoDobleResta, detallePlanilla, tardanzasYPermisosDelExcel } from '@/lib/dominio/planilla-excel'
+import { describirRecorridoDeLaPlanilla } from '@/lib/dominio/recorrido'
 import { DESCUENTOS_DESDE, horasCortas } from '@/lib/dominio/rrhh'
-import { hoyLima, mesLargo, moneda, periodo } from '@/lib/format'
+import { fecha, hoyLima, mesLargo, moneda, periodo } from '@/lib/format'
 import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -59,8 +65,13 @@ export default async function PaginaRRHH() {
   const mesesAbiertos = [
     ...new Set((planillas.data ?? []).filter((p) => p.tipo === 'TALLER' && p.estado === 'BORRADOR').map((p) => p.periodo.slice(0, 7))),
   ]
-  const [personas, alCosto, restados, ajusteDesde] = await Promise.all([
-    enTandas((planillas.data ?? []).map((p) => p.id), (tanda, desde) =>
+  // El recorrido de cada planilla y, de las que están en preparación, lo que falta
+  // para cerrarlas (migración 20261126610000). Si no se pueden leer, la tarjeta lo
+  // dice y lo demás sigue: no tumban la pantalla de las planillas.
+  const ids = (planillas.data ?? []).map((p) => p.id)
+  const enPreparacion = (planillas.data ?? []).filter((p) => p.estado === 'BORRADOR' && p.tipo !== 'SUBCONTRATOS').map((p) => p.id)
+  const [personas, alCosto, restados, ajusteDesde, recorridos, faltas] = await Promise.all([
+    enTandas(ids, (tanda, desde) =>
       db.from('planilla_personas').select('id,planilla_id,nombre,documento,monto,detalle,origen_hoja,fila_origen')
         .in('planilla_id', tanda).order('creado_en').order('id').range(desde, desde + POR_PAGINA - 1)),
     // Cómo entra al costo cada persona de las de taller (migración 20261026210000): por sus horas y el ajuste al cerrar.
@@ -68,7 +79,22 @@ export default async function PaginaRRHH() {
     veRestado ? Promise.all(mesesAbiertos.map(async (m) => [m, await restadoDelMes(m)] as const)) : Promise.resolve([]),
     // Desde qué mes la de taller ajusta (noviembre de 2026): la de antes queda como registro.
     planillaAjusteDesde(),
+    recorridoDePlanillas(ids).catch((e: unknown) => {
+      console.error('[planillas] no se pudo leer el recorrido:', e)
+      return null
+    }),
+    loQueFaltaDePlanillas(enPreparacion).catch((e: unknown) => {
+      console.error('[planillas] no se pudo leer lo que falta para cerrar:', e)
+      return null
+    }),
   ])
+  // Los reportes del mes que faltan los lee quien lee los reportes; «tu visto» y
+  // «Darles el visto» son solo para quien lo da (no el administrador, que mira).
+  const veReportes = puede(perfil, 'reporte_diario.ver')
+  // Quién no tiene cuenta lo lee quien lee las cuentas, como en la base: solo
+  // RR. HH., sin el atajo del administrador (migración 20261126620000).
+  const veCuentas = editaComoRrhh(perfil, 'rrhh.personal')
+  const daElVisto = editaComoRrhh(perfil, 'reporte_diario.validar_rrhh')
   const restadoDe = new Map(restados)
   const comoEntra = new Map<string, PersonaAlCosto>(alCosto.flatMap((m) => [...m]))
   const sinPlanillas = (planillas.data ?? []).length === 0
@@ -135,7 +161,7 @@ export default async function PaginaRRHH() {
           const esperaCierre = deTaller && !soloRegistro && abierta && mesTerminado
 
           return (
-            <Tarjeta key={p.id}>
+            <Tarjeta key={p.id} data-planilla={p.id} data-estado={p.estado}>
               <TarjetaCabecera
                 titulo={`${definir(TIPO_PLANILLA, p.tipo).etiqueta} · ${periodo(p.periodo)}`}
                 descripcion={`${abierta ? 'En preparación' : 'Cerrada'} · ${deEsta.length} ${deEsta.length === 1 ? 'persona' : 'personas'} · costo ${moneda(total, divisa)}${
@@ -152,6 +178,18 @@ export default async function PaginaRRHH() {
                 }
               />
               <TarjetaCuerpo className="space-y-4">
+                {abierta && p.tipo !== 'SUBCONTRATOS' && (
+                  <LoQueFaltaParaCerrar
+                    planillaId={p.id}
+                    faltas={faltas === null ? null : (faltas.get(p.id) ?? [])}
+                    deTaller={p.tipo === 'TALLER'}
+                    mes={p.periodo.slice(0, 7)}
+                    veReportes={veReportes}
+                    veCuentas={veCuentas}
+                    daElVisto={daElVisto}
+                    conGente={deEsta.length > 0}
+                  />
+                )}
                 {esperaCierre && (
                   <p className="text-xs text-texto-suave" data-espera-cierre>
                     <Insignia tono="aviso">Mes terminado, sin cerrar</Insignia>{' '}
@@ -310,6 +348,11 @@ export default async function PaginaRRHH() {
                   </>
                 )}
               </TarjetaCuerpo>
+              <Recorrido
+                pasos={recorridos === null ? null : describirRecorridoDeLaPlanilla(recorridos.get(p.id) ?? [])}
+                femenino
+                className="border-t border-borde"
+              />
             </Tarjeta>
           )
         })}
@@ -388,5 +431,161 @@ function YaRestado({
       <span className="tabular whitespace-nowrap text-texto">{moneda(restado.tardanzas + restado.permisos)}</span> ({partes.join(', ')}).
       {enElExcel && <> El Excel también le resta {enElExcel}: es el mismo descuento.</>}
     </p>
+  )
+}
+
+/** «1 reporte», «3 reportes». */
+const cuantos = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`
+
+/**
+ * Lo que falta para cerrar la planilla en preparación: los reportes del mes que
+ * esperan el visto de RR. HH. o están observados (de la de taller) y quien no
+ * tiene cuenta bancaria o ficha. Avisa: cerrar sigue siendo decisión de RR. HH.
+ * `faltas` en `null` es «no se pudo leer», y se dice.
+ */
+function LoQueFaltaParaCerrar({
+  planillaId,
+  faltas,
+  deTaller,
+  mes,
+  veReportes,
+  veCuentas,
+  daElVisto,
+  conGente,
+}: {
+  planillaId: string
+  faltas: LoQueFalta[] | null
+  deTaller: boolean
+  /** `YYYY-MM`, para abrir los reportes del mes. */
+  mes: string
+  veReportes: boolean
+  veCuentas: boolean
+  daElVisto: boolean
+  conGente: boolean
+}) {
+  if (faltas === null) {
+    return (
+      <p role="status" className="text-xs text-aviso" data-lo-que-falta="sin-leer">
+        No se pudo leer lo que falta para cerrarla. Recarga la página; si continúa, avisa al administrador.
+      </p>
+    )
+  }
+  const sinVisto = faltas.filter((f) => f.clase === 'REPORTE_SIN_VISTO')
+  const observados = faltas.filter((f) => f.clase === 'REPORTE_OBSERVADO')
+  const sinCuenta = faltas.filter((f) => f.clase === 'SIN_CUENTA')
+  const sinFicha = faltas.filter((f) => f.clase === 'SIN_FICHA')
+  const revisa = [deTaller && veReportes ? 'los reportes del mes' : null, conGente && veCuentas ? 'las cuentas de su gente' : null].filter(Boolean)
+
+  if (faltas.length === 0) {
+    // Sin gente todavía no se puede cerrar: lo dice la tarjeta («Sin personas todavía»), no «no falta nada».
+    if (!conGente || revisa.length === 0) return null
+    return (
+      <p className="flex items-start gap-2 text-sm text-texto-suave" data-lo-que-falta="nada">
+        <CheckCircle2 aria-hidden className="mt-0.5 size-4 shrink-0 text-exito" />
+        <span>
+          {/* Sin `veCuentas` (el administrador) no sabe de las cuentas: no dice «no falta nada». */}
+          {veCuentas ? `No falta nada para cerrarla: ${revisa.join(' y ')} están al día.` : `${revisa.join(' y ').replace(/^./, (c) => c.toUpperCase())} están al día.`}
+        </span>
+      </p>
+    )
+  }
+
+  const enlace = 'font-medium text-acento underline underline-offset-2 hover:no-underline'
+  return (
+    <section
+      aria-labelledby={`lo-que-falta-${planillaId}`}
+      className="space-y-2 rounded-[var(--radius-base)] border border-aviso/40 bg-aviso-suave/40 p-4"
+      data-lo-que-falta={faltas.length}
+    >
+      <div className="space-y-1">
+        <h3 id={`lo-que-falta-${planillaId}`} className="flex items-center gap-2 text-sm font-semibold text-texto">
+          <AlertTriangle aria-hidden className="size-4 shrink-0 text-aviso" />
+          Lo que falta para cerrar
+        </h3>
+        <p className="text-xs text-texto-suave">
+          {conGente
+            ? 'Se puede cerrar igual: lo que quede pendiente queda así en la planilla cerrada.'
+            : 'Para cerrarla hace falta al menos una persona o un subcontrato.'}
+        </p>
+      </div>
+
+      {sinVisto.length > 0 && (
+        <Pliegue
+          titulo={`${cuantos(sinVisto.length, 'reporte espera', 'reportes esperan')} ${daElVisto ? 'tu visto' : 'el visto de RR. HH.'}`}
+          data-falta="REPORTE_SIN_VISTO"
+        >
+          <p className="pb-2 text-xs text-texto-suave">
+            Sin el visto de RR. HH., sus horas no pasan a la planilla diaria.{' '}
+            <Link href={`/reportes-diarios?mes=${mes}&estado=por-validar`} className={enlace}>
+              {daElVisto ? 'Darles el visto' : 'Ver los reportes por validar'}
+            </Link>
+          </p>
+          <FilasDeReportes filas={sinVisto} />
+        </Pliegue>
+      )}
+      {observados.length > 0 && (
+        <Pliegue titulo={`${cuantos(observados.length, 'reporte observado', 'reportes observados')} por corregir`} data-falta="REPORTE_OBSERVADO">
+          <p className="pb-2 text-xs text-texto-suave">
+            Los corrige el supervisor que los registró.{' '}
+            <Link href={`/reportes-diarios?mes=${mes}&estado=observados`} className={enlace}>
+              Ver los observados
+            </Link>
+          </p>
+          <FilasDeReportes filas={observados} />
+        </Pliegue>
+      )}
+      {sinCuenta.length > 0 && (
+        <Pliegue titulo={`${cuantos(sinCuenta.length, 'persona', 'personas')} sin cuenta bancaria`} data-falta="SIN_CUENTA">
+          <p className="pb-2 text-xs text-texto-suave">
+            Su cuenta se pone en su ficha, en{' '}
+            <Link href="/rrhh/personal?estado=todos" className={enlace}>
+              Personal
+            </Link>
+            .
+          </p>
+          <FilasDePersonas filas={sinCuenta} />
+        </Pliegue>
+      )}
+      {sinFicha.length > 0 && (
+        <Pliegue titulo={`${cuantos(sinFicha.length, 'persona', 'personas')} sin ficha en Personal`} data-falta="SIN_FICHA">
+          <p className="pb-2 text-xs text-texto-suave">
+            No se encontró su ficha por su DNI ni por su nombre. Si es de la empresa, revisa que su nombre o su DNI sean los de su ficha en{' '}
+            <Link href="/rrhh/personal?estado=todos" className={enlace}>
+              Personal
+            </Link>
+            .
+          </p>
+          <FilasDePersonas filas={sinFicha} />
+        </Pliegue>
+      )}
+    </section>
+  )
+}
+
+function FilasDeReportes({ filas }: { filas: LoQueFalta[] }) {
+  return (
+    <ul className="divide-y divide-borde rounded-[var(--radius-base)] border border-borde bg-superficie">
+      {filas.map((f) => (
+        <li key={f.documento} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 py-2 text-sm" data-reporte-que-falta={f.documento}>
+          <span className="min-w-0">
+            <span className="tabular text-texto-suave">{fecha(f.fecha)}</span> · <span className="font-medium break-words text-texto">{f.nombre}</span>
+            {f.detalle && <span className="block text-xs break-words text-texto-suave">{f.detalle}</span>}
+          </span>
+          <DiasEnEspera dias={f.dias} desde={f.desde} />
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function FilasDePersonas({ filas }: { filas: LoQueFalta[] }) {
+  return (
+    <ul className="divide-y divide-borde rounded-[var(--radius-base)] border border-borde bg-superficie">
+      {filas.map((f) => (
+        <li key={f.documento} className="px-3 py-2 text-sm font-medium break-words text-texto" data-persona-que-falta={f.documento}>
+          {f.nombre}
+        </li>
+      ))}
+    </ul>
   )
 }

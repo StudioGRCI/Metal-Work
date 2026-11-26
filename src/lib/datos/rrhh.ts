@@ -82,6 +82,20 @@ export async function listarTrabajadores(
   return ((data ?? []) as unknown as FilaTrabajador[]).map((f) => aplanar(f, dni))
 }
 
+/**
+ * Una persona por su id, con todo lo que la ficha muestra; `null` si no existe
+ * o quien mira no la ve. `conDni` como en `listarTrabajadores`.
+ */
+export async function trabajadorPorId(id: string, { conDni = false }: { conDni?: boolean } = {}): Promise<Trabajador | null> {
+  const supabase = await createClient()
+  const [{ data, error }, dni] = await Promise.all([
+    supabase.from('trabajadores').select(COLUMNAS_TRABAJADOR).eq('id', id).maybeSingle(),
+    conDni ? dniDelPersonal() : Promise.resolve(new Map<string, string>()),
+  ])
+  if (error) throw new Error(`No se pudo leer la ficha de la persona: ${error.message}`)
+  return data ? aplanar(data as unknown as FilaTrabajador, dni) : null
+}
+
 /** El DNI de cada persona, para RR. HH. (`rrhh_dni_de_trabajadores`). */
 async function dniDelPersonal(): Promise<Map<string, string>> {
   const supabase = await createClient()
@@ -191,7 +205,7 @@ export async function resumenTardanzas(mes: string): Promise<ResumenTardanza[]> 
 }
 
 /** Del primer día de un mes `YYYY-MM` al primero del siguiente, como texto. */
-function rangoDelMes(mes: string) {
+export function rangoDelMes(mes: string) {
   const [anio, m] = mes.split('-').map(Number)
   const hasta = `${m === 12 ? anio + 1 : anio}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-01`
   return { desde: `${mes}-01`, hasta }
@@ -393,17 +407,19 @@ type FilaObservacion = Omit<Observacion, 'trabajador'> & { trabajador: PersonaCo
 
 /**
  * Las observaciones de un mes (`YYYY-MM`) o, con `trabajadorId`, todo el
- * historial de esa persona. Incluye las anuladas (se muestran tachadas).
+ * historial de esa persona; con los dos, lo de esa persona en ese mes (su hoja).
+ * Incluye las anuladas (se muestran tachadas).
  */
-export async function listarObservaciones(filtro: { mes: string } | { trabajadorId: string }): Promise<Observacion[]> {
+export async function listarObservaciones(
+  filtro: { mes: string; trabajadorId?: string } | { trabajadorId: string; mes?: string },
+): Promise<Observacion[]> {
   const supabase = await createClient()
   let consulta = supabase.from('observaciones_personal').select(COLUMNAS_OBSERVACION)
-  if ('mes' in filtro) {
+  if (filtro.mes) {
     const { desde, hasta } = rangoDelMes(filtro.mes)
     consulta = consulta.gte('fecha', desde).lt('fecha', hasta)
-  } else {
-    consulta = consulta.eq('trabajador_id', filtro.trabajadorId)
   }
+  if (filtro.trabajadorId) consulta = consulta.eq('trabajador_id', filtro.trabajadorId)
   const { data, error } = await consulta.order('fecha', { ascending: false }).order('creado_en', { ascending: false }).limit(2000)
   if (error) throw new Error(`No se pudieron leer las observaciones: ${error.message}`)
   return ((data ?? []) as unknown as FilaObservacion[]).map((o) => ({ ...o, trabajador: unico(o.trabajador) }))

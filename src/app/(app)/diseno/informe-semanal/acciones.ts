@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { mensajeDeError, NO_TOCO_NADA, type ResultadoAccion } from '@/lib/acciones'
-import { CLAVES_TAREA } from '@/lib/dominio/informe-diseno'
+import { CLAVES_TAREA, numeroInforme } from '@/lib/dominio/informe-diseno'
 import { inicioSemanaDiseno } from '@/lib/dominio/semana-diseno'
 import { hoyLima } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
@@ -92,7 +92,7 @@ export async function guardarInformeDiseno(_previo: unknown, datos: FormData): P
   if (resultado.error) return { ok: false, error: mensajeDeError(resultado.error) }
   if (!resultado.data) return { ok: false, error: NO_TOCO_NADA }
   revalidatePath('/diseno/informe-semanal')
-  return { ok: true, mensaje: `Informe semanal N.º ${resultado.data.numero} guardado.` }
+  return { ok: true, mensaje: `Informe semanal N.º ${numeroInforme(resultado.data.numero)} guardado. Todavía no le llega a Diseño: envíalo con «Enviar a Diseño».` }
 }
 
 export async function transitarInforme(_previo:unknown,datos:FormData):Promise<ResultadoAccion> {

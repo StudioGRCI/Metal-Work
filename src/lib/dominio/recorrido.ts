@@ -2,9 +2,14 @@
  * El recorrido de un documento numerado: por dónde pasó, quién hizo cada paso y
  * cuándo, quién lo tiene ahora y hace cuántos días (migración 20261125130000).
  * La base da las claves (`recorrido_de_requerimientos`,
- * `recorrido_de_cotizaciones`); las frases viven aquí. Un documento nuevo suma
- * su función con la misma forma y su mapa de pasos en este archivo.
+ * `recorrido_de_cotizaciones`, `recorrido_de_informes_diseno`, `recorrido_de_planillas`);
+ * las frases viven aquí. Un documento nuevo suma su función con la misma forma y
+ * su mapa de pasos en este archivo.
  */
+
+import { fecha } from '@/lib/format'
+
+import { motivoDeAtraso } from './plazos'
 
 /** HECHO: alguien lo hizo. AHORA: alguien lo tiene. PENDIENTE: todavía no le toca a nadie. */
 export type SituacionDelPaso = 'HECHO' | 'AHORA' | 'PENDIENTE'
@@ -138,7 +143,12 @@ const PASOS_DE_LA_COTIZACION: Record<string, Frases> = {
   CORRECCION: { hecho: 'Corrección subida', falta: 'Corrección', nota: (version) => `Pasó a la ${version}` },
   // El número de la OT llega solo a quien lee las órdenes.
   CODIGO_Y_OT: { hecho: 'Con código interno y OT', falta: 'Código interno y OT', nota: (ot) => ot },
-  FACTURA: { hecho: 'Facturada', falta: 'Factura' },
+  // En parte, solo a quien lee las facturas (migración 20261126470000): «Facturada» con la mitad sin facturar confundía.
+  FACTURA: { hecho: (d) => (d === 'EN_PARTE' ? 'Facturada en parte' : 'Facturada'), falta: 'Factura' },
+  // Facturada en parte: la factura de lo que falta del total (migración 20261126470000). Solo espera, nunca se dice hecha.
+  FACTURA_RESTO: { hecho: 'Facturado lo que faltaba', falta: 'Factura de lo que falta' },
+  // El cobro lo ve quien lee los cobros; a Ventas la base no se lo da.
+  COBRO: { hecho: 'Cobrada', falta: 'Cobro' },
   ANULACION: { hecho: 'Anulada', falta: 'Anulación' },
 }
 
@@ -147,6 +157,26 @@ const ESPERAS_DE_LA_COTIZACION: Record<string, (detalle: string | null) => strin
   CORRECCION: () => 'Sube la corrección con el mismo número.',
   CODIGO_Y_OT: () => 'Le da el código interno de la unidad y sube la OT.',
   FACTURA: () => 'Registra su factura.',
+  FACTURA_RESTO: () => 'Registra la factura de lo que falta del total.',
+  COBRO: (detalle) => (detalle === 'EN_PARTE' ? 'Cobra lo que falta: ya cobró una parte.' : 'Cobra sus facturas.'),
+}
+
+const PASOS_DEL_INFORME_DISENO: Record<string, Frases> = {
+  REGISTRO: { hecho: 'Borrador empezado', falta: 'Borrador' },
+  ENVIO: { hecho: 'Enviado a Diseño', falta: 'Envío a Diseño' },
+  // El motivo va entero: es lo que el colaborador tiene que corregir.
+  DEVOLUCION: { hecho: 'Devuelto para corregir', falta: 'Devolución', nota: (motivo) => `Motivo: ${motivo}` },
+  CORRECCION: { hecho: 'Corregido', falta: 'Corrección' },
+  APROBACION: { hecho: 'Aprobado por Diseño', falta: 'Aprobación' },
+  // Del circuito anterior, cuando el informe pasaba a Administración (migración 20261001213000).
+  RECEPCION: { hecho: 'Recibido por Administración', falta: 'Recepción de Administración' },
+  REVISION: { hecho: 'Revisado por Diseño', falta: 'Revisión de Diseño' },
+}
+
+const ESPERAS_DEL_INFORME_DISENO: Record<string, () => string> = {
+  ENVIO: () => 'Completa la semana y envía el informe a Diseño.',
+  CORRECCION: () => 'Corrige lo que Diseño observó y vuelve a enviarlo.',
+  REVISION: () => 'Lo aprueba o lo devuelve con su motivo.',
 }
 
 const PASOS_DE_LA_AVERIA: Record<string, Frases> = {
@@ -184,6 +214,125 @@ function describir(
     })
 }
 
+/**
+ * Lo que Logística anotó de una compra atrasada (Plan 4.2): el motivo llega como
+ * «PROVEEDOR|nota» y la fecha corregida como «2026-11-21>2026-11-28|PROVEEDOR|nota».
+ */
+export type Seguimiento = { motivo: string; nota: string | null; anterior: string | null; nueva: string | null }
+
+export function partirSeguimiento(paso: string, detalle: string | null): Seguimiento | null {
+  if (!detalle) return null
+  let resto = detalle
+  let anterior: string | null = null
+  let nueva: string | null = null
+  if (paso === 'FECHA_CORREGIDA') {
+    const i = resto.indexOf('|')
+    const fechas = i < 0 ? resto : resto.slice(0, i)
+    resto = i < 0 ? '' : resto.slice(i + 1)
+    const [a, n] = fechas.split('>')
+    anterior = a || null
+    nueva = n || null
+  }
+  const j = resto.indexOf('|')
+  const motivo = j < 0 ? resto : resto.slice(0, j)
+  const nota = j < 0 ? '' : resto.slice(j + 1)
+  return { motivo, nota: nota.trim() || null, anterior, nueva }
+}
+
+/** Lo último que Logística anotó del atraso, con quién y cuándo: el paso y lo que dice. */
+export function ultimoSeguimiento(pasos: readonly PasoDelRecorrido[] | undefined) {
+  const ultimo = [...(pasos ?? [])]
+    .filter((p) => p.situacion === 'HECHO' && (p.paso === 'MOTIVO_ATRASO' || p.paso === 'FECHA_CORREGIDA'))
+    .sort((a, b) => a.orden - b.orden)
+    .at(-1)
+  const lo = ultimo && partirSeguimiento(ultimo.paso, ultimo.detalle)
+  return ultimo && lo ? { paso: ultimo, ...lo } : null
+}
+
+/** Si Logística corrigió la fecha prometida, la que valía antes de la última corrección. */
+export function correccionDeLaFecha(pasos: readonly PasoDelRecorrido[] | null | undefined): { antes: string | null } | null {
+  const ultima = [...(pasos ?? [])]
+    .filter((p) => p.situacion === 'HECHO' && p.paso === 'FECHA_CORREGIDA')
+    .sort((a, b) => a.orden - b.orden)
+    .at(-1)
+  if (!ultima) return null
+  return { antes: partirSeguimiento(ultima.paso, ultima.detalle)?.anterior ?? null }
+}
+
+function notaDelSeguimiento(paso: string) {
+  return (detalle: string) => {
+    const s = partirSeguimiento(paso, detalle)
+    if (!s) return null
+    const fechas = s.nueva ? (s.anterior ? `Del ${fecha(s.anterior)} al ${fecha(s.nueva)}` : `Al ${fecha(s.nueva)}`) : null
+    return [fechas, motivoDeAtraso(s.motivo), s.nota].filter(Boolean).join(' · ')
+  }
+}
+
+const SEGUIMIENTO: Record<string, Frases> = {
+  MOTIVO_ATRASO: { hecho: 'Anotó el motivo del atraso', falta: 'Motivo del atraso', nota: notaDelSeguimiento('MOTIVO_ATRASO') },
+  FECHA_CORREGIDA: { hecho: 'Corrigió la fecha prometida', falta: 'Fecha prometida', nota: notaDelSeguimiento('FECHA_CORREGIDA') },
+}
+
+const PASOS_DE_LA_ORDEN_DE_COMPRA: Record<string, Frases> = {
+  EMISION: { hecho: 'Emitida', falta: 'Emisión' },
+  APROBACION: { hecho: 'Gerencia la aprobó', falta: 'Aprobación de Gerencia' },
+  RECHAZO: { hecho: 'Gerencia la rechazó', falta: 'Aprobación de Gerencia' },
+  MANDADA_A_RECOJO: { hecho: 'Mandada a recojo', falta: 'Mandarla a recojo' },
+  PROGRAMACION: { hecho: 'Recojo programado con el conductor', falta: 'Programar el recojo' },
+  GUIA: { hecho: 'Contabilidad cargó la guía de remisión', falta: 'Guía de remisión' },
+  SALIDA: { hecho: 'El conductor salió a recogerla', falta: 'Salida a recogerla' },
+  NO_SE_PUDO_RECOGER: { hecho: 'El conductor no la pudo recoger', falta: 'Recojo donde el proveedor', nota: (motivo) => motivo },
+  RECOGIDA: { hecho: 'Recogida donde el proveedor', falta: 'Recojo donde el proveedor' },
+  DEJADA: { hecho: 'Dejada en el almacén', falta: 'Llegada al almacén' },
+  VALIDACION: {
+    hecho: (d) => (d === 'OBSERVADO' ? 'Almacén observó el ingreso' : 'Almacén validó el ingreso'),
+    falta: 'Validación de Almacén',
+  },
+  DEVOLUCION: { hecho: 'Almacén devolvió parte al proveedor', falta: 'Devolución al proveedor' },
+  COMPLETA: { hecho: 'Completa: llegó todo lo pedido', falta: 'Completa' },
+  ANULACION: { hecho: 'Anulada', falta: 'Anulación' },
+  ...SEGUIMIENTO,
+}
+
+const ESPERAS_DE_LA_ORDEN_DE_COMPRA: Record<string, () => string> = {
+  APROBACION: () => 'La aprueba o la rechaza.',
+  MANDAR_A_RECOJO: () => 'Falta mandarla a recojo.',
+  PROGRAMAR: () => 'Falta programar el recojo con el conductor.',
+  GUIA: () => 'Carga la guía de remisión para el recojo.',
+  SALIR: () => 'Falta salir a recogerla.',
+  RECOGER: () => 'Salió a recogerla.',
+  DEJAR: () => 'La lleva al almacén.',
+  VALIDAR: () => 'Valida lo que llegó.',
+  REPONER: () => 'Repone lo que Almacén le devolvió.',
+  OBSERVADO: () => 'Almacén observó el ingreso: trae lo que falta.',
+  FALTA_LLEGAR: () => 'Llegó en parte: trae lo que falta.',
+}
+
+const PASOS_DE_LA_ORDEN_DE_SERVICIO: Record<string, Frases> = {
+  EMISION: { hecho: 'Emitida', falta: 'Emisión' },
+  APROBACION: { hecho: 'Gerencia la aprobó', falta: 'Aprobación de Gerencia' },
+  RECHAZO: { hecho: 'Gerencia la rechazó', falta: 'Aprobación de Gerencia' },
+  INICIO: { hecho: 'Iniciada', falta: 'Inicio del trabajo' },
+  EJECUCION: { hecho: 'En ejecución', falta: 'Trabajo del proveedor' },
+  CONFORMIDAD: { hecho: 'Volvió conforme', falta: 'Conformidad' },
+  ANULACION: { hecho: 'Anulada', falta: 'Anulación' },
+  ...SEGUIMIENTO,
+}
+
+const ESPERAS_DE_LA_ORDEN_DE_SERVICIO: Record<string, () => string> = {
+  APROBACION: () => 'La aprueba o la rechaza.',
+  INICIAR: () => 'Falta marcar que el trabajo empezó.',
+  EJECUTAR: () => 'Hace el trabajo; cuando vuelva, Logística da la conformidad.',
+}
+
+/** El recorrido de una orden de compra, en palabras. */
+export const describirRecorridoDeLaOrdenDeCompra = (pasos: readonly PasoDelRecorrido[]) =>
+  describir(pasos, PASOS_DE_LA_ORDEN_DE_COMPRA, ESPERAS_DE_LA_ORDEN_DE_COMPRA)
+
+/** El recorrido de una orden de servicio, en palabras. */
+export const describirRecorridoDeLaOrdenDeServicio = (pasos: readonly PasoDelRecorrido[]) =>
+  describir(pasos, PASOS_DE_LA_ORDEN_DE_SERVICIO, ESPERAS_DE_LA_ORDEN_DE_SERVICIO)
+
 /** El recorrido de un RQ, en palabras. */
 export const describirRecorridoDelRequerimiento = (pasos: readonly PasoDelRecorrido[]) =>
   describir(pasos, PASOS_DEL_REQUERIMIENTO, ESPERAS_DEL_REQUERIMIENTO)
@@ -196,6 +345,32 @@ export function describirRecorridoDeLaCotizacion(pasos: readonly PasoDelRecorrid
     ? descritos.map((p) => (p.paso === 'REVISION' && p.detalle === 'APROBADA' ? { ...p, nota: null } : p))
     : descritos
 }
+
+/** El recorrido de un informe semanal de Diseño, en palabras. */
+export const describirRecorridoDelInformeDiseno = (pasos: readonly PasoDelRecorrido[]) =>
+  describir(pasos, PASOS_DEL_INFORME_DISENO, ESPERAS_DEL_INFORME_DISENO)
+
+/** «1 persona», «12 personas». */
+const personas = (n: string) => (Number(n) === 1 ? '1 persona' : `${n} personas`)
+
+// La planilla del mes (migración 20261126610000): no es un documento numerado,
+// pero RR. HH. la sigue igual, paso a paso, hasta cerrarla.
+const PASOS_DE_LA_PLANILLA: Record<string, Frases> = {
+  CREADA: { hecho: 'Creada', falta: 'Creación' },
+  IMPORTACION: { hecho: 'Excel importado', falta: 'Excel', nota: (n) => `Entraron ${personas(n)}` },
+  A_MANO: { hecho: 'Agregadas a mano', falta: 'Agregadas a mano', nota: (n) => `${personas(n)} fuera del Excel. La hora es la de la última que se agregó.` },
+  QUITADAS: { hecho: 'Quitadas de la planilla', falta: 'Quitadas', nota: (n) => `${personas(n)}. La hora es la de la última que se quitó.` },
+  CIERRE: { hecho: 'Cerrada', falta: 'Cierre' },
+}
+
+const ESPERAS_DE_LA_PLANILLA: Record<string, (detalle: string | null) => string> = {
+  IMPORTAR: () => 'Importa el Excel del mes o agrega a la primera persona.',
+  CERRAR: () => 'Revisa lo que falta y la cierra.',
+}
+
+/** El recorrido de una planilla del mes, en palabras. */
+export const describirRecorridoDeLaPlanilla = (pasos: readonly PasoDelRecorrido[]) =>
+  describir(pasos, PASOS_DE_LA_PLANILLA, ESPERAS_DE_LA_PLANILLA)
 
 /** El recorrido de un reporte de avería, en palabras. */
 export const describirRecorridoDeLaAveria = (pasos: readonly PasoDelRecorrido[]) =>

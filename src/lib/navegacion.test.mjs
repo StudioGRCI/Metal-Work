@@ -6,9 +6,10 @@ import { menuDe, modulosDelInicio, pestanasDe, rutaActiva, rutasDeTrabajo } from
 // `rrhh.tiempos_entrega`, que le da la migración 20261125100000 (Semáforo de entregas, #186), y
 // `equipos.ver`, que le da la 20261125160000 (padrón de equipos, #191). Desde la 20261126310000
 // tiene además los diez de lectura de las once pantallas que le faltaban, y ya no `proveedores.editar`;
-// desde la 20261126100100, `averias.ver` (reportar una avería, Plan 16.2).
+// desde la 20261126100100, `averias.ver` (reportar una avería, Plan 16.2), y desde la
+// 20261126700000, `calidad.ver` (Calidad, A.1).
 const GERENCIA = [
-  'adquisiciones.ver', 'almacen.ver', 'averias.ver', 'asistencia.ver', 'auditoria.ver', 'clientes.ver', 'codigos_internos.cerrar',
+  'adquisiciones.ver', 'almacen.ver', 'averias.ver', 'asistencia.ver', 'auditoria.ver', 'calidad.ver', 'clientes.ver', 'codigos_internos.cerrar',
   'codigos_internos.ver', 'compras.configurar_aprobacion', 'compras.ver', 'costos.ver', 'cotizaciones.revisar',
   'cotizaciones.ver_aprobadas', 'cotizaciones.ver_pdf_comercial', 'diseno.revisar', 'equipos.ver', 'ordenes.anular', 'ordenes.aprobar',
   'ordenes.listar', 'ordenes.ver', 'planilla_diaria.ver', 'produccion.aprobar_sin_orden', 'produccion.cualquier_area',
@@ -23,19 +24,23 @@ const GERENCIA = [
 
 const rutas = (grupos) => grupos.flatMap((g) => g.items.map((i) => i.ruta))
 
-test('Gerencia ve por área las 50 pantallas que su permiso le abre, cada una una vez', () => {
+test('Gerencia ve por área las 52 pantallas que su permiso le abre, cada una una vez', () => {
   const grupos = menuDe(GERENCIA, false, 'GERENTE')
   assert.deepEqual(grupos.map((g) => g.titulo), [
-    'Principal', 'Por aprobar', 'Ventas', 'Diseño e Ingeniería', 'Requerimientos', 'Almacén', 'Mantenimiento', 'Logística', 'Administración',
-    'Finanzas', 'Recursos Humanos', 'SSOMA',
+    'Principal', 'Por aprobar', 'Ventas', 'Diseño e Ingeniería', 'Requerimientos', 'Almacén', 'Logística', 'Administración',
+    'Finanzas', 'Recursos Humanos', 'SSOMA y Calidad',
   ])
   const todas = rutas(grupos)
-  // 49 en main el 2026-11-26 (con Averías), más Por decidir (plan 12, entrega 12.1).
-  assert.equal(todas.length, 50)
-  assert.equal(new Set(todas).size, 50)
+  // 49 en main el 2026-11-26 (con Averías), más Por decidir (plan 12, entrega 12.1), el Control de compras de Almacén
+  // y las inspecciones de calidad (A.1).
+  assert.equal(todas.length, 52)
+  assert.equal(new Set(todas).size, 52)
+  // Calidad la consulta con su permiso: la entrada del área (sin permiso) no la reemplaza.
+  assert.equal(grupos.find((g) => g.titulo === 'SSOMA y Calidad')?.items[1]?.titulo, 'Inspecciones de calidad')
   // Las averías y los reportes de seguridad, en lo que consulta: no se repiten en «Reportar», que va al final para todos.
-  assert.deepEqual(rutas(grupos.filter((g) => g.titulo === 'Mantenimiento')), ['/averias'])
-  assert.deepEqual(rutas(grupos.filter((g) => g.titulo === 'SSOMA')), ['/ssoma'])
+  // Las averías van con los equipos en Almacén: un grupo más no entraba en el monitor.
+  assert.deepEqual(rutas(grupos.filter((g) => g.titulo === 'Almacén')).slice(-2), ['/equipos', '/averias'])
+  assert.deepEqual(rutas(grupos.filter((g) => g.titulo === 'SSOMA y Calidad')), ['/ssoma', '/calidad'])
   assert.ok(!grupos.some((g) => g.titulo === 'Reportar'))
   // Las once que se le abrieron en lectura el 2026-11-26, y Proveedores sin `proveedores.editar`.
   for (const r of [
@@ -64,14 +69,15 @@ test('lo que Gerencia consulta no es su trabajo; lo que ya tenía en su menú, s
   const grupos = menuDe(GERENCIA, false, 'GERENTE')
   assert.deepEqual(grupos.filter((g) => !g.consulta).map((g) => g.titulo), ['Principal', 'Por aprobar'])
   // Las once rutas que su menú tenía en main, más «Por decidir» (plan 12.1), que no lleva
-  // pendiente propio: ni un pendiente ni una cifra de más o de menos.
+  // pendiente propio, y las OT por aprobar (2026-11-26): ni un pendiente ni una cifra de más.
   assert.deepEqual([...rutasDeTrabajo(GERENCIA, false, 'GERENTE')].sort(), [
     '/', '/adquisiciones', '/avance/trabajos', '/codigos-internos', '/compras/aprobacion', '/costos/gastos-generales',
-    '/cotizaciones/pdf', '/por-decidir', '/reportes-diarios', '/rrhh/tiempos-de-entrega', '/tesoreria/por-cobrar', '/tesoreria/por-pagar',
+    '/cotizaciones/pdf', '/ordenes', '/por-decidir', '/reportes-diarios', '/rrhh/tiempos-de-entrega', '/tesoreria/por-cobrar', '/tesoreria/por-pagar',
   ])
-  assert.ok(!rutasDeTrabajo(GERENCIA, false, 'GERENTE').has('/ordenes'))
+  // Las OT por aprobar son su trabajo (2026-11-26): /ordenes va en «Por aprobar» y cuenta.
+  assert.ok(rutasDeTrabajo(GERENCIA, false, 'GERENTE').has('/ordenes'))
   assert.deepEqual(rutas(modulosDelInicio(GERENCIA, false, 'GERENTE')), [
-    '/', '/codigos-internos', '/por-decidir', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos',
+    '/', '/codigos-internos', '/por-decidir', '/cotizaciones/pdf', '/ordenes', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos',
     '/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales', '/rrhh/tiempos-de-entrega',
   ])
   assert.deepEqual(pestanasDe(GERENCIA, false, 'GERENTE').map((p) => p.ruta), [
@@ -113,9 +119,9 @@ test('en Gerencia, lo que espera su visto va siempre abierto y cada área nace p
     grupos.map((g) => [g.titulo, g.pliegue]),
     [
       ['Principal', 'fijo'], ['Por aprobar', 'fijo'], ['Ventas', 'plegado'], ['Diseño e Ingeniería', 'plegado'], ['Requerimientos', 'plegado'],
-      ['Almacén', 'plegado'], ['Mantenimiento', 'plegado'],
+      ['Almacén', 'plegado'],
       ['Logística', 'plegado'], ['Administración', 'plegado'], ['Finanzas', 'plegado'], ['Recursos Humanos', 'plegado'],
-      ['SSOMA', 'plegado'],
+      ['SSOMA y Calidad', 'plegado'],
     ],
   )
 })
@@ -144,4 +150,30 @@ test('«Reportar incidente» y «Reportar avería» están al final del menú de
   assert.deepEqual(mantenimiento.map((g) => g.titulo), ['Principal', 'Mantenimiento', 'Reportar'])
   assert.deepEqual(mantenimiento[1].items.map((i) => i.titulo), ['Averías', 'Equipos'])
   assert.deepEqual(mantenimiento[2].items.map((i) => i.titulo), ['Reportar incidente'])
+})
+
+test('Calidad lleva sus inspecciones arriba y consulta los códigos y las OT sin montos', () => {
+  const permisos = ['ordenes.listar', 'ordenes.ver', 'produccion.ver', 'calidad.inspeccionar', 'codigos_internos.seguimiento']
+  const grupos = menuDe(permisos, false, 'CALIDAD')
+  assert.deepEqual(rutas(grupos), ['/', '/calidad', '/seguimiento', '/ordenes', '/ssoma', '/averias'])
+  assert.equal(grupos[0].items[1].titulo, 'Inspecciones de calidad')
+  assert.deepEqual(pestanasDe(permisos, false, 'CALIDAD').map((p) => p.ruta), ['/calidad', '/seguimiento', '/ordenes', '/'])
+  assert.ok(!rutasDeTrabajo(permisos, false, 'CALIDAD').has('/seguimiento'))
+})
+
+test('cada puesto de un área de la planta con menú propio ve lo que Calidad le observa, y la oficina no', () => {
+  for (const [puesto, permisos] of [
+    ['SUPERVISOR', ['reporte_diario.ver']],
+    ['DISENO', ['diseno.codigos']],
+    ['DISENO_COLABORADOR', ['diseno.informe_semanal']],
+    ['ALMACENERO', ['almacen.ver']],
+  ]) {
+    const menu = menuDe(permisos, false, puesto)
+    assert.ok(rutas(menu).includes('/calidad'), puesto)
+    assert.ok(menu.flatMap((g) => g.items).some((i) => i.titulo === 'Observaciones de calidad'), puesto)
+    assert.ok(rutasDeTrabajo(permisos, false, puesto).has('/calidad'), `${puesto}: su globo cuenta lo que espera por el área`)
+  }
+  for (const puesto of ['TESORERIA', 'CONTABILIDAD', 'COMPRADOR', 'VENDEDOR']) {
+    assert.ok(!rutas(menuDe([], false, puesto)).includes('/calidad'), puesto)
+  }
 })

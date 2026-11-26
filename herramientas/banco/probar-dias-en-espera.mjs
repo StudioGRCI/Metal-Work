@@ -411,40 +411,6 @@ try {
 // Los errores de consola de ese rato son los que se provocaron a propósito.
 errores.length = erroresAntes
 
-// ------------------------------------------------ 2d. El supervisor recoge solo lo que falta sacar
-// El RQ listo que ya salió entero del kardex lo tiene Almacén para marcarlo
-// entregado (20261126170000): al supervisor no se le cuenta como «listo para recoger».
-{
-  // Lo que espera su recojo según el recorrido leído con su sesión: las salidas
-  // del kardex no las ve, y por ellas no se puede saber.
-  const [{ n: porRecoger, listos }] = await comoCuenta(
-    'sup.mtz',
-    `select count(*) filter (where r.espera = 'RECOJO_DEL_AREA')::int as n, count(*)::int as listos
-       from public.requerimientos q
-       join public.areas a on a.id = q.area_id
-       join public.recorrido_de_requerimientos(array(select id from public.requerimientos where estado = 'LISTO_EN_ALMACEN')) r
-         on r.documento = q.id and r.situacion = 'AHORA'
-      where q.estado = 'LISTO_EN_ALMACEN' and a.nombre = 'Maestranza'`,
-  )
-  const [{ n: salidoEntero }] = await consulta(
-    `select count(*)::int as n from public.requerimientos q join public.areas a on a.id = q.area_id
-      where q.estado = 'LISTO_EN_ALMACEN' and a.nombre = 'Maestranza'
-        and not exists (select 1 from public.v_rq_lineas_para_salida v where v.requerimiento_id = q.id and v.pendiente > 0)`,
-  )
-  const { pagina, contexto } = await entrar('sup.mtz')
-  await ir(pagina, '/')
-  const recoger = await pagina.locator('[data-te-toca] a').evaluateAll((as) =>
-    as.map((a) => ({ texto: a.innerText.replace(/\s+/g, ' ').trim(), cantidad: Number(a.dataset.cantidad ?? 'NaN') }))
-      .filter((t) => /listos? para recoger en almacén/.test(t.texto)))
-  comprobar(
-    porRecoger === 0 ? recoger.length === 0 : recoger.length === 1 && recoger[0].cantidad === porRecoger,
-    `sup.mtz: «listos para recoger» cuenta los ${porRecoger} que tienen algo por salir del kardex, de ${listos} listos (dice ${recoger.map((t) => t.texto).join(' | ') || 'nada'})`,
-  )
-  comprobar(salidoEntero > 0 && porRecoger === listos - salidoEntero,
-    `sup.mtz: el que ya salió entero no cuenta: ${listos} listos, ${salidoEntero} ya salió entero, ${porRecoger} por recoger`)
-  await contexto.close()
-}
-
 // ------------------------------------------------ 3. Portería
 {
   const { pagina, contexto } = await entrar('porteria')

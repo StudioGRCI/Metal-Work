@@ -30,7 +30,14 @@ const SITUACIONES: readonly SituacionDelPaso[] = ['HECHO', 'AHORA', 'PENDIENTE']
 const POR_TANDA = 100
 
 async function leer(
-  funcion: 'recorrido_de_requerimientos' | 'recorrido_de_cotizaciones' | 'recorrido_de_averias',
+  funcion:
+    | 'recorrido_de_requerimientos'
+    | 'recorrido_de_cotizaciones'
+    | 'recorrido_de_informes_diseno'
+    | 'recorrido_de_planillas'
+    | 'recorrido_de_averias'
+    | 'recorrido_de_ordenes_compra'
+    | 'recorrido_de_ordenes_servicio',
   ids: string[],
   de: string,
 ): Promise<Recorridos> {
@@ -86,5 +93,17 @@ export const recorridoDeRequerimientos = (ids: string[]) => leer('recorrido_de_r
 /** El recorrido de esas cotizaciones: solo de las que quien mira ya puede ver. */
 export const recorridoDeCotizaciones = (ids: string[]) => leer('recorrido_de_cotizaciones', ids, 'las cotizaciones')
 
+/** El recorrido de esos informes semanales de Diseño: lo lee quien ve el informe. */
+export const recorridoDeInformesDiseno = (ids: string[]) => leer('recorrido_de_informes_diseno', ids, 'el informe semanal')
+
+/** El recorrido de esas planillas del mes. Lo lee quien ve las planillas (`rrhh.ver_planillas`). */
+export const recorridoDePlanillas = (ids: string[]) => leer('recorrido_de_planillas', ids, 'las planillas')
+
 /** El recorrido de esos reportes de avería (Plan 16.2): solo de los que quien mira ya puede ver. */
 export const recorridoDeAverias = (ids: string[]) => leer('recorrido_de_averias', ids, 'los reportes de avería')
+
+/** El recorrido de esas OC (Plan 4.2): quién la tiene, y el motivo y la fecha que anotó Logística. Con el alcance del listado. */
+export const recorridoDeOrdenesCompra = (ids: string[]) => leer('recorrido_de_ordenes_compra', ids, 'las órdenes de compra')
+
+/** El recorrido de esas OS (Plan 4.2). */
+export const recorridoDeOrdenesServicio = (ids: string[]) => leer('recorrido_de_ordenes_servicio', ids, 'las órdenes de servicio')

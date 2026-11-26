@@ -19,10 +19,14 @@ insert into public.unidades_medida (codigo, nombre, magnitud, decimales, factor_
 values ('PAR', 'Par', 'UNIDAD', 0, 1, true), ('SACO', 'Saco', 'UNIDAD', 0, 1, true)
 on conflict (codigo) do nothing;
 
+-- Sin `on commit drop`: aplicada sentencia por sentencia (psql sin -1, el SQL
+-- de Supabase) la tabla se iba con la primera y lo demás fallaba con «relation
+-- _alm_excel does not exist». Se suelta al final, y al cerrar la sesión.
+drop table if exists pg_temp._alm_excel;
 create temporary table _alm_excel (
   codigo text primary key, nuevo boolean not null, descripcion text not null,
   categoria text, unidad text, marca text, stock_minimo numeric
-) on commit drop;
+);
 insert into _alm_excel (codigo, nuevo, descripcion, categoria, unidad, marca, stock_minimo) values
   ('PROV-534BA34A1F', false, 'CINTA TEFLON', null, 'UND', 'SCHUBERT', 10.0),
   ('PROV-15EC0F2C5E', false, 'ALAMBRE DE SOLDAR MID MAD INDURA', null, 'CAJA', 'INDURA', 5.0),
@@ -512,3 +516,5 @@ begin
     raise exception 'La carga del catálogo de Almacén no creó todos los materiales nuevos del Excel.';
   end if;
 end $$;
+
+drop table if exists pg_temp._alm_excel;
