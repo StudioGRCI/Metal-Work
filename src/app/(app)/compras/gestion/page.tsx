@@ -27,9 +27,12 @@ type Quien = { programa: boolean }
  * Desde la migración 20261020171000 la gestión es de Logística
  * (`compras.programar_recojo`) y del conductor (`compras.recojo`, que la ve sin
  * programar nada): ni Contabilidad ni quien solo emite compras la abren.
+ * Gerencia la consulta sin programar (`compras.ver_gestion`, migración
+ * 20261126310000).
  */
 export default async function PaginaGestionCompras() {
-  const perfil = await exigirPermiso(['compras.programar_recojo', 'compras.recojo'])
+  const perfil = await exigirPermiso(['compras.programar_recojo', 'compras.recojo', 'compras.ver_gestion'])
+  const conduce = puede(perfil, 'compras.recojo')
   const quien: Quien = { programa: puede(perfil, 'compras.programar_recojo') }
   const compras = await cargarRecojos()
   const porProgramar = compras.filter((c) => c.recojo === 'POR_RECOGER' && !c.en_lista)
@@ -46,7 +49,9 @@ export default async function PaginaGestionCompras() {
         ayuda={
           quien.programa
             ? 'Decide qué órdenes de compra recoge el conductor y en qué orden, con el peso de cada una. Con ese peso Contabilidad emite la guía de remisión y la carga en Adquisiciones, y el conductor la ve en su lista antes de salir.'
-            : 'Las órdenes de compra que recoges, en el orden que fijó Logística y con su peso. Para salir y marcar cada paso, usa tu lista de Recojos.'
+            : conduce
+              ? 'Las órdenes de compra que recoges, en el orden que fijó Logística y con su peso. Para salir y marcar cada paso, usa tu lista de Recojos.'
+              : 'Las órdenes de compra que Logística programa para el conductor, en su orden y con su peso, las que ya salió a recoger y las que dejó en el almacén. Con ese peso Contabilidad emite la guía de remisión.'
         }
       />
 

@@ -13,7 +13,7 @@ import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta
 import { cajaDelDia, type CajaDelDia, type CierreReabierto, type CuentaDelDia, type MovimientoDelDia } from '@/lib/datos/caja'
 import { consolidado, detalleDeCuenta, enlaceCaptura, sumaEnLaCaja, esExtorno, estadoDelDia, monedaDeCuenta, ORIGEN_MOVIMIENTO, PANTALLA_DEL_ORIGEN } from '@/lib/dominio/caja'
 import { fecha, fechaHora, fechaLarga, hoyLima, moneda, numero, sumarDias } from '@/lib/format'
-import { exigirPermiso } from '@/lib/sesion'
+import { exigirPermiso, puede } from '@/lib/sesion'
 import { cn } from '@/lib/utils'
 
 import { AnularMovimiento, CerrarDia, EditarCuenta, EnviosDeLaCaja, ReabrirDia, RegistrarMovimiento, Transferir, type CuentaElegible } from './formularios'
@@ -41,13 +41,16 @@ function diaPedido(texto: string | string[] | undefined, hoy: string) {
  * y arriba el consolidado de todas. Tesorería registra a mano lo que no pasa
  * por el sistema; cada pago y cobro del sistema deja el suyo en la cuenta que
  * se eligió al registrarlo (migración 20261019100000), y se anula anulando ese
- * pago.
+ * pago. Gerencia la consulta sin registrar, cerrar ni corregir cuentas
+ * (`tesoreria.ver_caja`, migración 20261126310000).
  */
 export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tesoreria/caja-diaria'>) {
-  await exigirPermiso('tesoreria.caja')
+  const perfil = await exigirPermiso(['tesoreria.caja', 'tesoreria.ver_caja'])
+  // Quien solo consulta no registra, no transfiere, no cierra ni corrige cuentas.
+  const lleva = puede(perfil, 'tesoreria.caja')
   const hoy = hoyLima()
   const dia = diaPedido((await searchParams).fecha, hoy)
-  const caja = await cajaDelDia(dia)
+  const caja = await cajaDelDia(dia, { conCodigos: lleva })
 
   // Una cuenta desactivada sigue a la vista mientras tenga saldo, o el consolidado bajaría sin que nadie moviera la plata.
   const visibles = caja.cuentas.filter((c) => c.activa || c.movimientos > 0 || c.cierre_id || (c.saldo_final ?? 0) !== 0)
@@ -55,7 +58,7 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
   const empezadas = caja.cuentas.filter((c) => sumaEnLaCaja(c, dia))
   // A las que hoy se les puede registrar: activas, ya empezadas y con el día abierto.
   const abiertas: CuentaElegible[] = empezadas
-    .filter((c) => c.activa && !c.cierre_id && !(c.ultimo_cierre && dia <= c.ultimo_cierre))
+    .filter((c) => lleva && c.activa && !c.cierre_id && !(c.ultimo_cierre && dia <= c.ultimo_cierre))
     .map((c) => ({ id: c.id, nombre: c.nombre, moneda: c.moneda, tipo: c.tipo }))
   const pendientes = caja.cuentas.filter((c) => c.primer_dia_sin_cerrar && c.primer_dia_sin_cerrar < hoy)
   const total = consolidado(empezadas, caja.cambioCompra)
@@ -79,9 +82,11 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
             </span>
             <p className="mt-3 text-sm font-semibold text-texto">Todavía no hay cuentas en la caja</p>
             <p className="mt-1 mb-4 max-w-lg text-sm text-texto-suave">
-              Da de alta cada cuenta como está en el estado de caja —cada banco en soles y en dólares, y la caja chica si la llevas aquí— con el saldo con el que empieza.
+              {lleva
+                ? 'Da de alta cada cuenta como está en el estado de caja —cada banco en soles y en dólares, y la caja chica si la llevas aquí— con el saldo con el que empieza.'
+                : 'Las da de alta Tesorería, cada una con el saldo con el que empieza.'}
             </p>
-            <EditarCuenta hoy={hoy} primera />
+            {lleva && <EditarCuenta hoy={hoy} primera />}
           </TarjetaCuerpo>
         </Tarjeta>
       ) : (
@@ -168,6 +173,7 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
                 reabiertos={reabiertosDe(c.id)}
                 abiertas={abiertas}
                 codigos={caja.codigos}
+                lleva={lleva}
               />
             ))}
           </div>
@@ -212,10 +218,11 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
                     </a>
                   ) : c.tipo === 'BANCO' ? (
                     <span className="block text-xs text-aviso" data-sin-captura={c.nombre}>
-                      Sin la captura del saldo: adjúntala con «Corregir».
+                      {lleva ? 'Sin la captura del saldo: adjúntala con «Corregir».' : 'Sin la captura del saldo.'}
                     </span>
                   ) : null}
                 </span>
+                {lleva && (
                 <EditarCuenta
                   cuenta={{
                     id: c.id,
@@ -231,12 +238,15 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
                   }}
                   hoy={hoy}
                 />
+                )}
               </li>
             ))}
           </ul>
-          <div className="mt-3">
-            <EditarCuenta hoy={hoy} />
-          </div>
+          {lleva && (
+            <div className="mt-3">
+              <EditarCuenta hoy={hoy} />
+            </div>
+          )}
         </SeccionDesplegable>
       )}
     </EnviosDeLaCaja>
@@ -362,7 +372,7 @@ function FilaDeSaldo({ cuenta: c, dia, hoy }: { cuenta: CuentaDelDia; dia: strin
   )
 }
 
-function BloqueDeCuenta({ cuenta: c, dia, hoy, movimientos, reabiertos, abiertas, codigos }: {
+function BloqueDeCuenta({ cuenta: c, dia, hoy, movimientos, reabiertos, abiertas, codigos, lleva }: {
   cuenta: CuentaDelDia
   dia: string
   hoy: string
@@ -370,6 +380,8 @@ function BloqueDeCuenta({ cuenta: c, dia, hoy, movimientos, reabiertos, abiertas
   reabiertos: CierreReabierto[]
   abiertas: CuentaElegible[]
   codigos: CajaDelDia['codigos']
+  /** Lleva la caja (`tesoreria.caja`); sin él, la cuenta se consulta sin cerrar ni reabrir. */
+  lleva: boolean
 }) {
   const m = monedaDeCuenta(c.moneda)
   const estado = estadoDelDia(c, dia, hoy)
@@ -378,6 +390,7 @@ function BloqueDeCuenta({ cuenta: c, dia, hoy, movimientos, reabiertos, abiertas
   const dentroDeOtroCierre = !c.cierre_id && !!c.ultimo_cierre && dia <= c.ultimo_cierre
   const diaSinCerrarAntes = c.primer_dia_sin_cerrar && c.primer_dia_sin_cerrar < dia ? c.primer_dia_sin_cerrar : null
   const puedeCerrar = !c.cierre_id && !dentroDeOtroCierre && !diaSinCerrarAntes
+  const cierra = lleva && puedeCerrar
   const yo: CuentaElegible = { id: c.id, nombre: c.nombre, moneda: c.moneda, tipo: c.tipo }
 
   return (
@@ -391,13 +404,13 @@ function BloqueDeCuenta({ cuenta: c, dia, hoy, movimientos, reabiertos, abiertas
           </span>
         }
         descripcion={`${detalleDeCuenta(c)} · empieza el día con ${moneda(c.saldo_inicial, m)} y termina con ${moneda(c.saldo_final, m)}`}
-        ayuda={puedeCerrar ? 'Al terminar el día, ciérralo con el saldo que dice el estado de cuenta. Cerrado, el día ya no cambia.' : undefined}
+        ayuda={cierra ? 'Al terminar el día, ciérralo con el saldo que dice el estado de cuenta. Cerrado, el día ya no cambia.' : undefined}
         // Registrar y cerrar, juntos arriba: el cierre iba en un renglón propio al pie, con una frase que se repetía en cada cuenta.
         acciones={
-          abierta || puedeCerrar ? (
+          abierta || cierra ? (
             <>
               {abierta && <RegistrarMovimiento cuentas={abiertas} cuentaId={c.id} dia={dia} codigos={codigos} compacto />}
-              {puedeCerrar && <CerrarDia cuenta={yo} dia={dia} saldoFinal={c.saldo_final ?? 0} />}
+              {cierra && <CerrarDia cuenta={yo} dia={dia} saldoFinal={c.saldo_final ?? 0} />}
             </>
           ) : undefined
         }
@@ -469,7 +482,7 @@ function BloqueDeCuenta({ cuenta: c, dia, hoy, movimientos, reabiertos, abiertas
                 )}
                 {c.observaciones && <span className="block text-texto">{c.observaciones}</span>}
               </p>
-              {c.ultimo_cierre === dia && <ReabrirDia cierreId={c.cierre_id} cuenta={c.nombre} dia={dia} />}
+              {lleva && c.ultimo_cierre === dia && <ReabrirDia cierreId={c.cierre_id} cuenta={c.nombre} dia={dia} />}
             </div>
           ) : dentroDeOtroCierre ? (
             <p className="text-texto-suave">
@@ -481,7 +494,7 @@ function BloqueDeCuenta({ cuenta: c, dia, hoy, movimientos, reabiertos, abiertas
             </p>
           ) : diaSinCerrarAntes ? (
             <p className="text-aviso">
-              Para cerrar este día, primero cierra el{' '}
+              {lleva ? 'Para cerrar este día, primero cierra el' : 'Antes de cerrar este día falta cerrar el'}{' '}
               <Link href={enlaceDia(diaSinCerrarAntes, hoy, c.id)} className="font-medium text-acento hover:underline">
                 {fecha(diaSinCerrarAntes)}
               </Link>

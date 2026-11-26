@@ -32,7 +32,7 @@ const ESTADOS: Record<string, string> = {
 export default async function PaginaInformeSemanalDiseno({ searchParams }: {
   searchParams: Promise<{ semana?: string }>
 }) {
-  const perfil = await exigirPermiso(['diseno.planos', 'diseno.subir_pdf', 'supervision.general'])
+  const perfil = await exigirPermiso(['diseno.planos', 'diseno.subir_pdf', 'supervision.general', 'diseno.ver_informes'])
   const parametros = await searchParams
   let inicio = inicioSemanaDiseno(hoyLima())
   if (parametros.semana) {

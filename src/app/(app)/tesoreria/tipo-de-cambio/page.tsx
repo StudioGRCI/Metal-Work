@@ -2,7 +2,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Tabla, TablaCabecera, TD, TH, TR } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { fecha, hoyLima, numero, sumarDias } from '@/lib/format'
-import { exigirPermiso } from '@/lib/sesion'
+import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 import { FormularioTipoDeCambio } from './formulario'
@@ -13,10 +13,12 @@ const FUENTE: Record<string, string> = { SUNAT: 'SUNAT', SBS: 'SBS', BANCO: 'Ban
 
 /**
  * El cambio del dólar día por día. Con él, el costo de cada OT suma en soles lo
- * que se compró en dólares, al cambio de la fecha de cada compra.
+ * que se compró en dólares, al cambio de la fecha de cada compra. Gerencia lo
+ * consulta sin registrar (`tesoreria.ver_tipo_cambio`, migración 20261126310000).
  */
 export default async function PaginaTipoDeCambio() {
-  await exigirPermiso('tesoreria.tipo_cambio')
+  const perfil = await exigirPermiso(['tesoreria.tipo_cambio', 'tesoreria.ver_tipo_cambio'])
+  const registra = puede(perfil, 'tesoreria.tipo_cambio')
   const hoy = hoyLima()
   const db = await createClient()
   const { data, error } = await db
@@ -35,6 +37,7 @@ export default async function PaginaTipoDeCambio() {
         ayuda="El cambio del dólar de cada día, que registran Contabilidad o Administración. El costo de cada OT pasa a soles lo comprado en dólares con el cambio de su fecha, y la caja diaria de Tesorería suma con él sus cuentas en dólares."
       />
 
+      {registra ? (
       <Tarjeta className="mb-5">
         <TarjetaCabecera
           titulo={deHoy ? 'Cambio de hoy registrado' : 'Registrar el cambio de hoy'}
@@ -49,12 +52,21 @@ export default async function PaginaTipoDeCambio() {
           <FormularioTipoDeCambio hoy={hoy} />
         </TarjetaCuerpo>
       </Tarjeta>
+      ) : (
+        <p role="status" className="mb-5 text-sm text-texto-suave">
+          {deHoy
+            ? `Hoy: compra ${numero(deHoy.compra, 3)} · venta ${numero(deHoy.venta, 3)}.`
+            : 'Todavía no se registró el cambio de hoy: lo registran Contabilidad o Administración.'}
+        </p>
+      )}
 
       <Tarjeta>
         <TarjetaCabecera titulo="Últimos 60 días" />
         {cambios.length === 0 ? (
           <TarjetaCuerpo>
-            <p className="text-sm text-texto-suave">Todavía no hay ningún cambio registrado. Registra el de hoy con el formulario de arriba.</p>
+            <p className="text-sm text-texto-suave">
+              {registra ? 'Todavía no hay ningún cambio registrado. Registra el de hoy con el formulario de arriba.' : 'Todavía no hay ningún cambio registrado.'}
+            </p>
           </TarjetaCuerpo>
         ) : (
           <div className="overflow-x-auto">
