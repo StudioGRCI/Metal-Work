@@ -17180,6 +17180,19 @@ export type Database = {
           en_recojo_en: string | null
         }[]
       }
+      seguimiento_de_insumos: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          requerimiento_id: string | null
+          item: number | null
+          visto_diseno: string | null
+          fecha_esperada: string | null
+          recibido_por: string | null
+          recibido_en: string | null
+        }[]
+      }
       semaforo_de_fecha: {
         Args: {
           p_fecha: string | null

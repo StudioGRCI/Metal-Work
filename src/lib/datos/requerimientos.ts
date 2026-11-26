@@ -316,3 +316,46 @@ export async function catalogosDelRequerimiento() {
     codigos,
   }
 }
+
+/**
+ * Lo que el supervisor no lee de cada insumo de sus RQ (migración
+ * 20261126332000): el visto de Diseño si se pasa del metrado, la fecha en que
+ * se espera su compra y quién lo recibió del almacén. De la compra, solo la
+ * fecha: ni proveedor ni precio. La base da solo los RQ del área de quien mira.
+ * La llave es `requerimiento:item`.
+ */
+export type SeguimientoDelInsumo = {
+  visto_diseno: string | null
+  fecha_esperada: string | null
+  recibido_por: string | null
+  recibido_en: string | null
+}
+
+/** La función acepta hasta 500 RQ por llamada. */
+const RQ_POR_SEGUIMIENTO = 500
+
+export async function seguimientoDeInsumos(ids: string[]): Promise<Map<string, SeguimientoDelInsumo>> {
+  const porInsumo = new Map<string, SeguimientoDelInsumo>()
+  const unicos = [...new Set(ids)]
+  if (unicos.length === 0) return porInsumo
+  const supabase = await createClient()
+  const tandas: string[][] = []
+  for (let i = 0; i < unicos.length; i += RQ_POR_SEGUIMIENTO) tandas.push(unicos.slice(i, i + RQ_POR_SEGUIMIENTO))
+  // Una fila por insumo: 500 RQ pasan de mil, y Supabase corta en mil sin avisar.
+  const respuestas = await Promise.all(
+    tandas.map((tanda) => todasLasFilas(() => supabase.rpc('seguimiento_de_insumos', { p_ids: tanda }), ['requerimiento_id', 'item'])),
+  )
+  for (const { data, error } of respuestas) {
+    if (error) throw new Error(`No se pudo leer cómo va cada insumo: ${error.message}`)
+    for (const f of data) {
+      if (!f.requerimiento_id || f.item == null) continue
+      porInsumo.set(`${f.requerimiento_id}:${f.item}`, {
+        visto_diseno: f.visto_diseno,
+        fecha_esperada: f.fecha_esperada,
+        recibido_por: f.recibido_por,
+        recibido_en: f.recibido_en,
+      })
+    }
+  }
+  return porInsumo
+}

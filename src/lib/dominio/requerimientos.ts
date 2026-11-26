@@ -246,6 +246,70 @@ export function pasoDelRequerimiento(estado: string, partes?: readonly (PartesDe
   return null
 }
 
+/**
+ * Los pasos de un insumo, de principio a fin, como los sigue el supervisor en
+ * «RQ por unidad» (Plan 1, entrega 1.2). El visto de Diseño va primero y solo
+ * cuando lo pedido se pasa del metrado: mientras no lo da, Almacén no lo
+ * revisa. La compra y el camino se saltan cuando Almacén ya lo tenía.
+ */
+export const PASOS_DEL_INSUMO = ['VISTO_DISENO', 'POR_ATENDER', 'EN_COMPRA', 'EN_CAMINO', 'EN_ALMACEN', 'ENTREGADO'] as const
+export type PasoDelInsumo = (typeof PASOS_DEL_INSUMO)[number]
+
+export const TITULO_PASO_DEL_INSUMO: Record<PasoDelInsumo, string> = {
+  VISTO_DISENO: 'Visto de Diseño',
+  POR_ATENDER: 'Por atender',
+  EN_COMPRA: 'En compra',
+  EN_CAMINO: 'En camino',
+  EN_ALMACEN: 'En almacén',
+  ENTREGADO: 'Entregado',
+}
+
+/** A qué paso del insumo corresponde cada etapa de `avance_de_requerimientos`. */
+const PASO_DE_LA_ETAPA: Record<string, PasoDelInsumo> = {
+  POR_REVISAR: 'POR_ATENDER',
+  POR_COMPRAR: 'EN_COMPRA',
+  OC_POR_APROBAR: 'EN_COMPRA',
+  PENDIENTE_RECOJO: 'EN_CAMINO',
+  EN_RECOJO: 'EN_CAMINO',
+  RECOGIDO: 'EN_CAMINO',
+  POR_REPONER: 'EN_CAMINO',
+  POR_VALIDAR: 'EN_ALMACEN',
+  OBSERVADO: 'EN_ALMACEN',
+  EN_KARDEX: 'EN_ALMACEN',
+  EN_STOCK: 'EN_ALMACEN',
+  LISTO_EN_ALMACEN: 'EN_ALMACEN',
+  ENTREGADO: 'ENTREGADO',
+}
+
+/** El visto de Diseño todavía no se da: el insumo espera ahí. */
+const VISTO_QUE_FRENA = ['SIN_SUSTENTO', 'POR_AUTORIZAR', 'RECHAZADO']
+
+/** Lo que dice el visto de Diseño debajo del insumo. */
+export const VISTO_DEL_INSUMO: Record<string, { etiqueta: string; tono: Tono }> = {
+  SIN_SUSTENTO: { etiqueta: 'Se pasa del metrado: falta el sustento de quien lo pidió', tono: 'aviso' },
+  POR_AUTORIZAR: { etiqueta: 'Se pasa del metrado: Diseño revisa el sustento', tono: 'aviso' },
+  RECHAZADO: { etiqueta: 'Diseño no autorizó lo que se pasa del metrado', tono: 'peligro' },
+  AUTORIZADO: { etiqueta: 'Diseño autorizó lo que se pasa del metrado', tono: 'exito' },
+}
+
+/**
+ * En qué paso va el insumo y cuáles no le tocan. `null` si no se sabe (el RQ
+ * anulado no tiene etapa). Lo que no le toca no se pinta: el visto de Diseño,
+ * si no se pasa del metrado; la compra y el camino, si Almacén ya lo tenía.
+ */
+export function pasoDelInsumo(
+  etapa: string | null,
+  visto: string | null,
+): { pasos: PasoDelInsumo[]; actual: PasoDelInsumo; terminado: boolean } | null {
+  const segun = etapa ? PASO_DE_LA_ETAPA[etapa] : undefined
+  if (!segun) return null
+  const frenado = visto !== null && VISTO_QUE_FRENA.includes(visto) && segun === 'POR_ATENDER'
+  const pasos = PASOS_DEL_INSUMO.filter(
+    (p) => (p !== 'VISTO_DISENO' || visto !== null) && ((p !== 'EN_COMPRA' && p !== 'EN_CAMINO') || etapa !== 'EN_STOCK'),
+  )
+  return { pasos, actual: frenado ? 'VISTO_DISENO' : segun, terminado: segun === 'ENTREGADO' }
+}
+
 /** Las dos etapas del recojo que Gerencia quiere distinguir de un vistazo. */
 export const ETAPAS_DE_RECOJO = ['PENDIENTE_RECOJO', 'EN_RECOJO'] as const
 
