@@ -220,6 +220,7 @@ function Servicio({
             detraccionSinDefinir: s.detraccion.afecta === null,
             sinTipoDeCambio,
             cambioDel: diaDelCambio(s.detraccion),
+            cambioSinFactura: Boolean(s.detraccion.afecta) && s.detraccion.origen_del_cambio === 'SIN_FACTURA',
           })}
         />
         <ParaPagar documentos={documentos} cuentas={s.cancelada ? [] : s.cuentas} monedaDocumento={m} sinCuentas={s.cancelada ? null : sinCuentas} />

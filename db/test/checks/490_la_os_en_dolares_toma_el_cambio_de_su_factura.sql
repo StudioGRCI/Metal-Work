@@ -10,8 +10,16 @@
 --   osb: US$ 1 000. Su factura es de hace 15 días, sin cambio registrado: queda
 --        sin monto en soles. Contabilidad registra ese cambio (3,60) y se
 --        completa; lo corrige a 3,65 y la sigue.
---   osc: US$ 1 000, con un pago vigente. La factura no la mueve; anulado el
---        pago, toma el cambio de su factura.
+--   osc: US$ 1 000, con un adelanto al proveedor. La factura la mueve igual:
+--        la detracción todavía no se depositó.
+--   osd: US$ 1 000, con su detracción depositada. La factura no la mueve;
+--        anulado el depósito —aunque le quede un adelanto—, toma el cambio de
+--        su factura.
+--   ose: US$ 1 000, emitida hace 40 días con un cambio de hace 60 (3,50).
+--        Anulada su factura, vuelve a 3 500 y no queda vacía.
+--   osf: US$ 1 000. Su factura es de hoy, y el cambio de hoy todavía no está:
+--        toma el de ayer (3 700). Contabilidad registra el de hoy (3,90) y pasa
+--        a 3 900; la que no tiene factura sigue como se emitió.
 --   osp: en soles. Su factura no pide fecha y no cambia nada.
 --
 -- Quien no debe (Ventas) no adjunta; nadie con sesión ejecuta los ayudantes.
@@ -43,7 +51,7 @@ begin
    order by r limit 1
   on conflict (tipo_documento, numero_documento) do update set activo = true;
   perform set_config('prueba.proveedor', (select id::text from public.proveedores where razon_social = 'PROVEEDOR DE PRUEBA 490'), true);
-  foreach v in array array['osa', 'osb', 'osc', 'osp', 'tc15', 'pago', 'fa', 'fb', 'fc', 'fp'] loop
+  foreach v in array array['osa', 'osb', 'osc', 'osd', 'ose', 'osf', 'osp', 'tc15', 'pago', 'pagod', 'adelantod', 'fa', 'fb', 'fc', 'fd', 'fe', 'ff', 'fp'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
 end $$;
@@ -87,6 +95,12 @@ select public.emitir_orden_servicio(pg_temp.id('osb'), pg_temp.id('proveedor'), 
   'PLANTA', 'Arenado del chasis, prueba 490', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'USD', 1000, 'CONTADO', 0, '025', null);
 select public.emitir_orden_servicio(pg_temp.id('osc'), pg_temp.id('proveedor'), null, (select id from public.areas where codigo = 'ACB'),
   'PLANTA', 'Rolado de planchas, prueba 490', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'USD', 1000, 'CONTADO', 0, '025', null);
+select public.emitir_orden_servicio(pg_temp.id('osd'), pg_temp.id('proveedor'), null, (select id from public.areas where codigo = 'ACB'),
+  'PLANTA', 'Soldadura del bastidor, prueba 490', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'USD', 1000, 'CONTADO', 0, '025', null);
+select public.emitir_orden_servicio(pg_temp.id('ose'), pg_temp.id('proveedor'), null, (select id from public.areas where codigo = 'ACB'),
+  'PLANTA', 'Galvanizado de barandas, prueba 490', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'USD', 1000, 'CONTADO', 0, '025', null);
+select public.emitir_orden_servicio(pg_temp.id('osf'), pg_temp.id('proveedor'), null, (select id from public.areas where codigo = 'ACB'),
+  'PLANTA', 'Plegado de pisos, prueba 490', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'USD', 1000, 'CONTADO', 0, '025', null);
 select public.emitir_orden_servicio(pg_temp.id('osp'), pg_temp.id('proveedor'), null, (select id from public.areas where codigo = 'ACB'),
   'PLANTA', 'Pintura de la tolva, prueba 490', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'PEN', 500, 'CONTADO', 0, '025', null);
 reset role;
@@ -95,6 +109,9 @@ set local role authenticated;
 select public.aprobar_orden_servicio(pg_temp.id('osa'));
 select public.aprobar_orden_servicio(pg_temp.id('osb'));
 select public.aprobar_orden_servicio(pg_temp.id('osc'));
+select public.aprobar_orden_servicio(pg_temp.id('osd'));
+select public.aprobar_orden_servicio(pg_temp.id('ose'));
+select public.aprobar_orden_servicio(pg_temp.id('osf'));
 select public.aprobar_orden_servicio(pg_temp.id('osp'));
 reset role;
 select test.afirmar((pg_temp.os('osa')).monto_pen = 3700.00 and (pg_temp.os('osa')).fecha_cambio is null,
@@ -129,10 +146,18 @@ select test.debe_fallar(
   format('select public.adjuntar_documento_servicio(%L, %L, ''CONTRATO'', null, ''contrato.pdf'', %L, %L::date)',
          pg_temp.id('fa'), pg_temp.id('osa'), current_setting('prueba.ruta_a'), pg_temp.hoy() - 3),
   'el contrato no lleva fecha de emisión', 'va solo con la factura');
+select test.debe_fallar(
+  format('select public.adjuntar_documento_servicio(%L, %L, ''BOLETA'', ''B001-4901'', ''boleta.pdf'', %L, %L::date)',
+         pg_temp.id('fa'), pg_temp.id('osa'), current_setting('prueba.ruta_a'), pg_temp.hoy() - 3),
+  'ni la boleta: la fecha es de la factura, que decide el cambio', 'va solo con la factura');
+select test.debe_fallar(
+  format('select public.adjuntar_documento_servicio(%L, %L, ''FACTURA'', ''F001-4901'', ''factura.pdf'', %L, %L::date)',
+         pg_temp.id('fa'), pg_temp.id('osa'), current_setting('prueba.ruta_a'), pg_temp.hoy() - 500),
+  'ni una factura de más de un año antes de la OS', 'más de un año antes');
 reset role;
 select test.afirmar((select count(*) from public.documentos_orden_servicio where orden_servicio_id = pg_temp.id('osa')) = 0
                 and (pg_temp.os('osa')).monto_pen = 3700.00,
-  'los cuatro rechazos no dejaron nada: ni documento ni cambio');
+  'los seis rechazos no dejaron nada: ni documento ni cambio');
 
 -- ============================================ Con su factura, toma el cambio de ese día
 select pg_temp.como('comprador');
@@ -148,6 +173,10 @@ select test.afirmar(
   and public.adjuntar_documento_servicio(pg_temp.id('fa'), pg_temp.id('osa'), 'FACTURA', 'F001-4901', 'factura.pdf',
                                          current_setting('prueba.ruta_a')) = pg_temp.id('fa'),
   'el mismo envío repetido no anota otra ni falla');
+select test.debe_fallar(
+  format('select public.adjuntar_documento_servicio(%L, %L, ''FACTURA'', ''F001-4901'', ''factura.pdf'', %L, %L::date)',
+         pg_temp.id('fa'), pg_temp.id('osa'), current_setting('prueba.ruta_a'), pg_temp.hoy() - 2),
+  'el mismo envío con otra fecha no contesta «listo»: no es el mismo', 'ya quedó adjuntado');
 reset role;
 select test.afirmar((select count(*) from public.documentos_orden_servicio where orden_servicio_id = pg_temp.id('osa')) = 1
                 and (select fecha_emision from public.documentos_orden_servicio where id = pg_temp.id('fa')) = pg_temp.hoy() - 3,
@@ -197,10 +226,11 @@ select test.afirmar((pg_temp.os('osb')).monto_pen = 3650.00,
 select test.afirmar((pg_temp.os('osa')).monto_pen = 3800.00 and (pg_temp.os('osc')).monto_pen = 3700.00,
   'las otras OS, que son de otro día, no se mueven');
 
--- ============================================ Con un pago vigente no se mueve
+-- ============================================ Un adelanto al proveedor no la detiene
+-- Los pagos se siembran sin su función: exige la conformidad y el archivo, que no son de este check.
 set local session_replication_role = replica;
-insert into public.pagos_orden_servicio (id, orden_servicio_id, fecha_pago, moneda, monto, cancela, archivo_ruta, archivo_mime, archivo_tamano, registrado_por)
-values (pg_temp.id('pago'), pg_temp.id('osc'), current_date, 'USD', 300, false, 'prueba/490/pago.pdf', 'application/pdf', 1000, pg_temp.id('tesoreria'));
+insert into public.pagos_orden_servicio (id, orden_servicio_id, fecha_pago, moneda, monto, cancela, destino, archivo_ruta, archivo_mime, archivo_tamano, registrado_por)
+values (pg_temp.id('pago'), pg_temp.id('osc'), current_date, 'USD', 300, false, 'PROVEEDOR', 'prueba/490/pago.pdf', 'application/pdf', 1000, pg_temp.id('tesoreria'));
 set local session_replication_role = origin;
 select set_config('prueba.ruta_c', pg_temp.subir('osc', 'tesoreria'), true);
 select pg_temp.como('tesoreria');
@@ -208,14 +238,39 @@ set local role authenticated;
 select public.adjuntar_documento_servicio(pg_temp.id('fc'), pg_temp.id('osc'), 'FACTURA', 'F001-4903', 'factura-c.pdf',
                                           current_setting('prueba.ruta_c'), pg_temp.hoy() - 3);
 reset role;
-select test.afirmar((pg_temp.os('osc')).monto_pen = 3700.00 and (pg_temp.os('osc')).fecha_cambio is null,
-  'la OS con un pago vigente no se mueve al adjuntar su factura');
+select test.afirmar((pg_temp.os('osc')).monto_pen = 3800.00 and (pg_temp.os('osc')).fecha_cambio = pg_temp.hoy() - 3
+                and (pg_temp.os('osc')).detraccion_monto = (pg_temp.os('osa')).detraccion_monto,
+  format('con un adelanto al proveedor, la factura mueve igual la OS: la detracción todavía no se depositó (dice %s)',
+         (pg_temp.os('osc')).monto_pen));
 select pg_temp.como('tesoreria');
 set local role authenticated;
-select public.anular_pago_servicio(pg_temp.id('pago'), 'Se pagó a la cuenta equivocada');
+select test.afirmar(
+  (select s.pagado_proveedor = 300 and s.saldo_detraccion = (pg_temp.os('osc')).detraccion_monto
+          and s.saldo_proveedor = s.total - s.detraccion_en_moneda - 300
+     from public.saldos_de_servicios(array[pg_temp.id('osc')]) s),
+  'y Tesorería ve el adelanto descontado y la detracción entera por depositar, con el cambio de la factura');
 reset role;
-select test.afirmar((pg_temp.os('osc')).monto_pen = 3800.00 and (pg_temp.os('osc')).fecha_cambio = pg_temp.hoy() - 3,
-  format('anulado el pago, toma el cambio de su factura (dice %s)', (pg_temp.os('osc')).monto_pen));
+
+-- ============================================ Con la detracción depositada no se mueve
+set local session_replication_role = replica;
+insert into public.pagos_orden_servicio (id, orden_servicio_id, fecha_pago, moneda, monto, cancela, destino, archivo_ruta, archivo_mime, archivo_tamano, registrado_por)
+values (pg_temp.id('adelantod'), pg_temp.id('osd'), current_date, 'USD', 300, false, 'PROVEEDOR', 'prueba/490/adelanto-d.pdf', 'application/pdf', 1000, pg_temp.id('tesoreria')),
+       (pg_temp.id('pagod'), pg_temp.id('osd'), current_date, 'PEN', (pg_temp.os('osd')).detraccion_monto, false, 'DETRACCION', 'prueba/490/detraccion-d.pdf', 'application/pdf', 1000, pg_temp.id('tesoreria'));
+set local session_replication_role = origin;
+select set_config('prueba.ruta_d', pg_temp.subir('osd', 'tesoreria'), true);
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select public.adjuntar_documento_servicio(pg_temp.id('fd'), pg_temp.id('osd'), 'FACTURA', 'F001-4905', 'factura-d.pdf',
+                                          current_setting('prueba.ruta_d'), pg_temp.hoy() - 3);
+reset role;
+select test.afirmar((pg_temp.os('osd')).monto_pen = 3700.00 and (pg_temp.os('osd')).fecha_cambio is null,
+  'la OS con su detracción ya depositada no se mueve al adjuntar su factura');
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select public.anular_pago_servicio(pg_temp.id('pagod'), 'Se depositó con el cambio equivocado');
+reset role;
+select test.afirmar((pg_temp.os('osd')).monto_pen = 3800.00 and (pg_temp.os('osd')).fecha_cambio = pg_temp.hoy() - 3,
+  format('anulado el depósito, toma el cambio de su factura aunque le quede el adelanto (dice %s)', (pg_temp.os('osd')).monto_pen));
 
 -- ============================================ Anulada la factura, vuelve al día en que se emitió
 select pg_temp.como('comprador');
@@ -224,6 +279,63 @@ select public.anular_documento_servicio(pg_temp.id('fa'), 'Se adjuntó la factur
 reset role;
 select test.afirmar((pg_temp.os('osa')).monto_pen = 3700.00 and (pg_temp.os('osa')).fecha_cambio is null,
   format('anulada la factura, la OS vuelve al cambio del día en que se emitió (dice %s)', (pg_temp.os('osa')).monto_pen));
+
+-- ============================================ La que se emitió con un cambio viejo vuelve a él
+-- Como si se hubiera emitido hace 40 días, con el último cambio de entonces (hace 60, a 3,50).
+select pg_temp.como('contabilidad');
+set local role authenticated;
+insert into public.tipos_de_cambio (fecha, compra, venta, fuente, registrado_por)
+values (pg_temp.hoy() - 60, 3.45, 3.50, 'SUNAT', pg_temp.id('contabilidad'));
+reset role;
+set local session_replication_role = replica;
+update public.ordenes_servicio set creado_en = now() - interval '40 days', monto_pen = 3500.00 where id = pg_temp.id('ose');
+set local session_replication_role = origin;
+select set_config('prueba.ruta_e', pg_temp.subir('ose', 'comprador'), true);
+select pg_temp.como('comprador');
+set local role authenticated;
+select public.adjuntar_documento_servicio(pg_temp.id('fe'), pg_temp.id('ose'), 'FACTURA', 'F001-4906', 'factura-e.pdf',
+                                          current_setting('prueba.ruta_e'), pg_temp.hoy() - 3);
+reset role;
+select test.afirmar((pg_temp.os('ose')).monto_pen = 3800.00, 'la OS emitida hace 40 días toma el cambio de su factura');
+select pg_temp.como('comprador');
+set local role authenticated;
+select public.anular_documento_servicio(pg_temp.id('fe'), 'Se adjuntó la factura de otra orden');
+reset role;
+select test.afirmar((pg_temp.os('ose')).monto_pen = 3500.00 and (pg_temp.os('ose')).fecha_cambio is null,
+  format('y anulada la factura vuelve al cambio con que se emitió, aunque sea de más de diez días antes (dice %s)',
+         coalesce((pg_temp.os('ose')).monto_pen::text, 'vacío')));
+
+-- ============================================ La factura de hoy, antes que el cambio de hoy
+select set_config('prueba.ruta_f', pg_temp.subir('osf', 'comprador'), true);
+select pg_temp.como('comprador');
+set local role authenticated;
+select public.adjuntar_documento_servicio(pg_temp.id('ff'), pg_temp.id('osf'), 'FACTURA', 'F001-4907', 'factura-f.pdf',
+                                          current_setting('prueba.ruta_f'), pg_temp.hoy());
+reset role;
+select test.afirmar((pg_temp.os('osf')).monto_pen = 3700.00 and (pg_temp.os('osf')).fecha_cambio = pg_temp.hoy(),
+  'la factura de hoy, sin el cambio de hoy, toma el último registrado: el de ayer');
+select pg_temp.como('contabilidad');
+set local role authenticated;
+insert into public.tipos_de_cambio (fecha, compra, venta, fuente, registrado_por)
+values (pg_temp.hoy(), 3.85, 3.90, 'SUNAT', pg_temp.id('contabilidad'));
+reset role;
+select test.afirmar((pg_temp.os('osf')).monto_pen = 3900.00
+                and (pg_temp.os('osf')).detraccion_monto = round(1000 * 3.90 * 1.18 * (pg_temp.os('osf')).detraccion_porcentaje / 100, 0),
+  format('Contabilidad registra el cambio de hoy y la OS con factura de hoy lo toma, con su detracción (dice %s)', (pg_temp.os('osf')).monto_pen));
+select test.afirmar((pg_temp.os('osa')).monto_pen = 3700.00 and (pg_temp.os('osa')).fecha_cambio is null
+                and (pg_temp.os('osc')).monto_pen = 3800.00 and (pg_temp.os('osb')).monto_pen = 3650.00,
+  'la que no tiene factura sigue como se emitió, y las de otro día no se mueven');
+-- Con la detracción depositada, el cambio que llega después tampoco la mueve.
+set local session_replication_role = replica;
+insert into public.pagos_orden_servicio (orden_servicio_id, fecha_pago, moneda, monto, cancela, destino, archivo_ruta, archivo_mime, archivo_tamano, registrado_por)
+values (pg_temp.id('osf'), current_date, 'PEN', (pg_temp.os('osf')).detraccion_monto, false, 'DETRACCION', 'prueba/490/detraccion-f.pdf', 'application/pdf', 1000, pg_temp.id('tesoreria'));
+set local session_replication_role = origin;
+select pg_temp.como('contabilidad');
+set local role authenticated;
+update public.tipos_de_cambio set venta = 3.95, compra = 3.90 where fecha = pg_temp.hoy();
+reset role;
+select test.afirmar((pg_temp.os('osf')).monto_pen = 3900.00,
+  'depositada su detracción, corregir después el cambio de ese día no la mueve');
 
 -- ============================================ La OS en soles no pide fecha
 select set_config('prueba.ruta_p', pg_temp.subir('osp', 'comprador'), true);
@@ -258,6 +370,8 @@ do $$
 begin
   perform test.afirmar(not has_function_privilege('authenticated', 'public.cambio_de_la_factura_de_servicio(uuid)', 'execute')
                    and not has_function_privilege('authenticated', 'public.fn_documento_servicio_aplica_cambio()', 'execute')
+                   and not has_function_privilege('authenticated', 'public.fn_tipo_de_cambio_alcanza_a_las_facturas()', 'execute')
+                   and not has_function_privilege('authenticated', 'public.servicio_con_el_cambio_fijo(uuid)', 'execute')
                    and not has_function_privilege('anon', 'public.adjuntar_documento_servicio(uuid, uuid, text, text, text, text, date)', 'execute')
                    and not has_function_privilege('anon', 'public.adjuntar_documento_servicio(uuid, uuid, text, text, text, text)', 'execute')
                    and not has_table_privilege('authenticated', 'public.ordenes_servicio', 'update'),

@@ -11,19 +11,26 @@
 --
 -- Qué cambia:
 --
---   1. La factura, la boleta y el recibo de una OS guardan su fecha de emisión.
---      La factura de una OS en dólares la exige: sin ella no se sabe qué cambio
---      le toca.
+--   1. La factura de una OS guarda su fecha de emisión. La de una OS en dólares
+--      la exige: sin ella no se sabe qué cambio le toca.
 --   2. La OS guarda el día de su tipo de cambio (`fecha_cambio`): el de su
 --      factura vigente. Vacío es «el día en que se emitió», como hasta hoy.
---   3. Al adjuntar la factura, la OS toma el cambio de ese día. Si ese día no
---      tiene cambio registrado, queda sin monto en soles y Tesorería ve de qué
---      día falta: no se paga una detracción con el cambio equivocado. Al
---      registrarlo Contabilidad, se completa sola (ya lo hacía la 20261126626000).
---   4. Si la factura se anula, la OS vuelve al cambio de la que quede o al del
---      día en que se emitió.
---   5. La OS con un pago vigente no se mueve: lo pagado, pagado está. Si ese
---      pago se anula, toma el cambio de su factura.
+--   3. Al adjuntar la factura, la OS toma el cambio que le toca a ese día: el
+--      último registrado hasta ese día, de no más de diez días antes (el fin de
+--      semana no tiene cambio propio). Si no hay ninguno, queda sin monto en
+--      soles y Tesorería ve de qué día falta: no se paga una detracción con el
+--      cambio equivocado. Al registrarlo Contabilidad, se completa sola (ya lo
+--      hacía la 20261126626000).
+--   4. La factura suele llegar el mismo día, antes de que Contabilidad registre
+--      el cambio de ese día, y la OS toma el de la víspera. Cuando el cambio del
+--      día se registra, la OS lo toma: si no, se quedaba con el de ayer y la
+--      pantalla decía «el de la fecha de su factura» (auditoría del 2026-11-26).
+--   5. Si la factura se anula, la OS vuelve al cambio de la que quede o al del
+--      día en que se emitió (el último registrado hasta ese día, como al emitir).
+--   6. Lo depositado, depositado está: la OS con su detracción ya depositada, o
+--      ya pagada del todo, no se mueve. Si ese pago se anula, toma el cambio de
+--      su factura. Un adelanto al proveedor no la detiene: la detracción todavía
+--      no se depositó y tiene que salir con el cambio de la factura.
 --
 -- Las funciones que ya existían se cambian buscando su texto exacto: si otra
 -- migración las cambió, se detiene y pide revisarlas a mano. Idempotente y sin
@@ -33,14 +40,14 @@
 
 alter table public.documentos_orden_servicio add column if not exists fecha_emision date;
 comment on column public.documentos_orden_servicio.fecha_emision is
-  'La fecha de emisión que dice el comprobante (factura, boleta o recibo). La de la factura vigente de una OS en dólares decide su tipo de cambio (20261126947000).';
+  'La fecha de emisión que dice la factura. La de la factura vigente de una OS en dólares decide su tipo de cambio (20261126947000).';
 
 do $$
 begin
   if not exists (select 1 from pg_constraint where conname = 'ck_documento_servicio_fecha_emision') then
     alter table public.documentos_orden_servicio
       add constraint ck_documento_servicio_fecha_emision
-      check (fecha_emision is null or tipo in ('FACTURA', 'BOLETA', 'RECIBO'));
+      check (fecha_emision is null or tipo = 'FACTURA');
   end if;
 end $$;
 
@@ -81,6 +88,26 @@ end $$;
 
 -- 3. La OS toma el cambio de su factura -----------------------------------------
 
+-- La OS cuyo monto en soles ya no se mueve: tiene vigente el depósito de su
+-- detracción o el pago que la canceló.
+create or replace function public.servicio_con_el_cambio_fijo(p_orden_servicio uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path to 'public'
+as $$
+  select exists (select 1 from public.pagos_orden_servicio p
+                  where p.orden_servicio_id = p_orden_servicio
+                    and p.anulado_en is null
+                    and (p.destino = 'DETRACCION' or p.cancela));
+$$;
+
+revoke all on function public.servicio_con_el_cambio_fijo(uuid) from public, anon, authenticated;
+
+comment on function public.servicio_con_el_cambio_fijo(uuid) is
+  'Si la OS tiene vigente el depósito de su detracción o el pago que la canceló: su monto en soles ya no cambia con la fecha de su factura. Ayudante interno (20261126947000).';
+
 create or replace function public.cambio_de_la_factura_de_servicio(p_orden_servicio uuid)
 returns void
 language plpgsql
@@ -97,9 +124,10 @@ begin
      or v_os.estado = 'ANULADA' or v_os.aprobacion = 'RECHAZADA' then
     return;
   end if;
-  -- Lo pagado, pagado está: si ese pago se anula, se vuelve a mirar.
-  if exists (select 1 from public.pagos_orden_servicio p
-              where p.orden_servicio_id = p_orden_servicio and p.anulado_en is null) then
+  -- Lo depositado, depositado está: con la detracción en el Banco de la Nación, o
+  -- con el pago que la canceló, no se mueve; si ese pago se anula, se vuelve a
+  -- mirar. Un adelanto al proveedor no la detiene.
+  if public.servicio_con_el_cambio_fijo(p_orden_servicio) then
     return;
   end if;
   -- La factura vigente que dice su fecha; si hay más de una, la última que se adjuntó.
@@ -114,9 +142,16 @@ begin
   if v_fecha is not distinct from v_os.fecha_cambio then
     return;
   end if;
-  -- Sin factura vuelve al día en que se emitió. Si el día que toca no tiene
-  -- cambio registrado, queda sin monto en soles: se completa al registrarlo.
-  v_tc := public.cambio_del_dia(coalesce(v_fecha, public.fecha_de_lima(v_os.creado_en)), 'VENTA');
+  -- Si a ese día no le toca ningún cambio registrado, queda sin monto en soles:
+  -- se completa al registrarlo. Sin factura vuelve al del día en que se emitió,
+  -- que es el último registrado hasta ese día, sin tope: así nació
+  -- (`emitir_orden_servicio`), y con el tope de diez días quedaba vacía la que
+  -- se emitió con un cambio más viejo.
+  if v_fecha is null then
+    v_tc := public.tipo_cambio_venta(public.fecha_de_lima(v_os.creado_en));
+  else
+    v_tc := public.cambio_del_dia(v_fecha, 'VENTA');
+  end if;
   perform set_config('metalwork.completando_monto_pen', 'si', true);
   update public.ordenes_servicio
      set fecha_cambio = v_fecha,
@@ -129,7 +164,7 @@ $$;
 revoke all on function public.cambio_de_la_factura_de_servicio(uuid) from public, anon, authenticated;
 
 comment on function public.cambio_de_la_factura_de_servicio(uuid) is
-  'Pone en la OS en otra moneda el día de su tipo de cambio (la fecha de su factura vigente; sin factura, el día en que se emitió) y su monto en soles con el cambio de ese día. No toca la que tiene un pago vigente, la anulada ni la rechazada. La llaman los disparadores de los documentos y del pago anulado; nadie más (20261126947000).';
+  'Pone en la OS en otra moneda el día de su tipo de cambio (la fecha de su factura vigente; sin factura, el día en que se emitió) y su monto en soles con el cambio de ese día. No toca la que tiene depositada su detracción o ya se canceló, la anulada ni la rechazada. La llaman los disparadores de los documentos y del pago anulado; nadie más (20261126947000).';
 
 create or replace function public.fn_documento_servicio_aplica_cambio()
 returns trigger
@@ -165,20 +200,24 @@ declare
   c_antes constant text := $v$  if p_tipo in ('FACTURA', 'BOLETA', 'RECIBO') then
     v_num := public.normalizar_numero_factura(p_numero);
 $v$;
-  c_fecha constant text := $v$  if p_fecha_emision is not null and p_tipo not in ('FACTURA', 'BOLETA', 'RECIBO') then
-    raise exception 'La fecha de emisión va solo con la factura, la boleta o el recibo.' using errcode = 'check_violation';
+  c_fecha constant text := $v$  if p_fecha_emision is not null and p_tipo <> 'FACTURA' then
+    raise exception 'La fecha de emisión va solo con la factura.' using errcode = 'check_violation';
   end if;
   if p_fecha_emision > public.fecha_de_lima(now()) then
-    raise exception 'La fecha de emisión de la % no puede ser de un día que todavía no llega.', v_que using errcode = 'check_violation';
+    raise exception 'La fecha de emisión de la factura no puede ser de un día que todavía no llega.' using errcode = 'check_violation';
   end if;
   if p_fecha_emision < public.fecha_de_lima(v_os.creado_en) - 365 then
-    raise exception 'La fecha de emisión de la % es de más de un año antes de la %: revísala.', v_que, v_os.numero using errcode = 'check_violation';
+    raise exception 'La fecha de emisión de la factura es de más de un año antes de la %: revísala.', v_os.numero using errcode = 'check_violation';
   end if;
   if p_tipo = 'FACTURA' and v_os.moneda <> 'PEN' and p_fecha_emision is null then
     raise exception 'Escribe la fecha de emisión de la factura: la % está en otra moneda y toma el tipo de cambio de ese día.', v_os.numero
       using errcode = 'check_violation';
   end if;
 $v$;
+  -- El mismo envío repetido se reconoce también por su fecha: con otra, no es el mismo.
+  c_repetido_viejo constant text := $v$               where id = p_id and ruta_storage = p_ruta and subido_por = public.usuario_actual()) then$v$;
+  c_repetido_nuevo constant text := $v$               where id = p_id and ruta_storage = p_ruta and subido_por = public.usuario_actual()
+                 and (p_fecha_emision is null or fecha_emision is not distinct from p_fecha_emision)) then$v$;
   c_insert_viejo constant text := $v$                                                mime_type, tamano_bytes, subido_por)
   values (p_id, p_orden_servicio, p_tipo, v_num, v_nombre, p_ruta,
           v_obj.metadata->>'mimetype', (v_obj.metadata->>'size')::integer, v_yo);$v$;
@@ -191,11 +230,13 @@ begin
       into v_def;
     if (length(v_def) - length(replace(v_def, c_firma_vieja, ''))) <> length(c_firma_vieja)
        or (length(v_def) - length(replace(v_def, c_antes, ''))) <> length(c_antes)
+       or (length(v_def) - length(replace(v_def, c_repetido_viejo, ''))) <> length(c_repetido_viejo)
        or (length(v_def) - length(replace(v_def, c_insert_viejo, ''))) <> length(c_insert_viejo) then
       raise exception 'adjuntar_documento_servicio ya no tiene el texto que esta migración cambia: revísala a mano.';
     end if;
     v_def := replace(v_def, c_firma_vieja, c_firma_nueva);
     v_def := replace(v_def, c_antes, c_fecha || c_antes);
+    v_def := replace(v_def, c_repetido_viejo, c_repetido_nuevo);
     v_def := replace(v_def, c_insert_viejo, c_insert_nuevo);
     execute v_def;
   end if;
@@ -205,7 +246,7 @@ revoke all on function public.adjuntar_documento_servicio(uuid, uuid, text, text
 grant execute on function public.adjuntar_documento_servicio(uuid, uuid, text, text, text, text, date) to authenticated;
 
 comment on function public.adjuntar_documento_servicio(uuid, uuid, text, text, text, text, date) is
-  'Anota un documento de la OS ya subido a Storage, con la fecha de emisión del comprobante. La factura de una OS en otra moneda la exige: con ella la OS toma el tipo de cambio de ese día (20261126947000). Mismo permiso que antes: puede_adjuntar_documento_servicio().';
+  'Anota un documento de la OS ya subido a Storage, con la fecha de emisión de su factura. La factura de una OS en otra moneda la exige: con ella la OS toma el tipo de cambio de ese día (20261126947000). Mismo permiso que antes: puede_adjuntar_documento_servicio().';
 
 create or replace function public.adjuntar_documento_servicio(
   p_id uuid, p_orden_servicio uuid, p_tipo text, p_numero text, p_nombre text, p_ruta text)
@@ -235,7 +276,7 @@ grant execute on function public.adjuntar_documento_servicio(uuid, uuid, text, t
 -- `completar_monto_pen_de_servicios`, `recalcular_monto_pen_de_servicios` y el
 -- pago anulado (20261126945000) miraban el día en que se emitió. Ahora miran el
 -- de la factura si la OS lo tiene. El pago anulado, además, le da a la OS el
--- cambio de la factura que se adjuntó mientras estaba pagada.
+-- cambio de la factura que se adjuntó mientras tenía su detracción depositada.
 
 do $$
 declare
@@ -255,10 +296,18 @@ begin
        $v$public.fecha_de_lima(o.creado_en)$v$,
        $v$coalesce(o.fecha_cambio, public.fecha_de_lima(o.creado_en))$v$),
       ('public.fn_pago_anulado_recalcula_servicio()', 1,
+       $v$ and p.anulado_en is null) then
+    return null;$v$,
+       $v$ and p.anulado_en is null) then
+    -- Le queda otro pago: la factura se mira igual, que solo espera al depósito
+    -- de la detracción y al pago que la canceló (20261126947000).
+    perform public.cambio_de_la_factura_de_servicio(new.orden_servicio_id);
+    return null;$v$),
+      ('public.fn_pago_anulado_recalcula_servicio()', 1,
        $v$  perform set_config('metalwork.completando_monto_pen', '', true);
   return null;$v$,
        $v$  perform set_config('metalwork.completando_monto_pen', '', true);
-  -- La factura que se adjuntó mientras estaba pagada (20261126947000).
+  -- La factura que se adjuntó mientras tenía su detracción depositada (20261126947000).
   perform public.cambio_de_la_factura_de_servicio(new.orden_servicio_id);
   return null;$v$)
     ) as x(funcion, veces, viejo, nuevo)
@@ -280,3 +329,45 @@ end $$;
 
 comment on function public.completar_monto_pen_de_servicios() is
   'Pone el monto en soles de las OS en otra moneda que no lo tienen, con el cambio del día que les toca: el de su factura (fecha_cambio) o, sin factura, el día en que se emitieron (20261126626000, 20261126947000).';
+
+-- 6. El cambio del día de la factura que se registra después -------------------
+-- La OS con factura va siempre con el cambio que le toca al día de su factura.
+-- Si ese cambio se registra después de adjuntarla (la factura electrónica llega
+-- el mismo día, antes que el cambio de SUNAT), la OS deja el de la víspera y
+-- toma el suyo. Disparador propio, por sentencia: no se toca el que completa
+-- las que no tienen monto.
+
+create or replace function public.fn_tipo_de_cambio_alcanza_a_las_facturas()
+returns trigger
+language plpgsql
+security definer
+set search_path to 'public'
+as $$
+begin
+  perform set_config('metalwork.completando_monto_pen', 'si', true);
+  update public.ordenes_servicio s
+     set monto_pen = round(s.monto * x.tc, 2)
+    from (select o.id, public.cambio_del_dia(o.fecha_cambio, 'VENTA') as tc
+            from public.ordenes_servicio o
+           where o.fecha_cambio is not null
+             and o.moneda <> 'PEN'
+             and o.monto is not null
+             and o.estado <> 'ANULADA'
+             and o.aprobacion <> 'RECHAZADA'
+             and not public.servicio_con_el_cambio_fijo(o.id)) x
+   where x.id = s.id
+     and x.tc is not null
+     and s.monto_pen is distinct from round(s.monto * x.tc, 2);
+  perform set_config('metalwork.completando_monto_pen', '', true);
+  return null;
+end;
+$$;
+
+revoke all on function public.fn_tipo_de_cambio_alcanza_a_las_facturas() from public, anon, authenticated;
+
+comment on function public.fn_tipo_de_cambio_alcanza_a_las_facturas() is
+  'Al registrar o corregir un tipo de cambio, la OS con factura toma el que ahora le toca al día de su factura. No toca la que tiene depositada su detracción o ya se canceló (20261126947000).';
+
+create or replace trigger trg_tipo_de_cambio_alcanza_a_las_facturas
+  after insert or update of fecha, venta on public.tipos_de_cambio
+  for each statement execute function public.fn_tipo_de_cambio_alcanza_a_las_facturas();

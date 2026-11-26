@@ -1,6 +1,6 @@
 import 'server-only'
 
-import type { DetraccionDeServicio, TipoDetraccion } from '@/lib/dominio/detraccion'
+import type { DetraccionDeServicio, OrigenDelCambio, TipoDetraccion } from '@/lib/dominio/detraccion'
 import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { BUCKET_DOCUMENTOS_SERVICIO } from '@/lib/dominio/finanzas'
 import { BUCKET_FOTOS_RECOJO, validacionDeCompra, type ValidacionIngreso } from '@/lib/dominio/logistica'
@@ -439,7 +439,7 @@ export async function cargarTiposDetraccion(): Promise<TipoDetraccion[]> {
 
 /** La detracción tal como la guarda y la calcula la base. */
 export const COLUMNAS_DETRACCION =
-  'id, codigo_interno, detraccion_afecta, detraccion_codigo, detraccion_porcentaje, detraccion_minimo, detraccion_motivo, total_con_igv_pen, detraccion_monto, creado_en, fecha_cambio'
+  'id, codigo_interno, detraccion_afecta, detraccion_codigo, detraccion_porcentaje, detraccion_minimo, detraccion_motivo, total_con_igv_pen, detraccion_monto, creado_en, fecha_cambio, moneda'
 
 type FilaDetraccion = {
   id: string
@@ -453,6 +453,7 @@ type FilaDetraccion = {
   detraccion_monto: number | null
   creado_en: string
   fecha_cambio: string | null
+  moneda: string
 }
 
 const SIN_DEFINIR: DetraccionDeServicio = {
@@ -466,7 +467,27 @@ const SIN_DEFINIR: DetraccionDeServicio = {
   monto: null,
 }
 
-export function detraccionDeFila(f: FilaDetraccion | undefined, tipos: TipoDetraccion[]): DetraccionDeServicio {
+/**
+ * En otra moneda, de dónde sale el día del cambio de la OS. Si el día que guarda la OS no es el de
+ * una factura vigente —o no guarda ninguno teniendo factura—, es que su detracción ya estaba
+ * depositada, o la OS pagada, cuando la factura llegó o cambió: la base ya no la mueve.
+ */
+function origenDelCambio(fechaCambio: string | null, documentos?: Pick<DocumentoDeServicio, 'tipo' | 'fecha_emision'>[]): OrigenDelCambio | null {
+  const facturas = documentos?.filter((d) => d.tipo === 'FACTURA' && d.fecha_emision)
+  if (fechaCambio !== null) return !facturas || facturas.some((d) => d.fecha_emision === fechaCambio) ? 'FACTURA' : 'DEPOSITADA_CON_OTRA'
+  if (!facturas) return null
+  return facturas.length > 0 ? 'DEPOSITADA_ANTES' : 'SIN_FACTURA'
+}
+
+export function detraccionDeFila(
+  f: FilaDetraccion | undefined,
+  tipos: TipoDetraccion[],
+  /**
+   * Los documentos vigentes de la OS, donde la pantalla los lee. Aprobación no los pasa: decide
+   * antes de que exista la factura, y ahí no se dice que falta.
+   */
+  documentos?: Pick<DocumentoDeServicio, 'tipo' | 'fecha_emision'>[],
+): DetraccionDeServicio {
   if (!f) return SIN_DEFINIR
   const numeroONulo = (v: number | null) => (v === null ? null : Number(v))
   return {
@@ -480,7 +501,7 @@ export function detraccionDeFila(f: FilaDetraccion | undefined, tipos: TipoDetra
     monto: numeroONulo(f.detraccion_monto),
     // El día cuyo cambio le toca: el de su factura; sin factura, el día en que se emitió.
     dia_del_cambio: f.fecha_cambio ?? f.creado_en,
-    cambio_por_factura: f.fecha_cambio !== null,
+    origen_del_cambio: f.moneda === 'PEN' ? null : origenDelCambio(f.fecha_cambio, documentos),
   }
 }
 
@@ -526,7 +547,7 @@ export async function cargarOrdenesServicio(): Promise<OrdenServicioListada[]> {
     emitida_por: s.emitida_por,
     atrasada: s.atrasada === true,
     codigo_interno: porId.get(s.id ?? '')?.codigo_interno ?? null,
-    detraccion: detraccionDeFila(porId.get(s.id ?? ''), tipos),
+    detraccion: detraccionDeFila(porId.get(s.id ?? ''), tipos, documentos.get(s.id ?? '') ?? []),
     documentos: documentos.get(s.id ?? '') ?? [],
   }))
 }

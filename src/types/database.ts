@@ -19802,6 +19802,12 @@ export type Database = {
           cantidad: number | null
         }[]
       }
+      servicio_con_el_cambio_fijo: {
+        Args: {
+          p_orden_servicio: string | null
+        }
+        Returns: boolean
+      }
       servicios_pendientes_de_pago: {
         Args: Record<PropertyKey, never>
         Returns: number

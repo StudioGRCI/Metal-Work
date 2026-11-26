@@ -89,6 +89,20 @@ test('la OS en dólares sin monto en soles no se paga ni se da por pagada, y dic
   assert.match(sinFecha[0].que, /^el tipo de cambio del día en que se emitió la OS:/)
 })
 
+test('la OS en otra moneda sin su factura: la factura va primero con su porqué, y el depósito avisa con qué cambio sale', () => {
+  const r = faltaDelServicio(servicio({ conComprobante: false, saldoDetraccion: 30, cambioSinFactura: true }))
+  assert.deepEqual(quien(r), ['Logística', 'Tesorería', 'Tesorería'])
+  assert.match(r[0].que, /^la factura del proveedor, adjunta a la OS con su fecha de emisión: el tipo de cambio de ese día/)
+  assert.match(r[1].que, /queda con el tipo de cambio del día en que se emitió la OS$/)
+  // Con un recibo adjunto la factura sigue faltando: es la que trae la fecha del cambio.
+  assert.equal(faltaDelServicio(servicio({ cambioSinFactura: true })).length, 2)
+  // En soles, o ya con su factura, nada de eso.
+  assert.deepEqual(
+    faltaDelServicio(servicio({ saldoDetraccion: 30 })).map((f) => f.que),
+    ['depositar la detracción en el Banco de la Nación, con su constancia', 'el pago al proveedor, con su voucher'],
+  )
+})
+
 test('la OS sin decir si lleva detracción se lo pide a Logística', () => {
   assert.deepEqual(quien(faltaDelServicio(servicio({ detraccionSinDefinir: true }))), ['Logística', 'Tesorería'])
 })

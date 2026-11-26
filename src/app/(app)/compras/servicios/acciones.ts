@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 import { CODIGO_INTERNO_LARGO, FALTA_CODIGO_INTERNO } from '@/lib/dominio/codigo-interno'
 import { NO_SUJETA } from '@/lib/dominio/detraccion'
+import { fecha } from '@/lib/format'
 import { compraComoLogistica, exigirSesion, puede, type PerfilSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -262,10 +263,31 @@ export async function adjuntarDocumentoServicio(_previo: unknown, formulario: Fo
     // Con la fecha de su factura la OS en otra moneda toma el cambio de ese día; lo hace la base.
     p_fecha_emision: d.tipo === 'FACTURA' && d.fecha_emision ? d.fecha_emision : null,
   })
-  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (error) {
+    const mensaje = mensajeDeError(error)
+    // La pestaña de antes del despliegue no trae el campo de la fecha: «Escribe la fecha…» no tenía dónde.
+    if (!formulario.has('fecha_emision') && mensaje.startsWith('Escribe la fecha de emisión')) {
+      return { ok: false, error: 'La factura de una orden en otra moneda lleva su fecha de emisión: recarga la pantalla para escribirla.' }
+    }
+    return { ok: false, error: mensaje }
+  }
   if (data !== d.id) return { ok: false, error: 'El documento no se anotó. Recarga la pantalla.' }
   repintarDocumentos()
-  return { ok: true, mensaje: 'Documento adjunto a la orden de servicio.' }
+  const adjunto = 'Documento adjunto a la orden de servicio.'
+  if (d.tipo !== 'FACTURA' || !d.fecha_emision) return { ok: true, mensaje: adjunto }
+  // Qué hizo la base con esa fecha: sin decirlo, el monto en soles y la detracción cambiaban a la
+  // vista sin que nada lo contara (auditoría de diseño del 2026-11-26). Si no se pudo leer, el
+  // documento ya entró: se dice solo eso.
+  const { data: os } = await supabase.from('ordenes_servicio').select('moneda, monto_pen, fecha_cambio').eq('id', d.orden_servicio_id).maybeSingle()
+  if (!os || os.moneda === 'PEN') return { ok: true, mensaje: adjunto }
+  const dia = fecha(d.fecha_emision)
+  if (os.fecha_cambio !== d.fecha_emision) {
+    return { ok: true, mensaje: 'Factura adjunta. La detracción de la orden ya está depositada: su monto en soles y su detracción siguen con el tipo de cambio de antes.' }
+  }
+  if (os.monto_pen === null) {
+    return { ok: true, mensaje: `Factura adjunta. Falta el tipo de cambio del ${dia}: lo registran Contabilidad o Administración, y hasta entonces la orden no tiene monto en soles.` }
+  }
+  return { ok: true, mensaje: `Factura adjunta. La orden tomó el tipo de cambio del ${dia}: su monto en soles y su detracción se calcularon de nuevo.` }
 }
 
 /** Anular con su motivo un documento adjunto por error: queda como evidencia. Mismo permiso que `anular_documento_servicio`. */

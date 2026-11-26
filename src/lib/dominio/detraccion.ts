@@ -43,14 +43,37 @@ export type DetraccionDeServicio = {
    * (20261126626000). El aviso dice cuál falta.
    */
   dia_del_cambio?: string | null
-  /** Ese día es el de su factura, no el de la emisión de la OS. */
-  cambio_por_factura?: boolean
+  /**
+   * De dónde sale ese día en la OS en otra moneda: de su factura; del día en que se emitió porque
+   * todavía no tiene factura (el monto en soles y la detracción cambian cuando llegue); o de antes,
+   * porque su detracción ya estaba depositada, o la OS ya pagada, cuando la factura llegó
+   * (`DEPOSITADA_ANTES`: sigue con el día en que se emitió) o cuando se cambió por otra
+   * (`DEPOSITADA_CON_OTRA`: sigue con el día de la factura de entonces). Null o ausente, en soles.
+   */
+  origen_del_cambio?: OrigenDelCambio | null
 }
 
+export type OrigenDelCambio = 'FACTURA' | 'SIN_FACTURA' | 'DEPOSITADA_ANTES' | 'DEPOSITADA_CON_OTRA'
+
 /** «23/11/2026, la fecha de su factura» o «23/11/2026»: el día del cambio, como se le dice a quien paga. */
-export function diaDelCambio(d: Pick<DetraccionDeServicio, 'dia_del_cambio' | 'cambio_por_factura'>): string | null {
+export function diaDelCambio(d: Pick<DetraccionDeServicio, 'dia_del_cambio' | 'origen_del_cambio'>): string | null {
   if (!d.dia_del_cambio) return null
-  return `${fecha(d.dia_del_cambio)}${d.cambio_por_factura ? ', la fecha de su factura' : ''}`
+  return `${fecha(d.dia_del_cambio)}${d.origen_del_cambio === 'FACTURA' ? ', la fecha de su factura' : ''}`
+}
+
+/**
+ * Con qué tipo de cambio se hizo la cuenta de la OS en otra moneda, al final del detalle. Sin su
+ * factura el monto es provisional y se dice: Tesorería depositaba una detracción que la factura
+ * iba a cambiar sin que nada lo avisara (auditoría de diseño del 2026-11-26).
+ */
+function conQueCambio(d: DetraccionDeServicio): string {
+  if (!d.dia_del_cambio || !d.origen_del_cambio) return ''
+  const dia = `con el tipo de cambio del ${fecha(d.dia_del_cambio)}`
+  if (d.origen_del_cambio === 'FACTURA') return ` · ${dia}, la fecha de su factura`
+  if (d.origen_del_cambio === 'DEPOSITADA_ANTES') return ` · ${dia}, el día en que se emitió: su detracción ya estaba depositada cuando llegó su factura`
+  // La factura de ese día ya no es la vigente: nombrarla como «su factura» apuntaba a una anulada.
+  if (d.origen_del_cambio === 'DEPOSITADA_CON_OTRA') return ` · ${dia}: su detracción ya estaba depositada cuando se cambió su factura`
+  return ` · ${dia}, el día en que se emitió: falta su factura`
 }
 
 /** Lo que la OS dice de su detracción, en una línea y su detalle. */
@@ -76,15 +99,15 @@ export function resumenDetraccion(d: DetraccionDeServicio): { texto: string; det
   if (d.monto === null) {
     return {
       texto: `Sin detracción: no pasa de ${moneda(d.minimo ?? 0)}`,
-      detalle: `${tipo} · ${porcentaje} · con IGV suma ${moneda(d.total_con_igv_pen)} (IGV ${moneda(igv)})`,
+      detalle: `${tipo} · ${porcentaje} · con IGV suma ${moneda(d.total_con_igv_pen)} (IGV ${moneda(igv)})${conQueCambio(d)}`,
       tono: 'neutro',
     }
   }
   const alProveedor = Math.round((d.total_con_igv_pen - d.monto) * 100) / 100
   return {
     texto: `Detracción ${porcentaje}: ${moneda(d.monto)}`,
-    // Con el cambio de su factura se dice: es otro que el del día en que se emitió la OS.
-    detalle: `${tipo} · sobre ${moneda(d.total_con_igv_pen)} con IGV (IGV ${moneda(igv)}) · al proveedor ${moneda(alProveedor)} · ${pct(parteDe(alProveedor, d.total_con_igv_pen))}${d.cambio_por_factura && d.dia_del_cambio ? ` · con el cambio del ${fecha(d.dia_del_cambio)}, el día de su factura` : ''}`,
+    // En otra moneda se dice con el cambio de qué día: el de su factura es otro que el del día en que se emitió.
+    detalle: `${tipo} · sobre ${moneda(d.total_con_igv_pen)} con IGV (IGV ${moneda(igv)}) · al proveedor ${moneda(alProveedor)} · ${pct(parteDe(alProveedor, d.total_con_igv_pen))}${conQueCambio(d)}`,
     tono: 'info',
   }
 }

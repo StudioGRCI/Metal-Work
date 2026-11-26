@@ -140,10 +140,22 @@ export function faltaDelServicio(s: {
   sinTipoDeCambio?: boolean
   /** Ese día, ya escrito como fecha (DD/MM/AAAA): Tesorería no ve la pantalla del tipo de cambio. */
   cambioDel?: string | null
+  /**
+   * Está en otra moneda, lleva detracción y todavía no tiene su factura: el monto en soles y la
+   * detracción salen del tipo de cambio del día en que se emitió, y la fecha de la factura los cambia
+   * mientras la detracción no esté depositada (20261126947000). Quien la deposita antes lo tiene que saber.
+   */
+  cambioSinFactura?: boolean
 }): LoQueFalta[] {
   if (s.cancelada) return []
   const falta: LoQueFalta[] = []
-  if (!s.conComprobante) {
+  if (s.cambioSinFactura) {
+    falta.push({
+      que: 'la factura del proveedor, adjunta a la OS con su fecha de emisión: el tipo de cambio de ese día decide el monto en soles y la detracción',
+      quien: 'Logística',
+      traba: false,
+    })
+  } else if (!s.conComprobante) {
     falta.push({ que: 'la factura o el recibo del proveedor, adjunto a la OS', quien: 'Logística', traba: false })
   }
   if (!s.conforme) falta.push({ que: 'la conformidad del servicio', quien: 'Logística', traba: false })
@@ -166,7 +178,16 @@ export function faltaDelServicio(s: {
   }
   // El pago va después de la conformidad: antes, lo que falta es de Logística y a Tesorería no le toca.
   if (!s.conforme) return falta
-  if (s.saldoDetraccion > 0) falta.push({ que: 'depositar la detracción en el Banco de la Nación, con su constancia', quien: 'Tesorería', traba: false })
+  if (s.saldoDetraccion > 0) {
+    falta.push({
+      // Sin la factura el depósito sale con el cambio del día en que se emitió, y lo deja fijo.
+      que: s.cambioSinFactura
+        ? 'depositar la detracción en el Banco de la Nación, con su constancia: si la depositas antes de que llegue la factura, queda con el tipo de cambio del día en que se emitió la OS'
+        : 'depositar la detracción en el Banco de la Nación, con su constancia',
+      quien: 'Tesorería',
+      traba: false,
+    })
+  }
   if (s.saldoProveedor > 0) falta.push({ que: 'el pago al proveedor, con su voucher', quien: 'Tesorería', traba: false })
   return falta
 }

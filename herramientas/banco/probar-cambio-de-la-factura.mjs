@@ -73,8 +73,9 @@ async function como(cuenta, sql, v = []) {
 }
 
 // 1. La siembra ---------------------------------------------------------------
-const [{ hoy, hace3, sin_cambio }] = await q(
-  `select to_char(h, 'YYYY-MM-DD') as hoy, to_char(h - 3, 'YYYY-MM-DD') as hace3, to_char(h - 40, 'YYYY-MM-DD') as sin_cambio
+const [{ hoy, hace3, sin_cambio, hace2anios }] = await q(
+  `select to_char(h, 'YYYY-MM-DD') as hoy, to_char(h - 3, 'YYYY-MM-DD') as hace3, to_char(h - 40, 'YYYY-MM-DD') as sin_cambio,
+          to_char(h - 730, 'YYYY-MM-DD') as hace2anios
      from (select (now() at time zone 'America/Lima')::date as h) x`,
 )
 for (const [dias, venta] of [[1, 3.7], [3, 3.8]]) {
@@ -89,7 +90,7 @@ for (const [dias, venta] of [[1, 3.7], [3, 3.8]]) {
 const [{ tc3, tc_sin }] = await q(`select public.cambio_del_dia($1::date, 'VENTA') as tc3, public.cambio_del_dia($2::date, 'VENTA') as tc_sin`, [hace3, sin_cambio])
 const [{ proveedor }] = await q(`select id as proveedor from public.proveedores where activo order by razon_social limit 1`)
 const emitidas = {}
-for (const [clave, moneda, monto, que] of [['a', 'USD', 1000, 'Torneado de ejes'], ['b', 'USD', 500, 'Rectificado de bocinas'], ['c', 'PEN', 800, 'Arenado de la tolva']]) {
+for (const [clave, moneda, monto, que] of [['a', 'USD', 1000, 'Torneado de ejes'], ['b', 'USD', 500, 'Rectificado de bocinas'], ['c', 'PEN', 800, 'Arenado de la tolva'], ['d', 'USD', 2000, 'Galvanizado de barandas']]) {
   const [{ id }] = await como(
     'logistica',
     `select public.emitir_orden_servicio(gen_random_uuid(), $1, null, (select id from public.areas where codigo = 'MTZ'), 'PLANTA', $2, null,
@@ -100,7 +101,7 @@ for (const [clave, moneda, monto, que] of [['a', 'USD', 1000, 'Torneado de ejes'
   const [os] = await q(`select id, numero, monto, monto_pen from public.ordenes_servicio where id = $1`, [id])
   emitidas[clave] = os
 }
-const { a, b, c } = emitidas
+const { a, b, c, d } = emitidas
 console.log(`  OS: ${a.numero} (US$ 1 000, S/ ${a.monto_pen}), ${b.numero} (US$ 500), ${c.numero} (S/ 800); cambio de hace 3 días ${tc3}`)
 comprobar(a.monto_pen !== null && Number(tc3) > 0, 'la OS en dólares nació con monto en soles y hay cambio de hace 3 días')
 
@@ -150,7 +151,13 @@ async function adjuntarFactura(pagina, os, numeroFactura, fecha, toques = 1) {
   await v.locator('input[name="fecha_emision"]').fill(fecha)
   await v.locator('input[type="file"]').setInputFiles({ ...PDF, name: `factura-${numeroFactura}.pdf`, buffer: Buffer.concat([PDF.buffer, Buffer.from(numeroFactura)]) })
   const enviar = v.locator('button[type="submit"]')
-  for (let i = 0; i < toques; i += 1) await enviar.click({ timeout: 2000, force: true }).catch(() => {})
+  // Se cuentan los toques que llegaron al botón: tragarse los fallidos dejaba pasar «tres toques» con uno solo.
+  let llegaron = 0
+  for (let i = 0; i < toques; i += 1) {
+    await enviar.click({ timeout: 2000, force: true }).then(() => (llegaron += 1), () => {})
+  }
+  // El tercero puede no llegar si la ventana ya se cerró: con dos ya se probó el doble envío.
+  if (toques > 1) comprobar(llegaron >= 2, `de los ${toques} toques en «Adjuntar», ${llegaron} llegaron al botón`)
   await Promise.race([v.waitFor({ state: 'hidden', timeout: 40000 }), v.locator('[role="alert"]').waitFor({ timeout: 40000 })]).catch(() => {})
   const error = limpio(await v.locator('[role="alert"]').textContent({ timeout: 500 }).catch(() => ''))
   await pagina.waitForLoadState('networkidle')
@@ -158,8 +165,37 @@ async function adjuntarFactura(pagina, os, numeroFactura, fecha, toques = 1) {
 }
 
 // 2. Logística, en el monitor -----------------------------------------------------
+{
+  const tes = await entrar('tesoreria', 1440)
+  await ir(tes, '/tesoreria/pagos-de-servicio')
+  const tarjeta = limpio(await tes.locator(`[data-servicio="${a.numero}"]`).innerText())
+  comprobar(tarjeta.includes(`con el tipo de cambio del ${dma(hoy)}, el día en que se emitió: falta su factura`),
+    `antes de la factura, Tesorería ve que la ${a.numero} va con el cambio del día en que se emitió y que falta su factura`)
+  comprobar(tarjeta.includes('la factura del proveedor, adjunta a la OS con su fecha de emisión: el tipo de cambio de ese día decide el monto en soles y la detracción'),
+    'y lo que falta dice que la factura decide el monto en soles y la detracción')
+  const enSoles = limpio(await tes.locator(`[data-servicio="${c.numero}"]`).innerText())
+  comprobar(!enSoles.includes('tipo de cambio'), `la ${c.numero}, en soles, no habla de tipo de cambio`)
+  await captura(tes, 'tesoreria-antes-de-la-factura-1440')
+  await tes.context().close()
+}
 const log = await entrar('logistica', 1440)
 await ir(log, '/compras/servicios')
+{
+  const fila = limpio(await log.locator('tr, article, li').filter({ has: log.locator(`[data-adjuntar-documento-servicio="${a.numero}"]`) }).first().innerText())
+  comprobar(fila.includes('el día en que se emitió: falta su factura'), 'Logística también ve que el cambio es el del día en que se emitió mientras falta la factura')
+  // Una fecha de más de un año antes de la OS: la base la rechaza, y se dice en el campo.
+  const rechazo = await adjuntarFactura(log, a, `F001-${SELLO}0`, hace2anios)
+  const v = log.locator(VENTANA)
+  const campoFecha = v.locator('input[name="fecha_emision"]')
+  comprobar(/es de más de un año antes/.test(rechazo), `una fecha de hace dos años se rechaza («${rechazo}»)`)
+  comprobar((await campoFecha.getAttribute('aria-invalid')) === 'true', 'el rechazo marca el campo de la fecha')
+  comprobar(await campoFecha.evaluate((e) => e === document.activeElement), 'y el cursor queda en él')
+  comprobar((await v.locator('[role="alert"]').count()) === 1, 'dicho una sola vez, no también en el pie')
+  await log.keyboard.press('Escape')
+  await v.waitFor({ state: 'hidden' })
+  const sueltos = await q(`select count(*)::int as n from public.documentos_orden_servicio where orden_servicio_id = $1`, [a.id])
+  comprobar(sueltos[0].n === 0, 'y no quedó ninguna factura anotada')
+}
 {
   const v = await abrir(log, a.numero)
   const fecha = v.locator('input[name="fecha_emision"]')
@@ -173,6 +209,10 @@ await ir(log, '/compras/servicios')
 const errorA = await adjuntarFactura(log, a, `F001-${SELLO}1`, hace3, 3)
 comprobar(!errorA, `Logística adjuntó la factura de la ${a.numero} sin error${errorA ? ` («${errorA}»)` : ''}`)
 {
+  const aviso = limpio(await log.locator(`[data-aviso-documento-servicio="${a.numero}"]`).first().textContent())
+  comprobar(aviso.includes(`La orden tomó el tipo de cambio del ${dma(hace3)}`), `al cerrar la ventana, junto al botón dice qué cambió («${aviso}»)`)
+  await captura(log, 'logistica-factura-adjunta-1440')
+
   const docs = await q(`select to_char(fecha_emision, 'YYYY-MM-DD') as f from public.documentos_orden_servicio where orden_servicio_id = $1`, [a.id])
   comprobar(docs.length === 1 && docs[0].f === hace3, `tres toques dejaron una sola factura, con su fecha (${docs.length} en la base)`)
   const [os] = await q(`select monto_pen, to_char(fecha_cambio, 'YYYY-MM-DD') as f, detraccion_monto from public.ordenes_servicio where id = $1`, [a.id])
@@ -181,7 +221,7 @@ comprobar(!errorA, `Logística adjuntó la factura de la ${a.numero} sin error${
   await ir(log, '/compras/servicios')
   const fila = limpio(await log.locator('tr, article, li').filter({ has: log.locator(`[data-adjuntar-documento-servicio="${a.numero}"]`) }).first().innerText())
   comprobar(fila.includes(`emitida el ${dma(hace3)}`), 'la lista dice cuándo se emitió la factura')
-  comprobar(fila.includes(`con el cambio del ${dma(hace3)}, el día de su factura`), 'y que la detracción va con el cambio de ese día')
+  comprobar(fila.includes(`con el tipo de cambio del ${dma(hace3)}, la fecha de su factura`), 'y que la detracción va con el tipo de cambio de ese día')
   comprobar(!(await desborda(log)), 'Compras › Servicios no desborda a 1440')
   await captura(log, 'logistica-servicios-1440')
 }
@@ -202,6 +242,9 @@ if (tc_sin !== null) {
   await ir(tel, '/compras/servicios')
   const errorB = await adjuntarFactura(tel, b, `F001-${SELLO}2`, sin_cambio)
   comprobar(!errorB, `en el teléfono, adjuntó la factura de la ${b.numero}${errorB ? ` («${errorB}»)` : ''}`)
+  const avisoB = limpio(await tel.locator(`[data-aviso-documento-servicio="${b.numero}"]`).first().textContent())
+  comprobar(avisoB.includes(`Falta el tipo de cambio del ${dma(sin_cambio)}: lo registran Contabilidad o Administración`), `y junto al botón dice que falta el cambio de ese día («${avisoB}»)`)
+  await captura(tel, 'logistica-factura-sin-cambio-390')
   const [os] = await q(`select monto_pen, to_char(fecha_cambio, 'YYYY-MM-DD') as f from public.ordenes_servicio where id = $1`, [b.id])
   comprobar(os.monto_pen === null && os.f === sin_cambio, 'la factura de un día sin cambio registrado deja la OS sin monto en soles')
   await ir(tel, '/compras/servicios')
@@ -218,7 +261,7 @@ if (tc_sin !== null) {
       comprobar(texto.includes(`el tipo de cambio del ${dma(sin_cambio)}, la fecha de su factura`),
         `Tesorería ve que falta el cambio del ${dma(sin_cambio)}, la fecha de la factura de la ${b.numero}`)
       comprobar(texto.includes('Contabilidad o Administración'), 'y quién lo registra')
-      comprobar(texto.includes(`con el cambio del ${dma(hace3)}, el día de su factura`), `y que la ${a.numero} va con el cambio de su factura`)
+      comprobar(texto.includes(`con el tipo de cambio del ${dma(hace3)}, la fecha de su factura`), `y que la ${a.numero} va con el tipo de cambio de su factura`)
     }
     comprobar(!(await desborda(tes)), `Tesorería › Pagos de servicio no desborda a ${ancho}`)
     await captura(tes, `tesoreria-pagos-de-servicio-${ancho}`)
@@ -226,7 +269,40 @@ if (tc_sin !== null) {
   }
 }
 
-// 6. Ventas no entra ------------------------------------------------------------------
+// 6. La factura de hoy llega antes que el cambio de hoy: toma el de ayer, y el de hoy cuando se registra.
+{
+  const [{ de_hoy }] = await q(`select (select venta from public.tipos_de_cambio where fecha = $1::date) as de_hoy`, [hoy])
+  if (de_hoy !== null) {
+    console.log(`  (el banco ya tiene el cambio de hoy: no se prueba la factura que llega antes que su cambio)`)
+  } else {
+    const log2 = await entrar('logistica', 1440)
+    await ir(log2, '/compras/servicios')
+    const errorD = await adjuntarFactura(log2, d, `F001-${SELLO}4`, hoy)
+    comprobar(!errorD, `Logística adjuntó a la ${d.numero} una factura de hoy${errorD ? ` («${errorD}»)` : ''}`)
+    await log2.context().close()
+    const [{ ayer }] = await q(`select public.cambio_del_dia($1::date, 'VENTA') as ayer`, [hoy])
+    const [antes] = await q(`select monto_pen, detraccion_monto, to_char(fecha_cambio, 'YYYY-MM-DD') as f from public.ordenes_servicio where id = $1`, [d.id])
+    comprobar(antes.f === hoy && Number(antes.monto_pen) === Math.round(2000 * Number(ayer) * 100) / 100,
+      `sin el cambio de hoy, la OS va con el último registrado (${ayer}): S/ ${antes.monto_pen}`)
+    const nuevo = (Number(ayer) + 0.2).toFixed(3)
+    await como('contabilidad', `insert into public.tipos_de_cambio (fecha, compra, venta, fuente, registrado_por)
+                                values ($1::date, $2::numeric - 0.05, $2::numeric, 'SUNAT', public.usuario_actual())`, [hoy, nuevo])
+    const [despues] = await q(`select monto_pen, detraccion_monto from public.ordenes_servicio where id = $1`, [d.id])
+    comprobar(Number(despues.monto_pen) === Math.round(2000 * Number(nuevo) * 100) / 100 && Number(despues.detraccion_monto) > Number(antes.detraccion_monto),
+      `Contabilidad registra el cambio de hoy (${nuevo}) y la OS lo toma: S/ ${despues.monto_pen}, detracción S/ ${despues.detraccion_monto} (antes S/ ${antes.detraccion_monto})`)
+    const [otra] = await q(`select monto_pen from public.ordenes_servicio where id = $1`, [a.id])
+    comprobar(Number(otra.monto_pen) === Math.round(1000 * Number(tc3) * 100) / 100, `la ${a.numero}, con factura de otro día, no se mueve`)
+    const tes = await entrar('tesoreria', 1440)
+    await ir(tes, '/tesoreria/pagos-de-servicio')
+    const tarjeta = limpio(await tes.locator(`[data-servicio="${d.numero}"]`).innerText())
+    comprobar(tarjeta.includes(`con el tipo de cambio del ${dma(hoy)}, la fecha de su factura`) && tarjeta.includes(`S/ ${Number(despues.detraccion_monto).toFixed(2)}`),
+      `Tesorería ve la ${d.numero} con el cambio de hoy y su detracción nueva`)
+    await captura(tes, 'tesoreria-cambio-de-hoy-1440')
+    await tes.context().close()
+  }
+}
+
+// 7. Ventas no entra ------------------------------------------------------------------
 {
   const ven = await entrar('ventas', 1280)
   await ir(ven, '/compras/servicios')
