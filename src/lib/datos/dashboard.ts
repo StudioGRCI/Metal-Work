@@ -593,7 +593,11 @@ const CIFRAS = {
         })
       const filas = saldos.data ?? []
       const saldo = (m: string) => filas.filter((s) => (s.moneda === 'USD') === (m === 'USD')).reduce((n, s) => n + falta(s), 0)
-      return { titulo: 'Servicios por pagar', ...soles(saldo('PEN'), saldo('USD'), plural(pendientes.length, 'orden de servicio', 'órdenes de servicio')), icono: Wrench }
+      // La tarea «N servicios conformes por pagar» cuenta solo las conformes; la cifra, todas las aprobadas
+      // sin cancelar. Se dicen las dos para que no parezcan contradecirse (plan 11.2).
+      const conformes = pendientes.filter((s) => s.estado === 'CONFORME').length
+      const pie = `${plural(pendientes.length, 'orden de servicio', 'órdenes de servicio')} · ${conformes === 0 ? 'ninguna conforme' : plural(conformes, 'conforme', 'conformes')}`
+      return { titulo: 'Servicios por pagar', ...soles(saldo('PEN'), saldo('USD'), pie), icono: Wrench }
     },
   },
   recibos_por_pagar: {
@@ -924,19 +928,23 @@ const CIFRAS = {
       }
     },
   },
-  // Los reportes de avería que esperan a Mantenimiento (Plan 16.2). Se cuentan
-  // por `averias_visibles`, la misma lectura que la lista: Mantenimiento las ve todas.
+  // Los reportes de avería que esperan a Mantenimiento: reportados y en atención
+  // (Plan 16.2 y 16.3). Se cuentan por `averias_visibles`, la misma lectura que la
+  // bandeja: Mantenimiento las ve todas.
   averias_por_atender: {
     ruta: '/averias',
     calcular: async (c) => {
-      const r = await c.supabase.rpc('averias_visibles', { p_id: null }).eq('estado', 'REPORTADA').select('detiene_trabajo')
+      const r = await c.supabase
+        .rpc('averias_visibles', { p_id: null })
+        .in('estado', ['REPORTADA', 'EN_ATENCION'])
+        .select('detiene_trabajo')
       fallo(r)
       const filas = r.data ?? []
       const detienen = filas.filter((f) => f.detiene_trabajo).length
       return {
         titulo: 'Averías por atender',
         valor: String(filas.length),
-        pie: detienen > 0 ? `${plural(detienen, 'detiene', 'detienen')} el trabajo` : 'reportadas y sin atender',
+        pie: detienen > 0 ? `${plural(detienen, 'detiene', 'detienen')} el trabajo` : 'reportadas o en atención',
         icono: Wrench,
         tono: detienen > 0 ? 'peligro' : filas.length > 0 ? 'aviso' : 'neutro',
         href: '/averias',

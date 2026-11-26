@@ -257,10 +257,20 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
                             <span className="text-sm font-medium text-acento">{c.numero}</span>
                             <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
                             <div className="min-w-40 flex-1">
-                              <p className="truncate text-sm text-texto">
+                              {/* En el teléfono parte la línea: «3 con su OT» es lo que importa y se cortaba. */}
+                              <p className="text-sm text-pretty text-texto sm:truncate">
                                 {c.carroceria ?? 'Sin carrocería'}
-                                {c.codigo_interno ? <span className="text-texto-suave"> · {c.codigo_interno}</span> : null}
-                                {c.orden_numero ? <span className="text-texto-suave"> · OT {c.orden_numero}</span> : null}
+                                {(c.cantidad_unidades ?? 1) > 1 ? (
+                                  // Una OT por unidad (migración 20261126760000): cada código está en su tarjeta.
+                                  <span className="text-texto-suave">
+                                    {' '}· {c.cantidad_unidades} unidades · {c.ordenes_vigentes ? `${c.ordenes_vigentes} con su OT` : 'ninguna con su OT'}
+                                  </span>
+                                ) : (
+                                  <>
+                                    {c.codigo_interno ? <span className="text-texto-suave"> · {c.codigo_interno}</span> : null}
+                                    {c.orden_numero ? <span className="text-texto-suave"> · OT {c.orden_numero}</span> : null}
+                                  </>
+                                )}
                               </p>
                               <p className="text-xs text-texto-suave">Subida el {fecha(c.creado_en)}</p>
                             </div>
@@ -337,7 +347,8 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
                         <span className="text-sm font-medium text-acento">{o.numero}</span>
                         <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
                         <div className="min-w-40 flex-1">
-                          <p className="truncate text-sm text-texto">{o.descripcion}</p>
+                          {/* La descripción termina en «unidad 2 de 3», lo que distingue las OT de una cotización: en el teléfono no se corta. */}
+                          <p className="text-sm text-pretty text-texto sm:truncate">{o.descripcion}</p>
                           <p className="text-xs text-texto-suave">
                             {nombreDeUnidad({ placa: o.placa })} · {fecha(o.fecha_registro)}
                           </p>
