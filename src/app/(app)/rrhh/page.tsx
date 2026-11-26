@@ -156,7 +156,7 @@ export default async function PaginaRRHH() {
           const esperaCierre = deTaller && !soloRegistro && abierta && mesTerminado
 
           return (
-            <Tarjeta key={p.id}>
+            <Tarjeta key={p.id} data-planilla={p.id} data-estado={p.estado}>
               <TarjetaCabecera
                 titulo={`${definir(TIPO_PLANILLA, p.tipo).etiqueta} · ${periodo(p.periodo)}`}
                 descripcion={`${abierta ? 'En preparación' : 'Cerrada'} · ${deEsta.length} ${deEsta.length === 1 ? 'persona' : 'personas'} · costo ${moneda(total, divisa)}${
