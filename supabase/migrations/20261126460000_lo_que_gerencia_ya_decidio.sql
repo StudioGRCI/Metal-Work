@@ -18,13 +18,14 @@
 -- documento dice el resto con su permiso. La pide la misma puerta que «Por
 -- decidir» (`cotizaciones.revisar` o `codigos_internos.cerrar`).
 --
--- El trabajo sin orden devuelto también sale de la bitácora (`audit_log`): al
--- corregirlo, el supervisor deja en nulo la columna que decía quién lo observó.
---
--- Límite conocido, porque la columna se reescribe y la decisión de antes no
--- queda en ninguna: la aprobación de una OC que después sube de monto y vuelve
--- a pedir aprobación (`evaluar_aprobacion_compra` la deja en nulo). La
--- cotización, en cambio, archiva cada versión revisada y sale entera.
+-- La bitácora (`audit_log`) entra también donde la columna se borra después:
+-- - el trabajo sin orden devuelto: al corregirlo, el supervisor deja en nulo
+--   quién lo observó;
+-- - la aprobación de una OC que después sube de monto y vuelve a pedir
+--   aprobación (`evaluar_aprobacion_compra` deja en nulo quién la aprobó);
+-- - la cotización devuelta y después anulada: la anulación escribe su motivo
+--   encima de la observación de la devolución.
+-- La cotización corregida archiva cada versión revisada y sale entera.
 --
 -- El nombre de la OC sale de `nombre_de_oc(numero, referencia)`, el mismo que
 -- usan sus pantallas.
@@ -96,20 +97,26 @@ begin
        and v.estado_al_archivar in ('APROBADA', 'RECHAZADA')
     union all
     -- Cotización: la revisión de la versión vigente. La anulada dice cómo terminó
-    -- su revisión por el estado que tenía al anularse, y la devuelta conserva su motivo.
+    -- su revisión, y con qué motivo, por la fila que tenía al anularse: la
+    -- anulación escribe su propio motivo en `observacion`.
     select 'COTIZACION', c.id, c.numero::text, cl.razon_social::text, null,
            case r.estado when 'APROBADA' then 'APROBADO' when 'RECHAZADA' then 'DEVUELTO' end,
            c.revisado_en, c.revisado_por,
-           case when r.estado = 'RECHAZADA' then nullif(btrim(c.observacion), '') end, c.estado::text
+           case when r.estado = 'RECHAZADA' then nullif(btrim(r.observacion), '') end, c.estado::text
       from public.cotizaciones_pdf c
       left join public.clientes cl on cl.id = c.cliente_id
       cross join lateral (
-        select coalesce(case when c.estado = 'ANULADA' then
-                          (select b.datos_antes ->> 'estado' from public.audit_log b
-                            where b.tabla = 'cotizaciones_pdf' and b.registro_id = c.id and b.accion = 'UPDATE'
-                              and b.datos_despues ->> 'estado' = 'ANULADA'
-                            order by b.creado_en desc limit 1) end,
-                        c.estado::text) as estado
+        select coalesce(a.estado, c.estado::text) as estado,
+               case when c.estado = 'ANULADA' then a.observacion else c.observacion end as observacion
+          from (select null) x
+          left join lateral (
+            select b.datos_antes ->> 'estado' as estado, b.datos_antes ->> 'observacion' as observacion
+              from public.audit_log b
+             where c.estado = 'ANULADA'
+               and b.tabla = 'cotizaciones_pdf' and b.registro_id = c.id and b.accion = 'UPDATE'
+               and b.datos_despues ->> 'estado' = 'ANULADA'
+             order by b.creado_en desc limit 1
+          ) a on true
       ) r
      where c.revisado_en >= v_desde and c.revisado_en < v_hasta
        and r.estado in ('APROBADA', 'RECHAZADA')
@@ -120,12 +127,28 @@ begin
       left join public.clientes cl on cl.id = c.cliente_id
      where c.anulado_en >= v_desde and c.anulado_en < v_hasta
     union all
-    -- Orden de compra
+    -- Orden de compra: la aprobación vigente, de su columna.
     select 'COMPRA', o.id, public.nombre_de_oc(o.numero, o.referencia), coalesce(p.razon_social, o.proveedor)::text, o.codigo_interno::text, 'APROBADO',
            o.aprobado_en, o.aprobado_por, null, null
       from public.ordenes_compra_materiales o
       left join public.proveedores p on p.id = o.proveedor_id
      where o.aprobado_en >= v_desde and o.aprobado_en < v_hasta
+    union all
+    -- Y la que se borró porque la OC subió de monto y volvió a pedir aprobación: de
+    -- `audit_log`, la fila que la quitó (antes APROBADA, después ya no), salvo
+    -- que sea la misma que sigue en la columna.
+    select 'COMPRA', o.id, public.nombre_de_oc(o.numero, o.referencia), coalesce(p.razon_social, o.proveedor)::text, o.codigo_interno::text, 'APROBADO',
+           (b.datos_antes ->> 'aprobado_en')::timestamptz, (b.datos_antes ->> 'aprobado_por')::uuid, null, null
+      from public.audit_log b
+      join public.ordenes_compra_materiales o on o.id = b.registro_id
+      left join public.proveedores p on p.id = o.proveedor_id
+     where b.tabla = 'ordenes_compra_materiales' and b.accion = 'UPDATE'
+       and b.datos_antes ->> 'aprobacion' = 'APROBADA'
+       and b.datos_despues ->> 'aprobacion' is distinct from 'APROBADA'
+       and b.datos_antes ->> 'aprobado_en' is not null
+       and b.datos_despues ->> 'aprobado_en' is null
+       and (b.datos_antes ->> 'aprobado_en')::timestamptz >= v_desde and (b.datos_antes ->> 'aprobado_en')::timestamptz < v_hasta
+       and (b.datos_antes ->> 'aprobado_en')::timestamptz is distinct from o.aprobado_en
     union all
     select 'COMPRA', o.id, public.nombre_de_oc(o.numero, o.referencia), coalesce(p.razon_social, o.proveedor)::text, o.codigo_interno::text, 'DEVUELTO',
            o.rechazado_en, o.rechazado_por, nullif(btrim(o.motivo_rechazo), ''), null
@@ -185,7 +208,9 @@ begin
     -- Trabajo sin orden (avance de flota): la aprobación, de su columna. La devolución,
     -- de `audit_log`: cuando el supervisor corrige el reporte observado (o lo quita), la
     -- base deja en nulo quién y cuándo lo revisó, y la devolución desaparecería.
-    select 'TRABAJO_SIN_ORDEN', f.id, coalesce(u.placa, u.descripcion)::text || ' · ' || to_char(f.fecha, 'DD/MM/YYYY'), a.nombre::text,
+    -- El detalle lleva qué se hizo: dos trabajos de la misma unidad y el mismo día se distinguen.
+    select 'TRABAJO_SIN_ORDEN', f.id, coalesce(u.placa, u.descripcion)::text || ' · ' || to_char(f.fecha, 'DD/MM/YYYY'),
+           concat_ws(' · ', a.nombre::text, nullif(left(btrim(f.descripcion), 80), '')),
            null, 'APROBADO', f.revisado_en, f.revisado_por, null, f.flota_id::text
       from public.flota_avances f
       left join public.flota_unidades u on u.id = f.flota_id
@@ -194,7 +219,8 @@ begin
        and f.revision = 'APROBADO'
     union all
     select 'TRABAJO_SIN_ORDEN', b.registro_id,
-           coalesce(u.placa, u.descripcion)::text || ' · ' || to_char((b.datos_despues ->> 'fecha')::date, 'DD/MM/YYYY'), a.nombre::text,
+           coalesce(u.placa, u.descripcion)::text || ' · ' || to_char((b.datos_despues ->> 'fecha')::date, 'DD/MM/YYYY'),
+           concat_ws(' · ', a.nombre::text, nullif(left(btrim(b.datos_despues ->> 'descripcion'), 80), '')),
            null, 'DEVUELTO', (b.datos_despues ->> 'revisado_en')::timestamptz, (b.datos_despues ->> 'revisado_por')::uuid,
            nullif(btrim(b.datos_despues ->> 'observacion'), ''), b.datos_despues ->> 'flota_id'
       from public.audit_log b
@@ -218,7 +244,8 @@ begin
     union all
     -- Orden de trabajo: la OT no guarda quién la aprobó ni quién la anuló; lo dice su
     -- bitácora. La anulada desde «pausada» se anota como REANUDACION: se mira el
-    -- estado nuevo, no el tipo; y volver de la pausa a APROBADA no es aprobarla.
+    -- estado nuevo, no el tipo. Aprobarla es salir del borrador: volver a APROBADA
+    -- desde otro estado (PROGRAMADA) no es una aprobación de Gerencia.
     select 'ORDEN_TRABAJO', o.id, o.numero::text, cl.razon_social::text, un.codigo_interno::text,
            case b.datos ->> 'estado_nuevo' when 'APROBADA' then 'APROBADO' else 'ANULADO' end,
            b.creado_en, b.usuario_id,
@@ -232,7 +259,7 @@ begin
      where b.etapa_id is null
        and b.tipo_evento in ('CAMBIO_ESTADO', 'REANUDACION')
        and (b.datos ->> 'estado_nuevo' = 'ANULADA'
-            or (b.datos ->> 'estado_nuevo' = 'APROBADA' and b.datos ->> 'estado_anterior' is distinct from 'PAUSADA'))
+            or (b.datos ->> 'estado_nuevo' = 'APROBADA' and b.datos ->> 'estado_anterior' = 'BORRADOR'))
        and b.creado_en >= v_desde and b.creado_en < v_hasta
   )
   select d.tipo, d.documento, d.nombre, d.detalle, d.codigo, d.decision, d.en, public.puesto_de(d.por), d.motivo, d.enlace

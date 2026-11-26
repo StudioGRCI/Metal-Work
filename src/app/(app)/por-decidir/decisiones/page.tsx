@@ -54,10 +54,13 @@ export default async function PaginaDecisionesTomadas({ searchParams }: PageProp
   const decision = (DECISIONES as string[]).includes(String(params.decision)) ? (params.decision as Decision) : null
 
   const todas = await decisionesDelMes(mes)
+  // Cada grupo de pastillas cuenta con el otro filtro puesto: el número dice lo que sale al tocarla.
   const delTipo = tipo ? todas.filter((f) => f.tipo === tipo) : todas
+  const deLaDecision = decision ? todas.filter((f) => f.decision === decision) : todas
   const filas = decision ? delTipo.filter((f) => f.decision === decision) : delTipo
-  const deTipo = (t: TipoDecision) => todas.filter((f) => f.tipo === t).length
+  const deTipo = (t: TipoDecision) => deLaDecision.filter((f) => f.tipo === t).length
   const deDecision = (d: Decision) => delTipo.filter((f) => f.decision === d).length
+  const decisionesConAlgo = DECISIONES.filter((d) => deDecision(d) > 0 || d === decision)
 
   const anterior = otroMes(mes, -1)
   const siguiente = mes < esteMes ? otroMes(mes, 1) : null
@@ -66,6 +69,9 @@ export default async function PaginaDecisionesTomadas({ searchParams }: PageProp
   const meses = Array.from({ length: MESES_EN_LA_LISTA }, (_, i) => otroMes(esteMes, -i))
   if (!meses.includes(mes)) meses.push(mes)
   const filtrado = Boolean(tipo || decision)
+  // Lo que estorba cuando el filtro deja la lista vacía, dicho con sus palabras.
+  // «ninguna devolución de compras», «ningún visto bueno», «ninguna decisión de reportes diarios».
+  const loQueFiltra = `${decision === 'VISTO' || decision === 'CERRADO' ? 'ningún' : 'ninguna'} ${decision ? DECISION[decision].etiqueta.toLowerCase() : 'decisión'}${tipo ? ` de ${NOMBRE_DEL_TIPO[tipo].varios.toLowerCase()}` : ''}`
 
   return (
     <>
@@ -77,7 +83,7 @@ export default async function PaginaDecisionesTomadas({ searchParams }: PageProp
             ? `Sin decisiones en ${mesLargo(mes)}.`
             : `${plural(todas.length, 'decisión', 'decisiones')} en ${mesLargo(mes)}, la más reciente primero.`
         }
-        ayuda="Lo que tu puesto aprobó, devolvió, anuló, dio por visto o cerró, con la fecha y el motivo. Es solo lectura: cada fila abre su documento. Una orden de compra que sube de monto vuelve a pedir aprobación y guarda solo la última."
+        ayuda="Lo que tu puesto aprobó, devolvió, anuló, dio por visto o cerró, con la fecha y el motivo. Es solo lectura: cada fila abre su documento. Las listas de cotizaciones, compras y servicios muestran lo más reciente: el de un mes viejo se busca por su número."
         acciones={
           <div className="flex items-center gap-2" role="group" aria-label="Mes">
             <EnlaceBoton href={conMes(anterior)} variante="contorno" tamano="sm" aria-label={`Ver ${mesLargo(anterior)}`}>
@@ -98,7 +104,7 @@ export default async function PaginaDecisionesTomadas({ searchParams }: PageProp
         <div className="space-y-3">
           <SeleccionDeFiltro
             etiqueta="Mes"
-            className="max-w-56"
+            className="sm:max-w-56"
             opciones={meses.map((m) => ({
               etiqueta: `${mesLargo(m).charAt(0).toUpperCase()}${mesLargo(m).slice(1)}`,
               href: conMes(m),
@@ -115,27 +121,30 @@ export default async function PaginaDecisionesTomadas({ searchParams }: PageProp
                 activo={tipo}
                 etiqueta="Tipo de documento"
                 opciones={[
-                  { valor: null, etiqueta: `Todos (${todas.length})` },
+                  { valor: null, etiqueta: `Todos los documentos (${deLaDecision.length})` },
                   ...TIPOS_DE_DECISION.filter((t) => deTipo(t) > 0 || t === tipo).map((t) => ({
                     valor: t,
                     etiqueta: `${NOMBRE_DEL_TIPO[t].varios} (${deTipo(t)})`,
                   })),
                 ]}
               />
-              <PastillaFiltro
-                ruta="/por-decidir/decisiones"
-                clave="decision"
-                params={params}
-                activo={decision}
-                etiqueta="Decisión"
-                opciones={[
-                  { valor: null, etiqueta: `Todas (${delTipo.length})` },
-                  ...DECISIONES.filter((d) => deDecision(d) > 0 || d === decision).map((d) => ({
-                    valor: d,
-                    etiqueta: `${DECISION[d].varias} (${deDecision(d)})`,
-                  })),
-                ]}
-              />
+              {/* Con una sola clase de decisión en lo que se ve, el grupo no filtra nada. */}
+              {(decisionesConAlgo.length > 1 || decision) && (
+                <PastillaFiltro
+                  ruta="/por-decidir/decisiones"
+                  clave="decision"
+                  params={params}
+                  activo={decision}
+                  etiqueta="Decisión"
+                  opciones={[
+                    { valor: null, etiqueta: `Todas las decisiones (${delTipo.length})` },
+                    ...decisionesConAlgo.map((d) => ({
+                      valor: d,
+                      etiqueta: `${DECISION[d].varias} (${deDecision(d)})`,
+                    })),
+                  ]}
+                />
+              )}
             </>
           )}
         </div>
@@ -146,7 +155,7 @@ export default async function PaginaDecisionesTomadas({ searchParams }: PageProp
               <SinDatos
                 enTabla={false}
                 titulo={`Nada con ese filtro en ${mesLargo(mes)}`}
-                descripcion={`El mes tiene ${plural(todas.length, 'decisión', 'decisiones')} de otro tipo.`}
+                descripcion={`El mes tiene ${plural(todas.length, 'decisión', 'decisiones')}, pero ${loQueFiltra}.`}
                 accion={
                   <EnlaceBoton href={`/por-decidir/decisiones?${new URLSearchParams({ mes })}`} variante="contorno" tamano="sm">
                     Ver todas las de {mesCorto(mes)}
@@ -157,7 +166,7 @@ export default async function PaginaDecisionesTomadas({ searchParams }: PageProp
               <SinDatos
                 enTabla={false}
                 titulo={`Sin decisiones en ${mesLargo(mes)}`}
-                descripcion="Tu puesto no aprobó, devolvió, anuló ni cerró nada este mes."
+                descripcion={mes === esteMes ? 'Tu puesto no aprobó, devolvió, anuló ni cerró nada este mes.' : 'Tu puesto no aprobó, devolvió, anuló ni cerró nada ese mes.'}
                 accion={
                   <EnlaceBoton href={conMes(anterior)} variante="contorno" tamano="sm">
                     Ver {mesLargo(anterior)}

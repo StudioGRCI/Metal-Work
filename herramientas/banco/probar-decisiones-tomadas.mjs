@@ -101,6 +101,17 @@ const ids = {}
     await base.query(`delete from public.cotizaciones_pdf where numero like 'DT-%'`)
     await base.query(`delete from public.ordenes_compra_materiales where referencia like 'DT-%'`)
     await base.query(`delete from public.ordenes_servicio where numero like 'OS-DT%'`)
+    // Lo que dejó la corrida anterior al decidir por su camino: los avisos y la bitácora de lo que se borra.
+    await base.query(
+      `delete from public.notificaciones
+        where (origen_tabla = 'reportes_diarios' and origen_id in (select id from public.reportes_diarios where codigo_interno = 'DT-001'))
+           or (origen_tabla = 'flota_avances' and origen_id in (select id from public.flota_avances where descripcion like 'DT-%'))`,
+    )
+    await base.query(
+      `delete from public.audit_log
+        where (tabla = 'reportes_diarios' and registro_id in (select id from public.reportes_diarios where codigo_interno = 'DT-001'))
+           or (tabla = 'flota_avances' and registro_id in (select id from public.flota_avances where descripcion like 'DT-%'))`,
+    )
     await base.query(`delete from public.reportes_diarios where codigo_interno = 'DT-001'`)
     await base.query(`delete from public.audit_log where tabla = 'flota_avances' and datos_despues ->> 'descripcion' like 'DT-%'`)
     await base.query(`delete from public.flota_avances where descripcion like 'DT-%'`)
@@ -320,7 +331,7 @@ const filas = (pagina) =>
   comprobar(!vistas.some((f) => f.tipo === 'REPORTE_DIARIO' && f.texto.includes('Soldadura')), 'Gerencia: el visto de Gerencia de Producción no le sale: solo lo de su puesto')
   const observado = conTexto('Pintura')
   comprobar(observado?.decision === 'DEVUELTO' && observado?.texto.includes('Falta la foto del chasis') && !observado?.texto.includes('GERENCIA'),
-    `Gerencia: el reporte que observó por la pantalla sale devuelto con su motivo, no con «GERENCIA» (${observado?.texto.slice(0, 120)})`)
+    `Gerencia: el reporte que observó con observar_reporte_diario sale devuelto con su motivo, no con «GERENCIA» (${observado?.texto.slice(0, 120)})`)
   comprobar(conTexto('DTX-123')?.decision === 'DEVUELTO' && conTexto('DTX-123')?.texto.includes('Falta la foto'),
     'Gerencia: el trabajo sin orden que observó sale devuelto, con su motivo, aunque el supervisor ya lo corrigió')
   comprobar(
