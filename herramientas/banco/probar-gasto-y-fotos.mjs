@@ -348,7 +348,8 @@ let registroId = null
   comprobar(cargadas === 3, `Gerencia ve las tres fotos del vehículo (${cargadas})`)
   comprobar((await pagina.getByRole('button', { name: 'Marcar salida' }).count()) === 0, 'sin botones para marcar')
   await ir(pagina, `${BASE}/requerimientos/gasto-por-codigo`)
-  comprobar(new URL(pagina.url()).pathname === '/sin-permiso', 'el gasto por código es de Requerimientos: Gerencia tiene el suyo en Códigos internos')
+  // Lo consulta desde la 20261126310000 (`codigos_internos.gasto`).
+  comprobar(new URL(pagina.url()).pathname === '/requerimientos/gasto-por-codigo', 'Gerencia también consulta el gasto por código')
   comprobar(errores.length === 0, `sin errores de consola como Gerencia ${errores.join(' | ')}`)
   await contexto.close()
 }

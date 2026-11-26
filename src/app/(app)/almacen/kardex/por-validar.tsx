@@ -4,13 +4,14 @@ import Link from 'next/link'
 import { useState } from 'react'
 
 import { Boton } from '@/components/ui/boton'
+import { DiasEnEspera } from '@/components/ui/dias-en-espera'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos } from '@/components/ui/tabla'
 import type { EntregaPorValidar } from '@/lib/datos/ingresos-por-validar'
 import { partesDeNombreDeOc } from '@/lib/dominio/adquisiciones'
 import { useEnvio } from '@/lib/envio'
-import { cantidad, fechaHora } from '@/lib/format'
+import { cantidad, fecha, fechaHora } from '@/lib/format'
 
 import { validarIngresosCompra } from './acciones'
 
@@ -69,9 +70,14 @@ function EntregaParaValidar({ entrega, puedeValidar, abreOt, alValidar }: {
           <p className="text-xs text-texto-suave">
             Dejado {fechaHora(entrega.dejadoEn)}{entrega.dejadoPor ? ` por ${entrega.dejadoPor}` : ''}
             {entrega.recogidoEn ? ` · recogido ${fechaHora(entrega.recogidoEn)}` : ''}
+            {entrega.fechaEsperada && <span className="whitespace-nowrap"> · se esperaba el {fecha(entrega.fechaEsperada)}</span>}
           </p>
         </div>
-        <Insignia tono={entrega.directa ? 'info' : 'neutro'}>{entrega.directa ? 'Compra para stock' : 'Compra de OT'}</Insignia>
+        <span className="flex flex-wrap items-center gap-1">
+          {/* Cuánto lleva esperando que Almacén la valide, desde que el conductor la dejó (plan 2, entrega 2.3). */}
+          <DiasEnEspera dias={entrega.dias} desde={entrega.dejadoEn} quien="Almacén" />
+          <Insignia tono={entrega.directa ? 'info' : 'neutro'}>{entrega.directa ? 'Compra para stock' : 'Compra de OT'}</Insignia>
+        </span>
       </div>
 
       <ul className="divide-y divide-borde">

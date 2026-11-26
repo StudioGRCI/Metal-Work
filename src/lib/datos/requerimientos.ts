@@ -58,6 +58,13 @@ export type LineaRequerimiento = {
   llegado: number | null
   /** Lo que no salió del kardex cuando Almacén entregó el RQ con faltante; vacío si salió todo. */
   sin_salida: number | null
+  /**
+   * La fecha en que Logística espera la compra (la de su OC), sin precios.
+   * Vacía si no va en una OC viva, o si quien mira no lee las compras
+   * (Supervisión); la ven quienes leen la OC: Almacén, quien compra,
+   * Requerimientos y Administración (plan 2, entrega 2.1).
+   */
+  fecha_esperada: string | null
 }
 
 /** En qué porcentaje va el RQ (el promedio de sus insumos) y la etapa de su insumo más atrasado. */
@@ -111,7 +118,7 @@ export type OpcionCatalogo = { id: string; codigo: string; nombre: string }
 export type AreaParaRequerimiento = OpcionCatalogo & { requerimiento: string }
 
 const SELECT_RQ =
-  'id, numero, tipo, area_id, creado_por, codigo_interno, justificacion, fecha_requerida, estado, motivo_anulacion, nota_almacen, nota_logistica, nota_entrega, faltante_al_entregar, motivo_del_faltante, revision_stock_en, en_atencion_en, listo_en_almacen_en, entregado_en, creado_en, area:areas(nombre), lineas:requerimiento_lineas(id, item, descripcion, cantidad, cantidad_en_stock, sin_salida_al_entregar, material_id, material_nuevo, recompra_de, material:materiales(codigo, descripcion, unidad_pendiente), unidad:unidades_medida(codigo), categoria:categorias_material(nombre), orden_compra:ordenes_compra_materiales(numero, referencia, aprobacion))'
+  'id, numero, tipo, area_id, creado_por, codigo_interno, justificacion, fecha_requerida, estado, motivo_anulacion, nota_almacen, nota_logistica, nota_entrega, faltante_al_entregar, motivo_del_faltante, revision_stock_en, en_atencion_en, listo_en_almacen_en, entregado_en, creado_en, area:areas(nombre), lineas:requerimiento_lineas(id, item, descripcion, cantidad, cantidad_en_stock, sin_salida_al_entregar, material_id, material_nuevo, recompra_de, material:materiales(codigo, descripcion, unidad_pendiente), unidad:unidades_medida(codigo), categoria:categorias_material(nombre), orden_compra:ordenes_compra_materiales(numero, referencia, aprobacion, fecha_estimada))'
 
 /**
  * Cuántos RQ en camino (por entregar) se necesitan entre esas fechas, con los
@@ -143,7 +150,7 @@ export async function contarRequerimientosAbiertos(opciones: {
  * los de Administración. Con `id`, solo ese: es el que abre Adquisiciones. Con
  * `area`, los que pidió esa área (el supervisor ve primero los de la suya); con
  * `codigo`, los de ese código interno. Con `conEntregado`, también lo que ya
- * salió del almacén de cada insumo: lo pinta la lista de RQ, no la bandeja.
+ * salió del almacén de cada insumo: lo pintan la lista de RQ y la bandeja.
  */
 export async function cargarRequerimientos(
   opciones: {
@@ -254,6 +261,7 @@ export async function cargarRequerimientos(
             entregado: opciones.conEntregado ? (entregados.get(`${r.id}:${l.item}`)?.entregado ?? 0) : null,
             llegado: entregados.get(`${r.id}:${l.item}`)?.llegado ?? null,
             sin_salida: l.sin_salida_al_entregar == null ? null : Number(l.sin_salida_al_entregar),
+            fecha_esperada: l.orden_compra && !['RECHAZADA', 'ANULADA'].includes(l.orden_compra.aprobacion ?? '') ? l.orden_compra.fecha_estimada : null,
           }
         })
         .sort((a, b) => a.item - b.item),
