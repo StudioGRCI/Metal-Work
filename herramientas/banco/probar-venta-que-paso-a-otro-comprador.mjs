@@ -336,9 +336,14 @@ for (const [ancho, alto] of [[1440, 900], [390, 844]]) {
   const pTres = await pasos(tres)
   comprobar(pTres.includes('OTRO_COMPRADOR:HECHO') && pTres.includes('CODIGO_Y_OT:AHORA'),
     `${ancho}: su recorrido dice que una pasó y espera la OT que falta (${pTres.join(', ')})`)
-  const textoTresTodo = limpio(await tres.textContent())
-  comprobar(textoTresTodo.includes('De 3 unidades, lleva 1 OT y 1 pasó a otro comprador: falta la de 1 unidad'),
-    `${ancho}: el recorrido cuenta la que pasó y espera solo la que falta`)
+  // Desde la 20261126998800 el recorrido va unidad por unidad: la 1 pasó, la 2
+  // tiene su OT y espera su factura, y solo la 3 espera su OT.
+  const porUnidad = await tres.locator('[data-recorrido-unidad]').evaluateAll((l) =>
+    l.map((u) => `${u.getAttribute('data-recorrido-unidad')}: ${[...u.querySelectorAll('[data-recorrido-paso]')]
+      .map((e) => `${e.getAttribute('data-recorrido-paso')}:${e.getAttribute('data-situacion')}`).join(' > ')}`))
+  comprobar(porUnidad.length === 3 && porUnidad[0] === '1: OTRO_COMPRADOR:HECHO' && porUnidad[1].startsWith('2: CODIGO_Y_OT:HECHO > FACTURA:AHORA')
+    && porUnidad[2].startsWith('3: CODIGO_Y_OT:AHORA'),
+    `${ancho}: el recorrido cuenta la que pasó y espera solo la OT que falta (${porUnidad.join(' | ')})`)
   await abrirRecorrido(tres)
   await tres.evaluate((e) => e.scrollIntoView({ block: 'start' }))
   await pagina.evaluate(() => window.scrollBy(0, -80))
