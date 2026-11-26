@@ -124,7 +124,7 @@ export const PASO_ACCION_SSOMA: Record<string, string> = {
   ANULADA: 'Anulada por SSOMA',
 }
 
-/** Por qué alcance ve una acción quien mira (`ssoma_acciones_visibles`). */
+/** Por qué alcance ve una acción quien mira (`ssoma_acciones_a_la_vista`). */
 export type AlcanceAccionSsoma = 'TODOS' | 'RESPONSABLE' | 'REPORTE'
 
 /** Hasta cuatro fotos de evidencia por cierre, como exige `ssoma_anotar_evidencia`. */
@@ -209,3 +209,32 @@ export const TIPO_CHARLA_SSOMA: Record<string, Def> = {
 export const MAXIMO_FOTOS_CHARLA = 4
 /** Hasta cuántos días atrás se registra una charla: la base dice lo mismo. */
 export const DIAS_PARA_REGISTRAR_CHARLA = 60
+
+/*
+ * Entrega 15.4 (migración 20261126997500): las inspecciones con lista de
+ * verificación por área. Cada punto no conforme nace con su acción correctiva.
+ */
+
+export const TIPOS_INSPECCION_SSOMA = ['PLANEADA', 'NO_PLANEADA'] as const
+
+export const TIPO_INSPECCION_SSOMA: Record<string, Def> = {
+  PLANEADA: { etiqueta: 'Planeada', tono: 'info', descripcion: 'La del programa de inspecciones.' },
+  NO_PLANEADA: { etiqueta: 'No planeada', tono: 'acento', descripcion: 'Sin aviso, o por algo que pasó.' },
+}
+
+export const RESULTADOS_INSPECCION = ['CONFORME', 'NO_CONFORME', 'NO_APLICA'] as const
+export type ResultadoInspeccion = (typeof RESULTADOS_INSPECCION)[number]
+
+export const RESULTADO_INSPECCION: Record<string, Def> = {
+  CONFORME: { etiqueta: 'Conforme', tono: 'exito', descripcion: 'Está como debe.' },
+  NO_CONFORME: { etiqueta: 'No conforme', tono: 'peligro', descripcion: 'Hay algo que corregir: lleva su acción.' },
+  NO_APLICA: { etiqueta: 'No aplica', tono: 'neutro', descripcion: 'Ese punto no corresponde a esta área.' },
+}
+
+/** Hasta cuántos días atrás se registra una inspección: la base dice lo mismo. */
+export const DIAS_PARA_REGISTRAR_INSPECCION = 60
+
+/** Adónde lleva una acción correctiva: a su reporte o a su inspección, con el ancla en ella. */
+export function rutaDeAccion(a: { id: string; reporte_id: string | null; inspeccion_id: string | null }) {
+  return `${a.reporte_id ? `/ssoma/${a.reporte_id}` : `/ssoma/inspecciones/${a.inspeccion_id}`}#accion-${a.id}`
+}

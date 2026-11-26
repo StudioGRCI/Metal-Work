@@ -11339,7 +11339,7 @@ export type Database = {
       ssoma_acciones: {
         Row: {
           id: string
-          reporte_id: string
+          reporte_id: string | null
           area_id: string
           descripcion: string
           responsable_id: string
@@ -11354,10 +11354,11 @@ export type Database = {
           motivo_anulacion: string | null
           creado_en: string
           actualizado_en: string
+          respuesta_id: string | null
         }
         Insert: {
           id?: string
-          reporte_id: string
+          reporte_id?: string | null
           area_id: string
           descripcion: string
           responsable_id: string
@@ -11372,10 +11373,11 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          respuesta_id?: string | null
         }
         Update: {
           id?: string
-          reporte_id?: string
+          reporte_id?: string | null
           area_id?: string
           descripcion?: string
           responsable_id?: string
@@ -11390,6 +11392,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          respuesta_id?: string | null
         }
         Relationships: [
           {
@@ -11432,6 +11435,13 @@ export type Database = {
             columns: ["responsable_id"]
             isOneToOne: false
             referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_acciones_respuesta_id_fkey"
+            columns: ["respuesta_id"]
+            isOneToOne: false
+            referencedRelation: "ssoma_inspeccion_respuestas"
             referencedColumns: ["id"]
           }
         ]
@@ -11620,6 +11630,182 @@ export type Database = {
             columns: ["reporte_id"]
             isOneToOne: false
             referencedRelation: "ssoma_reportes"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ssoma_inspeccion_respuestas: {
+        Row: {
+          id: string
+          inspeccion_id: string
+          punto_id: string
+          orden: number
+          texto: string
+          resultado: string
+          hallazgo: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          inspeccion_id: string
+          punto_id: string
+          orden: number
+          texto: string
+          resultado: string
+          hallazgo?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          inspeccion_id?: string
+          punto_id?: string
+          orden?: number
+          texto?: string
+          resultado?: string
+          hallazgo?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ssoma_inspeccion_respuestas_inspeccion_id_fkey"
+            columns: ["inspeccion_id"]
+            isOneToOne: false
+            referencedRelation: "ssoma_inspecciones"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_inspeccion_respuestas_punto_id_fkey"
+            columns: ["punto_id"]
+            isOneToOne: false
+            referencedRelation: "ssoma_lista_puntos"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ssoma_inspecciones: {
+        Row: {
+          id: string
+          area_id: string
+          fecha: string
+          tipo: string
+          observacion: string | null
+          creado_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          area_id: string
+          fecha: string
+          tipo: string
+          observacion?: string | null
+          creado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          area_id?: string
+          fecha?: string
+          tipo?: string
+          observacion?: string | null
+          creado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ssoma_inspecciones_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_inspecciones_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_inspecciones_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ssoma_lista_puntos: {
+        Row: {
+          id: string
+          area_id: string | null
+          texto: string
+          orden: number
+          activo: boolean
+          creado_por: string | null
+          retirado_por: string | null
+          retirado_en: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          area_id?: string | null
+          texto: string
+          orden: number
+          activo?: boolean
+          creado_por?: string | null
+          retirado_por?: string | null
+          retirado_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          area_id?: string | null
+          texto?: string
+          orden?: number
+          activo?: boolean
+          creado_por?: string | null
+          retirado_por?: string | null
+          retirado_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ssoma_lista_puntos_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_lista_puntos_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_lista_puntos_retirado_por_fkey"
+            columns: ["retirado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           }
         ]
@@ -20277,6 +20463,51 @@ export type Database = {
         }
         Returns: string
       }
+      ssoma_accion_de_hallazgo: {
+        Args: {
+          p_id: string | null
+          p_respuesta: string | null
+          p_descripcion: string | null
+          p_responsable: string | null
+          p_fecha_limite: string | null
+        }
+        Returns: string
+      }
+      ssoma_acciones_a_la_vista: {
+        Args: {
+          p_reporte: string | null
+          p_inspeccion: string | null
+          p_id: string | null
+        }
+        Returns: {
+          id: string | null
+          reporte_id: string | null
+          reporte_numero: string | null
+          reporte_tipo: string | null
+          respuesta_id: string | null
+          inspeccion_id: string | null
+          inspeccion_fecha: string | null
+          hallazgo: string | null
+          area: string | null
+          descripcion: string | null
+          responsable_id: string | null
+          responsable: string | null
+          responsable_puesto: string | null
+          fecha_limite: string | null
+          estado: string | null
+          dias_para_vencer: number | null
+          creado_en: string | null
+          asigno: string | null
+          cerrado_en: string | null
+          cerro: string | null
+          nota_cierre: string | null
+          fotos: number | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          alcance: string | null
+          orden: number | null
+        }[]
+      }
       ssoma_acciones_visibles: {
         Args: {
           p_reporte: string | null
@@ -20307,6 +20538,21 @@ export type Database = {
           orden: number | null
         }[]
       }
+      ssoma_activar_punto: {
+        Args: {
+          p_id: string | null
+          p_activo: boolean | null
+        }
+        Returns: string
+      }
+      ssoma_agregar_punto: {
+        Args: {
+          p_id: string | null
+          p_area: string | null
+          p_texto: string | null
+        }
+        Returns: string
+      }
       ssoma_anotar_evidencia: {
         Args: {
           p_accion: string | null
@@ -20330,6 +20576,13 @@ export type Database = {
         Returns: string
       }
       ssoma_anular_charla: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
+      ssoma_anular_inspeccion: {
         Args: {
           p_id: string | null
           p_motivo: string | null
@@ -20485,6 +20738,46 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
+      ssoma_inspecciones_a_la_vista: {
+        Args: {
+          p_id: string | null
+        }
+        Returns: {
+          id: string | null
+          area_id: string | null
+          area: string | null
+          fecha: string | null
+          tipo: string | null
+          observacion: string | null
+          registro: string | null
+          creado_en: string | null
+          anulado_en: string | null
+          anulo: string | null
+          motivo_anulacion: string | null
+          puntos: number | null
+          conformes: number | null
+          no_conformes: number | null
+          no_aplica: number | null
+          sin_accion: number | null
+          abiertas: number | null
+          vencidas: number | null
+          cerradas: number | null
+          alcance: string | null
+        }[]
+      }
+      ssoma_inspecciones_por_area: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          area_id: string | null
+          area: string | null
+          puntos: number | null
+          ultima_id: string | null
+          ultima: string | null
+          dias: number | null
+          abiertas: number | null
+          vencidas: number | null
+        }[]
+      }
       ssoma_no_asistieron: {
         Args: {
           p_mes: string | null
@@ -20502,6 +20795,17 @@ export type Database = {
           p_usuario: string | null
         }
         Returns: string
+      }
+      ssoma_origen_de_accion: {
+        Args: {
+          p_accion: string | null
+        }
+        Returns: {
+          reporte: string | null
+          inspeccion: string | null
+          etiqueta: string | null
+          ruta: string | null
+        }[]
       }
       ssoma_personal_del_mes: {
         Args: {
@@ -20535,6 +20839,14 @@ export type Database = {
           sin_accion: number | null
         }[]
       }
+      ssoma_punto_repetido: {
+        Args: {
+          p_area: string | null
+          p_texto: string | null
+          p_salvo: string | null
+        }
+        Returns: string
+      }
       ssoma_reabrir_accion: {
         Args: {
           p_accion: string | null
@@ -20566,6 +20878,17 @@ export type Database = {
           p_fecha: string | null
           p_asistentes: string[] | null
           p_fotos: Json | null
+        }
+        Returns: string
+      }
+      ssoma_registrar_inspeccion: {
+        Args: {
+          p_id: string | null
+          p_area: string | null
+          p_fecha: string | null
+          p_tipo: string | null
+          p_observacion: string | null
+          p_respuestas: Json | null
         }
         Returns: string
       }
@@ -20614,6 +20937,18 @@ export type Database = {
           anulado_en: string | null
           anulo: string | null
           motivo_anulacion: string | null
+        }[]
+      }
+      ssoma_respuestas_de_inspeccion: {
+        Args: {
+          p_inspeccion: string | null
+        }
+        Returns: {
+          id: string | null
+          orden: number | null
+          texto: string | null
+          resultado: string | null
+          hallazgo: string | null
         }[]
       }
       ssoma_seguimiento_de_reportes: {
