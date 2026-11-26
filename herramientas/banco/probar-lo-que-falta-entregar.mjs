@@ -203,17 +203,19 @@ const cifras = async (pagina, n) => {
     `${N.listo}, en metros, sin decimales de más: «${l?.texto}»`)
 
   const r = await cifras(pagina, N.revisar)
-  comprobar(r?.entregaInsumo === 'NADA' && Number(r?.porRevisar) === 4, `${N.revisar} por revisar: «${r?.texto}»`)
+  comprobar(r === null, `${N.revisar} por revisar no repite la cuenta: la etapa ya lo dice (${r?.texto ?? 'nada'})`)
   const s = await cifras(pagina, N.sinOc)
-  comprobar(Number(s?.porComprar) === 6 && Number(s?.porLlegar) === 0, `${N.sinOc} sin OC, por comprar: «${s?.texto}»`)
+  comprobar(Number(s?.porComprar) === 6 && Number(s?.porLlegar) === 0 && s?.texto === 'Nada entregado · faltan 6 UND',
+    `${N.sinOc} sin OC, por comprar, sin repetir «Por comprar» de su etapa: «${s?.texto}»`)
 
-  // El recorrido de cada RQ, plegado; cerrado dice quién lo tiene.
+  // El recorrido de cada RQ, plegado; quién lo tiene ya lo dice la insignia de días de la fila.
   for (const n of [N.compra, N.listo, N.revisar, N.sinOc]) {
     const rec = filaDe(pagina, n).locator('details[data-recorrido]')
     comprobar((await rec.count()) === 1 && !(await rec.evaluate((e) => e.open)), `${n} lleva su recorrido plegado`)
   }
   const resumen = await texto(filaDe(pagina, N.revisar).locator('details[data-recorrido] summary'))
-  comprobar(/Almac[eé]n/.test(resumen), `cerrado dice quién lo tiene: «${resumen}»`)
+  const insignia = await texto(filaDe(pagina, N.revisar).locator('[data-dias-en-espera]').first())
+  comprobar(resumen === 'Recorrido' && /Almac[eé]n/.test(insignia), `quién lo tiene se dice una vez, en la insignia («${insignia}»); el recorrido cerrado dice «${resumen}»`)
   await filaDe(pagina, N.compra).locator('details[data-recorrido] summary').click()
   comprobar(await filaDe(pagina, N.compra).locator('details[data-recorrido]').evaluate((e) => e.open), 'se abre con un toque')
   await filaDe(pagina, N.compra).locator('details[data-recorrido] summary').click()

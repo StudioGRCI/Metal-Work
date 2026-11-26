@@ -478,8 +478,8 @@ function Fila({
             ),
           )}
         </ul>
-        {/* Plegado: cerrado ya dice quién lo tiene y hace cuánto. */}
-        <Recorrido pasos={recorrido} className="mt-2 max-w-sm rounded-[var(--radius-base)] border border-borde" relleno="px-2" />
+        {/* Plegado; quién lo tiene y hace cuánto ya lo dice la insignia de arriba. */}
+        <Recorrido pasos={recorrido} className="mt-2 max-w-sm rounded-[var(--radius-base)] border border-borde" relleno="px-2" sinQuienEnElResumen />
       </TD>
       {/* Sin acciones, la celda no deja un hueco en el teléfono. */}
       <TD className="block p-0 align-top sm:table-cell sm:px-3 sm:py-2 sm:text-right">
