@@ -107,7 +107,7 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
                 const contacto = [p.contacto, p.telefono].filter(Boolean).join(' · ')
                 const pago = condicionDePago(p.condicion_pago, p.dias_credito)
                 return (
-                  <TR key={p.id}>
+                  <TR key={p.id} data-proveedor={p.id}>
                     <TD>
                       <p className="font-medium text-texto">
                         {p.razon_social}
