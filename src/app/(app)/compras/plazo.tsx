@@ -42,7 +42,8 @@ export function PlazoDeLaCompra({
 }) {
   if (!plazo) return null
   const hoy = hoyLima()
-  const repetida = fechaDelDocumento !== undefined && plazo.esperada === fechaDelDocumento
+  // La fecha de fin que la fila ya muestra no se repite; sin fecha, se dice «Sin fecha de fin».
+  const repetida = fechaDelDocumento !== undefined && plazo.esperada != null && plazo.esperada === fechaDelDocumento
   const prometida = !plazo.esperada
     ? null
     : plazo.esperada === hoy && !plazo.completa_en
