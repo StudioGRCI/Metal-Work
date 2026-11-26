@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { diasEnEspera } from '@/lib/datos/dias-en-espera'
 import { createClient } from '@/lib/supabase/server'
 
 export type LineaPorValidar = {
@@ -33,6 +34,12 @@ export type EntregaPorValidar = {
    * se pudieron contar: la bandeja sigue sin la insignia.
    */
   dias: number | null
+  /**
+   * La fecha en que Logística esperaba la compra (la de su OC), sin precios
+   * (decisión del plan 2): dice si llegó a tiempo. `null` si la OC no la tiene
+   * o no se pudo leer.
+   */
+  fechaEsperada: string | null
   lineas: LineaPorValidar[]
 }
 
@@ -41,13 +48,17 @@ export type EntregaPorValidar = {
  * por compra y la más antigua primero. La base lo entrega por función: las
  * compras se leen por el área de su requerimiento y una OC directa no tiene.
  */
-export async function ingresosPorValidar(): Promise<EntregaPorValidar[]> {
+export async function ingresosPorValidar(): Promise<{
+  entregas: EntregaPorValidar[]
+  /** Qué no se pudo leer (los días, la fecha esperada): la bandeja sigue sin eso y lo dice. */
+  sinLeer: string[]
+}> {
   const db = await createClient()
   const { data, error } = await db.rpc('ingresos_por_validar')
   // Sin la función todavía en la base (la pantalla salió antes que la
   // migración del conductor) no hay nada que validar; cualquier otro error sí
   // se muestra.
-  if (error?.code === 'PGRST202' || error?.code === '42883') return []
+  if (error?.code === 'PGRST202' || error?.code === '42883') return { entregas: [], sinLeer: [] }
   if (error) throw new Error(`No se pudieron cargar los ingresos por validar: ${error.message}`)
 
   const porCompra = new Map<string, EntregaPorValidar>()
@@ -62,6 +73,7 @@ export async function ingresosPorValidar(): Promise<EntregaPorValidar[]> {
       dejadoPor: f.dejado_por_nombre,
       recogidoEn: f.recogido_en,
       dias: null,
+      fechaEsperada: null,
       lineas: [],
     }
     porCompra.set(f.orden_compra_id, entrega)
@@ -78,15 +90,29 @@ export async function ingresosPorValidar(): Promise<EntregaPorValidar[]> {
   }
   // La que más espera, arriba: desde que el conductor la dejó (plan 2, entrega 2.3).
   const entregas = [...porCompra.values()].sort((a, b) => Date.parse(a.dejadoEn) - Date.parse(b.dejadoEn))
-  // Los días los cuenta la base con la fecha de Lima. Sin ellos la bandeja sigue.
-  const conFecha = entregas.filter((e) => e.dejadoEn)
-  if (conFecha.length > 0) {
-    const dias = await db.rpc('dias_en_espera_de', { p_desde: conFecha.map((e) => e.dejadoEn) })
-    if (dias.error) console.error('Ingresos por validar: no se pudieron contar los días en espera.', dias.error.message)
-    for (const d of dias.data ?? []) {
-      const e = d.posicion == null ? undefined : conFecha[d.posicion - 1]
-      if (e && d.dias != null) e.dias = d.dias
-    }
+  const sinLeer: string[] = []
+  // La fecha esperada de cada OC, sin precios (decisión del plan 2). La lee quien
+  // valida (`almacen.recibir`) o compra (`compras.ver`), de toda área: quien abre
+  // el kardex tiene `almacen.ver`, que ve todas (`puede_ver_area_material`).
+  // Los días los cuenta la base con la fecha de Lima (`diasEnEspera`).
+  const [fechas, dias] = await Promise.all([
+    entregas.length > 0
+      ? db.from('ordenes_compra_materiales').select('id, fecha_estimada').in('id', entregas.map((e) => e.compraId))
+      : null,
+    diasEnEspera(entregas.map((e) => e.dejadoEn || null)).catch((e: unknown) => {
+      console.error('Ingresos por validar: no se pudieron contar los días en espera.', e instanceof Error ? e.message : e)
+      return null
+    }),
+  ])
+  if (fechas?.error) {
+    console.error('Ingresos por validar: no se pudo leer la fecha esperada de las compras.', fechas.error.message)
+    sinLeer.push('la fecha esperada de cada OC')
   }
-  return entregas
+  const porId = new Map((fechas?.data ?? []).map((f) => [f.id, f.fecha_estimada]))
+  if (dias === null && entregas.length > 0) sinLeer.push('los días que lleva esperando cada una')
+  entregas.forEach((e, i) => {
+    e.fechaEsperada = porId.get(e.compraId) ?? null
+    e.dias = dias?.[i] ?? null
+  })
+  return { entregas, sinLeer }
 }

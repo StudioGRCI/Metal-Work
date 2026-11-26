@@ -12,7 +12,7 @@ function Diferencia({ c }: { c: ConteoFisico }) {
   return (
     <span className={`tabular font-semibold ${sobro ? 'text-exito' : 'text-peligro'}`} data-diferencia={c.diferencia}>
       {sobro ? '+' : '−'}
-      {cantidad(Math.abs(c.diferencia))}
+      {cantidad(Math.abs(c.diferencia))} <span className="text-xs font-normal text-texto-suave">{c.unidad ?? ''}</span>
       <span className="sr-only">{sobro ? ' de sobra' : ' de falta'}</span>
     </span>
   )
@@ -48,11 +48,11 @@ export function ConteosFisicos({ conteos, conMaterial }: { conteos: ConteoFisico
           <TR key={c.id} data-conteo={c.id}>
             <TD>
               <span className="tabular block text-sm text-texto">{fechaHora(c.en)}</span>
-              <span className="block text-xs text-texto-suave">{c.contoPor ? `Contó ${c.contoPor}` : 'Sin nombre'}</span>
+              <span className="block text-xs text-texto-suave">{c.contoPor ? `Contó ${c.contoPor}` : 'No quedó quién contó'}</span>
             </TD>
             {conMaterial && (
               <TD data-rotulo="Material" className="max-w-64">
-                <Link href={`/almacen/kardex?material=${c.materialId}`} className="line-clamp-2 text-sm text-acento hover:underline">
+                <Link href={`/almacen/kardex?material=${c.materialId}`} className="line-clamp-2 text-sm text-acento hover:underline pointer-coarse:py-3">
                   {c.material}
                 </Link>
                 <span className="block font-mono text-xs text-texto-tenue">{c.codigo}</span>
@@ -62,7 +62,7 @@ export function ConteosFisicos({ conteos, conMaterial }: { conteos: ConteoFisico
               {cantidad(c.contado)} <span className="text-xs text-texto-suave">{c.unidad ?? ''}</span>
             </TD>
             <TD data-rotulo="El sistema decía" className="tabular md:text-right">
-              {cantidad(c.sistema)}
+              {cantidad(c.sistema)} <span className="text-xs text-texto-suave">{c.unidad ?? ''}</span>
             </TD>
             <TD data-rotulo="Diferencia" className="md:text-right">
               <Diferencia c={c} />

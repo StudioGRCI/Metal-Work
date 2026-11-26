@@ -152,6 +152,12 @@ const texto = async (loc) => (await loc.innerText()).replace(/\s+/g, ' ').trim()
 const ir = (pagina, ruta) => pagina.goto(`${BASE}${ruta}`, { waitUntil: 'networkidle', timeout: 120000 })
 const bloque = (pagina, oc) => pagina.locator('#por-validar form', { hasText: oc })
 const filaConteo = (pagina, codigo) => pagina.locator('#conteos tbody tr', { hasText: codigo })
+/** Los conteos vienen plegados: se abren como lo haría la persona, tocando su título. */
+async function abrirConteos(pagina) {
+  const seccion = pagina.locator('details#conteos')
+  if (!(await seccion.evaluate((d) => d.open))) await seccion.locator('summary').click()
+  return seccion
+}
 
 // ============================================ 1 a 3. Almacén, en el monitor
 {
@@ -164,6 +170,13 @@ const filaConteo = (pagina, codigo) => pagina.locator('#conteos tbody tr', { has
   const cabecera = await texto(bloque(pagina, vieja).locator('h3 + *, h3').first())
   comprobar(cabecera.includes(vieja), `con su OC: «${cabecera}»`)
   comprobar((await texto(bloque(pagina, vieja))).includes(' por '), 'y quién la dejó')
+  const esperada = new Date(Date.now() + 5 * 864e5).toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: '2-digit', year: 'numeric' })
+  comprobar((await texto(bloque(pagina, vieja))).includes(`se esperaba el ${esperada}`), `con la fecha esperada de su OC (${esperada}), sin precios`)
+  comprobar(!/S\/\s?\d|\bPEN\b|precio/i.test(await texto(pagina.locator('#por-validar'))), 'la bandeja no muestra precios')
+  const plegada = pagina.locator('details#conteos')
+  comprobar(!(await plegada.evaluate((d) => d.open)), `los conteos vienen plegados: «${await texto(plegada.locator('summary'))}»`)
+  comprobar(/con diferencia · el último el/.test(await texto(plegada.locator('summary'))), 'y el resumen dice cuántos tienen diferencia y el último')
+  await abrirConteos(pagina)
   const orden = await pagina.locator('#por-validar form h3').allInnerTexts()
   const iVieja = orden.findIndex((t) => t.includes(vieja))
   const iNueva = orden.findIndex((t) => t.includes(nueva))
@@ -171,11 +184,12 @@ const filaConteo = (pagina, codigo) => pagina.locator('#conteos tbody tr', { has
 
   const d = filaConteo(pagina, `PRB-E23-${sufijo}`)
   const t = await texto(d).catch(() => '')
-  comprobar((await d.count()) === 1 && /Contó 17/.test(t.replace(/\s+/g, ' ')) || t.includes('17'), `el conteo del disco: «${t}»`)
+  const celda = async (fila, rotulo) => texto(fila.locator(`[data-rotulo="${rotulo}"]`))
+  comprobar((await d.count()) === 1 && (await celda(d, 'Contó')) === '17 UND', `el conteo del disco: «${t}»`)
   comprobar((await d.locator('[data-diferencia]').getAttribute('data-diferencia')) === '-3', 'con la diferencia −3')
-  comprobar(t.includes('20') && t.includes(`Contó ${contador}`), `lo que decía el sistema (20) y quién contó (${contador})`)
+  comprobar((await celda(d, 'El sistema decía')) === '20 UND' && t.includes(`Contó ${contador}`), `lo que decía el sistema (20) y quién contó (${contador})`)
   const p = filaConteo(pagina, `PRB-E23M-${sufijo}`)
-  comprobar((await p.locator('[data-diferencia]').getAttribute('data-diferencia')) === '0.3' && (await texto(p)).includes('10.3'),
+  comprobar((await p.locator('[data-diferencia]').getAttribute('data-diferencia')) === '0.3' && (await celda(p, 'Contó')) === '10.3 M' && (await celda(p, 'El sistema decía')) === '10 M',
     `la platina en metros, sin decimales de más: «${await texto(p)}»`)
   await pagina.locator('#por-validar').scrollIntoViewIfNeeded()
   await pagina.screenshot({ path: join(CAPTURAS, '2-3-almacen-1440-por-validar.png') })
@@ -183,8 +197,8 @@ const filaConteo = (pagina, codigo) => pagina.locator('#conteos tbody tr', { has
   await pagina.screenshot({ path: join(CAPTURAS, '2-3-almacen-1440-conteos.png') })
 
   await ir(pagina, `/almacen/kardex?material=${disco.id}`)
-  const ficha = pagina.locator('#conteos')
-  comprobar((await texto(ficha.locator('h2, h3').first())).includes('Conteos físicos de este material'), 'la ficha del material trae sus conteos')
+  const ficha = await abrirConteos(pagina)
+  comprobar((await texto(ficha.locator('summary'))).includes('Conteos físicos de este material'), 'la ficha del material trae sus conteos')
   comprobar((await ficha.locator('tbody tr').count()) === 1 && !(await texto(ficha)).includes(`PRB-E23M-${sufijo}`), 'solo los suyos')
   comprobar(errores.length === 0, `sin errores de consola como Almacén ${errores.join(' | ')}`)
   await contexto.close()
@@ -194,6 +208,10 @@ const filaConteo = (pagina, codigo) => pagina.locator('#conteos tbody tr', { has
 {
   const { pagina, contexto, errores } = await entrar(CUENTAS.almacen, 390)
   await ir(pagina, '/almacen/kardex')
+  // Plegados miden lo que su título: no empujan el tablero ni los filtros, por muchos que sean.
+  const alto = await pagina.locator('details#conteos').evaluate((e) => e.getBoundingClientRect().height)
+  comprobar(alto < 120, `los conteos plegados no empujan la consulta (miden ${Math.round(alto)} px)`)
+  await abrirConteos(pagina)
   const ancho = await pagina.evaluate(() => document.documentElement.scrollWidth)
   comprobar(ancho <= 390, `a 390 px nada se sale (${ancho} px)`)
   const caja = await filaConteo(pagina, `PRB-E23-${sufijo}`).boundingBox()
@@ -211,6 +229,7 @@ const filaConteo = (pagina, codigo) => pagina.locator('#conteos tbody tr', { has
 {
   const { pagina, contexto, errores } = await entrar(CUENTAS.gerencia)
   await ir(pagina, '/almacen/kardex')
+  await abrirConteos(pagina)
   comprobar((await filaConteo(pagina, `PRB-E23-${sufijo}`).count()) === 1, 'Gerencia ve los conteos')
   comprobar((await pagina.getByRole('button', { name: /Validar/ }).count()) === 0, 'y no valida nada')
   comprobar(errores.length === 0, `sin errores de consola como Gerencia ${errores.join(' | ')}`)

@@ -11,7 +11,7 @@ import { SinDatos } from '@/components/ui/tabla'
 import type { EntregaPorValidar } from '@/lib/datos/ingresos-por-validar'
 import { partesDeNombreDeOc } from '@/lib/dominio/adquisiciones'
 import { useEnvio } from '@/lib/envio'
-import { cantidad, fechaHora } from '@/lib/format'
+import { cantidad, fecha, fechaHora } from '@/lib/format'
 
 import { validarIngresosCompra } from './acciones'
 
@@ -70,6 +70,7 @@ function EntregaParaValidar({ entrega, puedeValidar, abreOt, alValidar }: {
           <p className="text-xs text-texto-suave">
             Dejado {fechaHora(entrega.dejadoEn)}{entrega.dejadoPor ? ` por ${entrega.dejadoPor}` : ''}
             {entrega.recogidoEn ? ` · recogido ${fechaHora(entrega.recogidoEn)}` : ''}
+            {entrega.fechaEsperada ? ` · se esperaba el ${fecha(entrega.fechaEsperada)}` : ''}
           </p>
         </div>
         <span className="flex flex-wrap items-center gap-1">
