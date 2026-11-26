@@ -128,9 +128,11 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
         }
       />
 
+      {/* 20 px entre bloques, como dice la escala de la skill diseno (iban a 12).
+          Las tarjetas de la lista siguen a 12: son filas de una misma lista. */}
+      <div className="space-y-5">
       <Vistas
         etiqueta="Requerimiento"
-        className="mb-3"
         vistas={(supervisaArea
           ? [
               ...(pideSuArea
@@ -155,7 +157,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
       />
 
       {!soloUno && codigo && (
-        <p className="mb-3 text-sm text-texto-suave">
+        <p className="text-sm text-texto-suave">
           Solo los del código interno <span className="font-mono text-texto">{codigo}</span>.{' '}
           <Link href={verTodos} className="font-medium text-acento hover:underline">
             Ver todos
@@ -164,7 +166,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
       )}
 
       {soloUno && (
-        <p className="mb-3 text-sm text-texto-suave">
+        <p className="text-sm text-texto-suave">
           {requerimientos.length === 1 ? `Solo el ${requerimientos[0].numero}.` : 'Ese requerimiento no está o no lo puedes ver.'}{' '}
           <Link href="/requerimientos" className="font-medium text-acento hover:underline">
             Ver todos
@@ -173,14 +175,14 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
       )}
 
       {metrado === null && requerimientos.length > 0 && (
-        <p role="status" className="mb-3 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-metrado-sin-leer>
+        <p role="status" className="rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-metrado-sin-leer>
           No se pudo leer el metrado de Diseño: las tarjetas no dicen qué insumo se pasa ni cuál espera tu sustento. Vuelve a cargar la
           pantalla en un momento.
         </p>
       )}
 
       {!soloUno && !soloSustentar && porSustentar.length > 0 && (
-        <p className="mb-3 rounded-[var(--radius-base)] border border-peligro bg-peligro-suave px-3 py-2 text-sm text-texto" data-esperan-sustento>
+        <p className="rounded-[var(--radius-base)] border border-peligro bg-peligro-suave px-3 py-2 text-sm text-texto" data-esperan-sustento>
           {porSustentar.length === 1
             ? `El ${porSustentar[0].numero} se pasa del metrado de Diseño y espera tu sustento.`
             : `${porSustentar.length} requerimientos se pasan del metrado de Diseño y esperan tu sustento.`}{' '}
@@ -191,7 +193,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
       )}
 
       {soloSustentar && (
-        <p className="mb-3 text-sm text-texto-suave">
+        <p className="text-sm text-texto-suave">
           Solo los que se pasan del metrado y esperan tu sustento.{' '}
           <Link href={sinRecoger} className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0">
             Ver todos
@@ -200,7 +202,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
       )}
 
       {soloRecoger && (
-        <p className="mb-3 text-sm text-texto-suave">
+        <p className="text-sm text-texto-suave">
           Solo los que tienen algo para recoger en Almacén.{' '}
           <Link href={sinRecoger} className="font-medium text-acento hover:underline">
             Ver todos
@@ -237,6 +239,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
           ))}
         </div>
       )}
+      </div>
     </>
   )
 }

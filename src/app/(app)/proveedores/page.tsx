@@ -59,12 +59,14 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
         }
       />
 
+      {/* 20 px entre el buscador y la lista, como entre bloques (la escala de la skill diseno). */}
+      <div className="space-y-5">
       <BuscadorSimple ruta="/proveedores" etiqueta="Buscar proveedores" marcador="Razón social, RUC o rubro" />
 
       {/* En el teléfono cada proveedor es una ficha con «Editar» y «Dar de baja»
           en un renglón (entrega 4 del plan de orden y diseño): en su columna
           angosta iban uno debajo del otro. */}
-      <Tarjeta className="mt-4 overflow-hidden">
+      <Tarjeta className="overflow-hidden">
         <Tabla apilada>
           <TablaCabecera>
             <tr>
@@ -72,9 +74,12 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
               <TH className="hidden md:table-cell">Documento</TH>
               {/* En el teléfono, contacto y pago bajan a la celda del nombre: así
                   caben el RUC y Editar sin correr la tabla de lado. */}
-              <TH className="hidden md:table-cell">Contacto</TH>
+              {/* Contacto y cuentas desde 1280 px: entre 768 y 1279 (una laptop con el
+                  zoom de Windows) la tabla se salía de costado. Hasta ahí, bajan
+                  a la celda del nombre. */}
+              <TH className="hidden xl:table-cell">Contacto</TH>
               <TH className="hidden md:table-cell">Pago</TH>
-              {verCuentas && <TH className="hidden lg:table-cell">Cuentas</TH>}
+              {verCuentas && <TH className="hidden xl:table-cell">Cuentas</TH>}
               {edita && <TH className="md:w-56">Acciones</TH>}
             </tr>
           </TablaCabecera>
@@ -111,19 +116,37 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
                       )}
                       {/* En el teléfono el RUC baja aquí: su columna aparte dejaba el nombre en cuatro renglones. */}
                       <p className="text-xs text-texto-suave md:hidden">
-                        {[`${p.tipo_documento} ${p.numero_documento}`, pago, contacto].filter(Boolean).join(' · ')}
+                        {[`${p.tipo_documento} ${p.numero_documento}`, pago].join(' · ')}
                       </p>
+                      {(contacto || p.correo) && (
+                        <p className="text-xs text-texto-suave xl:hidden">{[contacto, p.correo].filter(Boolean).join(' · ')}</p>
+                      )}
+                      {/* Lo mismo que la columna «Cuentas», que no se ve hasta 1280 px. */}
+                      {verCuentas && (
+                        <div className="mt-1 text-xs text-texto-suave xl:hidden" data-cuentas-en-ficha>
+                          {p.cuentas.length === 0 ? (
+                            <p className="text-aviso">Sin cuenta</p>
+                          ) : (
+                            p.cuentas.map((c) => (
+                              <p key={c.id} className="tabular">
+                                {resumenCuenta(c)}
+                              </p>
+                            ))
+                          )}
+                          {p.direccion_recojo && <p>Recojo: {p.direccion_recojo}</p>}
+                        </div>
+                      )}
                     </TD>
                     <TD className="hidden whitespace-nowrap md:table-cell">
                       <span className="text-texto-suave">{p.tipo_documento} </span><span className="tabular">{p.numero_documento}</span>
                     </TD>
-                    <TD className="hidden text-texto-suave md:table-cell">
+                    <TD className="hidden text-texto-suave xl:table-cell">
                       {contacto || '—'}
                       {p.correo && <p className="text-xs">{p.correo}</p>}
                     </TD>
                     <TD className="hidden whitespace-nowrap text-texto-suave md:table-cell">{pago}</TD>
                     {verCuentas && (
-                      <TD className="hidden text-texto-suave lg:table-cell">
+                      <TD className="hidden text-texto-suave xl:table-cell">
                         {p.cuentas.length === 0 ? (
                           <span className="text-aviso">Sin cuenta</span>
                         ) : (
@@ -150,6 +173,7 @@ export default async function PaginaProveedores({ searchParams }: PageProps<'/pr
           </tbody>
         </Tabla>
       </Tarjeta>
+      </div>
 
       <Paginacion
         ruta="/proveedores"

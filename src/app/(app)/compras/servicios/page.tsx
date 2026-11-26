@@ -65,9 +65,9 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
         }
       />
 
-      <div className="mb-4">
-        <BuscadorSimple ruta="/compras/servicios" clave="codigo" etiqueta="Buscar por código interno" marcador="Código interno, por ejemplo SR_04" />
-      </div>
+      {/* 20 px entre el buscador y la lista, como entre bloques (la escala de la skill diseno). */}
+      <div className="space-y-5">
+      <BuscadorSimple ruta="/compras/servicios" clave="codigo" etiqueta="Buscar por código interno" marcador="Código interno, por ejemplo SR_04" />
 
       {/* En el teléfono cada orden es una ficha con sus botones en un renglón
           (entrega 4 del plan de orden y diseño): apilados en una columna
@@ -77,10 +77,14 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
           <TablaCabecera>
             <tr>
               <TH>Orden</TH>
-              <TH className="hidden md:table-cell">Para</TH>
+              {/* «Para» desde 1280 px: entre 768 y 1279 (una laptop con el zoom de
+                  Windows) los botones iban uno por renglón. Hasta ahí, el código
+                  y el área bajan a la celda de la orden. */}
+              <TH className="hidden xl:table-cell">Para</TH>
               <TH className="hidden text-right md:table-cell">Monto sin IGV</TH>
               <TH className="hidden md:table-cell">En qué va</TH>
-              <TH className="text-right md:w-[26rem]">
+              {/* El ancho, solo para quien emite: a quien consulta le dejaba 448 px para un «PDF». */}
+              <TH className={`text-right ${emite ? 'md:w-72 xl:w-[28rem]' : ''}`}>
                 <span className="sr-only">Acciones</span>
               </TH>
             </tr>
@@ -105,6 +109,7 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
           </tbody>
         </Tabla>
       </Tarjeta>
+      </div>
     </>
   )
 }
@@ -146,7 +151,7 @@ function FilaServicio({
         {s.motivo_anulacion && <p className="mt-1 text-xs text-peligro">Anulada: {s.motivo_anulacion}</p>}
         {s.observacion_conformidad && <p className="mt-1 text-xs text-texto-suave">Conformidad: {s.observacion_conformidad}</p>}
         <ListaDocumentosServicio documentos={s.documentos} anula={adjunta && vigente} />
-        <p className="mt-1 text-xs text-texto-suave md:hidden">
+        <p className="mt-1 text-xs text-texto-suave xl:hidden">
           <span className="tabular font-medium text-texto" data-codigo>
             {s.codigo_interno ?? 'Sin código interno'}
           </span>
@@ -158,7 +163,7 @@ function FilaServicio({
           <EnQueVa servicio={s} />
         </div>
       </TD>
-      <TD className="hidden md:table-cell">
+      <TD className="hidden xl:table-cell">
         <p className={s.codigo_interno ? 'tabular font-medium text-texto' : 'text-aviso'}>{s.codigo_interno ?? 'Sin código interno'}</p>
         {para && <p className="text-xs text-texto-suave">{para}</p>}
       </TD>
@@ -167,9 +172,21 @@ function FilaServicio({
         <EnQueVa servicio={s} />
       </TD>
       <TD>
-        {/* Un renglón: primero lo que mueve la orden, después sus papeles y al
-            final «Anular», sin borde. */}
+        {/* Un renglón: el PDF primero, como en las órdenes de compra; después lo
+            que mueve la orden y sus papeles, y al final «Anular», sin borde. */}
         <AccionesDeFila>
+          {/* El papel para el contratista: la aprobada, y la anulada después con su marca. */}
+          {!servicioSinPapel(s.aprobacion, s.estado) && (
+            <a
+              href={`/compras/servicios/${s.id}/pdf`}
+              download
+              className="inline-flex min-h-11 items-center gap-1 px-1 text-xs text-acento hover:underline sm:min-h-0 sm:px-0"
+              aria-label={`Descargar el PDF de la orden de servicio ${s.numero}${s.estado === 'ANULADA' ? ', anulada' : ''}`}
+            >
+              <FileDown aria-hidden className="size-4" />
+              PDF
+            </a>
+          )}
           {emite && s.aprobacion !== 'RECHAZADA' && abierta && (
             <AvanceServicio
               id={s.id}
@@ -192,18 +209,6 @@ function FilaServicio({
               codigos={codigos}
               cambiaCodigo={emite && abierta}
             />
-          )}
-          {/* El papel para el contratista: la aprobada, y la anulada después con su marca. */}
-          {!servicioSinPapel(s.aprobacion, s.estado) && (
-            <a
-              href={`/compras/servicios/${s.id}/pdf`}
-              download
-              className="inline-flex min-h-11 items-center gap-1 px-1 text-xs text-acento hover:underline sm:min-h-0 sm:px-0"
-              aria-label={`Descargar el PDF de la orden de servicio ${s.numero}${s.estado === 'ANULADA' ? ', anulada' : ''}`}
-            >
-              <FileDown aria-hidden className="size-4" />
-              PDF
-            </a>
           )}
           {emite && s.aprobacion !== 'RECHAZADA' && abierta && (
             <AvanceServicio id={s.id} numero={s.numero} iniciar={false} conformar={false} anular />

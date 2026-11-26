@@ -138,7 +138,7 @@ export function ControlesVehiculo({
         desenlace={fotosSalida.desenlace}
         registro="La salida"
         femenino
-        className="basis-full md:text-right"
+        className="order-last basis-full md:text-right"
       />
       <EstadoDelEnvio
         id={fotosAnular.idDelEstado}
@@ -146,7 +146,7 @@ export function ControlesVehiculo({
         desenlace={fotosAnular.desenlace}
         registro="La anulación"
         femenino
-        className="basis-full md:text-right"
+        className="order-last basis-full md:text-right"
       />
       <Ventana
         abierta={paso !== null}

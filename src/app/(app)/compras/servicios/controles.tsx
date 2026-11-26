@@ -70,7 +70,7 @@ export function AvanceServicio({
         </Boton>
       )}
       {inicio.error && (
-        <p role="alert" className="basis-full text-right text-xs text-peligro">
+        <p role="alert" className="order-last basis-full text-xs md:text-right text-peligro">
           {inicio.error}
         </p>
       )}

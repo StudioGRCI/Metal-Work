@@ -36,12 +36,21 @@ En `src/components/ui/`:
   un menú «⋯» de la fila (decisión 6 del plan de orden y diseño), y ese menú
   todavía no existe. Si los botones vienen de un componente con su propia caja
   (`AccionesCompra`, `AvanceServicio`, `ControlesVehiculo`,
-  `AccionesProveedor`), su caja va `contents` para que entren al renglón, y
+  `AccionesProveedor`, `AccionesEquipo`), su caja va `contents` para que entren al renglón, y
   quien lo usa lo envuelve en `AccionesDeFila` (también en el encabezado de
   una ficha). Lo de una vez que viene dentro de ese componente («Anular» de la
   OS) se pide en un segundo llamado, al final. En el monitor, si la columna de
   acciones se come la primera, la primera lleva su ancho (`md:w-1/4` en las
-  OC): sin eso las filas crecían un 21 % (entrega 4, 2026-11-26).
+  OC): sin eso las filas crecían un 21 % (entrega 4, 2026-11-26). El ancho
+  de la columna de acciones se da solo a quien tiene botones
+  (`emite ? 'md:w-80' : ''`): a Gerencia, que consulta, le dejaba 384 px
+  vacíos. Un aviso dentro del renglón (`basis-full`) lleva `order-last` y
+  `md:text-right`: con `contents` caía entre dos botones y partía el renglón.
+  Entre 768 y 1279 px (una laptop de 1366 con el zoom de Windows) la tabla
+  con todas sus columnas se salía de costado y los botones iban uno por
+  renglón: las columnas de consulta («Para», «Comprobante», el contacto)
+  aparecen desde `xl:table-cell` y hasta ahí bajan a la primera celda
+  (`xl:hidden`).
 - `SinDatos` tiene dos tamaños: el grande es para la lista que es el trabajo
   de la pantalla; `compacto` para la bandeja que comparte pantalla con otras
   (lo pendiente del Kardex). No se escribe el vacío a mano con un `<p>`.

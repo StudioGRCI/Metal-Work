@@ -51,9 +51,10 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
         acciones={registra && <NuevoIngresoVehiculo cuentaId={perfil.id} codigos={codigos} ots={ots} />}
       />
 
+      {/* 20 px entre las vistas y la lista, como entre bloques (la escala de la skill diseno). */}
+      <div className="space-y-5">
       <Vistas
         etiqueta="Vista"
-        className="mb-3"
         vistas={VISTAS.map((v) => ({
           clave: v.valor,
           titulo: v.titulo,
@@ -72,9 +73,13 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
             <tr>
               <TH>Vehículo</TH>
               <TH className="hidden md:table-cell">Motivo</TH>
-              <TH className="hidden md:table-cell">Ingreso</TH>
-              <TH className="hidden md:table-cell">Salida</TH>
-              <TH className="text-right md:w-96">
+              {/* Ingreso y salida desde 1280 px: entre 768 y 1279 (una laptop con el
+                  zoom de Windows) los botones iban uno por renglón. Hasta ahí,
+                  bajan a la celda del vehículo. */}
+              <TH className="hidden xl:table-cell">Ingreso</TH>
+              <TH className="hidden xl:table-cell">Salida</TH>
+              {/* El ancho, solo para quien registra: a quien consulta le dejaba una columna vacía. */}
+              <TH className={`text-right ${registra ? 'md:w-96' : ''}`}>
                 <span className="sr-only">Acciones</span>
               </TH>
             </tr>
@@ -93,6 +98,7 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
           </tbody>
         </Tabla>
       </Tarjeta>
+      </div>
     </>
   )
 }
@@ -135,10 +141,13 @@ function FilaVehiculo({
           </Link>
         )}
         {r.motivo_anulacion && <p className="mt-1 text-xs text-peligro">Anulado: {r.motivo_anulacion}</p>}
-        {/* En el teléfono, el ingreso y la salida van aquí: la tabla no se desliza de costado. */}
-        <div className="mt-1 space-y-1 md:hidden">
+        {/* En el teléfono y hasta 1279 px, el ingreso y la salida van aquí: la tabla no se desliza de costado. */}
+        <div className="mt-1 space-y-1 xl:hidden">
           <p className="tabular text-xs text-texto-suave">Entró {fechaHora(r.ingreso_en)}</p>
+          {r.observacion_ingreso && <p className="text-xs text-texto-suave">{r.observacion_ingreso}</p>}
           <Situacion registro={r} estado={estado} />
+          {/* Lo mismo que las columnas «Ingreso» y «Salida», que no se ven hasta 1280 px. */}
+          {r.salida_en && r.observacion_salida && <p className="text-xs text-texto-suave">{r.observacion_salida}</p>}
         </div>
         {estado?.falta_para_salir && (
           <p id={`veh-bloqueo-${r.id}`} className="mt-1 max-w-sm text-xs text-texto-suave" data-bloqueo-salida>
@@ -149,11 +158,11 @@ function FilaVehiculo({
       <TD className="hidden align-top md:table-cell">
         {motivo ? <Insignia tono={motivo.tono}>{motivo.etiqueta}</Insignia> : r.motivo}
       </TD>
-      <TD className="hidden align-top md:table-cell">
+      <TD className="hidden align-top xl:table-cell">
         <p className="tabular text-xs text-texto whitespace-nowrap">{fechaHora(r.ingreso_en)}</p>
         {r.observacion_ingreso && <p className="mt-1 max-w-xs text-xs text-texto-suave">{r.observacion_ingreso}</p>}
       </TD>
-      <TD className="hidden align-top md:table-cell">
+      <TD className="hidden align-top xl:table-cell">
         {r.salida_en ? (
           <>
             <p className="tabular text-xs text-texto whitespace-nowrap">{fechaHora(r.salida_en)}</p>

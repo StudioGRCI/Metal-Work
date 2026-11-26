@@ -116,12 +116,12 @@ export function AccionesCompra({
         </Boton>
       )}
       {envio.error && (
-        <p role="alert" className="basis-full text-right text-xs text-peligro">
+        <p role="alert" className="order-last basis-full text-xs md:text-right text-peligro">
           {envio.error}
         </p>
       )}
       {envio.resultado?.ok && (
-        <p role="status" className="basis-full text-right text-xs text-exito">
+        <p role="status" className="order-last basis-full text-xs md:text-right text-exito">
           {envio.resultado.mensaje}
         </p>
       )}

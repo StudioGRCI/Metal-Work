@@ -68,7 +68,7 @@ export default async function PaginaOrdenesCompra() {
       />
 
       {sinComprobante > 0 && (
-        <p className="mb-3 text-sm text-texto-suave">
+        <p className="mb-5 text-sm text-texto-suave">
           <span className="tabular font-semibold text-texto">{sinComprobante}</span>{' '}
           {sinComprobante === 1
             ? 'orden sigue sin su comprobante adjunto (factura, o boleta si es sin factura).'
@@ -77,7 +77,7 @@ export default async function PaginaOrdenesCompra() {
       )}
 
       {porReponer.length > 0 && (
-        <Tarjeta id="por-reponer" className="mb-4 scroll-mt-20">
+        <Tarjeta id="por-reponer" className="mb-5 scroll-mt-20">
           <TarjetaCabecera
             titulo={`Devuelto al proveedor · ${porReponer.length === 1 ? '1 espera reposición' : `${porReponer.length} esperan reposición`}`}
             ayuda="Almacén devolvió lo que llegó malo y el proveedor dijo que lo repone. Si ya no viene, dilo: lo que falta vuelve a la lista para comprarlo en otra OC."
@@ -98,13 +98,17 @@ export default async function PaginaOrdenesCompra() {
               {/* Su ancho: con los botones en un renglón, la columna de acciones
                   se comía la de la orden y cada fila crecía un 21 %. */}
               <TH className="md:w-1/4">Orden</TH>
-              <TH className="hidden md:table-cell">Para</TH>
+              {/* «Para» y «Comprobante» desde 1280 px: entre 768 y 1279 (una laptop con
+                  el zoom de Windows) la tabla se salía de costado y los botones
+                  iban uno por renglón. Hasta ahí, bajan a la celda de la orden. */}
+              <TH className="hidden xl:table-cell">Para</TH>
               {/* En el teléfono el monto y en qué va viajan bajo el número: con sus columnas, la tabla medía 461 px en una pantalla de 390. */}
               <TH className="hidden text-right md:table-cell">Monto sin IGV</TH>
               <TH className="hidden md:table-cell">En qué va</TH>
-              <TH className="hidden md:table-cell">Comprobante</TH>
+              <TH className="hidden xl:table-cell">Comprobante</TH>
               {/* Con `relative`, el rótulo oculto queda dentro de la tabla que se desliza y no ensancha la página en el teléfono. */}
-              <TH className="relative text-right md:w-80">
+              {/* El ancho, solo para quien tiene botones: a quien consulta (Gerencia) le dejaba 320 px vacíos por un «PDF». */}
+              <TH className={`relative text-right ${emite ? 'md:w-80' : ''}`}>
                 <span className="sr-only">Acciones</span>
               </TH>
             </tr>
@@ -184,6 +188,10 @@ function FilaCompra({
           <span className="text-xs text-texto-suave">sin IGV</span>
           <Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>
           {reposicion}
+        </div>
+        {/* Lo mismo que la columna «Comprobante», que no se ve hasta 1280 px. */}
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 xl:hidden">
+          <span className="text-xs text-texto-suave">Comprobante:</span>
           {c.tiene_factura ? (
             <Insignia tono="exito">Comprobante adjunto</Insignia>
           ) : sinCurso ? (
@@ -191,6 +199,13 @@ function FilaCompra({
           ) : (
             <span className="text-xs text-texto-suave">{comprobantePendiente(c)}</span>
           )}
+          {!sinCurso && <span className="text-xs text-texto-suave">· {comprobante.etiqueta.toLowerCase()}</span>}
+          {c.facturas.map((f) => (
+            <span key={f.id} className="tabular text-xs text-texto">
+              {f.numero}
+              {f.fecha && <span className="text-texto-suave"> · {fecha(f.fecha)}</span>}
+            </span>
+          ))}
         </div>
         <p className="text-xs text-texto">{c.proveedor}</p>
         <p className="text-xs text-texto-suave">
@@ -209,10 +224,10 @@ function FilaCompra({
             {c.aprobacion === 'ANULADA' ? 'Anulada' : 'Rechazada'}: {c.motivo_rechazo}
           </p>
         )}
-        <p className="text-xs text-texto-suave md:hidden">Para {para || '—'}</p>
+        <p className="text-xs text-texto-suave xl:hidden">Para {para || '—'}</p>
         <HistorialDeCorrecciones correcciones={correcciones} />
       </TD>
-      <TD className="hidden text-texto-suave md:table-cell">{para || '—'}</TD>
+      <TD className="hidden text-texto-suave xl:table-cell">{para || '—'}</TD>
       <TD className="tabular hidden text-right whitespace-nowrap md:table-cell">{moneda(c.monto, divisa(c.moneda))}</TD>
       <TD className="hidden md:table-cell">
         <div className="flex flex-wrap gap-1">
@@ -220,7 +235,7 @@ function FilaCompra({
           {reposicion}
         </div>
       </TD>
-      <TD className="hidden md:table-cell">
+      <TD className="hidden xl:table-cell">
         {c.tiene_factura ? (
           <Insignia tono="exito">Adjunto</Insignia>
         ) : sinCurso ? (
