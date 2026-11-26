@@ -1,0 +1,15 @@
+-- =============================================================================
+-- EL RECLAMO DE GARANTÍA TIENE NÚMERO
+-- -----------------------------------------------------------------------------
+-- DKS, 2026-11-26, «Plan aparte. Las demás áreas», entrega A.2: el reclamo del
+-- cliente que vuelve por garantía es un documento numerado. La empresa no
+-- tiene formato propio de reclamo (docs/ANALISIS-ONEDRIVE.md: el SIG no trae
+-- carpeta de Garantías): el número es RG-0001-2026, que DKS aprobó el
+-- 2026-11-26, con la forma del RI de SSOMA y el AV de Mantenimiento.
+--
+-- Es un documento numerado: no se borra nunca, se anula con su motivo.
+--
+-- Va sola porque Postgres no deja usar en la misma transacción un valor de
+-- enum recién agregado: la migración 20261126951000 crea la serie con él.
+-- =============================================================================
+alter type public.tipo_correlativo add value if not exists 'RECLAMO_GARANTIA';
