@@ -1,0 +1,27 @@
+{
+  "name": "metal-work-videos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Plantilla fija de los videos de Metal Work (Remotion). Aparte de la aplicación: tiene sus propias dependencias.",
+  "type": "module",
+  "scripts": {
+    "estudio": "remotion studio src/index.ts",
+    "tipos": "tsc --noEmit",
+    "hacer": "node scripts/hacer.mjs"
+  },
+  "dependencies": {
+    "@fontsource/arimo": "5.3.0",
+    "@fontsource/jost": "5.3.0",
+    "@remotion/bundler": "4.0.547",
+    "@remotion/cli": "4.0.547",
+    "@remotion/renderer": "4.0.547",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "remotion": "4.0.547"
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5"
+  }
+}
