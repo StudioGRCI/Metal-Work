@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Vistas } from '@/components/estructura/vistas'
 import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
@@ -8,9 +9,11 @@ import { correccionesDe } from '@/lib/datos/correcciones'
 import { metradoDeRequerimientos } from '@/lib/datos/metrado-rq'
 import { recorridoDeRequerimientos } from '@/lib/datos/recorrido'
 import { esperaSuSustento } from '@/lib/dominio/metrado-rq'
+import { esFiltroDePlazo, estaVencido, FILTROS_DE_PLAZO, plazoDelRq, seNecesitaEstaSemana, type FiltroDePlazo } from '@/lib/dominio/plazo-rq'
 import { describirRecorridoDelRequerimiento } from '@/lib/dominio/recorrido'
 import { cargarRequerimientos, catalogosDelRequerimiento } from '@/lib/datos/requerimientos'
 import { TIPO_REQUERIMIENTO, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
+import { diasHasta, hoyLima } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { esUuid } from '@/lib/utils'
 
@@ -93,19 +96,31 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
   const esSuyo = (r: (typeof requerimientos)[number]) => loLleva(r) && (perfil.rol.codigo !== 'DISENO_COLABORADOR' || r.creado_por === perfil.id)
   const porSustentar = metrado ? requerimientos.filter((r) => esSuyo(r) && esperaSuSustento(r, metrado)) : []
   const soloSustentar = !soloUno && !soloRecoger && params.ver === 'sustentar'
-  const mostrados = soloSustentar ? porSustentar : recogen
+  const sinPlazo = soloSustentar ? porSustentar : recogen
+  // `?plazo=` deja los que se necesitan de hoy al domingo, o los vencidos con algo
+  // por entregar (plan 3, entrega 3.1). Se suma a los demás filtros; sus cifras
+  // cuentan lo que se ve sin él.
+  const hoy = hoyLima()
+  const plazos = new Map(sinPlazo.map((r) => [r.id, plazoDelRq(r.estado, diasHasta(r.fecha_requerida))]))
+  const cumple: Record<FiltroDePlazo, (r: (typeof requerimientos)[number]) => boolean> = {
+    semana: (r) => seNecesitaEstaSemana(plazos.get(r.id) ?? null, hoy),
+    vencidos: (r) => estaVencido(plazos.get(r.id) ?? null),
+  }
+  const plazo = !soloUno && esFiltroDePlazo(params.plazo) ? params.plazo : null
+  const mostrados = plazo ? sinPlazo.filter(cumple[plazo]) : sinPlazo
   // La dirección de esta misma lista, sin el filtro de recoger: para quitarlo y para ponerlo.
   const filtros = new URLSearchParams()
   if (pedida) filtros.set('tipo', pedida)
   if (supervisaArea && !deSuArea) filtros.set('area', 'todas')
   if (codigo) filtros.set('codigo', codigo)
+  if (plazo) filtros.set('plazo', plazo)
   const sinRecoger = `/requerimientos${filtros.size > 0 ? `?${filtros}` : ''}`
   filtros.set('ver', 'sustentar')
   const conSustentar = `/requerimientos?${filtros}`
   filtros.set('ver', 'recoger')
   const conRecoger = `/requerimientos?${filtros}`
   const verTodos = supervisaArea && !deSuArea ? '/requerimientos?area=todas' : '/requerimientos'
-  const vacio = listaVacia({ soloRecoger, soloSustentar, codigo, deSuArea: Boolean(deSuArea), emite, pideSuArea, sinRecoger, verTodos })
+  const vacio = listaVacia({ plazo, soloRecoger, soloSustentar, codigo, deSuArea: Boolean(deSuArea), emite, pideSuArea, sinRecoger, verTodos })
 
   return (
     <>
@@ -210,6 +225,24 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
 
       {!soloUno && requerimientos.length > 0 && <ResumenDeRequerimientos requerimientos={requerimientos} enlaceRecoger={soloRecoger ? null : conRecoger} metrado={metrado} />}
 
+      {!soloUno && requerimientos.length > 0 && (
+        <PastillaFiltro
+          etiqueta="Por la fecha en que se necesita"
+          className="mb-3"
+          ruta="/requerimientos"
+          clave="plazo"
+          params={params}
+          activo={plazo}
+          opciones={[
+            { valor: null, etiqueta: 'Cualquier fecha' },
+            ...(Object.keys(FILTROS_DE_PLAZO) as FiltroDePlazo[]).map((f) => ({
+              valor: f,
+              etiqueta: `${FILTROS_DE_PLAZO[f]} (${sinPlazo.filter(cumple[f]).length})`,
+            })),
+          ]}
+        />
+      )}
+
       {mostrados.length === 0 ? (
         !soloUno && (
           <Tarjeta>
@@ -246,6 +279,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
  * requerimientos, es que ese filtro no trae ninguno, y se dice cómo quitarlo.
  */
 function listaVacia({
+  plazo,
   soloRecoger,
   soloSustentar,
   codigo,
@@ -255,6 +289,8 @@ function listaVacia({
   sinRecoger,
   verTodos,
 }: {
+  /** El filtro por la fecha en que se necesita, si hay uno puesto. */
+  plazo: FiltroDePlazo | null
   soloRecoger: boolean
   soloSustentar: boolean
   codigo: string | undefined
@@ -271,6 +307,21 @@ function listaVacia({
       {texto}
     </Link>
   )
+  if (plazo) {
+    // Quita solo este filtro: los demás (el código, lo de recoger) siguen puestos.
+    const sinEste = new URLSearchParams(sinRecoger.split('?')[1] ?? '')
+    sinEste.delete('plazo')
+    if (soloRecoger) sinEste.set('ver', 'recoger')
+    if (soloSustentar) sinEste.set('ver', 'sustentar')
+    return {
+      titulo: plazo === 'vencidos' ? 'Ninguno vencido sin atender' : 'Ninguno se necesita esta semana',
+      descripcion:
+        plazo === 'vencidos'
+          ? 'Todo lo que se necesitaba hasta ayer ya se entregó o se anuló.'
+          : 'Ningún requerimiento en camino pide su fecha entre hoy y el domingo.',
+      accion: enlace(`/requerimientos${sinEste.size > 0 ? `?${sinEste}` : ''}`, 'Ver de cualquier fecha'),
+    }
+  }
   if (soloSustentar) {
     return {
       titulo: 'Ninguno espera tu sustento',

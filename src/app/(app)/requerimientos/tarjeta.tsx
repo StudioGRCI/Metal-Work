@@ -11,6 +11,7 @@ import type { MetradoDelInsumo } from '@/lib/datos/metrado-rq'
 import type { LineaRequerimiento, MaterialParaRequerimiento, RequerimientoListado } from '@/lib/datos/requerimientos'
 import type { CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import type { PasoDescrito } from '@/lib/dominio/recorrido'
+import { estaVencido, loQueLoAtrasa, plazoDelRq, textoDelPlazo } from '@/lib/dominio/plazo-rq'
 import { cuentaDelMetrado, ESTADO_METRADO, FRENO_DEL_RQ, frenaElRq, frenoDelRq, listaDeItems, pideSustento } from '@/lib/dominio/metrado-rq'
 import {
   COMPRA_CORTA,
@@ -263,7 +264,9 @@ export function TarjetaRequerimiento({
       : soloFaltaLoNoComprado(rq)
         ? FALTA_LO_NO_COMPRADO
         : estadoDelRequerimiento(rq)
-  const plazo = abierto(rq.estado) ? diasHasta(rq.fecha_requerida) : null
+  // Lo que le falta o lleva vencido: solo mientras tiene algo por entregar (plan 3, entrega 3.1).
+  const plazo = plazoDelRq(rq.estado, diasHasta(rq.fecha_requerida))
+  const textoPlazo = plazo !== null ? textoDelPlazo(plazo) : null
   const corrige = anula && rq.estado !== 'ENTREGADO' && rq.estado !== 'ANULADO'
   const anulable = anula && (rq.estado === 'POR_ATENDER' || rq.estado === 'SIN_STOCK')
   return (
@@ -280,9 +283,11 @@ export function TarjetaRequerimiento({
               <Insignia>{rq.estado}</Insignia>
             )}
             {rq.tipo === 'ADMINISTRACION' && <Insignia tono="acento">Administración</Insignia>}
-            {plazo !== null && plazo < 0 && <Insignia tono="peligro">Se necesitaba el {fecha(rq.fecha_requerida)}</Insignia>}
-            {plazo === 0 && <Insignia tono="aviso">Se necesita hoy</Insignia>}
-            {plazo === 1 && <Insignia tono="aviso">Se necesita mañana</Insignia>}
+            {textoPlazo && (
+              <Insignia tono={textoPlazo.tono} title={`Se necesita el ${fecha(rq.fecha_requerida)}`} data-plazo={plazo}>
+                {textoPlazo.etiqueta}
+              </Insignia>
+            )}
           </div>
           <p className="mt-1 text-sm text-texto">
             {rq.area} ·{' '}
@@ -314,6 +319,8 @@ export function TarjetaRequerimiento({
       ) : (
         <PasosDelRequerimiento rq={rq} enEspera={enEspera?.etiqueta} />
       )}
+
+      {estaVencido(plazo) && <LoQueLoTieneVencido rq={rq} />}
 
       {metrado && <FrenoDelMetrado rq={rq} metrado={metrado} sustenta={anula} />}
 
@@ -349,6 +356,21 @@ export function TarjetaRequerimiento({
         </div>
       )}
     </Tarjeta>
+  )
+}
+
+/**
+ * En el RQ vencido, qué insumos lo tienen así: lo que ya se puede ir a recoger
+ * primero, después lo que falta que llegue o que Almacén revise. Quien lo pidió
+ * ve de un vistazo si le toca ir a Almacén o esperar.
+ */
+function LoQueLoTieneVencido({ rq }: { rq: RequerimientoListado }) {
+  const falta = loQueLoAtrasa(rq.lineas.map((l) => ({ item: l.item, partes: partesDelInsumo(l, rq.estado) })))
+  return (
+    <p className="border-t border-borde bg-peligro-suave px-4 py-2 text-xs text-texto" data-lo-vencido={rq.numero}>
+      <span className="font-medium text-peligro">Se necesitaba el {fecha(rq.fecha_requerida)}.</span>{' '}
+      {falta.length > 0 ? `Lo que falta: ${falta.join('; ')}.` : 'Falta que Almacén lo entregue.'}
+    </p>
   )
 }
 
