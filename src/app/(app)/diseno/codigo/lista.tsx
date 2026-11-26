@@ -1,11 +1,13 @@
 import Link from 'next/link'
 
+import { LineaLoQueDebeDiseno } from '@/components/codigo-interno/lo-que-debe-diseno'
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { codigosDeDiseno, dxfDeCodigo, otPorCodigo, type CodigoDeDiseno, type OtDeCodigo } from '@/lib/datos/diseno-codigos'
+import { loQueDebeDiseno } from '@/lib/datos/lo-que-debe-diseno'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { llaveParecido } from '@/lib/dominio/codigos-internos'
 import { VISTAS_DISENO, VISTAS_SEGUIMIENTO, enlaceDisenoCodigo, enlaceSeguimientoCodigo, type VistaDiseno } from '@/lib/dominio/diseno-codigos'
@@ -105,6 +107,14 @@ export async function ListaDeCodigosDeDiseno({
       )
     : todos
   const codigos = filtro ? buscados.filter(filtro.cumple) : buscados
+  // Lo que Diseño le debe a cada código (plan 6.1), solo en sus propias listas.
+  // Si no se puede leer, cada fila lo dice y la lista sigue.
+  const debe = seguimiento
+    ? null
+    : await loQueDebeDiseno(codigos.map((c) => c.codigo)).catch((e: unknown) => {
+        console.error('[diseno] lo que debe Diseño:', e)
+        return 'sin-leer' as const
+      })
 
   return (
     <>
@@ -176,6 +186,7 @@ export async function ListaDeCodigosDeDiseno({
                   <Nombre c={c} veOt={veOt} />
                   <Resumen c={c} vista={vista} />
                 </div>
+                {debe !== null && <LineaLoQueDebeDiseno className="mt-2" d={debe === 'sin-leer' ? null : debe.get(c.codigo)} />}
               </Link>
             </li>
           ))}

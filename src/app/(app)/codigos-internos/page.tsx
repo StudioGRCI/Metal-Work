@@ -2,6 +2,7 @@ import Link from 'next/link'
 
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { LineaDeDiseno } from '@/components/codigo-interno/linea-diseno'
+import { LineaLoQueDebeDiseno } from '@/components/codigo-interno/lo-que-debe-diseno'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Paginacion } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
@@ -12,6 +13,8 @@ import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { leerListaDeCodigos, sumarCodigosDeDiseno, type AvanceDeCodigo, type ResumenCodigo } from '@/lib/datos/codigos-internos'
 import type { CodigoDeDiseno } from '@/lib/datos/diseno-codigos'
+import { loQueDebeDiseno } from '@/lib/datos/lo-que-debe-diseno'
+import type { LoQueDebeDiseno } from '@/lib/dominio/lo-que-debe-diseno'
 import {
   costoDelCodigo,
   dondeAparece,
@@ -86,6 +89,12 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
   const paginas = Math.max(1, Math.ceil(codigos.length / POR_PAGINA))
   const pagina = Math.min(Math.max(1, Math.trunc(Number(params.pagina)) || 1), paginas)
   const mostrar = codigos.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA)
+  // Lo que Diseño le debe a cada unidad de esta página (plan 6.1), en lectura.
+  // Si no se puede leer, cada fila lo dice y la lista sigue.
+  const debe = await loQueDebeDiseno(mostrar.filter((c) => !noEsUnidad(c.codigo)).map((c) => c.codigo)).catch((e: unknown) => {
+    console.error('[codigos-internos] lo que debe Diseño:', e)
+    return null
+  })
   const cerrados = buscados.filter(ESTADOS.cerrados).length
   // El «Todos» del segundo grupo es de lo elegido en el primero: dicho a secas se leía como todos los códigos.
   const todosDelEstado = estado === 'cerrados' ? 'Todos los cerrados' : estado === 'todos' ? 'Todos' : 'Todos los abiertos'
@@ -201,7 +210,13 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
         <ul className="space-y-3">
           {mostrar.map((c) => (
             <li key={c.codigo}>
-              <FilaCodigo codigo={c} parecidos={parecidosDe.get(c.codigo) ?? []} diseno={diseno.get(c.codigo)} avance={avances.get(c.codigo)} />
+              <FilaCodigo
+                codigo={c}
+                parecidos={parecidosDe.get(c.codigo) ?? []}
+                diseno={diseno.get(c.codigo)}
+                debe={debe === null ? null : debe.get(c.codigo)}
+                avance={avances.get(c.codigo)}
+              />
             </li>
           ))}
         </ul>
@@ -223,11 +238,14 @@ function FilaCodigo({
   codigo: c,
   parecidos,
   diseno,
+  debe,
   avance,
 }: {
   codigo: ResumenCodigo
   parecidos: string[]
   diseno: CodigoDeDiseno | undefined
+  /** `null`: no se pudo leer. */
+  debe: LoQueDebeDiseno | undefined | null
   avance: AvanceDeCodigo | undefined
 }) {
   const costo = costoDelCodigo(c)
@@ -336,9 +354,12 @@ function FilaCodigo({
         </p>
       )}
 
-      <div className="mt-2">
-        <LineaDeDiseno d={diseno} />
-      </div>
+      {!noEsUnidad(c.codigo) && (
+        <div className="mt-2 space-y-1">
+          <LineaDeDiseno d={diseno} />
+          <LineaLoQueDebeDiseno d={debe} />
+        </div>
+      )}
 
       {noEsUnidad(c.codigo) ? (
         <p className="mt-2 text-xs text-texto-suave">{origenDelAvance(c.codigo, avance)}.</p>

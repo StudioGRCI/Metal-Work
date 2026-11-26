@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import { ListaEtapas, resumenEtapas } from '@/components/codigo-interno/etapas'
 import { TablaComparada, TablaListaDiseno, TablaLoPedido } from '@/components/codigo-interno/materiales'
 import { ListaDxf } from '@/components/codigo-interno/dxf'
+import { TarjetaLoQueDebeDiseno } from '@/components/codigo-interno/lo-que-debe-diseno'
 import { ListaPlanos } from '@/components/codigo-interno/planos'
 import { DelDocumento } from '@/components/estructura/del-documento'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
@@ -27,6 +28,7 @@ import {
   type OrdenDelCodigo,
 } from '@/lib/datos/diseno-codigos'
 import { limitePorVencer } from '@/lib/datos/limite-por-vencer'
+import { loQueDebeDiseno } from '@/lib/datos/lo-que-debe-diseno'
 import { normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { AREAS_DE_ETAPA_DE_DISENO, VISTAS_DISENO, vistaDisenoValida, type VistaDiseno } from '@/lib/dominio/diseno-codigos'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
@@ -71,7 +73,17 @@ export default async function PaginaCodigoDeDiseno({ searchParams }: PageProps<'
   const vista = vistaDisenoValida(params.vista)
   const titulo = VISTAS_DISENO.find((v) => v.valor === vista)?.titulo ?? 'Planos'
 
-  const [codigos, ordenes] = await Promise.all([codigosDeDiseno(), codigo === 'PLANTA' ? Promise.resolve([]) : ordenesDelCodigo(codigo)])
+  const [codigos, ordenes, debe] = await Promise.all([
+    codigosDeDiseno(),
+    codigo === 'PLANTA' ? Promise.resolve([]) : ordenesDelCodigo(codigo),
+    // Si no se puede leer, la tarjeta lo dice: el resto del código sigue a la vista.
+    codigo === 'PLANTA'
+      ? Promise.resolve(null)
+      : loQueDebeDiseno([codigo]).catch((e: unknown) => {
+          console.error('[diseno/codigo] lo que debe Diseño:', e)
+          return null
+        }),
+  ])
   const resumen = codigos.find((c) => c.codigo === codigo)
 
   return (
@@ -93,6 +105,8 @@ export default async function PaginaCodigoDeDiseno({ searchParams }: PageProps<'
         <DelDocumento documento={`codigo:${codigo}`}>
           <div className="space-y-5">
             <OrdenesDelCodigo ordenes={ordenes} yo={perfil.id} />
+
+            <TarjetaLoQueDebeDiseno d={debe === null ? null : debe.get(codigo)} />
 
             <div className="grid grid-cols-3 gap-3">
               <Indicador

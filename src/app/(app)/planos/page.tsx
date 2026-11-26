@@ -1,5 +1,6 @@
 import { ListaDxf } from '@/components/codigo-interno/dxf'
 import { ListaEtapas } from '@/components/codigo-interno/etapas'
+import { LineaLoQueDebeDiseno } from '@/components/codigo-interno/lo-que-debe-diseno'
 import { ListaPlanos } from '@/components/codigo-interno/planos'
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
@@ -10,6 +11,7 @@ import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import { limitePorVencer } from '@/lib/datos/limite-por-vencer'
+import { loQueDebeDiseno } from '@/lib/datos/lo-que-debe-diseno'
 import {
   areasParaEtapas,
   dxfDeCodigo,
@@ -140,6 +142,11 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
   const paginas = Math.max(1, Math.ceil(lista.length / POR_PAGINA))
   const pagina = Math.min(Math.max(1, Math.trunc(Number(params.pagina)) || 1), paginas)
   const enPagina = lista.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA)
+  // Lo que Diseño le debe a cada unidad de esta página (plan 6.1), en lectura.
+  const debe = await loQueDebeDiseno(enPagina.map(([codigo]) => codigo)).catch((e: unknown) => {
+    console.error('[planos] lo que debe Diseño:', e)
+    return null
+  })
   const cualquierArea = puede(perfil, 'produccion.cualquier_area')
   // Para la etapa propia: las unidades que el sistema conoce, con su OT y su placa.
   const opcionesDeCodigo = (codigosConocidos ?? [])
@@ -214,6 +221,7 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
                   }
                 />
                 <TarjetaCuerpo className="space-y-4">
+                  <LineaLoQueDebeDiseno d={debe === null ? null : debe.get(codigo)} />
                   {deCodigo.length > 0 && (
                     <ListaPlanos
                       planos={deCodigo}

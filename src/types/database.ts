@@ -14938,6 +14938,30 @@ export type Database = {
           llegado: number | null
         }[]
       }
+      lo_que_debe_diseno: {
+        Args: {
+          p_codigos: string[] | null
+        }
+        Returns: {
+          codigo: string | null
+          tiene_ot: boolean | null
+          ficha_en: string | null
+          planos: number | null
+          planos_en: string | null
+          materiales: number | null
+          materiales_en: string | null
+          etapas: number | null
+          etapas_en: string | null
+          dxf: number | null
+          dxf_en: string | null
+          area: string | null
+          area_nombre: string | null
+          comprometido: string | null
+          entregado_en: string | null
+          situacion: string | null
+          dias: number | null
+        }[]
+      }
       lote_de_prueba: {
         Args: Record<PropertyKey, never>
         Returns: string
