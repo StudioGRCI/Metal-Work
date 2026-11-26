@@ -41,7 +41,7 @@ begin
     'se crearon los ocho usuarios del check, uno por puesto');
   perform set_config('prueba.area_mtz', (select id::text from public.areas where codigo = 'MTZ'), true);
   perform set_config('prueba.hoy', (now() at time zone 'America/Lima')::date::text, true);
-  foreach v in array array['rq', 'oc', 'ing', 'f1', 'dev1', 'nc1', 'guia', 'os', 'sin', 'p1', 'p2', 'p3', 'p4', 'rq2', 'rq3', 'ocb', 'oc2', 'ingb', 'devb', 'min', 'p5', 'fb'] loop
+  foreach v in array array['rq', 'oc', 'ing', 'f1', 'dev1', 'nc1', 'guia', 'os', 'sin', 'p1', 'p2', 'p3', 'p4', 'rq2', 'rq3', 'ocb', 'oc2', 'ingb', 'devb', 'devb2', 'min', 'p5', 'fb'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
 end $$;
@@ -204,6 +204,9 @@ select pg_temp.como('almacenero');
 set local role authenticated;
 select public.devolver_al_proveedor(pg_temp.id('dev1'), pg_temp.id('ing'), 2, 'GR-DEV-473', 'Dos discos llegaron partidos', false);
 reset role;
+select test.afirmar(exists (select 1 from public.notificaciones n where n.usuario_id = pg_temp.id('contabilidad')
+                              and n.origen_id = pg_temp.id('oc') and n.titulo like 'Espera la nota de crédito%'),
+  'de la OC con factura, a Contabilidad le llega «Espera la nota de crédito»');
 select pg_temp.como('contabilidad');
 set local role authenticated;
 do $$ begin
@@ -342,7 +345,21 @@ select pg_temp.como('almacenero');
 set local role authenticated;
 select public.validar_ingresos_compra(pg_temp.id('ocb'), current_setting('prueba.ingresos_b')::jsonb, null);
 select public.devolver_al_proveedor(pg_temp.id('devb'), pg_temp.id('ingb'), 2, 'GR-DEV-473B', 'Dos discos llegaron partidos', false);
+-- Otro que el proveedor iba a reponer y después ya no repone.
+select public.devolver_al_proveedor(pg_temp.id('devb2'), pg_temp.id('ingb'), 1, 'GR-DEV-473C', 'Un disco llegó rayado', true);
+select public.dejar_de_esperar_reposicion(pg_temp.id('devb2'), 'El proveedor ya no tiene ese disco');
 reset role;
+-- La OC con boleta no tiene factura contra la cual registrar la nota: a Contabilidad
+-- no le llega «Espera la nota de crédito», ni al devolver ni al dejar de esperar
+-- la reposición; a Logística sí le llegan sus avisos (20261126970000).
+select test.afirmar(not exists (select 1 from public.notificaciones n where n.origen_id = pg_temp.id('ocb')
+                                  and n.titulo like 'Espera la nota de crédito%'),
+  'de la OC con boleta, a Contabilidad no le llega «Espera la nota de crédito»');
+select test.afirmar(exists (select 1 from public.notificaciones n where n.origen_id = pg_temp.id('ocb') and n.usuario_id = pg_temp.id('comprador')
+                              and n.titulo like 'Devuelto al proveedor%')
+                    and exists (select 1 from public.notificaciones n where n.origen_id = pg_temp.id('ocb') and n.usuario_id = pg_temp.id('comprador')
+                              and n.titulo like 'No repone lo devuelto%'),
+  'y a Logística le llegan «Devuelto al proveedor» y «No repone lo devuelto»');
 -- Logística anexa la factura de la otra OC con factura; Contabilidad todavía no la registra.
 insert into storage.objects (bucket_id, name, owner_id, metadata)
 values ('documentos-compras', 'compra/' || pg_temp.id('oc2') || '/anexo-473.pdf', pg_temp.id('comprador')::text,
@@ -421,10 +438,25 @@ do $$ begin
     'con una boleta de una parte, la OC con boleta no pide nota en ninguna de las dos');
 end $$;
 reset role;
+-- a2) Registrado como otro comprobante, que no es una factura: `registrar_nota_credito` no lo acepta, y nadie pide la nota.
+set local session_replication_role = replica;
+update public.adquisiciones set estado = 'REGISTRADA', ruta_storage = 'fb-473.pdf', tipo = 'OTRO' where id = pg_temp.id('fb');
+set local session_replication_role = origin;
+select pg_temp.como('contabilidad');
+set local role authenticated;
+do $$ begin
+  perform test.afirmar(not exists (select 1 from pg_temp.doc('ocb', 'NOTA_CREDITO'))
+                       and not exists (select 1 from public.devoluciones_sin_nota_credito() where devolucion_id = pg_temp.id('devb')),
+    'con otro comprobante registrado, que no es factura, la OC con boleta no pide nota en ninguna de las dos');
+end $$;
+reset role;
+select test.afirmar(not has_function_privilege('authenticated', 'public.compra_con_factura_registrada(uuid)', 'execute')
+                    and not has_function_privilege('anon', 'public.compra_con_factura_registrada(uuid)', 'execute'),
+  'la regla la llaman las funciones, no la gente');
 -- b) La misma factura, registrada en otra moneda que la OC (sin pasar por sus disparadores: solo importa su estado).
 set local session_replication_role = replica;
 delete from public.documentos_compra_material where ruta_storage = 'chk473/b.pdf';
-update public.adquisiciones set estado = 'REGISTRADA', ruta_storage = 'fb-473.pdf', moneda = 'USD' where id = pg_temp.id('fb');
+update public.adquisiciones set tipo = 'FACTURA_COMPRA', moneda = 'USD' where id = pg_temp.id('fb');
 set local session_replication_role = origin;
 select pg_temp.como('contabilidad');
 set local role authenticated;

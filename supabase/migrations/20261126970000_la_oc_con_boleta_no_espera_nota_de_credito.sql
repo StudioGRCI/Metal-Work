@@ -6,22 +6,47 @@
 -- OC con boleta, que se quedaba ahí para siempre en «esperan que se registre la
 -- factura de su OC»: una nota de crédito se registra contra una factura, y a la
 -- OC con boleta lo devuelto se lo arregla Tesorería con la devolución del dinero.
+-- Y al devolver, Contabilidad recibía el aviso «Espera la nota de crédito» de esa
+-- misma OC, para una nota que no tenía contra qué registrar.
 --
 -- La regla es «la OC con factura, o la de boleta que tiene una factura
 -- registrada»: lo que acepta `registrar_nota_credito`, que registra la nota
--- contra una factura de esa OC (`facturas_de_la_compra`). «Lo que falta» de cada
--- compra (`documentos_de_las_compras`, 20261126480000) decía casi lo mismo, pero
--- miraba si la OC tenía algo facturado (`compras_facturadas`): pedía la nota de
--- la OC con boleta que solo tenía una boleta de una parte, donde no hay factura
--- contra la cual registrarla, y no la pedía cuando la factura estaba en otra
--- moneda o llegó solo por el anexo de Logística. Las dos pasan a mirar lo mismo.
--- En `documentos_de_las_compras` cambia solo esa condición, por reemplazo de
--- texto sobre el cuerpo que hay en la base.
+-- contra una factura de esa OC (`facturas_de_la_compra`) y no contra un recibo
+-- por honorarios ni otro comprobante. Esa regla queda en una sola función,
+-- `compra_con_factura_registrada`, y la usan los cuatro lugares que la piden:
 --
--- Las mismas columnas, el mismo permiso y el mismo tope. Antes de reemplazar
--- cada función se mira su huella: la que tiene producción o la que deja esta
--- migración. Si alguien la cambió a mano, no se pisa. Solo lee. Idempotente.
+--   * la bandeja (`devoluciones_sin_nota_credito`), que además ofrece solo esas
+--     facturas para registrar la nota;
+--   * «Lo que falta» de cada compra (`documentos_de_las_compras`,
+--     20261126480000), que miraba si la OC tenía algo facturado
+--     (`compras_facturadas`): pedía la nota de la OC con boleta que solo tenía
+--     una boleta de una parte, y no la pedía cuando la factura estaba en otra
+--     moneda o llegó solo por el anexo de Logística;
+--   * los dos avisos a Contabilidad: al devolver sin reposición
+--     (`devolver_al_proveedor`) y al dejar de esperar la reposición
+--     (`dejar_de_esperar_reposicion`, 20261026130000). El aviso a Logística no
+--     cambia.
+--
+-- En `documentos_de_las_compras` y en los dos avisos cambia solo esa condición,
+-- por reemplazo de texto sobre el cuerpo que hay en la base. Antes de tocar cada
+-- función se mira su huella: la que tiene producción o la que deja esta
+-- migración. Si alguien la cambió a mano, no se pisa. Las mismas columnas, los
+-- mismos permisos y el mismo tope. Idempotente.
 -- =============================================================================
+
+create or replace function public.compra_con_factura_registrada(p_compra uuid)
+returns boolean
+language sql stable security definer set search_path to 'public' as $$
+  select exists (select 1
+                   from public.facturas_de_la_compra(p_compra) f
+                   join public.adquisiciones a on a.id = f.adquisicion_id
+                  where a.tipo not in ('RECIBO_HONORARIOS', 'OTRO'));
+$$;
+
+comment on function public.compra_con_factura_registrada(uuid) is
+  'Si la OC tiene una factura registrada contra la cual registrar una nota de crédito: no cuenta el recibo por honorarios ni otro comprobante, que `registrar_nota_credito` rechaza (20261126970000). La llaman las funciones de la nota de crédito, no la gente.';
+
+revoke all on function public.compra_con_factura_registrada(uuid) from public, anon, authenticated;
 
 do $$
 declare
@@ -32,7 +57,7 @@ begin
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = 'devoluciones_sin_nota_credito';
   -- La de 20261022220000, o esta misma si la migración se vuelve a correr.
-  if v_md5 is not null and v_md5 not in ('1ad7345b8cec50593309ec147f6c0056', '1ceba8001fe8b00753b48df7c9ed40e9') then
+  if v_md5 is not null and v_md5 not in ('1ad7345b8cec50593309ec147f6c0056', 'ed4f4a2eb129840a1ab7b1c853b2b845') then
     raise exception 'devoluciones_sin_nota_credito cambió en la base (huella %): revisa antes de reemplazarla.', v_md5;
   end if;
 end $$;
@@ -58,11 +83,13 @@ begin
     cross join lateral (
       select m.cantidad::numeric - coalesce((select sum(r.cantidad::numeric) from public.movimientos_materiales r
                                                where r.repone_devolucion = m.id), 0) as falta) x
-    -- Las facturas registradas de su OC (`facturas_de_la_compra` ya trae solo las registradas).
+    -- Las facturas registradas de su OC contra las que va la nota: las mismas que
+    -- cuenta `compra_con_factura_registrada` (`facturas_de_la_compra` ya trae solo las registradas).
     cross join lateral (
       select coalesce(jsonb_agg(jsonb_build_object('id', a.id, 'numero', a.numero_documento) order by a.fecha_emision), '[]'::jsonb) as facturas
         from public.facturas_de_la_compra(c.id) f
-        join public.adquisiciones a on a.id = f.adquisicion_id) fx
+        join public.adquisiciones a on a.id = f.adquisicion_id
+       where a.tipo not in ('RECIBO_HONORARIOS', 'OTRO')) fx
    where m.tipo = 'DEVOLUCION_PROVEEDOR' and not m.se_repone and x.falta > 0
      and not exists (select 1 from public.notas_credito_compra n where n.devolucion_id = m.id and n.anulado_en is null)
      -- La OC con factura, o la de boleta que igual tiene una factura registrada: contra ella va la nota (20261126970000).
@@ -78,27 +105,50 @@ comment on function public.devoluciones_sin_nota_credito() is
 revoke all on function public.devoluciones_sin_nota_credito() from public, anon;
 grant execute on function public.devoluciones_sin_nota_credito() to authenticated;
 
--- «Lo que falta» de cada compra pide la nota con la misma regla.
+-- «Lo que falta» de cada compra y los dos avisos a Contabilidad piden la nota con
+-- la misma regla. Cada uno cambia una sola condición de su cuerpo.
 do $$
 declare
+  v_f     record;
   v_md5   text;
   v_def   text;
-  v_vieja constant text := 'where c.con_factura or coalesce(f.facturado, 0) > 0';
-  v_nueva constant text := 'where c.con_factura or exists (select 1 from public.facturas_de_la_compra(c.id))';
 begin
-  select md5(replace(p.prosrc, E'\r', '')), pg_get_functiondef(p.oid)
-    into v_md5, v_def
-    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-   where n.nspname = 'public' and p.proname = 'documentos_de_las_compras';
-  if v_md5 is null or v_md5 = '1456ab25e747c672223a3ba3e9b80b06' then
-    return;  -- sin la función, o ya con la regla nueva
-  end if;
-  -- La de 20261126480000, la que tiene producción.
-  if v_md5 <> '4f470602806c484e314d925599ca29cf' then
-    raise exception 'documentos_de_las_compras cambió en la base (huella %): revisa antes de reemplazarla.', v_md5;
-  end if;
-  if (length(v_def) - length(replace(v_def, v_vieja, ''))) / length(v_vieja) <> 1 then
-    raise exception 'documentos_de_las_compras no trae una sola vez la condición de la nota de crédito.';
-  end if;
-  execute replace(v_def, v_vieja, v_nueva);
+  for v_f in
+    select * from (values
+      ('documentos_de_las_compras',
+       '4f470602806c484e314d925599ca29cf',   -- la de 20261126480000, la que tiene producción
+       '9bdc9fc34c6865ababd8b967f3df11cc',
+       'where c.con_factura or coalesce(f.facturado, 0) > 0',
+       'where c.con_factura or public.compra_con_factura_registrada(c.id)'),
+      ('devolver_al_proveedor',
+       '05764d06eb71172d75eef283edb55633',   -- la de 20261026130000
+       '9ef47a70f45a5c1deb253175b972cedb',
+       E'  if not p_se_repone then\n    perform public.avisar_a_permiso(''adquisiciones.registrar''',
+       E'  -- La nota va contra una factura: la OC con boleta sin factura no la espera (20261126970000).\n'
+       || E'  if not p_se_repone and (v_c.con_factura or public.compra_con_factura_registrada(v_c.id)) then\n'
+       || E'    perform public.avisar_a_permiso(''adquisiciones.registrar'''),
+      ('dejar_de_esperar_reposicion',
+       'f184574800e4b163ddf709cf66303f16',   -- la de 20261026130000
+       'f2cb431594e760e8bdadef26a02fcdbb',
+       E'  if current_setting(''metalwork.nota_credito'', true) is distinct from p_devolucion::text then\n',
+       E'  -- La nota va contra una factura: la OC con boleta sin factura no la espera (20261126970000).\n'
+       || E'  if current_setting(''metalwork.nota_credito'', true) is distinct from p_devolucion::text\n'
+       || E'     and (v_c.con_factura or public.compra_con_factura_registrada(v_c.id)) then\n')
+    ) as t (funcion, de_antes, de_ahora, vieja, nueva)
+  loop
+    select md5(replace(p.prosrc, E'\r', '')), replace(pg_get_functiondef(p.oid), E'\r', '')
+      into v_md5, v_def
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname = v_f.funcion;
+    if v_md5 is null or v_md5 = v_f.de_ahora then
+      continue;  -- sin la función, o ya con la regla nueva
+    end if;
+    if v_md5 <> v_f.de_antes then
+      raise exception '% cambió en la base (huella %): revisa antes de reemplazarla.', v_f.funcion, v_md5;
+    end if;
+    if (length(v_def) - length(replace(v_def, v_f.vieja, ''))) / length(v_f.vieja) <> 1 then
+      raise exception '% no trae una sola vez la condición de la nota de crédito.', v_f.funcion;
+    end if;
+    execute replace(v_def, v_f.vieja, v_f.nueva);
+  end loop;
 end $$;
