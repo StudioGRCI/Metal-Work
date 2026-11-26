@@ -286,7 +286,7 @@ let averia = null
 {
   const { pagina, contexto, errores, acciones } = await entrar('mantenimiento.local@metalwork.test')
   await pagina.goto(`${BASE}/`, { waitUntil: 'networkidle' })
-  const cifra = limpio(await pagina.locator('a[href="/averias"]').filter({ hasText: 'Averías por atender' }).first().innerText().catch(() => ''))
+  const cifra = limpio(await pagina.locator('a[href="/averias"]').filter({ hasText: /Averías por atender/ }).first().innerText().catch(() => ''))
   comprobar(/Averías por atender/.test(cifra) && /detiene/.test(cifra), `[Mantenimiento 1440] su inicio cuenta las averías por atender: «${cifra}»`)
   await pagina.screenshot({ path: join(CAPTURAS, 'averias-inicio-mantenimiento-1440.png'), fullPage: true })
 

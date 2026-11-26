@@ -87,7 +87,7 @@ export function AtenderAveria({ id, numero, diagnostico }: { id: string; numero:
         descripcion={
           primera
             ? 'Revisa el equipo y anota qué tiene. La avería pasa a «En atención» y quien la reportó lo ve en su recorrido.'
-            : 'Lo que encontraste al seguir revisando. Queda el diagnóstico nuevo; el primero sigue en el recorrido.'
+            : 'Lo que encontraste al seguir revisando. El diagnóstico nuevo reemplaza al de antes.'
         }
         ancho="md"
       >
@@ -118,7 +118,9 @@ export function AtenderAveria({ id, numero, diagnostico }: { id: string; numero:
 /**
  * Mantenimiento enlaza el RQ con que se pidieron los repuestos: el RQ se hace
  * como siempre, aquí solo se dice cuál es. El id del enlace vive aquí y no en la
- * ventana: si no llegó la respuesta, el reintento no lo enlaza dos veces.
+ * ventana: si no llegó la respuesta, el reintento no lo enlaza dos veces. Cada
+ * vez que se abre la ventana es otro envío, con otro id: si no, cambiar el RQ o
+ * la nota tras una respuesta perdida chocaba con el primero hasta recargar.
  */
 export function EnlazarRequerimiento({ averia, opciones }: { averia: string; opciones: RqParaEnlazar[] }) {
   const [enlace, setEnlace] = useState(() => crypto.randomUUID())
@@ -129,7 +131,16 @@ export function EnlazarRequerimiento({ averia, opciones }: { averia: string; opc
   })
   return (
     <>
-      <Boton type="button" variante="secundario" tamano="sm" data-enlazar-rq onClick={v.abrir}>
+      <Boton
+        type="button"
+        variante="secundario"
+        tamano="sm"
+        data-enlazar-rq
+        onClick={() => {
+          setEnlace(crypto.randomUUID())
+          v.abrir()
+        }}
+      >
         <Link2 aria-hidden className="size-4" />
         Enlazar RQ
       </Boton>

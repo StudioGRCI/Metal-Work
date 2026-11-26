@@ -95,13 +95,15 @@ const requerimientos = await cuenta('requerimientos.local@metalwork.test')
 
 // El equipo empieza sin reportes por atender: los de una vuelta anterior los
 // anula Mantenimiento con su función; los cerrados los confirma quien los reportó.
-for (const v of await como(
-  mantenimiento,
-  `select v.id, v.estado, v.es_mia from public.averias_visibles(null) v where v.equipo_codigo = $1 and v.estado in ('REPORTADA', 'EN_ATENCION', 'CERRADA')`,
-  [EQUIPO],
+for (const v of await consulta(
+  `select a.id, a.estado, a.registrado_por = $2 as de_ventas from public.averias a join public.equipos e on e.id = a.equipo_id
+    where e.codigo = $1 and a.estado in ('REPORTADA', 'EN_ATENCION', 'CERRADA')`,
+  [EQUIPO, ventas],
 )) {
-  if (v.estado === 'CERRADA') await como(ventas, `select * from public.averias_confirmar($1, true, 'Limpieza del banco.')`, [v.id]).catch(() => {})
-  else await como(mantenimiento, `select * from public.averias_anular($1, 'Limpieza del banco antes de la prueba.')`, [v.id])
+  // Las cerradas las confirma quien las reportó; si no fue Ventas, quedan (ya no detienen el equipo).
+  if (v.estado === 'CERRADA') {
+    if (v.de_ventas) await como(ventas, `select * from public.averias_confirmar($1, true, 'Limpieza del banco.')`, [v.id])
+  } else await como(mantenimiento, `select * from public.averias_anular($1, 'Limpieza del banco antes de la prueba.')`, [v.id])
 }
 await base.query(`update public.equipos set estado = 'OPERATIVO', estado_nota = null where codigo = $1 and estado <> 'OPERATIVO'`, [EQUIPO])
 
@@ -251,6 +253,9 @@ const verde = (pagina) => hasta(() => pagina.locator('p[role="status"]').first()
 // ---------------------------------------------------------------------------
 {
   const { pagina, contexto, errores, acciones } = await entrar('ventas.local@metalwork.test', true)
+  await pagina.goto(`${BASE}/`, { waitUntil: 'networkidle' })
+  const tetoca = limpio(await pagina.locator('a[href="/averias"]').filter({ hasText: /si quedó bien|si quedaron bien/ }).first().innerText().catch(() => ''))
+  comprobar(tetoca.length > 0, `[Ventas 390] su inicio le dice que tiene una avería por confirmar («${tetoca}»)`)
   await pagina.goto(`${BASE}/averias`, { waitUntil: 'networkidle' })
   comprobar((await pagina.locator(`[data-por-confirmar] tr[data-averia="${NUMERO}"]`).count()) === 1, '[Ventas 390] ve su avería en «¿Quedaron bien?»')
   await pagina.screenshot({ path: join(CAPTURAS, '16.3-ventas-por-confirmar-390.png'), fullPage: true })

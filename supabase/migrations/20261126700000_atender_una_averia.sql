@@ -60,11 +60,16 @@ alter table public.averias add column if not exists reabierta_en timestamptz;
 -- esta queda como se reportó, para el recorrido y la historia del equipo.
 alter table public.averias add column if not exists paro_al_reportar boolean not null default false;
 -- Los reportes de antes: la guardia no deja tocar lo que dijo quien reportó, y
--- esta marca es de eso. Se aparta el tiempo justo de anotarla.
+-- esta marca es de eso. Se aparta el tiempo justo de anotarla. Solo el que paró
+-- el equipo al reportarse: su paro empezó con el reporte (el mismo `now()`). El
+-- que heredó el paro de otro reporte anulado, o el que lo retomó al volver de
+-- «no quedó bien», no lo paró al reportarse, y volver a correr esta migración
+-- no lo marca.
 do $$ begin
-  if exists (select 1 from public.averias where paro_el_equipo and not paro_al_reportar) then
+  if exists (select 1 from public.averias where paro_el_equipo and not paro_al_reportar and equipo_parado_desde = creado_en) then
     alter table public.averias disable trigger trg_averia_guardia;
-    update public.averias set paro_al_reportar = true where paro_el_equipo and not paro_al_reportar;
+    update public.averias set paro_al_reportar = true
+     where paro_el_equipo and not paro_al_reportar and equipo_parado_desde = creado_en;
     alter table public.averias enable trigger trg_averia_guardia;
   end if;
 end $$;
@@ -832,9 +837,10 @@ language sql stable security definer set search_path to 'public' rows 200 as $$
     select v.*, case when yo.todo then 'TODAS' when v.registrado_por = yo.id then 'PROPIA'
                      when v.area_id = any(yo.areas) then 'AREA' else 'RIESGO' end as alcance,
            v.registrado_por = yo.id as mia,
-           case v.estado when 'REPORTADA' then v.creado_en
-                         when 'EN_ATENCION' then coalesce(v.reabierta_en, v.atendida_en)
-                         when 'CERRADA' then v.cerrada_en end as desde
+           -- Desde cuándo espera, lo mismo que cuentan los días: a Mantenimiento,
+           -- desde que se reportó o desde que volvió; a quien reportó, desde el cierre.
+           case when v.estado in ('REPORTADA', 'EN_ATENCION') then coalesce(v.reabierta_en, v.creado_en)
+                when v.estado = 'CERRADA' then v.cerrada_en end as desde
       from public.averias v
       cross join yo
      where (p_id is null or v.id = p_id)
@@ -948,9 +954,9 @@ begin
            case a.estado when 'REPORTADA' then 'ATENCION' when 'EN_ATENCION' then 'CIERRE' else 'CONFIRMACION' end,
            'AHORA', null,
            case when a.estado = 'CERRADA' then null else 'Mantenimiento' end,
-           case a.estado when 'REPORTADA' then a.creado_en
-                         when 'EN_ATENCION' then coalesce(a.reabierta_en, a.atendida_en)
-                         else a.cerrada_en end,
+           -- El mismo origen que los días en espera de la bandeja.
+           case when a.estado in ('REPORTADA', 'EN_ATENCION') then coalesce(a.reabierta_en, a.creado_en)
+                else a.cerrada_en end,
            case a.estado when 'REPORTADA' then 'ATENCION' when 'EN_ATENCION' then 'CIERRE' else 'CONFIRMACION' end,
            null
       from av a where a.estado in ('REPORTADA', 'EN_ATENCION', 'CERRADA')

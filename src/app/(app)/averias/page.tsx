@@ -57,8 +57,7 @@ export default async function PaginaAverias({ searchParams }: PageProps<'/averia
   const vista: Vista = VISTAS.find((v) => v.valor === params.vista)?.valor ?? 'por-atender'
   const equipoInicial = typeof params.equipo === 'string' && FORMA_DE_ID.test(params.equipo) ? params.equipo : ''
 
-  const [averias, equipos] = await Promise.all([listarAverias(), equiposParaReportar()])
-  const alTope = averias.length >= MAXIMO_AVERIAS
+  const [{ averias, alTope }, equipos] = await Promise.all([listarAverias(), equiposParaReportar()])
 
   // Sin equipos en el padrón no hay qué elegir: en vez de una ventana que no deja
   // enviar, se dice por qué y qué hacer.
@@ -189,7 +188,7 @@ function PadronVacio({ carga }: { carga: boolean }) {
 }
 
 function Tope() {
-  return <p className="mt-3 text-xs text-texto-suave">Se muestran los {MAXIMO_AVERIAS} reportes más recientes.</p>
+  return <p className="mt-3 text-xs text-texto-suave">De los que quedaron bien y los anulados se muestran los {MAXIMO_AVERIAS} más recientes; los que esperan a alguien salen todos.</p>
 }
 
 function TablaDeAverias({

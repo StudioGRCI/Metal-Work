@@ -109,19 +109,31 @@ function aAveria(f: Fila): Averia | null {
   }
 }
 
-/** Cuántos reportes trae la lista como mucho: los más recientes. */
+/** Cuántos reportes ya terminados (quedaron bien o anulados) trae la lista como mucho: los más recientes. */
 export const MAXIMO_AVERIAS = 200
 
-/** Los reportes que ve quien pregunta, del más reciente al más viejo. */
-export async function listarAverias(): Promise<Averia[]> {
+/**
+ * Los reportes que ve quien pregunta, del más reciente al más viejo: todos los
+ * que esperan a alguien (por atender, en atención, por confirmar) y, de los ya
+ * terminados, los más recientes. Con un solo tope para todo, la avería que más
+ * días llevaba esperando era la primera en salirse de la bandeja.
+ */
+export async function listarAverias(): Promise<{ averias: Averia[]; alTope: boolean }> {
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .rpc('averias_visibles', { p_id: null })
-    .order('creado_en', { ascending: false })
-    .order('numero', { ascending: false })
-    .range(0, MAXIMO_AVERIAS - 1)
-  if (error) throw new Error(`No se pudieron leer los reportes de avería: ${error.message}`)
-  return ((data ?? []) as Fila[]).flatMap((f) => aAveria(f) ?? [])
+  const leer = (estados: string[], tope?: number) => {
+    const q = supabase
+      .rpc('averias_visibles', { p_id: null })
+      .in('estado', estados)
+      .order('creado_en', { ascending: false })
+      .order('numero', { ascending: false })
+    return tope ? q.range(0, tope - 1) : q
+  }
+  const [vivas, terminadas] = await Promise.all([leer(['REPORTADA', 'EN_ATENCION', 'CERRADA']), leer(['CONFIRMADA', 'ANULADA'], MAXIMO_AVERIAS)])
+  for (const r of [vivas, terminadas]) if (r.error) throw new Error(`No se pudieron leer los reportes de avería: ${r.error.message}`)
+  const filas = [...((vivas.data ?? []) as Fila[]), ...((terminadas.data ?? []) as Fila[])]
+    .flatMap((f) => aAveria(f) ?? [])
+    .sort((a, b) => b.creado_en.localeCompare(a.creado_en) || b.numero.localeCompare(a.numero))
+  return { averias: filas, alTope: (terminadas.data ?? []).length >= MAXIMO_AVERIAS }
 }
 
 /** Una foto del reporte, con su enlace firmado por una hora. */
@@ -136,9 +148,16 @@ export async function cargarAveria(id: string): Promise<DetalleAveria | null> {
   if (error) throw new Error(`No se pudo leer el reporte de avería: ${error.message}`)
   const leida = ((data ?? []) as Fila[]).flatMap((f) => aAveria(f) ?? [])[0]
   if (!leida) return null
-  const averia = { ...leida, requerimientos: leida.rq_enlazados > 0 ? await rqEnlazados(id) : [] }
-  if (averia.fotos === 0) return { ...averia, fotosDelReporte: [] }
+  // Los RQ y las fotos, a la vez.
+  const [requerimientos, fotosDelReporte] = await Promise.all([
+    leida.rq_enlazados > 0 ? rqEnlazados(id) : Promise.resolve([]),
+    leida.fotos > 0 ? fotosDe(id) : Promise.resolve([]),
+  ])
+  return { ...leida, requerimientos, fotosDelReporte }
+}
 
+async function fotosDe(id: string): Promise<FotoAveria[]> {
+  const supabase = await createClient()
   const { data: filas, error: errorFotos } = await supabase
     .from('averia_fotos')
     .select('id, orden, ruta')
@@ -147,7 +166,7 @@ export async function cargarAveria(id: string): Promise<DetalleAveria | null> {
   if (errorFotos) throw new Error(`No se pudieron leer las fotos del reporte: ${errorFotos.message}`)
   const fotos = filas ?? []
   const enlaces = await enlacesDeFotos(fotos.map((f) => f.ruta))
-  return { ...averia, fotosDelReporte: fotos.map((f) => ({ id: f.id, orden: f.orden, enlace: enlaces[f.ruta] ?? null })) }
+  return fotos.map((f) => ({ id: f.id, orden: f.orden, enlace: enlaces[f.ruta] ?? null }))
 }
 
 /** Enlaces temporales para ver las fotos: el bucket es privado y la política decide quién. */
