@@ -37,7 +37,8 @@ async function leer(
     | 'recorrido_de_planillas'
     | 'recorrido_de_averias'
     | 'recorrido_de_ordenes_compra'
-    | 'recorrido_de_ordenes_servicio',
+    | 'recorrido_de_ordenes_servicio'
+    | 'recorrido_de_reportes_diarios',
   ids: string[],
   de: string,
 ): Promise<Recorridos> {
@@ -107,3 +108,6 @@ export const recorridoDeOrdenesCompra = (ids: string[]) => leer('recorrido_de_or
 
 /** El recorrido de esas OS (Plan 4.2). */
 export const recorridoDeOrdenesServicio = (ids: string[]) => leer('recorrido_de_ordenes_servicio', ids, 'las órdenes de servicio')
+
+/** El recorrido de esos reportes diarios: solo de los que quien mira ya puede ver (el supervisor, los suyos). */
+export const recorridoDeReportesDiarios = (ids: string[]) => leer('recorrido_de_reportes_diarios', ids, 'los reportes diarios')
