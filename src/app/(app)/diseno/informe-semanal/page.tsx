@@ -43,7 +43,7 @@ const INSIGNIA_ESTADO: Record<string, { etiqueta: string; tono: Tono }> = {
 export default async function PaginaInformeSemanalDiseno({ searchParams }: {
   searchParams: Promise<{ semana?: string }>
 }) {
-  const perfil = await exigirPermiso(['diseno.planos', 'diseno.subir_pdf', 'supervision.general'])
+  const perfil = await exigirPermiso(['diseno.planos', 'diseno.subir_pdf', 'supervision.general', 'diseno.ver_informes'])
   const parametros = await searchParams
   let inicio = inicioSemanaDiseno(hoyLima())
   if (parametros.semana) {
@@ -60,7 +60,12 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
       ? db.from('diseno_informes').select('id,numero,semana_inicio,estado')
         .eq('estado', 'EN_REVISION')
         .order('semana_inicio').limit(100)
-      : Promise.resolve({ data: [], error: null }),
+      // Quien solo consulta (Gerencia, `diseno.ver_informes`) no sabe qué
+      // semanas tienen informe: los últimos, para no probar fechas a ciegas.
+      : !puedeEscribir
+        ? db.from('diseno_informes').select('id,numero,semana_inicio,estado')
+          .order('semana_inicio', { ascending: false }).limit(8)
+        : Promise.resolve({ data: [], error: null }),
     // Las semanas del colaborador, para abrirlas en lectura. Si no se leen, la
     // pantalla sigue con la semana elegida y lo dice en su lugar.
     puedeEscribir
@@ -164,7 +169,9 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
       </Tarjeta>}
 
       {(pendientes.data ?? []).length > 0 && <Tarjeta>
-        <TarjetaCabecera titulo={puede(perfil, 'diseno.revisar_informe') ? 'Informes por revisar' : 'Informes aprobados por recibir'} ayuda="Abre la semana correspondiente para completar tu revisión." />
+        {puede(perfil, 'diseno.revisar_informe')
+          ? <TarjetaCabecera titulo="Informes por revisar" ayuda="Abre la semana correspondiente para completar tu revisión." />
+          : <TarjetaCabecera titulo="Últimos informes" ayuda="Las semanas que ya tienen informe, de la más reciente a la más antigua. Abre una para verla." />}
         <TarjetaCuerpo className="flex flex-wrap gap-3">{(pendientes.data ?? []).map((p) =>
           <Link key={p.id} href={`/diseno/informe-semanal?semana=${p.semana_inicio}`}
             className="min-h-11 rounded-[var(--radius-base)] border border-borde px-4 py-3 text-sm font-medium text-acento hover:bg-acento-suave">
@@ -213,7 +220,7 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
               columnas esenciales: con ocho se deslizaba de costado y el aviso
               se cortaba en «Aún no hay pla» (auditoría del 27/10/2026). */}
           {datos.tareas.length === 0 ? (
-            <SinDatos enTabla={false} titulo="Aún no hay actividades esta semana" descripcion={escribe ? 'Anota la de hoy con el formulario de abajo.' : undefined} />
+            <SinDatos enTabla={false} titulo="Aún no hay actividades esta semana" descripcion={escribe ? 'Anota la de hoy con el formulario de abajo.' : 'Las anotan los colaboradores de Diseño. Elige otra semana arriba.'} />
           ) : (
           <Tabla>
             <TablaCabecera><tr>

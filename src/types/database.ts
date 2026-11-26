@@ -10755,6 +10755,47 @@ export type Database = {
           }
         ]
       }
+      tiempos_entrega_avisos: {
+        Row: {
+          id: string
+          etapa_id: string | null
+          tipo: string
+          fin_plan: string | null
+          fecha: string
+          avisados: number
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          etapa_id?: string | null
+          tipo: string
+          fin_plan?: string | null
+          fecha: string
+          avisados?: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          etapa_id?: string | null
+          tipo?: string
+          fin_plan?: string | null
+          fecha?: string
+          avisados?: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tiempos_entrega_avisos_etapa_id_fkey"
+            columns: ["etapa_id"]
+            isOneToOne: false
+            referencedRelation: "codigo_etapas"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       tipos_carroceria: {
         Row: {
           id: string
@@ -12670,6 +12711,18 @@ export type Database = {
           p_compras: string[] | null
         }
         Returns: null
+      }
+      avisar_tiempos_de_entrega: {
+        Args: {
+          p_area: string | null
+          p_codigo: string | null
+          p_titulo: string | null
+          p_cuerpo: string | null
+          p_tabla: string | null
+          p_id: string | null
+          p_gerencia: boolean | null
+        }
+        Returns: number
       }
       bloquear_cierre: {
         Args: {
@@ -17043,6 +17096,16 @@ export type Database = {
         }
         Returns: string
       }
+      revisar_tiempos_de_entrega: {
+        Args: {
+          p_hoy?: string | null
+        }
+        Returns: {
+          tipo: string | null
+          avisos: number | null
+          cuentas: number | null
+        }[]
+      }
       revisar_version_plano: {
         Args: {
           p_id: string | null
@@ -18229,6 +18292,17 @@ export type Database = {
           guia: Json | null
           guias_anuladas: number | null
           pago: string | null
+        }[]
+      }
+      unidades_del_cliente_con_su_entrega: {
+        Args: {
+          p_cliente: string | null
+        }
+        Returns: {
+          unidad_id: string | null
+          ot_numero: string | null
+          estado: string | null
+          fecha_entrega: string | null
         }[]
       }
       unidades_para_salida_almacen: {
