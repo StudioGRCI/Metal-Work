@@ -1099,6 +1099,25 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       contar: () => inspeccionesDeCalidad('puede_corregir'),
     })
   }
+  // Garantías (A.2): a Administración, los reclamos que esperan su OT de
+  // garantía (o otra, si la suya se anuló); a Calidad, los que tienen la
+  // garantía terminada y esperan su causa. Cuál le toca a quien mira lo dice la
+  // base (`puede_enlazar`, `puede_causa`), con la misma regla que la función que escribe.
+  for (const de of [
+    { permiso: 'garantias.atender', columna: 'puede_enlazar' as const, clave: 'garantias_por_abrir_ot', uno: 'reclamo de garantía espera su OT', varios: 'reclamos de garantía esperan su OT' },
+    { permiso: 'garantias.causa', columna: 'puede_causa' as const, clave: 'garantias_por_causa', uno: 'reclamo de garantía espera tu causa', varios: 'reclamos de garantía esperan tu causa' },
+  ]) {
+    if (!puede(perfil, de.permiso)) continue
+    tareas.push({
+      clave: de.clave, ruta: '/garantias', tono: 'aviso',
+      texto: n => plural(n, de.uno, de.varios),
+      contar: async () => {
+        const { data, error } = await supabase.rpc('garantias_reclamos_visibles', { p_id: null }).select('id').eq(de.columna, true)
+        if (error) throw new Error('No se pudo consultar el pendiente.')
+        return (data ?? []).length
+      },
+    })
+  }
   // SSOMA (15.2): las acciones correctivas a cargo de quien mira, que puede ser
   // cualquier cuenta; la política de `ssoma_acciones` le deja contar las suyas.
   // Las vencidas aparte y en rojo: son las que la pantalla pone arriba.

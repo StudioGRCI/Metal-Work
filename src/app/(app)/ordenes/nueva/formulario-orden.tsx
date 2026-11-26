@@ -13,6 +13,7 @@ import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { motivoDeSubida } from '@/lib/acciones'
 import { PRIORIDAD, TIPO_TRABAJO, opciones } from '@/lib/dominio/estados'
+import { descripcionDeLaOt } from '@/lib/dominio/garantias'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
 import { camposDe, decirElRechazoSiSeFue, type DeFormulario, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, navegarSiEsDeLaPestana, NO_SE_GUARDO_OTRA_CUENTA, nombreDe, OtraCuentaEnLaPestana, partida, quitarConLaCuenta, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, type SiSeVa, useCursorAlRechazo, useFormularioMontado } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
@@ -41,7 +42,10 @@ type Catalogos = {
 const TIPOS_TRABAJO = opciones(TIPO_TRABAJO)
 const PRIORIDADES = opciones(PRIORIDAD)
 
-export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
+/** El reclamo de garantía del que nace la OT (`/ordenes/nueva?reclamo=`, A.2): al registrarse queda enlazada a él. */
+type ReclamoDeLaOt = { id: string; numero: string; cliente_id: string; unidad_id: string; descripcion: string }
+
+export function FormularioOrden({ catalogos, reclamo = null }: { catalogos: Catalogos; reclamo?: ReclamoDeLaOt | null }) {
   // Un envío por toque, como `useEnvio`; aquí a mano porque el PDF viaja antes
   // que la orden. El id se decide al abrir: un reintento tras perder la señal
   // encuentra la orden ya registrada en vez de crear otra.
@@ -70,10 +74,11 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
   const router = useRouter()
   const enCurso = useRef(false)
   const instancia = useFormularioMontado()
-  const [clienteId, setClienteId] = useState('')
-  const [unidadId, setUnidadId] = useState('')
+  // Desde un reclamo, con su cliente y su unidad ya elegidos.
+  const [clienteId, setClienteId] = useState(() => (reclamo && catalogos.clientes.some((c) => c.id === reclamo.cliente_id) ? reclamo.cliente_id : ''))
+  const [unidadId, setUnidadId] = useState(() => (reclamo && catalogos.clientes.some((c) => c.id === reclamo.cliente_id) ? reclamo.unidad_id : ''))
   // La garantía es de un vehículo que vuelve: va con su unidad (migración 20261021120000).
-  const [tipoTrabajo, setTipoTrabajo] = useState('FABRICACION')
+  const [tipoTrabajo, setTipoTrabajo] = useState(reclamo ? 'GARANTIA' : 'FABRICACION')
   const esGarantia = tipoTrabajo === 'GARANTIA'
   const [carroceriaId, setCarroceriaId] = useState('')
   const [responsableId, setResponsableId] = useState('')
@@ -387,7 +392,9 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
         // Registrada: el formulario queda trabado hasta que se abre la orden.
         listo = true
         entro()
-        const ida = idaALaOrden(r.datos?.id ?? ordenId)
+        const ida = r.datos?.reclamo
+          ? idaAlReclamo(r.datos.reclamo.id, r.datos.reclamo.numero, r.datos.reclamo.noSeEnlazo)
+          : idaALaOrden(r.datos?.id ?? ordenId)
         setQuedo(ida)
         const { url, ...dicho } = ida
         navegarSiEsDeLaPestana(router, url, desde, { ...dicho, juntoAlBoton: true })
@@ -412,6 +419,15 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
 
   return (
     <form onSubmit={enviar} className="max-w-4xl space-y-4">
+      {reclamo && (
+        <>
+          <input type="hidden" name="reclamo_id" value={reclamo.id} />
+          <p className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 px-3 py-2 text-sm text-texto" data-desde-el-reclamo>
+            Esta OT de garantía atiende el reclamo <span className="tabular font-semibold">{reclamo.numero}</span>. Al registrarla queda
+            enlazada a él y le avisamos a quien lo registró. Va con la misma unidad del reclamo.
+          </p>
+        </>
+      )}
       {/* Mientras se registra, nada se cambia: la orden sale con lo que se envió. */}
       <fieldset disabled={pendiente || Boolean(quedo)} className="min-w-0 space-y-4">
         <Tarjeta>
@@ -576,6 +592,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
                 required
                 minLength={5}
                 rows={2}
+                defaultValue={reclamo ? descripcionDeLaOt(reclamo.numero, reclamo.descripcion) : undefined}
                 placeholder="Ej.: Fabricación de tolva de volquete de 18 m3 en acero A36 con compuerta trasera"
               />
             </Campo>
@@ -713,6 +730,15 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
 }
 
 const idaALaOrden = (id: string) => ({ url: `/ordenes/${id}?creada=1`, dice: 'La orden quedó registrada.', enlace: 'Ver la orden' })
+// Desde un reclamo de garantía se vuelve a él: ahí se ve la OT enlazada, o por
+// qué no se enlazó y el botón para enlazarla.
+const idaAlReclamo = (id: string, numero: string, noSeEnlazo: string | null) => ({
+  url: `/garantias/${id}`,
+  dice: noSeEnlazo
+    ? `La orden quedó registrada, pero no se enlazó al reclamo ${numero}: ${noSeEnlazo} Enlázala desde el reclamo.`
+    : `La orden quedó registrada y enlazada al reclamo ${numero}.`,
+  enlace: `Ver el reclamo ${numero}`,
+})
 // Si su rechazo vuelve cuando la persona ya pidió otra pantalla, lo dice arriba (`decirElRechazoSiSeFue`).
 const SI_SE_VA: SiSeVa = { que: 'la orden', enlace: 'Volver a la orden nueva' }
 

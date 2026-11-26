@@ -47,6 +47,8 @@ export const CLAVES_DEL_ENVIO = [
   // misma inspección ni el mismo paso de su observación.
   'inspeccion_calidad',
   'paso_calidad',
+  // El reclamo de garantía (A.2): reabrir tras «No llegó la respuesta» no da otro número RG al mismo reclamo.
+  'reclamo_garantia',
 ] as const
 
 export type ClaveDelEnvio = (typeof CLAVES_DEL_ENVIO)[number]

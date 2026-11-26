@@ -1,6 +1,7 @@
 import {
   ArrowLeftRight,
   Award,
+  BadgeAlert,
   BadgeCheck,
   Banknote,
   BanknoteArrowUp,
@@ -186,6 +187,17 @@ export const NAVEGACION = [
       { titulo: 'Clientes', ruta: '/clientes', icono: Users, permiso: 'clientes.ver', descripcion: 'Empresas y personas, con sus contactos y sus órdenes', disponible: true },
       { titulo: 'Unidades', ruta: '/unidades', icono: Truck, permiso: 'clientes.ver', descripcion: 'Los vehículos de los clientes que pasan por el taller', disponible: true },
       { titulo: 'Carrocerías', ruta: '/carrocerias', icono: Layers, permiso: ['diseno.planos', 'configuracion.ver', 'cotizaciones.crear'], descripcion: 'Los tipos de carrocería que se cotizan, con su ficha técnica', disponible: true },
+      // El reclamo del cliente que vuelve por garantía (plan «Las demás áreas»,
+      // A.2, migración 20261126951000): Ventas lo registra, Administración abre
+      // su OT de garantía, Calidad anota la causa y Gerencia lo consulta.
+      {
+        titulo: 'Garantías',
+        ruta: '/garantias',
+        icono: BadgeAlert,
+        permiso: ['garantias.registrar', 'garantias.atender', 'garantias.causa', 'garantias.ver'],
+        descripcion: 'Cada reclamo de garantía, con su número RG, su OT y su causa',
+        disponible: true,
+      },
     ],
   },
   {
@@ -887,7 +899,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
         // las contaba (StudioGRCI, 2026-11-26).
         rutas: ['/por-decidir', '/cotizaciones/pdf', '/ordenes', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'],
       },
-      { titulo: 'Ventas', consulta: true, rutas: ['/clientes', '/unidades', '/carrocerias'] },
+      // Los reclamos de garantía (A.2), en consulta, con lo demás de Ventas.
+      { titulo: 'Ventas', consulta: true, rutas: ['/clientes', '/unidades', '/carrocerias', '/garantias'] },
       {
         titulo: 'Diseño e Ingeniería',
         consulta: true,
@@ -1061,7 +1074,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     grupos: [
       {
         titulo: 'Administración',
-        rutas: ['/cotizaciones/pdf', '/ordenes', '/avance/trabajos', '/subcontratos', '/costos/gastos-generales', '/tesoreria/tipo-de-cambio'],
+        // Los reclamos de garantía, después de las OT: abre la de cada uno (A.2).
+        rutas: ['/cotizaciones/pdf', '/ordenes', '/garantias', '/avance/trabajos', '/subcontratos', '/costos/gastos-generales', '/tesoreria/tipo-de-cambio'],
       },
       // El stock de Almacén, para ver qué hay antes de pedir (2026-10-20).
       { titulo: 'Requerimiento de Administración', rutas: ['/requerimientos', '/requerimientos/atencion', '/compras/ordenes', '/almacen/stock'] },
@@ -1138,8 +1152,9 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     ],
     telefono: ['/seguimiento', '/requerimientos', '/almacen/kardex', '/'],
   },
+  // Al final, el reclamo del cliente que vuelve por garantía, que registra (A.2).
   VENDEDOR: {
-    grupos: [{ titulo: 'Ventas', rutas: ['/cotizaciones/pdf', '/clientes', '/unidades', '/carrocerias'] }],
+    grupos: [{ titulo: 'Ventas', rutas: ['/cotizaciones/pdf', '/clientes', '/unidades', '/carrocerias', '/garantias'] }],
     telefono: ['/cotizaciones/pdf', '/clientes', '/unidades', '/'],
   },
   // Desde el 2026-11-25 (migración 20261125200000): sigue el trabajo del Agente
@@ -1147,7 +1162,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // Gerencia General, los clientes y sus unidades, y las OT que salen de ellas.
   // No aprueba: eso sigue siendo de Gerencia General.
   GERENTE_COMERCIAL: {
-    grupos: [{ titulo: 'Ventas', rutas: ['/cotizaciones/pdf', '/clientes', '/unidades', '/ordenes'] }],
+    // Registra también el reclamo de garantía, como Ventas (A.2, aprobado el 2026-11-26).
+    grupos: [{ titulo: 'Ventas', rutas: ['/cotizaciones/pdf', '/clientes', '/unidades', '/ordenes', '/garantias'] }],
     telefono: ['/cotizaciones/pdf', '/clientes', '/ordenes', '/'],
   },
   // Desde el 2026-11-25 (migración 20261125200000): valida el avance. Arriba lo
@@ -1170,8 +1186,9 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   },
   // Control de calidad (A.1): lo que inspecciona y lo que espera su revisión
   // arriba; los códigos internos y las OT, en consulta y sin montos.
+  // La causa de cada reclamo de garantía terminado, junto a sus inspecciones (A.2).
   CALIDAD: {
-    principal: ['/calidad'],
+    principal: ['/calidad', '/garantias'],
     grupos: [{ titulo: 'Consultas', consulta: true, rutas: ['/seguimiento', '/ordenes'] }],
     telefono: ['/calidad', '/seguimiento', '/ordenes', '/'],
   },
@@ -1396,4 +1413,5 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   // los puestos sin menú propio (Operario, Calidad, Costos…).
   { ruta: '/averias', corto: 'Averías' },
   { ruta: '/calidad', corto: 'Calidad' },
+  { ruta: '/garantias', corto: 'Garantías' },
 ]
