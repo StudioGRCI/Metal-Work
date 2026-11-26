@@ -43,6 +43,10 @@ export const CLAVES_DEL_ENVIO = [
   'cierre_accion_ssoma',
   // El reporte de avería (Plan 16.2): reabrir tras «No llegó la respuesta» no da otro número AV a la misma falla.
   'reporte_averia',
+  // Calidad (A.1): reabrir tras «No llegó la respuesta» no registra dos veces la
+  // misma inspección ni el mismo paso de su observación.
+  'inspeccion_calidad',
+  'paso_calidad',
 ] as const
 
 export type ClaveDelEnvio = (typeof CLAVES_DEL_ENVIO)[number]

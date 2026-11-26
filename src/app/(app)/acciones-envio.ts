@@ -342,6 +342,24 @@ async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo:
       const { data } = await supabase.from('ssoma_reportes').select('numero, registrado_por').eq('id', id).maybeSingle()
       return data && { por: data.registrado_por, lo: dicho('El reporte', 'Los reportes', 'otro', data.numero) }
     }
+    case 'inspeccion_calidad': {
+      const { data } = await supabase.from('calidad_inspecciones').select('codigo_interno, registrado_por').eq('id', id).maybeSingle()
+      return data && { por: data.registrado_por, lo: dicho('La inspección', 'Las inspecciones', 'otra', data.codigo_interno) }
+    }
+    case 'paso_calidad': {
+      const { data } = await supabase
+        .from('calidad_inspeccion_pasos')
+        .select('tipo, registrado_por, calidad_inspecciones(codigo_interno)')
+        .eq('id', id)
+        .maybeSingle()
+      const que = data?.tipo === 'CORREGIDA' ? 'La corrección' : data?.tipo === 'LEVANTADA' ? 'El levantamiento' : 'La nueva observación'
+      return (
+        data && {
+          por: data.registrado_por,
+          lo: dicho(que, 'Los pasos de calidad', data.tipo === 'LEVANTADA' ? 'otro' : 'otra', data.calidad_inspecciones?.codigo_interno ?? null),
+        }
+      )
+    }
     case 'accion_ssoma': {
       const { data } = await supabase.from('ssoma_acciones').select('descripcion, creado_por').eq('id', id).maybeSingle()
       return data && { por: data.creado_por, lo: dicho('La acción', 'Las acciones', 'otra', data.descripcion) }

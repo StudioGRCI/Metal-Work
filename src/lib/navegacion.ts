@@ -654,6 +654,30 @@ export const NAVEGACION = [
       },
     ],
   },
+  // Calidad inspecciona por código interno y etapa (plan «Las demás áreas», A.1,
+  // migración 20261126700000): la lleva Calidad y Gerencia la consulta. La
+  // misma pantalla va otra vez sin permiso para el área que recibe lo
+  // observado: ve solo lo suyo (lo decide la base) y lo marca corregido.
+  {
+    titulo: 'Calidad',
+    items: [
+      {
+        titulo: 'Inspecciones de calidad',
+        ruta: '/calidad',
+        icono: ClipboardCheck,
+        permiso: ['calidad.inspeccionar', 'calidad.ver'],
+        descripcion: 'Cada etapa revisada por código interno, lo no conforme y cómo va su corrección',
+        disponible: true,
+      },
+      {
+        titulo: 'Observaciones de calidad',
+        ruta: '/calidad',
+        icono: ClipboardCheck,
+        descripcion: 'Lo que Calidad observó en el trabajo de tu área, para corregirlo',
+        disponible: true,
+      },
+    ],
+  },
   // El padrón de equipos de la planta (Plan 16). Lo lleva Mantenimiento; Almacén
   // entra a anotar quién tiene cada equipo. Gerencia lo consulta desde su
   // grupo Almacén (2026-11-26).
@@ -806,7 +830,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       { titulo: 'Por atender', rutas: ['/requerimientos/atencion', '/seguimiento?vista=materiales'] },
       // Al final, el padrón de equipos: Almacén entrega la herramienta y anota
       // ahí quién se la lleva (Plan 16.1).
-      { titulo: 'Almacén', rutas: ['/almacen/kardex', '/almacen/compras', '/almacen/reposicion', '/almacen/stock', '/equipos'] },
+      // Y lo que Calidad le observe a Almacén (A.1), para marcarlo corregido.
+      { titulo: 'Almacén', rutas: ['/almacen/kardex', '/almacen/compras', '/almacen/reposicion', '/almacen/stock', '/equipos', '/calidad'] },
     ],
     telefono: ['/requerimientos/atencion', '/seguimiento?vista=materiales', '/almacen/kardex', '/'],
   },
@@ -922,8 +947,10 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
           '/rrhh/tiempos-de-entrega',
         ],
       },
-      // Los reportes de seguridad, en consulta y sin anular (Plan 15).
-      { titulo: 'SSOMA', consulta: true, rutas: ['/ssoma'] },
+      // Los reportes de seguridad (Plan 15) y las inspecciones de calidad (A.1),
+      // en consulta: no registra ni anula. Van en un mismo grupo porque un grupo
+      // más no entra en un monitor de 1440 × 760 (ver Almacén, con Averías).
+      { titulo: 'SSOMA y Calidad', consulta: true, rutas: ['/ssoma', '/calidad'] },
     ],
     // «Por decidir» en lugar de «Aprobar»: lo eligió DKS el 2026-11-26 (plan 12, entrega 12.1).
     telefono: ['/codigos-internos', '/cotizaciones/pdf', '/por-decidir', '/reportes-diarios'],
@@ -996,7 +1023,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     grupos: [
       { titulo: 'Por autorizar', rutas: ['/requerimientos/metrado'] },
       { titulo: 'Por código interno', rutas: ['/diseno/planos', '/diseno/materiales', '/diseno/etapas', '/diseno/dxf'] },
-      { titulo: 'Diseño e Ingeniería', rutas: ['/ordenes', '/materiales', '/diseno/informe-semanal', '/diseno/evaluaciones'] },
+      // Al final, lo que Calidad le observa a la etapa de diseño (A.1): lo marca corregido.
+      { titulo: 'Diseño e Ingeniería', rutas: ['/ordenes', '/materiales', '/diseno/informe-semanal', '/diseno/evaluaciones', '/calidad'] },
       // Nace plegado desde el 2026-11-26: con «Reportar» al final, el menú de
       // Diseño no entraba a 760 px. Los catálogos se tocan poco y se abre solo
       // si la pantalla que se abre está dentro.
@@ -1010,7 +1038,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // stock de Almacén. Los planos ya no los sube: los sube el encargado.
   DISENO_COLABORADOR: {
     grupos: [
-      { titulo: 'Diseño e Ingeniería', rutas: ['/diseno/informe-semanal', '/ordenes'] },
+      { titulo: 'Diseño e Ingeniería', rutas: ['/diseno/informe-semanal', '/ordenes', '/calidad'] },
       { titulo: 'Material', rutas: ['/requerimientos', '/almacen/stock'] },
     ],
     telefono: ['/diseno/informe-semanal', '/ordenes', '/requerimientos', '/'],
@@ -1083,7 +1111,11 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // de Almacén, que consulta para saber qué hay.
   SUPERVISOR: {
     grupos: [
-      { titulo: 'Supervisión', rutas: ['/reportes-diarios', '/planos', '/subcontratos/area', '/requerimientos/unidades', '/requerimientos', '/almacen/stock'] },
+      // Lo que Calidad le observa a su área va al final: llega también por la campana.
+      {
+        titulo: 'Supervisión',
+        rutas: ['/reportes-diarios', '/planos', '/subcontratos/area', '/requerimientos/unidades', '/requerimientos', '/almacen/stock', '/calidad'],
+      },
     ],
     // En el teléfono, RQ abre la lista, que lleva la cifra de lo listo para
     // recoger; «Por unidad» es su primera pestaña.
@@ -1135,6 +1167,13 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   SSOMA: {
     grupos: [{ titulo: 'SSOMA', rutas: ['/ssoma'] }],
     telefono: ['/ssoma', '/'],
+  },
+  // Control de calidad (A.1): lo que inspecciona y lo que espera su revisión
+  // arriba; los códigos internos y las OT, en consulta y sin montos.
+  CALIDAD: {
+    principal: ['/calidad'],
+    grupos: [{ titulo: 'Consultas', consulta: true, rutas: ['/seguimiento', '/ordenes'] }],
+    telefono: ['/calidad', '/seguimiento', '/ordenes', '/'],
   },
 }
 // El líder de Diseño hace el trabajo de Diseño y además revisa el de su equipo
@@ -1356,4 +1395,5 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   // Al final: solo el nombre corto. Antes quitaba una de las cuatro pestañas a
   // los puestos sin menú propio (Operario, Calidad, Costos…).
   { ruta: '/averias', corto: 'Averías' },
+  { ruta: '/calidad', corto: 'Calidad' },
 ]
