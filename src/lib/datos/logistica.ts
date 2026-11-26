@@ -439,7 +439,7 @@ export async function cargarTiposDetraccion(): Promise<TipoDetraccion[]> {
 
 /** La detracción tal como la guarda y la calcula la base. */
 export const COLUMNAS_DETRACCION =
-  'id, codigo_interno, detraccion_afecta, detraccion_codigo, detraccion_porcentaje, detraccion_minimo, detraccion_motivo, total_con_igv_pen, detraccion_monto, creado_en, fecha_cambio, moneda'
+  'id, codigo_interno, detraccion_afecta, detraccion_codigo, detraccion_porcentaje, detraccion_minimo, detraccion_motivo, total_con_igv_pen, detraccion_monto, creado_en, fecha_cambio, moneda, monto, monto_pen'
 
 type FilaDetraccion = {
   id: string
@@ -454,6 +454,8 @@ type FilaDetraccion = {
   creado_en: string
   fecha_cambio: string | null
   moneda: string
+  monto: number | null
+  monto_pen: number | null
 }
 
 const SIN_DEFINIR: DetraccionDeServicio = {
@@ -476,7 +478,62 @@ function origenDelCambio(fechaCambio: string | null, documentos?: Pick<Documento
   const facturas = documentos?.filter((d) => d.tipo === 'FACTURA' && d.fecha_emision)
   if (fechaCambio !== null) return !facturas || facturas.some((d) => d.fecha_emision === fechaCambio) ? 'FACTURA' : 'DEPOSITADA_CON_OTRA'
   if (!facturas) return null
-  return facturas.length > 0 ? 'DEPOSITADA_ANTES' : 'SIN_FACTURA'
+  if (facturas.length > 0) return 'DEPOSITADA_ANTES'
+  // La factura adjunta antes de que se pidiera la fecha (20261126947000) no dice de qué día es.
+  return documentos?.some((d) => d.tipo === 'FACTURA') ? 'FACTURA_SIN_FECHA' : 'SIN_FACTURA'
+}
+
+/** Un tipo de cambio registrado: su día y su venta. */
+export type CambioRegistrado = { fecha: string; venta: number }
+
+const diasAntes = (dia: string, n: number) => new Date(Date.parse(`${dia}T00:00:00Z`) - n * 86_400_000).toISOString().slice(0, 10)
+
+/**
+ * Los cambios registrados que les pueden tocar a esos días: el de cada día y los de los nueve
+ * anteriores, como `cambio_del_dia`. Con ellos la pantalla dice de qué día es el cambio que la OS
+ * lleva de verdad: la factura de hoy llega antes que el cambio de hoy y va con el de la víspera.
+ */
+export async function cambiosDeLosDias(dias: (string | null)[]): Promise<CambioRegistrado[]> {
+  const pedidos = dias.filter((d): d is string => Boolean(d)).sort()
+  if (pedidos.length === 0) return []
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('tipos_de_cambio')
+    .select('fecha, venta')
+    .gte('fecha', diasAntes(pedidos[0], 9))
+    .lte('fecha', pedidos[pedidos.length - 1])
+    .order('fecha', { ascending: false })
+    .limit(1000)
+  if (error) throw new Error(`No se pudieron leer los tipos de cambio: ${error.message}`)
+  return (data ?? []).map((c) => ({ fecha: c.fecha, venta: Number(c.venta) }))
+}
+
+/**
+ * El día del cambio que la OS con factura lleva de verdad. `undefined` si no se sabe (no se
+ * leyeron los cambios, o no tiene monto en soles); `null` si su monto no sale del cambio que hoy
+ * le toca a ese día: quedó fija con otro cuando se depositó su detracción.
+ */
+function cambioQueLleva(f: FilaDetraccion, cambios?: CambioRegistrado[]): string | null | undefined {
+  if (!cambios || f.fecha_cambio === null || f.monto === null || f.monto_pen === null) return undefined
+  const dia = f.fecha_cambio
+  const desde = diasAntes(dia, 9)
+  // Vienen del más nuevo al más viejo: el primero que no pasa del día es el que le toca.
+  const toca = cambios.find((c) => c.fecha <= dia && c.fecha >= desde)
+  // Un céntimo de holgura: la base redondea en decimal y aquí la cuenta va en coma flotante.
+  return toca && Math.abs(Number(f.monto) * toca.venta - Number(f.monto_pen)) < 0.011 ? toca.fecha : null
+}
+
+/** El origen del día del cambio y, si es el de su factura, el día del cambio que de verdad lleva. */
+function origenYCambio(
+  f: FilaDetraccion,
+  documentos?: Pick<DocumentoDeServicio, 'tipo' | 'fecha_emision'>[],
+  cambios?: CambioRegistrado[],
+): Pick<DetraccionDeServicio, 'origen_del_cambio' | 'cambio_registrado_el'> {
+  const origen = origenDelCambio(f.fecha_cambio, documentos)
+  if (origen !== 'FACTURA') return { origen_del_cambio: origen }
+  const lleva = cambioQueLleva(f, cambios)
+  if (lleva === null) return { origen_del_cambio: 'DEPOSITADA_CON_OTRO_CAMBIO' }
+  return { origen_del_cambio: origen, cambio_registrado_el: lleva ?? null }
 }
 
 export function detraccionDeFila(
@@ -487,6 +544,8 @@ export function detraccionDeFila(
    * antes de que exista la factura, y ahí no se dice que falta.
    */
   documentos?: Pick<DocumentoDeServicio, 'tipo' | 'fecha_emision'>[],
+  /** Los cambios registrados (`cambiosDeLosDias`), donde la pantalla dice con cuál va la OS. */
+  cambios?: CambioRegistrado[],
 ): DetraccionDeServicio {
   if (!f) return SIN_DEFINIR
   const numeroONulo = (v: number | null) => (v === null ? null : Number(v))
@@ -501,7 +560,7 @@ export function detraccionDeFila(
     monto: numeroONulo(f.detraccion_monto),
     // El día cuyo cambio le toca: el de su factura; sin factura, el día en que se emitió.
     dia_del_cambio: f.fecha_cambio ?? f.creado_en,
-    origen_del_cambio: f.moneda === 'PEN' ? null : origenDelCambio(f.fecha_cambio, documentos),
+    ...(f.moneda === 'PEN' ? { origen_del_cambio: null } : origenYCambio(f, documentos, cambios)),
   }
 }
 
@@ -520,7 +579,10 @@ export async function cargarOrdenesServicio(): Promise<OrdenServicioListada[]> {
   if (error) throw new Error(`No se pudieron leer las órdenes de servicio: ${error.message}`)
   if (extra.error) throw new Error(`No se pudo leer la detracción de las órdenes de servicio: ${extra.error.message}`)
   const porId = new Map((extra.data ?? []).map((f) => [f.id, f]))
-  const documentos = await documentosDeServicios((data ?? []).flatMap((s) => (s.id ? [s.id] : [])))
+  const [documentos, cambios] = await Promise.all([
+    documentosDeServicios((data ?? []).flatMap((s) => (s.id ? [s.id] : []))),
+    cambiosDeLosDias((extra.data ?? []).map((f) => f.fecha_cambio)),
+  ])
   return (data ?? []).map((s) => ({
     id: s.id ?? '',
     numero: s.numero ?? '',
@@ -547,7 +609,7 @@ export async function cargarOrdenesServicio(): Promise<OrdenServicioListada[]> {
     emitida_por: s.emitida_por,
     atrasada: s.atrasada === true,
     codigo_interno: porId.get(s.id ?? '')?.codigo_interno ?? null,
-    detraccion: detraccionDeFila(porId.get(s.id ?? ''), tipos, documentos.get(s.id ?? '') ?? []),
+    detraccion: detraccionDeFila(porId.get(s.id ?? ''), tipos, documentos.get(s.id ?? '') ?? [], cambios),
     documentos: documentos.get(s.id ?? '') ?? [],
   }))
 }

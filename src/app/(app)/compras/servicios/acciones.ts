@@ -278,16 +278,27 @@ export async function adjuntarDocumentoServicio(_previo: unknown, formulario: Fo
   // Qué hizo la base con esa fecha: sin decirlo, el monto en soles y la detracción cambiaban a la
   // vista sin que nada lo contara (auditoría de diseño del 2026-11-26). Si no se pudo leer, el
   // documento ya entró: se dice solo eso.
-  const { data: os } = await supabase.from('ordenes_servicio').select('moneda, monto_pen, fecha_cambio').eq('id', d.orden_servicio_id).maybeSingle()
+  const { data: os } = await supabase.from('ordenes_servicio').select('moneda, monto_pen, fecha_cambio, detraccion_afecta').eq('id', d.orden_servicio_id).maybeSingle()
   if (!os || os.moneda === 'PEN') return { ok: true, mensaje: adjunto }
   const dia = fecha(d.fecha_emision)
   if (os.fecha_cambio !== d.fecha_emision) {
-    return { ok: true, mensaje: 'Factura adjunta. La detracción de la orden ya está depositada: su monto en soles y su detracción siguen con el tipo de cambio de antes.' }
+    // La fijó el depósito de su detracción o el pago que la canceló: desde aquí no se sabe cuál.
+    return { ok: true, mensaje: 'Factura adjunta. La orden ya tiene depositada su detracción o ya está pagada: su monto en soles sigue con el tipo de cambio de antes.' }
   }
   if (os.monto_pen === null) {
-    return { ok: true, mensaje: `Factura adjunta. Falta el tipo de cambio del ${dia}: lo registran Contabilidad o Administración, y hasta entonces la orden no tiene monto en soles.` }
+    // En pasado lo que puede cambiar: el aviso sigue puesto cuando Contabilidad ya lo registró.
+    return { ok: true, mensaje: `Factura adjunta. El tipo de cambio del ${dia} no estaba registrado: la orden queda sin monto en soles hasta que lo registren Contabilidad o Administración.` }
   }
-  return { ok: true, mensaje: `Factura adjunta. La orden tomó el tipo de cambio del ${dia}: su monto en soles y su detracción se calcularon de nuevo.` }
+  // La factura de hoy llega antes que el cambio de hoy: la OS va con el último registrado, y se dice.
+  const { data: ultimo } = await supabase.from('tipos_de_cambio').select('fecha').lte('fecha', d.fecha_emision).order('fecha', { ascending: false }).limit(1).maybeSingle()
+  if (ultimo && ultimo.fecha !== d.fecha_emision) {
+    return {
+      ok: true,
+      mensaje: `Factura adjunta. El tipo de cambio del ${dia} todavía no está registrado: la orden va con el del ${fecha(ultimo.fecha)}, el último registrado, y tomará el del ${dia} cuando lo registren Contabilidad o Administración.`,
+    }
+  }
+  const queCambio = os.detraccion_afecta ? 'su monto en soles y su detracción se calcularon de nuevo' : 'su monto en soles se calculó de nuevo'
+  return { ok: true, mensaje: `Factura adjunta. La orden tomó el tipo de cambio del ${dia}: ${queCambio}.` }
 }
 
 /** Anular con su motivo un documento adjunto por error: queda como evidencia. Mismo permiso que `anular_documento_servicio`. */

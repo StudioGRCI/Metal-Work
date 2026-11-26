@@ -96,6 +96,13 @@ test('la OS en otra moneda sin su factura: la factura va primero con su porqué,
   assert.match(r[1].que, /queda con el tipo de cambio del día en que se emitió la OS$/)
   // Con un recibo adjunto la factura sigue faltando: es la que trae la fecha del cambio.
   assert.equal(faltaDelServicio(servicio({ cambioSinFactura: true })).length, 2)
+  // La factura que se adjuntó sin fecha no «falta»: se pide adjuntarla de nuevo con su fecha.
+  assert.match(faltaDelServicio(servicio({ facturaSinFecha: true }))[0].que, /^anular la factura adjunta y volver a adjuntarla con su fecha de emisión/)
+  // Con su factura, pero sin el cambio de ese día: el depósito dice con cuál quedaría.
+  assert.match(
+    faltaDelServicio(servicio({ saldoDetraccion: 30, cambioDeLaVispera: { usado: '25/11/2026', factura: '26/11/2026' } }))[0].que,
+    /el tipo de cambio del 26\/11\/2026, la fecha de su factura, todavía no está registrado; si la depositas ahora, queda con el del 25\/11\/2026$/,
+  )
   // En soles, o ya con su factura, nada de eso.
   assert.deepEqual(
     faltaDelServicio(servicio({ saldoDetraccion: 30 })).map((f) => f.que),

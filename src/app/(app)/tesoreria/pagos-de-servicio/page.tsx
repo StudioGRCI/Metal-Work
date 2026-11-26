@@ -13,7 +13,7 @@ import { serviciosPorPagar, type ServicioPorPagar } from '@/lib/datos/facturacio
 import { AdjuntarDocumentoServicio } from '@/app/(app)/compras/servicios/documentos-servicio'
 import { etiquetaDocumentoServicio } from '@/lib/dominio/adquisiciones'
 import type { CuentaParaPagar } from '@/lib/dominio/caja'
-import { diaDelCambio, faltaDelServicio, resumenDetraccion } from '@/lib/dominio/detraccion'
+import { cambioDeLaVispera, diaDelCambio, faltaDelServicio, resumenDetraccion } from '@/lib/dominio/detraccion'
 import { faltaDelServicio as queLeFaltaAlServicio } from '@/lib/dominio/lo-que-falta'
 import { resumenPorMoneda } from '@/lib/dominio/finanzas'
 import { ESTADO_SERVICIO } from '@/lib/dominio/logistica'
@@ -221,6 +221,8 @@ function Servicio({
             sinTipoDeCambio,
             cambioDel: diaDelCambio(s.detraccion),
             cambioSinFactura: Boolean(s.detraccion.afecta) && s.detraccion.origen_del_cambio === 'SIN_FACTURA',
+            facturaSinFecha: Boolean(s.detraccion.afecta) && s.detraccion.origen_del_cambio === 'FACTURA_SIN_FECHA',
+            cambioDeLaVispera: s.detraccion.afecta ? cambioDeLaVispera(s.detraccion) : null,
           })}
         />
         <ParaPagar documentos={documentos} cuentas={s.cancelada ? [] : s.cuentas} monedaDocumento={m} sinCuentas={s.cancelada ? null : sinCuentas} />

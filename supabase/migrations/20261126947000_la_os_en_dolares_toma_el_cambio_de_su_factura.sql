@@ -29,8 +29,11 @@
 --      día en que se emitió (el último registrado hasta ese día, como al emitir).
 --   6. Lo depositado, depositado está: la OS con su detracción ya depositada, o
 --      ya pagada del todo, no se mueve. Si ese pago se anula, toma el cambio de
---      su factura. Un adelanto al proveedor no la detiene: la detracción todavía
---      no se depositó y tiene que salir con el cambio de la factura.
+--      su factura, también el que se registró o se corrigió mientras tanto. Un
+--      adelanto al proveedor no detiene a la OS con factura: la detracción
+--      todavía no se depositó y tiene que salir con el cambio de la factura. La
+--      OS sin factura sigue con la regla de antes (20261126626000): con cualquier
+--      pago vigente, corregir el cambio del día en que se emitió no la mueve.
 --
 -- Las funciones que ya existían se cambian buscando su texto exacto: si otra
 -- migración las cambió, se detiene y pide revisarlas a mano. Idempotente y sin
@@ -139,7 +142,12 @@ begin
      and d.fecha_emision is not null
    order by d.creado_en desc, d.id desc
    limit 1;
-  if v_fecha is not distinct from v_os.fecha_cambio then
+  -- Ya va con el día de esa factura y con el cambio que le toca: nada que hacer.
+  -- Si el cambio de ese día se registró o se corrigió mientras estaba fija (la
+  -- detracción depositada), al anularse ese pago se pone al día.
+  if v_fecha is not distinct from v_os.fecha_cambio
+     and (v_fecha is null
+          or v_os.monto_pen is not distinct from round(v_os.monto * public.cambio_del_dia(v_fecha, 'VENTA'), 2)) then
     return;
   end if;
   -- Si a ese día no le toca ningún cambio registrado, queda sin monto en soles:

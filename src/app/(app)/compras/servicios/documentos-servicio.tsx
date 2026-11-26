@@ -16,6 +16,7 @@ import { COMPROBANTES_DE_SERVICIO, etiquetaDocumentoServicio, TIPO_DOCUMENTO_SER
 import { BUCKET_DOCUMENTOS_SERVICIO, MAXIMO_MB_FINANZAS, TIPOS_COMPROBANTE_PAGO } from '@/lib/dominio/finanzas'
 import { useCursorAlRechazo, useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { fecha, hoyLima } from '@/lib/format'
+import { cn } from '@/lib/utils'
 
 import { adjuntarDocumentoServicio, anularDocumentoServicio } from './acciones'
 
@@ -198,7 +199,13 @@ export function AdjuntarDocumentoServicio({
         </form>
       </Ventana>
       {/* Siempre puesto, para que el lector lo anuncie al llegar; vacío no ocupa lugar en el renglón. */}
-      <p key={aviso?.vez ?? 0} role="status" className={aviso ? 'basis-full text-xs text-texto md:text-right' : 'sr-only'} data-aviso-documento-servicio={numero}>
+      <p
+        key={aviso?.vez ?? 0}
+        role="status"
+        // Separado de la fila de botones que sigue: pegado, parecía el pie del botón de abajo.
+        className={aviso ? cn('mt-1 mb-2 basis-full text-left text-xs', /no estaba registrado|todavía no está registrado/.test(aviso.texto) ? 'text-aviso' : 'text-texto') : 'sr-only'}
+        data-aviso-documento-servicio={numero}
+      >
         {aviso?.texto}
       </p>
     </>

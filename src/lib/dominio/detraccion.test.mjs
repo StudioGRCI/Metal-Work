@@ -16,12 +16,25 @@ const os = (mas = {}) => ({
 
 test('la OS en otra moneda dice con el tipo de cambio de qué día va su detracción, y por qué', () => {
   assert.match(resumenDetraccion(os({ origen_del_cambio: 'FACTURA' })).detalle, / · con el tipo de cambio del 23\/11\/2026, la fecha de su factura$/)
+  // La factura de hoy llegó antes que el cambio de hoy: se dice con cuál va de verdad.
+  assert.match(
+    resumenDetraccion(os({ origen_del_cambio: 'FACTURA', cambio_registrado_el: '2026-11-22' })).detalle,
+    / · con el tipo de cambio del 22\/11\/2026, el último registrado hasta el 23\/11\/2026, la fecha de su factura$/,
+  )
+  assert.match(resumenDetraccion(os({ origen_del_cambio: 'FACTURA', cambio_registrado_el: '2026-11-23' })).detalle, /del 23\/11\/2026, la fecha de su factura$/)
+  assert.match(
+    resumenDetraccion(os({ origen_del_cambio: 'DEPOSITADA_CON_OTRO_CAMBIO' })).detalle,
+    /con el tipo de cambio que había cuando se depositó su detracción, no el que hoy tiene el 23\/11\/2026, la fecha de su factura$/,
+  )
   // Sin factura la cifra es provisional: quien paga lo tiene que leer.
   assert.match(resumenDetraccion(os({ origen_del_cambio: 'SIN_FACTURA' })).detalle, /del 23\/11\/2026, el día en que se emitió: falta su factura$/)
   assert.match(resumenDetraccion(os({ origen_del_cambio: 'DEPOSITADA_ANTES' })).detalle, /el día en que se emitió: su detracción ya estaba depositada cuando llegó su factura$/)
+  // La que no pasa del mínimo no deposita nada: solo pudo quedar fija por estar pagada.
+  assert.match(resumenDetraccion(os({ monto: null, origen_del_cambio: 'DEPOSITADA_ANTES' })).detalle, /la orden ya estaba pagada cuando llegó su factura$/)
+  assert.match(resumenDetraccion(os({ origen_del_cambio: 'FACTURA_SIN_FECHA' })).detalle, /el día en que se emitió: su factura se adjuntó sin fecha de emisión$/)
   // La factura de ese día ya no es la vigente: no se la nombra como «su factura».
   const conOtra = resumenDetraccion(os({ origen_del_cambio: 'DEPOSITADA_CON_OTRA' })).detalle
-  assert.match(conOtra, /del 23\/11\/2026: su detracción ya estaba depositada cuando se cambió su factura$/)
+  assert.match(conOtra, /del 23\/11\/2026: su detracción ya estaba depositada cuando se anuló o se cambió su factura$/)
   assert.doesNotMatch(conOtra, /la fecha de su factura/)
   // La que no pasa del mínimo también lo dice: con otro cambio puede pasar.
   assert.match(resumenDetraccion(os({ monto: null, origen_del_cambio: 'SIN_FACTURA' })).detalle, /falta su factura$/)

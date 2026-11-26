@@ -146,12 +146,25 @@ export function faltaDelServicio(s: {
    * mientras la detracción no esté depositada (20261126947000). Quien la deposita antes lo tiene que saber.
    */
   cambioSinFactura?: boolean
+  /** Lo mismo, pero la factura está: se adjuntó antes de que se pidiera su fecha de emisión. */
+  facturaSinFecha?: boolean
+  /**
+   * Tiene su factura, pero el tipo de cambio de ese día todavía no se registró y va con el último
+   * anterior (`usado`). Si la detracción se deposita así, queda fija con ese.
+   */
+  cambioDeLaVispera?: { usado: string; factura: string } | null
 }): LoQueFalta[] {
   if (s.cancelada) return []
   const falta: LoQueFalta[] = []
   if (s.cambioSinFactura) {
     falta.push({
       que: 'la factura del proveedor, adjunta a la OS con su fecha de emisión: el tipo de cambio de ese día decide el monto en soles y la detracción',
+      quien: 'Logística',
+      traba: false,
+    })
+  } else if (s.facturaSinFecha) {
+    falta.push({
+      que: 'anular la factura adjunta y volver a adjuntarla con su fecha de emisión: el tipo de cambio de ese día decide el monto en soles y la detracción',
       quien: 'Logística',
       traba: false,
     })
@@ -181,9 +194,12 @@ export function faltaDelServicio(s: {
   if (s.saldoDetraccion > 0) {
     falta.push({
       // Sin la factura el depósito sale con el cambio del día en que se emitió, y lo deja fijo.
-      que: s.cambioSinFactura
-        ? 'depositar la detracción en el Banco de la Nación, con su constancia: si la depositas antes de que llegue la factura, queda con el tipo de cambio del día en que se emitió la OS'
-        : 'depositar la detracción en el Banco de la Nación, con su constancia',
+      que:
+        s.cambioSinFactura || s.facturaSinFecha
+          ? 'depositar la detracción en el Banco de la Nación, con su constancia: si la depositas antes de que llegue la factura con su fecha, queda con el tipo de cambio del día en que se emitió la OS'
+          : s.cambioDeLaVispera
+            ? `depositar la detracción en el Banco de la Nación, con su constancia: el tipo de cambio del ${s.cambioDeLaVispera.factura}, la fecha de su factura, todavía no está registrado; si la depositas ahora, queda con el del ${s.cambioDeLaVispera.usado}`
+            : 'depositar la detracción en el Banco de la Nación, con su constancia',
       quien: 'Tesorería',
       traba: false,
     })

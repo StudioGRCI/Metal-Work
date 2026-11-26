@@ -20,6 +20,11 @@
 --   osf: US$ 1 000. Su factura es de hoy, y el cambio de hoy todavía no está:
 --        toma el de ayer (3 700). Contabilidad registra el de hoy (3,90) y pasa
 --        a 3 900; la que no tiene factura sigue como se emitió.
+--        Con su detracción depositada, corregir ese cambio no la mueve;
+--        anulado el depósito, toma el corregido.
+--   osg: US$ 1 000. Factura de anteayer, sin cambio propio: va con el de hace 3
+--        días. Se deposita la detracción y después llega el cambio de anteayer:
+--        no la mueve hasta que el depósito se anula.
 --   osp: en soles. Su factura no pide fecha y no cambia nada.
 --
 -- Quien no debe (Ventas) no adjunta; nadie con sesión ejecuta los ayudantes.
@@ -51,7 +56,7 @@ begin
    order by r limit 1
   on conflict (tipo_documento, numero_documento) do update set activo = true;
   perform set_config('prueba.proveedor', (select id::text from public.proveedores where razon_social = 'PROVEEDOR DE PRUEBA 490'), true);
-  foreach v in array array['osa', 'osb', 'osc', 'osd', 'ose', 'osf', 'osp', 'tc15', 'pago', 'pagod', 'adelantod', 'fa', 'fb', 'fc', 'fd', 'fe', 'ff', 'fp'] loop
+  foreach v in array array['osa', 'osb', 'osc', 'osd', 'ose', 'osf', 'osg', 'osp', 'tc15', 'pago', 'pagod', 'pagof', 'pagog', 'adelantod', 'fa', 'fb', 'fc', 'fd', 'fe', 'ff', 'fg', 'fp'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
 end $$;
@@ -101,6 +106,8 @@ select public.emitir_orden_servicio(pg_temp.id('ose'), pg_temp.id('proveedor'), 
   'PLANTA', 'Galvanizado de barandas, prueba 490', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'USD', 1000, 'CONTADO', 0, '025', null);
 select public.emitir_orden_servicio(pg_temp.id('osf'), pg_temp.id('proveedor'), null, (select id from public.areas where codigo = 'ACB'),
   'PLANTA', 'Plegado de pisos, prueba 490', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'USD', 1000, 'CONTADO', 0, '025', null);
+select public.emitir_orden_servicio(pg_temp.id('osg'), pg_temp.id('proveedor'), null, (select id from public.areas where codigo = 'ACB'),
+  'PLANTA', 'Corte de planchas, prueba 490', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'USD', 1000, 'CONTADO', 0, '025', null);
 select public.emitir_orden_servicio(pg_temp.id('osp'), pg_temp.id('proveedor'), null, (select id from public.areas where codigo = 'ACB'),
   'PLANTA', 'Pintura de la tolva, prueba 490', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'PEN', 500, 'CONTADO', 0, '025', null);
 reset role;
@@ -112,6 +119,7 @@ select public.aprobar_orden_servicio(pg_temp.id('osc'));
 select public.aprobar_orden_servicio(pg_temp.id('osd'));
 select public.aprobar_orden_servicio(pg_temp.id('ose'));
 select public.aprobar_orden_servicio(pg_temp.id('osf'));
+select public.aprobar_orden_servicio(pg_temp.id('osg'));
 select public.aprobar_orden_servicio(pg_temp.id('osp'));
 reset role;
 select test.afirmar((pg_temp.os('osa')).monto_pen = 3700.00 and (pg_temp.os('osa')).fecha_cambio is null,
@@ -327,8 +335,8 @@ select test.afirmar((pg_temp.os('osa')).monto_pen = 3700.00 and (pg_temp.os('osa
   'la que no tiene factura sigue como se emitió, y las de otro día no se mueven');
 -- Con la detracción depositada, el cambio que llega después tampoco la mueve.
 set local session_replication_role = replica;
-insert into public.pagos_orden_servicio (orden_servicio_id, fecha_pago, moneda, monto, cancela, destino, archivo_ruta, archivo_mime, archivo_tamano, registrado_por)
-values (pg_temp.id('osf'), current_date, 'PEN', (pg_temp.os('osf')).detraccion_monto, false, 'DETRACCION', 'prueba/490/detraccion-f.pdf', 'application/pdf', 1000, pg_temp.id('tesoreria'));
+insert into public.pagos_orden_servicio (id, orden_servicio_id, fecha_pago, moneda, monto, cancela, destino, archivo_ruta, archivo_mime, archivo_tamano, registrado_por)
+values (pg_temp.id('pagof'), pg_temp.id('osf'), current_date, 'PEN', (pg_temp.os('osf')).detraccion_monto, false, 'DETRACCION', 'prueba/490/detraccion-f.pdf', 'application/pdf', 1000, pg_temp.id('tesoreria'));
 set local session_replication_role = origin;
 select pg_temp.como('contabilidad');
 set local role authenticated;
@@ -336,6 +344,42 @@ update public.tipos_de_cambio set venta = 3.95, compra = 3.90 where fecha = pg_t
 reset role;
 select test.afirmar((pg_temp.os('osf')).monto_pen = 3900.00,
   'depositada su detracción, corregir después el cambio de ese día no la mueve');
+-- Anulado el depósito, se pone al día con el cambio que se corrigió mientras estaba fija.
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select public.anular_pago_servicio(pg_temp.id('pagof'), 'Se depositó antes de que se corrigiera el cambio');
+reset role;
+select test.afirmar((pg_temp.os('osf')).monto_pen = 3950.00 and (pg_temp.os('osf')).fecha_cambio = pg_temp.hoy(),
+  format('anulado el depósito, toma el cambio de su factura como quedó corregido (dice %s)', (pg_temp.os('osf')).monto_pen));
+
+-- ============================================ Se deposita con el cambio de la víspera y el del día llega después
+-- osg: factura de anteayer, que no tiene cambio propio: toma el de hace 3 días (3,80).
+select set_config('prueba.ruta_g', pg_temp.subir('osg', 'comprador'), true);
+select pg_temp.como('comprador');
+set local role authenticated;
+select public.adjuntar_documento_servicio(pg_temp.id('fg'), pg_temp.id('osg'), 'FACTURA', 'F001-4908', 'factura-g.pdf',
+                                          current_setting('prueba.ruta_g'), pg_temp.hoy() - 2);
+reset role;
+select test.afirmar((pg_temp.os('osg')).monto_pen = 3800.00 and (pg_temp.os('osg')).fecha_cambio = pg_temp.hoy() - 2,
+  'la factura de anteayer, sin cambio propio, toma el último registrado hasta ese día');
+set local session_replication_role = replica;
+insert into public.pagos_orden_servicio (id, orden_servicio_id, fecha_pago, moneda, monto, cancela, destino, archivo_ruta, archivo_mime, archivo_tamano, registrado_por)
+values (pg_temp.id('pagog'), pg_temp.id('osg'), current_date, 'PEN', (pg_temp.os('osg')).detraccion_monto, false, 'DETRACCION', 'prueba/490/detraccion-g.pdf', 'application/pdf', 1000, pg_temp.id('tesoreria')),
+       (gen_random_uuid(), pg_temp.id('osg'), current_date, 'USD', 200, false, 'PROVEEDOR', 'prueba/490/adelanto-g.pdf', 'application/pdf', 1000, pg_temp.id('tesoreria'));
+set local session_replication_role = origin;
+select pg_temp.como('contabilidad');
+set local role authenticated;
+insert into public.tipos_de_cambio (fecha, compra, venta, fuente, registrado_por)
+values (pg_temp.hoy() - 2, 3.80, 3.85, 'SUNAT', pg_temp.id('contabilidad'));
+reset role;
+select test.afirmar((pg_temp.os('osg')).monto_pen = 3800.00,
+  'con la detracción depositada, el cambio de ese día que llega después no la mueve');
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select public.anular_pago_servicio(pg_temp.id('pagog'), 'Se depositó con el cambio de la víspera');
+reset role;
+select test.afirmar((pg_temp.os('osg')).monto_pen = 3850.00,
+  format('anulado el depósito, toma el cambio que se registró mientras tanto, aunque le quede un adelanto (dice %s)', (pg_temp.os('osg')).monto_pen));
 
 -- ============================================ La OS en soles no pide fecha
 select set_config('prueba.ruta_p', pg_temp.subir('osp', 'comprador'), true);

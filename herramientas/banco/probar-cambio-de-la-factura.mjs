@@ -243,7 +243,7 @@ if (tc_sin !== null) {
   const errorB = await adjuntarFactura(tel, b, `F001-${SELLO}2`, sin_cambio)
   comprobar(!errorB, `en el teléfono, adjuntó la factura de la ${b.numero}${errorB ? ` («${errorB}»)` : ''}`)
   const avisoB = limpio(await tel.locator(`[data-aviso-documento-servicio="${b.numero}"]`).first().textContent())
-  comprobar(avisoB.includes(`Falta el tipo de cambio del ${dma(sin_cambio)}: lo registran Contabilidad o Administración`), `y junto al botón dice que falta el cambio de ese día («${avisoB}»)`)
+  comprobar(avisoB.includes(`El tipo de cambio del ${dma(sin_cambio)} no estaba registrado`) && avisoB.includes('Contabilidad o Administración'), `y junto al botón dice que falta el cambio de ese día («${avisoB}»)`)
   await captura(tel, 'logistica-factura-sin-cambio-390')
   const [os] = await q(`select monto_pen, to_char(fecha_cambio, 'YYYY-MM-DD') as f from public.ordenes_servicio where id = $1`, [b.id])
   comprobar(os.monto_pen === null && os.f === sin_cambio, 'la factura de un día sin cambio registrado deja la OS sin monto en soles')
@@ -279,8 +279,23 @@ if (tc_sin !== null) {
     await ir(log2, '/compras/servicios')
     const errorD = await adjuntarFactura(log2, d, `F001-${SELLO}4`, hoy)
     comprobar(!errorD, `Logística adjuntó a la ${d.numero} una factura de hoy${errorD ? ` («${errorD}»)` : ''}`)
+    const [{ ayer, dia_ayer }] = await q(
+      `select public.cambio_del_dia($1::date, 'VENTA') as ayer,
+              (select to_char(max(fecha), 'YYYY-MM-DD') from public.tipos_de_cambio where fecha <= $1::date) as dia_ayer`, [hoy])
+    const avisoD = limpio(await log2.locator(`[data-aviso-documento-servicio="${d.numero}"]`).first().textContent())
+    comprobar(avisoD.includes(`El tipo de cambio del ${dma(hoy)} todavía no está registrado: la orden va con el del ${dma(dia_ayer)}`),
+      `junto al botón dice que el cambio de hoy no está y con cuál va («${avisoD}»)`)
     await log2.context().close()
-    const [{ ayer }] = await q(`select public.cambio_del_dia($1::date, 'VENTA') as ayer`, [hoy])
+    {
+      const tes = await entrar('tesoreria', 390)
+      await ir(tes, '/tesoreria/pagos-de-servicio')
+      const tarjeta = limpio(await tes.locator(`[data-servicio="${d.numero}"]`).innerText())
+      comprobar(tarjeta.includes(`con el tipo de cambio del ${dma(dia_ayer)}, el último registrado hasta el ${dma(hoy)}, la fecha de su factura`),
+        `Tesorería lee que la ${d.numero} va con el cambio del ${dma(dia_ayer)}, el último registrado, y no con el de hoy`)
+      comprobar(!(await desborda(tes)), 'y no desborda a 390')
+      await captura(tes, 'tesoreria-cambio-de-la-vispera-390')
+      await tes.context().close()
+    }
     const [antes] = await q(`select monto_pen, detraccion_monto, to_char(fecha_cambio, 'YYYY-MM-DD') as f from public.ordenes_servicio where id = $1`, [d.id])
     comprobar(antes.f === hoy && Number(antes.monto_pen) === Math.round(2000 * Number(ayer) * 100) / 100,
       `sin el cambio de hoy, la OS va con el último registrado (${ayer}): S/ ${antes.monto_pen}`)
