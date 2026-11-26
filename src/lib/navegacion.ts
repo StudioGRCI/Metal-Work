@@ -29,6 +29,7 @@ import {
   Handshake,
   Hash,
   IdCard,
+  Inbox,
   Landmark,
   Layers,
   LayoutDashboard,
@@ -58,6 +59,13 @@ import {
   TriangleAlert,
   Wrench,
 } from 'lucide-react'
+
+/**
+ * Quién entra a «Por decidir» (plan 12): la Gerencia General, que revisa las
+ * cotizaciones y cierra el costeo de los códigos. El menú y la puerta de la
+ * pantalla piden lo mismo; los grupos de adentro, cada uno el suyo.
+ */
+export const PERMISOS_POR_DECIDIR = ['cotizaciones.revisar', 'codigos_internos.cerrar']
 
 export type ItemNavegacion = {
   titulo: string
@@ -139,6 +147,16 @@ export const NAVEGACION = [
         icono: Hash,
         permiso: 'codigos_internos.ver',
         descripcion: 'Cada código con sus etapas, planos, materiales, avance y lo que lleva costado',
+        disponible: true,
+      },
+      // Lo que espera la decisión de Gerencia, reunido de sus pantallas (plan 12,
+      // entrega 12.1). No se aprueba ahí: cada fila salta a la suya.
+      {
+        titulo: 'Por decidir',
+        ruta: '/por-decidir',
+        icono: Inbox,
+        permiso: PERMISOS_POR_DECIDIR,
+        descripcion: 'Lo que espera tu decisión en cada pantalla, lo más antiguo primero',
         disponible: true,
       },
       {
@@ -828,7 +846,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       {
         titulo: 'Por aprobar',
         pliegue: 'fijo',
-        rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'],
+        rutas: ['/por-decidir', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'],
       },
       { titulo: 'Ventas', consulta: true, rutas: ['/clientes', '/unidades', '/carrocerias'] },
       {
@@ -889,7 +907,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       // Los reportes de seguridad, en consulta y sin anular (Plan 15).
       { titulo: 'SSOMA', consulta: true, rutas: ['/ssoma'] },
     ],
-    telefono: ['/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios'],
+    // «Por decidir» en lugar de «Aprobar»: lo eligió DKS el 2026-11-26 (plan 12, entrega 12.1).
+    telefono: ['/codigos-internos', '/cotizaciones/pdf', '/por-decidir', '/reportes-diarios'],
     // Lo que consultaba desde su menú antes del 2026-11-25 sigue en su inicio.
     alInicio: ['/rrhh/tiempos-de-entrega', '/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales'],
   },
@@ -1276,6 +1295,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/recojos', corto: 'Recojos' },
   { ruta: '/compras/ordenes', corto: 'OC' },
   { ruta: '/compras/aprobacion', corto: 'Aprobar' },
+  { ruta: '/por-decidir', corto: 'Por decidir' },
   { ruta: '/compras/gestion', corto: 'Gestión' },
   { ruta: '/compras/servicios', corto: 'OS' },
   { ruta: '/requerimientos', corto: 'RQ' },

@@ -2,6 +2,8 @@ import type { Tono } from '@/components/ui/etiqueta-estado'
 import { CODIGO_FIJO_OFICINA, CODIGO_FIJO_PLANTA } from '@/lib/dominio/codigos-internos'
 import type { PerfilSesion } from '@/lib/sesion'
 
+import { ESTADOS_CON_ALGO_POR_ENTREGAR } from '@/lib/dominio/plazo-rq'
+
 type Def = { etiqueta: string; tono: Tono; descripcion: string }
 
 /**
@@ -67,7 +69,7 @@ export const CODIGOS_FIJOS_DEL_RQ: Record<TipoRequerimiento, { codigo: string; d
 }
 
 /** Los que todavía esperan a alguien: lo que la bandeja de atención muestra primero. */
-export const ESTADOS_RQ_ABIERTOS = ['POR_ATENDER', 'SIN_STOCK', 'EN_ATENCION', 'LISTO_EN_ALMACEN'] as const
+export const ESTADOS_RQ_ABIERTOS = ESTADOS_CON_ALGO_POR_ENTREGAR
 
 /** Quién compra cada requerimiento: el de operación, Logística; el de Administración, la administradora. */
 export type CompraDe = Record<TipoRequerimiento, boolean>
