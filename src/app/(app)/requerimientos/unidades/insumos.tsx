@@ -170,7 +170,8 @@ export function InsumosDelRequerimiento({
               <p className="text-xs break-words text-texto-suave">
                 {/* En el teléfono no se ven los nombres de los pasos: el de ahora va aquí, si la línea no lo dice ya. */}
                 {titulo && titulo !== dice?.etiqueta && <span className="font-medium text-texto sm:hidden">{titulo} · </span>}
-                <span className={cn(TEXTO[dice?.tono ?? 'neutro'], titulo === dice?.etiqueta && 'sm:hidden')}>
+                {/* Sin el visto no sale: la etapa no se pinta en verde aunque ya esté en almacén. */}
+                <span className={cn(TEXTO[paso?.frenaLaSalida ? 'aviso' : (dice?.tono ?? 'neutro')], titulo === dice?.etiqueta && 'sm:hidden')}>
                   {dice?.etiqueta ?? 'Sin etapa'}
                 </span>
                 {llega && (
@@ -235,8 +236,13 @@ function TituloDelPliegue({
   const cuenta = new Map<EnElResumen, number>()
   for (const i of insumos) {
     if (!i.paso) continue
-    const p: EnElResumen =
-      i.paso.actual === 'VISTO_DISENO' && VISTO_QUE_PIDE_SUSTENTO.includes(i.seguimiento?.visto_diseno ?? '') ? 'SUSTENTO' : i.paso.actual
+    // Lo que no sale del almacén sin el visto se cuenta por lo que espera, no por dónde está.
+    const espera = i.paso.actual === 'VISTO_DISENO' || i.paso.frenaLaSalida
+    const p: EnElResumen = !espera
+      ? i.paso.actual
+      : VISTO_QUE_PIDE_SUSTENTO.includes(i.seguimiento?.visto_diseno ?? '')
+        ? 'SUSTENTO'
+        : 'VISTO_DISENO'
     cuenta.set(p, (cuenta.get(p) ?? 0) + 1)
   }
   // Con un solo insumo, el número sobra: «en compra».
