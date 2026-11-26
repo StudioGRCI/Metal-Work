@@ -287,13 +287,14 @@ const GRUPO_SQL = `case when f.fecha_vencimiento is null then 'SIN_FECHA'
                         when f.fecha_vencimiento = $1::date then 'HOY'
                         when f.fecha_vencimiento <= date_trunc('week', $1::date)::date + 6 then 'SEMANA'
                         else 'DESPUES' end`
-const totalesCobro = await consulta(
+// Se cuentan al leer cada pantalla: otra prueba puede estar sembrando en el mismo banco.
+const totalesCobro = () => consulta(
   `select ${GRUPO_SQL} as grupo, coalesce(f.moneda, 'PEN') as moneda, sum(f.saldo)::numeric(14,2)::text as total
      from v_facturas_venta f where f.anulada_en is null and not f.cancelada and f.saldo > 0 group by 1, 2`,
   [hoy],
 )
 // Las que se pagan: ninguna OC por aprobar, rechazada ni anulada.
-const totalesPago = await consulta(
+const totalesPago = () => consulta(
   `select ${GRUPO_SQL} as grupo, coalesce(f.moneda, 'PEN') as moneda, sum(f.saldo)::numeric(14,2)::text as total
      from v_cuentas_pagar f
     where f.saldo > 0
@@ -344,7 +345,7 @@ async function leerGrupos(pagina, lista) {
 }
 
 function revisarTotales(grupos, esperados, donde) {
-  for (const g of grupos.filter((x) => x.grupo !== 'APARTE')) {
+  for (const g of grupos.filter((x) => x.grupo !== 'APARTE' && x.grupo !== 'PRIMERO')) {
     const deEste = esperados.filter((e) => e.grupo === g.grupo)
     const esperado = Object.fromEntries(deEste.filter((e) => Number(e.total) > 0).map((e) => [e.moneda, formato(e.moneda, e.total)]))
     const ok = JSON.stringify(Object.keys(esperado).sort()) === JSON.stringify(Object.keys(g.totales).sort()) &&
@@ -353,7 +354,7 @@ function revisarTotales(grupos, esperados, donde) {
   }
 }
 
-const ORDEN = ['VENCIDO', 'HOY', 'SEMANA', 'DESPUES', 'SIN_FECHA', 'APARTE']
+const ORDEN = ['PRIMERO', 'VENCIDO', 'HOY', 'SEMANA', 'DESPUES', 'SIN_FECHA', 'APARTE']
 const enOrden = (grupos) => grupos.every((g, i) => i === 0 || ORDEN.indexOf(grupos[i - 1].grupo) < ORDEN.indexOf(g.grupo))
 
 async function sinDesborde(pagina, donde) {
@@ -390,7 +391,7 @@ for (const [puesto, viewport, sufijo] of [
     const fila = limpio(await pagina.locator(`[data-factura="${v.numero}"]`).first().textContent().catch(() => ''))
     comprobar(fila.includes(v.dias), `${donde} · por cobrar: ${v.numero} dice «${v.dias}»`)
   }
-  revisarTotales(cobro, totalesCobro, `${donde} · por cobrar`)
+  revisarTotales(cobro, await totalesCobro(), `${donde} · por cobrar`)
   const cobrar = await pagina.getByRole('button', { name: 'Registrar cobro' }).count()
   comprobar(puesto === 'tesoreria' ? cobrar > 0 : cobrar === 0, `${donde} · por cobrar: ${puesto === 'tesoreria' ? 'cobra desde su fila' : 'sin botón de cobrar'}`)
   if (viewport.width < 500) await sinDesborde(pagina, `${donde} · por cobrar`)
@@ -409,7 +410,7 @@ for (const [puesto, viewport, sufijo] of [
   }
   const aparte = pago.find((g) => g.grupo === 'APARTE')
   comprobar(Boolean(aparte?.titulo.startsWith('No se pagan todavía')), `${donde} · por pagar: la que espera a Gerencia va al final, en «No se pagan todavía»`)
-  revisarTotales(pago, totalesPago, `${donde} · por pagar`)
+  revisarTotales(pago, await totalesPago(), `${donde} · por pagar`)
 
   // Las OC con boleta: las que se pagan aquí, por vencimiento; la del comprobante en camino, al final.
   const boletas = await leerGrupos(pagina, 'boletas')

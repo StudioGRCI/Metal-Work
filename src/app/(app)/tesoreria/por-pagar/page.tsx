@@ -290,8 +290,9 @@ export default async function PaginaPorPagar() {
               <p className="mt-1 max-w-lg text-sm text-texto-suave">Aparecen cuando Logística emite una OC con boleta y queda aprobada.</p>
             </div>
           ) : (
-            // Por vencimiento (plan 11.1): solo las que se pagan aquí. Las demás (su comprobante está en
-            // camino, ya tienen factura, piden una devolución o el proveedor la devolvió) van al final.
+            // Por vencimiento (plan 11.1): solo las que se pagan aquí. Las que piden una devolución o pasar
+            // lo pagado a su factura van primero; las demás (su comprobante está en camino, ya tienen
+            // factura o el proveedor la devolvió) van al final.
             <GruposPorVencimiento
               lista="boletas"
               filas={boletasConFecha}
@@ -302,7 +303,9 @@ export default async function PaginaPorPagar() {
               clave={(b) => b.id ?? ''}
               nombre={['OC', 'OC']}
               fila={filaBoleta}
-              aparte={{ titulo: 'No se pagan aquí', filas: boletasPorPagar.filter((b) => !boletasConFecha.includes(b)), conTotal: false }}
+              // Lo pagado de más y la factura en otra moneda le piden algo a Tesorería: arriba, como salían antes.
+              primero={{ titulo: 'Te piden algo', filas: boletasPorPagar.filter((b) => !boletasConFecha.includes(b) && pideAlgo(b)) }}
+              aparte={{ titulo: 'No se pagan aquí', filas: boletasPorPagar.filter((b) => !boletasConFecha.includes(b) && !pideAlgo(b)), conTotal: false }}
             />
           )}
         </TarjetaCuerpo>
