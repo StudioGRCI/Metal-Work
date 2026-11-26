@@ -44,7 +44,7 @@ export function ListaDxf({
         return (
         <li key={grupo[0].envio} className="p-3" data-envio={grupo[0].envio}>
           <div className="flex items-start gap-3">
-            <div className="min-w-0 flex-1 space-y-1">
+            <div className={`min-w-0 flex-1${lecturas ? ' space-y-1' : ''}`}>
               <p className="text-sm font-medium wrap-anywhere text-texto">{grupo[0].descripcion}</p>
               <p className="text-xs text-texto-suave">
                 {grupo.length === 1 ? '1 archivo' : `${grupo.length} archivos`} · {v ? subidoPor(v, grupo.length === 1 ? 'subido' : 'subidos') : fechaHora(llegada(grupo))}

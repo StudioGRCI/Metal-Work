@@ -30,7 +30,7 @@ export type LecturasDelCodigo = {
 
 /**
  * Quién subió cada revisión de plano y cada envío de DXF de un código, y si
- * Maestranza y Producción ya leyeron su aviso (migración 20261126700000). El
+ * Maestranza y Producción ya leyeron su aviso (migración 20261126930000). El
  * visto sale del aviso leído: no se guarda ninguna descarga. Solo Diseño.
  */
 export async function quienSubioYQuienLeyo(codigo: string): Promise<LecturasDelCodigo> {

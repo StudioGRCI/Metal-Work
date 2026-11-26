@@ -27,6 +27,7 @@ import {
   type OrdenDelCodigo,
 } from '@/lib/datos/diseno-codigos'
 import { quienSubioYQuienLeyo, type LecturasDelCodigo } from '@/lib/datos/quien-subio-y-quien-leyo'
+import { QUE_DICE_EL_AVISO } from '@/components/codigo-interno/quien-subio-y-quien-leyo'
 import { limitePorVencer } from '@/lib/datos/limite-por-vencer'
 import { responsablesDeEtapas } from '@/lib/datos/tiempos-entrega'
 import { normalizarCodigo } from '@/lib/dominio/codigos-internos'
@@ -229,8 +230,6 @@ function NoSeLeyoQuienLeyo() {
   )
 }
 
-const QUE_ES_LEIDO =
-  ' «Leyó el aviso» quiere decir que el supervisor abrió el aviso o marcó todos como leídos; no dice que abrió el archivo.'
 
 async function VistaPlanos({ codigo }: { codigo: string }) {
   const [planos, areas, etapas, lecturas] = await Promise.all([
@@ -266,7 +265,7 @@ async function VistaPlanos({ codigo }: { codigo: string }) {
                   sinPeso > 0 ? ` · ${sinPeso} sin porcentaje` : ''
                 }`
           }
-          ayuda={`La revisión vigente de cada plano, quién de Diseño la subió, si el área leyó su aviso y si el supervisor ya la recibió, y el porcentaje de la unidad que representa. El avance de la unidad suma lo que avanzó cada plano por su porcentaje; lo que no se repartió en planos se mide por las etapas.${QUE_ES_LEIDO}`}
+          ayuda={`La revisión vigente de cada plano, quién de Diseño la subió, si el área leyó su aviso y si el supervisor ya la recibió, y el porcentaje de la unidad que representa. El avance de la unidad suma lo que avanzó cada plano por su porcentaje; lo que no se repartió en planos se mide por las etapas.${QUE_DICE_EL_AVISO}`}
         />
         <TarjetaCuerpo className="space-y-3">
           {lecturas === null && planos.length > 0 && <NoSeLeyoQuienLeyo />}
@@ -423,7 +422,7 @@ async function VistaDxf({ codigo }: { codigo: string }) {
       <Tarjeta>
         <TarjetaCabecera
           titulo="DXF del código"
-          ayuda={`Lo que descargan Maestranza, para cortar, y Producción, con quién de Diseño subió cada envío y si cada área leyó su aviso. Si uno o un envío entero se subió por error, quítalo: queda en el historial.${QUE_ES_LEIDO}`}
+          ayuda={`Lo que descargan Maestranza, para cortar, y Producción, con quién de Diseño subió cada envío y si cada área leyó su aviso. Si uno o un envío entero se subió por error, quítalo: queda en el historial.${QUE_DICE_EL_AVISO}`}
         />
         <TarjetaCuerpo className="space-y-3">
           {lecturas === null && archivos.length > 0 && <NoSeLeyoQuienLeyo />}

@@ -24,9 +24,12 @@
 --
 -- Por área se cuenta a las cuentas de esa área que recibieron el aviso: el
 -- supervisor de Maestranza o de Producción (`usuarios.area_id`). Quien ve todas
--- las áreas desde otra (`produccion.cualquier_area`) recibe el aviso, pero no
--- habla por Maestranza ni por Producción, y no se cuenta. El plano va a un área
--- y da una fila; el envío de DXF va a las dos y da dos.
+-- las áreas desde otra (`produccion.cualquier_area`) recibe el aviso, pero su
+-- cuenta no es de Maestranza ni de Producción, y no se cuenta. Se mira el área
+-- que la cuenta tiene hoy, porque el aviso no la guarda: si un supervisor pasa
+-- a otra área, las versiones que le llegaron antes quedan «sin aviso» en la
+-- de antes. El plano va a un área y da una fila; el envío de DXF va a las dos y
+-- da dos.
 --
 -- Quién subió se dice por su puesto, nunca por el nombre de la persona
 -- (decisión del 2026-11-25): `puesto_de`.

@@ -1,5 +1,5 @@
 /**
- * Clic real sobre la migración 20261126700000 (plan 6, entrega 6.3): en Planos
+ * Clic real sobre la migración 20261126930000 (plan 6, entrega 6.3): en Planos
  * y en Archivos DXF de Diseño, cada versión con quién la subió (su puesto) y
  * cuándo, y si Maestranza y Producción leyeron su aviso. Con la cuenta de cada
  * puesto, nunca ADMIN:
@@ -12,7 +12,8 @@
  *      Diseño lo ve leído al volver a cargar. Se deshace al final.
  *   4. El supervisor sigue viendo Planos y etapas como antes, sin esto.
  *      Logística no entra a la pantalla de Diseño.
- *   5. En el teléfono (390) nada se sale. Capturas en 390 y 1440.
+ *   5. En el teléfono (390, 360 y 320) nada se sale, ni cada aviso de su fila.
+ *      Capturas en 390 y 1440.
  *
  * Necesita lo que siembra `sembrar-quien-subio-y-quien-leyo.sql`. Variables:
  * BANCO_CLAVE, BASE (http://localhost:3113), BANCO_BASE (mw_demo),
@@ -100,6 +101,18 @@ async function capturar(pagina, archivo) {
 async function sinDesborde(pagina, donde) {
   const sobra = await pagina.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   comprobar(sobra <= 0, `${donde}: nada se sale de la pantalla (sobran ${sobra} px)`)
+  // La página puede no desbordar y la insignia salirse igual de su fila: se mide
+  // cada aviso, con todo lo que lleva dentro, contra el borde de su fila.
+  const fuera = await pagina.evaluate(() =>
+    [...document.querySelectorAll('[data-aviso-area]')].flatMap((aviso) => {
+      const fila = aviso.closest('li').getBoundingClientRect()
+      return [aviso, ...aviso.querySelectorAll('*')]
+        .map((el) => el.getBoundingClientRect())
+        .filter((r) => r.width > 0 && (r.right > fila.right + 0.5 || r.left < fila.left - 0.5))
+        .map((r) => Math.round(Math.max(r.right - fila.right, fila.left - r.left)))
+    }),
+  )
+  comprobar(fuera.length === 0, `${donde}: ningún aviso se sale de su fila${fuera.length ? ` (se pasan ${fuera.join(', ')} px)` : ''}`)
 }
 
 // ------------------------------------------------ Lo esperado, de las tablas
@@ -179,7 +192,7 @@ try {
     const fila = pagina.locator(`li[data-plano="${p01.id}"]`)
     await fila.getByText('Revisiones anteriores').click()
     const anterior = await fila.locator('li[data-revision="1"]').innerText()
-    const palabras = { leido: /Maestranza leyó el aviso el \d\d\/\d\d\/\d{4}/, 'sin-leer': /Maestranza no leyó el aviso/ }[r1.situacion]
+    const palabras = { leido: /Maestranza leyó el aviso\s+el \d\d\/\d\d\/\d{4}/, 'sin-leer': /Maestranza no leyó el aviso/ }[r1.situacion]
     comprobar(/subida por Diseño el/.test(anterior) && palabras?.test(anterior),
       `la R1 de ${p01.numero}, en las anteriores, dice quién la subió y que el aviso está «${r1.situacion}» («${anterior}»)`)
     const texto = await pagina.locator('main').innerText()
@@ -235,7 +248,7 @@ try {
       const t = tablas.find((x) => x.tipo === 'DXF' && x.area === 'PRD')
       const enPantalla = await avisosEn(d.pagina.locator(`li[data-envio="${t.clave}"]`))
       comprobar(enPantalla.PRD === 'leido' && t.situacion === 'leido', `Diseño, al volver a cargar, ve que Producción leyó el aviso (${JSON.stringify(enPantalla)})`)
-      comprobar(/Producción leyó el aviso el \d\d\/\d\d\/\d{4}/.test(await d.pagina.locator('main').innerText()), 'y lo dice con la fecha')
+      comprobar(/Producción leyó el aviso\s+el \d\d\/\d\d\/\d{4}/.test(await d.pagina.locator('main').innerText()), 'y lo dice con la fecha')
       await d.contexto.close()
     }
   }
@@ -257,11 +270,15 @@ try {
 
   // ------------------------------------------------ 5. En el teléfono
   for (const [vista, archivo] of [['', 'planos'], ['&vista=dxf', 'dxf']]) {
-    const { pagina, contexto } = await entrar('diseno', 390)
-    await ir(pagina, `/diseno/codigo?codigo=${CODIGO}${vista}`)
-    await sinDesborde(pagina, `${archivo === 'dxf' ? 'DXF' : 'Planos'} del código, diseno a 390`)
-    await capturar(pagina, `6-3-diseno-${archivo}-390.png`)
-    await contexto.close()
+    for (const ancho of [390, 360, 320]) {
+      const { pagina, contexto } = await entrar('diseno', ancho)
+      await ir(pagina, `/diseno/codigo?codigo=${CODIGO}${vista}`)
+      // Las revisiones anteriores, abiertas: también llevan el aviso.
+      for (const pliegue of await pagina.locator('details:has([data-revision])').all()) await pliegue.evaluate((d) => (d.open = true))
+      await sinDesborde(pagina, `${archivo === 'dxf' ? 'DXF' : 'Planos'} del código, diseno a ${ancho}`)
+      if (ancho === 390) await capturar(pagina, `6-3-diseno-${archivo}-390.png`)
+      await contexto.close()
+    }
   }
   comprobar(errores.length === 0, `sin errores de consola ni de hidratación ${errores.join(' | ')}`)
 } finally {

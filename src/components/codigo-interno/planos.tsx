@@ -150,7 +150,7 @@ function FilaPlano({
                     <span className="text-texto-suave">
                       {v ? subidoPor(v, 'subida', fecha) : `del ${fecha(r.subido_en)}`}
                       {r.recibido_en ? ` · recibida el ${fecha(r.recibido_en)}` : ' · no se recibió'}
-                      {v && v.areas.map((a) => ` · ${avisoEnPalabras(a).texto}`).join('')}
+                      {v && v.areas.map((a) => ` · ${avisoEnPalabras(a, fecha).texto}`).join('')}
                       {r.cambios && ` · ${r.cambios}`}
                     </span>
                   </li>

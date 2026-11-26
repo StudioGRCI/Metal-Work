@@ -1,5 +1,5 @@
 -- Quién subió cada versión de un plano o un DXF y si el taller leyó su aviso
--- (plan 6, entrega 6.3; migración 20261126700000). El visto sale del aviso
+-- (plan 6, entrega 6.3; migración 20261126930000). El visto sale del aviso
 -- leído: aquí lo marca el supervisor con su propia sesión, como la campana. Lo
 -- lee Diseño con su sesión (`set local role authenticated`); el supervisor,
 -- Administración, Logística y anon no. Nunca como ADMIN. Lo que NO debe
@@ -28,9 +28,9 @@ begin
       end if;
     end if;
     v_id := gen_random_uuid();
-    insert into auth.users (id, email) values (v_id, split_part(v, ':', 3) || '.473@prueba.local');
+    insert into auth.users (id, email) values (v_id, split_part(v, ':', 3) || '.478@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
-    select v_id, split_part(v, ':', 1), 'Check 473', split_part(v, ':', 3) || '.473@prueba.local', r.id,
+    select v_id, split_part(v, ':', 1), 'Check 478', split_part(v, ':', 3) || '.478@prueba.local', r.id,
            (select id from public.areas where codigo = split_part(v, ':', 2))
       from public.roles r where r.codigo = split_part(v, ':', 1);
     if not found then
@@ -44,8 +44,8 @@ begin
   foreach v in array array['p1', 'r1', 'r1b', 'p2', 'r2', 'd1', 'd2', 'd3', 'env', 'p9', 'r9'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
-  perform set_config('prueba.codigo', 'CHK473-SR-01', true);
-  perform set_config('prueba.otro', 'CHK473-SR-02', true);
+  perform set_config('prueba.codigo', 'CHK478-SR-01', true);
+  perform set_config('prueba.otro', 'CHK478-SR-02', true);
 end $$;
 
 create or replace function pg_temp.como(p_clave text) returns void language plpgsql as $$
@@ -108,7 +108,7 @@ select test.afirmar(
   (select count(*) = 4 from public.quien_subio_y_quien_leyo(' ' || lower(current_setting('prueba.codigo')) || ' ')),
   'dos revisiones (una fila cada una, su área) y un envío de DXF (dos filas, Maestranza y Producción), con el código normalizado');
 select test.afirmar(
-  (select subido_por = public.puesto_de(pg_temp.id('diseno')) and subido_por not like '%Check 473%'
+  (select subido_por = public.puesto_de(pg_temp.id('diseno')) and subido_por not like '%Check 478%'
           and destinatarios = pg_temp.del_area('MTZ') and leidos = 0 and primera_lectura is null
      from pg_temp.fila('r1', 'MTZ')),
   'la R1 de P-01: la subió Diseño (su puesto, no su nombre) y el aviso llegó a los supervisores de Maestranza, sin leer');
