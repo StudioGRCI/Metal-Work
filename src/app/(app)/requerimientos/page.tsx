@@ -12,13 +12,13 @@ import { esperaSuSustento } from '@/lib/dominio/metrado-rq'
 import { esFiltroDePlazo, fechasDelFiltro, FILTROS_DE_PLAZO, type FiltroDePlazo } from '@/lib/dominio/plazo-rq'
 import { describirRecorridoDelRequerimiento } from '@/lib/dominio/recorrido'
 import { cargarRequerimientos, catalogosDelRequerimiento, contarRequerimientosAbiertos } from '@/lib/datos/requerimientos'
-import { TIPO_REQUERIMIENTO, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
+import { tieneParaRecoger, TIPO_REQUERIMIENTO, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
 import { hoyLima } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { esUuid } from '@/lib/utils'
 
 import { NuevoRequerimiento } from './formulario'
-import { ResumenDeRequerimientos, TarjetaRequerimiento, tieneParaRecoger } from './tarjeta'
+import { ResumenDeRequerimientos, TarjetaRequerimiento } from './tarjeta'
 
 export const metadata = { title: 'Requerimientos' }
 

@@ -94,3 +94,46 @@ export async function semanasPropiasDiseno() {
   if (error) throw new Error('No se pudieron cargar tus semanas del informe.')
   return data ?? []
 }
+
+/** Una actividad del colaborador en su OT: el día, el tipo y lo demás que anotó. */
+export type ActividadDeLaOt = {
+  id: string
+  tipo: string
+  componente: string
+  fecha_inicio: string
+  fecha_entrega: string
+  integrante: string | null
+  observacion: string | null
+}
+
+/** Una OT de su equipo con sus actividades de todas las semanas, de la más reciente a la más antigua. */
+export type TrabajoEnLaOt = {
+  orden_id: string
+  numero: string
+  codigo_interno: string | null
+  tipo_unidad: string | null
+  estado_ot: string
+  actividades: ActividadDeLaOt[]
+}
+
+/**
+ * El trabajo del colaborador de Diseño reunido por OT (`trabajo_de_diseno_por_ot`,
+ * migración 20261126320000): solo lo que anotó su cuenta, en las OT de su
+ * equipo o donde anotó algo, sin leer `unidades`. Una fila por OT con sus
+ * actividades dentro, ya en orden: primero la OT con lo último que hizo; al
+ * final, las abiertas en las que todavía no anotó nada.
+ */
+export async function trabajoDeDisenoPorOt(): Promise<TrabajoEnLaOt[]> {
+  const db = await createClient()
+  const { data, error } = await db.rpc('trabajo_de_diseno_por_ot')
+  // Si la base lo niega a propósito (42501), su mensaje dice qué hacer.
+  if (error) throw new Error(error.code === '42501' ? error.message : 'No se pudo cargar tu trabajo por OT.', { cause: error })
+  return (data ?? []).flatMap((f) => f.orden_id ? [{
+    orden_id: f.orden_id,
+    numero: f.numero ?? '',
+    codigo_interno: f.codigo_interno,
+    tipo_unidad: f.tipo_unidad,
+    estado_ot: f.estado_ot ?? '',
+    actividades: Array.isArray(f.actividades) ? (f.actividades as unknown as ActividadDeLaOt[]) : [],
+  }] : [])
+}
