@@ -332,9 +332,10 @@ function AvisoDeOtroDespliegue({ version }: { version: VersionDeLaPestana }) {
       ) : (
         <div className="print:hidden">{contenido}</div>
       )}
+      {/* z-30: por encima de la fila de secciones pegada (z-20), que ocupa el mismo sitio en la OT y el código. */}
       {fuera && (
         <div
-          className="fixed inset-x-0 z-20 flex items-center gap-3 border-b border-borde bg-aviso-suave px-4 py-1.5 shadow-[var(--sombra)] lg:left-64 print:hidden"
+          className="fixed inset-x-0 z-30 flex items-center gap-3 border-b border-borde bg-aviso-suave px-4 py-1.5 shadow-[var(--sombra)] lg:left-64 print:hidden"
           style={{ top: cabecera }}
           data-franja-pestana-vieja={version.estado}
         >

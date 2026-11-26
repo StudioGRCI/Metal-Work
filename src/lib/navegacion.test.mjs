@@ -79,3 +79,14 @@ test('un puesto sin grupos de consulta trabaja todo su menú, como antes', () =>
   assert.deepEqual([...rutasDeTrabajo(permisos, false, 'ALMACENERO')].sort(), [...menu].sort())
   assert.deepEqual(rutas(modulosDelInicio(permisos, false, 'ALMACENERO')), rutas(menuDe(permisos, false, 'ALMACENERO')))
 })
+
+test('en Gerencia, lo que espera su visto va siempre abierto y cada área nace plegada', () => {
+  const grupos = menuDe(GERENCIA, false, 'GERENTE')
+  assert.deepEqual(
+    grupos.map((g) => [g.titulo, g.pliegue]),
+    [
+      ['Principal', 'fijo'], ['Por aprobar', 'fijo'], ['Ventas', 'plegado'], ['Requerimientos', 'plegado'], ['Almacén', 'plegado'],
+      ['Logística', 'plegado'], ['Administración', 'plegado'], ['Finanzas', 'plegado'], ['Recursos Humanos', 'plegado'],
+    ],
+  )
+})

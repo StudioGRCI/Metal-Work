@@ -8,6 +8,7 @@ import { Campo } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
 import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
+import { Pliegue } from '@/components/ui/seccion-desplegable'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import { subirContrato } from '@/lib/contratos'
@@ -61,11 +62,8 @@ export function ContratoVigente({ contratos, sinContrato }: { contratos: Contrat
         {vigente.subido_por && ` por ${vigente.subido_por}`}
       </p>
       {anteriores.length > 0 && (
-        <details className="text-xs">
-          <summary className="min-h-11 sm:min-h-9 cursor-pointer content-center text-texto-suave">
-            {anteriores.length === 1 ? 'Una versión anterior' : `${anteriores.length} versiones anteriores`}
-          </summary>
-          <ul className="mt-1 space-y-1">
+        <Pliegue titulo={anteriores.length === 1 ? 'Una versión anterior' : `${anteriores.length} versiones anteriores`} className="text-xs">
+          <ul className="space-y-1">
             {anteriores.map((c) => (
               <li key={c.id} className="flex flex-wrap items-center gap-2">
                 <EnlaceContrato c={c} texto={c.archivo_nombre ?? 'Contrato'} />
@@ -73,7 +71,7 @@ export function ContratoVigente({ contratos, sinContrato }: { contratos: Contrat
               </li>
             ))}
           </ul>
-        </details>
+        </Pliegue>
       )}
     </div>
   )

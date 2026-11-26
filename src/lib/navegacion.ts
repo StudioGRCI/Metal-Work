@@ -1,7 +1,9 @@
 import {
   ArrowLeftRight,
+  Award,
   BadgeCheck,
   Banknote,
+  BanknoteArrowUp,
   Boxes,
   Calculator,
   Building2,
@@ -12,12 +14,15 @@ import {
   ClipboardList,
   Clock,
   ClockAlert,
+  Contact,
   Coins,
   CreditCard,
   DraftingCompass,
   FileArchive,
+  FilePenLine,
   FileSpreadsheet,
   FileText,
+  Hammer,
   HandCoins,
   Handshake,
   Hash,
@@ -25,6 +30,8 @@ import {
   Landmark,
   Layers,
   LayoutDashboard,
+  LayoutList,
+  PackageCheck,
   PackagePlus,
   ListChecks,
   ListOrdered,
@@ -33,6 +40,7 @@ import {
   Receipt,
   ReceiptText,
   Route,
+  ScrollText,
   Settings,
   Tag,
   Timer,
@@ -64,18 +72,33 @@ export type ItemNavegacion = {
   disponible?: boolean
 }
 
+/**
+ * Cómo se pliega un grupo del menú lateral (decisión 7 del plan de orden y
+ * diseño, 2026-11-25): `fijo` va siempre abierto y sin botón —«Principal», el
+ * grupo único de un puesto y «Por aprobar» de Gerencia—; `abierto` nace
+ * abierto y se puede plegar, y es lo que vale si falta, salvo en «Consultas» y
+ * en los grupos de consulta, que nacen `plegado`. Cada persona lo deja como
+ * quiera y el menú lo recuerda en una cookie por puesto; el grupo donde está la
+ * pantalla abierta se abre solo.
+ */
+export type Pliegue = 'fijo' | 'abierto' | 'plegado'
+
 export type GrupoNavegacion = {
   titulo: string
   items: readonly ItemNavegacion[]
+  pliegue?: Pliegue
   /**
    * Un grupo que el puesto solo consulta: sale en su menú, pero no es su
    * trabajo. Sus pantallas no cuentan pendientes ni cifras para él, no le
    * traen el bloque de OT al dashboard y no van en «Tus módulos»
    * (`rutasDeTrabajo`, `modulosDelInicio`), salvo las que su puesto pone en
-   * `alInicio`.
+   * `alInicio`. Nace plegado, como «Consultas».
    */
   consulta?: boolean
 }
+
+/** La cookie con los grupos que cada persona plegó, por puesto: la escribe el menú y la lee el layout. */
+export const cookieDelMenu = (rol: string) => `mw-menu-${rol.toLowerCase()}`
 
 /**
  * El catálogo de módulos, agrupado por el área que los lleva y con las áreas en
@@ -91,6 +114,7 @@ export type GrupoNavegacion = {
 export const NAVEGACION = [
   {
     titulo: 'Principal',
+    pliegue: 'fijo',
     items: [
       {
         titulo: 'Dashboard',
@@ -129,7 +153,7 @@ export const NAVEGACION = [
       {
         titulo: 'Cotización',
         ruta: '/cotizaciones/pdf',
-        icono: FileText,
+        icono: FilePenLine,
         permiso: ['cotizaciones.ver_pdf_comercial', 'cotizaciones.ver_aprobadas', 'tesoreria.ver_documentos'],
         descripcion: 'El PDF que se le mandó al cliente, y su visto de Gerencia',
         disponible: true,
@@ -216,7 +240,7 @@ export const NAVEGACION = [
       {
         titulo: 'Evaluación de desempeño',
         ruta: '/diseno/evaluaciones',
-        icono: ClipboardList,
+        icono: Award,
         permiso: ['diseno.evaluar', 'administracion.recibir_evaluacion'],
         descripcion: 'La evaluación del personal de Diseño e Ingeniería, enviada a Administración',
         disponible: true,
@@ -244,7 +268,7 @@ export const NAVEGACION = [
       {
         titulo: 'RQ por unidad',
         ruta: '/requerimientos/unidades',
-        icono: ClipboardList,
+        icono: LayoutList,
         permiso: 'requerimientos.area',
         descripcion: 'Las unidades de tu área, cada una con sus requerimientos, para pedir el material de cada una',
         disponible: true,
@@ -279,7 +303,7 @@ export const NAVEGACION = [
       {
         titulo: 'Atención de requerimiento',
         ruta: '/requerimientos/atencion',
-        icono: ClipboardList,
+        icono: PackageCheck,
         permiso: ['almacen.recibir', 'almacen.despachar'],
         lectura: ['requerimientos.ver', 'requerimientos.administracion'],
         descripcion: 'Los RQ por revisar insumo por insumo, por recepcionar y por entregar al área',
@@ -333,7 +357,7 @@ export const NAVEGACION = [
       {
         titulo: 'Atención de requerimiento',
         ruta: '/requerimientos/atencion',
-        icono: ClipboardList,
+        icono: PackageCheck,
         permiso: 'compras.crear',
         descripcion: 'Lo que Almacén no tiene de cada RQ, para comprarlo, y en qué va',
         disponible: true,
@@ -432,7 +456,7 @@ export const NAVEGACION = [
       {
         titulo: 'Trabajos sin orden',
         ruta: '/avance/trabajos',
-        icono: Truck,
+        icono: Hammer,
         permiso: ['produccion.aprobar_reportes', 'produccion.aprobar_sin_orden'],
         descripcion: 'Las unidades que entraron sin OT, con lo que el taller reportó de cada una, para aprobarlo u observarlo',
         disponible: true,
@@ -518,14 +542,14 @@ export const NAVEGACION = [
       { titulo: 'Adquisiciones', ruta: '/adquisiciones', icono: Receipt, permiso: 'adquisiciones.ver', descripcion: 'Cada OC y OS de su RQ a su pago, con sus documentos; y cada factura con sus OC', disponible: true },
       { titulo: 'Cuentas por cobrar', ruta: '/tesoreria/por-cobrar', icono: HandCoins, permiso: 'tesoreria.ver_documentos', descripcion: 'Las facturas de venta por código interno, cobradas con su voucher', disponible: true },
       { titulo: 'Cuentas por pagar', ruta: '/tesoreria/por-pagar', icono: CreditCard, permiso: 'tesoreria.ver_documentos', descripcion: 'Las facturas de compra, al contado o a crédito, pagadas con su voucher', disponible: true },
-      { titulo: 'Pagos de servicio', ruta: '/tesoreria/pagos-de-servicio', icono: Wrench, permiso: ['tesoreria.pagar_servicios', 'tesoreria.ver_documentos'], descripcion: 'Las órdenes de servicio aprobadas, pagadas al proveedor con su voucher', disponible: true },
+      { titulo: 'Pagos de servicio', ruta: '/tesoreria/pagos-de-servicio', icono: BanknoteArrowUp, permiso: ['tesoreria.pagar_servicios', 'tesoreria.ver_documentos'], descripcion: 'Las órdenes de servicio aprobadas, pagadas al proveedor con su voucher', disponible: true },
       // La paga Tesorería; la arma RR. HH. (está también en su grupo, con su permiso).
       { titulo: 'Planilla diaria', ruta: '/planilla-diaria', icono: Banknote, permiso: 'planilla_diaria.pagar', descripcion: 'Pagar a cada persona a su cuenta, con comprobante y boleta', disponible: true },
       // Los sube Administración contra cada subcontrato; Contabilidad los consulta por la retención.
       {
         titulo: 'Recibos por honorarios',
         ruta: '/tesoreria/recibos-por-honorarios',
-        icono: ReceiptText,
+        icono: ScrollText,
         permiso: ['subcontratos.pagar', 'subcontratos.ver'],
         descripcion: 'Pagar los recibos de los subcontratos a la cuenta del subcontratista, con su voucher',
         disponible: true,
@@ -554,7 +578,7 @@ export const NAVEGACION = [
   {
     titulo: 'Recursos Humanos',
     items: [
-      { titulo: 'Personal', ruta: '/rrhh/personal', icono: Users, permiso: ['rrhh.personal', 'asistencia.ver'], descripcion: 'La ficha de cada persona: datos, cuenta de pago y horario', disponible: true },
+      { titulo: 'Personal', ruta: '/rrhh/personal', icono: Contact, permiso: ['rrhh.personal', 'asistencia.ver'], descripcion: 'La ficha de cada persona: datos, cuenta de pago y horario', disponible: true },
       { titulo: 'DNI de las cuentas', ruta: '/rrhh/cuentas', icono: IdCard, permiso: 'rrhh.personal', descripcion: 'El DNI de cada cuenta del sistema', disponible: true },
       { titulo: 'Asistencia', ruta: '/rrhh/asistencia', icono: ClipboardCheck, permiso: ['asistencia.marcar', 'asistencia.ver'], descripcion: 'Ingreso y salida de cada persona, marcados en portería', disponible: true },
       { titulo: 'Tardanzas', ruta: '/rrhh/tardanzas', icono: Clock, permiso: ['asistencia.ver', 'rrhh.personal'], descripcion: 'Tardanzas del mes: cada tres, un descuento del sueldo', disponible: true },
@@ -604,6 +628,7 @@ type MenuDePuesto = {
   grupos: readonly {
     titulo: string
     rutas: readonly RutaDeModulo[]
+    pliegue?: Pliegue
     /** Lo que el puesto solo consulta (ver `GrupoNavegacion.consulta`). */
     consulta?: boolean
   }[]
@@ -714,7 +739,11 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   GERENTE: {
     principal: ['/codigos-internos'],
     grupos: [
-      { titulo: 'Por aprobar', rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'] },
+      {
+        titulo: 'Por aprobar',
+        pliegue: 'fijo',
+        rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'],
+      },
       { titulo: 'Ventas', consulta: true, rutas: ['/clientes', '/unidades'] },
       { titulo: 'Requerimientos', consulta: true, rutas: ['/requerimientos', '/vehiculos'] },
       {
@@ -805,6 +834,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       // Los recibos por honorarios, por la retención de cuarta categoría que declara cada mes.
       {
         titulo: 'Consultas',
+        // Abierto: el tipo de cambio lo registra cada día, aunque viva aquí.
+        pliegue: 'abierto',
         rutas: ['/almacen/kardex', '/tesoreria/recibos-por-honorarios', '/proveedores', '/tesoreria/tipo-de-cambio'],
       },
     ],
@@ -968,8 +999,9 @@ function lePermite(item: ItemNavegacion, permisos: readonly string[], esAdmin: b
 export function menuDe(permisos: readonly string[], esAdmin: boolean, rolCodigo: string): GrupoNavegacion[] {
   const propio = esAdmin ? undefined : MENU_POR_PUESTO[rolCodigo]
   const grupos: GrupoNavegacion[] = propio
-    ? [{ titulo: 'Principal', rutas: ['/', ...(propio.principal ?? [])] }, ...propio.grupos].map((g) => ({
+    ? [{ titulo: 'Principal', rutas: ['/', ...(propio.principal ?? [])], pliegue: 'fijo' as const }, ...propio.grupos].map((g) => ({
         titulo: g.titulo,
+        pliegue: g.pliegue,
         ...('consulta' in g && g.consulta ? { consulta: true } : {}),
         // Una pantalla compartida está en el catálogo una vez por cada área que
         // la usa, con el permiso de esa área: vale la que esta persona ve, y
@@ -982,14 +1014,19 @@ export function menuDe(permisos: readonly string[], esAdmin: boolean, rolCodigo:
             [],
         ),
       }))
-    : GRUPOS.map((g) => ({ titulo: g.titulo, items: g.items.filter((i) => i.disponible && lePermite(i, permisos, esAdmin)) }))
+    : GRUPOS.map((g) => ({ titulo: g.titulo, pliegue: g.pliegue, items: g.items.filter((i) => i.disponible && lePermite(i, permisos, esAdmin)) }))
   // Una pantalla compartida sale una sola vez, en el primer grupo que la
   // muestra: a ADMIN, que lo ve todo, le salían dos «Atención de
   // requerimiento», dos «Gestión de compras» y dos «Planilla diaria».
   const vistas = new Set<string>()
-  return grupos
+  const conItems = grupos
     .map((g) => ({
       ...g,
+      // «Consultas» y los grupos de consulta —lo que se mira de otras áreas—
+      // nacen plegados si el puesto no dice otra cosa: a 760 px, lo que deja de
+      // alto un monitor de 900 con el navegador, el menú de Administración no
+      // entraba abierto, y el de Gerencia tiene siete áreas.
+      pliegue: g.pliegue ?? (g.consulta || g.titulo === 'Consultas' ? ('plegado' as const) : undefined),
       items: g.items.filter((i) => {
         if (vistas.has(i.ruta)) return false
         vistas.add(i.ruta)
@@ -997,6 +1034,10 @@ export function menuDe(permisos: readonly string[], esAdmin: boolean, rolCodigo:
       }),
     }))
     .filter((g) => g.items.length > 0)
+  // Con un solo grupo además de «Principal» (supervisores, conductor,
+  // portería), plegarlo escondería todo su trabajo sin ahorrar nada: va fijo.
+  const plegables = conItems.filter((g) => g.pliegue !== 'fijo')
+  return plegables.length === 1 ? conItems.map((g) => (g === plegables[0] ? { ...g, pliegue: 'fijo' as const } : g)) : conItems
 }
 
 /**
