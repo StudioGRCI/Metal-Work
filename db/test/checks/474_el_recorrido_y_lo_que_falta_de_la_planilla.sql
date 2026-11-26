@@ -1,5 +1,5 @@
 -- El recorrido de la planilla del mes y lo que falta para cerrarla (migración
--- 20261126310000). Todo con el puesto que lo hace —nunca ADMIN— y `set local
+-- 20261126610000). Todo con el puesto que lo hace —nunca ADMIN— y `set local
 -- role authenticated`: RR. HH. arma la planilla, ve su recorrido y lo que falta,
 -- y la cierra; Gerencia y Almacén no leen ni lo uno ni lo otro; el administrador
 -- no la cierra. Cerrada, ya no se edita. Termina en rollback.

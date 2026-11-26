@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 
 /**
  * Lo que falta para cerrar una planilla del mes (`planilla_lo_que_falta`,
- * migración 20261126310000): de la de taller, los reportes diarios del mes sin
+ * migración 20261126610000): de la de taller, los reportes diarios del mes sin
  * el visto de RR. HH. u observados; de la de taller y la administrativa, quien
  * no tiene cuenta bancaria en su ficha o no tiene ficha. Avisa, no frena el
  * cierre. Lo lee quien ve las planillas; la cuenta misma no viene, solo que falta.

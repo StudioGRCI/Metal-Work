@@ -183,7 +183,7 @@ export function describirRecorridoDeLaCotizacion(pasos: readonly PasoDelRecorrid
 /** «1 persona», «12 personas». */
 const personas = (n: string) => (Number(n) === 1 ? '1 persona' : `${n} personas`)
 
-// La planilla del mes (migración 20261126310000): no es un documento numerado,
+// La planilla del mes (migración 20261126610000): no es un documento numerado,
 // pero RR. HH. la sigue igual, paso a paso, hasta cerrarla.
 const PASOS_DE_LA_PLANILLA: Record<string, Frases> = {
   CREADA: { hecho: 'Creada', falta: 'Creación' },

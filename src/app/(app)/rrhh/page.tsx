@@ -66,7 +66,7 @@ export default async function PaginaRRHH() {
     ...new Set((planillas.data ?? []).filter((p) => p.tipo === 'TALLER' && p.estado === 'BORRADOR').map((p) => p.periodo.slice(0, 7))),
   ]
   // El recorrido de cada planilla y, de las que están en preparación, lo que falta
-  // para cerrarlas (migración 20261126310000). Si no se pueden leer, la tarjeta lo
+  // para cerrarlas (migración 20261126610000). Si no se pueden leer, la tarjeta lo
   // dice y lo demás sigue: no tumban la pantalla de las planillas.
   const ids = (planillas.data ?? []).map((p) => p.id)
   const enPreparacion = (planillas.data ?? []).filter((p) => p.estado === 'BORRADOR' && p.tipo !== 'SUBCONTRATOS').map((p) => p.id)
