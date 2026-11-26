@@ -43,7 +43,7 @@ begin
     'se crearon los ocho usuarios del check, uno por puesto');
   perform set_config('prueba.area_mtz', (select id::text from public.areas where codigo = 'MTZ'), true);
   perform set_config('prueba.hoy', (now() at time zone 'America/Lima')::date::text, true);
-  foreach v in array array['rq', 'oc', 'ing', 'f1', 'dev1', 'nc1', 'guia', 'os', 'sin', 'p1', 'p2', 'p3', 'p4', 'rq2', 'rq3', 'ocb', 'oc2', 'ingb', 'devb', 'devb2', 'devb3', 'devb4', 'min', 'p5', 'fb', 'reemb', 'reemb2', 'reemb3', 'devb5', 'devb6', 'devb7', 'devb8', 'reemb4', 'reemb5', 'parte', 'rep4'] loop
+  foreach v in array array['rq', 'oc', 'ing', 'f1', 'dev1', 'nc1', 'guia', 'os', 'sin', 'p1', 'p2', 'p3', 'p4', 'rq2', 'rq3', 'ocb', 'oc2', 'ingb', 'devb', 'devb2', 'devb3', 'devb4', 'min', 'p5', 'fb', 'reemb', 'reemb2', 'reemb3', 'devb5', 'devb6', 'devb7', 'devb8', 'reemb4', 'reemb5', 'parte', 'rep4', 'pagob'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
 end $$;
@@ -663,6 +663,40 @@ update public.documentos_compra_material set anulado_en = now(), anulado_por = p
        motivo_anulacion = 'Fin del caso del check' where id = pg_temp.id('parte');
 update public.devoluciones_orden_compra set anulado_en = now(), anulado_por = pg_temp.id('tesoreria'),
        motivo_anulacion = 'Fin del caso del check' where id in (pg_temp.id('reemb4'), pg_temp.id('reemb5'));
+set local session_replication_role = origin;
+-- f) Tesorería la dio por pagada con menos, sin lo devuelto («Págala sin lo devuelto»): lo que dejó de pagarle
+-- cuenta como cobrado de vuelta (DKS, 2026-11-26). Vigentes: 3u cobrados; se le deja de pagar 6u más.
+do $$ begin
+  perform pg_temp.como('contabilidad');
+  set local role authenticated;
+  perform test.afirmar(pg_temp.esperan() = array['devb3', 'devb4'], 'antes de pagar, devb3 y devb4 esperan su nota');
+  reset role;
+end $$;
+set local session_replication_role = replica;
+insert into public.pagos_orden_compra (id, orden_compra_id, fecha_pago, moneda, monto, cancela, cancela_sin_completar, archivo_ruta, archivo_mime, archivo_tamano, registrado_por)
+values (pg_temp.id('pagob'), pg_temp.id('ocb'), current_setting('prueba.hoy')::date, 'PEN',
+        public.total_orden_compra(pg_temp.id('ocb')) - 6 * current_setting('prueba.u')::numeric, true, true,
+        'chk473/pagob.pdf', 'application/pdf', 100, pg_temp.id('tesoreria'));
+set local session_replication_role = origin;
+do $$ begin
+  perform pg_temp.como('contabilidad');
+  set local role authenticated;
+  perform test.afirmar(pg_temp.esperan() = '{}' and not exists (select 1 from pg_temp.doc('ocb', 'NOTA_CREDITO')),
+    'dada por pagada con 6u menos, lo devuelto ya no espera nota (esperan: ' || pg_temp.esperan()::text || ')');
+  reset role;
+end $$;
+set local session_replication_role = replica;
+update public.pagos_orden_compra set cancela_sin_completar = false where id = pg_temp.id('pagob');
+set local session_replication_role = origin;
+do $$ begin
+  perform pg_temp.como('contabilidad');
+  set local role authenticated;
+  perform test.afirmar(pg_temp.esperan() = array['devb3', 'devb4'], 'un pago a cuenta con menos no cuenta: sigue esperando');
+  reset role;
+end $$;
+set local session_replication_role = replica;
+update public.pagos_orden_compra set anulado_en = now(), anulado_por = pg_temp.id('tesoreria'),
+       motivo_anulacion = 'Fin del caso del check' where id = pg_temp.id('pagob');
 set local session_replication_role = origin;
 -- La OC con boleta que se pagó fuera del sistema no está en Cuentas por pagar: el aviso lo dice y no manda a su tarjeta.
 set local session_replication_role = replica;

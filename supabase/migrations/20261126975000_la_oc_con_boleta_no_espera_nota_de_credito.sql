@@ -113,14 +113,24 @@ language sql stable security definer set search_path to 'public' as $$
        and (m.id = e.id
             or (not m.se_repone and (coalesce(m.reposicion_cancelada_en, m.registrado_en), m.id) < (e.desde, e.id)
                 and not exists (select 1 from public.notas_credito_compra n where n.devolucion_id = m.id and n.anulado_en is null))))
+  -- También cuenta lo que Tesorería dejó de pagarle: si dio la OC por pagada con menos que su total
+  -- («págala sin lo devuelto», DKS, 2026-11-26), esa diferencia es dinero que el proveedor ya no cobró.
   select coalesce((select h.vale > 0
                           and (select coalesce(sum(r.monto), 0) from public.devoluciones_orden_compra r
-                                where r.orden_compra_id = e.compra and r.anulado_en is null and r.moneda = e.moneda) >= h.vale - 0.005
+                                where r.orden_compra_id = e.compra and r.anulado_en is null and r.moneda = e.moneda)
+                              + (select case when c.moneda::text = e.moneda
+                                              and exists (select 1 from public.pagos_orden_compra x
+                                                           where x.orden_compra_id = c.id and x.anulado_en is null and x.cancela_sin_completar)
+                                             then greatest(public.total_orden_compra(c.id)
+                                                           - coalesce((select sum(x.monto) from public.pagos_orden_compra x
+                                                                        where x.orden_compra_id = c.id and x.anulado_en is null), 0), 0)
+                                             else 0 end
+                                   from public.ordenes_compra_materiales c where c.id = e.compra) >= h.vale - 0.005
                      from esta e, hasta_esta h), false);
 $$;
 
 comment on function public.devolucion_reembolsada(uuid) is
-  'Si lo que Tesorería ya cobró de vuelta al proveedor de esa OC (sus devoluciones del dinero vigentes, en la misma moneda; solo la OC con boleta las tiene) alcanza para esta devolución y las de antes que esperaban su nota, cada una a su precio en la OC: entonces lo devuelto ya no espera nota de crédito (DKS, 2026-11-26; 20261126975000). La llaman las funciones de la nota de crédito, no la gente.';
+  'Si lo que Tesorería ya cobró de vuelta al proveedor de esa OC (sus devoluciones del dinero vigentes, en la misma moneda; solo la OC con boleta las tiene), más lo que dejó de pagarle al darla por pagada con menos, alcanza para esta devolución y las de antes que esperaban su nota, cada una a su precio en la OC: entonces lo devuelto ya no espera nota de crédito (DKS, 2026-11-26; 20261126975000). La llaman las funciones de la nota de crédito, no la gente.';
 
 revoke all on function public.devolucion_reembolsada(uuid) from public, anon, authenticated;
 
