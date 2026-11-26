@@ -143,21 +143,21 @@ function Vence({ dia }: { dia: string | null }) {
   if (faltan === null) return <>sin vencimiento</>
   if (faltan < 0) {
     return (
-      <span className="text-peligro" data-dias-vencimiento={faltan}>
-        venció el {fecha(dia)}, {diasDelVencimiento(faltan)}
+      <span className="text-peligro">
+        venció el {fecha(dia)}, <span className="whitespace-nowrap">{diasDelVencimiento(faltan)}</span>
       </span>
     )
   }
   if (faltan === 0) {
     return (
-      <span className="text-aviso" data-dias-vencimiento={0}>
+      <span className="text-aviso">
         vence hoy
       </span>
     )
   }
   return (
-    <span data-dias-vencimiento={faltan}>
-      vence el {fecha(dia)}, {diasDelVencimiento(faltan)}
+    <span>
+      vence el {fecha(dia)}, <span className="whitespace-nowrap">{diasDelVencimiento(faltan)}</span>
     </span>
   )
 }

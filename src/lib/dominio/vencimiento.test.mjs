@@ -33,9 +33,13 @@ test('cada vencimiento cae en su grupo, mirado hoy', () => {
   assert.equal(grupoDeVencimiento('2026-11-30', '2026-11-29'), 'DESPUES')
 })
 
-test('una fecha con hora se lee por su día, sin correrse', () => {
-  assert.equal(diasDesdeHoy('2026-11-26T23:59:00', HOY), 0)
-  assert.equal(grupoDeVencimiento('2026-11-25T00:00:00Z', HOY), 'VENCIDO')
+test('una fecha con hora se lee en Lima, como diasHasta', () => {
+  // Las 22:00 del 26 en Lima ya son el 27 en UTC: sigue siendo hoy.
+  assert.equal(diasDesdeHoy('2026-11-27T03:00:00Z', HOY), 0)
+  assert.equal(grupoDeVencimiento('2026-11-27T03:00:00Z', HOY), 'HOY')
+  // Las 08:00 del 27 en Lima: mañana.
+  assert.equal(grupoDeVencimiento('2026-11-27T13:00:00Z', HOY), 'SEMANA')
+  assert.equal(diasDesdeHoy('no es fecha', HOY), null)
 })
 
 test('los días de cada fila se dicen como se habla', () => {

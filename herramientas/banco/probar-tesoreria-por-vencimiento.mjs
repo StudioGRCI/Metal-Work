@@ -122,7 +122,7 @@ await como('requerimientos')
 await consulta(
   `select public.emitir_requerimiento($1, $2, 'PLA_SR_O4_1_26/21', $3, null,
      (select jsonb_agg(jsonb_build_object('descripcion', 'Insumo ' || n, 'cantidad', 2, 'unidad_medida_id', $4::text, 'categoria_id', $5::text))
-        from generate_series(1, 5) n))`,
+        from generate_series(1, 9) n))`,
   [rq, area, `Prueba de vencimientos ${SUFIJO}`, und, cat],
 )
 await como('almacen')
@@ -163,6 +163,72 @@ for (const p of PLAN) {
   await consulta(`update adquisiciones set ruta_storage = $2, estado = 'REGISTRADA' where id = $1`, [id, `adquisiciones/${id}/comprobante.pdf`])
   p.id = id
 }
+// OC con boleta, que Tesorería paga directo: una vencida (soles), una de después (dólares) y una
+// cuyo proveedor entregó factura (Logística la anexó): esa no se paga aquí. Y una OC con factura
+// que llega en partes, con la boleta de una parte vencida.
+const BOLETAS = [
+  { clave: 'vencida', moneda: 'PEN', precio: 80, dias: 30, atras: 33, grupo: 'VENCIDO', texto: 'hace 3 días' },
+  { clave: 'despues', moneda: 'USD', precio: 20, dias: 12, atras: 0, grupo: 'DESPUES', texto: 'en 12 días' },
+  { clave: 'camino', moneda: 'PEN', precio: 60, dias: 0, atras: 0, grupo: 'APARTE', texto: null, conFacturaAnexada: true },
+]
+await como('logistica')
+for (const [i, b] of BOLETAS.entries()) {
+  const [{ id }] = await consulta(
+    `select public.emitir_compra_del_requerimiento(gen_random_uuid(), $1, array[$2]::smallint[], $3, null,
+       jsonb_build_array(jsonb_build_object('material_id', $4::text, 'cantidad', 2, 'precio', $5::numeric)), null, $6, $7, $8, false) as id`,
+    [rq, PLAN.length + 1 + i, proveedor, material, b.precio, b.dias > 0 ? 'CREDITO' : 'CONTADO', b.dias, b.moneda],
+  )
+  b.oc = id
+}
+const [{ id: ocPartes }] = await consulta(
+  `select public.emitir_compra_del_requerimiento(gen_random_uuid(), $1, array[$2]::smallint[], $3, null,
+     jsonb_build_array(jsonb_build_object('material_id', $4::text, 'cantidad', 2, 'precio', 150)), null, 'CREDITO', 30, 'PEN', true) as id`,
+  [rq, PLAN.length + BOLETAS.length + 1, proveedor, material],
+)
+await como('gerencia')
+for (const b of BOLETAS) await consulta(`select public.aprobar_compra($1)`, [b.oc])
+await consulta(`select public.aprobar_compra($1)`, [ocPartes])
+await como('logistica')
+const camino = BOLETAS.find((b) => b.conFacturaAnexada)
+{
+  const [{ id: doc }] = await consulta(`select gen_random_uuid() as id`)
+  await subir('documentos-compras', `compra/${camino.oc}/${doc}.pdf`, 'logistica')
+  await consulta(
+    `insert into documentos_compra_material (id, orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por, numero_documento, fecha_emision)
+     values ($1, $2, 'FACTURA', 'factura.pdf', $3, 'application/pdf', $4, $5, $6, $7::date)`,
+    [doc, camino.oc, `compra/${camino.oc}/${doc}.pdf`, PDF.length, ids[CUENTAS.logistica], `F079-${SUFIJO}`, hoy],
+  )
+}
+const PARTE = { numero: `B078-${SUFIJO}`, monto: 118, grupo: 'VENCIDO', texto: 'hace 10 días' }
+{
+  const [{ id: doc }] = await consulta(`select gen_random_uuid() as id`)
+  await subir('documentos-compras', `compra/${ocPartes}/${doc}.pdf`, 'logistica')
+  await consulta(
+    `insert into documentos_compra_material (id, orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por, numero_documento, fecha_emision, monto_de_la_parte, parte_trae_igv)
+     values ($1, $2, 'COMPROBANTE', 'boleta.pdf', $3, 'application/pdf', $4, $5, $6, $7::date, $8, true)`,
+    [doc, ocPartes, `compra/${ocPartes}/${doc}.pdf`, PDF.length, ids[CUENTAS.logistica], PARTE.numero, mas(-40), PARTE.monto],
+  )
+  PARTE.id = doc
+}
+await como(null)
+// La vencida se emitió hace 33 días: se corre su fecha como la dejaría el tiempo, sin disparadores.
+await base.query('begin')
+await base.query('set local session_replication_role = replica')
+for (const b of BOLETAS.filter((x) => x.atras > 0)) {
+  await consulta(`update ordenes_compra_materiales set creado_en = creado_en - make_interval(days => $2) where id = $1`, [b.oc, b.atras])
+}
+await base.query('commit')
+for (const b of BOLETAS) {
+  b.nombre = (await consulta(`select public.nombre_de_oc(numero, referencia) as n from ordenes_compra_materiales where id = $1`, [b.oc]))[0].n
+}
+await como('tesoreria')
+const enCamino = await consulta(`select id, comprobante_en_camino from compras_con_boleta_por_pagar() where id = any($1)`, [BOLETAS.map((b) => b.oc)])
+await como(null)
+comprobar(
+  enCamino.find((f) => f.id === camino.oc)?.comprobante_en_camino != null,
+  `la OC con la factura anexada tiene su comprobante en camino (${JSON.stringify(enCamino.map((f) => f.comprobante_en_camino))})`,
+)
+
 await como(null)
 const estados = await consulta(`select numero, aprobacion from ordenes_compra_materiales where id = any($1)`, [PLAN.map((p) => p.oc)])
 comprobar(
@@ -216,7 +282,8 @@ for (const [i, v] of VENTAS.entries()) {
 
 // ---------------------------------------------------------------- lo que la base dice por grupo
 // Contado aparte, en SQL: la semana de lunes a domingo, con el día de Lima.
-const GRUPO_SQL = `case when f.fecha_vencimiento < $1::date then 'VENCIDO'
+const GRUPO_SQL = `case when f.fecha_vencimiento is null then 'SIN_FECHA'
+                        when f.fecha_vencimiento < $1::date then 'VENCIDO'
                         when f.fecha_vencimiento = $1::date then 'HOY'
                         when f.fecha_vencimiento <= date_trunc('week', $1::date)::date + 6 then 'SEMANA'
                         else 'DESPUES' end`
@@ -343,6 +410,47 @@ for (const [puesto, viewport, sufijo] of [
   const aparte = pago.find((g) => g.grupo === 'APARTE')
   comprobar(Boolean(aparte?.titulo.startsWith('No se pagan todavía')), `${donde} · por pagar: la que espera a Gerencia va al final, en «No se pagan todavía»`)
   revisarTotales(pago, totalesPago, `${donde} · por pagar`)
+
+  // Las OC con boleta: las que se pagan aquí, por vencimiento; la del comprobante en camino, al final.
+  const boletas = await leerGrupos(pagina, 'boletas')
+  comprobar(boletas.length > 0 && enOrden(boletas), `${donde} · OC con boleta: grupos en orden (${boletas.map((g) => g.grupo).join(' → ')})`)
+  for (const b of BOLETAS) {
+    const g = boletas.find((x) => x.texto.includes(b.nombre))
+    comprobar(g?.grupo === b.grupo, `${donde} · OC con boleta: ${b.nombre} en «${b.grupo}» (está en ${g?.grupo ?? 'ninguno'})`)
+    if (b.texto) {
+      const fila = limpio(await pagina.locator(`article#compra-${b.oc}`).first().textContent().catch(() => ''))
+      comprobar(fila.includes(b.texto), `${donde} · OC con boleta: ${b.nombre} dice «${b.texto}»`)
+    }
+  }
+  const sinTotal = boletas.find((g) => g.grupo === 'APARTE')
+  comprobar(Boolean(sinTotal?.titulo.startsWith('No se pagan aquí')) && Object.keys(sinTotal?.totales ?? {}).length === 0,
+    `${donde} · OC con boleta: «No se pagan aquí» va al final y sin total`)
+  // Lo que suman sus grupos de fecha es lo que la base tiene por pagar en las OC con boleta que se pagan aquí.
+  await como('tesoreria')
+  const totalesBoleta = await consulta(
+    `select case when f.vence < $1::date then 'VENCIDO' when f.vence = $1::date then 'HOY'
+                 when f.vence <= date_trunc('week', $1::date)::date + 6 then 'SEMANA' else 'DESPUES' end as grupo,
+            coalesce(f.moneda, 'PEN') as moneda, sum(f.total - f.pagado)::numeric(14,2)::text as total
+       from compras_con_boleta_por_pagar() f
+      where not f.cancelada and f.comprobante_en_camino is null and f.factura is null
+        and not (coalesce(f.de_mas, 0) > 0 or coalesce(f.otra_moneda, false)) and f.total - f.pagado > 0
+        and not (coalesce(f.devuelto, 0) > 0 and coalesce(f.pagado, 0) <= 0)
+      group by 1, 2`,
+    [hoy],
+  )
+  await como(null)
+  revisarTotales(boletas, totalesBoleta, `${donde} · OC con boleta`)
+
+  // La boleta de una parte, en su grupo con sus días.
+  const partes = await leerGrupos(pagina, 'partes')
+  const gp = partes.find((x) => x.texto.includes(PARTE.numero))
+  comprobar(gp?.grupo === PARTE.grupo, `${donde} · boletas de una parte: ${PARTE.numero} en «${PARTE.grupo}» (está en ${gp?.grupo ?? 'ninguno'})`)
+  const filaParte = limpio(await pagina.locator(`article#parte-${PARTE.id}`).first().textContent().catch(() => ''))
+  comprobar(filaParte.includes(PARTE.texto), `${donde} · boletas de una parte: ${PARTE.numero} dice «${PARTE.texto}»`)
+
+  // El índice de arriba de cada lista lleva a su grupo.
+  const indice = pagina.locator('nav[data-indice-vencimiento="facturas"] a').first()
+  comprobar((await indice.count()) === 1 && (await indice.getAttribute('href')) === '#facturas-vencido', `${donde} · el índice de las facturas lleva a «Vencido»`)
   const pagar = await pagina.getByRole('button', { name: 'Registrar pago' }).count()
   comprobar(puesto === 'tesoreria' ? pagar > 0 : pagar === 0, `${donde} · por pagar: ${puesto === 'tesoreria' ? 'paga desde su fila' : 'sin botón de pagar'}`)
   if (viewport.width < 500) await sinDesborde(pagina, `${donde} · por pagar`)

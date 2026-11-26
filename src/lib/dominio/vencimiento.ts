@@ -32,11 +32,24 @@ const DIA_MS = 86_400_000
 
 const medianoche = (dia: string) => Date.parse(`${dia}T00:00:00Z`)
 
+/**
+ * El día de Lima de un texto de la base: una fecha plana se toma tal cual; una
+ * con hora se lee en Lima, como `diasHasta` de `format.ts`, para que el grupo y
+ * los días de la fila no se cuenten con reglas distintas.
+ */
+function diaPlano(dia: string): string | null {
+  if (SOLO_FECHA.test(dia)) return dia
+  if (Number.isNaN(new Date(dia).getTime())) return null
+  // Lo mismo que `diaLima` de `format.ts`, escrito aquí para que las pruebas de
+  // node carguen este archivo solo (node no resuelve `../format` sin extensión).
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(dia))
+}
+
 /** Días de `hoy` a `dia`: negativo si ya pasó, 0 si es hoy. `null` sin fecha válida. */
 export function diasDesdeHoy(dia: string | null | undefined, hoy: string): number | null {
   if (!dia) return null
-  const plano = dia.slice(0, 10)
-  if (!SOLO_FECHA.test(plano) || !SOLO_FECHA.test(hoy)) return null
+  const plano = diaPlano(dia)
+  if (!plano || !SOLO_FECHA.test(hoy)) return null
   return Math.round((medianoche(plano) - medianoche(hoy)) / DIA_MS)
 }
 
@@ -57,7 +70,7 @@ export function grupoDeVencimiento(dia: string | null | undefined, hoy: string):
   if (faltan === null) return 'SIN_FECHA'
   if (faltan < 0) return 'VENCIDO'
   if (faltan === 0) return 'HOY'
-  return (dia as string).slice(0, 10) <= finDeLaSemana(hoy) ? 'SEMANA' : 'DESPUES'
+  return (diaPlano(dia as string) ?? '') <= finDeLaSemana(hoy) ? 'SEMANA' : 'DESPUES'
 }
 
 /** Los días de una fila como se dicen: «hace 3 días», «hoy», «mañana», «en 4 días». */
@@ -103,8 +116,8 @@ export function agruparPorVencimiento<T>(filas: readonly T[], dia: (fila: T) => 
     const lista = porGrupo.get(grupo)
     if (!lista) return []
     lista.sort((a, b) => {
-      const da = (dia(a.fila) ?? '').slice(0, 10)
-      const db = (dia(b.fila) ?? '').slice(0, 10)
+      const da = diaPlano(dia(a.fila) ?? '') ?? ''
+      const db = diaPlano(dia(b.fila) ?? '') ?? ''
       return da === db ? a.i - b.i : da < db ? -1 : 1
     })
     return [{ grupo, filas: lista.map((x) => x.fila) }]
