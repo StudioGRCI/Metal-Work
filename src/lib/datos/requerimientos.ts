@@ -60,7 +60,8 @@ export type LineaRequerimiento = {
   /**
    * La fecha en que Logística espera la compra (la de su OC), sin precios.
    * Vacía si no va en una OC viva, o si quien mira no lee las compras
-   * (Supervisión): Almacén y quien compra sí la ven (plan 2, entrega 2.1).
+   * (Supervisión); la ven quienes leen la OC: Almacén, quien compra,
+   * Requerimientos y Administración (plan 2, entrega 2.1).
    */
   fecha_esperada: string | null
 }
@@ -125,7 +126,7 @@ const SELECT_RQ =
  * los de Administración. Con `id`, solo ese: es el que abre Adquisiciones. Con
  * `area`, los que pidió esa área (el supervisor ve primero los de la suya); con
  * `codigo`, los de ese código interno. Con `conEntregado`, también lo que ya
- * salió del almacén de cada insumo: lo pinta la lista de RQ, no la bandeja.
+ * salió del almacén de cada insumo: lo pintan la lista de RQ y la bandeja.
  */
 export async function cargarRequerimientos(
   opciones: {

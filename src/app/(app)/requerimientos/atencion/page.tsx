@@ -69,9 +69,17 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
   const vista = params.vista === 'todos' ? 'todos' : params.vista === 'comprar' && compra ? 'comprar' : 'abiertos'
   const preseleccion = typeof params.rq === 'string' ? params.rq : null
   // Logística genera la OC desde aquí: necesita el padrón y el catálogo de Almacén.
-  const [requerimientos, proveedores, materiales] = await Promise.all([
-    // Con lo entregado de cada insumo: Almacén ve qué falta entregar de cada RQ (plan 2, entrega 2.1).
-    cargarRequerimientos({ soloAbiertos: vista !== 'todos', conEntregado: true }),
+  const [{ requerimientos, sinEntregado }, proveedores, materiales] = await Promise.all([
+    // Con lo entregado de cada insumo: Almacén ve qué falta entregar de cada RQ
+    // (plan 2, entrega 2.1). Si eso no se pudo leer, la bandeja sigue sin las
+    // cifras y lo dice, como el metrado y el recorrido.
+    cargarRequerimientos({ soloAbiertos: vista !== 'todos', conEntregado: true }).then(
+      (requerimientos) => ({ requerimientos, sinEntregado: false }),
+      async (e: unknown) => {
+        console.error('Atención: no se pudo leer lo entregado de cada insumo.', e)
+        return { requerimientos: await cargarRequerimientos({ soloAbiertos: vista !== 'todos' }), sinEntregado: true }
+      },
+    ),
     compra ? proveedoresParaCompra() : Promise.resolve([]),
     compra ? catalogoDeAlmacen() : Promise.resolve([]),
   ])
@@ -106,7 +114,7 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
     // de días ni el recorrido.
     recorridoDeRequerimientos(requerimientos.map((r) => r.id)).catch(
       (e: unknown) => {
-        console.error('Atención: no se pudieron contar los días en espera.', e)
+        console.error('Atención: no se pudo leer el recorrido de los requerimientos (días en espera y pasos).', e)
         return null
       },
     ),
@@ -181,6 +189,13 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
         <p role="status" className="mb-3 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-metrado-sin-leer>
           No se pudo leer el metrado de Diseño. Si un requerimiento se pasa del metrado, el sistema no deja revisarlo ni comprarlo y
           dice por qué. Vuelve a cargar la pantalla en un momento.
+        </p>
+      )}
+
+      {sinEntregado && requerimientos.length > 0 && (
+        <p role="status" className="mb-3 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-entregado-sin-leer>
+          No se pudo leer lo entregado de cada insumo: la lista sigue sin las cifras de lo entregado, lo separado y lo que falta. Vuelve a
+          cargar la pantalla en un momento.
         </p>
       )}
 
