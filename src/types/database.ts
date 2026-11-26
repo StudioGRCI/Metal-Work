@@ -14702,6 +14702,8 @@ export type Database = {
           a_tiempo: number | null
           devueltas: number | null
           atrasadas: number | null
+          sin_fecha: number | null
+          nuestras: number | null
         }[]
       }
       dar_por_terminada_la_garantia: {

@@ -17,6 +17,10 @@
 --     con la fecha que el proveedor prometió AL EMITIRLA, no con la corregida
 --     después (entrega 4.2): corregirla le dice a Logística cuándo llega, no
 --     borra que llegó tarde. La que no tenía fecha prometida no se mide.
+--   · Atrasada por causa nuestra: la que se atrasó y cuyo último motivo anotado
+--     (entrega 4.2) es el pago, el transporte o la aprobación. No se le cuenta
+--     al proveedor ni a favor ni en contra: se dice aparte. «Proveedor» y
+--     «Otro» sí cuentan contra él.
 --   · Devueltas: las OC de las que Almacén le devolvió algo, se reponga o no.
 -- Solo cuentas, sin un sol: nada de importes.
 --
@@ -231,7 +235,9 @@ returns table (
   medidas   integer,
   a_tiempo  integer,
   devueltas integer,
-  atrasadas integer
+  atrasadas integer,
+  sin_fecha integer,
+  nuestras  integer
 )
 language plpgsql
 stable
@@ -260,7 +266,7 @@ begin
   -- La OC llegó cuando quedó completa, o cuando se dejó lo último aunque Almacén
   -- no lo haya validado todavía. Contra la fecha prometida al emitirla.
   oc_plazo as (
-    select o.proveedor_id, p.original, coalesce(p.completa_en, p.llego_todo_en) as llego,
+    select o.id as oc, null::uuid as os, o.proveedor_id, p.original, coalesce(p.completa_en, p.llego_todo_en) as llego,
            exists (select 1 from public.movimientos_materiales m
                      join public.orden_compra_material_detalles d on d.id = m.orden_compra_detalle_id
                     where d.orden_compra_id = o.id and m.tipo = 'DEVOLUCION_PROVEEDOR') as devuelta
@@ -268,7 +274,7 @@ begin
       join public.plazos_de_compras_calculados(array(select x.id from oc x)) p on p.documento = o.id
   ),
   os_plazo as (
-    select s.proveedor_id, s.fecha_fin as original,
+    select null::uuid as oc, s.id as os, s.proveedor_id, s.fecha_fin as original,
            case when s.estado = 'CONFORME' then s.conformidad_en end as llego,
            false as devuelta
       from public.ordenes_servicio s
@@ -280,20 +286,37 @@ begin
     select * from oc_plazo
     union all
     select * from os_plazo
+  ),
+  -- Atrasada: pasó la fecha que prometió al emitirla sin llegar (o llegó a
+  -- medias), o llegó después. Y de quién fue el atraso, por el último motivo.
+  juzgadas as (
+    select t.*,
+           t.original is not null
+             and (case when t.llego is null then t.original < public.fecha_de_lima(now())
+                       else public.fecha_de_lima(t.llego) > t.original end) as tarde,
+           coalesce((select s.motivo in ('PAGO', 'TRANSPORTE', 'APROBACION')
+                       from public.seguimiento_de_compras s
+                      where (t.oc is not null and s.orden_compra_id = t.oc)
+                         or (t.os is not null and s.orden_servicio_id = t.os)
+                      order by s.registrado_en desc, s.id desc
+                      limit 1), false) as por_nosotros
+      from todas t
   )
   select pr.id,
-         count(t.proveedor_id)::integer,
-         -- Las que llegaron; de ellas se miden las que tenían fecha prometida.
-         count(*) filter (where t.llego is not null)::integer,
-         count(*) filter (where t.llego is not null and t.original is not null)::integer,
-         count(*) filter (where t.llego is not null and t.original is not null
-                            and public.fecha_de_lima(t.llego) <= t.original)::integer,
-         count(*) filter (where t.devuelta)::integer,
-         -- Las que pasaron la fecha que prometió al emitirlas y no llegaron (o llegaron a medias).
-         count(*) filter (where t.llego is null and t.original is not null
-                            and t.original < public.fecha_de_lima(now()))::integer
+         count(j.proveedor_id)::integer,
+         -- Las que llegaron; de ellas se miden las que tenían fecha prometida,
+         -- menos las que se atrasaron por causa nuestra.
+         count(*) filter (where j.llego is not null)::integer,
+         count(*) filter (where j.llego is not null and j.original is not null
+                            and not (j.tarde and j.por_nosotros))::integer,
+         count(*) filter (where j.llego is not null and j.original is not null and not j.tarde)::integer,
+         count(*) filter (where j.devuelta)::integer,
+         -- Las que pasaron la fecha sin llegar completas, por el proveedor.
+         count(*) filter (where j.llego is null and j.tarde and not j.por_nosotros)::integer,
+         count(*) filter (where j.llego is not null and j.original is null)::integer,
+         count(*) filter (where j.tarde and j.por_nosotros)::integer
     from (select distinct u.id from unnest(p_ids) as u(id)) as pr
-    left join todas t on t.proveedor_id = pr.id
+    left join juzgadas j on j.proveedor_id = pr.id
    group by pr.id;
 end;
 $$;

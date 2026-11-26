@@ -5,7 +5,8 @@
  *   1. Logística, en «Proveedores», ve en cada fila lo mismo que da la base con
  *      su sesión: cuántas compras, cuántas a tiempo de las que llegaron y
  *      cuántas con devolución. Sin importes.
- *   2. En el teléfono (390) el cumplimiento baja bajo el nombre, en un renglón,
+ *   2. En el teléfono (390) el cumplimiento baja bajo el nombre, en un renglón;
+ *      a 1 024 la tabla cabe en su caja sin deslizarse de costado,
  *      y nada se sale de la pantalla.
  *   3. Almacén, que ve el padrón, lo ve igual; Ventas no entra al padrón.
  *   4. Si la base no contesta el cumplimiento, el padrón sale igual y lo dice.
@@ -114,6 +115,17 @@ async function sinDesborde(pagina, donde) {
   comprobar(sobra <= 0, `${donde}: nada se sale de la pantalla (sobran ${sobra} px)`)
 }
 
+/** La tabla se desliza dentro de su caja sin que la página se corra: se mide la caja, no el documento. */
+async function tablaSinCorrerse(pagina, donde) {
+  const sobra = await pagina.evaluate(() =>
+    Math.max(0, ...[...document.querySelectorAll('table')].map((t) => {
+      const caja = t.closest('.overflow-x-auto') ?? t.parentElement
+      return caja.scrollWidth - caja.clientWidth
+    })),
+  )
+  comprobar(sobra <= 0, `${donde}: la tabla cabe sin deslizarse de costado (sobran ${sobra} px)`)
+}
+
 /** Lo que la pantalla tiene que decir, armado igual que `Cumplimiento`, en minúsculas para comparar. */
 function esperado(c) {
   if (!c || c.compras === 0) return 'sin compras todavía'
@@ -121,8 +133,9 @@ function esperado(c) {
   const partes = [veces(c.compras, 'compra', 'compras')]
   if (c.llegaron === 0) partes.push('ninguna llegó completa todavía')
   else if (c.medidas > 0) partes.push(`${c.a_tiempo} de ${c.medidas} ${c.medidas === 1 ? 'llegada' : 'llegadas'} a tiempo`)
-  if (c.llegaron > c.medidas) partes.push(`${veces(c.llegaron - c.medidas, 'llegó', 'llegaron')} sin fecha prometida`)
+  if (c.sin_fecha > 0) partes.push(`${veces(c.sin_fecha, 'llegó', 'llegaron')} sin fecha prometida`)
   if (c.atrasadas > 0) partes.push(`${veces(c.atrasadas, 'atrasada', 'atrasadas')} sin llegar completa${c.atrasadas === 1 ? '' : 's'}`)
+  if (c.nuestras > 0) partes.push(`${veces(c.nuestras, 'atrasada', 'atrasadas')} por causa nuestra (no ${c.nuestras === 1 ? 'cuenta' : 'cuentan'})`)
   partes.push(c.devueltas > 0 ? `${c.devueltas} con devolución` : 'sin devoluciones')
   return partes
 }
@@ -147,7 +160,7 @@ async function cuadraConLaBase(pagina, puesto, ancho) {
   comprobar(filas.length > 0, `${puesto} a ${ancho}: el padrón tiene filas (${filas.length})`)
   const datos = await comoCuenta(
     puesto,
-    'select proveedor::text as id, compras, llegaron, medidas, a_tiempo, devueltas, atrasadas from public.cumplimiento_de_proveedores($1::uuid[])',
+    'select proveedor::text as id, compras, llegaron, medidas, a_tiempo, devueltas, atrasadas, sin_fecha, nuestras from public.cumplimiento_de_proveedores($1::uuid[])',
     [filas.map((f) => f.id)],
   )
   const porId = new Map(datos.map((d) => [d.id, d]))
@@ -165,7 +178,7 @@ async function cuadraConLaBase(pagina, puesto, ancho) {
 }
 
 // ------------------------------------------------ 1 y 2. Logística, en el monitor y en el teléfono
-for (const ancho of [1440, 390]) {
+for (const ancho of [1440, 1024, 390]) {
   const { pagina, contexto } = await entrar('logistica', ancho)
   await ir(pagina, '/proveedores')
   const { filas, porId } = await cuadraConLaBase(pagina, 'logistica', ancho)
@@ -176,14 +189,15 @@ for (const ancho of [1440, 390]) {
       (await pagina.getByRole('columnheader', { name: 'Cumplimiento' }).count()) === 1,
       'logistica a 1440: la columna «Cumplimiento» está en la cabecera',
     )
-  } else {
+  } else if (ancho === 390) {
     const enLaPrimera = await pagina
       .locator('tr[data-proveedor] td:first-child [data-cumplimiento]:visible')
       .count()
     comprobar(enLaPrimera === filas.length, `logistica a 390: el cumplimiento baja bajo el nombre en cada fila (${enLaPrimera})`)
   }
   await sinDesborde(pagina, `/proveedores, Logística a ${ancho}`)
-  await capturar(pagina, `proveedores-${ancho}.png`)
+  if (ancho !== 390) await tablaSinCorrerse(pagina, `/proveedores, Logística a ${ancho}`)
+  if (ancho !== 1024) await capturar(pagina, `proveedores-${ancho}.png`)
   await contexto.close()
 }
 

@@ -98,14 +98,18 @@ export type CumplimientoDelProveedor = {
   compras: number
   /** Las que ya llegaron (la OC entera en almacén, la OS conforme). */
   llegaron: number
-  /** De las que llegaron, las que tenían fecha prometida: las que se pueden medir. */
+  /** De las que llegaron, las que tenían fecha prometida y no se atrasaron por causa nuestra: las que se miden. */
   medidas: number
   /** De las medidas, las que llegaron a más tardar la fecha prometida al emitirlas. */
   a_tiempo: number
   /** OC de las que Almacén le devolvió algo. */
   devueltas: number
-  /** Las que pasaron la fecha prometida al emitirlas y no llegaron (o llegaron a medias). */
+  /** Las que pasaron la fecha prometida al emitirlas y no llegaron (o llegaron a medias), por el proveedor. */
   atrasadas: number
+  /** Las que llegaron sin fecha prometida: no se pueden medir. */
+  sin_fecha: number
+  /** Las que se atrasaron y su último motivo es el pago, el transporte o la aprobación: no cuentan contra él. */
+  nuestras: number
 }
 
 /** El cumplimiento de esos proveedores. Lo lee quien ve el padrón; a los demás la base les dice que no. */
@@ -124,6 +128,8 @@ export async function cumplimientoDeProveedores(ids: string[]): Promise<Map<stri
       a_tiempo: Number(f.a_tiempo ?? 0),
       devueltas: Number(f.devueltas ?? 0),
       atrasadas: Number(f.atrasadas ?? 0),
+      sin_fecha: Number(f.sin_fecha ?? 0),
+      nuestras: Number(f.nuestras ?? 0),
     })
   }
   return porProveedor
