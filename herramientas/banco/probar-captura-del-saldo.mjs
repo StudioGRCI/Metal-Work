@@ -143,7 +143,7 @@ async function esperarVentana(pagina) {
 async function menu(pagina) {
   return pagina.locator('nav[aria-label="Menú principal"] > div').evaluateAll((grupos) =>
     grupos.map((g) => ({
-      titulo: g.querySelector('p')?.textContent?.trim() ?? '',
+      titulo: g.dataset.grupo ?? '',
       rutas: [...g.querySelectorAll('a[href]')].map((a) => a.getAttribute('href')),
     })),
   )

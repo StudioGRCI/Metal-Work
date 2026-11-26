@@ -28,17 +28,17 @@ export function PasoRecojo({ id, nombre, paso }: { id: string; nombre: string; p
   return (
     <div className="space-y-2">
       {paso === 'EN_RECOJO' ? (
-        <Boton type="button" tamano="lg" className="w-full sm:w-auto" cargando={accion.enviando} onClick={marcar}>
+        <Boton type="button" tamano="lg" className="w-full justify-center sm:w-auto" cargando={accion.enviando} onClick={marcar}>
           <Truck aria-hidden className="size-4" />
           Salgo a recoger
         </Boton>
       ) : paso === 'RECOGIDO' ? (
-        <Boton type="button" tamano="lg" className="w-full sm:w-auto" cargando={accion.enviando} onClick={marcar}>
+        <Boton type="button" tamano="lg" className="w-full justify-center sm:w-auto" cargando={accion.enviando} onClick={marcar}>
           <Package aria-hidden className="size-4" />
           Ya la recogí
         </Boton>
       ) : (
-        <Boton type="button" tamano="lg" className="w-full sm:w-auto" onClick={() => setConfirmando(true)}>
+        <Boton type="button" tamano="lg" className="w-full justify-center sm:w-auto" onClick={() => setConfirmando(true)}>
           <PackageCheck aria-hidden className="size-4" />
           La dejé en almacén
         </Boton>

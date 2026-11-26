@@ -18,14 +18,14 @@ begin
   -- Un puesto de prueba que no es ADMIN y tiene `configuracion.editar`: así se
   -- prueba que la política acepta el mismo permiso que exige la acción, y no
   -- solo el atajo de `es_admin()`.
-  insert into public.roles (codigo, nombre) values ('PRUEBA_462', 'Puesto de prueba 462');
+  insert into public.roles (codigo, nombre) values ('PRUEBA_463', 'Puesto de prueba 463');
   insert into public.roles_permisos (rol_id, permiso_codigo)
-  select id, 'configuracion.editar' from public.roles where codigo = 'PRUEBA_462';
-  foreach v in array array['ADMIN:', 'DISENO:DIS', 'GERENTE:GGE', 'ADMINISTRACION:ADM', 'SUPERVISOR:PRD', 'CALIDAD:CAL', 'PRUEBA_462:'] loop
+  select id, 'configuracion.editar' from public.roles where codigo = 'PRUEBA_463';
+  foreach v in array array['ADMIN:', 'DISENO:DIS', 'GERENTE:GGE', 'ADMINISTRACION:ADM', 'SUPERVISOR:PRD', 'CALIDAD:CAL', 'PRUEBA_463:'] loop
     v_id := gen_random_uuid();
-    insert into auth.users (id, email) values (v_id, lower(split_part(v, ':', 1)) || '.462@prueba.local');
+    insert into auth.users (id, email) values (v_id, lower(split_part(v, ':', 1)) || '.463@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
-    select v_id, split_part(v, ':', 1), 'Check 462', lower(split_part(v, ':', 1)) || '.462@prueba.local', r.id,
+    select v_id, split_part(v, ':', 1), 'Check 463', lower(split_part(v, ':', 1)) || '.463@prueba.local', r.id,
            (select id from public.areas where codigo = nullif(split_part(v, ':', 2), ''))
       from public.roles r where r.codigo = split_part(v, ':', 1);
     perform set_config('prueba.' || lower(split_part(v, ':', 1)), v_id::text, true);
@@ -76,7 +76,7 @@ select test.afirmar(public.responsable_del_area('PRD') is null, 'Producción sig
 reset role;
 
 -- Quien tiene `configuracion.editar` sin ser ADMIN entra por la misma puerta que la acción.
-select pg_temp.como('prueba_462');
+select pg_temp.como('prueba_463');
 set local role authenticated;
 select test.afirmar(pg_temp.asignar('prd', 'supervisor') = 1, 'Con configuracion.editar, sin ser ADMIN, se asigna: la política pide el mismo permiso que la acción');
 select test.afirmar(pg_temp.asignar('prd', null) = 1, 'Y se quita');
