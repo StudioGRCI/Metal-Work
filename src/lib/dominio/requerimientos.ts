@@ -96,9 +96,9 @@ export function quienAtiende(perfil: Pick<PerfilSesion, 'permisos' | 'rol'>): Qu
 }
 
 // Lo que espera a otro puesto: a quien pidió (el sustento, lo que la compra no
-// alcanzó), a Diseño, a Gerencia, al conductor o al área que lo recoge.
+// alcanzó), a Diseño, a Gerencia o al conductor. El recojo es del área que pidió.
 const ESPERAS_DE_OTROS = new Set([
-  'SUSTENTO', 'VISTO_DISENO', 'COMPRA_CORTA', 'OC_POR_APROBAR', 'PENDIENTE_RECOJO', 'EN_RECOJO', 'RECOGIDO', 'RECOJO_DEL_AREA',
+  'SUSTENTO', 'VISTO_DISENO', 'COMPRA_CORTA', 'OC_POR_APROBAR', 'PENDIENTE_RECOJO', 'EN_RECOJO', 'RECOGIDO',
 ])
 
 /**
@@ -113,11 +113,18 @@ const ESPERAS_DE_OTROS = new Set([
  * Almacén tiene lo que revisa, lo que llegó y falta validar o dejar listo, y lo
  * que ya salió del kardex y falta marcar entregado; quien compra, lo suyo que
  * falta comprar o volver a traer. Programar el recojo es de Logística, también
- * el de un RQA. Una espera que no está en la lista va a quien compra, como en
- * la base.
+ * el de un RQA. El RQ listo que el área todavía recoge es de quien mira solo
+ * si es de su área (el del área Almacén lo recoge el almacenero). Una espera
+ * que no está en la lista va a quien compra, como en la base.
  */
-export function loTieneQuienAtiende(espera: string | null | undefined, rq: { tipo: string | null }, p: QuienAtiende): boolean {
+export function loTieneQuienAtiende(
+  espera: string | null | undefined,
+  rq: { tipo: string | null; area_id: string | null },
+  p: QuienAtiende,
+  areaDeQuienMira: string | null,
+): boolean {
   if (!espera || ESPERAS_DE_OTROS.has(espera)) return false
+  if (espera === 'RECOJO_DEL_AREA') return areaDeQuienMira != null && rq.area_id === areaDeQuienMira
   if (espera === 'REVISION_STOCK' || espera === 'POR_VALIDAR' || espera === 'YA_LLEGO_TODO') return p.recibe
   if (espera === 'POR_ENTREGAR') return p.despacha
   if (espera === 'POR_PROGRAMAR') return p.compraDe.OPERACION

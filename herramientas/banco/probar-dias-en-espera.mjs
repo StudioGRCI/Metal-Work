@@ -189,10 +189,11 @@ for (const puesto of ['gerencia', 'logistica']) {
   await contexto.close()
 }
 
-// ------------------------------------------------ armazón: RQ listos de un área que se llama como un puesto
+// ------------------------------------------------ armazón: RQ listos de las áreas Almacén y Administración
 // Dos RQ listos que el área todavía recoge pasan un momento a las áreas Almacén y
-// Administración: la insignia dice ese nombre, pero no son de ese puesto. Se
-// devuelven a su área al terminar la sección 2.
+// Administración: los recoge quien es de esa área (el almacenero, la
+// administradora), y a Logística no le cuentan. Se devuelven a su área al
+// terminar la sección 2.
 const areasDeAntes = await consulta(
   `select r.id, r.area_id, a.id as nueva
      from (select r.id, r.area_id, row_number() over (order by r.numero) as n
@@ -257,23 +258,27 @@ for (const puesto of ['almacen', 'logistica', 'administracion']) {
   comprobar(desordenados.length === 0, `${puesto}: en cada grupo, del más antiguo al más nuevo (${desordenados.join(', ') || 'todos'})`)
   // De quién es cada RQ abierto según lo que espera su recorrido (DKS,
   // 2026-11-26), escrito aparte en SQL para no copiar la regla de la aplicación:
-  // por la clave de la espera, no por el nombre que muestra la insignia (el del
-  // área en el RQ listo, y hay áreas que se llaman Almacén, Logística y
-  // Administración). Programar el recojo es de Logística también en un RQA.
+  // por la clave de la espera, no por el nombre que muestra la insignia.
+  // Programar el recojo es de Logística también en un RQA, y el recojo del RQ
+  // listo es de quien es del área que lo pidió.
   const deQuien = await comoCuenta(
     puesto,
     `select q.id::text as id, q.numero, q.estado,
             case
               when r.espera in ('REVISION_STOCK', 'POR_VALIDAR', 'YA_LLEGO_TODO', 'POR_ENTREGAR') then 'almacen'
               when r.espera = 'POR_PROGRAMAR' then 'logistica'
+              -- El recojo, solo a quien es del área que lo pidió.
+              when r.espera = 'RECOJO_DEL_AREA' then
+                case when q.area_id = (select u.area_id from public.usuarios u where u.correo = $1) then $2 end
               when r.espera in ('SUSTENTO', 'VISTO_DISENO', 'COMPRA_CORTA', 'OC_POR_APROBAR', 'PENDIENTE_RECOJO',
-                                'EN_RECOJO', 'RECOGIDO', 'RECOJO_DEL_AREA') then null
+                                'EN_RECOJO', 'RECOGIDO') then null
               when q.tipo = 'ADMINISTRACION' then 'administracion'
               else 'logistica'
             end as quien
        from public.recorrido_de_requerimientos(array(select id from public.requerimientos where estado not in ('ENTREGADO', 'ANULADO'))) r
        join public.requerimientos q on q.id = r.documento
       where r.situacion = 'AHORA'`,
+    [correoDe(puesto), puesto],
   )
   const suyosIds = new Set(deQuien.filter((d) => d.quien === puesto).map((d) => d.id))
   // Lo que tiene su puesto, primero dentro de su grupo, y en el grupo de arriba justo eso.
@@ -410,18 +415,21 @@ errores.length = erroresAntes
 // El RQ listo que ya salió entero del kardex lo tiene Almacén para marcarlo
 // entregado (20261126170000): al supervisor no se le cuenta como «listo para recoger».
 {
-  const [{ n: porRecoger }] = await comoCuenta(
+  // Lo que espera su recojo según el recorrido leído con su sesión: las salidas
+  // del kardex no las ve, y por ellas no se puede saber.
+  const [{ n: porRecoger, listos }] = await comoCuenta(
     'sup.mtz',
-    `select count(distinct v.requerimiento_id)::int as n
-       from public.v_rq_lineas_para_salida v
-       join public.requerimientos q on q.id = v.requerimiento_id
+    `select count(*) filter (where r.espera = 'RECOJO_DEL_AREA')::int as n, count(*)::int as listos
+       from public.requerimientos q
        join public.areas a on a.id = q.area_id
-      where q.estado = 'LISTO_EN_ALMACEN' and a.nombre = 'Maestranza' and v.pendiente > 0`,
-  )
-  const [{ n: listos }] = await comoCuenta(
-    'sup.mtz',
-    `select count(*)::int as n from public.requerimientos q join public.areas a on a.id = q.area_id
+       join public.recorrido_de_requerimientos(array(select id from public.requerimientos where estado = 'LISTO_EN_ALMACEN')) r
+         on r.documento = q.id and r.situacion = 'AHORA'
       where q.estado = 'LISTO_EN_ALMACEN' and a.nombre = 'Maestranza'`,
+  )
+  const [{ n: salidoEntero }] = await consulta(
+    `select count(*)::int as n from public.requerimientos q join public.areas a on a.id = q.area_id
+      where q.estado = 'LISTO_EN_ALMACEN' and a.nombre = 'Maestranza'
+        and not exists (select 1 from public.v_rq_lineas_para_salida v where v.requerimiento_id = q.id and v.pendiente > 0)`,
   )
   const { pagina, contexto } = await entrar('sup.mtz')
   await ir(pagina, '/')
@@ -432,7 +440,8 @@ errores.length = erroresAntes
     porRecoger === 0 ? recoger.length === 0 : recoger.length === 1 && recoger[0].cantidad === porRecoger,
     `sup.mtz: «listos para recoger» cuenta los ${porRecoger} que tienen algo por salir del kardex, de ${listos} listos (dice ${recoger.map((t) => t.texto).join(' | ') || 'nada'})`,
   )
-  comprobar(listos > porRecoger, `sup.mtz: el banco tiene un RQ listo que ya salió entero (${listos - porRecoger})`)
+  comprobar(salidoEntero > 0 && porRecoger === listos - salidoEntero,
+    `sup.mtz: el que ya salió entero no cuenta: ${listos} listos, ${salidoEntero} ya salió entero, ${porRecoger} por recoger`)
   await contexto.close()
 }
 

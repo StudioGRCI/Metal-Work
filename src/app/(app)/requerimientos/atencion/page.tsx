@@ -131,7 +131,7 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
   // 2026-11-26), por la clave de su espera: lo que espera a Gerencia, al
   // conductor o al área no cuenta como suyo aunque después pase por él. Sin el recorrido, la regla de antes: el que
   // espera el sustento o el visto de Diseño todavía no le toca a Almacén.
-  const suyo = (r: RequerimientoListado) => loTieneQuienAtiende(espera.get(r.id)?.espera, r, { recibe, despacha, compraDe })
+  const suyo = (r: RequerimientoListado) => loTieneQuienAtiende(espera.get(r.id)?.espera, r, { recibe, despacha, compraDe }, perfil.area_id ?? null)
   const leToca = (r: RequerimientoListado) =>
     recorridos === null ? leTocaAtender(r, { recibe, despacha, compraDe }) && !frenoDelRq(r, metrado) : suyo(r)
   const meToca = requerimientos.filter(leToca).length

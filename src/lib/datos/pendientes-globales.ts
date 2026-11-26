@@ -769,7 +769,7 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
   // que «N esperan por ti» en la bandeja (DKS, 2026-11-26). Los por revisar van
   // en su propia línea y no se piden: el recorrido cuesta por cada RQ. Si no se
   // puede leer, el error sube y el globo sale con «!» en vez de contar otra cosa.
-  let esperas: Promise<{ tipo: string | null; espera: string | undefined }[]> | null = null
+  let esperas: Promise<{ tipo: string | null; area_id: string | null; espera: string | undefined }[]> | null = null
   const queEspera = () =>
     (esperas ??= (async () => {
       const despues = (await rqAbiertos()).filter((r) => r.estado !== 'POR_ATENDER')
@@ -777,6 +777,7 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       const recorridos = await recorridoDeRequerimientos(despues.map((r) => r.id))
       return despues.map((r) => ({
         tipo: r.tipo,
+        area_id: r.area_id,
         espera: recorridos.get(r.id)?.find((p) => p.situacion === 'AHORA')?.espera ?? undefined,
       }))
     })())
@@ -854,7 +855,7 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       : atiende.compraDe.OPERACION
         ? plural(n, 'requerimiento por comprar o programar espera por ti', 'requerimientos por comprar o programar esperan por ti')
         : plural(n, 'requerimiento por comprar espera por ti', 'requerimientos por comprar esperan por ti'),
-    contar: async () => (await queEspera()).filter((r) => loTieneQuienAtiende(r.espera, r, atiende)).length,
+    contar: async () => (await queEspera()).filter((r) => loTieneQuienAtiende(r.espera, r, atiende, perfil.area_id ?? null)).length,
   })
   // El supervisor recoge de Almacén lo que su área pidió.
   if (puede(perfil, 'reporte_diario.registrar') && perfil.area_id && perfil.rol.codigo !== 'ADMIN') {
@@ -864,15 +865,14 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       // todos los RQ del área y el que estaba listo había que buscarlo.
       clave: 'rq_por_recoger', ruta: '/requerimientos?ver=recoger', tono: 'acento',
       texto: n => plural(n, 'requerimiento de tu área listo para recoger en almacén', 'requerimientos de tu área listos para recoger en almacén'),
-      // Solo los que todavía tienen algo por salir del kardex: el que ya salió
-      // entero espera que Almacén lo marque entregado (20261126170000).
+      // Solo los que en su recorrido esperan el recojo del área: el que ya salió
+      // entero del kardex espera que Almacén lo marque entregado (20261126170000).
+      // Se lee del recorrido y no de las salidas, que el supervisor no ve.
       contar: async () => {
         const listos = (await rqAbiertos()).filter((r) => r.estado === 'LISTO_EN_ALMACEN' && r.area_id === area).map((r) => r.id)
         if (listos.length === 0) return 0
-        const { data, error } = await supabase.from('v_rq_lineas_para_salida')
-          .select('requerimiento_id').in('requerimiento_id', listos).gt('pendiente', 0)
-        if (error) throw new Error('No se pudo consultar el pendiente.')
-        return new Set((data ?? []).map((l) => l.requerimiento_id)).size
+        const recorridos = await recorridoDeRequerimientos(listos)
+        return listos.filter((id) => recorridos.get(id)?.some((p) => p.situacion === 'AHORA' && p.espera === 'RECOJO_DEL_AREA')).length
       },
     })
   }
