@@ -192,6 +192,21 @@ begin
 end;
 $$;
 
+-- Desde la migración 20261126550000, un banco cierra su día con la captura del
+-- estado de cuenta, que el navegador sube antes al bucket `cierre-caja`. Este
+-- ayudante deja subida una a nombre de quien tiene la sesión, en la carpeta de
+-- la cuenta, y devuelve su ruta para pasarla a `cerrar_dia_caja`. La regla la
+-- prueba el check 396.
+create or replace function test.captura_de_cierre(p_caja uuid)
+returns text language plpgsql security definer set search_path to 'public' as $$
+declare v_ruta text := p_caja::text || '/' || gen_random_uuid()::text || '.png';
+begin
+  insert into storage.objects (bucket_id, name, owner_id, metadata)
+  values ('cierre-caja', v_ruta, public.usuario_actual()::text, '{"mimetype":"image/png","size":100}'::jsonb);
+  return v_ruta;
+end;
+$$;
+
 -- Desde la migración 20261120400000, el insumo de materia prima o accesorio de
 -- un RQ de unidad que se pasa del metrado de Diseño (o que no está en él)
 -- espera el sustento y el visto de Diseño antes de que Almacén lo revise,

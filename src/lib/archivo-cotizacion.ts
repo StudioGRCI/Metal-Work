@@ -1,4 +1,5 @@
 import {
+  leerCantidadDeCotizacion,
   leerIgvDeCotizacion,
   leerNombreDeArchivo,
   leerTotalDeCotizacion,
@@ -51,6 +52,8 @@ export type LecturaArchivoCotizacion = {
   total: TotalCotizacion
   /** Si el papel dice que el total trae IGV; null si no lo dice. */
   incluyeIgv: boolean | null
+  /** Cuántas unidades cotiza; null si no lo dice. */
+  unidades: number | null
 }
 
 /**
@@ -149,5 +152,6 @@ export async function leerCabeceraDeArchivo(
     cabecera: unirLecturas(delTexto, leerNombreDeArchivo(archivo.name)),
     total: leerTotalDeCotizacion(texto),
     incluyeIgv: leerIgvDeCotizacion(texto),
+    unidades: leerCantidadDeCotizacion(texto),
   }
 }

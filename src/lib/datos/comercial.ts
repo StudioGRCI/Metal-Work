@@ -145,7 +145,7 @@ export async function cotizacionesDelCliente(clienteId: string) {
   const [vigentes, anuladas] = await Promise.all([
     supabase
       .from('v_cotizaciones_pdf')
-      .select('id, numero, estado, creado_en, carroceria, orden_numero, codigo_interno', { count: 'exact' })
+      .select('id, numero, estado, creado_en, carroceria, orden_numero, codigo_interno, cantidad_unidades, ordenes_vigentes', { count: 'exact' })
       .eq('cliente_id', clienteId)
       .neq('estado', 'ANULADA')
       .order('creado_en', { ascending: false })

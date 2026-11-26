@@ -27,18 +27,20 @@ import {
   pasoDelRequerimiento,
   quienCompra,
   tieneParaRecoger,
+  vistoDelMetrado,
   YA_LLEGO_TODO,
   yaLlegoTodo,
   type PartesDelInsumo,
   type PasoDelRq,
 } from '@/lib/dominio/requerimientos'
-import { cantidad, diasHasta, fecha, fechaHora, porcentaje } from '@/lib/format'
+import { cantidad, diasHasta, fecha, fechaHora, hoyLima, porcentaje } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { MaterialDelInsumo } from './avance'
 import { AnotarConformidad } from './conformidad'
 import { AnularRequerimiento } from './controles'
 import { CorregirRequerimiento } from './corregir'
+import { ComoVaElInsumo } from './pasos-del-insumo'
 import { SustentarInsumos } from './metrado/sustentar'
 
 const abierto = (estado: string) => (ESTADOS_RQ_ABIERTOS as readonly string[]).includes(estado)
@@ -237,6 +239,7 @@ export function TarjetaRequerimiento({
   metrado,
   recorrido,
   conformidad,
+  pasosPorInsumo = false,
 }: {
   rq: RequerimientoListado
   insumosAbiertos: boolean
@@ -253,6 +256,8 @@ export function TarjetaRequerimiento({
   recorrido: PasoDescrito[] | null
   /** Las salidas de cada insumo y sus notas (plan 2, entrega 2.2); `null` si no se pudieron leer. */
   conformidad: ConformidadDeLosRq | null
+  /** Cada insumo con sus pasos de principio a fin (plan 8, entrega 8.3): el RQ de Administración, para quien lo lleva. */
+  pasosPorInsumo?: boolean
 }) {
   // En compra pero con todo ya en almacén, la insignia no dice «En compra»: lo dicen la barra y los pasos.
   // Por atender y frenado por el metrado: la insignia y el primer paso dicen quién lo tiene, no «Almacén revisa».
@@ -330,7 +335,7 @@ export function TarjetaRequerimiento({
 
       {metrado && <FrenoDelMetrado rq={rq} metrado={metrado} sustenta={anula} />}
 
-      <InsumosConPartes rq={rq} abierto={insumosAbiertos} metrado={metrado} conformidad={conformidad} />
+      <InsumosConPartes rq={rq} abierto={insumosAbiertos} metrado={metrado} conformidad={conformidad} pasosPorInsumo={pasosPorInsumo} />
 
       {/* Para consultar: quién hizo cada paso, quién lo tiene ahora y hace cuántos días. */}
       <Recorrido pasos={recorrido} className="border-t border-borde" />
@@ -483,12 +488,15 @@ function InsumosConPartes({
   abierto: abiertoPorDefecto,
   metrado,
   conformidad,
+  pasosPorInsumo,
 }: {
   rq: RequerimientoListado
   abierto: boolean
   metrado: Map<string, MetradoDelInsumo> | null
   conformidad: ConformidadDeLosRq | null
+  pasosPorInsumo: boolean
 }) {
+  const hoy = hoyLima()
   const partes = rq.lineas.map((l) => partesDelInsumo(l, rq.estado))
   const frenanElRq = (metrado && frenoDelRq(rq, metrado)?.items) ?? []
   const cuenta = (k: keyof PartesDelInsumo) => partes.filter((p) => p && p[k] > 0).length
@@ -530,6 +538,11 @@ function InsumosConPartes({
             frenanElRq={frenanElRq}
             salidas={conformidad?.salidas.get(l.id) ?? []}
             notas={conformidad?.notas}
+            comoVa={
+              pasosPorInsumo && rq.estado !== 'ANULADO' ? (
+                <ComoVaElInsumo linea={l} visto={vistoDelMetrado(metrado?.get(l.id)?.estado)} hoy={hoy} quienCompra={quienCompra(rq)} />
+              ) : null
+            }
           />
         ))}
       </ul>
@@ -551,6 +564,7 @@ function InsumoConPartes({
   frenanElRq,
   salidas,
   notas,
+  comoVa,
 }: {
   linea: LineaRequerimiento
   partes: PartesDelInsumo | null
@@ -560,6 +574,8 @@ function InsumoConPartes({
   frenanElRq: number[]
   salidas: SalidaDelInsumo[]
   notas: Map<string, NotaDeConformidad[]> | undefined
+  /** Los pasos del insumo de principio a fin, en el RQ de Administración (plan 8, entrega 8.3). */
+  comoVa: React.ReactNode
 }) {
   const frena = frenaElRq(metrado?.estado) && rq.estado !== 'ANULADO' && rq.estado !== 'ENTREGADO'
   const tono = tonoPorLlegar(l, partes)
@@ -582,6 +598,7 @@ function InsumoConPartes({
         {l.categoria}
       </p>
       {metrado && metrado.estado !== 'NO_APLICA' && <MetradoDeLaLinea metrado={metrado} unidad={u} />}
+      {comoVa}
       {partes && (
         <>
           <BarraDePartes partes={partes} tonoPorLlegar={tono} noSalio={noSalio} />
