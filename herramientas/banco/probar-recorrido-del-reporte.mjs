@@ -243,6 +243,14 @@ for (const ancho of [390, 1440]) {
     `${ancho}: el observado, en el detalle: ${pasosDetalle.join(' > ')}`)
   await sinDesborde(pagina, `${ancho} detalle`)
   await capturar(pagina, `1-1-supervisor-${ancho}-2-detalle-observado.png`)
+
+  // En la tarjeta «Validación» del validado, Gerencia se dice por su puesto, nunca por el nombre (DKS, 2026-11-26).
+  await ir(pagina, `/reportes-diarios/${ids.validado}`)
+  const deGerencia = limpio(await pagina.locator('[data-lado="GERENCIA"]').innerText())
+  // En el banco la cuenta se llama «Gerencia de Producción Banco»: lo que no debe salir es el nombre entero ni el apellido.
+  const [nombreGpr] = await consulta(`select nombres, apellidos from public.usuarios where id = $1`, [gpr.id])
+  comprobar(deGerencia.includes('Visto bueno de Gerencia de Producción') && !deGerencia.includes(`${nombreGpr.nombres} ${nombreGpr.apellidos}`) && !deGerencia.includes(nombreGpr.apellidos),
+    `${ancho}: «Validación» dice el puesto de quien dio el visto de Gerencia, sin su nombre: «${deGerencia}»`)
   await contexto.close()
 }
 

@@ -55,6 +55,13 @@ export default async function PaginaReporteDiario({ params, searchParams }: Page
   ])
   if (!r) notFound()
   const pasos = recorridos ? describirRecorridoDelReporte(recorridos.get(id) ?? []) : null
+  // Quién dio el visto de Gerencia (Gerencia General o de Producción), solo por
+  // su puesto, como el recorrido: el nombre no se muestra (DKS, 2026-11-26).
+  const puestoDelVistoGerencia =
+    recorridos
+      ?.get(id)
+      ?.filter((p) => p.paso === 'VISTO_GERENCIA' && p.situacion === 'HECHO')
+      .at(-1)?.puesto ?? null
 
   const anulado = r.anulado_en !== null
   const estado = estadoDeReporte(r)
@@ -178,7 +185,7 @@ export default async function PaginaReporteDiario({ params, searchParams }: Page
                       <p className="text-sm font-medium text-texto">{AREA_QUE_VALIDA[lado]}</p>
                       <p className="text-xs text-texto-suave">
                         {visto
-                          ? `Visto bueno${lado === 'GERENCIA' && r.visto_gerencia_de ? ` de ${r.visto_gerencia_de}` : ''} el ${fechaHora(visto)}`
+                          ? `Visto bueno${lado === 'GERENCIA' && puestoDelVistoGerencia ? ` de ${puestoDelVistoGerencia}` : ''} el ${fechaHora(visto)}`
                           : estado === 'OBSERVADO' ? 'Sin visto: está observado' : 'Falta su visto bueno'}
                       </p>
                     </div>

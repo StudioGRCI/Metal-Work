@@ -67,11 +67,6 @@ export type ReporteDetalle = Omit<ReporteListado, 'personal' | 'fotos'> & {
   /** El reporte que corrigió a este, si lo observaron y el supervisor ya lo subió de nuevo. */
   corregido_por: string | null
   /**
-   * Quién dio el visto de Gerencia: desde el 2026-11-25 lo dan Gerencia General
-   * o Gerencia de Producción, y vale el primero.
-   */
-  visto_gerencia_de: string | null
-  /**
    * Los otros códigos que subieron con este, en el mismo envío: los guardó la
    * misma transacción (`registrar_reportes_diarios`), así que comparten autor e
    * instante.
@@ -198,8 +193,7 @@ export async function reporteDiario(id: string, veCosteo: boolean): Promise<Repo
       `${COLUMNAS_REPORTE},` +
         ' personal:reporte_diario_personal!reporte_diario_personal_reporte_id_fkey(id, trabajo_id, trabajador_id, nombre, cargo, horas,' +
         ' tareo:tareos!tareos_reporte_linea_id_fkey(id, anulado_en)),' +
-        ' fotos:reporte_diario_fotos!reporte_diario_fotos_reporte_id_fkey(id, orden, ruta),' +
-        ' visto_gerencia:usuarios!reportes_diarios_visto_gerencia_por_fkey(nombres, apellidos)',
+        ' fotos:reporte_diario_fotos!reporte_diario_fotos_reporte_id_fkey(id, orden, ruta)',
     )
     .eq('id', id)
     .maybeSingle()
@@ -210,7 +204,6 @@ export async function reporteDiario(id: string, veCosteo: boolean): Promise<Repo
   const fila = data as unknown as FilaReporte & {
     personal: Linea[] | null
     fotos: { id: string; orden: number; ruta: string }[] | null
-    visto_gerencia: Uno<{ nombres: string; apellidos: string }>
   }
   const fotos = [...(fila.fotos ?? [])].sort((a, b) => a.orden - b.orden)
   const [enlaces, corregido, hermanos] = await Promise.all([
@@ -239,11 +232,8 @@ export async function reporteDiario(id: string, veCosteo: boolean): Promise<Repo
   ])
   if (hermanos.error) throw new Error(`No se pudieron leer los otros códigos del reporte: ${hermanos.error.message}`)
 
-  const vistoGerencia = unico(fila.visto_gerencia)
-  const { visto_gerencia: _vistoGerencia, ...sinVisto } = fila
   return {
-    ...cabecera(sinVisto),
-    visto_gerencia_de: vistoGerencia ? `${vistoGerencia.nombres} ${vistoGerencia.apellidos}`.trim() : null,
+    ...cabecera(fila),
     personal: (fila.personal ?? []).map(({ tareo, ...l }) => {
       const t = unico(tareo)
       return {
