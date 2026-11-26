@@ -185,6 +185,14 @@ const [{ id: caja }] = await consulta(
    values ($1, 'BANCO', 'BANCO DE PRUEBA', 'PEN', 1000, $2::date - 30, $3) returning id`,
   [CAJA, hoy, ids[CUENTAS.tesoreria]],
 )
+// Tesorería ya pagó entera la OC con boleta: va en «OC con boleta pagadas», que sale cerrada, y el
+// enlace de «Pide el reembolso» tiene que abrirla para llegar a la OC.
+await como('tesoreria')
+const [{ total: totalB }] = await consulta(`select public.total_orden_compra($1)::float as total`, [ocb])
+const [{ pagoB }] = await consulta(`select gen_random_uuid() as "pagoB"`)
+await archivo('pagos-compras', `${ocb}/${pagoB}.pdf`, 'tesoreria')
+await consulta(`select public.registrar_pago_compra($1, $2, $3::date, $4, true, null, null, $5, $6, null)`,
+  [pagoB, ocb, hoy, totalB, `${ocb}/${pagoB}.pdf`, caja])
 await consulta(`select set_config('request.jwt.claims', '', false), set_config('request.jwt.claim.sub', '', false)`)
 console.log(`  siembra: ${ocNumero} compra 10 de ${MATERIAL}; ${F1} (118) y ${F2} (59) de ${PROVEEDOR}; Almacén devolvió 2`)
 
@@ -333,7 +341,12 @@ try {
     `a Tesorería le llega «Pide el reembolso» de la ${ocbNumero}, con lo que vale («${reembolso[0]?.cuerpo ?? ''}»)`)
   if (reembolso[0]) {
     await tes.goto(`${BASE}${reembolso[0].ruta}`, { waitUntil: 'networkidle' })
-    comprobar((await tes.locator(`[id="compra-${ocb}"]`).count()) === 1, `el enlace del aviso abre la ${ocbNumero} en Cuentas por pagar`)
+    const tarjetaB = tes.locator(`[id="compra-${ocb}"]`)
+    await tarjetaB.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {})
+    const seVe = (await tarjetaB.count()) === 1 && (await tarjetaB.isVisible())
+      && (await tarjetaB.evaluate((t) => { const r = t.getBoundingClientRect(); return r.top < window.innerHeight && r.bottom > 0 }))
+    comprobar(seVe && (await tarjetaB.evaluate((t) => { const s = t.closest('details'); return !s || s.open })),
+      `el enlace del aviso abre «OC con boleta pagadas» y deja a la vista la ${ocbNumero}, ya pagada`)
     await tes.screenshot({ path: join(CAPTURAS, 'tesoreria-pide-el-reembolso-390.png') })
   }
   const [{ n: deLaConFactura }] = await consulta(`select count(*)::int as n from notificaciones where origen_id = $1 and titulo like 'Pide el reembolso%'`, [oc])
