@@ -58,22 +58,6 @@ export function faltaDe(l: LoQueFalta, formato: (n: number) => string): string {
   return `faltan ${formato(l.falta)} de ${formato(l.pedido)}${l.unidad ? ` ${l.unidad}` : ''}`
 }
 
-/**
- * Por qué se atrasó una compra, de la lista corta que decidió el plan 4.2
- * (migración 20261126462000). Con «Otro», la nota es obligatoria.
- */
-export const MOTIVOS_DE_ATRASO = ['PROVEEDOR', 'PAGO', 'TRANSPORTE', 'APROBACION', 'OTRO'] as const
-export type MotivoDeAtraso = (typeof MOTIVOS_DE_ATRASO)[number]
-
-export const MOTIVO_DE_ATRASO: Record<MotivoDeAtraso, string> = {
-  PROVEEDOR: 'Proveedor',
-  PAGO: 'Pago',
-  TRANSPORTE: 'Transporte',
-  APROBACION: 'Aprobación',
-  OTRO: 'Otro',
-}
-
-/** El motivo en palabras; una clave que la pantalla no conoce, en llano. */
-export function motivoDeAtraso(clave: string): string {
-  return MOTIVO_DE_ATRASO[clave as MotivoDeAtraso] ?? clave.replaceAll('_', ' ').toLowerCase()
-}
+// Los motivos del atraso viven en `recorrido.ts`, que no puede importar nada para
+// que `node --test` lo cargue sin el alias `@/`; aquí se siguen ofreciendo.
+export { MOTIVOS_DE_ATRASO, MOTIVO_DE_ATRASO, motivoDeAtraso, type MotivoDeAtraso } from './recorrido'
