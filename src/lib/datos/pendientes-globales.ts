@@ -4,13 +4,14 @@ import { cache } from 'react'
 
 import type { Tono } from '@/components/ui/etiqueta-estado'
 import { codigosDeDiseno, planosDeCodigo } from '@/lib/datos/diseno-codigos'
+import { recorridoDeRequerimientos } from '@/lib/datos/recorrido'
 import { planillaAjusteDesde } from '@/lib/datos/rrhh'
 import { todasLasFilas } from '@/lib/datos/todas-las-filas'
 import { ESTADOS_ACTIVOS_OT } from '@/lib/dominio/estados'
 import { totalConIgv } from '@/lib/dominio/finanzas'
 import { devueltaEntera } from '@/lib/dominio/pago-de-boleta'
 import { estadoDePlanilla } from '@/lib/dominio/planilla-diaria'
-import { ESTADOS_RQ_ABIERTOS, leTocaAtender, quienAtiende, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
+import { ESTADOS_RQ_ABIERTOS, leTocaAtender, PUESTO_ALMACEN, quienAtiende, RQ_EN_COMPRA, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
 import { hoyLima } from '@/lib/format'
 import { rutasDeTrabajo } from '@/lib/navegacion'
 import { apruebaSinOrden, puede, type PerfilSesion } from '@/lib/sesion'
@@ -809,11 +810,27 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       return (data ?? []).length
     },
   })
+  // En compra, a Almacén le toca cuando lo comprado ya llegó y falta dejarlo
+  // listo: lo dice el recorrido, como en la bandeja de atención (leTocaAtender).
+  if (atiende.recibe) tareas.push({
+    clave: 'rq_por_dejar_listo', ruta: '/requerimientos/atencion', tono: 'aviso',
+    texto: n => plural(n, 'requerimiento con lo comprado en almacén por dejar listo', 'requerimientos con lo comprado en almacén por dejar listos'),
+    contar: async () => {
+      const enCompra = (await rqAbiertos()).filter((r) => (RQ_EN_COMPRA as readonly string[]).includes(r.estado))
+      if (enCompra.length === 0) return 0
+      const recorridos = await recorridoDeRequerimientos(enCompra.map((r) => r.id))
+      const loTiene = (id: string) => recorridos.get(id)?.find((p) => p.situacion === 'AHORA')?.puesto
+      return enCompra.filter((r) => loTiene(r.id) === PUESTO_ALMACEN && leTocaAtender(r, atiende, PUESTO_ALMACEN)).length
+    },
+  })
   if (atiende.compraDe.OPERACION || atiende.compraDe.ADMINISTRACION) tareas.push({
     clave: 'rq_por_comprar', ruta: '/requerimientos/atencion', tono: 'aviso',
     texto: n => plural(n, 'requerimiento sin stock por comprar', 'requerimientos sin stock por comprar'),
-    contar: async () =>
-      (await rqAbiertos()).filter((r) => r.estado === 'SIN_STOCK' && atiende.compraDe[tipoDeRequerimiento(r)]).length,
+    // El que espera el visto de Diseño tampoco se compra: la bandeja no lo cuenta como suyo.
+    contar: async () => {
+      const [lista, { frenados }] = await Promise.all([rqAbiertos(), rqFrenados()])
+      return lista.filter((r) => r.estado === 'SIN_STOCK' && atiende.compraDe[tipoDeRequerimiento(r)] && !frenados.has(r.id)).length
+    },
   })
   if (atiende.despacha) tareas.push({
     clave: 'rq_por_entregar', ruta: '/requerimientos/atencion', tono: 'acento',
