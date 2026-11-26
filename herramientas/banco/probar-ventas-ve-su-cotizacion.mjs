@@ -1,5 +1,5 @@
 /**
- * Clic real sobre el Plan 9 · 9.1 (migración 20261126200000): Ventas ve dónde
+ * Clic real sobre el Plan 9 · 9.1 (migración 20261126450000): Ventas ve dónde
  * va su cotización. Con la cuenta de Ventas, nunca ADMIN:
  *
  *   1. Siembra en el banco, con la cuenta de cada puesto, cuatro cotizaciones
