@@ -41,7 +41,7 @@ import { estadoDeReporte } from '@/lib/dominio/reporte-diario'
 import { ESTADOS_RQ_ABIERTOS, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
 import { reglaTardanza, resumenTardanzas } from '@/lib/datos/rrhh'
 import { hoyLima, moneda, numero, parteDe, porcentaje, porcentajeCorto, sumarDias } from '@/lib/format'
-import { menuDe } from '@/lib/navegacion'
+import { rutasDeTrabajo } from '@/lib/navegacion'
 import { puede, puedeHojaDeArea, type PerfilSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -956,6 +956,33 @@ const CIFRAS = {
       }
     },
   },
+  // El padrón de equipos de la planta (Plan 16), para Mantenimiento.
+  equipos_parados: {
+    ruta: '/equipos',
+    calcular: async (c) => {
+      const r = await c.supabase.from('equipos').select('id', { count: 'exact', head: true }).eq('activo', true).eq('estado', 'PARADO')
+      fallo(r)
+      const n = r.count ?? 0
+      return { titulo: 'Equipos parados', valor: String(n), pie: 'no se pueden usar', icono: AlertTriangle, tono: n > 0 ? 'peligro' : 'neutro', href: '/equipos?estado=parados' }
+    },
+  },
+  equipos_con_observacion: {
+    ruta: '/equipos',
+    calcular: async (c) => {
+      const r = await c.supabase.from('equipos').select('id', { count: 'exact', head: true }).eq('activo', true).eq('estado', 'CON_OBSERVACION')
+      fallo(r)
+      const n = r.count ?? 0
+      return { titulo: 'Con observación', valor: String(n), pie: 'trabajan, pero hay que verlos', icono: Wrench, tono: n > 0 ? 'aviso' : 'neutro', href: '/equipos?estado=con-observacion' }
+    },
+  },
+  equipos_en_el_padron: {
+    ruta: '/equipos',
+    calcular: async (c) => {
+      const r = await c.supabase.from('equipos').select('id', { count: 'exact', head: true }).eq('activo', true)
+      fallo(r)
+      return { titulo: 'Equipos en el padrón', valor: String(r.count ?? 0), pie: 'en el padrón, sin los dados de baja', icono: Wrench }
+    },
+  },
   clientes: {
     ruta: '/clientes',
     calcular: async (c) => {
@@ -984,6 +1011,7 @@ const CIFRAS_POR_PUESTO: Record<string, { titulo: string; cifras: ClaveCifra[] }
   ADMINISTRACION: { titulo: 'Administración', cifras: ['aprobadas_sin_codigo', 'rq_abiertos', 'subcontratos_vigentes', 'gastos_del_mes', 'clientes'] },
   RECURSOS_HUMANOS: { titulo: 'Recursos Humanos', cifras: ['personal_activo', 'entraron_hoy', 'tardanzas_del_mes', 'reportes_del_mes'] },
   PORTERO: { titulo: 'Portería hoy', cifras: ['entraron_hoy', 'salieron_hoy', 'tardanzas_de_hoy'] },
+  MANTENIMIENTO: { titulo: 'Equipos de la planta', cifras: ['equipos_parados', 'equipos_con_observacion', 'equipos_en_el_padron'] },
   SUPERVISOR: { titulo: 'Tu área', cifras: ['reportes_del_mes', 'planos_del_area', 'rq_abiertos'] },
   SUPERVISOR_GENERAL: { titulo: 'Seguimiento', cifras: ['seguimiento_en_curso', 'rq_abiertos', 'vehiculos_en_planta', 'bajo_minimo'] },
   VENDEDOR: { titulo: 'Ventas', cifras: ['cotizaciones_en_gerencia', 'aprobadas_del_mes', 'clientes'] },
@@ -1014,7 +1042,8 @@ export async function dashboardDelPuesto(perfil: PerfilSesion): Promise<Dashboar
     },
   }
 
-  const enMenu = new Set(menuDe(perfil.permisos, esAdmin, perfil.rol.codigo).flatMap((g) => g.items.map((i) => i.ruta.split('?')[0])))
+  // Solo lo que es trabajo del puesto: lo que consulta no le trae cifras.
+  const enMenu = rutasDeTrabajo(perfil.permisos, esAdmin, perfil.rol.codigo)
   const suyas = propio.cifras.filter((clave) => enMenu.has(CIFRAS[clave].ruta.split('?')[0]))
 
   const cifras = await Promise.all(

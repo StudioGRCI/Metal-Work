@@ -3,6 +3,7 @@ import {
   Award,
   BadgeCheck,
   Banknote,
+  BanknoteArrowUp,
   Boxes,
   Calculator,
   Building2,
@@ -17,6 +18,7 @@ import {
   Coins,
   CreditCard,
   DraftingCompass,
+  Drill,
   FileArchive,
   FilePenLine,
   FileSpreadsheet,
@@ -57,6 +59,15 @@ export type ItemNavegacion = {
   icono: typeof LayoutDashboard
   /** Con varios permisos basta con tener uno para que el módulo se vea. */
   permiso?: string | readonly string[]
+  /**
+   * Los permisos con los que la pantalla también abre, solo para leer. Valen
+   * solo en un grupo de consulta del menú propio de un puesto (Gerencia
+   * consulta las OC sin `compras.crear`): ni en su trabajo, donde quitarle el
+   * permiso le quita la entrada, ni en el catálogo filtrado, donde un puesto sin
+   * menú propio recibiría pantallas ajenas. Son los mismos que acepta el
+   * `exigirPermiso` de la página.
+   */
+  lectura?: string | readonly string[]
   descripcion?: string
   /** Los módulos aún no construidos se muestran atenuados y sin enlace. */
   disponible?: boolean
@@ -64,16 +75,28 @@ export type ItemNavegacion = {
 
 /**
  * Cómo se pliega un grupo del menú lateral (decisión 7 del plan de orden y
- * diseño, 2026-11-25): `fijo` va siempre abierto y sin botón —«Principal», y el
- * grupo único de un puesto—; `abierto` nace abierto y se puede plegar, y es lo
- * que vale si falta, salvo en «Consultas», que nace `plegado`. Cada persona lo
- * deja como quiera y el menú lo recuerda en una cookie por puesto; el grupo
- * donde está la pantalla abierta se abre solo. «Por aprobar» de Gerencia y sus
- * grupos de consulta por área quedan pendientes del menú de Gerencia General.
+ * diseño, 2026-11-25): `fijo` va siempre abierto y sin botón —«Principal», el
+ * grupo único de un puesto y «Por aprobar» de Gerencia—; `abierto` nace
+ * abierto y se puede plegar, y es lo que vale si falta, salvo en «Consultas» y
+ * en los grupos de consulta, que nacen `plegado`. Cada persona lo deja como
+ * quiera y el menú lo recuerda en una cookie por puesto; el grupo donde está la
+ * pantalla abierta se abre solo.
  */
 export type Pliegue = 'fijo' | 'abierto' | 'plegado'
 
-export type GrupoNavegacion = { titulo: string; items: readonly ItemNavegacion[]; pliegue?: Pliegue }
+export type GrupoNavegacion = {
+  titulo: string
+  items: readonly ItemNavegacion[]
+  pliegue?: Pliegue
+  /**
+   * Un grupo que el puesto solo consulta: sale en su menú, pero no es su
+   * trabajo. Sus pantallas no cuentan pendientes ni cifras para él, no le
+   * traen el bloque de OT al dashboard y no van en «Tus módulos»
+   * (`rutasDeTrabajo`, `modulosDelInicio`), salvo las que su puesto pone en
+   * `alInicio`. Nace plegado, como «Consultas».
+   */
+  consulta?: boolean
+}
 
 /** La cookie con los grupos que cada persona plegó, por puesto: la escribe el menú y la lee el layout. */
 export const cookieDelMenu = (rol: string) => `mw-menu-${rol.toLowerCase()}`
@@ -283,6 +306,7 @@ export const NAVEGACION = [
         ruta: '/requerimientos/atencion',
         icono: PackageCheck,
         permiso: ['almacen.recibir', 'almacen.despachar'],
+        lectura: ['requerimientos.ver', 'requerimientos.administracion'],
         descripcion: 'Los RQ por revisar insumo por insumo, por recepcionar y por entregar al área',
         disponible: true,
       },
@@ -344,6 +368,7 @@ export const NAVEGACION = [
         ruta: '/compras/ordenes',
         icono: FileText,
         permiso: 'compras.crear',
+        lectura: 'compras.ver',
         descripcion: 'Cada OC con su número: directas o de requerimiento, recojo y factura',
         disponible: true,
       },
@@ -352,6 +377,7 @@ export const NAVEGACION = [
         ruta: '/compras/servicios',
         icono: Wrench,
         permiso: 'compras.crear',
+        lectura: 'compras.ver',
         descripcion: 'Trabajos de terceros con su número OS, código interno, detracción, aprobación y conformidad',
         disponible: true,
       },
@@ -390,8 +416,8 @@ export const NAVEGACION = [
       },
       // Lo ven también Almacén, Costos y Supervisión (`proveedores.ver`), pero
       // en el menú solo de quienes llevan el padrón: Logística y Contabilidad.
-      // Gerencia también lo edita, pero desde el 2026-10-15 no lo tiene en su
-      // menú: lo abre por su dirección.
+      // Gerencia también lo edita y, desde el 2026-11-25, lo tiene en su menú
+      // entre las pantallas de Logística que consulta.
       {
         titulo: 'Proveedores',
         ruta: '/proveedores',
@@ -504,7 +530,7 @@ export const NAVEGACION = [
   {
     titulo: 'Finanzas',
     items: [
-      { titulo: 'Facturación', ruta: '/contabilidad/facturacion', icono: ReceiptText, permiso: 'contabilidad.facturar', descripcion: 'Las cotizaciones aprobadas, por código interno: registrar su factura', disponible: true },
+      { titulo: 'Facturación', ruta: '/contabilidad/facturacion', icono: ReceiptText, permiso: 'contabilidad.facturar', lectura: 'cotizaciones.ver_aprobadas', descripcion: 'Las cotizaciones aprobadas, por código interno: registrar su factura', disponible: true },
       // Contabilidad responde por la detracción de cada orden de servicio.
       {
         titulo: 'Órdenes de servicio',
@@ -517,7 +543,7 @@ export const NAVEGACION = [
       { titulo: 'Adquisiciones', ruta: '/adquisiciones', icono: Receipt, permiso: 'adquisiciones.ver', descripcion: 'Cada OC y OS de su RQ a su pago, con sus documentos; y cada factura con sus OC', disponible: true },
       { titulo: 'Cuentas por cobrar', ruta: '/tesoreria/por-cobrar', icono: HandCoins, permiso: 'tesoreria.ver_documentos', descripcion: 'Las facturas de venta por código interno, cobradas con su voucher', disponible: true },
       { titulo: 'Cuentas por pagar', ruta: '/tesoreria/por-pagar', icono: CreditCard, permiso: 'tesoreria.ver_documentos', descripcion: 'Las facturas de compra, al contado o a crédito, pagadas con su voucher', disponible: true },
-      { titulo: 'Pagos de servicio', ruta: '/tesoreria/pagos-de-servicio', icono: Wrench, permiso: ['tesoreria.pagar_servicios', 'tesoreria.ver_documentos'], descripcion: 'Las órdenes de servicio aprobadas, pagadas al proveedor con su voucher', disponible: true },
+      { titulo: 'Pagos de servicio', ruta: '/tesoreria/pagos-de-servicio', icono: BanknoteArrowUp, permiso: ['tesoreria.pagar_servicios', 'tesoreria.ver_documentos'], descripcion: 'Las órdenes de servicio aprobadas, pagadas al proveedor con su voucher', disponible: true },
       // La paga Tesorería; la arma RR. HH. (está también en su grupo, con su permiso).
       { titulo: 'Planilla diaria', ruta: '/planilla-diaria', icono: Banknote, permiso: 'planilla_diaria.pagar', descripcion: 'Pagar a cada persona a su cuenta, con comprobante y boleta', disponible: true },
       // Los sube Administración contra cada subcontrato; Contabilidad los consulta por la retención.
@@ -567,6 +593,23 @@ export const NAVEGACION = [
       { titulo: 'Planillas', ruta: '/rrhh', icono: UserCog, permiso: 'rrhh.ver_planillas', descripcion: 'Planillas del mes y su distribución por unidad', disponible: true },
     ],
   },
+  // El padrón de equipos de la planta (Plan 16). Lo lleva Mantenimiento; Almacén
+  // entra a anotar quién tiene cada equipo. Gerencia lo consulta desde su
+  // grupo Almacén (2026-11-26).
+  {
+    titulo: 'Mantenimiento',
+    items: [
+      {
+        titulo: 'Equipos',
+        ruta: '/equipos',
+        // No la llave: es la de Órdenes de servicio, y Gerencia ve las dos.
+        icono: Drill,
+        permiso: ['equipos.gestionar', 'equipos.asignar', 'equipos.ver'],
+        descripcion: 'El padrón de máquinas y herramientas de la planta',
+        disponible: true,
+      },
+    ],
+  },
   {
     titulo: 'Administración del sistema',
     items: [
@@ -600,9 +643,20 @@ type RutaDeModulo = (typeof NAVEGACION)[number]['items'][number]['ruta']
 type MenuDePuesto = {
   /** Lo que va arriba de todo, junto al dashboard y en su mismo grupo. */
   principal?: readonly RutaDeModulo[]
-  grupos: readonly { titulo: string; rutas: readonly RutaDeModulo[]; pliegue?: Pliegue }[]
+  grupos: readonly {
+    titulo: string
+    rutas: readonly RutaDeModulo[]
+    pliegue?: Pliegue
+    /** Lo que el puesto solo consulta (ver `GrupoNavegacion.consulta`). */
+    consulta?: boolean
+  }[]
   /** Las pestañas de abajo en el teléfono, en orden: van las cuatro primeras que la persona ve. */
   telefono: readonly RutaDeModulo[]
+  /**
+   * Las pantallas de un grupo de consulta que sí son del puesto: van en «Tus
+   * módulos» y le cuentan pendientes y cifras como su trabajo.
+   */
+  alInicio?: readonly RutaDeModulo[]
 }
 
 /**
@@ -656,7 +710,9 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   ALMACENERO: {
     grupos: [
       { titulo: 'Por atender', rutas: ['/requerimientos/atencion', '/seguimiento?vista=materiales'] },
-      { titulo: 'Almacén', rutas: ['/almacen/kardex', '/almacen/reposicion', '/almacen/stock'] },
+      // Al final, el padrón de equipos: Almacén entrega la herramienta y anota
+      // ahí quién se la lleva (Plan 16.1).
+      { titulo: 'Almacén', rutas: ['/almacen/kardex', '/almacen/reposicion', '/almacen/stock', '/equipos'] },
     ],
     telefono: ['/requerimientos/atencion', '/seguimiento?vista=materiales', '/almacen/kardex', '/'],
   },
@@ -683,27 +739,77 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     grupos: [{ titulo: 'Logística', rutas: ['/recojos'] }],
     telefono: ['/recojos', '/'],
   },
-  // Cerrado desde #28: lo que Gerencia decide y poco más. Lo demás que su
-  // permiso le deja ver (Requerimientos, el kardex, Personal) lo abre desde el
-  // enlace del aviso o por su dirección.
   // Como lo pidió Gerencia el 2026-10-15: Códigos internos va segundo, justo
   // después del dashboard (el código es el centro de todo lo que se hace para
   // una unidad; la OT ya no está). Después lo que espera su visto, en el orden
-  // del circuito, y lo que consulta de Tesorería: lo que se cobra y lo que se
-  // paga, sin registrar cobros ni pagos. La planilla diaria, las horas extras,
-  // los subcontratos, las tardanzas, las observaciones y los proveedores
-  // salieron de su menú ese día: su permiso sigue, y los abre por su dirección.
-  // Desde el 2026-10-22 consulta Adquisiciones (`adquisiciones.ver`): cada OC y
-  // cada OS, de su RQ o su OT a su pago. Antes solo entraba por la dirección.
+  // del circuito, siempre abierto.
+  // Desde el 2026-11-25 ve además todas las pantallas que su permiso le deja
+  // leer, por área y en el orden del circuito (StudioGRCI: «en gerencia
+  // general verdad quieren ver todo todas las pantallas aunque sean
+  // diferentes en slide bar»). Las consulta
+  // sin registrar: Gerencia consulta y aprueba (migración 20261020206000); la
+  // única que todavía le deja registrar es Proveedores (`proveedores.editar`). Lo
+  // de las áreas no es su trabajo (`consulta`): no le cuenta pendientes, cifras
+  // ni el bloque de OT, y no va en «Tus módulos», salvo las cinco que ya
+  // consultaba desde su menú antes (`alInicio`). Las 25 pantallas que su
+  // permiso no abre no están aquí: las que se le abran en lectura, con su
+  // migración, se suman a su área. No ve los datos reservados del personal
+  // (planillas, costeo, pagos de la oficina, DNI), la evaluación de desempeño
+  // ni la administración del sistema.
   GERENTE: {
     principal: ['/codigos-internos'],
     grupos: [
-      { titulo: 'Por aprobar', rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'] },
-      { titulo: 'Consultas', rutas: ['/rrhh/tiempos-de-entrega', '/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales'] },
+      {
+        titulo: 'Por aprobar',
+        pliegue: 'fijo',
+        rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'],
+      },
+      { titulo: 'Ventas', consulta: true, rutas: ['/clientes', '/unidades'] },
+      { titulo: 'Requerimientos', consulta: true, rutas: ['/requerimientos', '/vehiculos'] },
+      {
+        titulo: 'Almacén',
+        consulta: true,
+        rutas: ['/requerimientos/atencion', '/almacen/kardex', '/almacen/stock', '/almacen/reposicion', '/equipos'],
+      },
+      {
+        titulo: 'Logística',
+        consulta: true,
+        rutas: ['/compras/ordenes', '/compras/servicios', '/proveedores', '/compras/valorizacion'],
+      },
+      { titulo: 'Administración', consulta: true, rutas: ['/ordenes', '/subcontratos'] },
+      {
+        titulo: 'Finanzas',
+        consulta: true,
+        rutas: [
+          '/adquisiciones',
+          '/contabilidad/facturacion',
+          '/tesoreria/por-cobrar',
+          '/tesoreria/por-pagar',
+          '/tesoreria/pagos-de-servicio',
+          '/tesoreria/recibos-por-honorarios',
+          '/costos/gastos-generales',
+        ],
+      },
+      {
+        titulo: 'Recursos Humanos',
+        consulta: true,
+        rutas: [
+          '/rrhh/personal',
+          '/rrhh/asistencia',
+          '/rrhh/tardanzas',
+          '/rrhh/permisos',
+          '/rrhh/horas-extras',
+          '/planilla-diaria',
+          '/rrhh/observaciones',
+          '/rrhh/tiempos-de-entrega',
+        ],
+      },
     ],
     telefono: ['/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios'],
+    // Lo que consultaba desde su menú antes del 2026-11-25 sigue en su inicio.
+    alInicio: ['/rrhh/tiempos-de-entrega', '/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales'],
   },
-  // Cerrado desde #28, como Gerencia.
+  // Cerrado desde #28, como lo estuvo Gerencia hasta el 2026-11-25.
   // Primero Adquisiciones y después la caja diaria, con la que abre y cierra
   // cada día (DKS, 2026-10-20). Después Cuentas por cobrar, Cuentas por pagar y
   // Pagos de servicio, en el orden en que Gerencia las nombró el 2026-10-14, y
@@ -833,6 +939,13 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     grupos: [{ titulo: 'Portería', rutas: ['/rrhh/asistencia'] }],
     telefono: ['/rrhh/asistencia', '/'],
   },
+  // El puesto de Mantenimiento (Plan 16): lleva el padrón de equipos de la
+  // planta. Las averías y el mantenimiento de las unidades de los clientes se
+  // suman a este mismo menú en sus entregas, sin reemplazar este grupo.
+  MANTENIMIENTO: {
+    grupos: [{ titulo: 'Mantenimiento', rutas: ['/equipos'] }],
+    telefono: ['/equipos', '/'],
+  },
   // Sube su reporte diario, que es su trabajo de cada día. Desde el 2026-10-15,
   // los planos que Diseño carga para su área y las etapas que hace su área van
   // justo después de su reporte, y ya no abre la OT: su reporte diario
@@ -895,9 +1008,12 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
 // catálogo completo, con Configuración, y en el teléfono sin Planos ni Etapas.
 MENU_POR_PUESTO.DISENO_LIDER = MENU_POR_PUESTO.DISENO
 
-function lePermite(item: ItemNavegacion, permisos: readonly string[], esAdmin: boolean) {
+const comoLista = (p: string | readonly string[] | undefined): readonly string[] => (p === undefined ? [] : typeof p === 'string' ? [p] : p)
+
+/** Con `conLectura`, también la deja ver un permiso de solo lectura: solo para el menú propio de un puesto. */
+function lePermite(item: ItemNavegacion, permisos: readonly string[], esAdmin: boolean, conLectura = false) {
   if (!item.permiso || esAdmin) return true
-  const pide: readonly string[] = typeof item.permiso === 'string' ? [item.permiso] : item.permiso
+  const pide = [...comoLista(item.permiso), ...(conLectura ? comoLista(item.lectura) : [])]
   return pide.some((p) => permisos.includes(p))
 }
 
@@ -913,9 +1029,17 @@ export function menuDe(permisos: readonly string[], esAdmin: boolean, rolCodigo:
     ? [{ titulo: 'Principal', rutas: ['/', ...(propio.principal ?? [])], pliegue: 'fijo' as const }, ...propio.grupos].map((g) => ({
         titulo: g.titulo,
         pliegue: g.pliegue,
+        ...('consulta' in g && g.consulta ? { consulta: true } : {}),
         // Una pantalla compartida está en el catálogo una vez por cada área que
-        // la usa, con el permiso de esa área: vale la que esta persona ve.
-        items: g.rutas.flatMap((r) => CATALOGO.find((i) => i.ruta === r && i.disponible && lePermite(i, permisos, esAdmin)) ?? []),
+        // la usa, con el permiso de esa área: vale la que esta persona ve, y
+        // en lo que solo consulta, si ninguna la deja con su permiso, la que
+        // la deja leer.
+        items: g.rutas.flatMap(
+          (r) =>
+            CATALOGO.find((i) => i.ruta === r && i.disponible && lePermite(i, permisos, esAdmin)) ??
+            CATALOGO.find((i) => i.ruta === r && i.disponible && lePermite(i, permisos, esAdmin, 'consulta' in g && g.consulta === true)) ??
+            [],
+        ),
       }))
     : GRUPOS.map((g) => ({ titulo: g.titulo, pliegue: g.pliegue, items: g.items.filter((i) => i.disponible && lePermite(i, permisos, esAdmin)) }))
   // Una pantalla compartida sale una sola vez, en el primer grupo que la
@@ -924,11 +1048,12 @@ export function menuDe(permisos: readonly string[], esAdmin: boolean, rolCodigo:
   const vistas = new Set<string>()
   const conItems = grupos
     .map((g) => ({
-      titulo: g.titulo,
-      // «Consultas» —lo que se mira de otras áreas— nace plegado si el puesto
-      // no dice otra cosa: a 760 px, lo que deja de alto un monitor de 900 con
-      // el navegador, el menú de Administración no entraba abierto.
-      pliegue: g.pliegue ?? (g.titulo === 'Consultas' ? ('plegado' as const) : undefined),
+      ...g,
+      // «Consultas» y los grupos de consulta —lo que se mira de otras áreas—
+      // nacen plegados si el puesto no dice otra cosa: a 760 px, lo que deja de
+      // alto un monitor de 900 con el navegador, el menú de Administración no
+      // entraba abierto, y el de Gerencia tiene siete áreas.
+      pliegue: g.pliegue ?? (g.consulta || g.titulo === 'Consultas' ? ('plegado' as const) : undefined),
       items: g.items.filter((i) => {
         if (vistas.has(i.ruta)) return false
         vistas.add(i.ruta)
@@ -940,6 +1065,31 @@ export function menuDe(permisos: readonly string[], esAdmin: boolean, rolCodigo:
   // portería), plegarlo escondería todo su trabajo sin ahorrar nada: va fijo.
   const plegables = conItems.filter((g) => g.pliegue !== 'fijo')
   return plegables.length === 1 ? conItems.map((g) => (g === plegables[0] ? { ...g, pliegue: 'fijo' as const } : g)) : conItems
+}
+
+/**
+ * Los grupos del menú que son trabajo del puesto, sin lo que solo consulta
+ * (salvo lo que su puesto pone en `alInicio`): «Tus módulos» del dashboard. A
+ * Gerencia le quedan el dashboard, Códigos internos, lo que espera su visto y
+ * las cuatro de Finanzas que ya tenía; las demás áreas que consulta siguen en
+ * la barra y en «Más».
+ */
+export function modulosDelInicio(permisos: readonly string[], esAdmin: boolean, rolCodigo: string): GrupoNavegacion[] {
+  const alInicio: ReadonlySet<string> = new Set((esAdmin ? undefined : MENU_POR_PUESTO[rolCodigo])?.alInicio ?? [])
+  return menuDe(permisos, esAdmin, rolCodigo).flatMap((g) => {
+    if (!g.consulta) return [g]
+    const items = g.items.filter((i) => alInicio.has(i.ruta))
+    return items.length > 0 ? [{ ...g, items }] : []
+  })
+}
+
+/**
+ * Las rutas (sin lo de después de «?» o «#») que son trabajo del puesto: un
+ * pendiente se le cuenta, una cifra del dashboard se le muestra y el bloque de
+ * OT se le pinta solo si su pantalla está aquí. Lo que solo consulta no es suyo.
+ */
+export function rutasDeTrabajo(permisos: readonly string[], esAdmin: boolean, rolCodigo: string): Set<string> {
+  return new Set(modulosDelInicio(permisos, esAdmin, rolCodigo).flatMap((g) => g.items.map((i) => i.ruta.split(/[?#]/)[0])))
 }
 
 /** «1 pendiente», «3 pendientes»: la etiqueta de los globos del menú, para el lector de pantalla. */
@@ -1041,4 +1191,5 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   // Al final: así no le quita la pestaña a nadie que no tenga menú propio.
   { ruta: '/almacen/stock', corto: 'Stock' },
   { ruta: '/almacen/reposicion', corto: 'Reposición' },
+  { ruta: '/equipos', corto: 'Equipos' },
 ]
