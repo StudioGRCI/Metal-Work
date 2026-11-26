@@ -16748,6 +16748,12 @@ export type Database = {
         }
         Returns: string
       }
+      responsable_del_area: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: string
+      }
       restar_dias_habiles: {
         Args: {
           p_desde: string | null
