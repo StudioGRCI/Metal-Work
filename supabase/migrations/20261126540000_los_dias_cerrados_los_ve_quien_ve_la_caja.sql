@@ -1,7 +1,7 @@
 -- =============================================================================
 -- LOS DÍAS CERRADOS LOS VE QUIEN VE LA CAJA, NO COSTOS
 -- -----------------------------------------------------------------------------
--- Plan 11 (Tesorería), entrega 11.3. La 20261126100000 abrió la historia de los
+-- Plan 11 (Tesorería), entrega 11.3. La 20261126101000 abrió la historia de los
 -- cierres a `tesoreria.ver_documentos` para que Gerencia la consultara, y ese
 -- permiso lo tiene también Costos. StudioGRCI decidió el 2026-11-26, en una
 -- tarjeta del chat del proyecto, que Costos no la vea.
@@ -28,6 +28,16 @@ drop function if exists public.captura_de_caja(uuid);
 drop function if exists public.es_captura_de_caja(text);
 
 -- 2. La historia de los cierres, con el permiso de la caja ------------------------------
+-- La 20261126550000 la vuelve a crear con la captura del día (otra forma de fila): si ya
+-- entró, esta no la toca, y volver a correr esta migración no deshace aquella.
+do $do$
+begin
+  if exists (select 1 from pg_proc p
+              where p.oid = 'public.historia_cierres_caja(date, date)'::regprocedure
+                and 'con_captura_del_dia' = any (p.proargnames)) then
+    return;
+  end if;
+  execute $sql$
 create or replace function public.historia_cierres_caja(p_desde date, p_hasta date)
 returns table (
   id uuid, caja_id uuid, cuenta text, tipo text, banco text, moneda text, cuenta_activa boolean, con_captura boolean,
@@ -59,7 +69,16 @@ begin
      order by k.fecha desc, c.nombre, k.creado_en desc;
 end;
 $$;
+  $sql$;
+  execute $sql$
 comment on function public.historia_cierres_caja(date, date) is
   'Los días cerrados de cada cuenta de la caja entre dos fechas (hasta 366 días), con quién cerró, a qué hora, el saldo del sistema, el del estado de cuenta y la diferencia, y los reabiertos con su motivo. Solo lectura. Pide tesoreria.caja o tesoreria.ver_caja (Tesorería y Gerencia; Costos no, decisión de StudioGRCI del 2026-11-26).';
+  $sql$;
+  execute $sql$
 revoke all on function public.historia_cierres_caja(date, date) from public, anon;
+  $sql$;
+  execute $sql$
 grant execute on function public.historia_cierres_caja(date, date) to authenticated;
+  $sql$;
+end
+$do$;

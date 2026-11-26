@@ -350,7 +350,7 @@ export type CierreDeLaHistoria = {
 
 /**
  * Los días cerrados de todas las cuentas entre dos fechas, del más reciente al
- * más antiguo (migraciones 20261126100000 y 20261126540000). Solo lectura: la
+ * más antiguo (migraciones 20261126101000 y 20261126540000). Solo lectura: la
  * base exige `tesoreria.caja` (Tesorería) o `tesoreria.ver_caja` (Gerencia, que
  * la consulta); Costos no la ve.
  */

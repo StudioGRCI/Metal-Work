@@ -347,7 +347,7 @@ const movimientos = (caja, fecha) =>
   const aviso = limpio(await v.locator('[role="status"]').textContent())
   const obs = v.locator('textarea[name="observaciones"]')
   await v.getByRole('button', { name: 'Cerrar el día' }).click()
-  comprobar(aviso.includes('Diferencia de S/ -10.00') && aviso.includes('10 caracteres') && (await obs.evaluate((e) => e.validity.valueMissing)) && (await v.isVisible()),
+  comprobar(aviso.includes('Falta S/ 10.00 contra la caja') && aviso.includes('10 caracteres') && (await obs.evaluate((e) => e.validity.valueMissing)) && (await v.isVisible()),
     `con S/ 10 de menos y sin observaciones no cierra (${aviso})`)
   await obs.fill('vale')
   await v.getByRole('button', { name: 'Cerrar el día' }).click()

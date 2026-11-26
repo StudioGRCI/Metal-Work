@@ -234,18 +234,18 @@ for (const puesto of ['tesoreria', 'gerencia']) {
 
     const f1 = limpio(await pagina.locator(`tr[data-cierre="${c1}"]`).innerText().catch(() => ''))
     const f3 = limpio(await pagina.locator(`tr[data-cierre="${c3}"]`).innerText().catch(() => ''))
-    comprobar(f1.includes(ddmmaaaa(DIA1)) && f1.includes(NOMBRE) && f1.includes('Cuadra') && f1.includes('S/ 1,500.00'),
+    comprobar(f1.includes(ddmmaaaa(DIA1)) && f1.includes(NOMBRE) && /cuadra/i.test(f1) && f1.includes('S/ 1,500.00'),
       `${t} · el primer día: fecha, cuenta, saldo y «Cuadra» («${f1.slice(0, 160)}»)`)
     comprobar(f1.includes(QUIEN), `${t} · dice quién cerró: ${QUIEN} («${f1.slice(0, 200)}»)`)
-    comprobar(f3.includes(ddmmaaaa(DIA2)) && f3.includes('Cuadra'), `${t} · el segundo día, cerrado otra vez y cuadrado («${f3.slice(0, 120)}»)`)
+    comprobar(f3.includes(ddmmaaaa(DIA2)) && /cuadra/i.test(f3), `${t} · el segundo día, cerrado otra vez y cuadrado («${f3.slice(0, 120)}»)`)
     const orden = await pagina.locator('tr[data-cierre]').evaluateAll((trs) => trs.map((tr) => tr.getAttribute('data-cierre')))
     comprobar(orden.indexOf(c3) > -1 && orden.indexOf(c3) < orden.indexOf(c1), `${t} · del día más reciente al más antiguo`)
     comprobar((await pagina.locator(`tr[data-cierre="${c2}"]`).count()) === 0, `${t} · el reabierto no va entre los vigentes`)
     const f4 = limpio(await pagina.locator(`tr[data-cierre="${c4}"]`).innerText().catch(() => ''))
-    comprobar(f4.includes('−S/ 19.50') && !f4.includes('S/ -19.50'), `${t} · la diferencia que queda, con el signo antes del símbolo («${f4.slice(0, 200)}»)`)
-    if (ancho < 768) comprobar(f4.includes('Diferencia: −S/ 19.50'), `${t} · en el teléfono dice «Diferencia:»`)
+    comprobar(f4.includes('Falta S/ 19.50') && !f4.includes('-19.50') && !f4.includes('−'), `${t} · la diferencia dice que falta, sin signo que leer («${f4.slice(0, 200)}»)`)
     comprobar(f1.includes('Captura del estado de cuenta de ese día'), `${t} · el cierre lleva la captura de su día («${f1.slice(0, 200)}»)`)
-    comprobar(f4.includes('Sin foto del conteo de ese día'), `${t} · la caja chica cerrada sin foto lo dice`)
+    // La foto del conteo es opcional: sin ella no se dice nada, para que no parezca una falta.
+    comprobar(!/Sin foto|Sin captura/.test(f4), `${t} · la caja chica cerrada sin foto no lo da como falta`)
     // «No cuadran» deja solo la que no cuadra (de las de prueba).
     await Promise.all([pagina.waitForURL(/solo=diferencia/), pagina.getByRole('link', { name: /^No cuadran \(\d+\)$/ }).click()])
     await pagina.waitForLoadState('networkidle')
@@ -272,6 +272,8 @@ for (const puesto of ['tesoreria', 'gerencia']) {
     comprobar(href === `/tesoreria/caja-diaria/cierres/captura/${c1}` && respuesta?.status() === 303,
       `${t} · la captura del día se abre (${href} → ${respuesta?.status()})`)
     comprobar((respuesta?.headers().location ?? '').includes(`cierre-caja`), `${t} · y es la del bucket de cierres (${(respuesta?.headers().location ?? '').slice(0, 120)})`)
+    const archivo = respuesta?.headers().location ? await contexto.request.get(respuesta.headers().location) : null
+    comprobar(archivo?.status() === 200 && (await archivo.body()).length > 0, `${t} · y el archivo se descarga (${archivo?.status()}, ${archivo ? (await archivo.body()).length : 0} bytes)`)
 
     const anchoPagina = await pagina.evaluate(() => document.documentElement.scrollWidth)
     comprobar(anchoPagina <= ancho, `${t} · entra en ${ancho} px (mide ${anchoPagina})`)

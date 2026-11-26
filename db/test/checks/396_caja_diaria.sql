@@ -8,7 +8,7 @@ begin;
 do $$
 declare v text; v_id uuid;
 begin
-  foreach v in array array['tesoreria:TESORERIA', 'tesoreria2:TESORERIA', 'gerente:GERENTE', 'contabilidad:CONTABILIDAD'] loop
+  foreach v in array array['tesoreria:TESORERIA', 'tesoreria2:TESORERIA', 'gerente:GERENTE', 'contabilidad:CONTABILIDAD', 'costos:COSTOS'] loop
     v_id := gen_random_uuid();
     insert into auth.users (id, email) values (v_id, split_part(v, ':', 1) || '.396@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id)
@@ -455,6 +455,47 @@ begin
       'un cierre reabierto queda como evidencia', 'anulado');
   perform test.debe_fallar(format('delete from public.cajas where id = %L', pg_temp.id('chica')),
       'una cuenta no se borra', 'se desactiva');
+end $$;
+
+
+-- ============================================ La historia de los días cerrados y sus capturas
+-- (migraciones 20261126101000, 20261126540000 y 20261126550000). La ven Tesorería y Gerencia
+-- (`tesoreria.ver_caja`); Costos no, aunque tiene `tesoreria.ver_documentos` (StudioGRCI,
+-- 2026-11-26), ni Contabilidad. Gerencia lee y no sube, cierra ni quita la captura.
+do $$
+declare n int; v_ruta text;
+begin
+  perform pg_temp.como('tesoreria');
+  set local role authenticated;
+  select count(*) into n from public.historia_cierres_caja(pg_temp.dia('d4'), pg_temp.dia('hoy'));
+  perform test.afirmar(n > 0, 'Tesorería ve la historia de los cierres (' || n || ')');
+  select k.captura_ruta into v_ruta from public.cierres_caja k where k.captura_ruta is not null limit 1;
+  perform test.afirmar(v_ruta is not null, 'y un cierre de banco guardó su captura');
+  reset role;
+
+  perform pg_temp.como('gerente');
+  set local role authenticated;
+  perform test.afirmar((select count(*) from public.historia_cierres_caja(pg_temp.dia('d4'), pg_temp.dia('hoy'))) = n,
+    'Gerencia ve la misma historia');
+  perform test.afirmar((select count(*) from storage.objects where bucket_id = 'cierre-caja' and name = v_ruta) = 1,
+    'y abre la captura del cierre');
+  delete from storage.objects where bucket_id = 'cierre-caja' and name = v_ruta;
+  get diagnostics n = row_count;
+  perform test.afirmar(n = 0, 'pero no la quita');
+  perform test.debe_fallar(format('insert into storage.objects (bucket_id, name, owner_id) values (''cierre-caja'', %L, %L)',
+      pg_temp.id('bcp_pen') || '/' || gen_random_uuid() || '.png', current_setting('prueba.gerente')),
+    'ni sube una', 'row-level security');
+  reset role;
+
+  foreach v_ruta in array array['costos', 'contabilidad'] loop
+    perform pg_temp.como(v_ruta);
+    set local role authenticated;
+    perform test.debe_fallar(format('select * from public.historia_cierres_caja(%L, %L)', pg_temp.dia('d4'), pg_temp.dia('hoy')),
+      v_ruta || ' no ve la historia de los cierres', 'No tienes permiso para ver los días cerrados');
+    perform test.afirmar((select count(*) from public.cierres_caja) = 0 and (select count(*) from storage.objects where bucket_id = 'cierre-caja') = 0,
+      v_ruta || ' no lee los cierres ni sus capturas');
+    reset role;
+  end loop;
 end $$;
 
 rollback;

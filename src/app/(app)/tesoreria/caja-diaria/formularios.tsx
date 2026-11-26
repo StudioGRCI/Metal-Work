@@ -452,7 +452,9 @@ function FormularioCierre({ envio, cuenta, dia, saldoFinal, alTerminar }: {
       {/* Con «ya quedó», lo escrito no se guardó: no se pide explicar su diferencia. */}
       {diferencia !== null && !yaEntroLaPrimeraVez(error) && (
         <p role="status" className={diferencia === 0 ? 'text-sm text-exito' : 'text-sm text-aviso'}>
-          {diferencia === 0 ? 'Cuadra con la caja.' : `Diferencia de ${moneda(diferencia, m)}: cuenta en las observaciones por qué, en 10 caracteres como mínimo.`}
+          {diferencia === 0
+            ? 'Cuadra con la caja.'
+            : `${diferencia < 0 ? 'Falta' : 'Sobra'} ${moneda(Math.abs(diferencia), m)} contra la caja: cuenta en las observaciones por qué, en 10 caracteres como mínimo.`}
         </p>
       )}
       <Campo etiqueta="Observaciones" htmlFor={`${p}-obs`} requerido={conObservaciones}>

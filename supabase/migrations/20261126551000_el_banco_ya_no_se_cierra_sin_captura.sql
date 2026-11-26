@@ -7,9 +7,17 @@
 -- del despliegue no podía dejar a Tesorería sin cerrar sus bancos.
 --
 -- Esta se aplica en producción **después** de desplegar la pantalla que pide la
--- captura. La de cinco parámetros pasa a llamar a la nueva sin captura: una
--- pestaña abierta desde antes cierra la caja chica igual, y al cerrar un banco
+-- captura. La de cinco parámetros pasa a llamar a la nueva sin captura: quien
+-- la llame directo por la API cierra la caja chica igual, y al cerrar un banco
 -- recibe el mensaje que pide la captura. Así la regla vale por cualquier camino.
+-- (La pantalla, también una pestaña abierta desde antes, ya llama a la de seis
+-- por la acción de servidor nueva.)
+--
+-- Cuidado: con esta aplicada, una versión de la aplicación anterior al
+-- despliegue no cierra ningún banco. Si se vuelve atrás el despliegue, antes se
+-- devuelve la de cinco parámetros de la 20261023200000. Para comprobar que entró:
+--   select l.lanname from pg_proc p join pg_language l on l.oid = p.prolang
+--    where p.proname = 'cerrar_dia_caja' and p.pronargs = 5;   -- 'sql'
 --
 -- Idempotente: `create or replace` con la misma firma.
 -- =============================================================================

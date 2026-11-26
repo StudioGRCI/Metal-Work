@@ -12,7 +12,7 @@ import { DetalleEnTelefono, SinDatos, Tabla, TablaCabecera, TD, TH, TR } from '@
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { historiaDeCierres, type CierreDeLaHistoria } from '@/lib/datos/caja'
 import { enlaceCaptura, enlaceCapturaDelCierre, monedaDeCuenta } from '@/lib/dominio/caja'
-import { fecha, fechaHora, hoyLima, mesLargo, moneda, type CodigoMoneda } from '@/lib/format'
+import { fecha, fechaHora, hoyLima, mesLargo, moneda } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 import { cn } from '@/lib/utils'
 
@@ -87,7 +87,7 @@ export default async function PaginaDiasCerrados({ searchParams }: PageProps<'/t
       <Tarjeta>
         <TarjetaCabecera
           titulo={`Cierres de ${mesLargo(mes)}`}
-          ayuda="Del día más reciente al más antiguo. La diferencia es el estado de cuenta (o el conteo, en la caja chica) menos el saldo del sistema. Desde el 26/11/2026 cada cierre guarda la captura de su día; los de antes no la tienen."
+          ayuda="Del día más reciente al más antiguo. «Falta» quiere decir que el estado de cuenta (o el conteo, en la caja chica) dice menos que el sistema; «Sobra», que dice más. Cada cierre de banco guarda la captura del estado de cuenta de su día desde que se empezó a pedir; la caja chica, la foto del conteo si se adjuntó. Los de antes no la tienen."
           acciones={
             conDiferencia > 0 || soloDiferencias ? (
               <PastillaFiltro
@@ -110,7 +110,7 @@ export default async function PaginaDiasCerrados({ searchParams }: PageProps<'/t
               <tr>
                 <TH>Día y cuenta</TH>
                 <TH className="hidden text-right md:table-cell">Saldo del sistema</TH>
-                <TH className="hidden text-right md:table-cell">Estado de cuenta</TH>
+                <TH className="hidden text-right md:table-cell">Estado de cuenta o conteo</TH>
                 <TH className="hidden text-right md:table-cell">Diferencia</TH>
                 <TH className="hidden md:table-cell">Cerró</TH>
               </tr>
@@ -154,7 +154,7 @@ export default async function PaginaDiasCerrados({ searchParams }: PageProps<'/t
                   <p className="mt-1 text-xs text-texto-suave">
                     {k.cerradoPor ? `Lo cerró ${k.cerradoPor}` : 'Se cerró'} el {fechaHora(k.cerradoEn)} con <span className="tabular">{moneda(k.saldoFinal, m)}</span> en el sistema y{' '}
                     <span className="tabular">{moneda(k.saldoBanco, m)}</span> en el estado de cuenta
-                    {k.diferencia === 0 ? ' (cuadraba)' : <> (diferencia <span className="tabular">{conSigno(k.diferencia, m)}</span>)</>}.
+                    {k.diferencia === 0 ? ' (cuadraba)' : <> ({faltaOSobra(k.diferencia)} <span className="tabular">{moneda(Math.abs(k.diferencia), m)}</span>)</>}.
                     {k.observaciones && ` Observaciones: ${k.observaciones}`}
                   </p>
                   {k.conCapturaDelDia && (
@@ -182,15 +182,19 @@ function FilaDeCierre({ cierre: k }: { cierre: CierreDeLaHistoria }) {
     <span className="text-texto-suave">Cuadra</span>
   ) : (
     <Insignia tono="aviso">
-      <span className="tabular">{conSigno(k.diferencia, m)}</span>
+      {faltaOSobra(k.diferencia)} <span className="tabular">{moneda(Math.abs(k.diferencia), m)}</span>
     </Insignia>
   )
   const efectivo = k.tipo === 'EFECTIVO'
   return (
     <TR data-cierre={k.id} data-diferencia={k.diferencia}>
       <TD>
+        {/* El día lleva a sus movimientos en la caja diaria: de ahí sale por qué no cuadró. */}
         <p className="font-medium text-texto">
-          <span className="tabular">{fecha(k.fecha)}</span> · {k.cuenta}
+          <Link href={`/tesoreria/caja-diaria?fecha=${k.fecha}#cuenta-${k.cajaId}`} className="inline-flex min-h-11 items-center tabular underline-offset-2 hover:underline sm:min-h-0">
+            {fecha(k.fecha)}
+          </Link>{' '}
+          · {k.cuenta}
         </p>
         <p className="text-xs text-texto-suave">
           {efectivo ? 'Efectivo' : (k.banco ?? 'Banco')} · {m === 'USD' ? 'dólares' : 'soles'}
@@ -200,11 +204,14 @@ function FilaDeCierre({ cierre: k }: { cierre: CierreDeLaHistoria }) {
         {k.observaciones && <p className="mt-1 text-xs text-texto">Observaciones: {k.observaciones}</p>}
         {/* En el teléfono, las cifras y quién cerró debajo de la cuenta: la tabla se apila. */}
         <DetalleEnTelefono className="md:hidden sm:block">
-          <p className="text-xs text-texto-suave">
-            Sistema <span className="tabular text-texto">{moneda(k.saldoFinal, m)}</span> · {efectivo ? 'conteo' : 'estado de cuenta'}{' '}
-            <span className="tabular text-texto">{moneda(k.saldoBanco, m)}</span>
+          {/* Las cifras y si cuadra en un renglón; la insignia, cuando no cuadra, pasa al siguiente si no cabe. */}
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-texto-suave">
+            <span>
+              Sistema <span className="tabular text-texto">{moneda(k.saldoFinal, m)}</span> · {efectivo ? 'conteo' : 'estado de cuenta'}{' '}
+              <span className="tabular text-texto">{moneda(k.saldoBanco, m)}</span>
+            </span>
+            {cuadra ? <span>· cuadra</span> : diferencia}
           </p>
-          <p className="flex items-center gap-2 text-xs text-texto-suave">Diferencia: {diferencia}</p>
           <p className="text-xs text-texto-suave">
             {k.cerradoPor ? `Cerró ${k.cerradoPor}` : 'Se cerró'} el {fechaHora(k.cerradoEn)}
           </p>
@@ -235,9 +242,11 @@ function CapturasDelCierre({ cierre: k }: { cierre: CierreDeLaHistoria }) {
       </EnlaceACaptura>
     )
   }
+  if (efectivo && !k.conCaptura) return null
   return (
     <p className="mt-1 text-xs text-texto-suave">
-      {efectivo ? 'Sin foto del conteo de ese día.' : 'Sin captura del día: se cerró antes de que se pidiera.'}
+      {/* En la caja chica la foto es opcional: no tenerla no es una falta, y no se dice. */}
+      {!efectivo && 'Sin captura del día: se cerró antes de que se pidiera.'}
       {k.conCaptura && (
         <>
           {' '}
@@ -268,10 +277,11 @@ function EnlaceACaptura({ href, children, enLinea = false, ...resto }: { href: s
   )
 }
 
-/** La diferencia con el signo antes del símbolo, como los movimientos de la caja: «+S/ 19.50», «−S/ 19.50». */
-function conSigno(d: number, m: CodigoMoneda) {
-  return `${d > 0 ? '+' : '−'}${moneda(Math.abs(d), m)}`
-}
+/**
+ * La diferencia dicha como se lee en el banco: «Falta» si el estado de cuenta (o el conteo) dice menos
+ * que el sistema, «Sobra» si dice más. Un signo solo lo entendía quien hizo el cierre (auditoría de diseño).
+ */
+const faltaOSobra = (d: number) => (d < 0 ? 'Falta' : 'Sobra')
 
 const mayuscula = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
 
@@ -292,7 +302,20 @@ function SelectorDeMes({ mes, hoy, solo }: { mes: string; hoy: string; solo: boo
       <label htmlFor="cierres-mes" className="sr-only">
         Mes
       </label>
-      <Entrada key={mes} id="cierres-mes" type="month" name="mes" defaultValue={mes} min={PRIMER_MES} max={hoy.slice(0, 7)} className="w-auto" />
+      {/* Donde el navegador no tiene selector de mes, queda un campo de texto: dice cómo se escribe. */}
+      <Entrada
+        key={mes}
+        id="cierres-mes"
+        type="month"
+        name="mes"
+        defaultValue={mes}
+        min={PRIMER_MES}
+        max={hoy.slice(0, 7)}
+        pattern="\d{4}-\d{2}"
+        placeholder="AAAA-MM"
+        title="Año y mes, como 2026-11"
+        className="w-auto"
+      />
       <Boton type="submit" variante="secundario" tamano="sm">
         Ver
       </Boton>
