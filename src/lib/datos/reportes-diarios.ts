@@ -67,11 +67,6 @@ export type ReporteDetalle = Omit<ReporteListado, 'personal' | 'fotos'> & {
   /** El reporte que corrigió a este, si lo observaron y el supervisor ya lo subió de nuevo. */
   corregido_por: string | null
   /**
-   * Quién dio el visto de Gerencia: desde el 2026-11-25 lo dan Gerencia General
-   * o Gerencia de Producción, y vale el primero.
-   */
-  visto_gerencia_de: string | null
-  /**
    * Los otros códigos que subieron con este, en el mismo envío: los guardó la
    * misma transacción (`registrar_reportes_diarios`), así que comparten autor e
    * instante.
@@ -148,6 +143,44 @@ export async function listarReportesDiarios(mes: string): Promise<ReporteListado
 }
 
 /**
+ * Un reporte observado que todavía espera su corrección: lo justo para decir
+ * qué se observó y llevar a corregirlo.
+ */
+export type ReporteObservado = {
+  id: string
+  fecha: string
+  codigo_interno: string
+  asunto: string
+  observado_en: string
+  observacion_area: LadoValidacion | null
+  observacion: string | null
+}
+
+/**
+ * Los reportes que subió esta cuenta, observados por Gerencia o por RR. HH. y
+ * todavía sin corregir, de cualquier mes: al corregirlo, el observado queda
+ * anulado, así que «observado y vigente» es lo que falta corregir. El más
+ * antiguo primero.
+ */
+export async function reportesObservadosPorCorregir(usuario: string): Promise<ReporteObservado[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('reportes_diarios')
+    .select('id, fecha, codigo_interno, asunto, observado_en, observacion_area, observacion')
+    .eq('registrado_por', usuario)
+    .not('observado_en', 'is', null)
+    .is('anulado_en', null)
+    .order('observado_en', { ascending: true })
+    .limit(100)
+  if (error) throw new Error(`No se pudieron leer los reportes observados: ${error.message}`)
+  return (data ?? []).flatMap((r) =>
+    r.observado_en
+      ? [{ ...r, observado_en: r.observado_en, observacion_area: (r.observacion_area as LadoValidacion | null) ?? null }]
+      : [],
+  )
+}
+
+/**
  * Un reporte con todo lo suyo, o `null` si no existe o quien mira no lo puede
  * ver. `veCosteo`: quien mira es RR. HH. y lee el tareo; para los demás el
  * tareo llega vacío y el estado del costeo no se muestra.
@@ -160,8 +193,7 @@ export async function reporteDiario(id: string, veCosteo: boolean): Promise<Repo
       `${COLUMNAS_REPORTE},` +
         ' personal:reporte_diario_personal!reporte_diario_personal_reporte_id_fkey(id, trabajo_id, trabajador_id, nombre, cargo, horas,' +
         ' tareo:tareos!tareos_reporte_linea_id_fkey(id, anulado_en)),' +
-        ' fotos:reporte_diario_fotos!reporte_diario_fotos_reporte_id_fkey(id, orden, ruta),' +
-        ' visto_gerencia:usuarios!reportes_diarios_visto_gerencia_por_fkey(nombres, apellidos)',
+        ' fotos:reporte_diario_fotos!reporte_diario_fotos_reporte_id_fkey(id, orden, ruta)',
     )
     .eq('id', id)
     .maybeSingle()
@@ -172,7 +204,6 @@ export async function reporteDiario(id: string, veCosteo: boolean): Promise<Repo
   const fila = data as unknown as FilaReporte & {
     personal: Linea[] | null
     fotos: { id: string; orden: number; ruta: string }[] | null
-    visto_gerencia: Uno<{ nombres: string; apellidos: string }>
   }
   const fotos = [...(fila.fotos ?? [])].sort((a, b) => a.orden - b.orden)
   const [enlaces, corregido, hermanos] = await Promise.all([
@@ -201,11 +232,8 @@ export async function reporteDiario(id: string, veCosteo: boolean): Promise<Repo
   ])
   if (hermanos.error) throw new Error(`No se pudieron leer los otros códigos del reporte: ${hermanos.error.message}`)
 
-  const vistoGerencia = unico(fila.visto_gerencia)
-  const { visto_gerencia: _vistoGerencia, ...sinVisto } = fila
   return {
-    ...cabecera(sinVisto),
-    visto_gerencia_de: vistoGerencia ? `${vistoGerencia.nombres} ${vistoGerencia.apellidos}`.trim() : null,
+    ...cabecera(fila),
     personal: (fila.personal ?? []).map(({ tareo, ...l }) => {
       const t = unico(tareo)
       return {
