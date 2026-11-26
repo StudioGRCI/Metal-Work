@@ -104,6 +104,8 @@ begin
     ('contabilidad.local@metalwork.test',   'CONTABILIDAD',       null,  'Contabilidad'),
     ('diseno.local@metalwork.test',         'DISENO',             'DIS', 'Diseño'),
     ('colaborador.local@metalwork.test',    'DISENO_COLABORADOR', 'DIS', 'Colaborador de Diseño'),
+    -- Un segundo colaborador, para comprobar que ninguno ve lo que es del otro.
+    ('colaborador2.local@metalwork.test',   'DISENO_COLABORADOR', 'DIS', 'Colaborador de Diseño'),
     ('porteria.local@metalwork.test',       'PORTERO',            'RRH', 'Portería'),
     ('rrhh.local@metalwork.test',           'RECURSOS_HUMANOS',   null,  'Recursos Humanos'),
     ('requerimientos.local@metalwork.test', 'REQUERIMIENTOS',     'REQ', 'Requerimientos'),
@@ -111,6 +113,7 @@ begin
     ('sup.mtz.local@metalwork.test',        'SUPERVISOR',         'MTZ', 'Supervisión de Maestranza'),
     ('sup.acb.local@metalwork.test',        'SUPERVISOR',         'ACB', 'Supervisión de Acabados'),
     ('ssoma.local@metalwork.test',          'SSOMA',              'SST', 'SSOMA'),
+    ('calidad.local@metalwork.test',        'CALIDAD',            'CAL', 'Control de calidad'),
     ('tesoreria.local@metalwork.test',      'TESORERIA',          null,  'Tesorería'),
     ('ventas.local@metalwork.test',         'VENDEDOR',           'GCO', 'Ventas')
   ) as t(correo, rol, area, nombre)

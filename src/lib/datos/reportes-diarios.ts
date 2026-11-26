@@ -310,3 +310,11 @@ export async function opcionesDeTrabajo(codigo: string, corrige: string | null, 
       : [],
   )
 }
+
+/** Si ese día hay taller: día laborable de la empresa y no feriado (`es_laborable`). */
+export async function esDiaDeTaller(fecha: string): Promise<boolean> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('es_laborable', { p_fecha: fecha })
+  if (error) throw new Error(`No se pudo saber si hoy hay taller: ${error.message}`)
+  return data === true
+}

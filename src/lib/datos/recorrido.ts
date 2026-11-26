@@ -33,6 +33,7 @@ async function leer(
   funcion:
     | 'recorrido_de_requerimientos'
     | 'recorrido_de_cotizaciones'
+    | 'recorrido_de_informes_diseno'
     | 'recorrido_de_planillas'
     | 'recorrido_de_averias'
     | 'recorrido_de_ordenes_compra'
@@ -91,6 +92,9 @@ export const recorridoDeRequerimientos = (ids: string[]) => leer('recorrido_de_r
 
 /** El recorrido de esas cotizaciones: solo de las que quien mira ya puede ver. */
 export const recorridoDeCotizaciones = (ids: string[]) => leer('recorrido_de_cotizaciones', ids, 'las cotizaciones')
+
+/** El recorrido de esos informes semanales de Diseño: lo lee quien ve el informe. */
+export const recorridoDeInformesDiseno = (ids: string[]) => leer('recorrido_de_informes_diseno', ids, 'el informe semanal')
 
 /** El recorrido de esas planillas del mes. Lo lee quien ve las planillas (`rrhh.ver_planillas`). */
 export const recorridoDePlanillas = (ids: string[]) => leer('recorrido_de_planillas', ids, 'las planillas')

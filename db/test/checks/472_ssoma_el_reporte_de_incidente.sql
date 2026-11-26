@@ -49,6 +49,10 @@ select test.como_usuario(:'admin_id');
 update public.usuarios set area_id = current_setting('prueba.alm')::uuid
  where id in (current_setting('prueba.almacen')::uuid, current_setting('prueba.almacen2')::uuid);
 update public.usuarios set area_id = current_setting('prueba.prd')::uuid where id = current_setting('prueba.sup')::uuid;
+-- La cuenta de SSOMA que traen las migraciones (la de producción, 20261126600000) se
+-- apaga: el check prueba que el aviso le llega a la suya, una vez.
+update public.usuarios u set activo = false
+ where u.id <> current_setting('prueba.ssoma')::uuid and u.activo and u.rol_id = (select id from public.roles where codigo = 'SSOMA');
 select set_config('request.jwt.claim.sub', '', true);
 
 -- Un operario sin cuenta, de la lista de RR. HH.
