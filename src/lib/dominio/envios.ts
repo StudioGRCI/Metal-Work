@@ -47,6 +47,9 @@ export const CLAVES_DEL_ENVIO = [
   // misma inspección ni el mismo paso de su observación.
   'inspeccion_calidad',
   'paso_calidad',
+  // El seguimiento de cada compra (Plan 4.2, 20261126462000).
+  'motivo_atraso',
+  'fecha_prometida',
 ] as const
 
 export type ClaveDelEnvio = (typeof CLAVES_DEL_ENVIO)[number]

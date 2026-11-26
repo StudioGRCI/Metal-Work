@@ -2,6 +2,7 @@
 
 import { z } from 'zod'
 
+import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { CLAVES_DEL_ENVIO, MAXIMO_PENDIENTES, type ClaveDelEnvio, type Falta, type LoQueEntro } from '@/lib/dominio/envios'
 import { cantidad, fecha, moneda, type CodigoMoneda } from '@/lib/format'
 import { obtenerSesion } from '@/lib/sesion'
@@ -333,6 +334,25 @@ async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo:
     case 'reporte_averia': {
       const { data } = await supabase.from('averias').select('numero, registrado_por').eq('id', id).maybeSingle()
       return data && { por: data.registrado_por, lo: dicho('El reporte', 'Los reportes', 'otro', data.numero) }
+    }
+    case 'motivo_atraso':
+    case 'fecha_prometida': {
+      const { data } = await supabase
+        .from('seguimiento_de_compras')
+        .select('tipo, fecha_nueva, registrado_por, ordenes_compra_materiales(numero, referencia), ordenes_servicio(numero)')
+        .eq('id', id)
+        .maybeSingle()
+      if (!data) return null
+      const de = data.ordenes_compra_materiales
+        ? nombreDeOc(data.ordenes_compra_materiales)
+        : (data.ordenes_servicio?.numero ?? null)
+      return {
+        por: data.registrado_por,
+        lo:
+          data.tipo === 'FECHA_ESPERADA'
+            ? dicho('La fecha corregida', 'Las fechas corregidas', 'otra', [de, data.fecha_nueva ? `al ${fecha(data.fecha_nueva)}` : null].filter(Boolean).join(' ') || null)
+            : dicho('El motivo del atraso', 'Los motivos del atraso', 'otro', de),
+      }
     }
     case 'cuenta_caja': {
       const { data } = await supabase.from('cajas').select('nombre, creado_por').eq('id', id).maybeSingle()
