@@ -166,8 +166,13 @@ begin
     exists (select 1 from public.averias_rq_para_enlazar() where numero = 'RQ-CHK466-1' and estado = 'POR_ATENDER')
     and not exists (select 1 from public.averias_rq_para_enlazar() where numero = 'RQ-CHK466-2'),
     'Mantenimiento elige entre los RQ vivos, sin los anulados');
-  perform test.afirmar((select count(*) from public.requerimientos where id = pg_temp.id('rq1')) = 0,
-    'sin leer la tabla de RQ por su cuenta');
+  -- Hasta la 20261126996000 Mantenimiento no leía la tabla de RQ. Desde ella pide
+  -- los materiales de sus OT de mantenimiento con el RQ de operación de su área
+  -- (`requerimientos.area`), y con ese permiso lee los RQ como los supervisores:
+  -- por eso el RQ enlazado a la avería ahora se le abre (`puede_abrir`).
+  perform test.afirmar((select count(*) from public.requerimientos where id = pg_temp.id('rq1')) = 1
+                       and public.tiene_permiso('requerimientos.area') and not public.tiene_permiso('requerimientos.emitir'),
+    'y lee los RQ porque pide los de su área (requerimientos.area), sin el permiso de Requerimientos');
   perform test.debe_fallar(format('select * from public.averias_enlazar_rq(%L, %L, %L, ''Interruptor'')',
       current_setting('prueba.enlace1'), current_setting('prueba.av1'), current_setting('prueba.rq2')),
     'un RQ anulado no se enlaza', 'anulado');
