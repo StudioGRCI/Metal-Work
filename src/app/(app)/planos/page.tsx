@@ -7,6 +7,7 @@ import { Paginacion } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
+import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import { limitePorVencer } from '@/lib/datos/limite-por-vencer'
 import {
@@ -180,15 +181,14 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
       </div>
 
       {misAreas.length > 0 && (
-        <details className="mb-4 rounded-[var(--radius-base)] border border-borde bg-superficie">
-          <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-texto">Agregar una etapa de {misAreas.length === 1 ? misAreas[0].nombre : 'un área'}</summary>
-          <div className="space-y-2 border-t border-borde p-4">
+        <SeccionDesplegable className="mb-4" titulo={`Agregar una etapa de ${misAreas.length === 1 ? misAreas[0].nombre : 'un área'}`}>
+          <div className="space-y-2">
             <p className="text-sm text-texto-suave">
               Una etapa de tu área para una unidad, después o en paralelo a las que puso Diseño. Para dividir la etapa de Diseño, usa «Subetapa» en ella.
             </p>
             <FormularioEtapaDeArea codigos={opcionesDeCodigo} areas={misAreas} />
           </div>
-        </details>
+        </SeccionDesplegable>
       )}
 
       {enPagina.length === 0 ? (
