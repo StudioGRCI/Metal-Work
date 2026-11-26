@@ -22,6 +22,8 @@ import {
   Receipt,
   ReceiptText,
   Route,
+  ShieldAlert,
+  ShieldCheck,
   Truck,
   UserCheck,
   Users,
@@ -991,6 +993,35 @@ const CIFRAS = {
       return { titulo: 'Clientes', valor: String(r.count ?? 0), pie: 'en la cartera', icono: Users }
     },
   },
+
+  // SSOMA (Plan 15): lo que la gente reportó. Se lee con su sesión: la política
+  // de `ssoma_reportes` le deja ver todos.
+  ssoma_en_revision: {
+    ruta: '/ssoma',
+    calcular: async (c) => {
+      const r = await c.supabase.from('ssoma_reportes').select('id', { count: 'exact', head: true }).eq('estado', 'REPORTADO')
+      fallo(r)
+      const n = r.count ?? 0
+      return { titulo: 'Reportes en SSOMA', valor: String(n), pie: n > 0 ? 'vigentes, sin anular' : 'nadie ha reportado', icono: ShieldAlert, tono: n > 0 ? 'aviso' : 'neutro' }
+    },
+  },
+  ssoma_del_mes: {
+    ruta: '/ssoma',
+    calcular: async (c) => {
+      // El mes es el de Lima, que no cambia de hora.
+      const r = await c.supabase.from('ssoma_reportes').select('tipo').neq('estado', 'ANULADO').gte('ocurrido_en', `${c.mes}T00:00:00-05:00`).limit(2000)
+      fallo(r)
+      const filas = r.data ?? []
+      const accidentes = filas.filter((f) => f.tipo === 'ACCIDENTE').length
+      return {
+        titulo: 'Reportados este mes',
+        valor: String(filas.length),
+        pie: accidentes > 0 ? plural(accidentes, 'accidente', 'accidentes') : 'ningún accidente',
+        icono: ShieldCheck,
+        tono: accidentes > 0 ? 'peligro' : 'neutro',
+      }
+    },
+  },
 } satisfies Record<string, Generador>
 
 type ClaveCifra = keyof typeof CIFRAS
@@ -1018,6 +1049,7 @@ const CIFRAS_POR_PUESTO: Record<string, { titulo: string; cifras: ClaveCifra[] }
   // Las mismas cifras de Ventas, pero de todo el equipo (`deVentas`).
   GERENTE_COMERCIAL: { titulo: 'Ventas', cifras: ['cotizaciones_en_gerencia', 'aprobadas_del_mes', 'clientes'] },
   GERENTE_PRODUCCION: { titulo: 'Avance', cifras: ['reportes_del_mes', 'seguimiento_en_curso'] },
+  SSOMA: { titulo: 'SSOMA', cifras: ['ssoma_en_revision', 'ssoma_del_mes'] },
 }
 // El líder de Diseño ve las cifras de Diseño (mismo menú, `navegacion.ts`).
 CIFRAS_POR_PUESTO.DISENO_LIDER = CIFRAS_POR_PUESTO.DISENO
