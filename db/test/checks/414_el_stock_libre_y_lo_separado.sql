@@ -358,6 +358,10 @@ select test.afirmar((select existencia = 15 and separado = 9 and libre = 6 from 
 -- Desde la regla de la salida (20261120410000) eso ya no pasa sin que quien pidió
 -- corrija el RQ; lo que se prueba es la cuenta de las entregas de antes.
 reset role;
+-- El aviso de lo que llega (20261126400000) corre al cerrar la transacción: se adelanta
+-- para poder tocar la tabla, que no se altera con eventos pendientes.
+set constraints trg_rq_avisar_lo_que_llego immediate;
+set constraints trg_rq_avisar_lo_que_llego deferred;
 alter table public.movimientos_materiales disable trigger trg_salida_es_lo_que_pidio_el_rq;
 select pg_temp.como('almacenero');
 set local role authenticated;
@@ -412,6 +416,10 @@ select public.emitir_compra_de_requerimientos(current_setting('prueba.oc3')::uui
 reset role;
 -- Otro material que el pedido y que el comprado: desde la regla de la salida
 -- (20261120410000) ya no sale sin corregir el RQ; se prueba la cuenta de antes.
+-- El aviso de lo que llega (20261126400000) corre al cerrar la transacción: se adelanta
+-- para poder tocar la tabla, que no se altera con eventos pendientes.
+set constraints trg_rq_avisar_lo_que_llego immediate;
+set constraints trg_rq_avisar_lo_que_llego deferred;
 alter table public.movimientos_materiales disable trigger trg_salida_es_lo_que_pidio_el_rq;
 select pg_temp.como('almacenero');
 set local role authenticated;

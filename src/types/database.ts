@@ -349,6 +349,142 @@ export type Database = {
         }
         Relationships: []
       }
+      averia_fotos: {
+        Row: {
+          id: string
+          averia_id: string
+          orden: number
+          ruta: string
+          mime_type: string
+          tamano_bytes: number
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          averia_id: string
+          orden: number
+          ruta: string
+          mime_type: string
+          tamano_bytes: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          averia_id?: string
+          orden?: number
+          ruta?: string
+          mime_type?: string
+          tamano_bytes?: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "averia_fotos_averia_id_fkey"
+            columns: ["averia_id"]
+            isOneToOne: false
+            referencedRelation: "averias"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      averias: {
+        Row: {
+          id: string
+          numero: string
+          equipo_id: string
+          tipo: string
+          detiene_trabajo: boolean
+          riesgo_personas: boolean
+          descripcion: string
+          area_id: string | null
+          estado: string
+          paro_el_equipo: boolean
+          equipo_estado_antes: string | null
+          equipo_nota_antes: string | null
+          equipo_parado_desde: string | null
+          registrado_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          numero: string
+          equipo_id: string
+          tipo: string
+          detiene_trabajo?: boolean
+          riesgo_personas: boolean
+          descripcion: string
+          area_id?: string | null
+          estado?: string
+          paro_el_equipo?: boolean
+          equipo_estado_antes?: string | null
+          equipo_nota_antes?: string | null
+          equipo_parado_desde?: string | null
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          numero?: string
+          equipo_id?: string
+          tipo?: string
+          detiene_trabajo?: boolean
+          riesgo_personas?: boolean
+          descripcion?: string
+          area_id?: string | null
+          estado?: string
+          paro_el_equipo?: boolean
+          equipo_estado_antes?: string | null
+          equipo_nota_antes?: string | null
+          equipo_parado_desde?: string | null
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "averias_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "averias_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "averias_equipo_id_fkey"
+            columns: ["equipo_id"]
+            isOneToOne: false
+            referencedRelation: "equipos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "averias_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       cajas: {
         Row: {
           id: string
@@ -12745,6 +12881,115 @@ export type Database = {
         }
         Returns: string
       }
+      averias_a_quien_se_aviso: {
+        Args: {
+          p_averia: string | null
+        }
+        Returns: {
+          mantenimiento: boolean | null
+          responsable: boolean | null
+          ssoma: boolean | null
+          gerencia: boolean | null
+        }[]
+      }
+      averias_anotar_fotos: {
+        Args: {
+          p_averia: string | null
+          p_fotos: Json | null
+        }
+        Returns: null
+      }
+      averias_anular: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: {
+          averia: string | null
+          equipo_vuelve_a: string | null
+          sigue_parado_por: string | null
+        }[]
+      }
+      averias_areas_de_la_cuenta: {
+        Args: Record<PropertyKey, never>
+        Returns: string[]
+      }
+      averias_equipos_para_elegir: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          codigo: string | null
+          descripcion: string | null
+          categoria: string | null
+          marca: string | null
+          area_id: string | null
+          area: string | null
+          ubicacion: string | null
+          estado: string | null
+        }[]
+      }
+      averias_foto_anotada: {
+        Args: {
+          p_ruta: string | null
+        }
+        Returns: boolean
+      }
+      averias_reportar: {
+        Args: {
+          p_id: string | null
+          p_equipo: string | null
+          p_tipo: string | null
+          p_detiene: boolean | null
+          p_riesgo: boolean | null
+          p_descripcion: string | null
+          p_fotos: Json | null
+        }
+        Returns: {
+          averia: string | null
+          numero_averia: string | null
+          codigo_equipo: string | null
+          equipo_parado: boolean | null
+          aviso_mantenimiento: boolean | null
+          aviso_responsable: boolean | null
+          aviso_ssoma: boolean | null
+          aviso_gerencia: boolean | null
+        }[]
+      }
+      averias_ve_las_de_riesgo: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      averias_visibles: {
+        Args: {
+          p_id: string | null
+        }
+        Returns: {
+          id: string | null
+          numero: string | null
+          tipo: string | null
+          detiene_trabajo: boolean | null
+          riesgo_personas: boolean | null
+          descripcion: string | null
+          estado: string | null
+          creado_en: string | null
+          dias_en_espera: number | null
+          alcance: string | null
+          equipo_id: string | null
+          equipo_codigo: string | null
+          equipo_descripcion: string | null
+          equipo_ubicacion: string | null
+          equipo_estado: string | null
+          area_id: string | null
+          area: string | null
+          paro_el_equipo: boolean | null
+          reporto: string | null
+          reporto_puesto: string | null
+          fotos: number | null
+          anulado_en: string | null
+          anulo: string | null
+          motivo_anulacion: string | null
+        }[]
+      }
       avisar_a_diseno: {
         Args: {
           p_titulo: string | null
@@ -16309,6 +16554,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
+      puede_ver_todas_las_averias: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
       puede_ver_trabajadores: {
         Args: Record<PropertyKey, never>
         Returns: boolean
@@ -16476,6 +16725,22 @@ export type Database = {
           p_devolucion: string | null
         }
         Returns: number
+      }
+      recorrido_de_averias: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          documento: string | null
+          orden: number | null
+          paso: string | null
+          situacion: string | null
+          puesto: string | null
+          en: string | null
+          dias: number | null
+          espera: string | null
+          detalle: string | null
+        }[]
       }
       recorrido_de_cotizaciones: {
         Args: {
@@ -18568,7 +18833,7 @@ export type Database = {
       magnitud_medida: "UNIDAD" | "MASA" | "LONGITUD" | "AREA" | "VOLUMEN"
       moneda: "PEN" | "USD"
       prioridad_ot: "BAJA" | "NORMAL" | "ALTA" | "URGENTE"
-      tipo_correlativo: "ORDEN_TRABAJO" | "REQUERIMIENTO" | "ORDEN_COMPRA" | "INGRESO_ALMACEN" | "SALIDA_ALMACEN" | "DEVOLUCION_ALMACEN" | "AJUSTE_INVENTARIO" | "PARTE_DIARIO" | "ACTA_CONFORMIDAD" | "INSPECCION_CALIDAD" | "TRANSFERENCIA_ALMACEN" | "RECEPCION_COMPRA" | "ORDEN_SERVICIO" | "PLANILLA_DIARIA" | "SUBCONTRATO" | "REPORTE_INCIDENTE"
+      tipo_correlativo: "ORDEN_TRABAJO" | "REQUERIMIENTO" | "ORDEN_COMPRA" | "INGRESO_ALMACEN" | "SALIDA_ALMACEN" | "DEVOLUCION_ALMACEN" | "AJUSTE_INVENTARIO" | "PARTE_DIARIO" | "ACTA_CONFORMIDAD" | "INSPECCION_CALIDAD" | "TRANSFERENCIA_ALMACEN" | "RECEPCION_COMPRA" | "ORDEN_SERVICIO" | "PLANILLA_DIARIA" | "SUBCONTRATO" | "REPORTE_INCIDENTE" | "REPORTE_AVERIA"
       tipo_documento_cliente: "RUC" | "DNI" | "CE" | "PASAPORTE"
       tipo_evento_ot: "CREACION" | "CAMBIO_ESTADO" | "AVANCE" | "MATERIAL" | "DOCUMENTO" | "INSPECCION" | "PAUSA" | "REANUDACION" | "COMENTARIO" | "ENTREGA"
       tipo_trabajo_ot: "FABRICACION" | "REPARACION" | "REPOTENCIACION" | "MANTENIMIENTO" | "GARANTIA"
