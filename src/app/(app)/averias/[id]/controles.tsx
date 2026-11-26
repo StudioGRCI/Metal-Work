@@ -10,6 +10,7 @@ import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import type { ResultadoAccion } from '@/lib/acciones'
 import type { RqParaEnlazar } from '@/lib/datos/averias'
+import type { QuienConfirma } from '@/lib/dominio/averias'
 import { ESTADO_REQUERIMIENTO_DEL_CODIGO } from '@/lib/dominio/requerimientos'
 import { useEnvio } from '@/lib/envio'
 import { useEstadoCompartido } from '@/lib/estado-compartido'
@@ -233,15 +234,18 @@ export function CerrarAveria({
   numero,
   horasSugeridas,
   dejaOperativo,
-  avisaAQuienReporto,
+  confirmaQuien,
 }: {
   id: string
   numero: string
   horasSugeridas: number | null
   /** Si el equipo sigue parado por este reporte: al cerrar vuelve a operativo. */
   dejaOperativo: boolean
-  /** Si la reportó otra persona: a ella se le avisa para que confirme. */
-  avisaAQuienReporto: boolean
+  /**
+   * Quién dice después si quedó bien: quien la cierra (la reportó), quien la
+   * reportó (se le avisa) u otra persona, porque quien la reportó ya no tiene cuenta.
+   */
+  confirmaQuien: 'YO' | QuienConfirma
 }) {
   const v = useVentanaDeLaFicha(id, cerrarAveria)
   return (
@@ -256,9 +260,13 @@ export function CerrarAveria({
         titulo={`Cerrar el reporte ${numero}`}
         descripcion={[
           dejaOperativo ? 'El equipo vuelve a operativo en el padrón.' : null,
-          avisaAQuienReporto
+          confirmaQuien === 'QUIEN_REPORTO'
             ? 'Le avisamos a quien la reportó para que confirme si quedó bien.'
-            : 'La reportaste tú: después confirmas si quedó bien.',
+            : confirmaQuien === 'YO'
+              ? 'La reportaste tú: después confirmas si quedó bien.'
+              : confirmaQuien === 'RESPONSABLE'
+                ? 'Quien la reportó ya no tiene cuenta: la confirma el responsable del área, al que le avisamos, o Mantenimiento.'
+                : 'Quien la reportó ya no tiene cuenta y el área no tiene responsable: la confirma Mantenimiento, desde «¿Quedaron bien?».',
         ]
           .filter(Boolean)
           .join(' ')}
@@ -312,7 +320,18 @@ const OPCION =
 const RADIO = 'size-4 shrink-0 accent-[var(--acento)]'
 
 /** Quien la reportó dice si quedó bien. Si no, cuenta qué sigue fallando y vuelve a Mantenimiento. */
-export function ConfirmarAveria({ id, numero, detieneElTrabajo }: { id: string; numero: string; detieneElTrabajo: boolean }) {
+export function ConfirmarAveria({
+  id,
+  numero,
+  detieneElTrabajo,
+  enLugarDe,
+}: {
+  id: string
+  numero: string
+  detieneElTrabajo: boolean
+  /** Quien la reportó, si confirma otra persona porque ya no tiene cuenta. */
+  enLugarDe: string | null
+}) {
   const [quedo, setQuedo] = useState('')
   const v = useVentanaDeLaFicha(id, confirmarAveria)
   return (
@@ -332,7 +351,11 @@ export function ConfirmarAveria({ id, numero, detieneElTrabajo }: { id: string; 
         abierta={v.abierta}
         alCerrar={v.cerrar}
         titulo={`¿Quedó bien? · ${numero}`}
-        descripcion="Mantenimiento la dio por arreglada. Pruébalo y dinos cómo quedó."
+        descripcion={
+          enLugarDe
+            ? `Mantenimiento la dio por arreglada. ${enLugarDe}, que la reportó, ya no tiene cuenta: pruébalo tú y di cómo quedó. Queda a tu nombre.`
+            : 'Mantenimiento la dio por arreglada. Pruébalo y dinos cómo quedó.'
+        }
         ancho="md"
       >
         <form onSubmit={v.alEnviar} className="space-y-4">

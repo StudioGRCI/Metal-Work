@@ -1,3 +1,5 @@
+import Link from 'next/link'
+
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Paginacion } from '@/components/estructura/paginacion'
@@ -11,6 +13,7 @@ import {
   codigosQueSiguen,
   contarEquipos,
   EQUIPOS_POR_PAGINA,
+  historiaDeEquipos,
   listarEquipos,
 } from '@/lib/datos/equipos'
 import { palabrasDeBusqueda } from '@/lib/dominio/busqueda'
@@ -20,6 +23,7 @@ import { fecha } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { AccionesEquipo, AvisoDelPadron, CategoriasDeEquipo, NuevoEquipo } from './formulario'
+import { LecturaDeEquipos } from './lectura'
 
 export const metadata = { title: 'Equipos' }
 
@@ -42,7 +46,13 @@ export default async function PaginaEquipos({ searchParams }: PageProps<'/equipo
   const pedida = uno(params.categoria)
   const categoria = pedida && FORMA_DE_ID.test(pedida) ? pedida : undefined
 
-  const [categorias, areas, cuenta, siguientes, lista] = await Promise.all([
+  const conFiltro = Boolean(busqueda || (!deBaja && (estado || categoria)))
+  // La lectura de Gerencia (Plan 16.4), arriba del padrón sin filtros: los
+  // parados hoy y los que más fallan. La historia la cuenta la base. Se pide
+  // junto con lo demás, sin esperar a la cuenta.
+  const pideLectura = !deBaja && !conFiltro
+
+  const [categorias, areas, cuenta, siguientes, lista, historia, parados] = await Promise.all([
     categoriasDeEquipo(),
     areasDeEquipo(),
     contarEquipos(),
@@ -54,10 +64,11 @@ export default async function PaginaEquipos({ searchParams }: PageProps<'/equipo
       deBaja,
       pagina: paginaPedida(params.pagina),
     }),
+    pideLectura ? historiaDeEquipos() : null,
+    pideLectura ? listarEquipos({ estado: 'PARADO' }) : null,
   ])
   const { equipos, total, pagina, paginas } = lista
-
-  const conFiltro = Boolean(busqueda || (!deBaja && (estado || categoria)))
+  const conLectura = pideLectura && cuenta.enUso > 0 && historia !== null && historia.size > 0
 
   const resumen = deBaja
     ? `${cuantosEquipos(cuenta.deBaja)} ${cuenta.deBaja === 1 ? 'dado' : 'dados'} de baja`
@@ -89,6 +100,9 @@ export default async function PaginaEquipos({ searchParams }: PageProps<'/equipo
       />
 
       {(gestiona || asigna) && <AvisoDelPadron />}
+      {conLectura && historia && (
+        <LecturaDeEquipos parados={parados?.equipos ?? []} totalParados={parados?.total ?? 0} historia={historia} />
+      )}
       {/* 20 px entre los filtros y la lista, como entre bloques (la escala de la skill diseno). */}
       <div className="space-y-5">
       <div className="space-y-3">
@@ -203,11 +217,14 @@ export default async function PaginaEquipos({ searchParams }: PageProps<'/equipo
                 return (
                   <TR key={e.id}>
                     <TD>
-                      <p className="font-medium text-texto">
-                        <span className="tabular">{e.codigo}</span>
-                        <span className="font-normal text-texto-suave"> · </span>
-                        {e.descripcion}
-                      </p>
+                      {/* El código lleva a su historia: averías, tiempo parado y repetidas. */}
+                      <Link href={`/equipos/${e.id}`} className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0">
+                        <span>
+                          <span className="tabular">{e.codigo}</span>
+                          <span className="font-normal text-texto-suave"> · </span>
+                          {e.descripcion}
+                        </span>
+                      </Link>
                       {(e.marca || series) && <p className="text-xs text-texto-suave">{[e.marca, series].filter(Boolean).join(' · ')}</p>}
                       <p className="text-xs text-texto-suave md:hidden">{[e.categoria?.nombre, donde].filter(Boolean).join(' · ')}</p>
                       {e.a_cargo_de && <p className="text-xs text-texto-suave xl:hidden">A cargo de {e.a_cargo_de}</p>}

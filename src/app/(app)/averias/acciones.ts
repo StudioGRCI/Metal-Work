@@ -266,13 +266,20 @@ export async function cerrarAveria(_previo: unknown, formulario: FormData): Prom
         : data.equipo_estado === 'CON_OBSERVACION'
           ? ' El equipo sigue «con observación» en el padrón: si ya quedó bien, cámbialo en Equipos.'
           : ''
-  const aviso = data.avisada ? ' Le avisamos a quien la reportó para que confirme si quedó bien.' : ''
+  const aviso = data.avisada
+    ? ' Le avisamos a quien la reportó para que confirme si quedó bien.'
+    : data.confirma === 'RESPONSABLE'
+      ? ' Quien la reportó ya no tiene cuenta: le avisamos al responsable del área para que confirme si quedó bien.'
+      : data.confirma === 'MANTENIMIENTO'
+        ? ' Quien la reportó ya no tiene cuenta y el área no tiene responsable: confírmala desde «Por confirmar» cuando pruebes el equipo.'
+        : ''
   return { ok: true, mensaje: `Avería cerrada.${equipo}${aviso}` }
 }
 
 /**
  * Quien la reportó confirma que quedó bien, o dice qué sigue fallando y vuelve
- * a Mantenimiento. No pide permiso: la base deja confirmar solo a quien la reportó.
+ * a Mantenimiento. No pide permiso: la base deja confirmar solo a quien la
+ * reportó y, si ya no tiene cuenta, al responsable del área o a Mantenimiento.
  */
 export async function confirmarAveria(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   await exigirSesion()
