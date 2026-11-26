@@ -45,7 +45,7 @@ export const ESTADO_DE_LA_UNIDAD: Record<string, Def> = {
   EN_FABRICACION: { etiqueta: 'En fabricación', tono: 'acento', descripcion: 'El taller ya la está trabajando' },
   PAUSADA: { etiqueta: 'Pausada', tono: 'aviso', descripcion: 'Detenida; consulta el motivo con Producción' },
   TERMINADA: { etiqueta: 'Terminada', tono: 'exito', descripcion: 'Lista en el taller; falta entregarla' },
-  ENTREGADA: { etiqueta: 'Entregada', tono: 'exito', descripcion: 'Ya salió con su acta' },
+  ENTREGADA: { etiqueta: 'Entregada', tono: 'exito', descripcion: 'Ya salió de la planta' },
 }
 
 /** Orden en que se muestran los estados en filtros y tableros. */

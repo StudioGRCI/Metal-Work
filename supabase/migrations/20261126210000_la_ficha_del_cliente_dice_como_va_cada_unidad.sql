@@ -71,8 +71,9 @@ begin
        and o.estado not in ('ANULADA', 'BORRADOR')
      order by o.unidad_id, o.creado_en desc, o.id
   ),
-  avance as (
-    -- El mismo cálculo de `avance_de_ordenes` para la OT de una cotización.
+  avance as materialized (
+    -- El mismo cálculo de `avance_de_ordenes` para la OT de una cotización, una vez
+    -- por código (`materialized`: si no, se repite por cada unidad del join).
     select c.codigo, coalesce(round(k.de_planos + (100 - k.peso) / 100 * k.resto, 0), 0) as avance
       from (select distinct codigo from ot where codigo is not null) c
       cross join lateral public.codigo_interno_avance_calculado(c.codigo) k
