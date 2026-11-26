@@ -3,7 +3,7 @@ import { fecha } from '@/lib/format'
 
 /**
  * Lo que Diseño entrega por código interno (plan 6, entrega 6.1; migración
- * 20261126600000): cinco puntos con hecho o pendiente, y el plano de cada área
+ * 20261126910000): cinco puntos con hecho o pendiente, y el plano de cada área
  * contra la fecha en que el área lo necesita. Puro: lo usan Diseño, Códigos
  * internos (Administración y Gerencia) y Planos y etapas (el supervisor de
  * cada área).

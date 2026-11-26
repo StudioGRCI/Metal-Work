@@ -1,5 +1,5 @@
 /**
- * Clic real sobre la migración 20261126600000 (plan 6, entrega 6.1): lo que
+ * Clic real sobre la migración 20261126910000 (plan 6, entrega 6.1): lo que
  * Diseño le debe a cada código. Con la cuenta de cada puesto, nunca ADMIN:
  *
  *   1. Diseño, en sus listas (Planos, Gestión de materiales, Control de etapas

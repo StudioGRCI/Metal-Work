@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 /**
  * Lo que Diseño entrega por código interno, punto por punto, y el plano de
  * Maestranza y de Producción contra la fecha en que el área lo necesita (migración
- * 20261126600000). Lo cuenta la base; aquí solo se arma por código. Lo leen
+ * 20261126910000). Lo cuenta la base; aquí solo se arma por código. Lo leen
  * Diseño, Gerencia, Administración y los supervisores
  * (`puede_ver_codigos_de_diseno`): a los demás la base les dice que no.
  */

@@ -1,5 +1,5 @@
 -- Lo que Diseño le debe a cada código (plan 6, entrega 6.1; migración
--- 20261126600000): los cinco puntos y el plano de Maestranza y de Producción
+-- 20261126910000): los cinco puntos y el plano de Maestranza y de Producción
 -- contra el día en que el área lo necesita (el inicio de su etapa de Diseño).
 -- Lo leen Diseño, Administración y el supervisor con su sesión (`set local
 -- role authenticated`); Logística, Almacén, el Gerente de producción y Ventas no.
