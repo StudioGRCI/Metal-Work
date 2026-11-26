@@ -26,6 +26,7 @@ import { correccionDeLaFecha, describirRecorridoDeLaOrdenDeServicio, type PasoDe
 import { APROBACION_COMPRA, condicionDePago } from '@/lib/dominio/proveedores'
 import { fecha, moneda } from '@/lib/format'
 import { compraComoLogistica, exigirPermiso, puede } from '@/lib/sesion'
+import { cn } from '@/lib/utils'
 
 import { InsigniaDelPlazo, PlazoDeLaCompra, UltimoMotivo } from '../plazo'
 import { SeguimientoDeLaCompra } from '../seguimiento'
@@ -129,10 +130,12 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
           <TablaCabecera>
             <tr>
               <TH>Orden</TH>
-              <TH className="hidden md:table-cell">Para</TH>
+              {/* «Para» espera a 1 280 px: entre 768 y 1 279 la columna «Orden» quedaba de 90 px y partía el número. Su dato va bajo la OS. */}
+              <TH className="hidden xl:table-cell">Para</TH>
               <TH className="hidden text-right md:table-cell">Monto sin IGV</TH>
               <TH className="hidden md:table-cell">En qué va</TH>
-              <TH className="text-right md:w-64">
+              {/* El ancho, solo para quien tiene los botones: siete mandos caben en dos renglones. */}
+              <TH className={cn('text-right', emite && 'md:w-80')}>
                 <span className="sr-only">Acciones</span>
               </TH>
             </tr>
@@ -194,7 +197,7 @@ function FilaServicio({
   return (
     <TR data-servicio={s.numero}>
       <TD>
-        <p className="tabular font-semibold text-texto">{s.numero}</p>
+        <p className="tabular font-semibold whitespace-nowrap text-texto">{s.numero}</p>
         <p className="text-xs text-texto">{s.proveedor}</p>
         <p className="mt-1 text-xs text-texto-suave">{s.descripcion}</p>
         <p className="text-xs text-texto-suave">
@@ -210,7 +213,7 @@ function FilaServicio({
         {s.motivo_anulacion && <p className="mt-1 text-xs text-peligro">Anulada: {s.motivo_anulacion}</p>}
         {s.observacion_conformidad && <p className="mt-1 text-xs text-texto-suave">Conformidad: {s.observacion_conformidad}</p>}
         <ListaDocumentosServicio documentos={s.documentos} anula={adjunta && vigente} />
-        <p className="mt-1 text-xs text-texto-suave md:hidden">
+        <p className="mt-1 text-xs text-texto-suave xl:hidden">
           <span className="tabular font-medium text-texto" data-codigo>
             {s.codigo_interno ?? 'Sin código interno'}
           </span>
@@ -222,7 +225,7 @@ function FilaServicio({
           <EnQueVa servicio={s} plazo={plazo} recorrido={recorrido} />
         </div>
       </TD>
-      <TD className="hidden md:table-cell">
+      <TD className="hidden xl:table-cell">
         <p className={s.codigo_interno ? 'tabular font-medium text-texto' : 'text-aviso'}>{s.codigo_interno ?? 'Sin código interno'}</p>
         {para && <p className="text-xs text-texto-suave">{para}</p>}
       </TD>

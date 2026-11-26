@@ -5,7 +5,7 @@ import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 import { MOTIVOS_DE_ATRASO } from '@/lib/dominio/plazos'
-import { exigirSesion, puede } from '@/lib/sesion'
+import { compraComoLogistica, exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 /**
@@ -52,6 +52,8 @@ export async function anotarMotivoAtraso(_previo: unknown, formulario: FormData)
   })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el motivo.' }
   const d = analisis.data
+  // Administración sigue solo las OC de su RQA; la base mira además de dónde nace la OC.
+  if (d.tipo === 'OS' && !compraComoLogistica(perfil)) return { ok: false, error: SIN_PERMISO }
   const falta = conNota(d)
   if (falta) return { ok: false, error: falta }
 
@@ -84,6 +86,8 @@ export async function corregirFechaPrometida(_previo: unknown, formulario: FormD
     })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa la fecha.' }
   const d = analisis.data
+  // Administración sigue solo las OC de su RQA; la base mira además de dónde nace la OC.
+  if (d.tipo === 'OS' && !compraComoLogistica(perfil)) return { ok: false, error: SIN_PERMISO }
   const falta = conNota(d)
   if (falta) return { ok: false, error: falta }
 

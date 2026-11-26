@@ -24,6 +24,7 @@ import { correccionDeLaFecha, describirRecorridoDeLaOrdenDeCompra, type PasoDelR
 import { comprobantePedido, compraConPdf, condicionDePago } from '@/lib/dominio/proveedores'
 import { fecha, moneda } from '@/lib/format'
 import { compraComoLogistica, exigirPermiso, puede } from '@/lib/sesion'
+import { cn } from '@/lib/utils'
 
 import { EsperanReposicion } from '../../almacen/kardex/devolucion-proveedor'
 
@@ -158,9 +159,10 @@ export default async function PaginaOrdenesCompra({ searchParams }: { searchPara
               {/* Por debajo de 768 px cada OC es una ficha (`apilada`): el monto, en qué va y el plazo viajan bajo el número, y el recorrido abierto y los botones van a lo ancho. Con sus columnas la tabla medía 461 px en una pantalla de 390, y el recorrido quedaba en una columna de 150 px. */}
               <TH className="hidden text-right md:table-cell">Monto sin IGV</TH>
               <TH className="hidden md:table-cell">En qué va</TH>
-              <TH className="hidden md:table-cell">Comprobante</TH>
-              {/* Con `relative`, el rótulo oculto queda dentro de la tabla que se desliza y no ensancha la página en el teléfono. */}
-              <TH className="relative text-right md:w-64">
+              {/* «Comprobante» también espera a 1 280 px: entre 768 y 1 279 la columna «Orden» quedaba de 83 px y partía el proveedor palabra por palabra. Su dato va bajo el número. */}
+              <TH className="hidden xl:table-cell">Comprobante</TH>
+              {/* Con `relative`, el rótulo oculto queda dentro de la tabla que se desliza y no ensancha la página en el teléfono. El ancho, solo para quien tiene los botones: a quien consulta le queda «PDF». */}
+              <TH className={cn('relative text-right', (emite || llevaSuRqa) && 'md:w-64')}>
                 <span className="sr-only">Acciones</span>
               </TH>
             </tr>
@@ -253,7 +255,7 @@ function FilaCompra({
     <TR data-compra={c.numero ?? c.referencia}>
       <TD>
         <div className="flex flex-wrap items-center gap-2">
-          <span className={c.numero ? 'tabular font-semibold text-texto' : 'font-semibold text-texto'}>{c.numero ?? 'OC sin número'}</span>
+          <span className={c.numero ? 'tabular font-semibold whitespace-nowrap text-texto' : 'font-semibold text-texto'}>{c.numero ?? 'OC sin número'}</span>
           {origen && <Insignia tono={origen.tono}>{origen.etiqueta}</Insignia>}
         </div>
         {/* Lo único que distingue dos OC sin número del mismo proveedor: va primero, como en Gestión. */}
@@ -264,6 +266,9 @@ function FilaCompra({
           <Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>
           <InsigniaDelPlazo plazo={plazo} />
           {reposicion}
+        </div>
+        {/* Lo que la columna «Comprobante» dice, hasta que la columna aparece (1 280 px). */}
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 xl:hidden">
           {c.tiene_factura ? (
             <Insignia tono="exito">Comprobante adjunto</Insignia>
           ) : sinCurso ? (
@@ -314,7 +319,7 @@ function FilaCompra({
         <UltimoMotivo pasos={recorrido} className="mt-1" />
         {historia}
       </TD>
-      <TD className="hidden md:table-cell">
+      <TD className="hidden xl:table-cell">
         {c.tiene_factura ? (
           <Insignia tono="exito">Adjunto</Insignia>
         ) : sinCurso ? (

@@ -180,6 +180,11 @@ begin
   if p_tipo is null or p_tipo not in ('OC', 'OS') then
     raise exception 'Elige una orden de compra o de servicio.' using errcode = 'check_violation';
   end if;
+  -- Administración tiene compras.crear solo para la OC de su RQA (20261026160000):
+  -- lo demás lo sigue Logística, igual que en la pantalla.
+  if public.compra_solo_su_rqa() and (p_tipo = 'OS' or not public.oc_nace_de_un_rqa(p_documento)) then
+    raise exception 'Tu puesto sigue solo las OC de su RQA: las demás las lleva Logística.' using errcode = 'insufficient_privilege';
+  end if;
 
   perform pg_advisory_xact_lock(hashtextextended(p_id::text, 0));
   select * into v_previo from public.seguimiento_de_compras where id = p_id;
@@ -276,6 +281,11 @@ begin
   end if;
   if p_tipo is null or p_tipo not in ('OC', 'OS') then
     raise exception 'Elige una orden de compra o de servicio.' using errcode = 'check_violation';
+  end if;
+  -- Administración tiene compras.crear solo para la OC de su RQA (20261026160000):
+  -- lo demás lo sigue Logística, igual que en la pantalla.
+  if public.compra_solo_su_rqa() and (p_tipo = 'OS' or not public.oc_nace_de_un_rqa(p_documento)) then
+    raise exception 'Tu puesto sigue solo las OC de su RQA: las demás las lleva Logística.' using errcode = 'insufficient_privilege';
   end if;
 
   perform pg_advisory_xact_lock(hashtextextended(p_id::text, 0));

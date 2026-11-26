@@ -256,8 +256,22 @@ const fila = (pagina, nombre) => pagina.locator(`tr[data-compra="${nombre}"]`)
   const nueva = (await consulta(`select to_char($1::date + $2::int, 'YYYY-MM-DD') as d`, [hoy, 3 + corregidas]))[0].d
   const [{ fecha_estimada: original }] = await consulta('select fecha_estimada::text from public.ordenes_compra_materiales where id = $1', [ocFecha.id])
   await fila(pagina, ocFecha.nombre).getByRole('button', { name: /corregir fecha/i }).click()
-  await ventana.getByLabel('Fecha nueva que prometió el proveedor').fill(nueva)
+  // Primero una fecha que la base rechaza: el rechazo va junto al campo, con el cursor ahí, y lo escrito se queda.
+  const campoFecha = ventana.getByLabel('Fecha nueva que prometió el proveedor')
+  await campoFecha.fill('2020-01-01')
   await ventana.getByLabel('Por qué cambia').selectOption('TRANSPORTE')
+  await ventana.getByRole('button', { name: 'Corregir' }).click()
+  await campoFecha.and(pagina.locator('[aria-invalid="true"]')).waitFor({ timeout: 15000 }).catch(() => {})
+  const rechazo = await campoFecha.evaluate((e) => ({
+    invalido: e.getAttribute('aria-invalid'),
+    enfocado: document.activeElement === e,
+    dice: document.getElementById(e.getAttribute('aria-describedby') ?? '')?.textContent ?? '',
+  }))
+  comprobar(
+    rechazo.invalido === 'true' && rechazo.enfocado && rechazo.dice.startsWith('La fecha nueva no puede ser anterior'),
+    `el rechazo de la fecha va en su campo, con el cursor ahí: «${rechazo.dice}» (enfocado ${rechazo.enfocado})`,
+  )
+  await campoFecha.fill(nueva)
   await ventana.getByRole('button', { name: 'Corregir' }).click()
   await pagina.getByRole('status').filter({ hasText: 'Fecha prometida corregida' }).first().waitFor({ timeout: 15000 })
   await pagina.waitForLoadState('networkidle')
