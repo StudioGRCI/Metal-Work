@@ -262,15 +262,15 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
             <tr>
               <TH>Orden</TH>
               <TH>Cliente / unidad</TH>
-              {/* «Trabajo» y «Responsable» esperan a 1280 px: entre 768 y 1279
-                  (una laptop de 1366 con el zoom de Windows) la tabla se salía
-                  348 px de su tarjeta y el avance, la entrega y el responsable
-                  quedaban fuera de la vista. Hasta ahí van bajo el cliente. */}
-              <TH className="hidden xl:table-cell">Trabajo</TH>
+              {/* «Trabajo» y «Responsable» esperan a 1400 px: a 1024 la tabla se
+                  salía 348 px de su tarjeta, a 1280 todavía 114 y a 1366 (la
+                  laptop de siempre) 28, con el responsable fuera de la vista.
+                  Hasta ahí van bajo el cliente. */}
+              <TH className="hidden min-[1400px]:table-cell">Trabajo</TH>
               <TH>Estado</TH>
-              <TH className="w-36 xl:w-40">Avance</TH>
+              <TH className="w-36 min-[1400px]:w-40">Avance</TH>
               <TH>Entrega</TH>
-              <TH className="hidden xl:table-cell">Responsable</TH>
+              <TH className="hidden min-[1400px]:table-cell">Responsable</TH>
             </tr>
           </TablaCabecera>
           <tbody>
@@ -296,7 +296,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                       {/* Sin `cliente_id` es de verdad sin cliente: la abrió el
                           taller (100). Con él y sin nombre, es que quien mira
                           no tiene clientes.ver, y ahí no se dice nada. */}
-                      <p className="line-clamp-2 max-w-44 text-texto xl:block xl:max-w-52 xl:truncate min-[1600px]:max-w-72" title={orden.cliente ?? undefined}>
+                      <p className="line-clamp-2 max-w-44 text-texto min-[1400px]:block min-[1400px]:max-w-52 min-[1400px]:truncate min-[1600px]:max-w-72" title={orden.cliente ?? undefined}>
                         {orden.cliente ?? (orden.cliente_id === null ? (
                           <span className="text-aviso">Sin cliente todavía</span>
                         ) : null)}
@@ -308,23 +308,23 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                         <span className={nombreVaTenue(unidad, orden.avance_del_codigo) ? 'text-texto-tenue' : undefined}>
                           {nombreDeUnidadOCodigo(unidad, orden.avance_del_codigo)}
                         </span>
-                        {/* El responsable no tiene columna propia hasta 1280 px:
+                        {/* El responsable no tiene columna propia hasta 1400 px:
                             viaja aquí, pegado a la unidad. */}
                         {orden.responsable && (
-                          <span className="xl:hidden"> · {orden.responsable}</span>
+                          <span className="min-[1400px]:hidden"> · {orden.responsable}</span>
                         )}
                       </p>
                       {/* Lo mismo que la columna «Trabajo», hasta que cabe. */}
-                      <p className="line-clamp-2 max-w-44 text-xs text-texto-suave xl:hidden" title={orden.descripcion ?? undefined} data-trabajo-en-fila>
+                      <p className="max-w-44 truncate text-xs text-texto-suave min-[1400px]:hidden" title={orden.descripcion ?? undefined} data-trabajo-en-fila>
                         {orden.descripcion}
                       </p>
-                      <p className="max-w-44 truncate text-xs text-texto-suave xl:hidden">
+                      <p className="max-w-44 truncate text-xs text-texto-suave min-[1400px]:hidden">
                         {definir(TIPO_TRABAJO, orden.tipo_trabajo).etiqueta}
                         {orden.tipo_carroceria ? ` · ${orden.tipo_carroceria}` : ''}
                       </p>
                     </TD>
 
-                    <TD className="hidden xl:table-cell">
+                    <TD className="hidden min-[1400px]:table-cell">
                       <p className="max-w-64 truncate min-[1600px]:max-w-96" title={orden.descripcion ?? undefined}>{orden.descripcion}</p>
                       <p className="text-xs text-texto-suave">
                         {definir(TIPO_TRABAJO, orden.tipo_trabajo).etiqueta}
@@ -349,10 +349,10 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                       {fecha(orden.fecha_entrega_comprometida)}
                       {/* A 12 px, «faltan 22 días hábiles de taller» en un renglón ensanchaba la
                           columna y la tabla se deslizaba 6 px en un monitor de 1440: parte en dos. */}
-                      {plazo && <p className={`max-w-28 text-xs whitespace-normal xl:max-w-36 ${plazo.clase}`}>{plazo.texto}</p>}
+                      {plazo && <p className={`max-w-28 text-xs whitespace-normal min-[1400px]:max-w-36 ${plazo.clase}`}>{plazo.texto}</p>}
                     </TD>
 
-                    <TD className="hidden whitespace-nowrap text-texto-suave xl:table-cell">
+                    <TD className="hidden whitespace-nowrap text-texto-suave min-[1400px]:table-cell">
                       {orden.responsable ?? '—'}
                     </TD>
                   </TR>

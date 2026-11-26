@@ -17,7 +17,7 @@
  *      390 la ficha lleva el cliente, el vehículo y el detalle; a 1024 el
  *      detalle va bajo la unidad; «Editar» abre su ventana; «Desactivar» y
  *      «Reactivar» escriben en la base.
- *   3. Órdenes de trabajo a 1024 y 768: la tabla no se sale de su tarjeta y lo
+ *   3. Órdenes de trabajo a 1366, 1280, 1024 y 768: la tabla no se sale de su tarjeta y lo
  *      de la columna «Trabajo» va bajo el cliente; a 700, las fichas.
  *   4. Carrocerías con un código de 40 letras sin espacios (sembrado y borrado
  *      al terminar): a 768, 1024 y 390 nada se sale por el costado.
@@ -75,6 +75,8 @@ const VISTAS = {
   1440: { width: 1440, height: 900 },
   1024: { width: 1024, height: 768 },
   768: { width: 768, height: 1024 },
+  1366: { width: 1366, height: 768 },
+  1280: { width: 1280, height: 800 },
   700: { width: 700, height: 1000 },
   390: { width: 390, height: 844 },
 }
@@ -311,7 +313,9 @@ try {
 
   // ---------------------------------------------------------------- 3. Órdenes de trabajo
   console.log('\n3. Órdenes de trabajo')
-  for (const ancho of [1440, 1024, 768, 700]) {
+  // 1366 y 1280: la laptop del taller. Con las columnas de «Trabajo» y
+  // «Responsable» desde 1280, la tabla se salía 114 y 28 px (auditoría).
+  for (const ancho of [1440, 1366, 1280, 1024, 768, 700]) {
     const { pagina, contexto, errores } = await entrar('diseno', ancho)
     await ir(pagina, '/ordenes')
     const t = await leerTabla(pagina)
@@ -323,7 +327,7 @@ try {
       comprobar(conTrabajo === fichas, `Órdenes ${ancho}: cada ficha lleva el trabajo, su tipo y el responsable, que a ese ancho antes daba la tabla (${conTrabajo} de ${fichas})`)
     } else {
       comprobar(t.hay && fichas === 0 && t.filas.length > 0, `Órdenes ${ancho}: la tabla, con ${t.filas.length} órdenes`)
-      comprobar(ancho >= 1280 ? enFila === 0 : enFila === t.filas.length, `Órdenes ${ancho}: el trabajo ${ancho >= 1280 ? 'va en su columna' : 'va bajo el cliente'} (${enFila})`)
+      comprobar(ancho >= 1400 ? enFila === 0 : enFila === t.filas.length, `Órdenes ${ancho}: el trabajo ${ancho >= 1400 ? 'va en su columna' : 'va bajo el cliente'} (${enFila})`)
     }
     comprobarCaja(t, errores, `Órdenes ${ancho}`)
     await contexto.close()
