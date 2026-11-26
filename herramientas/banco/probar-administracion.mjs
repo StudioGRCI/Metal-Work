@@ -190,7 +190,7 @@ async function entrar(clave) {
 /** Los títulos de grupo del menú y, por grupo, sus entradas. */
 async function menu(pagina) {
   return pagina.locator('nav[aria-label="Menú principal"] > div').evaluateAll((divs) =>
-    divs.map((d) => ({ grupo: d.querySelector('p')?.textContent?.trim(), items: [...d.querySelectorAll('a')].map((a) => a.textContent?.trim()) })),
+    divs.map((d) => ({ grupo: d.dataset.grupo, items: [...d.querySelectorAll('a')].map((a) => a.textContent?.trim()) })),
   )
 }
 
@@ -288,7 +288,7 @@ let ordenId = ''
     `y dice cuánto se repartió y lo que le tocó a ${A}`)
   const mes = await pagina.locator('tbody[data-mes]').first().locator('th').innerText()
   comprobar(/\d{2}\/\d{4} · \d+ salidas?/.test(limpio(mes)), `agrupado por mes, con sus salidas (${limpio(mes)})`)
-  const secciones = (await pagina.locator('[role="group"][aria-label="Secciones del código"] a').allInnerTexts()).map(limpio)
+  const secciones = (await pagina.locator('nav[aria-label^="Secciones del código"] a').allInnerTexts()).map(limpio)
   comprobar(secciones.join('|') === 'Reparto|RQ, OT y cotización', `solo Reparto y sus requerimientos, sin las secciones de una unidad (${secciones.join(', ')})`)
   await pagina.screenshot({ path: `${CAPTURAS}/adm-todos-los-activos.png`, fullPage: true })
 

@@ -64,7 +64,7 @@ async function entrar(correo, ancho = 1280) {
 
 async function menu(pagina) {
   return pagina.locator('nav[aria-label="Menú principal"] > div').evaluateAll((divs) =>
-    divs.map((d) => ({ grupo: d.querySelector('p')?.textContent?.trim(), items: [...d.querySelectorAll('a')].map((a) => a.textContent?.trim()) })),
+    divs.map((d) => ({ grupo: d.dataset.grupo, items: [...d.querySelectorAll('a')].map((a) => a.textContent?.trim()) })),
   )
 }
 

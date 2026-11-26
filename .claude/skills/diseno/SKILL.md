@@ -72,11 +72,57 @@ En `src/components/ui/`:
   mismas palabras, y con ratón una sola entrada («Elegir fotos»).
 - `Boton` (`variante` primario/secundario/peligro, `tamano`, `cargando`)
 - `Insignia` y `Punto` con `tono` (exito/aviso/peligro/neutro), `Progreso`
+- `SeccionDesplegable` (una tarjeta que se abre: «Agregar una etapa», lo
+  pagado, la configuración que se toca poco) y `Pliegue` (el chico, dentro de
+  una tarjeta o un formulario: «Ver los días», «Revisiones anteriores», una
+  categoría de la ficha; `enCaja` lo enmarca). Los dos con el chevron a la
+  derecha y 44 px para el dedo; `abierta` decide solo cómo sale la sección al
+  cargar, y `Pliegue` pasa los `data-*` que buscan las pruebas. No se escribe
+  un `<details>` a mano para eso: el 2026-11-25 había quince, cada uno con su
+  triángulo y su alto (de 20 a 44 px). Lo que queda a mano son **filas que se
+  abren** con un resumen de varias líneas (Planillas, Costeo por código, el
+  historial de la cotización, los insumos del RQ) y el «Corregido N veces»,
+  una traza de una línea dentro de una celda, no pliegues.
 
 Estructura: `EncabezadoPagina` (migas, título, descripción, ayuda, acciones) arriba
-de toda pantalla; las secciones de un detalle van por pestañas con
-`?vista=` en la URL (ver `ordenes/[id]/pestanas.tsx`), y cada pestaña carga
-**solo sus datos** en el server component.
+de toda pantalla; las secciones de un documento (la OT, el código interno) van
+en `SeccionesDelDocumento`, una fila de pestañas con `?vista=` en la URL, la
+misma en el monitor y en el teléfono (`ordenes/[id]/pestanas.tsx`,
+`codigos-internos/detalle/page.tsx`), y cada pestaña carga **solo sus datos**
+en el server component. Hasta la entrega 2 del plan de orden y diseño
+(2026-11-25) la OT colgaba sus secciones de la barra lateral del monitor y el
+código interno las ponía en pastillas que en el teléfono eran una lista
+desplegable: dos formas de moverse dentro de un documento. La fila va
+arriba, bajo el encabezado: bajo las cifras del código interno empezaba a
+1 028 px en el teléfono y nadie sabía que había secciones. La fila va
+`pegada`: se queda bajo la barra al deslizar, porque una sección de la OT
+mide hasta 3 000 px en el teléfono, y `globals.css` reserva su alto con
+`scroll-padding` para que el foco no quede debajo. Si entre la fila y la
+sección hay algo que vale para todas (las cifras del código), cada `href`
+baja con `#seccion-elegida` a donde empieza la sección. La OT no lo lleva:
+su fila va casi arriba y volver al principio deja a la vista la tarjeta de
+avance y la sección. La pestaña
+elegida se trae a la vista solo de costado: `scrollIntoView` movía también
+la página y entrar era caer a media pantalla.
+
+## La escala de separaciones
+
+Seis medidas y nada más; lo que cae entre dos se lleva a la más cercana. Se
+aplica pantalla por pantalla al ordenarlas (entregas 3 a 7 del plan), no de
+una vez.
+
+| Entre | Medida | Clase |
+| --- | --- | --- |
+| El encabezado de la página y lo primero | 24 px | `mb-6` de `EncabezadoPagina`, ya puesto |
+| Bloques de la pantalla: tarjetas, bandejas | 20 px | `space-y-5` en el contenedor de la página |
+| La fila de secciones de un documento y su contenido | 16 px | `mb-4` |
+| Grupos dentro de una tarjeta, y su borde | 16 px | `space-y-4`, `p-4` |
+| Campos de un formulario, filas de una lista suelta | 12 px | `space-y-3`, `gap-3` |
+| Piezas de una misma fila: ícono y texto, botones | 8 px | `gap-2` |
+| Un rótulo y su dato | 4 px | `space-y-1`, `mt-1` |
+
+Un `space-y-6` o `space-y-8` entre tarjetas, o un `mt-*` suelto para
+separar una tarjeta de la anterior, es la señal de una pantalla sin ordenar.
 
 ## El orden de una pantalla de trabajo
 
@@ -1024,6 +1070,24 @@ en un check con `set local role authenticated`.
   el permiso de cada una. **Al agregar una pantalla, sumarla al menú del puesto
   que la usa: no entra sola**, y mirar ese menú completo con su cuenta, en
   escritorio y en teléfono.
+
+- **El menú del monitor tiene que entrar a 900 px de alto, y sus grupos se
+  pliegan** (decisión 7 del plan de orden y diseño, 2026-11-25). Antes el de
+  Administración dejaba cuatro entradas bajo el borde y, con una OT abierta,
+  seis más; se mide a 760 px, lo que deja de alto un monitor de 900 con el
+  navegador. Cada grupo de `MENU_POR_PUESTO` puede llevar su `pliegue`: `fijo`
+  (no se pliega: «Principal»; «Por aprobar» de Gerencia, pendiente),
+  `abierto` (lo que vale si falta) o `plegado`. «Consultas» nace plegado si el
+  puesto no dice otra cosa (Contabilidad lo deja `abierto`: el tipo de cambio
+  es de todos los días), y un puesto con un solo grupo además de «Principal» lo lleva fijo
+  (plegarlo escondería todo su trabajo). Va en una cookie por puesto
+  (`cookieDelMenu`) que el layout lee, para que el servidor pinte el menú ya
+  plegado: con `localStorage` se pintaba abierto y saltaba al hidratar. El
+  grupo de la pantalla abierta se abre solo y, plegado, el grupo suma los pendientes de sus módulos, para que lo que le
+  toca no se esconda. Al recargar, la entrada activa se trae a la vista
+  dentro del menú. Las filas miden 32 px en el monitor con ratón y 44 en el
+  cajón «Más» y con el dedo (`pointer-coarse:`). Un ícono no se repite en el menú de un puesto: con
+  treinta entradas, dos iguales hacen dudar (Gerencia tenía cuatro pares).
 
 - **Una lista de «lo que puede escribir» no sirve para decidir «lo que ve».**
   El 2026-09-14 la pestaña Actividades pasó a recibir solo las áreas cuya hoja
