@@ -302,7 +302,7 @@ comprobar(avisoAdministracion?.titulo === 'Cotización aprobada: falta su códig
   const ventana = limpio(await v.textContent())
   comprobar(ventana.includes(`Código interno y OT de la ${cot.B.numero}`) && ventana.includes('Gerencia ya la aprobó'), 'abre «Código interno y OT»')
   // La ayuda corta se lee bajo el campo, sin tocar la «i».
-  const ayudaFecha = v.getByText('El día prometido al cliente para entregarle la unidad, según la OT')
+  const ayudaFecha = v.getByText('El día prometido al cliente, según la OT')
   comprobar(ventana.includes('Fecha de entrega al cliente') && (await ayudaFecha.isVisible()),
     'la fecha dice que es la de entrega al cliente, con su ayuda a la vista')
   await v.locator('input[name="codigo_interno"]').fill(X1)
