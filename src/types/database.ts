@@ -15906,6 +15906,12 @@ export type Database = {
           motivo: string | null
         }
       }
+      devolucion_reembolsada: {
+        Args: {
+          p_devolucion: string | null
+        }
+        Returns: boolean
+      }
       devoluciones_por_reponer: {
         Args: Record<PropertyKey, never>
         Returns: {

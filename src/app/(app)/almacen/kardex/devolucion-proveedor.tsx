@@ -34,7 +34,7 @@ function guiaDelIngreso(i: Pick<IngresoParaDevolver, 'compra' | 'documento'>) {
  * Lo que llegó malo de una compra vuelve al proveedor (decisión de DKS del
  * 22/10, migración 20261022185000). Sale del kardex como un egreso; si el
  * proveedor lo repone, la OC lo vuelve a esperar, y si no, lo que falte vuelve
- * a la lista de Logística y, si la OC tiene factura, Contabilidad espera la nota de crédito.
+ * a la lista de Logística y, si la OC tiene factura, Contabilidad espera la nota de crédito; si va con boleta, Tesorería pide el reembolso.
  */
 export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolver[] }) {
   const [abierta, setAbierta] = useState(false)
@@ -132,7 +132,7 @@ export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolve
               requerido
               ayudaEnIcono={false}
               ayuda={repone === 'no'
-                ? 'Lo que falte vuelve a la lista de Logística para comprarlo en otra OC. Si la OC tiene factura, Contabilidad espera la nota de crédito.'
+                ? 'Lo que falte vuelve a la lista de Logística para comprarlo en otra OC. Si la OC tiene factura, Contabilidad espera la nota de crédito; si va con boleta, Tesorería pide el reembolso.'
                 : repone === 'si' ? 'La OC lo vuelve a esperar. Si después no lo repone, dilo en «Esperan reposición».'
                 : 'Si no lo repone, lo que falte vuelve a Logística para otra OC. No vuelve atrás.'}
             >
@@ -249,7 +249,7 @@ function Devolucion({
         titulo={abierta === 'llego' ? `Llegó la reposición de ${d.material}` : `El proveedor no repone ${d.material}`}
         descripcion={abierta === 'llego'
           ? `Faltan ${cantidad(falta)} ${unidad} de lo devuelto de la ${d.compra}. Entra al kardex.`
-          : `Los ${cantidad(falta)} ${unidad} que faltan vuelven a la lista de Logística para comprarlos en otra OC. Si la OC tiene factura, Contabilidad espera la nota de crédito. No vuelve atrás.`}
+          : `Los ${cantidad(falta)} ${unidad} que faltan vuelven a la lista de Logística para comprarlos en otra OC. Si la OC tiene factura, Contabilidad espera la nota de crédito; si va con boleta, Tesorería pide el reembolso. No vuelve atrás.`}
       >
         {abierta === 'llego' && <EnvioAnterior texto={reposicion.anterior} />}
         {abierta === 'llego' && reposicion.id && (

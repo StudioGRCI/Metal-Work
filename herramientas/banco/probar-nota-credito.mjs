@@ -8,8 +8,9 @@
  *      Almacén devolvió 2 sin reposición (sembrado por SQL, con cada cuenta).
  *   2. Contabilidad ve la devolución en «Esperan nota de crédito», registra la
  *      nota con su PDF y F1 baja a 94.40. Tesorería paga lo que queda. Lo que
- *      Almacén devolvió de otra OC igual pero con boleta no espera nota
- *      (migración 20261126970000).
+ *      Almacén devolvió de otra OC igual pero con boleta no espera nota: a
+ *      Tesorería le llega «Pide el reembolso» y su enlace abre esa OC en
+ *      Cuentas por pagar (migración 20261126975000).
  *   3. Contabilidad registra en la fila de F1 una nota por un descuento de 30:
  *      F1 ya estaba pagada y los 30 quedan a favor.
  *   4. Tesorería, en el teléfono, descuenta 20 de F2 y registra que el
@@ -138,7 +139,7 @@ await consulta(`select public.validar_ingresos_compra($1, $2::jsonb, null)`, [oc
 await consulta(`select public.devolver_al_proveedor($1, $2, 2, $3, 'Dos discos llegaron partidos', false)`, [dev, ing, `GR-NC-${SUFIJO}`])
 const [{ numero: ocNumero }] = await consulta(`select numero from ordenes_compra_materiales where id = $1`, [oc])
 // La misma compra con boleta, y Almacén devuelve 2 sin reposición: a la OC con boleta lo devuelto lo arregla
-// Tesorería con la devolución del dinero, y no espera nota de crédito (migración 20261126970000).
+// Tesorería con la devolución del dinero, y no espera nota de crédito (migración 20261126975000).
 const [{ rqb, ocb, ingb, devb }] = await consulta(
   `select gen_random_uuid() as rqb, gen_random_uuid() as ocb, gen_random_uuid() as ingb, gen_random_uuid() as devb`)
 await como('requerimientos')
@@ -324,6 +325,19 @@ try {
 
   // ------------------------------------------------------------ 4. Tesorería, en el teléfono
   const { pagina: tes } = await entrar(CUENTAS.tesoreria, { width: 390, height: 844 })
+  // Lo devuelto de la OC con boleta: a Tesorería le llega «Pide el reembolso», con lo que vale, y su
+  // enlace abre la OC en Cuentas por pagar (DKS, 2026-11-26).
+  const reembolso = await consulta(`select titulo, cuerpo, ruta from notificaciones where usuario_id = $1 and origen_id = $2 and titulo like 'Pide el reembolso%'`,
+    [ids[CUENTAS.tesoreria], ocb])
+  comprobar(reembolso.length === 1 && reembolso[0].titulo === `Pide el reembolso: ${ocbNumero}` && /S\/ [\d,]+\.\d{2} a su precio en la OC/.test(reembolso[0].cuerpo),
+    `a Tesorería le llega «Pide el reembolso» de la ${ocbNumero}, con lo que vale («${reembolso[0]?.cuerpo ?? ''}»)`)
+  if (reembolso[0]) {
+    await tes.goto(`${BASE}${reembolso[0].ruta}`, { waitUntil: 'networkidle' })
+    comprobar((await tes.locator(`[id="compra-${ocb}"]`).count()) === 1, `el enlace del aviso abre la ${ocbNumero} en Cuentas por pagar`)
+    await tes.screenshot({ path: join(CAPTURAS, 'tesoreria-pide-el-reembolso-390.png') })
+  }
+  const [{ n: deLaConFactura }] = await consulta(`select count(*)::int as n from notificaciones where origen_id = $1 and titulo like 'Pide el reembolso%'`, [oc])
+  comprobar(deLaConFactura === 0, `de la ${ocNumero}, con factura, no se pide reembolso`)
   await tes.goto(`${BASE}/tesoreria/por-pagar#notas-credito`, { waitUntil: 'networkidle' })
   const tarjeta = tes.locator(`[data-nota-a-favor="FC01-${SUFIJO}1"]`)
   comprobar((await tarjeta.count()) === 1 && limpio(await tarjeta.textContent()).includes('A favor S/ 30.00'), 'Tesorería ve la nota con S/ 30.00 a favor')
