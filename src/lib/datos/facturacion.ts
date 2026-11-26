@@ -3,7 +3,7 @@ import 'server-only'
 import { COLUMNAS_DETRACCION, cargarTiposDetraccion, detraccionDeFila, documentosDeServicios, type DocumentoDeServicio } from '@/lib/datos/logistica'
 import { bajarComo } from '@/lib/descarga'
 import type { DetraccionDeServicio, SaldoDeServicio } from '@/lib/dominio/detraccion'
-import { BUCKET_COBROS_VENTA, BUCKET_FACTURAS_VENTA, BUCKET_PAGOS_SERVICIO } from '@/lib/dominio/finanzas'
+import { BUCKET_COBROS_VENTA, BUCKET_FACTURAS_VENTA, BUCKET_PAGOS_SERVICIO, totalConIgv } from '@/lib/dominio/finanzas'
 import type { CodigoMoneda } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 import type { Database, Tablas, Vistas } from '@/types/database'
@@ -185,19 +185,39 @@ export async function bandejaDeFacturacion(): Promise<CotizacionParaFacturar[]> 
   return lista.sort((a, b) => turno(a) - turno(b))
 }
 
-/** Lo facturado de un código, en cada moneda: la línea de arriba en Códigos internos. Sin las anuladas. */
-export type FacturadoDelCodigo = { facturas: number; total: Record<CodigoMoneda, number>; cobrado: Record<CodigoMoneda, number>; saldo: Record<CodigoMoneda, number> }
+/**
+ * Lo facturado de un código, en cada moneda, sin las anuladas, y lo vendido con IGV en las cotizaciones
+ * aprobadas que Contabilidad factura por ese código (`cotizaciones_para_facturar`, con `totalConIgv`, la
+ * misma cuenta de su bandeja). `vendido` es `null` si alguna no tiene monto: no se adivina qué falta.
+ */
+export type FacturadoDelCodigo = {
+  facturas: number
+  total: Record<CodigoMoneda, number>
+  cobrado: Record<CodigoMoneda, number>
+  saldo: Record<CodigoMoneda, number>
+  vendido: Record<CodigoMoneda, number> | null
+}
 
 export async function facturadoDelCodigo(codigo: string): Promise<FacturadoDelCodigo> {
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('v_facturas_venta')
-    .select('moneda, total, cobrado, saldo')
-    .eq('codigo_interno', codigo)
-    .is('anulada_en', null)
+  const [{ data, error }, ventas] = await Promise.all([
+    supabase.from('v_facturas_venta').select('moneda, total, cobrado, saldo').eq('codigo_interno', codigo).is('anulada_en', null),
+    supabase.rpc('cotizaciones_para_facturar'),
+  ])
   if (error) throw new Error(`No se pudo leer lo facturado del código: ${error.message}`)
+  if (ventas.error) throw new Error(`No se pudo leer lo vendido del código: ${ventas.error.message}`)
   const cero = () => ({ PEN: 0, USD: 0 })
-  const r: FacturadoDelCodigo = { facturas: 0, total: cero(), cobrado: cero(), saldo: cero() }
+  const delCodigo = (ventas.data ?? []).filter((v) => v.codigo_interno === codigo)
+  let vendido: Record<CodigoMoneda, number> | null = delCodigo.length > 0 ? cero() : null
+  for (const v of delCodigo) {
+    const total = totalConIgv(v.monto_venta === null ? null : Number(v.monto_venta), v.incluye_igv)
+    if (total === null || !vendido) {
+      vendido = null
+      break
+    }
+    vendido[v.moneda === 'USD' ? 'USD' : 'PEN'] += total
+  }
+  const r: FacturadoDelCodigo = { facturas: 0, total: cero(), cobrado: cero(), saldo: cero(), vendido }
   for (const f of data ?? []) {
     const m: CodigoMoneda = f.moneda === 'USD' ? 'USD' : 'PEN'
     r.facturas += 1

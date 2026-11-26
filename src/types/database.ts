@@ -14136,6 +14136,25 @@ export type Database = {
           recibido_por_area: string | null
         }[]
       }
+      codigo_interno_recorrido: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          cotizacion_id: string | null
+          cotizacion_numero: string | null
+          cotizacion_estado: string | null
+          cotizacion_fecha: string | null
+          cotizaciones: number | null
+          ot_id: string | null
+          ot_numero: string | null
+          ot_estado: string | null
+          ot_tipo: string | null
+          ot_del_taller: boolean | null
+          ot_entregada_el: string | null
+          ordenes: number | null
+        }[]
+      }
       codigo_interno_reparto_a_todos: {
         Args: Record<PropertyKey, never>
         Returns: {

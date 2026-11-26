@@ -1,16 +1,18 @@
 import Link from 'next/link'
-import { Check, Circle, Route } from 'lucide-react'
 
 import { Insignia } from '@/components/ui/etiqueta-estado'
-import type { DocumentoDelCodigo, ResumenCodigo } from '@/lib/datos/codigos-internos'
+import { Marca, Recorrido } from '@/components/ui/recorrido'
+import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
+import type { RecorridoDelCodigoBase, ResumenCodigo } from '@/lib/datos/codigos-internos'
 import type { FacturadoDelCodigo } from '@/lib/datos/facturacion'
-import { ESTADO_DOCUMENTO_CODIGO, costoDelCodigo, enlaceCodigo } from '@/lib/dominio/codigos-internos'
-import { ESTADO_OT, definir } from '@/lib/dominio/estados'
+import { costoDelCodigo, enlaceCodigo, faltanteDelCosto } from '@/lib/dominio/codigos-internos'
+import { ESTADO_COTIZACION, TIPO_TRABAJO, definir, estadoDeOrden } from '@/lib/dominio/estados'
+import type { PasoDescrito } from '@/lib/dominio/recorrido'
 import { fecha, moneda, porcentaje, type CodigoMoneda } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-/** Hecho, en curso o todavía no: el mismo lenguaje del recorrido de cada documento. */
-type Situacion = 'HECHO' | 'AHORA' | 'FALTA'
+/** Hecho, en curso, todavía no, o no se pudo leer. */
+type Situacion = 'HECHO' | 'AHORA' | 'FALTA' | 'SIN_LEER'
 
 type Paso = {
   clave: 'cotizacion' | 'orden' | 'costo' | 'facturado' | 'cobrado'
@@ -21,6 +23,8 @@ type Paso = {
   /** Lo que la acompaña: estado, fecha, cuánto falta. */
   pie?: string | null
   tono?: 'exito' | 'aviso' | 'peligro' | 'neutro'
+  /** El pie en aviso: algo no cuadra o falta para que la cifra esté completa. */
+  pieEnAviso?: boolean
   enlace?: { href: string; texto: string } | null
 }
 
@@ -30,15 +34,35 @@ const montos = (r: Record<CodigoMoneda, number>) =>
     .map((m) => moneda(r[m], m))
     .join(' + ') || moneda(0)
 
+/**
+ * Lo facturado contra lo vendido con IGV. Si se facturó en una moneda que la cotización no tiene, no se
+ * compara (Contabilidad lo ve como «Facturada en otra moneda»): no se convierte aquí.
+ */
+function compararConLoVendido(f: FacturadoDelCodigo): { enParte: boolean; otraMoneda: boolean; falta: Record<CodigoMoneda, number> } | null {
+  if (!f.vendido) return null
+  const vendido = f.vendido
+  const monedas = ['PEN', 'USD'] as const
+  if (monedas.some((m) => f.total[m] > 0 && vendido[m] <= 0)) {
+    return { enParte: false, otraMoneda: true, falta: { PEN: 0, USD: 0 } }
+  }
+  const falta = { PEN: 0, USD: 0 }
+  for (const m of monedas) falta[m] = Math.max(0, Math.round((vendido[m] - f.total[m]) * 100) / 100)
+  return { enParte: falta.PEN + falta.USD > 0, otraMoneda: false, falta }
+}
+
 const ENTREGADA = new Set(['ENTREGADA', 'FACTURADA'])
+const SIN_LEER = 'No se pudo leer'
+const LECTOR: Record<Situacion, string> = { HECHO: 'Hecho:', AHORA: 'En curso:', FALTA: 'Todavía no:', SIN_LEER: 'No se pudo leer:' }
 
 /**
  * El código de la cotización al cobro, en una fila (plan 12, entrega 12.3): la
  * cotización, la OT, el costo contra el presupuesto, lo facturado y lo cobrado,
- * cada paso con su estado y su enlace a donde se ve entero. No calcula nada: las
- * cifras son las del resumen y el costeo del código (`codigos_internos_costo`),
- * lo facturado de `facturadoDelCodigo` y los documentos de
- * `codigo_interno_documentos`, los mismos que la sección «RQ, OT y cotización».
+ * cada paso con su estado y su enlace a donde se ve entero, y debajo el
+ * recorrido de la cotización del Plan 0 (quién la tuvo y desde cuándo).
+ *
+ * No calcula nada: la cotización y la OT las elige la base con la regla del
+ * costeo (`codigo_interno_recorrido`); las cifras son las del costeo del código
+ * (`codigos_internos_costo`) y lo facturado, las de `facturadoDelCodigo`.
  *
  * Cada paso sale solo con su permiso: el presupuesto con el precio de venta
  * (`venta` llega en nulo sin él), lo facturado y cobrado con quien lo lee, y el
@@ -47,152 +71,206 @@ const ENTREGADA = new Set(['ENTREGADA', 'FACTURADA'])
 export function RecorridoDelCodigo({
   codigo,
   c,
-  documentos,
+  base,
   facturado,
   abreOrden,
   abreCotizacion,
+  recorridoDeLaCotizacion,
 }: {
   codigo: string
   c: ResumenCodigo
   /** `null`: no se pudieron leer; el paso lo dice en vez de decir «sin OT». */
-  documentos: DocumentoDelCodigo[] | null
+  base: RecorridoDelCodigoBase | null
   facturado: FacturadoDelCodigo | null
   abreOrden: boolean
   abreCotizacion: boolean
+  /** Los pasos de la cotización; `null` si no se pudieron leer, `undefined` si no van. */
+  recorridoDeLaCotizacion?: PasoDescrito[] | null
 }) {
   const pasos: Paso[] = []
+  const cotizacion = base?.cotizacion ?? null
+  const orden = base?.orden ?? null
 
-  // 1. La cotización: la aprobada manda; si no hay, la que esté en camino.
-  const cotizaciones = (documentos ?? []).filter((d) => d.tipo === 'COTIZACION' && d.estado !== 'ANULADA')
-  const cotizacion = cotizaciones.find((d) => d.estado === 'APROBADA') ?? cotizaciones[0]
-  if (documentos === null) {
-    pasos.push({ clave: 'cotizacion', titulo: 'Cotización', situacion: 'FALTA', valor: 'No se pudo leer', tono: 'aviso' })
+  // 1. La cotización que vendió el código.
+  if (!base) {
+    pasos.push({ clave: 'cotizacion', titulo: 'Cotización', situacion: 'SIN_LEER', valor: SIN_LEER, tono: 'aviso' })
   } else if (!cotizacion) {
-    pasos.push({ clave: 'cotizacion', titulo: 'Cotización', situacion: 'FALTA', valor: 'Sin cotización', pie: 'Sale cuando la unidad del código tiene su OT de cotización' })
+    pasos.push({
+      clave: 'cotizacion',
+      titulo: 'Cotización',
+      situacion: 'FALTA',
+      valor: 'Sin cotización',
+      pie: orden ? `La OT ${orden.numero} no viene de una cotización` : 'La sube Ventas y la aprueba Gerencia',
+    })
   } else {
-    const e = definir(ESTADO_DOCUMENTO_CODIGO, cotizacion.estado)
+    const e = definir(ESTADO_COTIZACION, cotizacion.estado)
     pasos.push({
       clave: 'cotizacion',
       titulo: 'Cotización',
       situacion: cotizacion.estado === 'APROBADA' ? 'HECHO' : 'AHORA',
       valor: cotizacion.numero,
-      pie: [e.etiqueta, cotizacion.fecha && `del ${fecha(cotizacion.fecha)}`, cotizaciones.length > 1 && `y ${cotizaciones.length - 1} más`].filter(Boolean).join(' · '),
+      pie: [e.etiqueta, cotizacion.fecha && `del ${fecha(cotizacion.fecha)}`, base.cotizaciones > 1 && `y ${base.cotizaciones - 1} más`]
+        .filter(Boolean)
+        .join(' · '),
       tono: e.tono === 'peligro' ? 'peligro' : undefined,
       enlace: abreCotizacion ? { href: `/cotizaciones/pdf?${new URLSearchParams({ q: cotizacion.numero })}`, texto: 'Ver la cotización' } : null,
     })
   }
 
-  // 2. La OT: su estado, y el expediente, que dice el plan contra lo real.
-  const ordenes = (documentos ?? []).filter((d) => d.tipo === 'OT' && d.estado !== 'ANULADA')
-  const orden = ordenes[0]
-  if (documentos === null) {
-    pasos.push({ clave: 'orden', titulo: 'Orden de trabajo', situacion: 'FALTA', valor: 'No se pudo leer', tono: 'aviso' })
+  // 2. La OT que la fabrica, y su expediente, que dice el plan contra lo real.
+  if (!base) {
+    pasos.push({ clave: 'orden', titulo: 'Orden de trabajo', situacion: 'SIN_LEER', valor: SIN_LEER, tono: 'aviso' })
   } else if (!orden) {
-    pasos.push({ clave: 'orden', titulo: 'Orden de trabajo', situacion: 'FALTA', valor: 'Sin OT', pie: 'Sale cuando una unidad con este código tiene su OT' })
-  } else {
-    const e = definir(ESTADO_OT, orden.estado)
     pasos.push({
       clave: 'orden',
       titulo: 'Orden de trabajo',
-      situacion: ENTREGADA.has(orden.estado) || c.entregada_el ? 'HECHO' : 'AHORA',
+      situacion: 'FALTA',
+      valor: 'Sin OT',
+      pie: cotizacion ? 'La carga Administración con la cotización aprobada' : 'La carga Administración',
+    })
+  } else {
+    const e = estadoDeOrden(orden.estado, orden.delTaller)
+    pasos.push({
+      clave: 'orden',
+      titulo: 'Orden de trabajo',
+      situacion: ENTREGADA.has(orden.estado) || orden.entregadaEl ? 'HECHO' : 'AHORA',
       valor: `OT ${orden.numero}`,
-      pie: [e.etiqueta, c.entregada_el && `entregada el ${fecha(c.entregada_el)}`, ordenes.length > 1 && `y ${ordenes.length - 1} más`].filter(Boolean).join(' · '),
+      pie: [
+        e.etiqueta,
+        orden.tipo && orden.tipo !== 'FABRICACION' && definir(TIPO_TRABAJO, orden.tipo).etiqueta.toLowerCase(),
+        orden.entregadaEl && `entregada el ${fecha(orden.entregadaEl)}`,
+        base.ordenes > 1 && `y ${base.ordenes - 1} más`,
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      tono: orden.delTaller && orden.estado === 'BORRADOR' ? 'aviso' : undefined,
       enlace: abreOrden ? { href: `/ordenes/${orden.id}/expediente`, texto: 'Ver el expediente' } : null,
     })
   }
 
-  // 3. El costo contra el presupuesto: las cifras del costeo, sin volver a calcularlas.
+  // 3. El costo contra el presupuesto, las cifras del costeo. Con el costeo cerrado manda lo congelado,
+  //    y si el costo de hoy es otro, se dice.
   const costo = costoDelCodigo(c)
+  const cerrado = c.cierre?.costo_pen ?? null
+  const desdeElCierre = cerrado !== null ? Math.round((costo.pen - cerrado) * 100) / 100 : 0
   const presupuesto = c.venta?.presupuesto_pen ?? null
-  const consumido = c.venta?.consumido_pct ?? null
+  const faltante = faltanteDelCosto({ sinPrecio: c.materiales_sin_precio, horasSinCosto: c.horas_sin_costo, sinCambio: c.lineas_sin_cambio })
+  const cifra = cerrado ?? costo.pen
+  // Sin presupuesto por un dato que falta en la cotización: se dice cuál, como el indicador de margen.
+  const sinPresupuesto =
+    presupuesto === null && c.venta
+      ? c.venta.sin_igv > 0
+        ? 'sin presupuesto: falta confirmar si la cotización incluye IGV'
+        : c.venta.sin_cambio > 0
+          ? 'sin presupuesto: falta el tipo de cambio del día en que se aprobó'
+          : null
+      : null
   pasos.push({
     clave: 'costo',
     titulo: presupuesto !== null ? 'Costo contra presupuesto' : 'Costo',
-    situacion: c.cierre ? 'HECHO' : costo.pen + costo.usd > 0 ? 'AHORA' : 'FALTA',
-    valor: presupuesto !== null ? `${moneda(costo.pen)} de ${moneda(presupuesto)}` : `${moneda(costo.pen)}${costo.usd > 0 ? ` + ${moneda(costo.usd, 'USD')}` : ''}`,
+    situacion: cerrado !== null && desdeElCierre === 0 ? 'HECHO' : costo.pen + costo.usd > 0 ? 'AHORA' : 'FALTA',
+    valor: presupuesto !== null ? `${moneda(cifra)} de ${moneda(presupuesto)}` : moneda(cifra),
     pie: [
-      consumido !== null && `${porcentaje(consumido)} del presupuesto`,
-      c.venta?.semaforo === 'EXCEDIDO' && 'se pasó',
+      costo.usd > 0 && `+ ${moneda(costo.usd, 'USD')} sin cambio`,
+      cerrado === null && c.venta?.consumido_pct != null && `${porcentaje(c.venta.consumido_pct)} del presupuesto`,
+      cerrado === null && c.venta?.semaforo === 'EXCEDIDO' && 'se pasó',
       c.cierre ? `costeo cerrado el ${fecha(c.cierre.cerrado_en)}` : 'hasta hoy',
+      desdeElCierre !== 0 && `hoy ${moneda(costo.pen)}: ${desdeElCierre > 0 ? 'subió' : 'bajó'} ${moneda(Math.abs(desdeElCierre))} desde el cierre`,
+      faltante,
+      sinPresupuesto,
     ]
       .filter(Boolean)
       .join(' · '),
-    tono: c.venta?.semaforo === 'EXCEDIDO' ? 'peligro' : c.venta?.semaforo === 'AJUSTADO' ? 'aviso' : undefined,
+    pieEnAviso: desdeElCierre !== 0 || Boolean(faltante) || costo.usd > 0 || Boolean(sinPresupuesto),
+    tono: cerrado !== null ? undefined : c.venta?.semaforo === 'EXCEDIDO' ? 'peligro' : c.venta?.semaforo === 'AJUSTADO' ? 'aviso' : undefined,
     enlace: { href: enlaceCodigo(codigo, 'costeo'), texto: 'Ver el costeo' },
   })
 
   // 4 y 5. Lo facturado y lo cobrado, para quien los lee.
   if (facturado) {
-    const facturaYCobro = { href: enlaceCodigo(codigo, 'facturacion'), texto: 'Ver factura y cobro' }
     const sinFactura = facturado.facturas === 0
     const porCobrar = facturado.saldo.PEN + facturado.saldo.USD > 0
+    const cuantas = `en ${facturado.facturas} ${facturado.facturas === 1 ? 'factura' : 'facturas'}`
+    // Contra lo vendido con IGV, la cuenta de la bandeja de Contabilidad: si falta facturar, no está hecho.
+    const delVendido = sinFactura ? null : compararConLoVendido(facturado)
     pasos.push({
       clave: 'facturado',
       titulo: 'Facturado',
-      situacion: sinFactura ? 'FALTA' : 'HECHO',
-      valor: sinFactura ? 'Sin factura' : montos(facturado.total),
-      pie: sinFactura ? 'La registra Contabilidad sobre la cotización aprobada' : `en ${facturado.facturas} ${facturado.facturas === 1 ? 'factura' : 'facturas'}`,
-      enlace: facturaYCobro,
+      situacion: sinFactura ? 'FALTA' : delVendido?.enParte ? 'AHORA' : 'HECHO',
+      valor: sinFactura ? 'Sin factura' : delVendido?.enParte ? `${montos(facturado.total)} de ${montos(facturado.vendido!)}` : montos(facturado.total),
+      pie: sinFactura
+        ? facturado.vendido
+          ? `por facturar ${montos(facturado.vendido)} con IGV · la registra Contabilidad`
+          : 'La registra Contabilidad sobre la cotización aprobada'
+        : [cuantas, delVendido?.enParte && `falta facturar ${montos(delVendido.falta)}`, delVendido?.otraMoneda && 'en otra moneda que la cotización']
+            .filter(Boolean)
+            .join(' · '),
+      pieEnAviso: Boolean(delVendido?.enParte || delVendido?.otraMoneda),
+      tono: delVendido?.enParte ? 'aviso' : undefined,
+      enlace: { href: enlaceCodigo(codigo, 'facturacion'), texto: 'Ver factura y cobro' },
     })
     pasos.push({
       clave: 'cobrado',
       titulo: 'Cobrado',
       situacion: sinFactura ? 'FALTA' : porCobrar ? 'AHORA' : 'HECHO',
       valor: sinFactura ? '—' : montos(facturado.cobrado),
-      pie: sinFactura ? null : porCobrar ? `por cobrar ${montos(facturado.saldo)}` : 'todo cobrado',
+      pie: sinFactura ? null : porCobrar ? `por cobrar ${montos(facturado.saldo)} de lo facturado` : 'todo lo facturado está cobrado',
       // Un solo «Ver factura y cobro»: el de lo facturado lleva al mismo lugar.
     })
   }
 
+  const enColumnas = pasos.length === 5 ? 'xl' : 'md'
   return (
-    <section aria-labelledby="recorrido-del-codigo" className="rounded-[var(--radius-base)] border border-borde bg-superficie" data-recorrido-del-codigo>
-      <h2 id="recorrido-del-codigo" className="flex items-center gap-1.5 border-b border-borde px-4 py-2 text-sm font-medium text-texto">
-        <Route aria-hidden className="size-4 text-texto-suave" />
-        De la cotización al cobro
-      </h2>
-      <ol className={cn('grid divide-y divide-borde md:divide-x md:divide-y-0', pasos.length === 5 ? 'md:grid-cols-5' : 'md:grid-cols-3')}>
+    <Tarjeta className="overflow-hidden" data-recorrido-del-codigo>
+      <TarjetaCabecera titulo="De la cotización al cobro" />
+      {/* Cinco columnas recién desde xl: en md cada una quedaba en 150 px y las cifras se partían en tres renglones. */}
+      <ol
+        className={cn(
+          'grid divide-y divide-borde border-t border-borde',
+          enColumnas === 'xl' ? 'xl:grid-cols-5 xl:divide-x xl:divide-y-0' : 'md:grid-cols-3 md:divide-x md:divide-y-0',
+        )}
+      >
         {pasos.map((p) => (
-          <li key={p.clave} className="flex gap-2 px-4 py-3" data-paso={p.clave} data-situacion={p.situacion}>
-            <Marca situacion={p.situacion} />
+          // En el teléfono el enlace va a la derecha del paso, para que los cinco no midan una pantalla; en el monitor, debajo.
+          <li
+            key={p.clave}
+            className={cn(
+              'grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-2 px-4 py-3',
+              enColumnas === 'xl' ? 'xl:grid-cols-[auto_minmax(0,1fr)]' : 'md:grid-cols-[auto_minmax(0,1fr)]',
+            )}
+            data-paso={p.clave}
+            data-situacion={p.situacion}
+          >
+            <Marca situacion={p.situacion === 'FALTA' || p.situacion === 'SIN_LEER' ? 'PENDIENTE' : p.situacion} />
             <div className="min-w-0 space-y-0.5">
-              <p className="text-xs text-texto-suave">{p.titulo}</p>
+              <p className="text-xs text-texto-suave">
+                <span className="sr-only">{LECTOR[p.situacion]} </span>
+                {p.titulo}
+              </p>
               <p className={cn('tabular text-sm font-medium break-words', p.situacion === 'FALTA' ? 'text-texto-suave' : 'text-texto')}>
                 {p.tono ? <Insignia tono={p.tono}>{p.valor}</Insignia> : p.valor}
               </p>
-              {p.pie && <p className="text-xs text-texto-suave">{p.pie}</p>}
-              {p.enlace && (
-                <Link href={p.enlace.href} className="inline-flex min-h-11 items-center text-xs font-medium text-acento hover:underline md:min-h-0">
-                  {p.enlace.texto}
-                </Link>
-              )}
+              {p.pie && <p className={cn('text-xs break-words', p.pieEnAviso ? 'text-aviso' : 'text-texto-suave')}>{p.pie}</p>}
             </div>
+            {p.enlace && (
+              <Link
+                href={p.enlace.href}
+                className={cn(
+                  '-my-2 inline-flex min-h-11 items-center justify-self-end text-xs font-medium text-acento hover:underline',
+                  enColumnas === 'xl'
+                    ? 'xl:col-start-2 xl:my-0 xl:min-h-0 xl:justify-self-start xl:pt-1'
+                    : 'md:col-start-2 md:my-0 md:min-h-0 md:justify-self-start md:pt-1',
+                )}
+              >
+                {p.enlace.texto}
+              </Link>
+            )}
           </li>
         ))}
       </ol>
-    </section>
-  )
-}
-
-function Marca({ situacion }: { situacion: Situacion }) {
-  if (situacion === 'HECHO') {
-    return (
-      <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-exito-suave text-exito">
-        <Check aria-hidden className="size-3.5" />
-        <span className="sr-only">Hecho:</span>
-      </span>
-    )
-  }
-  if (situacion === 'AHORA') {
-    return (
-      <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-acento-suave text-acento">
-        <Circle aria-hidden className="size-2.5 fill-current" />
-        <span className="sr-only">En curso:</span>
-      </span>
-    )
-  }
-  return (
-    <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border border-borde text-texto-suave">
-      <span className="sr-only">Todavía no:</span>
-    </span>
+      {cotizacion && recorridoDeLaCotizacion !== undefined && (
+        <Recorrido pasos={recorridoDeLaCotizacion} femenino titulo={`Recorrido de la cotización ${cotizacion.numero}`} className="border-t border-borde" />
+      )}
+    </Tarjeta>
   )
 }

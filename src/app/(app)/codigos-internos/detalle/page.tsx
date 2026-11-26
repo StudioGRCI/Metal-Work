@@ -21,6 +21,8 @@ import {
   comprasDelCodigo,
   costeoDelCodigo,
   documentosDelCodigo,
+  recorridoDelCodigo,
+  type RecorridoDelCodigoBase,
   partesDelAvance,
   leerListaDeCodigos,
   personalDelCodigo,
@@ -33,6 +35,7 @@ import {
 import { etapasDeCodigo } from '@/lib/datos/diseno-codigos'
 import { cotizacionesAprobadas, facturadoDelCodigo, facturasDelCodigo } from '@/lib/datos/facturacion'
 import { mesesSinPagosDeOficina, mesesSinPlanillaDeTaller, repartoDelMes } from '@/lib/datos/gastos-generales'
+import { recorridoDeCotizaciones } from '@/lib/datos/recorrido'
 import { PERMISOS_BAJAR_COTIZACION, rutaParaBajarCotizacion } from '@/lib/descarga'
 import { partesDeNombreDeOc } from '@/lib/dominio/adquisiciones'
 import {
@@ -59,6 +62,7 @@ import {
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
 import { totalConIgv } from '@/lib/dominio/finanzas'
 import { situacionCompra, validacionDeCompra } from '@/lib/dominio/logistica'
+import { describirRecorridoDeLaCotizacion, type PasoDescrito } from '@/lib/dominio/recorrido'
 import { ESTADO_REPORTE, type EstadoReporte } from '@/lib/dominio/reporte-diario'
 import { ESTADO_REQUERIMIENTO_DEL_CODIGO } from '@/lib/dominio/requerimientos'
 import { horasCortas } from '@/lib/dominio/rrhh'
@@ -96,9 +100,10 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
   const pedida = vistaValida(params.vista)
   const vista = vistas.some((v) => v.valor === pedida) ? pedida : 'avance'
 
-  const [{ codigos: conDocumentos, diseno: deDiseno, avances }, facturado, reparto, horasDelMes, faltaOficina, faltaPlanilla, lineas, documentos] = await Promise.all([
+  const [{ codigos: conDocumentos, diseno: deDiseno, avances }, facturado, reparto, horasDelMes, faltaOficina, faltaPlanilla, lineas, delRecorrido] = await Promise.all([
     leerListaDeCodigos(),
-    veFacturas && !aTodos ? facturadoDelCodigo(codigo) : Promise.resolve(null),
+    // Lo facturado va en el recorrido de arriba, que PLANTA y TODOS LOS ACTIVOS no tienen.
+    veFacturas && !noEsUnidad(codigo) ? facturadoDelCodigo(codigo) : Promise.resolve(null),
     aTodos ? repartoATodosLosActivos() : Promise.resolve<RepartoATodosFila[]>([]),
     miraMes ? repartoDelMes(`${hoyLima().slice(0, 7)}-01`) : Promise.resolve([]),
     // Quien cierra ve antes de intentarlo los meses que esperan los pagos de la oficina.
@@ -107,14 +112,9 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
     cierra && !aTodos && !noEsUnidad(codigo) ? mesesSinPlanillaDeTaller(codigo) : Promise.resolve<string[]>([]),
     // El resumen dice cuánto de la mano de obra es el ajuste de la planilla (la vista de costeo reusa la lectura).
     aTodos ? Promise.resolve([]) : costeoDelCodigo(codigo),
-    // La cotización y la OT del recorrido de arriba, las mismas de «RQ, OT y cotización». Si no se
-    // leen, el recorrido lo dice en esos pasos y la página sigue.
-    aTodos || noEsUnidad(codigo)
-      ? Promise.resolve(null)
-      : documentosDelCodigo(codigo).catch((e: unknown) => {
-          console.error('Código interno: no se pudieron leer la OT y la cotización del recorrido.', e)
-          return null
-        }),
+    // La cotización y la OT del recorrido de arriba, que elige la base, y el recorrido de esa cotización
+    // para quien la abre. Si no se leen, el recorrido lo dice en esos pasos y la página sigue.
+    noEsUnidad(codigo) ? Promise.resolve(null) : leerElRecorrido(codigo, puede(perfil, 'cotizaciones.ver_pdf_comercial')),
   ])
   const ajuste = ajusteDePlanilla(lineas)
   const esperaElMes = horasDelMes.some((r) => r.codigo === codigo)
@@ -211,7 +211,8 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
                   <RecorridoDelCodigo
                     codigo={codigo}
                     c={resumen}
-                    documentos={documentos}
+                    base={delRecorrido?.base ?? null}
+                    recorridoDeLaCotizacion={delRecorrido?.cotizacion}
                     facturado={facturado}
                     abreOrden={puede(perfil, 'ordenes.ver')}
                     abreCotizacion={puede(perfil, 'cotizaciones.ver_pdf_comercial')}
@@ -1672,4 +1673,27 @@ async function VistaFacturacion({ codigo, perfil }: { codigo: string; perfil: Pe
       </Tarjeta>
     </>
   )
+}
+
+/**
+ * La cotización y la OT del código (`codigo_interno_recorrido`) y, para quien abre la cotización, su
+ * recorrido del Plan 0. Lo que no se lee queda en `null` y la pantalla lo dice en su paso.
+ */
+async function leerElRecorrido(
+  codigo: string,
+  abreCotizacion: boolean,
+): Promise<{ base: RecorridoDelCodigoBase | null; cotizacion: PasoDescrito[] | null | undefined }> {
+  const base = await recorridoDelCodigo(codigo).catch((e: unknown) => {
+    console.error('Código interno: no se pudieron leer la OT y la cotización del recorrido.', e)
+    return null
+  })
+  const id = base?.cotizacion?.id
+  if (!id || !abreCotizacion) return { base, cotizacion: undefined }
+  const pasos = await recorridoDeCotizaciones([id])
+    .then((m) => describirRecorridoDeLaCotizacion(m.get(id) ?? []))
+    .catch((e: unknown) => {
+      console.error('Código interno: no se pudo leer el recorrido de la cotización.', e)
+      return null
+    })
+  return { base, cotizacion: pasos }
 }

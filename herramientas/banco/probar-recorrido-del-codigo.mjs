@@ -3,16 +3,20 @@
  * interno (plan 12, entrega 12.3), con la cuenta de cada puesto (nunca ADMIN):
  *
  *   1. Gerencia abre el código `QA-CI <sello>` que deja `probar-facturacion.mjs`
- *      (cotización aprobada, su OT, una factura y un cobro a cuenta) y ve los
- *      cinco pasos con su situación: la cotización aprobada, la OT en curso, el
- *      costo hasta hoy, lo facturado y lo cobrado
- *      con lo que falta cobrar. Las cifras son las de la pestaña «Factura y
- *      cobro» y las del costeo: no se recalculan. Cada enlace lleva a su
- *      documento: la cotización, el expediente de la OT, el costeo y la factura.
+ *      (cotización aprobada, su OT, una factura por la mitad y un cobro a
+ *      cuenta) y ve los cinco pasos con su situación: la cotización y la OT que
+ *      da la base (`codigo_interno_recorrido`, leída aquí con la sesión de
+ *      Gerencia), el costo hasta hoy, lo facturado en parte contra lo vendido
+ *      con IGV y lo cobrado con lo que falta cobrar. Las cifras salen de la
+ *      base y del costeo: no se recalculan. Cada enlace lleva a su documento:
+ *      la cotización, el expediente de la OT, el costeo y la factura.
  *   2. En el teléfono (390 px) los pasos van uno bajo otro, sin correr la página.
  *   3. Administración, que consulta el código en lectura, ve el mismo recorrido.
  *   4. PLANTA no tiene recorrido; un código sin cotización ni OT dice qué falta.
  *   5. Gerencia de Producción, sin `codigos_internos.ver`, no entra.
+ *   6. Los códigos `QA-AUD` del auditor, si están: la OT de fabricación
+ *      entregada manda sobre la garantía en borrador que llegó después, y el
+ *      costeo cerrado muestra lo congelado.
  *
  * Correr antes `probar-facturacion.mjs`, que siembra el código; esta sonda no
  * escribe nada. Variables: BANCO_CLAVE, BASE
@@ -70,6 +74,30 @@ if (!sembrado) {
   process.exit(1)
 }
 const { codigo } = sembrado
+const [gerente] = await consulta(`select id from public.usuarios where correo = $1`, [CUENTAS.gerencia])
+
+/** Lo que la base elige para el código, con la sesión de Gerencia (nunca ADMIN). */
+async function loQueDiceLaBase(c) {
+  await base.query('begin')
+  try {
+    await base.query(`select set_config('request.jwt.claim.sub', $1, true)`, [gerente.id])
+    await base.query('set local role authenticated')
+    const [r] = await consulta('select * from public.codigo_interno_recorrido($1)', [c])
+    return r
+  } finally {
+    await base.query('rollback')
+  }
+}
+const dinero = (n, m = 'PEN') => `${m === 'USD' ? 'US$' : 'S/'} ${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const delSembrado = await loQueDiceLaBase(codigo)
+// Lo vendido con IGV, la cuenta de la bandeja de Contabilidad: sin confirmar, el monto se toma con IGV.
+const [venta] = await consulta(
+  `select c.moneda::text as moneda, case when ig.incluye_igv = false then round(c.monto_venta * 1.18, 2) else c.monto_venta end as vendido,
+          (select sum(f.total) from public.facturas_venta f where f.cotizacion_pdf_id = c.id and f.anulada_en is null) as facturado
+     from public.cotizaciones_pdf c left join public.cotizaciones_pdf_igv ig on ig.cotizacion_id = c.id
+    where c.numero = $1`,
+  [sembrado.cotizacion],
+)
 
 console.log(`     código ${codigo}: cotización ${sembrado.cotizacion}, OT ${sembrado.ot_numero}, factura ${sembrado.factura}`)
 
@@ -124,11 +152,27 @@ try {
     console.log(lista.map((p) => `     ${p.clave} [${p.situacion}] ${p.texto}`).join('\n'))
     const de = Object.fromEntries(lista.map((p) => [p.clave, p]))
     comprobar(lista.map((p) => p.clave).join(',') === 'cotizacion,orden,costo,facturado,cobrado', 'Gerencia ve los cinco pasos, en orden')
-    comprobar(de.cotizacion?.situacion === 'HECHO' && de.cotizacion.texto.includes(sembrado.cotizacion), `la cotización ${sembrado.cotizacion}, aprobada, va hecha`)
-    comprobar(de.orden?.situacion === 'AHORA' && de.orden.texto.includes(`OT ${sembrado.ot_numero}`), `la OT ${sembrado.ot_numero} va en curso`)
+    comprobar(
+      de.cotizacion?.situacion === 'HECHO' && delSembrado.cotizacion_numero === sembrado.cotizacion && de.cotizacion.texto.includes(delSembrado.cotizacion_numero),
+      `la cotización ${delSembrado.cotizacion_numero}, la que elige la base, aprobada, va hecha`,
+    )
+    comprobar(
+      de.orden?.situacion === 'AHORA' && delSembrado.ot_numero === sembrado.ot_numero && de.orden.texto.includes(`OT ${delSembrado.ot_numero}`),
+      `la OT ${delSembrado.ot_numero}, la que elige la base, va en curso`,
+    )
     comprobar(de.costo?.situacion === 'AHORA' && /S\/\s?[\d,]+\.\d\d/.test(de.costo.texto) && de.costo.texto.includes('hasta hoy'), 'el costo va en curso, con su cifra hasta hoy')
-    comprobar(de.facturado?.situacion === 'HECHO' && de.facturado.texto.includes('US$ 29,500.00'), 'lo facturado, hecho, con el total de la factura')
-    comprobar(de.cobrado?.situacion === 'AHORA' && de.cobrado.texto.includes('US$ 10,000.00') && de.cobrado.texto.includes('por cobrar US$ 19,500.00'), 'lo cobrado, en curso, con lo que falta cobrar')
+    const facturadoEsperado = `${dinero(venta.facturado, venta.moneda)} de ${dinero(venta.vendido, venta.moneda)}`
+    comprobar(
+      Number(venta.facturado) < Number(venta.vendido) &&
+        de.facturado?.situacion === 'AHORA' &&
+        de.facturado.texto.includes(facturadoEsperado) &&
+        de.facturado.texto.includes(`falta facturar ${dinero(venta.vendido - venta.facturado, venta.moneda)}`),
+      `lo facturado en parte va en curso, no hecho: ${facturadoEsperado}`,
+    )
+    comprobar(
+      de.cobrado?.situacion === 'AHORA' && de.cobrado.texto.includes('US$ 10,000.00') && de.cobrado.texto.includes('por cobrar US$ 19,500.00 de lo facturado'),
+      'lo cobrado, en curso, con lo que falta cobrar de lo facturado',
+    )
     comprobar((await recorrido(pagina).getByRole('button').count()) === 0, 'el recorrido no tiene botones: solo lleva a cada documento')
 
     // Las cifras no se recalculan: el costo es el mismo que dice la pestaña Costeo.
@@ -221,6 +265,50 @@ try {
       await recorrido(pagina).screenshot({ path: `${CAPTURAS}/1440-gerencia-sin-ot.png` })
     } else {
       console.log('     (no hay un código sin unidad en el banco: se salta el caso 4)')
+    }
+    await contexto.close()
+  }
+
+  // ----------------------------------------------------- 6. La garantía y el costeo cerrado (códigos del auditor)
+  {
+    const aud = await consulta(`
+      select distinct u.codigo_interno as codigo from public.unidades u
+       where u.codigo_interno like 'QA-AUD %'
+         and (exists (select 1 from public.ordenes_trabajo o where o.unidad_id = u.id and o.tipo_trabajo = 'GARANTIA' and o.estado <> 'ANULADA')
+              or exists (select 1 from public.codigo_interno_cierres k where k.codigo = u.codigo_interno and k.reabierto_en is null))
+       order by 1`)
+    if (aud.length === 0) console.log('     (no están los códigos QA-AUD: se salta el caso 6)')
+    const { pagina, contexto } = await entrar(CUENTAS.gerencia)
+    for (const { codigo: c } of aud) {
+      const r = await loQueDiceLaBase(c)
+      await ir(pagina, detalle(c))
+      const de = Object.fromEntries((await pasos(pagina)).map((p) => [p.clave, p]))
+      const [conGarantia] = await consulta(
+        `select count(*)::int as n from public.ordenes_trabajo o join public.unidades u on u.id = o.unidad_id
+          where u.codigo_interno = $1 and o.tipo_trabajo = 'GARANTIA' and o.estado <> 'ANULADA'`,
+        [c],
+      )
+      if (conGarantia.n > 0 && r.ot_tipo !== 'GARANTIA') {
+        comprobar(
+          de.orden?.texto.includes(`OT ${r.ot_numero}`) && de.orden.texto.includes(`y ${r.ordenes - 1} más`) && !de.orden.texto.includes('garantía'),
+          `${c}: la OT ${r.ot_numero} de fabricación manda sobre la garantía, y dice que hay ${r.ordenes - 1} más`,
+        )
+        if (r.ot_entregada_el) {
+          const [d] = await consulta(`select to_char($1::date, 'DD/MM/YYYY') as f`, [r.ot_entregada_el])
+          comprobar(de.orden.situacion === 'HECHO' && de.orden.texto.includes(`entregada el ${d.f}`), `${c}: con la fecha de entrega de esa OT (${d.f})`)
+        }
+      }
+      const [cierre] = await consulta(
+        `select costo_pen, to_char(cerrado_en at time zone 'America/Lima', 'DD/MM/YYYY') as el from public.codigo_interno_cierres
+          where codigo = $1 and reabierto_en is null order by cerrado_en desc limit 1`,
+        [c],
+      )
+      if (cierre) {
+        comprobar(
+          de.costo?.texto.includes(dinero(cierre.costo_pen)) && de.costo.texto.includes(`costeo cerrado el ${cierre.el}`) && !de.costo.texto.includes('del presupuesto'),
+          `${c}: el costo es el congelado al cierre (${dinero(cierre.costo_pen)}), sin porcentaje del presupuesto`,
+        )
+      }
     }
     await contexto.close()
   }
