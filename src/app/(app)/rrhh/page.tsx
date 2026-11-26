@@ -466,7 +466,8 @@ function LoQueFaltaParaCerrar({
   const revisa = [deTaller && veReportes ? 'los reportes del mes' : null, conGente ? 'las cuentas de su gente' : null].filter(Boolean)
 
   if (faltas.length === 0) {
-    if (revisa.length === 0) return null
+    // Sin gente todavía no se puede cerrar: lo dice la tarjeta («Sin personas todavía»), no «no falta nada».
+    if (!conGente || revisa.length === 0) return null
     return (
       <p className="flex items-start gap-2 text-sm text-texto-suave" data-lo-que-falta="nada">
         <CheckCircle2 aria-hidden className="mt-0.5 size-4 shrink-0 text-exito" />
