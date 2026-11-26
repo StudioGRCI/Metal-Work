@@ -242,6 +242,43 @@ export async function corregirCotizacionPdf(_previo: unknown, datos: FormData): 
 
 const esquemaQuitar = z.object({ id: z.guid() })
 
+const esquemaCancelarVenta = z.object({
+  id: z.guid(),
+  motivo: z.string().trim().min(10, 'Cuenta por qué se cancela la venta, en al menos 10 caracteres.').max(500, 'El motivo no pasa de 500 caracteres.'),
+})
+
+/**
+ * Ventas cancela la venta que se reabrió: su OT pasó a otro comprador, allí se
+ * anuló y la cotización volvió a esperar su OT (StudioGRCI, 2026-11-26). La
+ * cotización queda anulada con su motivo, no se borra. La base decide quién y
+ * cuál (`cancelar_venta_reabierta`, migración 20261126988000): quien la
+ * registró, aprobada, sin OT vigente ni factura vigente.
+ */
+export async function cancelarVentaReabierta(_previo: unknown, datos: FormData): Promise<ResultadoAccion<{ yaEstaba: boolean }>> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'cotizaciones.crear')) return { ok: false, error: 'La venta la cancela quien registró la cotización.' }
+
+  const analisis = esquemaCancelarVenta.safeParse(Object.fromEntries(datos))
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'No se pudo identificar la cotización.' }
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('cancelar_venta_reabierta', { p_cotizacion: analisis.data.id, p_motivo: analisis.data.motivo })
+  if (error) {
+    const texto = mensajeDeError(error)
+    // El reenvío con otro motivo, cuando la respuesta del primero se perdió: la
+    // venta ya quedó cancelada con el primer motivo. Sale como el primero, y la
+    // pantalla va a su tarjeta en «Anuladas», que dice con qué motivo quedó; como
+    // rechazo, la tarjeta se iba de las vigentes con el aviso y parecía borrada.
+    if (!texto.includes('ya quedó cancelada la primera vez')) return { ok: false, error: texto }
+    // La pantalla dice que el motivo de ahora no se guardó (`CancelarVenta`).
+    revalidatePath('/cotizaciones/pdf')
+    return { ok: true, datos: { yaEstaba: true } }
+  }
+
+  revalidatePath('/cotizaciones/pdf')
+  return { ok: true, mensaje: 'Venta cancelada: la cotización queda anulada, con su número y su archivo.' }
+}
+
 /**
  * Quitar una cotización (migraciones 102, 103 y 20261020161000): quien la subió
  * o Gerencia, mientras esté por revisar en su primera versión, y nunca si de ella salió una orden
