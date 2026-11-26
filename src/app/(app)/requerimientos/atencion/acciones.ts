@@ -199,3 +199,29 @@ export async function revisarStockRequerimiento(_previo: unknown, formulario: Fo
   const quien = rq?.tipo === 'ADMINISTRACION' ? 'a la administradora' : 'a Logística'
   return { ok: true, mensaje: `Revisado. Le llegó ${quien} solo lo que falta comprar.` }
 }
+
+/**
+ * Almacén cierra la nota de una salida que no llegó o llegó incompleta,
+ * escribiendo qué hizo (plan 2, entrega 2.2). Con `almacen.despachar`, el mismo
+ * permiso que exige `atender_conformidad_salida`; a quien la anotó le llega el aviso.
+ */
+export async function atenderConformidad(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'almacen.despachar')) return { ok: false, error: 'Responde la nota quien entrega en Almacén.' }
+  const analisis = z
+    .object({
+      id: z.guid('Vuelve a cargar la pantalla.'),
+      respuesta: z.string().trim().min(10, 'Cuenta qué hiciste en al menos 10 caracteres.').max(500, 'La respuesta pasa de 500 caracteres.'),
+    })
+    .safeParse({ id: formulario.get('id'), respuesta: formulario.get('respuesta') ?? '' })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('atender_conformidad_salida', { p_id: analisis.data.id, p_respuesta: analisis.data.respuesta })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== analisis.data.id) return { ok: false, error: 'La nota no se cerró. Recarga la pantalla.' }
+
+  revalidatePath('/requerimientos')
+  revalidatePath('/requerimientos/atencion')
+  return { ok: true, mensaje: 'Nota cerrada. Le avisamos a quien la anotó.' }
+}

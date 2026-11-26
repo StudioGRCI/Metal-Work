@@ -7,13 +7,20 @@ import { Insignia, type Tono } from '@/components/ui/etiqueta-estado'
 import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { etapasDeCodigo, planosDeCodigo, type EtapaDeCodigo } from '@/lib/datos/diseno-codigos'
-import { cargarRequerimientos, catalogosDelRequerimiento, type RequerimientoListado } from '@/lib/datos/requerimientos'
+import {
+  cargarRequerimientos,
+  catalogosDelRequerimiento,
+  seguimientoDeInsumos,
+  type RequerimientoListado,
+  type SeguimientoDelInsumo,
+} from '@/lib/datos/requerimientos'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { CODIGO_FIJO_PLANTA, llaveParecido, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { ESTADOS_RQ_ABIERTOS, estadoDelRequerimiento } from '@/lib/dominio/requerimientos'
-import { fecha, porcentaje } from '@/lib/format'
+import { diaLima, fecha, hoyLima, porcentaje, sumarDias } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 
+import { InsumosDelRequerimiento } from './insumos'
 import { AvisoDeLaUnidad, BotonPedirParaUnidad, PedirPorUnidad } from './pedir'
 
 export const metadata = { title: 'RQ por unidad' }
@@ -24,9 +31,21 @@ type DeLaUnidad = { etapas: EtapaDeCodigo[]; porRecibir: number; rqs: Requerimie
 /** Cuántos RQ en camino se pintan en la tarjeta: en el teléfono, siete ocupaban media pantalla. */
 const MAS_EN_LA_TARJETA = 3
 
+/** Los entregados en estos días siguen en la tarjeta, para ver quién recibió cada insumo. */
+const DIAS_DEL_ENTREGADO = 7
+/** Y como mucho estos, debajo de los que van en camino. */
+const ENTREGADOS_EN_LA_TARJETA = 2
+
+/** Cómo va cada insumo: `null` si la base no lo dio; la tarjeta lo dice. */
+type Seguimiento = Map<string, SeguimientoDelInsumo> | null
+
 const abierto = (r: RequerimientoListado) => (ESTADOS_RQ_ABIERTOS as readonly string[]).includes(r.estado)
+/** Entregado desde `desde` (un día de Lima, YYYY-MM-DD) en adelante. */
+const recienEntregado = (r: RequerimientoListado, desde: string) =>
+  r.estado === 'ENTREGADO' && r.entregado_en !== null && diaLima(r.entregado_en) >= desde
 /** Al área todavía le falta algo con la unidad: una etapa sin terminar, un plano por recibir o un RQ que no llega. */
-const sigueEnElArea = (u: DeLaUnidad) => u.porRecibir > 0 || u.etapas.some((e) => !e.fin_real) || u.rqs.some(abierto)
+const sigueEnElArea = (u: DeLaUnidad, desde: string) =>
+  u.porRecibir > 0 || u.etapas.some((e) => !e.fin_real) || u.rqs.some((r) => abierto(r) || recienEntregado(r, desde))
 /** Ya se trabaja en ella: la etapa empezó o tiene fecha, o hay un plano por recibir. */
 const enMarcha = (u: DeLaUnidad) => u.porRecibir > 0 || u.etapas.some((e) => !e.fin_real && (e.inicio_real || e.inicio_plan))
 
@@ -57,12 +76,25 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
 
   // Los RQ en camino se leen aparte: la lista de recientes llega hasta 300, y
   // un RQ abierto más viejo que eso sacaría a su unidad de la pantalla.
-  const [planos, etapas, recientes, enCamino, catalogos] = await Promise.all([
+  // Con lo entregado de cada insumo: el que ya salió entero va entregado aunque otro del RQ siga en compra.
+  const delArea = area ? cargarRequerimientos({ area, tipo: 'OPERACION', conEntregado: true }) : Promise.resolve([])
+  const abiertos = area ? cargarRequerimientos({ area, tipo: 'OPERACION', soloAbiertos: true, conEntregado: true }) : Promise.resolve([])
+  // Lo que el supervisor no lee de cada insumo (el visto de Diseño, cuándo
+  // llega, quién lo recibió), de los RQ que la tarjeta pinta, en cuanto llegan.
+  const desde = sumarDias(hoyLima(), -DIAS_DEL_ENTREGADO)
+  const delSeguimiento: Promise<Seguimiento> = Promise.all([delArea, abiertos])
+    .then(([a, b]) => seguimientoDeInsumos([...a, ...b].filter((r) => abierto(r) || recienEntregado(r, desde)).map((r) => r.id)))
+    .catch((e: unknown) => {
+      console.error('RQ por unidad: no se pudo leer cómo va cada insumo.', e)
+      return null
+    })
+  const [planos, etapas, recientes, enCamino, catalogos, seguimiento] = await Promise.all([
     area ? planosDeCodigo(null, { conPeso: false }) : Promise.resolve([]),
     area ? etapasDeCodigo(null) : Promise.resolve([]),
-    area ? cargarRequerimientos({ area, tipo: 'OPERACION' }) : Promise.resolve([]),
-    area ? cargarRequerimientos({ area, tipo: 'OPERACION', soloAbiertos: true }) : Promise.resolve([]),
+    delArea,
+    abiertos,
     catalogosDelRequerimiento(),
+    delSeguimiento,
   ])
   const requerimientos = [...new Map([...recientes, ...enCamino].map((r) => [r.id, r])).values()]
   // Sin la lista de códigos no se sabe qué unidad está entregada ni cuáles
@@ -99,7 +131,7 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
 
   // Una unidad entregada sale aunque Diseño no haya cerrado sus etapas; si le
   // queda un RQ en camino, se ve para seguirlo, sin «Nuevo RQ».
-  const enElArea = [...porCodigo.entries()].filter(([codigo, u]) => (cerrados.has(codigo) ? u.rqs.some(abierto) : sigueEnElArea(u)))
+  const enElArea = [...porCodigo.entries()].filter(([codigo, u]) => (cerrados.has(codigo) ? u.rqs.some(abierto) : sigueEnElArea(u, desde)))
   const unidades = enElArea
     .filter(([codigo]) => buscado(codigo))
     .sort(([a, ua], [b, ub]) => Number(enMarcha(ub)) - Number(enMarcha(ua)) || (a < b ? -1 : a > b ? 1 : 0))
@@ -140,13 +172,19 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
         descripcion={`${areaFija.nombre} · ${enElArea.length} ${enElArea.length === 1 ? 'unidad' : 'unidades'}${
           conRqAbierto > 0 ? `, ${conRqAbierto} con requerimientos en camino` : ''
         }`}
-        ayuda="Cada unidad que tiene trabajo en tu área, con sus etapas y sus requerimientos. Pide el material de una unidad con «Nuevo RQ» en su tarjeta: el código y el área ya van puestos y le llega a Almacén. Una unidad sale de aquí cuando tu área termina sus etapas, recibe sus planos y le entregan todo lo pedido. Debajo están las demás unidades del taller, para pedir aunque Diseño todavía no cargue el trabajo de tu área. Lo que no es de una unidad, pídelo en PLANTA, al final."
+        ayuda="Cada unidad que tiene trabajo en tu área, con sus etapas y sus requerimientos. Pide el material de una unidad con «Nuevo RQ» en su tarjeta: el código y el área ya van puestos y le llega a Almacén. En cada requerimiento, «Cómo va cada insumo» dice en qué paso va cada uno, cuándo llega lo que se compra y quién lo recibió del almacén. En la tarjeta de cada unidad quedan los dos últimos RQ entregados en los 7 días, con quién recibió cada insumo. Una unidad sale de aquí cuando tu área terminó sus etapas, recibió sus planos y no tiene RQ en camino ni entregados en esos 7 días; la unidad ya entregada al cliente sale apenas no le queda ningún RQ en camino. Debajo están las demás unidades del taller, para pedir aunque Diseño todavía no cargue el trabajo de tu área. Lo que no es de una unidad, pídelo en PLANTA, al final."
         migas={[{ titulo: 'Requerimientos', ruta: '/requerimientos' }, { titulo: 'Por unidad' }]}
         acciones={<BotonPedirParaUnidad codigo={null}>Nuevo RQ con otro código</BotonPedirParaUnidad>}
         estado={<AvisoDeLaUnidad codigo={null} />}
       />
 
       <div className="mb-4 space-y-3">
+        {seguimiento === null && (
+          <p role="status" className="text-sm text-aviso" data-seguimiento-sin-leer>
+            No se pudo leer el visto de Diseño, la fecha en que llega cada compra ni quién recibió cada insumo: los pasos salen sin eso. Recarga la
+            página; si continúa, avisa al administrador.
+          </p>
+        )}
         <Vistas etiqueta="Requerimiento" vistas={vistas} />
         <BuscadorSimple ruta="/requerimientos/unidades" etiqueta="Buscar unidad" marcador="Código interno, placa o marca" />
       </div>
@@ -178,7 +216,15 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
         <ul className="mb-3 grid items-start gap-3 lg:grid-cols-2" aria-label={`Unidades de ${areaFija.nombre}`}>
           {unidades.map(([codigo, u]) => (
             <li key={codigo}>
-              <TarjetaDeUnidad codigo={codigo} unidad={unidadDe.get(codigo) ?? null} entregada={cerrados.has(codigo)} delArea={u} />
+              <TarjetaDeUnidad
+                yo={perfil.id}
+                codigo={codigo}
+                unidad={unidadDe.get(codigo) ?? null}
+                entregada={cerrados.has(codigo)}
+                delArea={u}
+                seguimiento={seguimiento}
+                desde={desde}
+              />
             </li>
           ))}
         </ul>
@@ -224,7 +270,7 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
           />
           <TarjetaCuerpo className="space-y-3">
             <AvisoDeLaUnidad codigo={CODIGO_FIJO_PLANTA.codigo} />
-            <RequerimientosDeLaUnidad codigo={CODIGO_FIJO_PLANTA.codigo} rqs={dePlanta} />
+            <RequerimientosDeLaUnidad codigo={CODIGO_FIJO_PLANTA.codigo} rqs={dePlanta} seguimiento={seguimiento} desde={desde} yo={perfil.id} />
           </TarjetaCuerpo>
         </Tarjeta>
       )}
@@ -237,11 +283,17 @@ function TarjetaDeUnidad({
   unidad,
   entregada,
   delArea,
+  seguimiento,
+  desde,
+  yo,
 }: {
   codigo: string
   unidad: string | null
   entregada: boolean
   delArea: DeLaUnidad
+  seguimiento: Seguimiento
+  desde: string
+  yo: string
 }) {
   return (
     <Tarjeta>
@@ -281,24 +333,47 @@ function TarjetaDeUnidad({
             </ul>
           </div>
         )}
-        <RequerimientosDeLaUnidad codigo={codigo} rqs={delArea.rqs} />
+        <RequerimientosDeLaUnidad codigo={codigo} rqs={delArea.rqs} seguimiento={seguimiento} desde={desde} yo={yo} />
       </TarjetaCuerpo>
     </Tarjeta>
   )
 }
 
-/** Los RQ que van en camino, uno por renglón, y cuántos ya se entregaron. */
-function RequerimientosDeLaUnidad({ codigo, rqs }: { codigo: string; rqs: RequerimientoListado[] }) {
+/**
+ * Los RQ que van en camino, uno por renglón con cómo va cada insumo, los
+ * entregados de esta semana (para ver quién recibió cada insumo) y cuántos más
+ * hay.
+ */
+function RequerimientosDeLaUnidad({
+  codigo,
+  rqs,
+  seguimiento,
+  desde,
+  yo,
+}: {
+  codigo: string
+  rqs: RequerimientoListado[]
+  seguimiento: Seguimiento
+  desde: string
+  /** Quien mira: el sustento se le pide solo en los RQ que registró. */
+  yo: string
+}) {
   // Los tres más recientes en camino; el resto, en «Ver sus N».
   const enCaminoTodos = rqs.filter(abierto)
   const enCamino = enCaminoTodos.slice(0, MAS_EN_LA_TARJETA)
   const sinVer = enCaminoTodos.length - enCamino.length
-  const entregados = rqs.filter((r) => r.estado === 'ENTREGADO').length
+  // Los últimos que se entregaron, no los últimos que se pidieron.
+  const recien = rqs
+    .filter((r) => recienEntregado(r, desde))
+    .sort((a, b) => (b.entregado_en ?? '').localeCompare(a.entregado_en ?? ''))
+    .slice(0, ENTREGADOS_EN_LA_TARJETA)
+  const entregados = rqs.filter((r) => r.estado === 'ENTREGADO').length - recien.length
   const anulados = rqs.filter((r) => r.estado === 'ANULADO').length
   const yaCerrados = [
-    entregados > 0 ? (entregados === 1 ? '1 entregado' : `${entregados} entregados`) : null,
+    entregados > 0 ? (entregados === 1 ? `1 entregado${recien.length > 0 ? ' antes' : ''}` : `${entregados} entregados${recien.length > 0 ? ' antes' : ''}`) : null,
     anulados > 0 ? (anulados === 1 ? '1 anulado' : `${anulados} anulados`) : null,
   ].filter(Boolean)
+  const aVer = [...enCamino, ...recien]
   return (
     <div>
       <h3 className="text-xs font-medium text-texto-suave">Requerimientos de tu área</h3>
@@ -306,23 +381,27 @@ function RequerimientosDeLaUnidad({ codigo, rqs }: { codigo: string; rqs: Requer
         <p className="mt-1 text-sm text-texto-suave">Ninguno todavía.</p>
       ) : (
         <>
-          {enCamino.length > 0 && (
-            <ul className="mt-1 space-y-1 text-sm">
-              {enCamino.map((r) => {
+          {aVer.length > 0 && (
+            <ul className="mt-1 space-y-3 text-sm">
+              {aVer.map((r) => {
                 const estado = estadoDelRequerimiento(r)
                 return (
-                  <li key={r.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <Link
-                      href={`/requerimientos?rq=${r.id}`}
-                      className="inline-flex min-h-11 items-center font-mono font-medium text-acento hover:underline sm:min-h-0"
-                    >
-                      {r.numero}
-                    </Link>
-                    {estado && <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>}
-                    {r.avance && <span className="tabular text-xs text-texto-suave">{porcentaje(r.avance.porcentaje)}</span>}
-                    <span className="min-w-0 basis-full truncate text-xs text-texto-suave sm:basis-auto sm:flex-1">
-                      {r.lineas.length === 1 ? r.lineas[0].descripcion : `${r.lineas.length} insumos`}
-                    </span>
+                  <li key={r.id} data-rq-de-la-unidad={r.numero}>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <Link
+                        href={`/requerimientos?rq=${r.id}`}
+                        className="inline-flex min-h-11 items-center font-mono font-medium text-acento hover:underline sm:min-h-0"
+                      >
+                        {r.numero}
+                      </Link>
+                      {estado && <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>}
+                      {r.avance && r.estado !== 'ENTREGADO' && <span className="tabular text-xs text-texto-suave">{porcentaje(r.avance.porcentaje)}</span>}
+                      {r.estado === 'ENTREGADO' && r.entregado_en && <span className="tabular text-xs text-texto-suave">{fecha(r.entregado_en)}</span>}
+                      <span className="min-w-0 basis-full truncate text-xs text-texto-suave sm:basis-auto sm:flex-1">
+                        {r.lineas.length === 1 ? r.lineas[0].descripcion : `${r.lineas.length} insumos`}
+                      </span>
+                    </div>
+                    <InsumosDelRequerimiento rq={r} seguimiento={seguimiento} yo={yo} />
                   </li>
                 )
               })}

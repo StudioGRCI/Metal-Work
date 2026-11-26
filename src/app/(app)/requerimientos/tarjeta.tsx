@@ -1,11 +1,12 @@
 import Link from 'next/link'
-import { ChevronDown, ClipboardList, PackageCheck, Truck, Workflow } from 'lucide-react'
+import { ChevronDown, ClipboardList, ExternalLink, PackageCheck, Truck, Workflow } from 'lucide-react'
 
 import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
 import { Insignia, Punto, type Tono } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
 import { Recorrido } from '@/components/ui/recorrido'
 import { Tarjeta } from '@/components/ui/tarjeta'
+import type { ConformidadDeLosRq, NotaDeConformidad, SalidaDelInsumo } from '@/lib/datos/conformidad'
 import type { CorreccionVista } from '@/lib/datos/correcciones'
 import type { MetradoDelInsumo } from '@/lib/datos/metrado-rq'
 import type { LineaRequerimiento, MaterialParaRequerimiento, RequerimientoListado } from '@/lib/datos/requerimientos'
@@ -25,6 +26,7 @@ import {
   partesDelInsumo,
   pasoDelRequerimiento,
   quienCompra,
+  tieneParaRecoger,
   YA_LLEGO_TODO,
   yaLlegoTodo,
   type PartesDelInsumo,
@@ -34,6 +36,7 @@ import { cantidad, diasHasta, fecha, fechaHora, porcentaje } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { MaterialDelInsumo } from './avance'
+import { AnotarConformidad } from './conformidad'
 import { AnularRequerimiento } from './controles'
 import { CorregirRequerimiento } from './corregir'
 import { SustentarInsumos } from './metrado/sustentar'
@@ -94,11 +97,6 @@ function partesParaElPaso(rq: RequerimientoListado): (PartesDelInsumo | null)[] 
 /** ¿En compra, con lo comprado ya en almacén y el resto sin ninguna compra? */
 function soloFaltaLoNoComprado(rq: RequerimientoListado): boolean {
   return (rq.estado === 'SIN_STOCK' || rq.estado === 'EN_ATENCION') && !llegoTodo(rq) && yaLlegoTodo(partesParaElPaso(rq))
-}
-
-/** ¿Tiene algún insumo que ya se puede recoger en Almacén? */
-export function tieneParaRecoger(rq: RequerimientoListado): boolean {
-  return rq.lineas.some((l) => (partesDelInsumo(l, rq.estado)?.recoger ?? 0) > 0)
 }
 
 /**
@@ -238,6 +236,7 @@ export function TarjetaRequerimiento({
   correcciones,
   metrado,
   recorrido,
+  conformidad,
 }: {
   rq: RequerimientoListado
   insumosAbiertos: boolean
@@ -252,6 +251,8 @@ export function TarjetaRequerimiento({
   metrado: Map<string, MetradoDelInsumo> | null
   /** Por dónde pasó, quién lo tiene y hace cuántos días; `null` si no se pudo leer. */
   recorrido: PasoDescrito[] | null
+  /** Las salidas de cada insumo y sus notas (plan 2, entrega 2.2); `null` si no se pudieron leer. */
+  conformidad: ConformidadDeLosRq | null
 }) {
   // En compra pero con todo ya en almacén, la insignia no dice «En compra»: lo dicen la barra y los pasos.
   // Por atender y frenado por el metrado: la insignia y el primer paso dicen quién lo tiene, no «Almacén revisa».
@@ -283,6 +284,11 @@ export function TarjetaRequerimiento({
               <Insignia>{rq.estado}</Insignia>
             )}
             {rq.tipo === 'ADMINISTRACION' && <Insignia tono="acento">Administración</Insignia>}
+            {conformidad && tieneNotaAbierta(rq, conformidad) && (
+              <Insignia tono="peligro" title="Quien pidió anotó que una salida no llegó o llegó incompleta, y Almacén todavía no responde." data-con-nota-abierta>
+                Nota de entrega abierta
+              </Insignia>
+            )}
             {textoPlazo && (
               <Insignia tono={textoPlazo.tono} data-plazo={plazo}>
                 {textoPlazo.etiqueta}
@@ -324,7 +330,7 @@ export function TarjetaRequerimiento({
 
       {metrado && <FrenoDelMetrado rq={rq} metrado={metrado} sustenta={anula} />}
 
-      <InsumosConPartes rq={rq} abierto={insumosAbiertos} metrado={metrado} />
+      <InsumosConPartes rq={rq} abierto={insumosAbiertos} metrado={metrado} conformidad={conformidad} />
 
       {/* Para consultar: quién hizo cada paso, quién lo tiene ahora y hace cuántos días. */}
       <Recorrido pasos={recorrido} className="border-t border-borde" />
@@ -476,10 +482,12 @@ function InsumosConPartes({
   rq,
   abierto: abiertoPorDefecto,
   metrado,
+  conformidad,
 }: {
   rq: RequerimientoListado
   abierto: boolean
   metrado: Map<string, MetradoDelInsumo> | null
+  conformidad: ConformidadDeLosRq | null
 }) {
   const partes = rq.lineas.map((l) => partesDelInsumo(l, rq.estado))
   const frenanElRq = (metrado && frenoDelRq(rq, metrado)?.items) ?? []
@@ -513,9 +521,21 @@ function InsumosConPartes({
       </summary>
       <ul className="divide-y divide-borde border-t border-borde">
         {rq.lineas.map((l, i) => (
-          <InsumoConPartes key={l.item} linea={l} partes={partes[i]} rq={rq} metrado={metrado?.get(l.id)} frenanElRq={frenanElRq} />
+          <InsumoConPartes
+            key={l.item}
+            linea={l}
+            partes={partes[i]}
+            rq={rq}
+            metrado={metrado?.get(l.id)}
+            frenanElRq={frenanElRq}
+            salidas={conformidad?.salidas.get(l.id) ?? []}
+            notas={conformidad?.notas}
+          />
         ))}
       </ul>
+      {conformidad === null && partes.some((p) => p && p.entregado > 0) && (
+        <p className="border-t border-borde px-4 py-2 text-xs text-aviso">No se pudieron leer las salidas de Almacén ni sus fotos. Vuelve a cargar la pantalla.</p>
+      )}
     </details>
   )
 }
@@ -529,6 +549,8 @@ function InsumoConPartes({
   rq,
   metrado,
   frenanElRq,
+  salidas,
+  notas,
 }: {
   linea: LineaRequerimiento
   partes: PartesDelInsumo | null
@@ -536,6 +558,8 @@ function InsumoConPartes({
   metrado: MetradoDelInsumo | undefined
   /** Los insumos que frenan la revisión de todo el RQ; vacío si no frena. */
   frenanElRq: number[]
+  salidas: SalidaDelInsumo[]
+  notas: Map<string, NotaDeConformidad[]> | undefined
 }) {
   const frena = frenaElRq(metrado?.estado) && rq.estado !== 'ANULADO' && rq.estado !== 'ENTREGADO'
   const tono = tonoPorLlegar(l, partes)
@@ -622,6 +646,125 @@ function InsumoConPartes({
             )}
           </ul>
         </>
+      )}
+      {salidas.length > 0 && <SalidasDelInsumo salidas={salidas} notas={notas} rq={rq} linea={l} />}
+    </li>
+  )
+}
+
+/** Cuántas notas de las salidas de este RQ esperan que Almacén responda. */
+function notasAbiertas(rq: RequerimientoListado, c: ConformidadDeLosRq) {
+  return rq.lineas.reduce(
+    (suma, l) => suma + (c.salidas.get(l.id) ?? []).reduce((n, s) => n + (c.notas.get(s.id) ?? []).filter((x) => !x.atendidoEn).length, 0),
+    0,
+  )
+}
+
+/** Si alguna salida del RQ tiene una nota que Almacén todavía no cierra: sus insumos salen abiertos. */
+export function tieneNotaAbierta(rq: RequerimientoListado, c: ConformidadDeLosRq) {
+  return notasAbiertas(rq, c) > 0
+}
+
+/**
+ * Cada salida del kardex hecha contra el insumo, como la ve quien lo pidió
+ * (plan 2, entrega 2.2): cuánto, cuándo, quién lo recibió y su foto. Quien
+ * pidió anota si no le llegó o le llegó incompleto, y ve lo que respondió
+ * Almacén. Sin precio: la base no lo da.
+ */
+function SalidasDelInsumo({
+  salidas,
+  notas,
+  rq,
+  linea,
+}: {
+  salidas: SalidaDelInsumo[]
+  notas: Map<string, NotaDeConformidad[]> | undefined
+  rq: RequerimientoListado
+  linea: LineaRequerimiento
+}) {
+  return (
+    <ul className="mt-2 space-y-2" aria-label="Salidas de Almacén" data-salidas={linea.item}>
+      {salidas.map((s) => {
+        const deLaSalida = notas?.get(s.id) ?? []
+        return (
+          <li key={s.id} className="rounded-[var(--radius-base)] border border-borde px-3 py-2 text-xs" data-salida={s.numero ?? s.id}>
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+              <p className="min-w-0 text-texto-suave">
+                <PackageCheck aria-hidden className="mr-1 inline size-3.5 align-[-2px] text-texto-suave" />
+                <span className="font-medium text-texto">Salió </span>
+                <span className="tabular font-medium text-texto">
+                  {cantidad(s.cantidad)} {s.unidad ?? linea.unidad}
+                </span>
+                {s.material && linea.material_nombre && s.material !== linea.material_nombre && (
+                  <span className="break-words text-texto"> de {s.material}</span>
+                )}
+                {s.numero && <span className="tabular"> · {s.numero}</span>}
+                <span> · {fechaHora(s.en)}</span>
+                {s.recibio && <span className="break-words"> · recibió {s.recibio}</span>}
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                {s.conFoto && (
+                  <a
+                    href={`/requerimientos/salidas/${s.id}/foto`}
+                    target="_blank"
+                    rel="noopener"
+                    className="inline-flex min-h-11 items-center gap-1 px-1 font-medium text-acento hover:underline pointer-fine:min-h-0"
+                    data-ver-foto={s.numero ?? s.id}
+                  >
+                    Ver foto
+                    <ExternalLink aria-hidden className="size-3.5" />
+                    <span className="sr-only"> (se abre en otra pestaña)</span>
+                  </a>
+                )}
+                {/* Montado también con la nota abierta: sin botón, guarda el aviso de lo que se anotó. */}
+                {s.puedeAnotar && (
+                  <AnotarConformidad
+                    salida={{ id: s.id, cantidad: s.cantidad, unidad: s.unidad ?? linea.unidad, numero: s.numero, en: s.en }}
+                    requerimiento={rq.numero}
+                    material={s.material ?? linea.descripcion}
+                    abierta={Boolean(s.notaAbierta)}
+                  />
+                )}
+              </div>
+            </div>
+            {deLaSalida.length > 0 && (
+              <ul className="mt-2 space-y-2 border-t border-borde pt-2">
+                {deLaSalida.map((n) => (
+                  <NotaDeLaSalida key={n.id} nota={n} />
+                ))}
+              </ul>
+            )}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+/** Lo que quien pidió anotó de una salida y, si ya la cerró, lo que respondió Almacén. */
+function NotaDeLaSalida({ nota: n }: { nota: NotaDeConformidad }) {
+  const anotado =
+    n.tipo === 'NO_LLEGO' ? 'No llegó' : `Llegó ${cantidad(n.recibido ?? 0)} de ${cantidad(n.salio)}${n.unidad ? ` ${n.unidad}` : ''}`
+  return (
+    <li className="space-y-1" data-nota-conformidad={n.atendidoEn ? 'cerrada' : 'abierta'}>
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <Insignia tono={n.tipo === 'NO_LLEGO' ? 'peligro' : 'aviso'}>{anotado}</Insignia>
+        <span className="text-texto-suave">
+          {n.anotadoPor ?? 'Quien pidió'} · {fechaHora(n.anotadoEn)}
+        </span>
+      </p>
+      <p className="break-words text-texto">«{n.nota}»</p>
+      {n.atendidoEn ? (
+        <p className="break-words text-texto">
+          <span className="font-medium text-exito">Almacén respondió: </span>
+          {n.respuesta}
+          <span className="text-texto-suave">
+            {' '}
+            · {n.atendidoPor ?? 'Almacén'} · {fechaHora(n.atendidoEn)}
+          </span>
+        </p>
+      ) : (
+        <p className="text-texto-suave">Almacén todavía no responde. Le llegó el aviso.</p>
       )}
     </li>
   )

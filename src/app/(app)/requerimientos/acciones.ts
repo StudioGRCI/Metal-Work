@@ -277,3 +277,51 @@ export async function corregirRequerimiento(_previo: unknown, formulario: FormDa
   }
   return { ok: true, mensaje: `Requerimiento corregido, con su justificante.${aviso}` }
 }
+
+const CONFORMIDAD = z
+  .object({
+    id: z.guid('Vuelve a cargar la pantalla.'),
+    movimiento: z.guid('Vuelve a cargar la pantalla.'),
+    tipo: z.enum(['NO_LLEGO', 'LLEGO_INCOMPLETO'], { message: 'Elige si no llegó o si llegó incompleto.' }),
+    recibido: z.union([z.literal(''), z.coerce.number({ message: 'Indica cuánto llegó.' }).positive('Indica cuánto llegó: más que cero.')]),
+    nota: z.string().trim().min(10, 'Cuenta qué pasó en al menos 10 caracteres.').max(500, 'La nota pasa de 500 caracteres.'),
+  })
+  .refine((d) => d.tipo === 'NO_LLEGO' || d.recibido !== '', { message: 'Indica cuánto llegó.', path: ['recibido'] })
+
+/**
+ * Quien pidió el RQ anota que una salida no le llegó, o llegó incompleta
+ * (plan 2, entrega 2.2). La salida del kardex no se toca: la nota es una fila
+ * aparte. Quién puede, lo decide la base (`anotar_conformidad_salida`): quien
+ * registró el RQ, Requerimientos, el supervisor del área o Administración en lo
+ * suyo, nunca Almacén.
+ */
+export async function anotarConformidad(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, ['requerimientos.emitir', 'requerimientos.administracion', 'requerimientos.area'])) {
+    return { ok: false, error: 'La conformidad de una salida la anota quien pidió el requerimiento.' }
+  }
+  const analisis = CONFORMIDAD.safeParse({
+    id: formulario.get('id'),
+    movimiento: formulario.get('movimiento'),
+    tipo: formulario.get('tipo'),
+    recibido: dato(formulario, 'recibido').trim(),
+    nota: dato(formulario, 'nota'),
+  })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+  const d = analisis.data
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('anotar_conformidad_salida', {
+    p_id: d.id,
+    p_movimiento: d.movimiento,
+    p_tipo: d.tipo,
+    p_cantidad_recibida: d.tipo === 'LLEGO_INCOMPLETO' && d.recibido !== '' ? d.recibido : null,
+    p_nota: d.nota,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== d.id) return { ok: false, error: 'La nota no quedó anotada. Recarga la pantalla.' }
+
+  revalidatePath('/requerimientos')
+  revalidatePath('/requerimientos/atencion')
+  return { ok: true, mensaje: 'Anotado. Almacén recibió el aviso.' }
+}
