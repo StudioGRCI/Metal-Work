@@ -101,11 +101,15 @@ begin
             or exists (select 1 from public.requerimientos_materiales r
                         where r.id = c.requerimiento_id and public.puede_ver_area_material(r.area_destino)))
   ),
-  -- Lo que a cada línea le falta llegar: lo pedido menos lo que entró neto y
-  -- menos lo devuelto que ya no se repone (eso no viene más por esta OC).
+  -- Lo que a cada línea le falta llegar: lo pedido menos lo que entró neto,
+  -- menos lo devuelto que ya no se repone (eso no viene más por esta OC) y
+  -- menos lo devuelto que espera reposición: eso ya llegó una vez, y el plazo
+  -- del proveedor se mide hasta la primera vez que llegó todo. Lo que espera
+  -- reposición lo dice la insignia «Espera reposición» de la fila, y la
+  -- reposición no mueve la fecha en que quedó completa.
   lineas as (
     select d.orden_compra_id as oc, d.id, d.cantidad,
-           greatest(d.cantidad - k.sin_reponer - k.neto - coalesce(pv.cantidad, 0), 0) as falta,
+           greatest(d.cantidad - k.sin_reponer - k.por_reponer - k.neto - coalesce(pv.cantidad, 0), 0) as falta,
            coalesce(pv.cantidad, 0) as por_validar,
            coalesce(d.material_id, om.material_id) as material_id
       from public.orden_compra_material_detalles d
@@ -125,7 +129,8 @@ begin
              where ip.orden_compra_id = l.oc and ip.estado = 'PENDIENTE') as ultimo_por_validar,
            (select max(coalesce(ip.dejado_en, m.registrado_en)) from public.movimientos_materiales m
               left join public.ingresos_pendientes_almacen ip on ip.movimiento_id = m.id
-             where m.tipo = 'INGRESO' and m.orden_compra_detalle_id in (select x.id from lineas x where x.oc = l.oc)) as ultimo_ingreso
+             where m.tipo = 'INGRESO' and m.repone_devolucion is null
+               and m.orden_compra_detalle_id in (select x.id from lineas x where x.oc = l.oc)) as ultimo_ingreso
       from lineas l
      group by l.oc
   ),
