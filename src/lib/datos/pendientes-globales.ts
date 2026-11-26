@@ -1021,6 +1021,31 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
     break
   }
 
+  // Calidad (A.1): al área, lo que Calidad le observó y espera su corrección; a
+  // Calidad, lo que el área dice que corrigió y espera su revisión. Cuál le toca
+  // a quien mira lo dice la base (`puede_corregir`), con la misma regla que la
+  // función que escribe; la cuenta del área no pide permiso, y solo corre si
+  // `/calidad` está en el menú del puesto (abajo).
+  const inspeccionesDeCalidad = async (filtro: 'puede_corregir' | 'por_revisar') => {
+    const consulta = supabase.rpc('calidad_inspecciones_visibles', { p_id: null }).select('id')
+    const { data, error } = await (filtro === 'puede_corregir' ? consulta.eq('puede_corregir', true) : consulta.eq('estado', 'CORREGIDA'))
+    if (error) throw new Error('No se pudo consultar el pendiente.')
+    return (data ?? []).length
+  }
+  if (puede(perfil, 'calidad.inspeccionar')) {
+    tareas.push({
+      clave: 'calidad_por_revisar', ruta: '/calidad', tono: 'aviso',
+      texto: n => plural(n, 'corrección de calidad espera tu revisión', 'correcciones de calidad esperan tu revisión'),
+      contar: () => inspeccionesDeCalidad('por_revisar'),
+    })
+  } else {
+    tareas.push({
+      clave: 'calidad_por_corregir', ruta: '/calidad', tono: 'peligro',
+      texto: n => plural(n, 'observación de calidad por corregir', 'observaciones de calidad por corregir'),
+      contar: () => inspeccionesDeCalidad('puede_corregir'),
+    })
+  }
+
   // Un pendiente se cuenta solo si su pantalla está en el menú del puesto: lo
   // que se resuelve donde el puesto ya no entra no es suyo. Así Supervisión,
   // Almacén y Requerimientos dejaron de ver lo que se resolvía en la OT (desde

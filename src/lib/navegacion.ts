@@ -769,7 +769,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       { titulo: 'Por atender', rutas: ['/requerimientos/atencion', '/seguimiento?vista=materiales'] },
       // Al final, el padrón de equipos: Almacén entrega la herramienta y anota
       // ahí quién se la lleva (Plan 16.1).
-      { titulo: 'Almacén', rutas: ['/almacen/kardex', '/almacen/reposicion', '/almacen/stock', '/equipos'] },
+      // Y lo que Calidad le observe a Almacén (A.1), para marcarlo corregido.
+      { titulo: 'Almacén', rutas: ['/almacen/kardex', '/almacen/reposicion', '/almacen/stock', '/equipos', '/calidad'] },
     ],
     telefono: ['/requerimientos/atencion', '/seguimiento?vista=materiales', '/almacen/kardex', '/'],
   },
@@ -936,7 +937,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     grupos: [
       { titulo: 'Por autorizar', rutas: ['/requerimientos/metrado'] },
       { titulo: 'Por código interno', rutas: ['/diseno/planos', '/diseno/materiales', '/diseno/etapas', '/diseno/dxf'] },
-      { titulo: 'Diseño e Ingeniería', rutas: ['/ordenes', '/materiales', '/diseno/informe-semanal', '/diseno/evaluaciones'] },
+      // Al final, lo que Calidad le observa a la etapa de diseño (A.1): lo marca corregido.
+      { titulo: 'Diseño e Ingeniería', rutas: ['/ordenes', '/materiales', '/diseno/informe-semanal', '/diseno/evaluaciones', '/calidad'] },
       // Nace plegado desde el 2026-11-26: con «Reportar» al final, el menú de
       // Diseño no entraba a 760 px. Los catálogos se tocan poco y se abre solo
       // si la pantalla que se abre está dentro.
@@ -950,7 +952,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // stock de Almacén. Los planos ya no los sube: los sube el encargado.
   DISENO_COLABORADOR: {
     grupos: [
-      { titulo: 'Diseño e Ingeniería', rutas: ['/diseno/informe-semanal', '/ordenes'] },
+      { titulo: 'Diseño e Ingeniería', rutas: ['/diseno/informe-semanal', '/ordenes', '/calidad'] },
       { titulo: 'Material', rutas: ['/requerimientos', '/almacen/stock'] },
     ],
     telefono: ['/diseno/informe-semanal', '/ordenes', '/requerimientos', '/'],

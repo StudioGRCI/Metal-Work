@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
@@ -17,7 +18,7 @@ const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
  * Una inspección de calidad: qué se revisó, qué se observó, su recorrido y sus
- * fotos. Calidad y Gerencia la ven siempre; el área, mientras no esté anulada.
+ * fotos. Calidad y Gerencia la ven siempre; el área, también anulada, en lectura.
  * Qué botón le toca a quien mira lo dice la base.
  */
 export default async function PaginaInspeccion({ params }: PageProps<'/calidad/[id]'>) {
@@ -38,14 +39,19 @@ export default async function PaginaInspeccion({ params }: PageProps<'/calidad/[
     ...(r.puede_revisar && r.estado === 'CORREGIDA' ? (['OBSERVADA_DE_NUEVO'] as const) : []),
   ]
   const queSeReviso = r.etapa ? `${r.etapa} · ${r.area}` : r.area
+  // El mismo permiso que pide `/seguimiento/codigo`.
+  const veElCodigo = puede(perfil, ['codigos_internos.seguimiento', 'codigos_internos.area'])
 
   return (
     <>
       <EncabezadoPagina
-        titulo={<span className="tabular">{r.codigo_interno}</span>}
+        titulo={
+          <>
+            Inspección de <span className="tabular">{r.codigo_interno}</span>
+          </>
+        }
         descripcion={queSeReviso}
         migas={[{ titulo: 'Calidad', ruta: '/calidad' }, { titulo: r.codigo_interno }]}
-        acciones={anula && <AnularInspeccion id={r.id} codigo={r.codigo_interno} />}
         estado={<EstadoDelPaso />}
       />
 
@@ -63,6 +69,16 @@ export default async function PaginaInspeccion({ params }: PageProps<'/calidad/[
               <Dato titulo="Etapa">{r.etapa ?? 'Sin etapa: se eligió el área'}</Dato>
               <Dato titulo="Área">{r.area}</Dato>
               <Dato titulo="Revisada">{fechaHora(r.creado_en)}</Dato>
+              {veElCodigo && (
+                <Dato titulo="Código interno">
+                  <Link
+                    href={`/seguimiento/codigo?codigo=${encodeURIComponent(r.codigo_interno)}`}
+                    className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0"
+                  >
+                    Ver el seguimiento de {r.codigo_interno}
+                  </Link>
+                </Dato>
+              )}
             </div>
             {r.observacion && (
               <div>
@@ -82,10 +98,10 @@ export default async function PaginaInspeccion({ params }: PageProps<'/calidad/[
                 <PasosDeLaObservacion inspeccionId={r.id} cuentaId={perfil.id} tipos={tipos} />
               </div>
             )}
-            {r.alcance === 'AREA' && !r.puede_corregir && (
-              <p className="text-xs text-texto-suave" data-alcance-area>
-                La ves porque es de tu área.
-              </p>
+            {anula && (
+              <div className="flex justify-end border-t border-borde pt-3">
+                <AnularInspeccion id={r.id} codigo={r.codigo_interno} />
+              </div>
             )}
           </TarjetaCuerpo>
         </Tarjeta>

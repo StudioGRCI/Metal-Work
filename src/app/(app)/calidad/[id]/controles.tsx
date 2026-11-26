@@ -244,9 +244,7 @@ function FormularioPaso({
         </Campo>
         <section aria-label="Fotos" className="space-y-1">
           <p className="text-xs font-medium text-texto-suave">Fotos{tipo === 'CORREGIDA' ? '' : ' (opcional)'}</p>
-          <p className="text-xs text-texto-suave">
-            {p.fotos} Hasta {MAXIMO_FOTOS_CALIDAD}.
-          </p>
+          <p className="text-xs text-texto-suave">{p.fotos}</p>
           <SelectorFotos
             fotos={fotos}
             alCambiar={setFotos}
@@ -284,7 +282,7 @@ export function AnularInspeccion({ id, codigo }: { id: string; codigo: string })
     <>
       <Boton
         type="button"
-        variante="contornoPeligro"
+        variante="fantasma"
         data-anular-inspeccion
         onClick={() => {
           limpiar()
@@ -292,7 +290,7 @@ export function AnularInspeccion({ id, codigo }: { id: string; codigo: string })
         }}
       >
         <Ban aria-hidden className="size-4" />
-        Anular
+        Anular la inspección
       </Boton>
       <Ventana
         abierta={abierta}

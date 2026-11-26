@@ -1,12 +1,13 @@
 import 'server-only'
 
-import { BUCKET_FOTOS_CALIDAD } from '@/lib/dominio/calidad'
+import { filtrosDeBusqueda } from '@/lib/dominio/busqueda'
+import { BUCKET_FOTOS_CALIDAD, ESTADOS_ABIERTOS } from '@/lib/dominio/calidad'
 import { createClient } from '@/lib/supabase/server'
 
 /*
  * Las inspecciones de calidad (migración 20261126520000). Todo se lee por
  * `calidad_inspecciones_visibles`, que decide qué ve quien pregunta: Calidad y
- * Gerencia todas; cada área las suyas, sin las anuladas. La pantalla no arma ese
+ * Gerencia todas; cada área las suyas, la anulada en lectura. La pantalla no arma ese
  * filtro, y tampoco decide qué botón le toca a quien mira: lo dicen
  * `puede_corregir` y `puede_revisar`, con las mismas reglas que las funciones
  * que escriben.
@@ -70,18 +71,38 @@ function aInspeccion(f: Fila): InspeccionCalidad | null {
   }
 }
 
-/** Cuántas inspecciones trae la lista como mucho: las más recientes. */
+/** Cuántas inspecciones ya cerradas trae la lista como mucho: las más recientes. Las abiertas van todas. */
 export const MAXIMO_INSPECCIONES = 300
 
-/** Las inspecciones que ve quien pregunta, de la más reciente a la más vieja. */
-export async function listarInspecciones(): Promise<InspeccionCalidad[]> {
+/**
+ * Las inspecciones que ve quien pregunta, de la más reciente a la más vieja.
+ * Con `busqueda`, solo las que la llevan en el código, la etapa, el área o la
+ * observación: el filtro va en la base, así que encuentra también las que pasan
+ * del tope de la lista.
+ */
+export async function listarInspecciones(busqueda?: string | null): Promise<InspeccionCalidad[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .rpc('calidad_inspecciones_visibles', { p_id: null })
-    .order('creado_en', { ascending: false })
-    .range(0, MAXIMO_INSPECCIONES - 1)
+  const filtros = filtrosDeBusqueda(['codigo_interno', 'etapa', 'area', 'observacion'], busqueda)
+  const consulta = () => {
+    let c = supabase.rpc('calidad_inspecciones_visibles', { p_id: null })
+    for (const filtro of filtros) c = c.or(filtro)
+    return c
+  }
+  // Lo que espera a alguien se lee entero: con el tope, una observación vieja
+  // sin corregir salía de la lista y de la cifra sin que nadie la cerrara. El
+  // tope es solo para lo que ya quedó.
+  const [abiertas, cerradas] = await Promise.all([
+    consulta().in('estado', [...ESTADOS_ABIERTOS]).order('creado_en', { ascending: false }),
+    consulta()
+      .not('estado', 'in', `(${ESTADOS_ABIERTOS.join(',')})`)
+      .order('creado_en', { ascending: false })
+      .range(0, MAXIMO_INSPECCIONES - 1),
+  ])
+  const error = abiertas.error ?? cerradas.error
   if (error) throw new Error(`No se pudieron leer las inspecciones de calidad: ${error.message}`)
-  return ((data ?? []) as Fila[]).flatMap((f) => aInspeccion(f) ?? [])
+  return ([...(abiertas.data ?? []), ...(cerradas.data ?? [])] as Fila[])
+    .flatMap((f) => aInspeccion(f) ?? [])
+    .sort((x, y) => y.creado_en.localeCompare(x.creado_en))
 }
 
 /** Una foto, con su enlace firmado por una hora. */
@@ -159,7 +180,7 @@ export type AreaParaInspeccionar = { id: string; nombre: string }
 
 /**
  * Lo que Calidad necesita para registrar: los códigos que siguen en la planta,
- * todas sus etapas y las áreas (para el código sin etapas). Pide
+ * todas sus etapas y las áreas de la planta (para el código sin etapas). Pide
  * `calidad.inspeccionar`; quien no lo tiene no la llama.
  */
 export async function loQueSeInspecciona(): Promise<{
@@ -171,7 +192,9 @@ export async function loQueSeInspecciona(): Promise<{
   const [codigos, etapas, areas] = await Promise.all([
     supabase.rpc('calidad_codigos_para_inspeccionar'),
     supabase.rpc('calidad_etapas_del_codigo', { p_codigo: null }),
-    supabase.from('areas').select('id, nombre').eq('activo', true).order('orden_secuencia'),
+    // Para el código sin etapas, solo las áreas de la planta, sin Calidad: la
+    // misma regla que `calidad_inspeccionar`.
+    supabase.from('areas').select('id, nombre').eq('activo', true).eq('es_oficina', false).neq('codigo', 'CAL').order('orden_secuencia'),
   ])
   if (codigos.error) throw new Error(`No se pudieron leer los códigos internos: ${codigos.error.message}`)
   if (etapas.error) throw new Error(`No se pudieron leer las etapas: ${etapas.error.message}`)

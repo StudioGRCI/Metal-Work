@@ -74,14 +74,11 @@ export function RegistrarInspeccion({
   codigos,
   etapas,
   areas,
-  codigoInicial = '',
 }: {
   cuentaId: string
   codigos: CodigoParaInspeccionar[]
   etapas: EtapaParaInspeccionar[]
   areas: AreaParaInspeccionar[]
-  /** El código que se está mirando, para proponerlo. */
-  codigoInicial?: string
 }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
@@ -142,7 +139,6 @@ export function RegistrarInspeccion({
             codigos={codigos}
             etapas={etapas}
             areas={areas}
-            codigoInicial={codigoInicial}
             fotos={envio.fotos}
             setFotos={envio.setFotos}
             alCancelar={cerrar}
@@ -171,7 +167,6 @@ function FormularioInspeccion({
   codigos,
   etapas,
   areas,
-  codigoInicial,
   fotos,
   setFotos,
   alCancelar,
@@ -184,7 +179,6 @@ function FormularioInspeccion({
   codigos: CodigoParaInspeccionar[]
   etapas: EtapaParaInspeccionar[]
   areas: AreaParaInspeccionar[]
-  codigoInicial: string
   fotos: FotoLista[]
   setFotos: Dispatch<SetStateAction<FotoLista[]>>
   alCancelar: () => void
@@ -192,17 +186,24 @@ function FormularioInspeccion({
   enviando: boolean
   error: string | null
 }) {
-  const [codigo, setCodigo] = useState(codigos.some((c) => c.codigo === codigoInicial) ? codigoInicial : '')
+  const [codigo, setCodigo] = useState('')
+  const [etapaId, setEtapaId] = useState('')
   const [resultado, setResultado] = useState('')
   const subiendo = haySubiendo(fotos)
   const fallidas = hayFallidas(fotos)
   const vieja = usePestanaDeLaVersionAnterior()
   const delCodigo = etapas.filter((e) => e.codigo === codigo)
+  // Las etapas de siempre («Trámites», «Entrega») no tienen área: Calidad la elige.
+  const etapaSinArea = delCodigo.find((e) => e.id === etapaId)?.area_id === null
+  const pideArea = codigo !== '' && (delCodigo.length === 0 || etapaSinArea)
   const noConforme = resultado === 'NO_CONFORME'
 
   const errorCodigo = error && DEL_CODIGO.test(error) ? error : null
   const errorEtapa = !errorCodigo && error && DE_LA_ETAPA.test(error) ? error : null
   const errorObservacion = !errorCodigo && !errorEtapa && error && DE_LA_OBSERVACION.test(error) ? error : null
+  // Un rechazo por el área va junto al área cuando se pide; si no, junto a la etapa.
+  const errorArea = errorEtapa && pideArea && /área/i.test(errorEtapa) ? errorEtapa : null
+  const errorDeLaEtapa = errorArea ? null : errorEtapa
   const errorDelPie = errorCodigo || errorEtapa || errorObservacion ? null : error
   useCursorAlRechazo(
     enviando,
@@ -210,9 +211,17 @@ function FormularioInspeccion({
     useCallback(
       () =>
         document.getElementById(
-          errorCodigo ? 'calidad-codigo' : errorEtapa ? 'calidad-etapa' : errorObservacion ? 'calidad-observacion' : 'calidad-error',
+          errorCodigo
+            ? 'calidad-codigo'
+            : errorArea
+              ? 'calidad-area'
+              : errorDeLaEtapa
+                ? 'calidad-etapa'
+                : errorObservacion
+                  ? 'calidad-observacion'
+                  : 'calidad-error',
         ),
-      [errorCodigo, errorEtapa, errorObservacion],
+      [errorCodigo, errorArea, errorDeLaEtapa, errorObservacion],
     ),
   )
   return (
@@ -238,7 +247,10 @@ function FormularioInspeccion({
             marcador="Elige el código"
             marcadorBusqueda="Código, OT, cliente o unidad…"
             valor={codigo}
-            onChange={setCodigo}
+            onChange={(c) => {
+              setCodigo(c)
+              setEtapaId('')
+            }}
             opciones={codigos.map((c) => ({
               valor: c.codigo,
               etiqueta: c.codigo,
@@ -247,17 +259,16 @@ function FormularioInspeccion({
           />
         </Campo>
 
-        {codigo &&
-          (delCodigo.length > 0 ? (
+        {codigo && delCodigo.length > 0 && (
             <Campo
               etiqueta="Etapa que revisaste"
               htmlFor="calidad-etapa"
               requerido
               ayuda="La observación le llega al área de la etapa."
-              error={errorEtapa ?? undefined}
+              error={errorDeLaEtapa ?? undefined}
             >
               {/* Con otro código, otra lista: React no vuelve a aplicar el valor inicial de un select ya montado. */}
-              <Seleccion key={codigo} id="calidad-etapa" name="etapa_id" required defaultValue="">
+              <Seleccion key={codigo} id="calidad-etapa" name="etapa_id" required value={etapaId} onChange={(e) => setEtapaId(e.target.value)}>
                 <option value="" disabled>
                   Elige la etapa
                 </option>
@@ -271,16 +282,21 @@ function FormularioInspeccion({
                 ))}
               </Seleccion>
             </Campo>
-          ) : (
+          )}
+        {pideArea && (
             <Campo
               etiqueta="Área que hizo el trabajo"
               htmlFor="calidad-area"
               requerido
-              ayuda="Este código todavía no tiene etapas en el sistema: elige el área a la que le llega la observación."
+              ayuda={
+                etapaSinArea
+                  ? 'Esta etapa no tiene un área a cargo: elige la que hizo el trabajo, a ella le llega la observación.'
+                  : 'Este código todavía no tiene etapas en el sistema: elige el área a la que le llega la observación.'
+              }
               ayudaEnIcono={false}
-              error={errorEtapa ?? undefined}
+              error={(errorArea ?? (delCodigo.length === 0 ? errorEtapa : null)) ?? undefined}
             >
-              <Seleccion key={codigo} id="calidad-area" name="area_id" required defaultValue="">
+              <Seleccion key={`${codigo}:${etapaId}`} id="calidad-area" name="area_id" required defaultValue="">
                 <option value="" disabled>
                   Elige el área
                 </option>
@@ -291,7 +307,7 @@ function FormularioInspeccion({
                 ))}
               </Seleccion>
             </Campo>
-          ))}
+          )}
 
         <fieldset className="space-y-2">
           <legend className="mb-2 text-xs font-medium text-texto-suave">
@@ -339,7 +355,7 @@ function FormularioInspeccion({
 
         <section aria-label="Fotos" className="space-y-1">
           <p className="text-xs font-medium text-texto-suave">Fotos (opcional)</p>
-          <p className="text-xs text-texto-suave">De lo observado, para que el área lo encuentre sin buscarlo. Hasta {MAXIMO_FOTOS_CALIDAD}.</p>
+          <p className="text-xs text-texto-suave">De lo observado, para que el área lo encuentre sin buscarlo.</p>
           <SelectorFotos
             fotos={fotos}
             alCambiar={setFotos}

@@ -1,6 +1,7 @@
 import { Camera } from 'lucide-react'
 import Link from 'next/link'
 
+import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Vistas } from '@/components/estructura/vistas'
 import { Insignia } from '@/components/ui/etiqueta-estado'
@@ -17,7 +18,7 @@ export const metadata = { title: 'Calidad: inspecciones' }
 
 const VISTAS = [
   { valor: 'abiertas', titulo: 'Abiertas' },
-  { valor: 'todas', titulo: 'Todas' },
+  { valor: 'vigentes', titulo: 'Vigentes' },
   { valor: 'anuladas', titulo: 'Anuladas' },
 ] as const
 type Vista = (typeof VISTAS)[number]['valor']
@@ -37,15 +38,20 @@ export default async function PaginaCalidad({ searchParams }: PageProps<'/calida
   const params = await searchParams
   const pedida = typeof params.vista === 'string' ? params.vista : ''
   const vista: Vista = VISTAS.some((v) => v.valor === pedida) ? (pedida as Vista) : 'abiertas'
+  const busqueda = typeof params.codigo === 'string' ? params.codigo.trim() : ''
 
-  const [inspecciones, paraRegistrar] = await Promise.all([listarInspecciones(), inspecciona ? loQueSeInspecciona() : Promise.resolve(null)])
-  const alTope = inspecciones.length >= MAXIMO_INSPECCIONES
+  const [inspecciones, paraRegistrar] = await Promise.all([
+    listarInspecciones(busqueda),
+    inspecciona ? loQueSeInspecciona() : Promise.resolve(null),
+  ])
+  // Las abiertas van todas; el tope es de las que ya quedaron.
+  const alTope = inspecciones.filter((i) => !abierta(i)).length >= MAXIMO_INSPECCIONES
 
   if (veTodo) {
     const vigentes = inspecciones.filter((i) => i.estado !== 'ANULADA')
     const grupos: Record<Vista, InspeccionCalidad[]> = {
       abiertas: vigentes.filter(abierta),
-      todas: vigentes,
+      vigentes,
       anuladas: inspecciones.filter((i) => i.estado === 'ANULADA'),
     }
     const porRevisar = grupos.abiertas.filter((i) => i.estado === 'CORREGIDA').length
@@ -57,8 +63,8 @@ export default async function PaginaCalidad({ searchParams }: PageProps<'/calida
             inspecciona
               ? porRevisar > 0
                 ? `${porRevisar} ${porRevisar === 1 ? 'corrección espera' : 'correcciones esperan'} tu revisión.`
-                : 'Cada etapa revisada, por código interno. Lo no conforme le llega al área hasta que se corrige.'
-              : 'Lo que Calidad revisó en cada código interno y cómo va lo observado. Solo consulta.'
+                : undefined
+              : 'Solo consulta.'
           }
           ayuda="Calidad elige el código interno y la etapa, marca conforme o no conforme y, si hace falta, pone fotos. Lo no conforme le llega a la cuenta responsable del área (o a sus cuentas, si no tiene); el área lo marca corregido y Calidad lo levanta o lo vuelve a observar. No detiene la etapa siguiente. Una inspección no se borra: si está mal, Calidad la anula con su motivo."
           migas={[{ titulo: 'Calidad' }]}
@@ -67,22 +73,26 @@ export default async function PaginaCalidad({ searchParams }: PageProps<'/calida
           }
           estado={inspecciona ? <EstadoDeLaInspeccion /> : undefined}
         />
-        <Vistas
-          etiqueta="Vista"
-          className="mb-3"
-          vistas={VISTAS.map((v) => ({
-            clave: v.valor,
-            titulo: v.titulo,
-            href: v.valor === 'abiertas' ? '/calidad' : `/calidad?vista=${v.valor}`,
-            activa: vista === v.valor,
-            cuenta: grupos[v.valor].length,
-          }))}
-        />
+        <div className="mb-3 space-y-3">
+          <BuscadorSimple ruta="/calidad" clave="codigo" etiqueta="Buscar inspecciones" marcador="Código interno, etapa o área" />
+          <Vistas
+            etiqueta="Vista"
+            vistas={VISTAS.map((v) => ({
+              clave: v.valor,
+              titulo: v.titulo,
+              href: conBusqueda(v.valor === 'abiertas' ? '/calidad' : `/calidad?vista=${v.valor}`, busqueda),
+              activa: vista === v.valor,
+              cuenta: grupos[v.valor].length,
+            }))}
+          />
+        </div>
         <Tarjeta className="overflow-hidden">
           <TablaDeInspecciones
             inspecciones={grupos[vista]}
             vacio={
-              vista === 'abiertas'
+              busqueda
+                ? { titulo: 'Ninguna con esa búsqueda', descripcion: 'Prueba con otro código interno, etapa o área, o en otra vista.' }
+                : vista === 'abiertas'
                 ? {
                     titulo: 'No hay observaciones abiertas',
                     descripcion: inspecciona
@@ -128,7 +138,7 @@ export default async function PaginaCalidad({ searchParams }: PageProps<'/calida
         </Tarjeta>
         {resto.length > 0 && (
           <Tarjeta className="overflow-hidden">
-            <TarjetaCabecera titulo="Lo demás" descripcion="Lo que espera la revisión de Calidad y lo que ya quedó." />
+            <TarjetaCabecera titulo="Lo demás" ayuda="Lo que espera la revisión de Calidad y lo que ya quedó." />
             <TablaDeInspecciones inspecciones={resto} vacio={{ titulo: 'Nada más', descripcion: '' }} />
           </Tarjeta>
         )}
@@ -138,8 +148,18 @@ export default async function PaginaCalidad({ searchParams }: PageProps<'/calida
   )
 }
 
+/** La dirección de la vista con la búsqueda puesta: cambiar de vista no la borra. */
+function conBusqueda(ruta: string, busqueda: string) {
+  if (!busqueda) return ruta
+  return `${ruta}${ruta.includes('?') ? '&' : '?'}codigo=${encodeURIComponent(busqueda)}`
+}
+
 function Tope() {
-  return <p className="mt-3 text-xs text-texto-suave">Se muestran las {MAXIMO_INSPECCIONES} inspecciones más recientes.</p>
+  return (
+    <p className="mt-3 text-xs text-texto-suave">
+      Van todas las abiertas y las {MAXIMO_INSPECCIONES} cerradas más recientes: para una más vieja, búscala por su código.
+    </p>
+  )
 }
 
 function TablaDeInspecciones({ inspecciones, vacio }: { inspecciones: InspeccionCalidad[]; vacio: { titulo: string; descripcion: string } }) {

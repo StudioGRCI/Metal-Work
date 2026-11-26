@@ -107,8 +107,19 @@ test('Calidad lleva sus inspecciones arriba y consulta los códigos y las OT sin
   assert.ok(!rutasDeTrabajo(permisos, false, 'CALIDAD').has('/seguimiento'))
 })
 
-test('el supervisor ve lo que Calidad le observa a su área, y Diseño no', () => {
-  const supervisor = rutas(menuDe(['reporte_diario.ver'], false, 'SUPERVISOR'))
-  assert.ok(supervisor.includes('/calidad'))
-  assert.ok(!rutas(menuDe(['diseno.codigos'], false, 'DISENO')).includes('/calidad'))
+test('cada puesto de un área de la planta con menú propio ve lo que Calidad le observa, y la oficina no', () => {
+  for (const [puesto, permisos] of [
+    ['SUPERVISOR', ['reporte_diario.ver']],
+    ['DISENO', ['diseno.codigos']],
+    ['DISENO_COLABORADOR', ['diseno.informe_semanal']],
+    ['ALMACENERO', ['almacen.ver']],
+  ]) {
+    const menu = menuDe(permisos, false, puesto)
+    assert.ok(rutas(menu).includes('/calidad'), puesto)
+    assert.ok(menu.flatMap((g) => g.items).some((i) => i.titulo === 'Observaciones de calidad'), puesto)
+    assert.ok(rutasDeTrabajo(permisos, false, puesto).has('/calidad'), `${puesto}: su globo cuenta lo que espera por el área`)
+  }
+  for (const puesto of ['TESORERIA', 'CONTABILIDAD', 'COMPRADOR', 'VENDEDOR']) {
+    assert.ok(!rutas(menuDe([], false, puesto)).includes('/calidad'), puesto)
+  }
 })

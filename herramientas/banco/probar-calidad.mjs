@@ -111,6 +111,15 @@ const SIN_ETAPAS = 'QA-CAL-2'
       [CODIGO, diseno.id],
     )
   }
+  // Como «Entrega» de las etapas de siempre: sin área a cargo, Calidad la elige.
+  const sinArea = await consulta(`select 1 from public.codigo_etapas where codigo_interno = $1 and area_id is null and quitada_en is null`, [CODIGO])
+  if (sinArea.length === 0) {
+    await base.query(
+      `insert into public.codigo_etapas (codigo_interno, orden, nombre, area_id, creado_por)
+       values ($1, (select coalesce(max(orden), 0) + 1 from public.codigo_etapas where codigo_interno = $1), 'Entrega', null, $2)`,
+      [CODIGO, diseno.id],
+    )
+  }
 }
 const [areaPrd] = await consulta(`select id from public.areas where codigo = 'PRD'`)
 
@@ -283,6 +292,13 @@ const avisosDe = (correo, id) =>
 
 // ============================================================ 2. Producción corrige
 {
+  {
+    const { pagina, contexto } = await entrar(CUENTAS.prd)
+    await ir(pagina, `${BASE}/`)
+    const globo = (await pagina.locator('nav a[aria-label^="Observaciones de calidad, "]').first().getAttribute('aria-label').catch(() => null)) ?? ''
+    comprobar(/\d+ pendientes?/.test(globo), `[Producción 1440] su menú dice que tiene observaciones por corregir: «${globo}»`)
+    await contexto.close()
+  }
   comprobar((await avisosDe(CUENTAS.prd, observada?.id)).length === 1, '[Producción] le llegó un aviso de la observación')
   comprobar((await avisosDe(CUENTAS.mtz, observada?.id)).length === 0, '[Maestranza] a Maestranza no le llegó nada')
   const { pagina, contexto, errores, acciones } = await entrar(CUENTAS.prd, CELULAR)
@@ -326,9 +342,13 @@ const avisosDe = (correo, id) =>
   await contexto.close()
 }
 
+let anuladaId = null
 // ============================================================ 4. Calidad vuelve a observar, levanta, registra conforme y anula
 {
   const { pagina, contexto, errores, acciones } = await entrar(CUENTAS.calidad)
+  await ir(pagina, `${BASE}/`)
+  const globo = (await pagina.locator('nav a[aria-label^="Inspecciones de calidad, "]').first().getAttribute('aria-label').catch(() => null)) ?? ''
+  comprobar(/\d+ pendientes?/.test(globo), `[Calidad 1440] su menú cuenta lo que espera su revisión: «${globo}»`)
   await ir(pagina, `${BASE}/calidad/${observada?.id}`)
   comprobar((await pagina.getByRole('button', { name: 'Marcar corregido' }).count()) === 0, '[Calidad 1440] no marca corregido por el área')
   await pagina.screenshot({ path: join(CAPTURAS, 'a1-calidad-ficha-corregida-1440.png'), fullPage: true })
@@ -361,8 +381,26 @@ const avisosDe = (correo, id) =>
   )
   await pagina.screenshot({ path: join(CAPTURAS, 'a1-calidad-ficha-levantada-1440.png'), fullPage: true })
 
-  // Un código sin etapas: se elige el área.
+  // Una etapa sin área a cargo: se pide el área.
   await ir(pagina, `${BASE}/calidad`)
+  await pagina.getByRole('button', { name: 'Registrar inspección' }).click()
+  v = ventanaDe(pagina)
+  await v.waitFor({ timeout: 15000 })
+  await v.locator('#calidad-codigo').click()
+  await pagina.getByPlaceholder('Código, OT, cliente o unidad…').fill(CODIGO)
+  await pagina.getByRole('option', { name: new RegExp(CODIGO) }).click()
+  comprobar((await v.locator('#calidad-area').count()) === 0, '[Calidad 1440] con una etapa de área, no pide el área')
+  const entrega = await v.locator('#calidad-etapa option', { hasText: 'Entrega' }).first().getAttribute('value')
+  await v.locator('#calidad-etapa').selectOption(entrega ?? '')
+  comprobar((await v.locator('#calidad-area').count()) === 1, '[Calidad 1440] la etapa sin área pide el área que hizo el trabajo')
+  const areasOfrecidas = await v.locator('#calidad-area option').allInnerTexts()
+  comprobar(
+    areasOfrecidas.includes('Producción') && !areasOfrecidas.some((a) => /Calidad|Gerencia|Tesorería|Administración/.test(a)),
+    `[Calidad 1440] ofrece solo áreas de la planta, sin Calidad: ${areasOfrecidas.join(', ')}`,
+  )
+  await v.getByRole('button', { name: 'Cancelar' }).click()
+
+  // Un código sin etapas: se elige el área.
   await pagina.getByRole('button', { name: 'Registrar inspección' }).click()
   v = ventanaDe(pagina)
   await v.waitFor({ timeout: 15000 })
@@ -393,14 +431,27 @@ const avisosDe = (correo, id) =>
   const [anulada] = await inspecciones('i.id = $1', [conforme?.id])
   comprobar(anulada?.estado === 'ANULADA' && anulada?.motivo_anulacion === 'Se registró en el código equivocado.' && acciones.n - antesDeAnular === 1, `[Calidad 1440] la anula con su motivo, con un solo envío: ${acciones.n - antesDeAnular}`)
   comprobar((await consulta(`select 1 from public.calidad_inspecciones where id = $1`, [conforme?.id])).length === 1, '[Calidad 1440] la anulada sigue en la base: no se borra')
+  anuladaId = conforme?.id
   comprobar(errores.length === 0, `[Calidad 1440] sin errores de consola ${errores.join(' | ')}`)
+  await contexto.close()
+}
+
+// ============================================================ 4a. El área ve la anulada, en lectura
+{
+  const { pagina, contexto } = await entrar(CUENTAS.mtz, CELULAR)
+  await ir(pagina, `${BASE}/calidad/${anuladaId}`)
+  const cuerpo = limpio(await pagina.locator('main').innerText())
+  comprobar(
+    /Anulada/.test(cuerpo) && /código equivocado/.test(cuerpo) && (await pagina.getByRole('button', { name: /Marcar corregido|Anular/ }).count()) === 0,
+    `[Maestranza 390] abre la anulada de su área, con su motivo y sin botones: «${cuerpo.slice(0, 120)}»`,
+  )
   await contexto.close()
 }
 
 // ============================================================ 4b. Calidad en el teléfono
 {
   const { pagina, contexto } = await entrar(CUENTAS.calidad, CELULAR)
-  await ir(pagina, `${BASE}/calidad?vista=todas`)
+  await ir(pagina, `${BASE}/calidad?vista=vigentes`)
   await pagina.screenshot({ path: join(CAPTURAS, 'a1-calidad-lista-390.png'), fullPage: true })
   await pagina.getByRole('button', { name: 'Registrar inspección' }).click()
   const v = ventanaDe(pagina)
@@ -416,9 +467,15 @@ const avisosDe = (correo, id) =>
 // ============================================================ 5. Gerencia consulta
 {
   const { pagina, contexto, errores } = await entrar(CUENTAS.gerencia)
-  await ir(pagina, `${BASE}/calidad?vista=todas`)
+  await ir(pagina, `${BASE}/calidad?vista=vigentes`)
   comprobar((await pagina.locator(`[data-inspeccion-calidad="${observada?.id}"]`).count()) === 1, '[Gerencia 1440] ve las inspecciones')
   comprobar((await pagina.getByRole('button', { name: 'Registrar inspección' }).count()) === 0, '[Gerencia 1440] no registra')
+  await ir(pagina, `${BASE}/calidad?vista=vigentes&codigo=${SIN_ETAPAS}`)
+  comprobar(
+    (await pagina.locator(`[data-inspeccion-calidad="${observada?.id}"]`).count()) === 0 &&
+      (await pagina.getByRole('searchbox').or(pagina.getByLabel('Buscar inspecciones')).count()) > 0,
+    `[Gerencia 1440] busca por código: con ${SIN_ETAPAS}, la de ${CODIGO} no sale`,
+  )
   await ir(pagina, `${BASE}/calidad/${observada?.id}`)
   comprobar(
     (await pagina.getByRole('button', { name: /Anular|Levantar|Volver a observar|Marcar corregido/ }).count()) === 0,
@@ -429,11 +486,12 @@ const avisosDe = (correo, id) =>
   await contexto.close()
 }
 
-// ============================================================ 6. Diseño no ve
+// ============================================================ 6. Diseño no ve la de otra área
 {
   const { pagina, contexto } = await entrar(CUENTAS.diseno)
   await ir(pagina, `${BASE}/`)
-  comprobar(!/calidad/i.test(await textoDelMenu(pagina)), '[Diseño 1440] Calidad no está en su menú')
+  const menu = await textoDelMenu(pagina)
+  comprobar(/Observaciones de calidad/.test(menu) && !/Inspecciones de calidad/.test(menu), '[Diseño 1440] tiene las observaciones de su área en el menú, no las inspecciones')
   await ir(pagina, `${BASE}/calidad/${observada?.id}`)
   const cuerpo = limpio(await pagina.locator('main').innerText())
   comprobar(!cuerpo.includes(OBSERVACION) && (await pagina.locator('[data-recorrido]').count()) === 0, `[Diseño 1440] la ficha de otra área no existe para él: «${cuerpo.slice(0, 90)}»`)

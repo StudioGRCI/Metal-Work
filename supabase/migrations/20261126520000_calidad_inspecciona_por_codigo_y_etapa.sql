@@ -3,10 +3,12 @@
 -- -----------------------------------------------------------------------------
 -- DKS pidió el 2026-11-26 (plan «Las demás áreas», entrega A.1) que Calidad
 -- tenga lo mínimo para trabajar en el sistema. El SIG no tiene todavía un
--- formato de Calidad ni su numeración (docs/ANALISIS-ONEDRIVE.md: solo el
--- flujo «Calidad revisa ─ no conforme → el área corrige» y la etapa 13,
--- «Pruebas de la unidad · Control de calidad»), así que se propuso lo mínimo y
--- DKS lo aceptó con un «ok»:
+-- formato de inspección de Calidad ni su numeración (docs/ANALISIS-ONEDRIVE.md:
+-- el flujo «Calidad revisa ─ no conforme → el área corrige», la etapa 13,
+-- «Pruebas de la unidad · Control de calidad», la columna «controles de
+-- calidad» del cronograma de cada código, y MW-FOR-MTZ-2, que es el control de
+-- la materia prima que recibe Maestranza, no de la etapa), así que se propuso
+-- lo mínimo y DKS lo aceptó con un «ok»:
 --
 --   * EL PUESTO YA EXISTÍA (rol CALIDAD, «Control de calidad»), con su menú de
 --     consulta. Se le suma registrar inspecciones y ver los códigos internos
@@ -25,8 +27,8 @@
 --     formato será MW-FOR-CAL-1) y NO SE BORRA: Calidad la anula con su motivo
 --     y queda como evidencia.
 --   * QUIÉN VE: Calidad todas; Gerencia todas, en consulta (calidad.ver); cada
---     área las suyas, sin las anuladas. Las pantallas nombran el puesto, no la
---     persona (migración 109).
+--     área las suyas, la anulada en lectura. Las pantallas nombran el puesto, no
+--     la persona (migración 109).
 --
 -- Lo que la migración 094 retiró (ot_inspecciones, ot_inspeccion_items y los
 -- permisos calidad.ver y calidad.inspeccionar) era una inspección por OT con
@@ -223,8 +225,12 @@ alter table public.calidad_fotos enable row level security;
 do $$ begin
   if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'calidad_inspecciones' and policyname = 'ver_calidad_inspecciones') then
     create policy ver_calidad_inspecciones on public.calidad_inspecciones for select to authenticated
-      using ((select public.puede_ver_toda_la_calidad())
-             or (estado <> 'ANULADA' and public.calidad_es_del_area(area_id)));
+      using ((select public.puede_ver_toda_la_calidad()) or public.calidad_es_del_area(area_id));
+  else
+    -- El área ve también la anulada, en lectura: el aviso de la anulación la
+    -- lleva a la ficha, y sin ella el enlace (y los de antes) no abría nada.
+    alter policy ver_calidad_inspecciones on public.calidad_inspecciones
+      using ((select public.puede_ver_toda_la_calidad()) or public.calidad_es_del_area(area_id));
   end if;
   -- Quien ve la inspección ve su recorrido y sus fotos: la consulta pasa por la política de arriba.
   if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'calidad_inspeccion_pasos' and policyname = 'ver_calidad_inspeccion_pasos') then
@@ -257,10 +263,11 @@ $$;
 revoke all on function public.calidad_foto_anotada(text) from public, anon;
 grant execute on function public.calidad_foto_anotada(text) to authenticated;
 
--- La ruta es {cuenta}/{inspección}/{foto}: cada cuenta sube a su carpeta. Sube
--- quien inspecciona y quien corrige (una cuenta activa con área o responsable de
--- una). La foto la ve quien la subió y quien ve la inspección que la nombra; una
--- suelta la retira su dueño mientras nadie la nombre.
+-- La ruta es {cuenta}/{inspección}/{foto}: cada cuenta activa sube solo a su
+-- carpeta, y la foto cuenta solo cuando la anota `calidad_anotar_fotos`, que
+-- corre dentro de las funciones que exigen ser Calidad o del área. La foto la ve
+-- quien la subió y quien ve la inspección que la nombra; una suelta la retira su
+-- dueño mientras nadie la nombre.
 do $$ begin
   if not exists (select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects' and policyname = 'calidad_subir_foto') then
     create policy calidad_subir_foto on storage.objects for insert to authenticated with check (
@@ -413,11 +420,11 @@ declare
 begin
   select a.* into v_area from public.areas a join public.calidad_inspecciones i on i.area_id = a.id where i.id = p_inspeccion;
   v_jefe := public.responsable_del_area(v_area.codigo);
-  if v_jefe is not null then
-    if v_jefe is distinct from v_yo then
-      insert into public.notificaciones (usuario_id, titulo, cuerpo, ruta, origen_tabla, origen_id)
-      values (v_jefe, left(p_titulo, 200), left(p_cuerpo, 500), '/calidad/' || p_inspeccion::text, 'calidad_inspecciones', p_inspeccion);
-    end if;
+  -- Si el responsable es quien registra, no se avisa a sí mismo: va a las demás
+  -- cuentas del área, y la pantalla no dice «le llegó al responsable».
+  if v_jefe is not null and v_jefe is distinct from v_yo then
+    insert into public.notificaciones (usuario_id, titulo, cuerpo, ruta, origen_tabla, origen_id)
+    values (v_jefe, left(p_titulo, 200), left(p_cuerpo, 500), '/calidad/' || p_inspeccion::text, 'calidad_inspecciones', p_inspeccion);
     return 'RESPONSABLE';
   end if;
   insert into public.notificaciones (usuario_id, titulo, cuerpo, ruta, origen_tabla, origen_id)
@@ -426,7 +433,6 @@ begin
    where u.activo and u.area_id = v_area.id and u.id is distinct from v_yo;
   get diagnostics v_n = row_count;
   if v_n > 0 then return 'AREA'; end if;
-  if exists (select 1 from public.usuarios u where u.activo and u.area_id = v_area.id) then return 'AREA'; end if;
   select count(*) into v_n from public.notificaciones n
    where n.origen_tabla = 'calidad_inspecciones' and n.origen_id = p_inspeccion;
   perform public.avisar_a_permiso('calidad.ver', left(p_titulo || ' (el área no tiene cuenta activa)', 200), p_cuerpo,
@@ -453,6 +459,7 @@ declare
   v_actual  public.calidad_inspecciones%rowtype;
   v_etapa   public.codigo_etapas%rowtype;
   v_area    public.areas%rowtype;
+  v_eligio  boolean := true;  -- el área la eligió Calidad (no la trae la etapa)
   v_que     text;
   v_avisado text := 'NADIE';
 begin
@@ -465,13 +472,22 @@ begin
   select * into v_actual from public.calidad_inspecciones where id = p_id;
   if found then
     if v_actual.registrado_por = v_yo and public.mismo_envio(p_id, 'INSPECCION_CALIDAD', v_envio) then
+      -- A quién llegó la primera vez lo dicen los avisos de ese momento.
       return query select v_actual.id,
         case when v_actual.resultado = 'CONFORME' then 'NADIE'
+             when exists (select 1 from public.notificaciones n join public.areas a on a.jefe_id = n.usuario_id and a.id = v_actual.area_id
+                           where n.origen_tabla = 'calidad_inspecciones' and n.origen_id = p_id
+                             and n.creado_en <= v_actual.creado_en + interval '1 minute')
+               then 'RESPONSABLE'
              when exists (select 1 from public.notificaciones n join public.usuarios u on u.id = n.usuario_id
                            where n.origen_tabla = 'calidad_inspecciones' and n.origen_id = p_id
-                             and u.id = public.responsable_del_area((select a.codigo from public.areas a where a.id = v_actual.area_id)))
-               then 'RESPONSABLE'
-             else 'AREA' end;
+                             and n.creado_en <= v_actual.creado_en + interval '1 minute' and u.area_id = v_actual.area_id)
+               then 'AREA'
+             when exists (select 1 from public.notificaciones n
+                           where n.origen_tabla = 'calidad_inspecciones' and n.origen_id = p_id
+                             and n.creado_en <= v_actual.creado_en + interval '1 minute')
+               then 'GERENCIA'
+             else 'NADIE' end;
       return;
     end if;
     if v_actual.registrado_por = v_yo then
@@ -494,6 +510,7 @@ begin
         raise exception 'La etapa «%» es de otra área: la observación va al área de la etapa.', v_etapa.nombre using errcode = 'check_violation';
       end if;
       p_area := v_etapa.area_id;
+      v_eligio := false;
     end if;
   elsif exists (select 1 from public.codigo_etapas e where e.codigo_interno = v_codigo and e.quitada_en is null) then
     raise exception 'Elige la etapa de % que inspeccionaste.', v_codigo using errcode = 'check_violation';
@@ -501,6 +518,12 @@ begin
   select * into v_area from public.areas where id = p_area and activo;
   if not found then
     raise exception 'Elige el área que hizo el trabajo.' using errcode = 'check_violation';
+  end if;
+  -- Elegida a mano, solo un área de la planta (no de oficina) y nunca Calidad:
+  -- el aviso iría a quien no hizo el trabajo. La etapa de Diseño manda sobre esto.
+  if v_eligio and (v_area.es_oficina or v_area.codigo = 'CAL') then
+    raise exception 'Elige el área de la planta que hizo el trabajo: % no hace el trabajo que se inspecciona.', v_area.nombre
+      using errcode = 'check_violation';
   end if;
   if p_resultado is null or p_resultado not in ('CONFORME', 'NO_CONFORME') then
     raise exception 'Marca si la etapa está conforme o no conforme.' using errcode = 'check_violation';
@@ -564,7 +587,10 @@ begin
                           case when v_actual.tipo = 'CORREGIDA' then 'CALIDAD' else 'AREA' end;
       return;
     end if;
-    raise exception 'Eso ya quedó registrado la primera vez que lo enviaste: lo que cambiaste después no se guardó.' using errcode = 'check_violation';
+    if v_actual.registrado_por = v_yo then
+      raise exception 'Eso ya quedó registrado la primera vez que lo enviaste: lo que cambiaste después no se guardó.' using errcode = 'check_violation';
+    end if;
+    raise exception 'Ese paso ya existe con otros datos: vuelve a abrir la ficha.' using errcode = 'unique_violation';
   end if;
 
   select * into v_ins from public.calidad_inspecciones where id = p_inspeccion for update;
@@ -716,7 +742,7 @@ language sql stable security definer set search_path to 'public' rows 200 as $$
     left join public.usuarios an on an.id = v.anulado_por
     left join lateral (select p.tipo, p.creado_en from public.calidad_inspeccion_pasos p
                         where p.inspeccion_id = v.id order by p.creado_en desc limit 1) up on true
-   where v.todo or (v.del_area and v.estado <> 'ANULADA')
+   where v.todo or v.del_area
    order by v.creado_en desc;
 $$;
 comment on function public.calidad_inspecciones_visibles(uuid) is

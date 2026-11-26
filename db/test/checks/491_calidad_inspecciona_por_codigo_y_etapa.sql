@@ -36,7 +36,7 @@ begin
   perform test.afirmar(not exists (select 1 from public.usuarios u join public.areas a on a.id = u.area_id
                                     where a.codigo = 'MKT' and u.activo),
     'Marketing no tiene cuentas activas en la base de prueba');
-  foreach v in array array['PRD', 'MTZ', 'MKT', 'CAL'] loop
+  foreach v in array array['PRD', 'MTZ', 'MKT', 'CAL', 'ACB'] loop
     perform set_config('prueba.area_' || lower(v), (select id::text from public.areas where codigo = v), true);
   end loop;
 
@@ -44,7 +44,10 @@ begin
   insert into public.codigo_etapas (codigo_interno, orden, nombre, area_id, inicio_real, creado_por)
   values ('CHK491_A', 1, 'Ensamblado', current_setting('prueba.area_prd')::uuid, current_date - 5, current_setting('prueba.diseno')::uuid),
          ('CHK491_A', 2, 'Habilitado', current_setting('prueba.area_mtz')::uuid, null, current_setting('prueba.diseno')::uuid),
-         ('CHK491_A', 3, 'Rotulado', current_setting('prueba.area_mkt')::uuid, null, current_setting('prueba.diseno')::uuid);
+         ('CHK491_A', 3, 'Rotulado', current_setting('prueba.area_mkt')::uuid, null, current_setting('prueba.diseno')::uuid),
+         -- Como «Trámites» y «Entrega» de las etapas de siempre: sin área a cargo.
+         ('CHK491_A', 4, 'Entrega', null, null, current_setting('prueba.diseno')::uuid);
+  perform set_config('prueba.etapa_sin_area', (select id::text from public.codigo_etapas where codigo_interno = 'CHK491_A' and orden = 4), true);
   perform set_config('prueba.etapa_prd', (select id::text from public.codigo_etapas where codigo_interno = 'CHK491_A' and orden = 1), true);
   perform set_config('prueba.etapa_mtz', (select id::text from public.codigo_etapas where codigo_interno = 'CHK491_A' and orden = 2), true);
   perform set_config('prueba.etapa_mkt', (select id::text from public.codigo_etapas where codigo_interno = 'CHK491_A' and orden = 3), true);
@@ -75,6 +78,7 @@ begin
   perform set_config('prueba.i2', gen_random_uuid()::text, true);
   perform set_config('prueba.i3', gen_random_uuid()::text, true);
   perform set_config('prueba.i4', gen_random_uuid()::text, true);
+  perform set_config('prueba.i5', gen_random_uuid()::text, true);
   perform set_config('prueba.f1', current_setting('prueba.calidad') || '/' || current_setting('prueba.i1') || '/' || gen_random_uuid() || '.jpg', true);
   perform set_config('prueba.f2', current_setting('prueba.operario_prd') || '/' || current_setting('prueba.i1') || '/' || gen_random_uuid() || '.webp', true);
 end $$;
@@ -140,10 +144,10 @@ do $$ begin
     'Calidad ve los dos códigos con OT abierta');
   perform test.afirmar(not exists (select 1 from public.calidad_codigos_para_inspeccionar() where codigo = 'CHK491_C'),
     'el código ya entregado no se ofrece');
-  perform test.afirmar((select etapas from public.calidad_codigos_para_inspeccionar() where codigo = 'CHK491_A') = 3
+  perform test.afirmar((select etapas from public.calidad_codigos_para_inspeccionar() where codigo = 'CHK491_A') = 4
     and (select etapas from public.calidad_codigos_para_inspeccionar() where codigo = 'CHK491_B') = 0,
     'cada código dice cuántas etapas tiene');
-  perform test.afirmar((select count(*) from public.calidad_etapas_del_codigo('chk491_a')) = 3
+  perform test.afirmar((select count(*) from public.calidad_etapas_del_codigo('chk491_a')) = 4
     and (select area from public.calidad_etapas_del_codigo('CHK491_A') where orden = 1) = (select nombre from public.areas where codigo = 'PRD'),
     'las etapas del código salen con su área, escriba el código como lo escriba');
 end $$;
@@ -192,6 +196,14 @@ select test.debe_fallar(pg_temp.inspeccionar('i1', 'CHK491_C', null, 'area_prd',
   'un código ya entregado no se inspecciona', 'Elige un código');
 select test.debe_fallar(pg_temp.inspeccionar('i1', 'CHK491_B', null, null, 'CONFORME', null, null),
   'un código sin etapas pide el área', 'Elige el área');
+select test.debe_fallar(pg_temp.inspeccionar('i1', 'CHK491_B', null, 'area_mkt', 'NO_CONFORME', 'Soldadura con poros en el larguero', null),
+  'elegida a mano, un área de oficina no entra (el aviso iría a quien no hizo el trabajo)', 'Elige el área de la planta');
+select test.debe_fallar(pg_temp.inspeccionar('i1', 'CHK491_B', null, 'area_cal', 'NO_CONFORME', 'Soldadura con poros en el larguero', null),
+  'elegida a mano, Calidad no se observa a sí misma', 'Elige el área de la planta');
+select test.debe_fallar(pg_temp.inspeccionar('i5', 'CHK491_A', 'etapa_sin_area', null, 'CONFORME', null, null),
+  'una etapa sin área a cargo pide el área', 'Elige el área que hizo');
+select test.debe_fallar(pg_temp.inspeccionar('i5', 'CHK491_A', 'etapa_sin_area', 'area_mkt', 'CONFORME', null, null),
+  'en la etapa sin área, la elegida también es de la planta', 'Elige el área de la planta');
 
 do $$
 declare r record;
@@ -210,6 +222,13 @@ begin
   select * into r from public.calidad_inspeccionar(current_setting('prueba.i2')::uuid, 'CHK491_B', null, current_setting('prueba.area_mtz')::uuid,
     'CONFORME', '', '[]');
   perform test.afirmar(r.avisado = 'NADIE', 'lo conforme no avisa a nadie');
+  -- La etapa sin área, con el área que eligió Calidad: entra con esa área.
+  select * into r from public.calidad_inspeccionar(current_setting('prueba.i5')::uuid, 'CHK491_A',
+    current_setting('prueba.etapa_sin_area')::uuid, current_setting('prueba.area_acb')::uuid, 'CONFORME', '', '[]');
+  perform test.afirmar(r.inspeccion = current_setting('prueba.i5')::uuid
+    and (select area_codigo from public.calidad_inspecciones_visibles(current_setting('prueba.i5')::uuid)) = 'ACB'
+    and (select etapa from public.calidad_inspecciones_visibles(current_setting('prueba.i5')::uuid)) = 'Entrega',
+    'la etapa sin área entra con el área que eligió Calidad');
 end $$;
 reset role;
 
@@ -270,10 +289,10 @@ select test.afirmar((select count(*) from public.calidad_inspecciones) = 0
 reset role;
 select pg_temp.como('gerente');
 set local role authenticated;
-select test.afirmar((select count(*) from public.calidad_inspecciones_visibles(null)) = 2
+select test.afirmar((select count(*) from public.calidad_inspecciones_visibles(null)) = 3
   and (select count(*) from public.calidad_fotos) = 1
   and not (select bool_or(puede_revisar or puede_corregir) from public.calidad_inspecciones_visibles(null)),
-  'Gerencia ve las dos con su foto, sin botones');
+  'Gerencia ve las tres con su foto, sin botones');
 reset role;
 
 -- ============================================ 5. Corregir, volver a observar, levantar
@@ -349,6 +368,12 @@ select test.afirmar((select avisado from public.calidad_inspeccionar(current_set
 select test.afirmar((select avisado from public.calidad_inspeccionar(current_setting('prueba.i4')::uuid, 'CHK491_A',
   current_setting('prueba.etapa_mkt')::uuid, null, 'NO_CONFORME', 'El rotulado no sigue el diseño', '[]')) = 'GERENCIA',
   'si el área no tiene cuenta activa, el aviso le llega a Gerencia');
+-- El mismo envío otra vez (se perdió la respuesta) dice a quién llegó de verdad.
+select test.afirmar((select avisado from public.calidad_inspeccionar(current_setting('prueba.i3')::uuid, 'CHK491_A',
+  current_setting('prueba.etapa_prd')::uuid, null, 'NO_CONFORME', 'Falta el refuerzo del travesaño', '[]')) = 'RESPONSABLE'
+  and (select avisado from public.calidad_inspeccionar(current_setting('prueba.i4')::uuid, 'CHK491_A',
+  current_setting('prueba.etapa_mkt')::uuid, null, 'NO_CONFORME', 'El rotulado no sigue el diseño', '[]')) = 'GERENCIA',
+  'el reenvío idéntico repite a quién llegó (responsable o Gerencia), sin otro aviso');
 reset role;
 select test.afirmar(pg_temp.avisos('sup_prd', 'i3') = 1 and pg_temp.avisos('operario_prd', 'i3') = 0,
   'solo el responsable recibió la observación con responsable');
@@ -406,9 +431,12 @@ select test.debe_fallar(format('update public.calidad_inspecciones set motivo_an
   'una anulada queda congelada', 'anulada');
 select pg_temp.como('sup_prd');
 set local role authenticated;
-select test.afirmar(not exists (select 1 from public.calidad_inspecciones_visibles(null) where id = current_setting('prueba.i3')::uuid)
-  and not exists (select 1 from public.calidad_inspecciones where id = current_setting('prueba.i3')::uuid),
-  'el área ya no ve la anulada');
+-- El aviso de la anulación lleva a la ficha: el área la ve, anulada y sin botones.
+select test.afirmar((select estado from public.calidad_inspecciones_visibles(null) where id = current_setting('prueba.i3')::uuid) = 'ANULADA'
+  and (select not puede_corregir and not puede_revisar and motivo_anulacion is not null
+         from public.calidad_inspecciones_visibles(current_setting('prueba.i3')::uuid))
+  and exists (select 1 from public.calidad_inspecciones where id = current_setting('prueba.i3')::uuid),
+  'el área ve la anulada, con su motivo y sin botones (el aviso no lleva a una ficha vacía)');
 reset role;
 select pg_temp.como('gerente');
 set local role authenticated;
