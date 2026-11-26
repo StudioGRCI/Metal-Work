@@ -90,10 +90,12 @@ declare
   v_codigo text := replace(replace(replace(replace(replace(replace(p_codigo, '%', '%25'), '&', '%26'), '#', '%23'), '+', '%2B'), '/', '%2F'), ' ', '+');
   v_filas integer;
 begin
-  insert into public.notificaciones (usuario_id, titulo, cuerpo, ruta, origen_tabla, origen_id)
+  -- Con la hora de cada aviso, no la de la corrida: la campana los ordena
+  -- como salieron, sin mezclar los de la misma revisión.
+  insert into public.notificaciones (usuario_id, titulo, cuerpo, ruta, origen_tabla, origen_id, creado_en)
   select distinct on (u.id) u.id, p_titulo, p_cuerpo,
          case when x.rrhh then '/rrhh/tiempos-de-entrega/codigo?codigo=' || v_codigo else '/planos?q=' || v_codigo end,
-         p_tabla, p_id
+         p_tabla, p_id, clock_timestamp()
     from public.usuarios u
     cross join lateral (
       select exists (select 1 from public.roles_permisos rp where rp.rol_id = u.rol_id
@@ -136,6 +138,8 @@ declare
   v_hoy date := coalesce(p_hoy, current_date);
   e record;
   v_quien text;
+  v_lleva text;
+  v_nuevas text;
   v_cuando text;
   v_ultimo date;
   v_n integer;
@@ -178,7 +182,6 @@ begin
       -- avisado se anota por cada una con su fecha, no por la de arriba: si la
       -- peor se termina, la que queda ya estaba avisada y no vuelve a salir.
       select distinct on (p.raiz) p.*,
-             count(*) over (partition by p.raiz) as cuantas,
              (select array_agg(q.id order by q.id) from pendientes q
                where q.raiz = p.raiz and q.semaforo = p.semaforo) as cubre,
              (select array_agg(q.fin_plan order by q.id) from pendientes q
@@ -188,7 +191,7 @@ begin
     )
     select w.raiz as id, w.codigo, r.nombre as etapa, r.orden,
            case when w.id <> w.raiz then w.nombre end as subetapa,
-           w.cuantas, w.area_id, w.area, w.fin_plan, w.semaforo, w.dias_habiles, w.cubre, w.cubre_fin,
+           w.area_id, w.area, w.fin_plan, w.semaforo, w.dias_habiles, w.cubre, w.cubre_fin,
            coalesce(
              (select tr.apellidos || ', ' || tr.nombres from public.etapa_responsables er
                 join public.trabajadores tr on tr.id = er.trabajador_id and tr.activo
@@ -200,10 +203,12 @@ begin
       join public.codigo_etapas r on r.id = w.raiz
      order by w.codigo, r.orden
   loop
-    v_quien := coalesce('La lleva ' || e.lleva || '.', 'Nadie la tiene a cargo todavía.')
+    -- «y N más» cuenta solo las del mismo color: en un aviso de vencida, las vencidas.
+    v_lleva := coalesce('La lleva ' || e.lleva || '.', 'Nadie la tiene a cargo todavía.');
+    v_quien := v_lleva
       || case when e.subetapa is not null
               then ' Por la subetapa «' || e.subetapa || '»'
-                   || case when e.cuantas > 1 then ' y ' || (e.cuantas - 1) || ' más' else '' end || '.'
+                   || case when cardinality(e.cubre) > 1 then ' y ' || (cardinality(e.cubre) - 1) || ' más' else '' end || '.'
               else '' end;
 
     if e.semaforo = 'AMBAR' then
@@ -227,10 +232,23 @@ begin
     elsif exists (select 1 from unnest(e.cubre, e.cubre_fin) c(id, fin)
                    where not exists (select 1 from public.tiempos_entrega_avisos a
                                       where a.etapa_id = c.id and a.tipo = 'VENCIDA' and a.fin_plan = c.fin)) then
-      -- Recién vencida (ella o una subetapa que no se había avisado): también a Gerencia.
+      -- Recién vencida (ella o una subetapa que no se había avisado): también a
+      -- Gerencia. Si la etapa ya estaba avisada por otra, el aviso nombra la que
+      -- es noticia, no repite el texto del anterior.
+      select string_agg('«' || s.nombre || '» el ' || to_char(c.fin, 'DD/MM/YYYY'), ', ' order by c.fin, s.orden)
+        into v_nuevas
+        from unnest(e.cubre, e.cubre_fin) c(id, fin)
+        join public.codigo_etapas s on s.id = c.id
+       where not exists (select 1 from public.tiempos_entrega_avisos a
+                          where a.etapa_id = c.id and a.tipo = 'VENCIDA' and a.fin_plan = c.fin);
       v_n := public.avisar_tiempos_de_entrega(e.area_id, e.codigo,
                'Vencida: ' || e.codigo || ' · ' || e.etapa,
-               'Venció el ' || to_char(e.fin_plan, 'DD/MM/YYYY') || coalesce(' (' || e.area || ')', '') || '. ' || v_quien,
+               case when exists (select 1 from unnest(e.cubre, e.cubre_fin) c(id, fin)
+                                   join public.tiempos_entrega_avisos a
+                                     on a.etapa_id = c.id and a.tipo = 'VENCIDA' and a.fin_plan = c.fin)
+                    then 'También venció ' || v_nuevas || coalesce(' (' || e.area || ')', '') || '. ' || v_lleva
+                    else 'Venció el ' || to_char(e.fin_plan, 'DD/MM/YYYY') || coalesce(' (' || e.area || ')', '') || '. ' || v_quien
+               end,
                'codigo_etapas', e.id, true);
       insert into public.tiempos_entrega_avisos (etapa_id, tipo, fin_plan, fecha, avisados)
       select c.id, 'VENCIDA', c.fin, v_hoy, v_n from unnest(e.cubre, e.cubre_fin) c(id, fin)

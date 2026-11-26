@@ -193,11 +193,23 @@ select test.afirmar(
   and exists (select 1 from public.notificaciones n where n.titulo = 'Por vencer: CHK476_S · Mañana' and n.cuerpo like 'Vence mañana%'),
   'el aviso nombra la peor subetapa, y el de mañana dice «Vence mañana»');
 update public.codigo_etapas set fin_real = current_date - 1 where id = '47600000-0000-4000-8000-0000000000f1';
+-- La revisión y lo que dejó, en sentencias aparte: una sola no ve lo que la función insertó.
+select set_config('prueba.vencidas', (select r.avisos::text from public.revisar_tiempos_de_entrega(current_setting('prueba.hoy')::date) r where r.tipo = 'VENCIDA'), true);
 select test.afirmar(
-  (select r.avisos = 0 from public.revisar_tiempos_de_entrega(current_setting('prueba.hoy')::date) r where r.tipo = 'VENCIDA')
+  current_setting('prueba.vencidas') = '0'
   and (select count(*) = 1 from public.notificaciones n where n.titulo = 'Vencida: CHK476_S · Arriba'
           and n.usuario_id = current_setting('prueba.gerente_gge')::uuid),
   'terminada la peor subetapa, la otra ya estaba avisada: no sale otra «Vencida»');
+-- Si después vence otra subetapa, sí avisa, y nombra la nueva en vez de repetir el texto.
+insert into public.codigo_etapas (id, codigo_interno, orden, nombre, area_id, fin_plan, padre_id, de_area, creado_por)
+values ('47600000-0000-4000-8000-0000000000f4', 'CHK476_S', 5, 'Sub3', (select id from public.areas where codigo = 'PRD'),
+        current_date - 1, '47600000-0000-4000-8000-0000000000f0', true, current_setting('prueba.diseno_dis')::uuid);
+select set_config('prueba.vencidas', (select r.avisos::text from public.revisar_tiempos_de_entrega(current_setting('prueba.hoy')::date) r where r.tipo = 'VENCIDA'), true);
+select test.afirmar(
+  current_setting('prueba.vencidas') = '1'
+  and exists (select 1 from public.notificaciones n where n.titulo = 'Vencida: CHK476_S · Arriba'
+                 and n.cuerpo like 'También venció «Sub3» el ' || to_char(current_date - 1, 'DD/MM/YYYY') || ' (%'),
+  'otra subetapa que vence después avisa por su nombre, sin repetir el aviso anterior');
 
 -- ============================================ 4. El lunes, el resumen a Gerencia
 select test.afirmar(
