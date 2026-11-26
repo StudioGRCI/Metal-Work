@@ -436,6 +436,93 @@ begin
 end;
 $$;
 
+-- ------------------------------------------------------------------- SSOMA
+-- Tres reportes de seguridad (Plan 15, migración 20261125150100), cada uno con
+-- la sesión de quien lo reporta: la función da el número RI y anota quién fue.
+-- Sin fotos, porque el archivo vive en Storage. El primero se hizo hace tres
+-- días, para que la lista muestre desde cuándo espera.
+do $$
+declare
+  v_quien uuid;
+  v_id    uuid;
+begin
+  if exists (select 1 from public.ssoma_reportes) then
+    return;
+  end if;
+
+  select u.id into v_quien from public.usuarios u where u.correo = 'supervisor@metalworkperusac.com' and u.activo;
+  if v_quien is not null then
+    perform set_config('request.jwt.claim.sub', v_quien::text, true);
+    v_id := gen_random_uuid();
+    perform public.ssoma_reportar(v_id, 'INCIDENTE', (select id from public.areas where codigo = 'PRD'),
+      'Nave 2, zona de soldadura',
+      'Se soltó la manguera del compresor al cambiar de herramienta y golpeó la mesa de trabajo. No había nadie al lado. Se cerró la llave y se retiró la manguera.',
+      now() - interval '3 days 2 hours', null, null, '[]'::jsonb);
+    -- Solo en la demostración: la fecha del reporte se corre a mano.
+    perform set_config('session_replication_role', 'replica', true);
+    update public.ssoma_reportes set creado_en = now() - interval '3 days' where id = v_id;
+    perform set_config('session_replication_role', 'origin', true);
+  end if;
+
+  select u.id into v_quien from public.usuarios u where u.correo = 'almacen@metalworkperusac.com' and u.activo;
+  if v_quien is not null then
+    perform set_config('request.jwt.claim.sub', v_quien::text, true);
+    perform public.ssoma_reportar(gen_random_uuid(), 'CONDICION_INSEGURA', (select id from public.areas where codigo = 'ALM'),
+      'Pasillo de planchas, junto al estante 3',
+      'Hay aceite derramado en el piso desde la mañana y las planchas apiladas pasan la altura del estante. Se puso un cono, falta limpiar y reacomodar.',
+      now() - interval '1 day 4 hours', null, null, '[]'::jsonb);
+  end if;
+
+  select u.id into v_quien from public.usuarios u where u.correo = 'supervisor.maestranza@metalworkperusac.com' and u.activo;
+  if v_quien is not null then
+    perform set_config('request.jwt.claim.sub', v_quien::text, true);
+    perform public.ssoma_reportar(gen_random_uuid(), 'ACCIDENTE', (select id from public.areas where codigo = 'MTZ'),
+      'Plegadora hidráulica',
+      'Al retirar una plancha recién cortada, la rebaba alcanzó al operario. Tenía guantes de badana, no los de corte. Se le llevó al tópico y se paró la plegadora hasta revisar las planchas.',
+      now() - interval '5 hours', true, null, '[]'::jsonb);
+  end if;
+
+  perform set_config('request.jwt.claim.sub', '', true);
+end;
+$$;
+
+-- SSOMA 15.2 (migración 20261126151500): la condición insegura de Almacén ya
+-- clasificada, con su causa y dos acciones correctivas a cargo de Almacén, una
+-- de ellas vencida, para que la lista las ponga arriba. Las encarga la cuenta
+-- de administrador de la demostración: aquí todavía no están las del banco.
+do $$
+declare
+  v_admin uuid;
+  v_alm   uuid;
+  v_rep   uuid;
+  v_acc   uuid := gen_random_uuid();
+  v_hoy   date := (now() at time zone 'America/Lima')::date;
+begin
+  if exists (select 1 from public.ssoma_acciones) then
+    return;
+  end if;
+  select u.id into v_admin from public.usuarios u join public.roles r on r.id = u.rol_id where r.codigo = 'ADMIN' and u.activo limit 1;
+  select u.id into v_alm from public.usuarios u where u.correo = 'almacen@metalworkperusac.com' and u.activo;
+  select id into v_rep from public.ssoma_reportes where tipo = 'CONDICION_INSEGURA' and estado = 'REPORTADO' order by creado_en limit 1;
+  if v_admin is null or v_alm is null or v_rep is null then
+    return;
+  end if;
+
+  perform set_config('request.jwt.claim.sub', v_admin::text, true);
+  perform public.ssoma_clasificar(v_rep, 'CONDICION_INSEGURA', null, null,
+    'Las planchas se apilan sobre la altura del estante porque falta espacio, y nadie revisa el piso al empezar el turno.');
+  perform public.ssoma_crear_accion(gen_random_uuid(), v_rep,
+    'Limpiar el aceite del pasillo de planchas y dejar arena absorbente junto al estante 3.', v_alm, v_hoy);
+  perform public.ssoma_crear_accion(v_acc, v_rep,
+    'Reacomodar las planchas para que no pasen la altura del estante y marcar en el piso el límite de apilado.', v_alm, v_hoy + 5);
+  -- Solo en la demostración: la primera acción quedó vencida hace dos días.
+  perform set_config('session_replication_role', 'replica', true);
+  update public.ssoma_acciones set fecha_limite = v_hoy - 2 where reporte_id = v_rep and id <> v_acc;
+  perform set_config('session_replication_role', 'origin', true);
+  perform set_config('request.jwt.claim.sub', '', true);
+end;
+$$;
+
 -- -----------------------------------------------------------------------------
 -- El padrón de equipos de la planta (Plan 16). Códigos con la forma de la hoja
 -- de máquinas del taller y personas inventadas: unos operativos, uno con

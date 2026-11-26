@@ -167,9 +167,8 @@ begin
   perform test.debe_fallar(format('select public.cargar_codigo_y_ot_de_cotizacion(%L, %L, %L, %L, %L, %L, %L, %L, 100)',
     v_cot, v_ot, 'QA-390 A', 'OT-12', 'SEMIRREMOLQUE', (v_hoy + 30)::text, v_pdf, 'orden.pdf'),
     'El número de la OT es el de su papel', 'papel');
-  perform test.debe_fallar(format('select public.cargar_codigo_y_ot_de_cotizacion(%L, %L, %L, %L, %L, null, %L, %L, 100)',
-    v_cot, v_ot, 'QA-390 A', '12345', 'SEMIRREMOLQUE', v_pdf, 'orden.pdf'),
-    'Sin fecha de entrega al cliente no se carga', 'fecha de entrega');
+  -- Sin fecha de entrega sí se carga desde la migración 20261126330000 (plan 8):
+  -- la OT queda en los pendientes de la lista de OT. Lo prueba el check 472.
   perform test.debe_fallar(format('select public.cargar_codigo_y_ot_de_cotizacion(%L, %L, %L, %L, %L, %L, %L, %L, 100)',
     v_cot, v_ot, 'QA-390 A', '12345', 'SEMIRREMOLQUE', (v_hoy + 30)::text, 'ot/' || gen_random_uuid() || '/orden.pdf', 'orden.pdf'),
     'El PDF tiene que estar en la carpeta de su OT', 'PDF de la OT');

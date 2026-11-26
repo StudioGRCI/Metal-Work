@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { Plus } from 'lucide-react'
 
@@ -22,7 +23,11 @@ import {
 import { reemplazoDeLaOrden, trabajaPorCodigo } from '@/lib/dominio/acceso-orden'
 import { exigirSesion, puede } from '@/lib/sesion'
 
+import { pendientesDeLasOt } from '@/lib/datos/pendientes-de-las-ot'
+
 import { FiltrosOrdenes } from './filtros-ordenes'
+import { PendientesDeLasOt } from './pendientes-de-las-ot'
+import { TrabajoPorOtCargando, TrabajoPorOtDeLaCuenta } from './trabajo-por-ot'
 import { paginaPedida } from '@/lib/dominio/paginas'
 
 export const metadata = { title: 'Órdenes de trabajo' }
@@ -51,12 +56,31 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
     pagina: paginaPedida(params.pagina),
   }
 
-  const { ordenes, total, pagina, paginas } = await listarOrdenes(filtros)
   // Una búsqueda de solo signos no filtra nada: no cuenta como filtro, o la
   // lista entera decía «3 órdenes con los filtros aplicados».
   const hayFiltros = Boolean(
     palabrasDeBusqueda(filtros.busqueda).length > 0 || filtros.estado || filtros.prioridad || filtros.atrasadas,
   )
+  // Lo que falta completar (plan 8.1) lo ve quien carga las OT, arriba de la
+  // lista y sin filtros: quien filtra está consultando, no atendiendo. Solo
+  // `ordenes.crear`: quien solo corrige OT no ve las cotizaciones y la tarjeta
+  // le diría que no falta ninguna.
+  const verPendientes = puede(perfil, 'ordenes.crear') && !hayFiltros && filtros.pagina <= 1
+  // El colaborador de Diseño ve arriba su trabajo reunido por OT (Plan 7,
+  // entrega 7.2), en su propio `<Suspense>`: la lista no lo espera. Si no se
+  // lee, la lista sigue y la tarjeta lo dice. Por su permiso propio, no por
+  // `puede`: el administrador no anota actividades y vería una tarjeta vacía.
+  const veSuTrabajo = perfil.permisos.includes('diseno.preparar_informe')
+  const [{ ordenes, total, pagina, paginas }, pendientes] = await Promise.all([
+    listarOrdenes(filtros),
+    verPendientes
+      ? pendientesDeLasOt().catch((e: unknown) => {
+          // No se esconde: la tarjeta dice que no se pudo leer.
+          console.error(e)
+          return null
+        })
+      : Promise.resolve(undefined),
+  ])
   const puedeCrear = puede(perfil, 'ordenes.crear')
   const puedeAbrirEnTaller = puede(perfil, 'ordenes.abrir_taller')
 
@@ -141,6 +165,16 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
           )
         }
       />
+
+      {pendientes !== undefined && <PendientesDeLasOt pendientes={pendientes} corrige={puede(perfil, 'ordenes.editar')} />}
+
+      {veSuTrabajo && (
+        <div className="mb-5">
+          <Suspense fallback={<TrabajoPorOtCargando />}>
+            <TrabajoPorOtDeLaCuenta />
+          </Suspense>
+        </div>
+      )}
 
       <FiltrosOrdenes />
 

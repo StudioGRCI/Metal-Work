@@ -22,6 +22,8 @@ import {
   Receipt,
   ReceiptText,
   Route,
+  ShieldAlert,
+  ShieldCheck,
   Truck,
   UserCheck,
   Users,
@@ -33,7 +35,6 @@ import type { TonoIndicador } from '@/components/ui/indicador'
 import { leerListaDeCodigos, sumarCodigosDeDiseno } from '@/lib/datos/codigos-internos'
 import { codigosDeDiseno, etapasDeCodigo, planosDeCodigo } from '@/lib/datos/diseno-codigos'
 import { listarGastoPorCodigo } from '@/lib/datos/gasto-por-codigo'
-import { pendientesGlobales } from '@/lib/datos/pendientes-globales'
 import { consolidado, sumaEnLaCaja } from '@/lib/dominio/caja'
 import { CODIGO_SIN_AVANCE, costoDelCodigo, enlaceCodigo } from '@/lib/dominio/codigos-internos'
 import { faltaDelServicio } from '@/lib/dominio/detraccion'
@@ -41,7 +42,7 @@ import { estadoDeReporte } from '@/lib/dominio/reporte-diario'
 import { ESTADOS_RQ_ABIERTOS, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
 import { reglaTardanza, resumenTardanzas } from '@/lib/datos/rrhh'
 import { hoyLima, moneda, numero, parteDe, porcentaje, porcentajeCorto, sumarDias } from '@/lib/format'
-import { menuDe } from '@/lib/navegacion'
+import { rutasDeTrabajo } from '@/lib/navegacion'
 import { puede, puedeHojaDeArea, type PerfilSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -129,48 +130,6 @@ async function todas<T>(
 
 // ── Las lecturas compartidas ────────────────────────────────────────────────
 
-/**
- * Lo que espera por el puesto en sus pantallas, sumado de las cuentas de los
- * globos del menú (`pendientesGlobales`, una sola lectura por carga): el
- * Dashboard mostraba totales del mes y no las 2 compras o la cotización que
- * Gerencia tenía por aprobar (auditoría del 27/10/2026). No le dice a nadie
- * qué hacer: dice cuánto hay y en qué pantalla, como los globos.
- */
-function loQueEspera(titulo: string, claves: string[], ruta: string, icono: LucideIcon, opciones: { enSoles?: boolean } = {}): Generador {
-  return {
-    ruta,
-    calcular: async (c) => {
-      const { tareas, clavesSinComprobar } = await c.una('pendientes', () => pendientesGlobales(c.perfil))
-      const mias = tareas.filter((t) => claves.includes(t.clave))
-      const total = mias.reduce((n, t) => n + t.cantidad, 0)
-      // Cualquiera de sus cuentas que falle: la cifra no puede decir «nada por ahora».
-      const sinLeer = claves.some((k) => clavesSinComprobar.includes(k))
-      // Lo que vale, para las cuentas que son dinero (DKS, 27/10/2026: porcentaje y costo).
-      const pen = mias.reduce((n, t) => n + (t.monto?.PEN ?? 0), 0)
-      const usd = mias.reduce((n, t) => n + (t.monto?.USD ?? 0), 0)
-      const conMonto = mias.some((t) => t.monto)
-      // Cada cuenta con lo que vale al lado; la que no es dinero, solo su texto.
-      const textos = mias.map((t) =>
-        !opciones.enSoles && t.monto && (t.monto.PEN > 0 || t.monto.USD > 0)
-          ? `${t.texto} (${[t.monto.PEN > 0 ? moneda(t.monto.PEN) : null, t.monto.USD > 0 ? moneda(t.monto.USD, 'USD') : null].filter(Boolean).join(' y ')} sin IGV)`
-          : t.texto,
-      )
-      const pie = [sinLeer ? 'una cuenta no se pudo leer' : null, ...(mias.length > 0 ? textos : sinLeer ? [] : ['nada por ahora'])]
-        .filter(Boolean)
-        .join(' · ')
-      // Con todo en una sola pantalla, la tarjeta lleva ahí; si no, a la de la primera cuenta.
-      const rutas = [...new Set(mias.map((t) => t.ruta.split(/[?#]/)[0]))]
-      const href = mias.length === 0 ? ruta : rutas.length === 1 && mias.length === 1 ? mias[0].ruta : rutas.length === 1 ? rutas[0] : mias[0].ruta
-      const tono = sinLeer || total > 0 ? 'aviso' : 'neutro'
-      if (opciones.enSoles && conMonto) {
-        // El monto es la cifra y la cantidad va en el pie, como «Servicios por pagar».
-        return { titulo, ...soles(pen, usd, pie), href, icono, tono }
-      }
-      return { titulo, valor: sinLeer && total === 0 ? '—' : String(total), pie, href, icono, tono }
-    },
-  }
-}
-
 const rqAbiertos = (c: Contexto) =>
   c.una('rq', async () => {
     const r = await c.supabase.from('requerimientos').select('estado, tipo, area_id').in('estado', [...ESTADOS_RQ_ABIERTOS]).limit(1000)
@@ -244,18 +203,6 @@ const bajoMinimo = (c: Contexto) =>
 // ── El catálogo de cifras ───────────────────────────────────────────────────
 
 const CIFRAS = {
-  // Las mismas claves que cuentan los globos del grupo «Por aprobar» del menú de Gerencia,
-  // con el visto del reporte diario.
-  por_aprobar: loQueEspera(
-    'Por aprobar',
-    ['compras_por_aprobar', 'pdf_por_revisar', 'ot_por_aprobar', 'reportes_por_aprobar', 'reportes_sin_orden_por_aprobar', 'reportes_visto_gerencia_en'],
-    '/compras/aprobacion',
-    ClipboardList,
-  ),
-  // Las que Gerencia aprobó y esperan que Administración les dé su código y suba su OT.
-  aprobadas_sin_codigo: loQueEspera('Aprobadas sin código', ['pdf_sin_ot'], '/cotizaciones/pdf?estado=APROBADA_SIN_OT', Hash),
-  por_facturar: loQueEspera('Por facturar', ['por_facturar'], '/contabilidad/facturacion', ClipboardList, { enSoles: true }),
-  planillas_por_pagar: loQueEspera('Planillas por pagar', ['planillas_por_pagar'], '/planilla-diaria', ClipboardList, { enSoles: true }),
   // Requerimientos
   rq_abiertos: {
     ruta: '/requerimientos',
@@ -956,6 +903,25 @@ const CIFRAS = {
       }
     },
   },
+  // Los reportes de avería que esperan a Mantenimiento (Plan 16.2). Se cuentan
+  // por `averias_visibles`, la misma lectura que la lista: Mantenimiento las ve todas.
+  averias_por_atender: {
+    ruta: '/averias',
+    calcular: async (c) => {
+      const r = await c.supabase.rpc('averias_visibles', { p_id: null }).eq('estado', 'REPORTADA').select('detiene_trabajo')
+      fallo(r)
+      const filas = r.data ?? []
+      const detienen = filas.filter((f) => f.detiene_trabajo).length
+      return {
+        titulo: 'Averías por atender',
+        valor: String(filas.length),
+        pie: detienen > 0 ? `${plural(detienen, 'detiene', 'detienen')} el trabajo` : 'reportadas y sin atender',
+        icono: Wrench,
+        tono: detienen > 0 ? 'peligro' : filas.length > 0 ? 'aviso' : 'neutro',
+        href: '/averias',
+      }
+    },
+  },
   // El padrón de equipos de la planta (Plan 16), para Mantenimiento.
   equipos_parados: {
     ruta: '/equipos',
@@ -991,33 +957,94 @@ const CIFRAS = {
       return { titulo: 'Clientes', valor: String(r.count ?? 0), pie: 'en la cartera', icono: Users }
     },
   },
+
+  // SSOMA (Plan 15): lo que la gente reportó. Se lee con su sesión: la política
+  // de `ssoma_reportes` le deja ver todos.
+  ssoma_en_revision: {
+    ruta: '/ssoma',
+    calcular: async (c) => {
+      // Los por clasificar y, aparte, los clasificados sin ninguna acción: los dos esperan por SSOMA.
+      const r = await c.supabase.rpc('ssoma_por_atender').single()
+      fallo(r)
+      const n = r.data?.por_clasificar ?? 0
+      const sin = r.data?.sin_accion ?? 0
+      const pie = [
+        n > 0 ? 'reportes que esperan su causa' : 'todos clasificados',
+        sin > 0 && plural(sin, 'clasificado sin acción', 'clasificados sin acción'),
+      ].filter(Boolean).join(' · ')
+      return { titulo: 'Por clasificar', valor: String(n), pie, icono: ShieldAlert, tono: n + sin > 0 ? 'aviso' : 'neutro' }
+    },
+  },
+  // 15.2: las acciones correctivas que pasaron su fecha límite (en Lima), de todos.
+  ssoma_acciones_vencidas: {
+    ruta: '/ssoma?vista=acciones',
+    calcular: async (c) => {
+      const [vencidas, abiertas] = await Promise.all([
+        c.supabase.from('ssoma_acciones').select('id', { count: 'exact', head: true }).eq('estado', 'ABIERTA').lt('fecha_limite', c.hoy),
+        c.supabase.from('ssoma_acciones').select('id', { count: 'exact', head: true }).eq('estado', 'ABIERTA'),
+      ])
+      fallo(vencidas)
+      fallo(abiertas)
+      const n = vencidas.count ?? 0
+      const total = abiertas.count ?? 0
+      return {
+        titulo: 'Acciones vencidas',
+        valor: String(n),
+        pie: total > 0 ? `de ${plural(total, 'acción abierta', 'acciones abiertas')}` : 'ninguna abierta',
+        icono: ClipboardList,
+        tono: n > 0 ? 'peligro' : 'neutro',
+      }
+    },
+  },
+  ssoma_del_mes: {
+    ruta: '/ssoma',
+    calcular: async (c) => {
+      // El mes es el de Lima, que no cambia de hora.
+      const r = await c.supabase.from('ssoma_reportes').select('tipo').neq('estado', 'ANULADO').gte('ocurrido_en', `${c.mes}T00:00:00-05:00`).limit(2000)
+      fallo(r)
+      const filas = r.data ?? []
+      const accidentes = filas.filter((f) => f.tipo === 'ACCIDENTE').length
+      return {
+        titulo: 'Reportados este mes',
+        valor: String(filas.length),
+        pie: accidentes > 0 ? plural(accidentes, 'accidente', 'accidentes') : 'ningún accidente',
+        icono: ShieldCheck,
+        tono: accidentes > 0 ? 'peligro' : 'neutro',
+      }
+    },
+  },
 } satisfies Record<string, Generador>
 
 type ClaveCifra = keyof typeof CIFRAS
 
 /**
- * Las cifras de cada puesto, en el orden de su trabajo: cómo va su área, no lo
- * que tiene que hacer (el dashboard no manda; eso lo decidió DKS el 2026-10-19).
+ * Las cifras de cada puesto, en el orden de su trabajo: cómo va su área. Lo
+ * que espera por el puesto lo lista «Te toca», arriba de ellas (decisión 4 del
+ * plan de orden y diseño, 2026-11-25). Ninguna cifra lo repite: «Por aprobar»
+ * de Gerencia, «Aprobadas sin código» de Administración, «Por facturar» de
+ * Contabilidad y «Planillas por pagar» de Tesorería sumaban las mismas cuentas
+ * de «Te toca» y se quitaron (DKS, 2026-11-26).
  */
 const CIFRAS_POR_PUESTO: Record<string, { titulo: string; cifras: ClaveCifra[] }> = {
   REQUERIMIENTOS: { titulo: 'Requerimientos', cifras: ['rq_abiertos', 'rq_por_comprar', 'vehiculos_en_planta', 'gasto_por_codigo'] },
   ALMACENERO: { titulo: 'Almacén', cifras: ['rq_en_compra', 'bajo_minimo', 'materiales_con_saldo', 'salidas_del_mes'] },
   COMPRADOR: { titulo: 'Logística', cifras: ['oc_por_aprobar', 'en_recojo', 'os_abiertas', 'compras_del_mes'] },
   CONDUCTOR: { titulo: 'Tus recojos', cifras: ['por_recoger', 'en_camino', 'dejadas_del_mes'] },
-  GERENTE: { titulo: 'Códigos internos', cifras: ['por_aprobar', 'codigos_en_trabajo', 'costo_de_codigos', 'facturado_y_cobrado', 'codigos_por_completar'] },
-  TESORERIA: { titulo: 'Tesorería', cifras: ['caja_de_hoy', 'por_cobrar', 'por_pagar', 'servicios_por_pagar', 'recibos_por_pagar', 'planillas_por_pagar'] },
-  CONTABILIDAD: { titulo: 'Contabilidad', cifras: ['por_facturar', 'facturado_del_mes', 'adquisiciones_del_mes', 'guias_del_mes'] },
+  GERENTE: { titulo: 'Códigos internos', cifras: ['codigos_en_trabajo', 'costo_de_codigos', 'facturado_y_cobrado', 'codigos_por_completar'] },
+  TESORERIA: { titulo: 'Tesorería', cifras: ['caja_de_hoy', 'por_cobrar', 'por_pagar', 'servicios_por_pagar', 'recibos_por_pagar'] },
+  CONTABILIDAD: { titulo: 'Contabilidad', cifras: ['facturado_del_mes', 'adquisiciones_del_mes', 'guias_del_mes'] },
   DISENO: { titulo: 'Por código interno', cifras: ['etapas_en_curso', 'codigos_sin_etapas', 'planos_sin_recibir', 'codigos_sin_materiales'] },
-  ADMINISTRACION: { titulo: 'Administración', cifras: ['aprobadas_sin_codigo', 'rq_abiertos', 'subcontratos_vigentes', 'gastos_del_mes', 'clientes'] },
+  ADMINISTRACION: { titulo: 'Administración', cifras: ['rq_abiertos', 'subcontratos_vigentes', 'gastos_del_mes', 'clientes'] },
   RECURSOS_HUMANOS: { titulo: 'Recursos Humanos', cifras: ['personal_activo', 'entraron_hoy', 'tardanzas_del_mes', 'reportes_del_mes'] },
   PORTERO: { titulo: 'Portería hoy', cifras: ['entraron_hoy', 'salieron_hoy', 'tardanzas_de_hoy'] },
-  MANTENIMIENTO: { titulo: 'Equipos de la planta', cifras: ['equipos_parados', 'equipos_con_observacion', 'equipos_en_el_padron'] },
+  MANTENIMIENTO: { titulo: 'Equipos de la planta', cifras: ['averias_por_atender', 'equipos_parados', 'equipos_con_observacion', 'equipos_en_el_padron'] },
   SUPERVISOR: { titulo: 'Tu área', cifras: ['reportes_del_mes', 'planos_del_area', 'rq_abiertos'] },
   SUPERVISOR_GENERAL: { titulo: 'Seguimiento', cifras: ['seguimiento_en_curso', 'rq_abiertos', 'vehiculos_en_planta', 'bajo_minimo'] },
   VENDEDOR: { titulo: 'Ventas', cifras: ['cotizaciones_en_gerencia', 'aprobadas_del_mes', 'clientes'] },
   // Las mismas cifras de Ventas, pero de todo el equipo (`deVentas`).
   GERENTE_COMERCIAL: { titulo: 'Ventas', cifras: ['cotizaciones_en_gerencia', 'aprobadas_del_mes', 'clientes'] },
   GERENTE_PRODUCCION: { titulo: 'Avance', cifras: ['reportes_del_mes', 'seguimiento_en_curso'] },
+  SSOMA: { titulo: 'SSOMA', cifras: ['ssoma_en_revision', 'ssoma_acciones_vencidas', 'ssoma_del_mes'] },
 }
 // El líder de Diseño ve las cifras de Diseño (mismo menú, `navegacion.ts`).
 CIFRAS_POR_PUESTO.DISENO_LIDER = CIFRAS_POR_PUESTO.DISENO
@@ -1042,7 +1069,8 @@ export async function dashboardDelPuesto(perfil: PerfilSesion): Promise<Dashboar
     },
   }
 
-  const enMenu = new Set(menuDe(perfil.permisos, esAdmin, perfil.rol.codigo).flatMap((g) => g.items.map((i) => i.ruta.split('?')[0])))
+  // Solo lo que es trabajo del puesto: lo que consulta no le trae cifras.
+  const enMenu = rutasDeTrabajo(perfil.permisos, esAdmin, perfil.rol.codigo)
   const suyas = propio.cifras.filter((clave) => enMenu.has(CIFRAS[clave].ruta.split('?')[0]))
 
   const cifras = await Promise.all(

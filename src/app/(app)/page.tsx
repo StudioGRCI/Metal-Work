@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import {
   AlertTriangle,
+  ChevronRight,
   ClipboardList,
   Factory,
   PauseCircle,
@@ -9,8 +10,9 @@ import {
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Indicador, tramos } from '@/components/ui/indicador'
-import { Insignia, Punto, type Tono } from '@/components/ui/etiqueta-estado'
+import { Insignia, Punto, TONOS, type Tono } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
+import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_OT, ORDEN_ESTADO_OT, PRIORIDAD, definir } from '@/lib/dominio/estados'
 import { situacionDeEntrega } from '@/lib/dominio/expediente'
@@ -18,57 +20,197 @@ import { nombreDeUnidadOCodigo, nombreVaTenue } from '@/lib/dominio/unidades'
 import { fecha, fechaLarga, hoyLima, moneda, porcentajeYMonto, porcentaje } from '@/lib/format'
 import { costoDeOrdenes } from '@/lib/datos/costos-ot'
 import { dashboardDelPuesto, type Cifra, type CodigoEnCurso } from '@/lib/datos/dashboard'
+import { pendientesGlobales, type TareaPendiente } from '@/lib/datos/pendientes-globales'
 import { indicadoresTablero, ordenesAtrasadas, ordenesPorEntrega } from '@/lib/datos/ordenes'
-import { menuDe } from '@/lib/navegacion'
+import { modulosDelInicio, rutasDeTrabajo, type ItemNavegacion } from '@/lib/navegacion'
 import { exigirSesion, puede, type PerfilSesion } from '@/lib/sesion'
 import { cn } from '@/lib/utils'
 
 export const metadata = { title: 'Dashboard' }
 
 /**
- * El dashboard de cada puesto, de arriba abajo: las cifras clave de su área,
- * cada una con el enlace a la pantalla donde se mira, y, para quien todavía
- * lleva la OT, las órdenes del taller. Al final, en el teléfono, sus módulos a
- * un toque.
+ * El dashboard de cada puesto, de arriba abajo: «Te toca», lo que espera por
+ * el puesto en cada pantalla de su menú, con el enlace a donde se atiende; las
+ * cifras clave de su área, cada una con el enlace a la pantalla donde se mira;
+ * y, para quien todavía lleva la OT, las órdenes del taller. Al final, en el
+ * teléfono, sus módulos a un toque.
  *
- * No lleva una lista de «lo que te toca hoy»: el sistema no le dice a nadie
- * qué tiene que hacer, le muestra cómo va su área y le deja cada pantalla a un
- * toque (decisión del 2026-10-19). Los globos del menú siguen contando lo que
- * espera en cada pantalla.
+ * «Te toca» volvió el 2026-11-25 (decisión 4 del plan de orden y diseño): lo
+ * pendiente era una cifra más entre ocho o diez y no llevaba a su lista, y en
+ * el teléfono quedaba debajo de todas. Cuenta lo mismo que los globos del menú
+ * (`pendientesGlobales`, una sola lectura por carga), sin órdenes ni plazos:
+ * dice qué espera y dónde, no qué hacer primero.
  */
 export default async function PaginaDashboard() {
   const perfil = await exigirSesion()
   const hoy = hoyLima()
   const esAdmin = perfil.rol.codigo === 'ADMIN'
   // La OT es desde el 2026-10-15 un documento de Diseño: su bloque sale solo a
-  // quien la tiene en su menú (Diseño, su colaborador y Administración).
-  const llevaOrdenes = menuDe(perfil.permisos, esAdmin, perfil.rol.codigo).some((g) => g.items.some((i) => i.ruta === '/ordenes'))
+  // quien la tiene en su menú (Diseño, su colaborador y Administración); no a
+  // Gerencia, que la consulta desde su barra pero no la trabaja. Desde el
+  // 2026-11-26 su «Por aprobar» lleva las OT para que su globo cuente las que
+  // esperan su aprobación, y eso no le trae el bloque del taller.
+  const llevaOrdenes =
+    perfil.rol.codigo !== 'GERENTE' && rutasDeTrabajo(perfil.permisos, esAdmin, perfil.rol.codigo).has('/ordenes')
+  // «Te toca» nombra y ordena cada fila con los módulos de su trabajo, los
+  // mismos de «Tus módulos»: lo que solo consulta no le trae pendientes.
+  const modulos = modulosDelInicio(perfil.permisos, esAdmin, perfil.rol.codigo).flatMap((g) => g.items)
 
-  const area = await dashboardDelPuesto(perfil)
+  const [area, pendientes] = await Promise.all([dashboardDelPuesto(perfil), pendientesGlobales(perfil)])
 
   return (
     <>
       {/* El puesto y no el nombre (migración 109): la pantalla es del puesto,
           quien lo ocupe hoy ya sabe cómo se llama. */}
       <EncabezadoPagina titulo="Dashboard" descripcion={`${perfil.puesto} · ${fechaLarga(hoy)}`} />
-      {area && area.cifras.length > 0 && <CifrasDelArea titulo={area.titulo} cifras={area.cifras} />}
-      {area?.codigos && area.codigos.length > 0 && <CodigosEnCurso codigos={area.codigos} />}
-      {llevaOrdenes && <OrdenesDelTaller perfil={perfil} />}
-      <TusModulos perfil={perfil} />
+      {/* 20 px entre bloques, como pide la escala de separaciones (skill `diseno`). */}
+      <div className="space-y-5">
+        {pendientes.cuentas > 0 && (
+          <TeToca tareas={pendientes.tareas} sinComprobar={pendientes.sinComprobar} modulos={modulos} />
+        )}
+        {area && area.cifras.length > 0 && <CifrasDelArea titulo={area.titulo} cifras={area.cifras} />}
+        {area?.codigos && area.codigos.length > 0 && <CodigosEnCurso codigos={area.codigos} />}
+        {llevaOrdenes && <OrdenesDelTaller perfil={perfil} />}
+        <TusModulos perfil={perfil} />
+      </div>
     </>
   )
 }
 
+/**
+ * Las columnas del monitor según cuántas cifras trae el puesto (de una a seis),
+ * para que cada fila vaya llena y todas las tarjetas midan lo mismo: con dos
+ * cifras en cuatro columnas quedaba media fila vacía.
+ */
+const COLUMNAS_DEL_MONITOR: Record<number, string> = {
+  1: 'lg:grid-cols-1',
+  2: 'lg:grid-cols-2',
+  3: 'lg:grid-cols-3',
+  4: 'lg:grid-cols-4',
+  5: 'lg:grid-cols-5',
+  6: 'lg:grid-cols-3',
+}
+
+/** Una fila de «Te toca»: una cuenta con algo, o una que no se pudo leer. */
+type FilaTeToca =
+  | (TareaPendiente & { tipo: 'cuenta'; orden: number; modulo: ItemNavegacion | null; i: number })
+  | { tipo: 'sin-leer'; clave: string; ruta: string; orden: number; modulo: ItemNavegacion; i: number }
+
+/**
+ * «Te toca»: cada cuenta que tiene algo, en el orden del menú del puesto —que
+ * es el de su trabajo—, con el módulo donde se atiende y lo que vale si es
+ * dinero. Sin nada, lo dice en una línea; una cuenta que no se pudo leer lo
+ * dice en su lugar del menú, nunca como si no hubiera nada.
+ */
+function TeToca({ tareas, sinComprobar, modulos }: { tareas: TareaPendiente[]; sinComprobar: string[]; modulos: ItemNavegacion[] }) {
+  const base = (ruta: string) => ruta.split(/[?#]/)[0]
+  const lugar = (ruta: string) => {
+    const i = modulos.findIndex((m) => base(m.ruta) === base(ruta))
+    return { orden: i === -1 ? modulos.length : i, modulo: i === -1 ? null : modulos[i] }
+  }
+  const filas: FilaTeToca[] = [
+    ...tareas.map((t, i) => ({ ...t, ...lugar(t.ruta), tipo: 'cuenta' as const, i })),
+    ...sinComprobar.flatMap((ruta, i) => {
+      const { orden, modulo } = lugar(ruta)
+      return modulo ? [{ tipo: 'sin-leer' as const, clave: `sin-leer-${ruta}`, ruta: modulo.ruta, orden, modulo, i: tareas.length + i }] : []
+    }),
+  ].sort((a, b) => a.orden - b.orden || a.i - b.i)
+  const sinLeer = filas.filter((f) => f.tipo === 'sin-leer').length
+  const pantallas = new Set(filas.filter((f) => f.tipo === 'cuenta').map((f) => base(f.ruta))).size
+  // Lo que cambia: en cuántas pantallas, y si falta contar alguna. La suma de
+  // todo no va: un reporte que falta y 37 RQ por recoger no son 38 de lo mismo.
+  const descripcion =
+    [pantallas > 1 ? `En ${pantallas} pantallas de tu menú` : null, sinLeer > 0 ? `${sinLeer} sin comprobar` : null]
+      .filter(Boolean)
+      .join(' · ') || null
+
+  return (
+    <Tarjeta data-te-toca="">
+      <TarjetaCabecera
+        titulo="Te toca"
+        descripcion={descripcion}
+        ayuda="Lo que espera por tu puesto en cada pantalla de tu menú, con el enlace a donde se atiende. Cuando llega algo nuevo, aparece aquí. Los globos del menú cuentan lo mismo."
+      />
+      <TarjetaCuerpo className="p-2">
+        {filas.length === 0 ? (
+          <div className="px-2 py-1">
+            <SinDatos compacto titulo="Nada te espera por ahora" />
+          </div>
+        ) : (
+          // En dos columnas, la lista baja por la primera y sigue en la
+          // segunda: por renglones, dos filas de la misma pantalla quedaban una
+          // en cada lado y se leía saltando.
+          <ul className={cn('gap-x-4', filas.length > 2 && 'lg:columns-2')}>
+            {filas.map((f) => {
+              if (f.tipo === 'sin-leer') {
+                return (
+                  <li key={f.clave} className="break-inside-avoid">
+                    <Link href={f.ruta} className={CLASE_FILA}>
+                      <span className={cn(CLASE_ICONO, TONOS.aviso)}>
+                        <AlertTriangle aria-hidden className="size-4" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium text-texto">No se pudo contar lo que te espera</span>
+                        <span className="block text-xs text-texto-suave">{f.modulo.titulo}: ábrela para verlo</span>
+                      </span>
+                      <ChevronRight aria-hidden className="size-4 shrink-0 text-texto-tenue group-hover:text-acento" />
+                    </Link>
+                  </li>
+                )
+              }
+              const Icono = f.modulo?.icono
+              const monto =
+                f.monto && (f.monto.PEN > 0 || f.monto.USD > 0)
+                  ? [f.monto.PEN > 0 ? moneda(f.monto.PEN) : null, f.monto.USD > 0 ? moneda(f.monto.USD, 'USD') : null].filter(Boolean).join(' y ')
+                  : null
+              return (
+                <li key={f.clave} className="break-inside-avoid">
+                  <Link href={f.ruta} data-cantidad={f.cantidad} className={CLASE_FILA}>
+                    <span className={cn(CLASE_ICONO, TONOS[f.tono])}>
+                      {Icono ? <Icono aria-hidden className="size-4" /> : <Punto tono={f.tono} />}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-texto">{f.texto}</span>
+                      {(f.modulo || monto) && (
+                        <span className="block text-xs text-texto-suave">
+                          {f.modulo?.titulo}
+                          {f.modulo && monto && ' · '}
+                          {/* Cómo va el monto lo dice su cuenta: «sin IGV», «con IGV» o nada. */}
+                          {monto && (
+                            <span className="tabular text-texto" data-monto>
+                              {monto}
+                              {f.monto?.rotulo ? ` ${f.monto.rotulo}` : ''}
+                            </span>
+                          )}
+                        </span>
+                      )}
+                    </span>
+                    <ChevronRight aria-hidden className="size-4 shrink-0 text-texto-tenue group-hover:text-acento" />
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </TarjetaCuerpo>
+    </Tarjeta>
+  )
+}
+
+/** Cada fila de «Te toca»: 44 px para el dedo y su texto alineado con el título de la tarjeta (16 px del borde). */
+const CLASE_FILA = 'group flex min-h-11 items-center gap-2 rounded-[var(--radius-base)] px-2 py-2.5 hover:bg-superficie-2'
+const CLASE_ICONO = 'flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-base)]'
+
 /** Las cifras clave del área, cada una con el enlace a la pantalla donde se mira. */
 function CifrasDelArea({ titulo, cifras }: { titulo: string; cifras: Cifra[] }) {
   return (
-    <section aria-label={titulo} className="mb-6">
+    <section aria-label={titulo}>
       <h2 className="mb-2 text-base font-semibold text-texto">{titulo}</h2>
       {/* Dos columnas ya en el teléfono: apiladas de a una ocupaban una pantalla entera.
           Con un número impar, la primera —la cifra principal del puesto— toma la
           fila entera en vez de dejar una sola con un hueco al lado: en media
           columna, un saldo de seis cifras partía el «S/» en otro renglón. */}
-      <div className={cn('grid grid-cols-2 gap-3 sm:gap-4 max-lg:[&>:first-child:nth-last-child(odd)]:col-span-2 [&>:first-child:nth-last-child(odd)_.rotulo-indicador]:min-h-0', cifras.length === 6 ? 'lg:grid-cols-3' : cifras.length >= 5 ? 'lg:grid-cols-5' : cifras.length === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-4')}>
+      <div className={cn('grid grid-cols-2 gap-3 sm:gap-4 max-lg:[&>:first-child:nth-last-child(odd)]:col-span-2 [&>:first-child:nth-last-child(odd)_.rotulo-indicador]:min-h-0', COLUMNAS_DEL_MONITOR[cifras.length] ?? 'lg:grid-cols-4')}>
         {cifras.map((c) => (
           <Indicador key={c.clave} icono={c.icono} titulo={c.titulo} valor={c.valor} pie={c.pie} tono={c.tono} href={c.href} />
         ))}
@@ -80,7 +222,7 @@ function CifrasDelArea({ titulo, cifras }: { titulo: string; cifras: Cifra[] }) 
 /** Gerencia: los códigos que se movieron hace poco, con su avance y lo que llevan costado. */
 function CodigosEnCurso({ codigos }: { codigos: CodigoEnCurso[] }) {
   return (
-    <Tarjeta className="mb-4">
+    <Tarjeta>
       <TarjetaCabecera
         titulo="Códigos con movimiento reciente"
         ayuda="Del que se movió hace menos al que se movió hace más, con su avance y su costo a la fecha"
@@ -141,274 +283,277 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
   const hoy = hoyLima()
 
   return (
-    <section aria-label="Órdenes de trabajo" className="mb-6">
+    <section aria-label="Órdenes de trabajo">
       <h2 className="mb-2 text-base font-semibold text-texto">Órdenes de trabajo</h2>
 
-      {/* Dos columnas ya en el teléfono: cinco tarjetas apiladas ocupaban una
-          pantalla entera antes de llegar a la lista de órdenes. */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5 max-lg:[&>:last-child:nth-child(odd)]:col-span-2 [&>:last-child:nth-child(odd)_.rotulo-indicador]:min-h-0">
-        <Indicador
-          icono={ClipboardList}
-          titulo="Órdenes abiertas"
-          valor={indicadores.abiertas}
-          pie={`de ${totalOrdenes} registradas`}
-          href="/ordenes?estado=ABIERTAS"
-        />
-        <Indicador
-          icono={Factory}
-          titulo="En proceso"
-          valor={indicadores.enProceso}
-          tono="acento"
-          pie={`de ${indicadores.abiertas} abiertas`}
-          href="/ordenes?estado=EN_PROCESO"
-        />
-        <Indicador
-          icono={PauseCircle}
-          titulo="Pausadas"
-          valor={indicadores.pausadas}
-          tono="aviso"
-          pie={`de ${indicadores.abiertas} abiertas`}
-          href="/ordenes?estado=PAUSADA"
-        />
-        <Indicador
-          icono={AlertTriangle}
-          titulo="Atrasadas"
-          valor={indicadores.atrasadas}
-          tono={indicadores.atrasadas > 0 ? 'peligro' : 'neutro'}
-          pie="pasaron la fecha comprometida"
-          href="/ordenes?estado=ABIERTAS&atrasadas=1"
-        />
-        <Indicador
-          icono={Zap}
-          titulo="Urgentes"
-          valor={indicadores.urgentes}
-          tono={indicadores.urgentes > 0 ? 'aviso' : 'neutro'}
-          pie={`de ${indicadores.abiertas} abiertas`}
-          href="/ordenes?estado=ABIERTAS&prioridad=URGENTE"
-        />
-      </div>
-
-      <div className="mt-4 grid gap-4 lg:grid-cols-3">
-        <Tarjeta className="lg:col-span-2 lg:self-start">
-          <TarjetaCabecera
-            titulo="Unidades en taller"
-            ayuda={
-              verCosteo
-                ? 'De la entrega más próxima a la más lejana, con su avance y lo que llevan costado'
-                : 'De la entrega más próxima a la más lejana, con su avance'
-            }
-            acciones={
-              <Link
-                href="/ordenes?estado=ABIERTAS"
-                className="inline-flex min-h-11 items-center text-xs text-acento hover:underline sm:min-h-0"
-              >
-                Ver todas{enTaller.total > enTaller.ordenes.length ? ` (${enTaller.total})` : ''}
-              </Link>
-            }
+      {/* 20 px entre las cifras y las tarjetas, y entre tarjetas: bloques de la pantalla. */}
+      <div className="space-y-5">
+        {/* Dos columnas ya en el teléfono: cinco tarjetas apiladas ocupaban una
+            pantalla entera antes de llegar a la lista de órdenes. */}
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5 max-lg:[&>:last-child:nth-child(odd)]:col-span-2 [&>:last-child:nth-child(odd)_.rotulo-indicador]:min-h-0">
+          <Indicador
+            icono={ClipboardList}
+            titulo="Órdenes abiertas"
+            valor={indicadores.abiertas}
+            pie={`de ${totalOrdenes} registradas`}
+            href="/ordenes?estado=ABIERTAS"
           />
-          <TarjetaCuerpo className="p-2 sm:p-3">
-            {enTaller.ordenes.length === 0 ? (
-              <div className="py-8 text-center">
-                <p className="text-sm font-medium text-texto">No hay órdenes abiertas</p>
-                <p className="mt-1 text-xs text-texto-suave">
-                  La OT llega cuando Gerencia aprueba la cotización con su código interno; aparece acá con su avance y su fecha de entrega.
-                </p>
-              </div>
-            ) : (
-              <ul className="divide-y divide-borde">
-                {enTaller.ordenes.map((orden) => {
-                  const estado = definir(ESTADO_OT, orden.estado)
-                  const prioridad = definir(PRIORIDAD, orden.prioridad)
-                  const entrega = situacionDeEntrega(orden.fecha_entrega_comprometida, null, hoy)
-                  const costo = costos?.get(orden.id)
-                  // Con unidad el renglón la nombra siempre, tenga placa o no;
-                  // sin unidad no se nombra nada, para no gastar el ancho de una
-                  // línea que se lee de un vistazo.
-                  const unidad = orden.unidad_id
-                    ? {
-                        placa: orden.placa,
-                        codigo_interno: orden.codigo_interno,
-                        numero_chasis: orden.numero_chasis,
-                        marca: orden.marca,
-                        modelo: orden.modelo,
-                      }
-                    : null
-                  return (
-                    <li key={orden.id}>
-                      <Link
-                        href={`/ordenes/${orden.id}`}
-                        className={cn(
-                          'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 rounded-[var(--radius-base)] px-2 py-3 hover:bg-superficie-2',
-                          // Cada renglón es su propia rejilla: con columnas de
-                          // ancho fijo las barras de avance quedan alineadas.
-                          costos
-                            ? 'sm:grid-cols-[minmax(0,1fr)_8rem_8.5rem_8.5rem]'
-                            : 'sm:grid-cols-[minmax(0,1fr)_8rem_8.5rem]',
-                        )}
-                      >
-                        <div className="min-w-0">
-                          <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-texto">
-                            {orden.numero}
-                            <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
-                            {orden.prioridad && orden.prioridad !== 'NORMAL' && (
-                              <span className="flex items-center gap-1 text-xs font-normal text-texto-suave">
-                                <Punto tono={prioridad.tono} />
-                                {prioridad.etiqueta}
-                              </span>
-                            )}
-                          </p>
-                          {/* La unidad primero: es lo que está en el taller, y
-                              la razón social larga del cliente la cortaba. */}
-                          <p className="line-clamp-2 text-xs text-texto-suave sm:line-clamp-1">
-                            {unidad && (
-                              <span className={nombreVaTenue(unidad, orden.avance_del_codigo) ? 'text-texto-tenue' : 'text-texto'}>
-                                {nombreDeUnidadOCodigo(unidad, orden.avance_del_codigo)}
-                                {(orden.cliente || orden.cliente_id === null) && ' · '}
-                              </span>
-                            )}
-                            {/* Un cliente que el puesto no puede ver llega vacío:
-                                «sin cliente» solo cuando de verdad no lo tiene. */}
-                            {orden.cliente ??
-                              (orden.cliente_id === null ? <span className="text-aviso">Sin cliente todavía</span> : null)}
-                          </p>
-                        </div>
+          <Indicador
+            icono={Factory}
+            titulo="En proceso"
+            valor={indicadores.enProceso}
+            tono="acento"
+            pie={`de ${indicadores.abiertas} abiertas`}
+            href="/ordenes?estado=EN_PROCESO"
+          />
+          <Indicador
+            icono={PauseCircle}
+            titulo="Pausadas"
+            valor={indicadores.pausadas}
+            tono="aviso"
+            pie={`de ${indicadores.abiertas} abiertas`}
+            href="/ordenes?estado=PAUSADA"
+          />
+          <Indicador
+            icono={AlertTriangle}
+            titulo="Atrasadas"
+            valor={indicadores.atrasadas}
+            tono={indicadores.atrasadas > 0 ? 'peligro' : 'neutro'}
+            pie="pasaron la fecha comprometida"
+            href="/ordenes?estado=ABIERTAS&atrasadas=1"
+          />
+          <Indicador
+            icono={Zap}
+            titulo="Urgentes"
+            valor={indicadores.urgentes}
+            tono={indicadores.urgentes > 0 ? 'aviso' : 'neutro'}
+            pie={`de ${indicadores.abiertas} abiertas`}
+            href="/ordenes?estado=ABIERTAS&prioridad=URGENTE"
+          />
+        </div>
 
-                        {/* En el teléfono el avance va a la derecha del nombre y la
-                            entrega en su propia línea; en el monitor, columnas. */}
-                        <div className="w-24 sm:w-auto">
-                          <Progreso valor={orden.avance_porcentaje} mostrarValor alto="sm" etiqueta={`Avance de la OT ${orden.numero}`} />
-                        </div>
-
-                        <div className="col-span-2 flex items-baseline justify-between gap-3 sm:col-span-1 sm:block">
-                          <p className="tabular text-xs text-texto">
-                            {orden.fecha_entrega_comprometida ? `Entrega ${fecha(orden.fecha_entrega_comprometida)}` : 'Sin fecha'}
-                          </p>
-                          <p className={cn('text-xs', TONO_TEXTO[entrega.tono])}>{entrega.pie}</p>
-                        </div>
-
-                        {costos && (
-                          <p className="tabular col-span-2 text-xs sm:col-span-1 sm:text-right">
-                            <span className="text-texto-tenue sm:hidden">Costo hasta hoy: </span>
-                            {!costo ? (
-                              <span className="text-texto-tenue" title="No se pudo calcular el costo de esta orden">—</span>
-                            ) : (
-                              <>
-                                {/* Todo en soles, y con código el costo es el del código: el mismo que ve Gerencia. */}
-                                <span
-                                  className={cn('sm:block', costo.pen > 0 ? 'font-medium text-texto' : 'text-texto-tenue')}
-                                  title={costo.codigo ? `El costo del código ${costo.codigo}, el mismo de Códigos internos` : undefined}
-                                  data-costo-orden={costo.pen}
-                                >
-                                  {moneda(costo.pen)}
-                                </span>
-                                {costo.margenPct !== null && (
-                                  <span className={cn('block', costo.margenPct < 0 ? 'text-peligro' : 'text-texto-suave')}>
-                                    {tramos(`${costo.cierre ? 'Margen al cierre' : 'Margen a hoy'} ${porcentajeYMonto(costo.margenPct, costo.margenPen, 'PEN', 1)}`)}
-                                  </span>
-                                )}
-                                {costo.semaforo && costo.consumidoPct !== null && (
-                                  <span
-                                    className={cn(
-                                      'block',
-                                      costo.semaforo === 'EXCEDIDO'
-                                        ? 'text-peligro'
-                                        : costo.semaforo === 'AJUSTADO'
-                                          ? 'text-aviso'
-                                          : 'text-texto-suave',
-                                    )}
-                                  >
-                                    {tramos(
-                                      `${porcentaje(costo.consumidoPct, 0)} del presupuesto${
-                                        costo.presupuestoPen !== null
-                                          ? ` · ${costo.semaforo === 'EXCEDIDO' ? 'se pasó en' : 'quedan'} ${moneda(Math.abs(costo.presupuestoPen - costo.costoDelPresupuesto))}`
-                                          : ''
-                                      }`,
-                                    )}
-                                  </span>
-                                )}
-                                {costo.sinPrecio > 0 && (
-                                  <span className="block text-aviso">
-                                    {costo.sinPrecio} {costo.sinPrecio === 1 ? 'despacho' : 'despachos'} sin precio
-                                  </span>
-                                )}
-                                {costo.cierre && <span className="block text-texto-suave">Costeo cerrado en {moneda(costo.cierre.costo)}</span>}
-                                {costo.sinCosto > 0 && <span className="block text-aviso">Horas sin costo</span>}
-                                {costo.sinCambio > 0 && <span className="block text-aviso">Falta tipo de cambio</span>}
-                              </>
-                            )}
-                          </p>
-                        )}
-                      </Link>
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
-          </TarjetaCuerpo>
-        </Tarjeta>
-
-        <div className="space-y-4">
-          <Tarjeta>
+        <div className="grid gap-5 lg:grid-cols-3">
+          <Tarjeta className="lg:col-span-2 lg:self-start">
             <TarjetaCabecera
-              titulo="Requieren atención"
-              descripcion="Órdenes que pasaron su fecha de entrega"
+              titulo="Unidades en taller"
+              ayuda={
+                verCosteo
+                  ? 'De la entrega más próxima a la más lejana, con su avance y lo que llevan costado'
+                  : 'De la entrega más próxima a la más lejana, con su avance'
+              }
+              acciones={
+                <Link
+                  href="/ordenes?estado=ABIERTAS"
+                  className="inline-flex min-h-11 items-center text-xs text-acento hover:underline sm:min-h-0"
+                >
+                  Ver todas{enTaller.total > enTaller.ordenes.length ? ` (${enTaller.total})` : ''}
+                </Link>
+              }
             />
-            <TarjetaCuerpo className="space-y-2">
-              {atrasadas.length === 0 ? (
-                <p className="py-4 text-center text-sm text-exito">Ninguna orden atrasada. Buen trabajo.</p>
+            <TarjetaCuerpo className="p-2 sm:p-3">
+              {enTaller.ordenes.length === 0 ? (
+                <div className="py-8 text-center">
+                  <p className="text-sm font-medium text-texto">No hay órdenes abiertas</p>
+                  <p className="mt-1 text-xs text-texto-suave">
+                    La OT llega cuando Gerencia aprueba la cotización con su código interno; aparece acá con su avance y su fecha de entrega.
+                  </p>
+                </div>
               ) : (
-                atrasadas.slice(0, 6).map((orden) => (
-                  <Link
-                    key={orden.id}
-                    href={`/ordenes/${orden.id}`}
-                    className="block rounded-[var(--radius-base)] p-2 hover:bg-superficie-2"
-                  >
-                    <p className="text-sm font-medium text-texto">{orden.numero}</p>
-                    <p className="text-xs text-peligro">
-                      {orden.dias_atraso} {orden.dias_atraso === 1 ? 'día' : 'días'} · comprometida el{' '}
-                      {fecha(orden.fecha_entrega_comprometida)}
-                    </p>
-                  </Link>
-                ))
+                <ul className="divide-y divide-borde">
+                  {enTaller.ordenes.map((orden) => {
+                    const estado = definir(ESTADO_OT, orden.estado)
+                    const prioridad = definir(PRIORIDAD, orden.prioridad)
+                    const entrega = situacionDeEntrega(orden.fecha_entrega_comprometida, null, hoy)
+                    const costo = costos?.get(orden.id)
+                    // Con unidad el renglón la nombra siempre, tenga placa o no;
+                    // sin unidad no se nombra nada, para no gastar el ancho de una
+                    // línea que se lee de un vistazo.
+                    const unidad = orden.unidad_id
+                      ? {
+                          placa: orden.placa,
+                          codigo_interno: orden.codigo_interno,
+                          numero_chasis: orden.numero_chasis,
+                          marca: orden.marca,
+                          modelo: orden.modelo,
+                        }
+                      : null
+                    return (
+                      <li key={orden.id}>
+                        <Link
+                          href={`/ordenes/${orden.id}`}
+                          className={cn(
+                            'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 rounded-[var(--radius-base)] px-2 py-3 hover:bg-superficie-2',
+                            // Cada renglón es su propia rejilla: con columnas de
+                            // ancho fijo las barras de avance quedan alineadas.
+                            costos
+                              ? 'sm:grid-cols-[minmax(0,1fr)_8rem_8.5rem_8.5rem]'
+                              : 'sm:grid-cols-[minmax(0,1fr)_8rem_8.5rem]',
+                          )}
+                        >
+                          <div className="min-w-0">
+                            <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-texto">
+                              {orden.numero}
+                              <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
+                              {orden.prioridad && orden.prioridad !== 'NORMAL' && (
+                                <span className="flex items-center gap-1 text-xs font-normal text-texto-suave">
+                                  <Punto tono={prioridad.tono} />
+                                  {prioridad.etiqueta}
+                                </span>
+                              )}
+                            </p>
+                            {/* La unidad primero: es lo que está en el taller, y
+                                la razón social larga del cliente la cortaba. */}
+                            <p className="line-clamp-2 text-xs text-texto-suave sm:line-clamp-1">
+                              {unidad && (
+                                <span className={nombreVaTenue(unidad, orden.avance_del_codigo) ? 'text-texto-tenue' : 'text-texto'}>
+                                  {nombreDeUnidadOCodigo(unidad, orden.avance_del_codigo)}
+                                  {(orden.cliente || orden.cliente_id === null) && ' · '}
+                                </span>
+                              )}
+                              {/* Un cliente que el puesto no puede ver llega vacío:
+                                  «sin cliente» solo cuando de verdad no lo tiene. */}
+                              {orden.cliente ??
+                                (orden.cliente_id === null ? <span className="text-aviso">Sin cliente todavía</span> : null)}
+                            </p>
+                          </div>
+
+                          {/* En el teléfono el avance va a la derecha del nombre y la
+                              entrega en su propia línea; en el monitor, columnas. */}
+                          <div className="w-24 sm:w-auto">
+                            <Progreso valor={orden.avance_porcentaje} mostrarValor alto="sm" etiqueta={`Avance de la OT ${orden.numero}`} />
+                          </div>
+
+                          <div className="col-span-2 flex items-baseline justify-between gap-3 sm:col-span-1 sm:block">
+                            <p className="tabular text-xs text-texto">
+                              {orden.fecha_entrega_comprometida ? `Entrega ${fecha(orden.fecha_entrega_comprometida)}` : 'Sin fecha'}
+                            </p>
+                            <p className={cn('text-xs', TONO_TEXTO[entrega.tono])}>{entrega.pie}</p>
+                          </div>
+
+                          {costos && (
+                            <p className="tabular col-span-2 text-xs sm:col-span-1 sm:text-right">
+                              <span className="text-texto-tenue sm:hidden">Costo hasta hoy: </span>
+                              {!costo ? (
+                                <span className="text-texto-tenue" title="No se pudo calcular el costo de esta orden">—</span>
+                              ) : (
+                                <>
+                                  {/* Todo en soles, y con código el costo es el del código: el mismo que ve Gerencia. */}
+                                  <span
+                                    className={cn('sm:block', costo.pen > 0 ? 'font-medium text-texto' : 'text-texto-tenue')}
+                                    title={costo.codigo ? `El costo del código ${costo.codigo}, el mismo de Códigos internos` : undefined}
+                                    data-costo-orden={costo.pen}
+                                  >
+                                    {moneda(costo.pen)}
+                                  </span>
+                                  {costo.margenPct !== null && (
+                                    <span className={cn('block', costo.margenPct < 0 ? 'text-peligro' : 'text-texto-suave')}>
+                                      {tramos(`${costo.cierre ? 'Margen al cierre' : 'Margen a hoy'} ${porcentajeYMonto(costo.margenPct, costo.margenPen, 'PEN', 1)}`)}
+                                    </span>
+                                  )}
+                                  {costo.semaforo && costo.consumidoPct !== null && (
+                                    <span
+                                      className={cn(
+                                        'block',
+                                        costo.semaforo === 'EXCEDIDO'
+                                          ? 'text-peligro'
+                                          : costo.semaforo === 'AJUSTADO'
+                                            ? 'text-aviso'
+                                            : 'text-texto-suave',
+                                      )}
+                                    >
+                                      {tramos(
+                                        `${porcentaje(costo.consumidoPct, 0)} del presupuesto${
+                                          costo.presupuestoPen !== null
+                                            ? ` · ${costo.semaforo === 'EXCEDIDO' ? 'se pasó en' : 'quedan'} ${moneda(Math.abs(costo.presupuestoPen - costo.costoDelPresupuesto))}`
+                                            : ''
+                                        }`,
+                                      )}
+                                    </span>
+                                  )}
+                                  {costo.sinPrecio > 0 && (
+                                    <span className="block text-aviso">
+                                      {costo.sinPrecio} {costo.sinPrecio === 1 ? 'despacho' : 'despachos'} sin precio
+                                    </span>
+                                  )}
+                                  {costo.cierre && <span className="block text-texto-suave">Costeo cerrado en {moneda(costo.cierre.costo)}</span>}
+                                  {costo.sinCosto > 0 && <span className="block text-aviso">Horas sin costo</span>}
+                                  {costo.sinCambio > 0 && <span className="block text-aviso">Falta tipo de cambio</span>}
+                                </>
+                              )}
+                            </p>
+                          )}
+                        </Link>
+                      </li>
+                    )
+                  })}
+                </ul>
               )}
             </TarjetaCuerpo>
           </Tarjeta>
 
-          <Tarjeta>
-            {/* Todas las órdenes, también las entregadas y facturadas que los
-                indicadores de arriba —solo abiertas— no cuentan. */}
-            <TarjetaCabecera titulo="Todas por estado" />
-            <TarjetaCuerpo className="space-y-2">
-              {indicadores.porEstado.length === 0 ? (
-                <p className="py-4 text-center text-sm text-texto-suave">
-                  Todavía no hay ninguna orden registrada.
-                </p>
-              ) : (
-                [...indicadores.porEstado]
-                  .sort(
-                    (a, b) =>
-                      ORDEN_ESTADO_OT.indexOf(a.estado as never) -
-                      ORDEN_ESTADO_OT.indexOf(b.estado as never),
-                  )
-                  .map(({ estado, cantidad }) => {
-                    const def = definir(ESTADO_OT, estado)
-                    return (
-                      // El conteo lleva a su lista filtrada: era un número que
-                      // no llevaba a ninguna parte y obligaba a repetir el
-                      // filtro a mano en Órdenes.
-                      <Link
-                        key={estado}
-                        href={`/ordenes?estado=${estado}`}
-                        className="flex min-h-11 items-center justify-between gap-2 rounded-[var(--radius-base)] text-sm hover:bg-superficie-2 sm:min-h-0"
-                      >
-                        <Insignia tono={def.tono}>{def.etiqueta}</Insignia>
-                        <span className="tabular font-medium text-texto">{cantidad}</span>
-                      </Link>
+          <div className="space-y-5">
+            <Tarjeta>
+              <TarjetaCabecera
+                titulo="Requieren atención"
+                descripcion="Órdenes que pasaron su fecha de entrega"
+              />
+              <TarjetaCuerpo className="space-y-2">
+                {atrasadas.length === 0 ? (
+                  <p className="py-4 text-center text-sm text-exito">Ninguna orden atrasada. Buen trabajo.</p>
+                ) : (
+                  atrasadas.slice(0, 6).map((orden) => (
+                    <Link
+                      key={orden.id}
+                      href={`/ordenes/${orden.id}`}
+                      className="block rounded-[var(--radius-base)] p-2 hover:bg-superficie-2"
+                    >
+                      <p className="text-sm font-medium text-texto">{orden.numero}</p>
+                      <p className="text-xs text-peligro">
+                        {orden.dias_atraso} {orden.dias_atraso === 1 ? 'día' : 'días'} · comprometida el{' '}
+                        {fecha(orden.fecha_entrega_comprometida)}
+                      </p>
+                    </Link>
+                  ))
+                )}
+              </TarjetaCuerpo>
+            </Tarjeta>
+
+            <Tarjeta>
+              {/* Todas las órdenes, también las entregadas y facturadas que los
+                  indicadores de arriba —solo abiertas— no cuentan. */}
+              <TarjetaCabecera titulo="Todas por estado" />
+              <TarjetaCuerpo className="space-y-2">
+                {indicadores.porEstado.length === 0 ? (
+                  <p className="py-4 text-center text-sm text-texto-suave">
+                    Todavía no hay ninguna orden registrada.
+                  </p>
+                ) : (
+                  [...indicadores.porEstado]
+                    .sort(
+                      (a, b) =>
+                        ORDEN_ESTADO_OT.indexOf(a.estado as never) -
+                        ORDEN_ESTADO_OT.indexOf(b.estado as never),
                     )
-                  })
-              )}
-            </TarjetaCuerpo>
-          </Tarjeta>
+                    .map(({ estado, cantidad }) => {
+                      const def = definir(ESTADO_OT, estado)
+                      return (
+                        // El conteo lleva a su lista filtrada: era un número que
+                        // no llevaba a ninguna parte y obligaba a repetir el
+                        // filtro a mano en Órdenes.
+                        <Link
+                          key={estado}
+                          href={`/ordenes?estado=${estado}`}
+                          className="flex min-h-11 items-center justify-between gap-2 rounded-[var(--radius-base)] text-sm hover:bg-superficie-2 sm:min-h-0"
+                        >
+                          <Insignia tono={def.tono}>{def.etiqueta}</Insignia>
+                          <span className="tabular font-medium text-texto">{cantidad}</span>
+                        </Link>
+                      )
+                    })
+                )}
+              </TarjetaCuerpo>
+            </Tarjeta>
+          </div>
         </div>
       </div>
     </section>
@@ -432,7 +577,7 @@ const TONO_TEXTO: Record<Tono, string> = {
  */
 function TusModulos({ perfil }: { perfil: PerfilSesion }) {
   const esAdmin = perfil.rol.codigo === 'ADMIN'
-  const modulos = menuDe(perfil.permisos, esAdmin, perfil.rol.codigo)
+  const modulos = modulosDelInicio(perfil.permisos, esAdmin, perfil.rol.codigo)
     .flatMap((g) => g.items)
     .filter((i) => i.ruta !== '/')
   if (modulos.length === 0) return null

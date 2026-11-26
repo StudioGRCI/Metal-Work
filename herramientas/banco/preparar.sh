@@ -104,12 +104,15 @@ begin
     ('contabilidad.local@metalwork.test',   'CONTABILIDAD',       null,  'Contabilidad'),
     ('diseno.local@metalwork.test',         'DISENO',             'DIS', 'Diseño'),
     ('colaborador.local@metalwork.test',    'DISENO_COLABORADOR', 'DIS', 'Colaborador de Diseño'),
+    -- Un segundo colaborador, para comprobar que ninguno ve lo que es del otro.
+    ('colaborador2.local@metalwork.test',   'DISENO_COLABORADOR', 'DIS', 'Colaborador de Diseño'),
     ('porteria.local@metalwork.test',       'PORTERO',            'RRH', 'Portería'),
     ('rrhh.local@metalwork.test',           'RECURSOS_HUMANOS',   null,  'Recursos Humanos'),
     ('requerimientos.local@metalwork.test', 'REQUERIMIENTOS',     'REQ', 'Requerimientos'),
     ('sup.prd.local@metalwork.test',        'SUPERVISOR',         'PRD', 'Supervisión de Producción'),
     ('sup.mtz.local@metalwork.test',        'SUPERVISOR',         'MTZ', 'Supervisión de Maestranza'),
     ('sup.acb.local@metalwork.test',        'SUPERVISOR',         'ACB', 'Supervisión de Acabados'),
+    ('ssoma.local@metalwork.test',          'SSOMA',              'SST', 'SSOMA'),
     ('tesoreria.local@metalwork.test',      'TESORERIA',          null,  'Tesorería'),
     ('ventas.local@metalwork.test',         'VENDEDOR',           'GCO', 'Ventas')
   ) as t(correo, rol, area, nombre)
@@ -145,7 +148,7 @@ begin
    where email like '%.local@metalwork.test';
 
   if (select count(*) from auth.users
-       where email like '%.local@metalwork.test' and encrypted_password <> '') < 17 then
+       where email like '%.local@metalwork.test' and encrypted_password <> '') < 20 then
     raise exception 'Faltan cuentas locales por puesto.';
   end if;
 end $$;
