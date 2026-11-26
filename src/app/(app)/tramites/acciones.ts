@@ -20,6 +20,8 @@ function dato(formulario: FormData, nombre: string) {
 }
 
 const FECHA = /^\d{4}-\d{2}-\d{2}$/
+/** Una hora como la entrega la base (`2026-11-26T16:54:07.90396-05:00`): vuelve a ella tal cual, con sus microsegundos. */
+const HORA_DE_LA_BASE = /^\d{4}-\d{2}-\d{2}[T ][0-9:.]+(Z|[+-]\d{2}(:?\d{2})?)$/
 /** Una fecha `AAAA-MM-DD` o vacía. */
 const fechaOpcional = (que: string) => z.string().refine((v) => v === '' || FECHA.test(v), `Revisa ${que}.`)
 
@@ -97,7 +99,8 @@ export async function registrarTramite(
 /**
  * El Tramitador anota en qué va el trámite: por iniciar, en trámite u
  * observado, con su expediente, sus fechas y su nota. Mismo permiso que
- * `tramites_actualizar`.
+ * `tramites_actualizar`. Manda la hora con que la ficha mostraba el trámite
+ * (`visto`): si cambió desde entonces, la base no lo pisa.
  */
 export async function actualizarTramite(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
@@ -108,10 +111,13 @@ export async function actualizarTramite(_previo: unknown, formulario: FormData):
       id: z.guid(),
       estado: z.enum(ESTADOS_QUE_SE_LLEVAN, { message: 'Elige en qué va el trámite.' }),
       entidad: z.string().min(2, 'Escribe ante qué entidad se hace.').max(80, 'La entidad pasa de 80 caracteres.'),
+      // La hora con que se pintó la ficha, como la entregó la base: se devuelve tal cual.
+      visto: z.string().regex(HORA_DE_LA_BASE, 'Recarga la ficha del trámite antes de cambiarlo.'),
       ...CUERPO,
     })
     .safeParse({
       id: dato(formulario, 'id'),
+      visto: dato(formulario, 'visto'),
       estado: dato(formulario, 'estado'),
       entidad: dato(formulario, 'entidad'),
       asunto: dato(formulario, 'asunto'),
@@ -134,6 +140,7 @@ export async function actualizarTramite(_previo: unknown, formulario: FormData):
     p_fecha_inicio: d.estado === 'POR_INICIAR' ? null : d.fecha_inicio || null,
     p_fecha_limite: d.fecha_limite || null,
     p_nota: d.nota || null,
+    p_visto: d.visto,
   })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== d.id) return { ok: false, error: 'El trámite no se guardó. Recarga la pantalla.' }
@@ -168,7 +175,7 @@ export async function pedirAnulacion(_previo: unknown, formulario: FormData): Pr
  * Gerencia responde al pedido de anular un trámite: lo anula, o dice por qué no
  * y el trámite sigue. Mismo permiso que `tramites_resolver_anulacion`. Manda
  * el pedido que la ficha tenía a la vista (`pedido`, su hora): si entre tanto
- * se volvió a pedir con otro motivo, la base no responde por ella.
+ * se volvió a pedir, la base no responde por ella.
  */
 export async function resolverAnulacion(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
@@ -180,7 +187,7 @@ export async function resolverAnulacion(_previo: unknown, formulario: FormData):
       id: z.guid(),
       motivo: aprobar ? z.string().max(500) : motivo('por qué no se anula'),
       // La hora del pedido, como la entregó la base: se devuelve tal cual.
-      pedido: z.string().regex(/^\d{4}-\d{2}-\d{2}[T ][0-9:.]+(Z|[+-]\d{2}(:?\d{2})?)$/, 'Recarga la ficha del trámite y lee el pedido antes de responder.'),
+      pedido: z.string().regex(HORA_DE_LA_BASE, 'Recarga la ficha del trámite y lee el pedido antes de responder.'),
     })
     .safeParse({ id: dato(formulario, 'id'), motivo: dato(formulario, 'motivo'), pedido: dato(formulario, 'pedido') })
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }

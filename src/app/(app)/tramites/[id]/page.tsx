@@ -35,7 +35,7 @@ export default async function PaginaTramite({ params }: PageProps<'/tramites/[id
 
   const acciones = (
     <>
-      {/* La respuesta lleva la hora del pedido que esta ficha muestra: si se volvió a pedir con otro motivo, la base no responde por ella. */}
+      {/* La respuesta lleva la hora del pedido que esta ficha muestra: si se volvió a pedir, la base no responde por ella. */}
       {t.puede_resolver_anulacion && t.anulacion_pedida_en && (
         <AprobarAnulacion id={t.id} numero={t.numero} motivo={t.motivo_anulacion} pidio={t.anulacion_pidio} pedido={t.anulacion_pedida_en} />
       )}

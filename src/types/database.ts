@@ -21234,6 +21234,7 @@ export type Database = {
           p_fecha_inicio: string | null
           p_fecha_limite: string | null
           p_nota: string | null
+          p_visto: string | null
         }
         Returns: string
       }

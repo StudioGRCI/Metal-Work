@@ -250,24 +250,36 @@ set local role authenticated;
 do $$ begin
   perform test.afirmar((select cliente = 'QA CLIENTE 496' from public.tramites_visibles(pg_temp.id('tr1'))),
     'el trámite sigue con el cliente que tenía la unidad al registrarlo');
-  perform test.debe_fallar(format($q$select public.tramites_actualizar(%L, 'OBSERVADO', 'Tarjeta de propiedad de la unidad', 'SUNARP', '2026-01234', %L, %L, null)$q$,
+  perform test.debe_fallar(format($q$select public.tramites_actualizar(%L, 'OBSERVADO', 'Tarjeta de propiedad de la unidad', 'SUNARP', '2026-01234', %L, %L, null, now())$q$,
       current_setting('prueba.tr1'), pg_temp.hoy() - 3, pg_temp.hoy() + 10),
     'observado pide decir qué observó la entidad', 'qué observó');
-  perform test.debe_fallar(format($q$select public.tramites_actualizar(%L, 'EN_TRAMITE', 'SOAT de la camioneta de reparto', 'Rímac', null, null, null, null)$q$,
+  perform test.debe_fallar(format($q$select public.tramites_actualizar(%L, 'EN_TRAMITE', 'SOAT de la camioneta de reparto', 'Rímac', null, null, null, null, now())$q$,
       current_setting('prueba.tr2')),
     'en trámite pide la fecha en que se presentó', 'fecha en que se presentó');
-  perform test.debe_fallar(format($q$select public.tramites_actualizar(%L, 'CONCLUIDO', 'SOAT de la camioneta de reparto', 'Rímac', null, null, null, null)$q$,
+  perform test.debe_fallar(format($q$select public.tramites_actualizar(%L, 'CONCLUIDO', 'SOAT de la camioneta de reparto', 'Rímac', null, null, null, null, now())$q$,
       current_setting('prueba.tr2')),
     'el estado es uno de los tres', 'por iniciar, en trámite u observado');
   perform public.tramites_actualizar(pg_temp.id('tr1'), 'OBSERVADO', 'Tarjeta de propiedad de la unidad', 'SUNARP', '2026-01234',
-    pg_temp.hoy() - 3, pg_temp.hoy() + 12, '  Falta la firma legalizada del cliente.  ');
+    pg_temp.hoy() - 3, pg_temp.hoy() + 12, '  Falta la firma legalizada del cliente.  ', now());
   perform test.afirmar(
     (select estado = 'OBSERVADO' and nota = 'Falta la firma legalizada del cliente.' and fecha_limite = pg_temp.hoy() + 12
        from public.tramites where id = pg_temp.id('tr1')),
     'queda observado, con su nota y su nueva fecha límite');
-  perform public.tramites_actualizar(pg_temp.id('tr2'), 'EN_TRAMITE', 'SOAT de la camioneta de reparto', 'Rímac', 'POL-778', pg_temp.hoy(), pg_temp.hoy() + 5, null);
+  perform public.tramites_actualizar(pg_temp.id('tr2'), 'EN_TRAMITE', 'SOAT de la camioneta de reparto', 'Rímac', 'POL-778', pg_temp.hoy(), pg_temp.hoy() + 5, null, now());
   perform test.afirmar((select estado = 'EN_TRAMITE' and expediente = 'POL-778' and fecha_inicio = pg_temp.hoy() from public.tramites where id = pg_temp.id('tr2')),
     'el de la empresa pasa a «En trámite» con su fecha y su expediente');
+  -- Con la ficha abierta desde antes de otro cambio, guardar no pisa lo que se anotó después.
+  perform test.debe_fallar(format($q$select public.tramites_actualizar(%L, 'EN_TRAMITE', 'Tarjeta de propiedad de la unidad', 'SUNARP', '2026-99999', %L, %L, null, now() - interval '1 second')$q$,
+      current_setting('prueba.tr1'), pg_temp.hoy() - 3, pg_temp.hoy() + 12),
+    'desde una ficha que quedó vieja no se pisa lo que observó la entidad', 'cambió después de que abriste');
+  perform test.debe_fallar(format($q$select public.tramites_actualizar(%L, 'EN_TRAMITE', 'Tarjeta de propiedad de la unidad', 'SUNARP', '2026-99999', %L, %L, null, null)$q$,
+      current_setting('prueba.tr1'), pg_temp.hoy() - 3, pg_temp.hoy() + 12),
+    'ni sin decir con qué ficha se cambia', 'Recarga la ficha');
+  perform test.afirmar((select estado = 'OBSERVADO' and nota = 'Falta la firma legalizada del cliente.' and expediente = '2026-01234' from public.tramites where id = pg_temp.id('tr1')),
+    'la observación sigue en su sitio');
+  -- Lo mismo otra vez (la respuesta que se perdió) no es un cambio: entra aunque la ficha sea vieja.
+  perform public.tramites_actualizar(pg_temp.id('tr1'), 'OBSERVADO', 'Tarjeta de propiedad de la unidad', 'SUNARP', '2026-01234',
+    pg_temp.hoy() - 3, pg_temp.hoy() + 12, 'Falta la firma legalizada del cliente.', now() - interval '1 second');
 end $$;
 reset role;
 
@@ -277,7 +289,7 @@ set local role authenticated;
 do $$ begin
   perform test.afirmar((select count(*) from public.tramites) = 0 and (select count(*) from public.tramites_visibles(null)) = 0,
     'Tesorería no ve trámites, ni por la tabla ni por la lista');
-  perform test.debe_fallar(format($q$select public.tramites_actualizar(%L, 'EN_TRAMITE', 'Cambiado por Tesorería', 'SUNARP', null, %L, null, null)$q$,
+  perform test.debe_fallar(format($q$select public.tramites_actualizar(%L, 'EN_TRAMITE', 'Cambiado por Tesorería', 'SUNARP', null, %L, null, null, now())$q$,
       current_setting('prueba.tr1'), pg_temp.hoy()),
     'ni los lleva', 'No tienes permiso');
   perform test.debe_fallar(format($q$select public.tramites_pedir_anulacion(%L, 'Se registró por error dos veces')$q$, current_setting('prueba.tr1')),
@@ -300,7 +312,7 @@ do $$ begin
     'y no puede hacer nada en él');
   perform test.afirmar((select count(*) from public.tramite_tipos where ambito = 'EMPRESA') = 0 and (select count(*) from public.tramite_tipos) >= 3,
     'del catálogo lee solo los tipos de una unidad');
-  perform test.debe_fallar(format($q$select public.tramites_actualizar(%L, 'EN_TRAMITE', 'Cambiado por Ventas', 'SUNARP', null, %L, null, null)$q$,
+  perform test.debe_fallar(format($q$select public.tramites_actualizar(%L, 'EN_TRAMITE', 'Cambiado por Ventas', 'SUNARP', null, %L, null, null, now())$q$,
       current_setting('prueba.tr1'), pg_temp.hoy()),
     'Ventas consulta: no los lleva', 'No tienes permiso');
   perform test.debe_fallar('select * from public.tramites_unidades_para_elegir()', 'ni elige unidades para registrar', 'No tienes permiso');
@@ -353,7 +365,7 @@ do $$ begin
             and v.anulacion_pidio = 'Tita Trámites' and not v.puede_actualizar and not v.puede_pedir_anulacion and not v.puede_resolver_anulacion
        from public.tramites_visibles(pg_temp.id('tr2')) v),
     'queda esperando el visto, y el Tramitador ya no lo toca');
-  perform test.debe_fallar(format($q$select public.tramites_actualizar(%L, 'EN_TRAMITE', 'SOAT de la camioneta de reparto', 'Rímac', 'POL-779', %L, null, null)$q$,
+  perform test.debe_fallar(format($q$select public.tramites_actualizar(%L, 'EN_TRAMITE', 'SOAT de la camioneta de reparto', 'Rímac', 'POL-779', %L, null, null, now())$q$,
       current_setting('prueba.tr2'), pg_temp.hoy()),
     'mientras espera no se cambia', 'espera el visto');
   perform test.debe_fallar(format($q$select * from public.tramites_resolver_anulacion(%L, true, null, now())$q$, current_setting('prueba.tr2')),
@@ -399,7 +411,7 @@ do $$ begin
             and v.puede_actualizar and v.puede_pedir_anulacion
        from public.tramites_visibles(pg_temp.id('tr2')) v),
     'el trámite sigue como estaba, con la respuesta a la vista, y se puede llevar otra vez');
-  perform public.tramites_actualizar(pg_temp.id('tr2'), 'EN_TRAMITE', 'SOAT de la camioneta de reparto', 'Rímac', 'POL-779', pg_temp.hoy(), pg_temp.hoy() + 5, null);
+  perform public.tramites_actualizar(pg_temp.id('tr2'), 'EN_TRAMITE', 'SOAT de la camioneta de reparto', 'Rímac', 'POL-779', pg_temp.hoy(), pg_temp.hoy() + 5, null, now());
   -- Lo pide otra vez, con otro motivo.
   perform public.tramites_pedir_anulacion(pg_temp.id('tr2'), 'La aseguradora devolvió la solicitud: se hará con otra.');
   perform test.afirmar(
@@ -450,7 +462,7 @@ select test.debe_fallar(format('delete from public.tramites where id = %L', curr
 select test.como_usuario(:'tra_id');
 set local role authenticated;
 do $$ begin
-  perform test.debe_fallar(format($q$select public.tramites_actualizar(%L, 'EN_TRAMITE', 'SOAT de la camioneta de reparto', 'Rímac', null, %L, null, null)$q$,
+  perform test.debe_fallar(format($q$select public.tramites_actualizar(%L, 'EN_TRAMITE', 'SOAT de la camioneta de reparto', 'Rímac', null, %L, null, null, now())$q$,
       current_setting('prueba.tr2'), pg_temp.hoy()),
     'el Tramitador no toca uno anulado', 'está anulado');
   perform test.debe_fallar(format($q$select public.tramites_pedir_anulacion(%L, 'Pedirlo otra vez no tiene sentido')$q$, current_setting('prueba.tr2')),

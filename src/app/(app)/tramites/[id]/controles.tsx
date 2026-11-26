@@ -146,6 +146,8 @@ function CamposDelTramite({ tramite: t, hoy }: { tramite: Tramite; hoy: string }
   const quedaLoObservado = t.estado === 'OBSERVADO' && !observado && Boolean(t.nota)
   return (
     <>
+      {/* La hora con que esta ficha muestra el trámite: si cambió después (otra pestaña, el teléfono), la base no lo pisa. */}
+      <input type="hidden" name="visto" value={t.actualizado_en ?? ''} />
       <fieldset className="space-y-2">
         <legend className="mb-2 text-xs font-medium text-texto-suave">
           En qué va<span className="ml-0.5 text-peligro">*</span>

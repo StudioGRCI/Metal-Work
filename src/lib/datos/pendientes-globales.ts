@@ -1177,7 +1177,8 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
     if (error) throw new Error('No se pudo consultar el pendiente.')
     return (data ?? []).length
   }
-  if (puede(perfil, 'tramites.aprobar_anulacion')) tareas.push({
+  // El visto es de quien tiene el permiso: al administrador no se le cuenta, como en «Por decidir».
+  if (puede(perfil, 'tramites.aprobar_anulacion') && perfil.rol.codigo !== 'ADMIN') tareas.push({
     clave: 'tramites_por_anular', ruta: '/tramites?vista=por-anular', tono: 'aviso',
     texto: n => plural(n, 'anulación de trámite espera tu visto', 'anulaciones de trámite esperan tu visto'),
     contar: () => tramites('por_resolver'),

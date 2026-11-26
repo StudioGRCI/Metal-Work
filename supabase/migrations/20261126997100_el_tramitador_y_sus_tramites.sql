@@ -409,7 +409,7 @@ begin
       return query select p_id, true;
       return;
     end if;
-    raise exception 'El tipo «%» ya quedó agregado la primera vez. Cierra esta ventana y corrígelo con «Editar».', v_actual.nombre
+    raise exception 'El tipo «%» ya quedó agregado la primera vez que lo enviaste: lo que cambiaste después no se guardó. Corrígelo con «Editar».', v_actual.nombre
       using errcode = 'unique_violation';
   end if;
   if v_actual.ambito <> p_ambito and exists (select 1 from public.tramites x where x.tipo_id = p_id) then
@@ -563,9 +563,15 @@ revoke all on function public.tramites_registrar(uuid, uuid, uuid, uuid, text, t
 grant execute on function public.tramites_registrar(uuid, uuid, uuid, uuid, text, text, text, date, date, text) to authenticated;
 
 -- 10. Llevarlo: en qué va, sus fechas, su expediente ------------------------------------------
--- Lo mismo otra vez no cambia nada. No toca el tipo, la unidad ni la OT.
+-- Lo mismo otra vez no cambia nada. No toca el tipo, la unidad ni la OT. El
+-- cambio lleva la hora con que la ficha mostraba el trámite (`p_visto`, su
+-- `actualizado_en`): con la ficha abierta desde la mañana en el monitor y la
+-- observación anotada después desde el teléfono, guardar desde el monitor
+-- borraba lo que observó la entidad sin avisar. Si el trámite cambió desde
+-- entonces, no se pisa: se pide recargar.
 create or replace function public.tramites_actualizar(
-  p_id uuid, p_estado text, p_asunto text, p_entidad text, p_expediente text, p_fecha_inicio date, p_fecha_limite date, p_nota text
+  p_id uuid, p_estado text, p_asunto text, p_entidad text, p_expediente text, p_fecha_inicio date, p_fecha_limite date, p_nota text,
+  p_visto timestamptz
 ) returns uuid
 language plpgsql security definer set search_path to 'public' as $$
 declare
@@ -619,19 +625,30 @@ begin
     raise exception 'Cuenta en la nota qué observó la entidad.' using errcode = 'check_violation';
   end if;
 
+  -- Lo mismo que ya está: es el mismo envío, o nada que guardar.
+  if (v_t.estado, v_t.asunto, v_t.entidad, v_t.expediente, v_t.fecha_inicio, v_t.fecha_limite, v_t.nota)
+     is not distinct from (p_estado, v_asunto, v_entidad, v_exp, p_fecha_inicio, p_fecha_limite, v_nota) then
+    return p_id;
+  end if;
+  if p_visto is null then
+    raise exception 'Recarga la ficha del trámite antes de cambiarlo.' using errcode = 'check_violation';
+  end if;
+  if v_t.actualizado_en is distinct from p_visto then
+    raise exception 'El trámite % cambió después de que abriste esta pantalla: recárgala y vuelve a anotar lo tuyo.', v_t.numero
+      using errcode = 'check_violation';
+  end if;
+
   update public.tramites
      set estado = p_estado, asunto = v_asunto, entidad = v_entidad, expediente = v_exp,
          fecha_inicio = p_fecha_inicio, fecha_limite = p_fecha_limite, nota = v_nota
-   where id = p_id
-     and (estado, asunto, entidad, expediente, fecha_inicio, fecha_limite, nota)
-         is distinct from (p_estado, v_asunto, v_entidad, v_exp, p_fecha_inicio, p_fecha_limite, v_nota);
+   where id = p_id;
   return p_id;
 end;
 $$;
-comment on function public.tramites_actualizar(uuid, text, text, text, text, date, date, text) is
-  'Quien lleva los trámites (tramites.gestionar) anota en qué va uno: por iniciar, en trámite u observado, con su asunto, su entidad, su expediente, sus fechas y su nota. No toca el tipo, la unidad ni la OT. No vale sobre uno anulado ni sobre uno que espera el visto de Gerencia.';
-revoke all on function public.tramites_actualizar(uuid, text, text, text, text, date, date, text) from public, anon;
-grant execute on function public.tramites_actualizar(uuid, text, text, text, text, date, date, text) to authenticated;
+comment on function public.tramites_actualizar(uuid, text, text, text, text, date, date, text, timestamptz) is
+  'Quien lleva los trámites (tramites.gestionar) anota en qué va uno: por iniciar, en trámite u observado, con su asunto, su entidad, su expediente, sus fechas y su nota. No toca el tipo, la unidad ni la OT. No vale sobre uno anulado ni sobre uno que espera el visto de Gerencia, ni pisa lo que cambió después de pintarse la ficha (p_visto).';
+revoke all on function public.tramites_actualizar(uuid, text, text, text, text, date, date, text, timestamptz) from public, anon;
+grant execute on function public.tramites_actualizar(uuid, text, text, text, text, date, date, text, timestamptz) to authenticated;
 
 -- 11. Pedir la anulación ----------------------------------------------------------------------
 -- La pide quien lo lleva, con su motivo; la aprueba Gerencia. Le llega a quien
@@ -731,7 +748,7 @@ begin
     raise exception 'El trámite % no espera tu visto: nadie pidió anularlo, o ya se respondió.', v_t.numero using errcode = 'check_violation';
   end if;
   if v_t.anulacion_pedida_en <> p_pedido then
-    raise exception 'El trámite % se volvió a pedir anular, con otro motivo, después de que abriste esta pantalla: recárgala y lee el pedido antes de responder.', v_t.numero
+    raise exception 'El trámite % se volvió a pedir anular después de que abriste esta pantalla: recárgala y lee el pedido antes de responder.', v_t.numero
       using errcode = 'check_violation';
   end if;
 

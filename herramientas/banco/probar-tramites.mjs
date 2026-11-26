@@ -12,7 +12,8 @@
  *      lista?» lo lleva al catálogo: agrega un tipo (un nombre repetido se
  *      rechaza junto a su campo; los días de aviso se proponen solos) y lo deja
  *      fuera de uso con «Editar». Marca el primero «Observado» con su nota (sale
- *      en la vista «Observados» y en «Te toca») y pide anular el segundo.
+ *      en la vista «Observados» y en «Te toca»; desde otra pestaña que quedó
+ *      abierta con la ficha de antes, guardar no la pisa) y pide anular el segundo.
  *   2. El Tramitador, en el celular: la lista y la ficha no se deslizan de costado.
  *   3. Gerencia: su menú y «Por decidir» cuentan la anulación; consulta sin
  *      «Registrar»; no la aprueba (con motivo) y el trámite sigue. El Tramitador
@@ -162,7 +163,11 @@ async function tresToques(boton) {
 /** La captura, sin el indicador de `next dev`, que tapa el pie del menú. */
 async function captura(pagina, nombre, completa = true) {
   await pagina.addStyleTag({ content: 'nextjs-portal { display: none !important }' })
-  await pagina.screenshot({ path: join(CAPTURAS, nombre), fullPage: completa })
+  // En el celular, lo que se ve en la pantalla: en la página entera, la barra de abajo salía pintada a media captura.
+  const entera = completa && (pagina.viewportSize()?.width ?? 0) >= 500
+  // Desde arriba: con la página deslizada, la barra y el menú salían pintados a media captura.
+  if (entera) await pagina.evaluate(() => window.scrollTo(0, 0))
+  await pagina.screenshot({ path: join(CAPTURAS, nombre), fullPage: entera })
 }
 
 const textoDelMenu = async (pagina) => limpio(await pagina.locator('nav').first().innerText().catch(() => ''))
@@ -314,6 +319,9 @@ let tr2 = null
   // --- la ficha: observado, con su nota
   await ir(pagina, `${BASE}/tramites/${tr1?.id}`)
   comprobar(/En la entidad|Te toca/.test(limpio(await pagina.locator('[data-que-sigue]').innerText().catch(() => ''))), '[Tramitador 1440] la ficha dice qué sigue')
+  // La misma ficha queda abierta en otra pestaña, como estaba antes de la observación.
+  const deAntes = await contexto.newPage()
+  await ir(deAntes, `${BASE}/tramites/${tr1?.id}`)
   await pagina.getByRole('button', { name: 'Actualizar' }).click()
   v = ventanaDe(pagina)
   await v.waitFor({ timeout: 15000 })
@@ -333,6 +341,19 @@ let tr2 = null
   comprobar(t1?.estado === 'OBSERVADO' && t1?.nota === 'Falta la firma legalizada del cliente en el formulario.', '[Tramitador 1440] queda «Observado», con lo que observó la entidad')
   comprobar(/Falta la firma/.test(limpio(await pagina.locator('[data-nota]').innerText().catch(() => ''))), '[Tramitador 1440] y la ficha lo muestra')
   await captura(pagina, 'tramites-ficha-tramitador-1440.png')
+  // Desde la pestaña que quedó abierta, anotar el expediente no borra lo que observó la entidad.
+  await deAntes.getByRole('button', { name: 'Actualizar' }).click()
+  v = ventanaDe(deAntes)
+  await v.waitFor({ timeout: 15000 })
+  await v.locator('input[name="expediente"]').fill('2026-PISADO')
+  await v.getByRole('button', { name: 'Guardar' }).click()
+  const pisado = await hasta(() => v.locator('[role="alert"]').first().innerText().catch(() => ''), (t) => /cambió después/.test(t), 15000)
+  const sigue = await tramite(tr1?.id)
+  comprobar(
+    /cambió después de que abriste/.test(pisado) && sigue?.estado === 'OBSERVADO' && /Falta la firma/.test(sigue?.nota ?? '') && sigue?.expediente !== '2026-PISADO',
+    `[Tramitador 1440] desde una pestaña que quedó abierta no se pisa la observación: «${limpio(pisado).slice(0, 100)}»`,
+  )
+  await deAntes.close()
   await ir(pagina, `${BASE}/tramites?vista=observados`)
   comprobar((await pagina.locator(`[data-tramite="${tr1?.numero}"]`).count()) === 1 && (await pagina.locator(`[data-tramite="${tr2?.numero}"]`).count()) === 0,
     '[Tramitador 1440] la vista «Observados» trae el observado y no el otro')
@@ -407,6 +428,18 @@ comprobar((await avisosDe(CUENTAS.administracion, tr2?.id)).length === 0, '[Admi
     '[Gerencia 1440] «Por decidir» trae la anulación que espera su visto, con el salto a su ficha',
   )
   await captura(pagina, 'tramites-por-decidir-gerencia-1440.png')
+  {
+    // La misma bandeja en el celular, mientras la anulación espera.
+    const celular = await entrar(CUENTAS.gerencia, CELULAR)
+    await ir(celular.pagina, `${BASE}/por-decidir`)
+    comprobar(
+      (await celular.pagina.locator(`[data-grupo-por-decidir="tramites"] a[href="/tramites/${tr2?.id}"]`).count()) >= 1 && (await anchoDe(celular.pagina)) <= 390,
+      '[Gerencia 390] «Por decidir» trae la anulación, sin deslizar de costado',
+    )
+    await celular.pagina.locator('[data-grupo-por-decidir="tramites"]').scrollIntoViewIfNeeded()
+    await captura(celular.pagina, 'tramites-por-decidir-gerencia-390.png')
+    await celular.contexto.close()
+  }
 
   await ir(pagina, `${BASE}/tramites/${tr2?.id}`)
   comprobar(/Te toca/.test(limpio(await pagina.locator('[data-que-sigue]').innerText().catch(() => ''))), '[Gerencia 1440] la ficha dice que le toca')

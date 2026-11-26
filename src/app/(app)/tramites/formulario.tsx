@@ -214,8 +214,9 @@ function FormularioTramite({ envio, tipos, unidades, hoy, alCancelar, alAgregarT
             })}
           </Seleccion>
         </Campo>
-        <p className="-mt-2 text-xs text-texto-suave">
-          ¿No está en la lista?{' '}
+        {/* En renglones enteros: con el botón metido en la frase, sus 44 px para el dedo separaban las dos líneas del texto. */}
+        <p className="-mt-2 flex flex-wrap items-center gap-x-1.5 text-xs text-texto-suave">
+          <span>¿No está en la lista?</span>
           <button
             type="button"
             onClick={alAgregarTipo}
@@ -224,7 +225,7 @@ function FormularioTramite({ envio, tipos, unidades, hoy, alCancelar, alAgregarT
           >
             Agrégalo en «Tipos de trámite»
           </button>
-          . Lo escrito aquí no se guarda.
+          <span>Lo escrito aquí no se guarda.</span>
         </p>
 
         {deUnidad && unidades.length === 0 && (
