@@ -58,6 +58,10 @@ function comprobar(cond, texto) {
   if (!cond) fallas.push(texto)
 }
 const limpio = (t) => (t ?? '').replace(/\s+/g, ' ').trim()
+/** Desde la 15.2 la ficha usa el `Recorrido` común, plegado: se abre antes de leerlo. */
+async function abrirRecorrido(pagina) {
+  await pagina.locator('[data-recorrido]').evaluateAll((ds) => ds.forEach((d) => (d.open = true)))
+}
 const quieta = (pagina) => pagina.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {})
 async function ir(pagina, url) {
   await pagina.goto(url, { waitUntil: 'load' })
@@ -239,7 +243,9 @@ let delSupervisor = null
   const enStorage = await consulta(`select 1 from storage.objects where bucket_id = 'fotos-ssoma' and name = $1`, [delAlmacen?.ruta ?? ''])
   comprobar(delAlmacen?.fotos === 1 && enStorage.length === 1 && (delAlmacen?.ruta ?? '').startsWith(`${yo.id}/${delAlmacen?.id}/`), '[Almacén 390] la foto quedó anotada y está en Storage, en su carpeta')
   const sueltas = await consulta(
-    `select count(*)::int as n from storage.objects o where o.bucket_id = 'fotos-ssoma' and o.name like $1 and not exists (select 1 from public.ssoma_reporte_fotos f where f.ruta = o.name)`,
+    `select count(*)::int as n from storage.objects o where o.bucket_id = 'fotos-ssoma' and o.name like $1 and not exists (select 1 from public.ssoma_reporte_fotos f where f.ruta = o.name)
+        and not exists (select 1 from public.ssoma_accion_fotos f where f.ruta = o.name)
+        and not exists (select 1 from public.ssoma_charla_fotos f where f.ruta = o.name)`,
     [`${yo.id}/%`],
   )
   comprobar(sueltas[0].n === 0, '[Almacén 390] no quedó ninguna foto suelta en Storage')
@@ -256,8 +262,9 @@ let delSupervisor = null
   await pagina.getByRole('link', { name: 'Ver cómo va' }).click()
   await pagina.waitForURL((u) => u.pathname === `/ssoma/${delAlmacen?.id}`, { timeout: 20000 })
   await quieta(pagina)
+  await abrirRecorrido(pagina)
   const recorrido = limpio(await pagina.locator('[data-recorrido]').innerText())
-  comprobar(/Reportado/.test(recorrido) && /Almacén/.test(recorrido) && /Lo tiene SSOMA · desde hoy/.test(recorrido), `[Almacén 390] ve el recorrido de su reporte: «${recorrido.slice(0, 120)}»`)
+  comprobar(/Reportado/.test(recorrido) && /Almacenero/.test(recorrido) && /Lo tiene SSOMA/.test(recorrido), `[Almacén 390] ve el recorrido de su reporte: «${recorrido.slice(0, 120)}»`)
   const fotoVista = await hasta(() => pagina.locator('main img').first().evaluate((i) => i.complete && i.naturalWidth > 0).catch(() => false), Boolean, 15000)
   comprobar(fotoVista, '[Almacén 390] ve la foto de su reporte')
   comprobar((await pagina.locator('[data-anular-reporte]').count()) === 0, '[Almacén 390] no se le ofrece anular')
@@ -396,8 +403,8 @@ let delSupervisor = null
   comprobar(anulado?.estado === 'ANULADO' && anulado?.motivo_anulacion === motivo && anulado?.anulado_por === yo.id && acciones.n - antes === 1, `[SSOMA 1440] anula con su motivo, en un solo envío (${acciones.n - antes})`)
   const alAutor = await consulta(`select titulo from public.notificaciones where origen_id = $1 and usuario_id = $2 and titulo like 'SSOMA anuló%'`, [delSupervisor?.id, delSupervisor?.registrado_por])
   comprobar(alAutor.length === 1, `[SSOMA 1440] a quien lo reportó le llega el aviso de la anulación: «${alAutor[0]?.titulo}»`)
-  const ficha = await hasta(() => pagina.locator('main').innerText().then(limpio), (t) => /Anulado por SSOMA/.test(t), 15000)
-  comprobar(/Anulado por SSOMA/.test(ficha) && ficha.includes(motivo) && (await pagina.locator('[data-anular-reporte]').count()) === 0, '[SSOMA 1440] la ficha dice quién lo anuló y por qué, y ya no ofrece anular')
+  const ficha = await hasta(() => abrirRecorrido(pagina).then(() => pagina.locator('main').innerText()).then(limpio), (t) => t.includes(motivo), 15000)
+  comprobar(/Anulado/.test(ficha) && ficha.includes(motivo) && (await pagina.locator('[data-anular-reporte]').count()) === 0, '[SSOMA 1440] la ficha dice quién lo anuló y por qué, y ya no ofrece anular')
   await pagina.screenshot({ path: join(CAPTURAS, 'ssoma-detalle-anulado-1440.png'), fullPage: true })
   await ir(pagina, `${BASE}/ssoma?vista=anulados`)
   comprobar((await pagina.locator(`[data-reporte-ssoma="${delSupervisor?.numero}"]`).count()) === 1, '[SSOMA 1440] el anulado pasa a la vista «Anulados»')
@@ -432,7 +439,9 @@ let delSupervisor = null
   const titulo = limpio(await pagina.locator('h1').innerText())
   comprobar(titulo === 'Reportes de seguridad' && (await pagina.locator(`[data-reporte-ssoma="${delAlmacen?.numero}"]`).count()) === 1, '[Gerencia 1440] consulta todos los reportes')
   await ir(pagina, `${BASE}/ssoma/${delAlmacen?.id}`)
-  comprobar(/Almacén Banco/.test(limpio(await pagina.locator('main').innerText())) && (await pagina.locator('[data-anular-reporte]').count()) === 0, '[Gerencia 1440] ve quién reportó y no se le ofrece anular')
+  await abrirRecorrido(pagina)
+  // Desde la 15.2 la ficha nombra a quien reportó por su puesto, en el recorrido; el nombre va en la lista.
+  comprobar(/Reportado Almacenero/.test(limpio(await pagina.locator('main').innerText())) && (await pagina.locator('[data-anular-reporte]').count()) === 0, '[Gerencia 1440] ve quién reportó y no se le ofrece anular')
   await pagina.screenshot({ path: join(CAPTURAS, 'ssoma-detalle-gerencia-1440.png'), fullPage: true })
   comprobar(errores.length === 0, `[Gerencia 1440] sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()

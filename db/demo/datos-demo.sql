@@ -574,3 +574,62 @@ begin
    where codigo = 'AM-07-03';
 end;
 $$;
+
+-- -----------------------------------------------------------------------------
+-- SSOMA 15.3 (migración 20261126985000): el personal de la planta que lista
+-- RR. HH., con nombres y DNI inventados, y dos charlas para que la lista y «No
+-- asistieron» tengan qué mostrar: una de este mes con seis de las diez
+-- personas y una inducción del mes pasado. Se insertan a mano y no con
+-- `ssoma_registrar_charla`, que exige fotos ya subidas a Storage: aquí no hay.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_quien uuid;
+  v_hoy   date := (now() at time zone 'America/Lima')::date;
+  v_charla uuid := gen_random_uuid();
+  v_induccion uuid := gen_random_uuid();
+begin
+  if exists (select 1 from public.ssoma_charlas) then
+    return;
+  end if;
+  select u.id into v_quien
+    from public.usuarios u join public.roles r on r.id = u.rol_id
+   where r.codigo in ('SSOMA', 'ADMIN') and u.activo
+   order by r.codigo = 'SSOMA' desc, u.creado_en
+   limit 1;
+  if v_quien is null then
+    return;
+  end if;
+  perform set_config('request.jwt.claim.sub', v_quien::text, true);
+
+  if not exists (select 1 from public.trabajadores) then
+    insert into public.trabajadores (nombres, apellidos, dni, cargo, area_id)
+    select t.nombres, t.apellidos, t.dni, t.cargo, (select id from public.areas where codigo = t.area)
+      from (values
+        ('JORGE',   'QUISPE MAMANI',   '70000001', 'Soldador',             'PRD'),
+        ('LUIS',    'TORRES CHÁVEZ',   '70000002', 'Soldador',             'PRD'),
+        ('MARCO',   'HUAMÁN ROJAS',    '70000003', 'Armador',              'PRD'),
+        ('PEDRO',   'CCAMA FLORES',    '70000004', 'Pintor',               'ACB'),
+        ('RAÚL',    'MENDOZA SALAS',   '70000005', 'Masillador',           'ACB'),
+        ('ÓSCAR',   'NÚÑEZ PAREDES',   '70000006', 'Operario de plegadora','MTZ'),
+        ('CARLOS',  'VARGAS LEÓN',     '70000007', 'Cortador',             'MTZ'),
+        ('ANA',     'RAMOS QUISPE',    '70000008', 'Auxiliar de almacén',  'ALM'),
+        ('WILMER',  'CHOQUE APAZA',    '70000009', 'Electricista',         'MNT'),
+        ('JULIO',   'PARI CONDORI',    '70000010', 'Ayudante',             'PRD')
+      ) as t(nombres, apellidos, dni, cargo, area);
+  end if;
+
+  insert into public.ssoma_charlas (id, tipo, tema, expositor, fecha, creado_por)
+  values (v_charla, 'CHARLA', 'Uso correcto de la amoladora y sus guardas', 'Supervisión de SSOMA',
+          greatest(date_trunc('month', v_hoy)::date, v_hoy - 3), v_quien),
+         (v_induccion, 'INDUCCION', 'Inducción de seguridad para personal nuevo', 'Supervisión de SSOMA',
+          (date_trunc('month', v_hoy) - interval '10 days')::date, v_quien);
+  insert into public.ssoma_charla_asistentes (charla_id, trabajador_id)
+  select v_charla, t.id from public.trabajadores t where t.activo and t.dni in
+    ('70000001', '70000002', '70000003', '70000004', '70000006', '70000008');
+  insert into public.ssoma_charla_asistentes (charla_id, trabajador_id)
+  select v_induccion, t.id from public.trabajadores t where t.activo and t.dni in ('70000009', '70000010');
+
+  perform set_config('request.jwt.claim.sub', '', true);
+end;
+$$;

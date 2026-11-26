@@ -23,20 +23,21 @@ const GERENCIA = [
 
 const rutas = (grupos) => grupos.flatMap((g) => g.items.map((i) => i.ruta))
 
-test('Gerencia ve por área las 51 pantallas que su permiso le abre, cada una una vez', () => {
+test('Gerencia ve por área las 52 pantallas que su permiso le abre, cada una una vez', () => {
   const grupos = menuDe(GERENCIA, false, 'GERENTE')
   assert.deepEqual(grupos.map((g) => g.titulo), [
     'Principal', 'Por aprobar', 'Ventas', 'Diseño e Ingeniería', 'Requerimientos', 'Almacén', 'Logística', 'Administración',
     'Finanzas', 'Recursos Humanos', 'SSOMA',
   ])
   const todas = rutas(grupos)
-  // 49 en main el 2026-11-26 (con Averías), más Por decidir (plan 12, entrega 12.1) y el Control de compras de Almacén.
-  assert.equal(todas.length, 51)
-  assert.equal(new Set(todas).size, 51)
+  // 49 en main el 2026-11-26 (con Averías), más Por decidir (plan 12, entrega 12.1), el Control de compras de Almacén
+  // y las charlas e inducciones de SSOMA (plan 15, entrega 15.3).
+  assert.equal(todas.length, 52)
+  assert.equal(new Set(todas).size, 52)
   // Las averías y los reportes de seguridad, en lo que consulta: no se repiten en «Reportar», que va al final para todos.
   // Las averías van con los equipos en Almacén: un grupo más no entraba en el monitor.
   assert.deepEqual(rutas(grupos.filter((g) => g.titulo === 'Almacén')).slice(-2), ['/equipos', '/averias'])
-  assert.deepEqual(rutas(grupos.filter((g) => g.titulo === 'SSOMA')), ['/ssoma'])
+  assert.deepEqual(rutas(grupos.filter((g) => g.titulo === 'SSOMA')), ['/ssoma', '/ssoma/charlas'])
   assert.ok(!grupos.some((g) => g.titulo === 'Reportar'))
   // Las once que se le abrieron en lectura el 2026-11-26, y Proveedores sin `proveedores.editar`.
   for (const r of [

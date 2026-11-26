@@ -41,6 +41,7 @@ import {
   MessageSquareWarning,
   NotebookPen,
   NotebookText,
+  Presentation,
   Receipt,
   ReceiptText,
   Route,
@@ -652,6 +653,15 @@ export const NAVEGACION = [
         descripcion: 'Cada accidente, incidente o condición insegura reportada, con su número y cómo va',
         disponible: true,
       },
+      // Plan 15.3: las charlas y las inducciones, con quién no asistió en el mes.
+      {
+        titulo: 'Charlas e inducciones',
+        ruta: '/ssoma/charlas',
+        icono: Presentation,
+        permiso: ['ssoma.gestionar', 'ssoma.ver'],
+        descripcion: 'Cada charla de seguridad e inducción, con su foto y quiénes asistieron; quién no asistió en el mes',
+        disponible: true,
+      },
     ],
   },
   // El padrón de equipos de la planta (Plan 16). Lo lleva Mantenimiento; Almacén
@@ -923,7 +933,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
         ],
       },
       // Los reportes de seguridad, en consulta y sin anular (Plan 15).
-      { titulo: 'SSOMA', consulta: true, rutas: ['/ssoma'] },
+      { titulo: 'SSOMA', consulta: true, rutas: ['/ssoma', '/ssoma/charlas'] },
     ],
     // «Por decidir» en lugar de «Aprobar»: lo eligió DKS el 2026-11-26 (plan 12, entrega 12.1).
     telefono: ['/codigos-internos', '/cotizaciones/pdf', '/por-decidir', '/reportes-diarios'],
@@ -1133,8 +1143,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // que espera por SSOMA cada día. Las acciones correctivas, las charlas, las
   // inspecciones y la entrega de EPP se suman aquí con sus entregas.
   SSOMA: {
-    grupos: [{ titulo: 'SSOMA', rutas: ['/ssoma'] }],
-    telefono: ['/ssoma', '/'],
+    grupos: [{ titulo: 'SSOMA', rutas: ['/ssoma', '/ssoma/charlas'] }],
+    telefono: ['/ssoma', '/ssoma/charlas', '/'],
   },
 }
 // El líder de Diseño hace el trabajo de Diseño y además revisa el de su equipo
@@ -1330,6 +1340,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/rrhh/pagos-oficina', corto: 'Pagos' },
   { ruta: '/rrhh/observaciones', corto: 'Observaciones' },
   { ruta: '/ssoma', corto: 'Seguridad' },
+  { ruta: '/ssoma/charlas', corto: 'Charlas' },
   { ruta: '/reportes-diarios', corto: 'Reporte' },
   { ruta: '/codigos-internos', corto: 'Códigos' },
   { ruta: '/diseno/planos', corto: 'Planos' },

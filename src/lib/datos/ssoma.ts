@@ -399,3 +399,122 @@ export async function cuentasParaAsignar(): Promise<CuentaParaAsignar[]> {
   if (error) throw new Error(`No se pudo leer la lista de cuentas: ${error.message}`)
   return (data ?? []).flatMap((c) => (c.id && c.nombre ? [{ id: c.id, nombre: c.nombre, puesto: c.puesto, area: c.area }] : []))
 }
+
+/*
+ * Entrega 15.3 (migración 20261126985000): las charlas e inducciones. Las leen
+ * solo SSOMA y Gerencia; a los demás las funciones les devuelven nada. De RR. HH.
+ * llega solo nombre, cargo y área.
+ */
+
+export type CharlaSsoma = {
+  id: string
+  tipo: string
+  tema: string
+  expositor: string
+  fecha: string
+  asistentes: number
+  fotos: number
+  registro: string | null
+  anulado_en: string | null
+  anulo: string | null
+  motivo_anulacion: string | null
+}
+
+/** Las charlas e inducciones de un mes («2026-11»), la más reciente arriba; las anuladas también. */
+export async function listarCharlasDelMes(mes: string): Promise<CharlaSsoma[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('ssoma_charlas_del_mes', { p_mes: `${mes}-01` })
+  if (error) throw new Error(`No se pudieron leer las charlas: ${error.message}`)
+  return (data ?? []).flatMap((c) =>
+    c.id && c.tipo && c.tema && c.expositor && c.fecha
+      ? [
+          {
+            id: c.id,
+            tipo: c.tipo,
+            tema: c.tema,
+            expositor: c.expositor,
+            fecha: c.fecha,
+            asistentes: c.asistentes ?? 0,
+            fotos: c.fotos ?? 0,
+            registro: c.registro,
+            anulado_en: c.anulado_en,
+            anulo: c.anulo,
+            motivo_anulacion: c.motivo_anulacion,
+          },
+        ]
+      : [],
+  )
+}
+
+export type PersonaDeLaLista = { id: string; nombre: string; cargo: string | null; area: string | null }
+export type FaltoEnElMes = PersonaDeLaLista & { ultima: string | null }
+
+/** El personal activo que no asistió a ninguna charla ni inducción vigente del mes, con la última vez que asistió. */
+export async function noAsistieronEnElMes(mes: string): Promise<{ faltaron: FaltoEnElMes[]; activos: number }> {
+  const supabase = await createClient()
+  const [faltaron, activos] = await Promise.all([
+    supabase.rpc('ssoma_no_asistieron', { p_mes: `${mes}-01` }),
+    supabase.rpc('ssoma_personal_activo'),
+  ])
+  const error = faltaron.error ?? activos.error
+  if (error) throw new Error(`No se pudo leer quién no asistió: ${error.message}`)
+  return {
+    faltaron: (faltaron.data ?? []).flatMap((p) =>
+      p.id && p.nombre ? [{ id: p.id, nombre: p.nombre, cargo: p.cargo, area: p.area, ultima: p.ultima }] : [],
+    ),
+    activos: activos.data ?? 0,
+  }
+}
+
+/** La lista de RR. HH. para marcar asistentes: solo nombre, cargo y área. Pide `ssoma.gestionar`. */
+export async function personalParaCharla(): Promise<PersonaDeLaLista[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('ssoma_personal_para_charla')
+  if (error) throw new Error(`No se pudo leer la lista del personal: ${error.message}`)
+  return (data ?? []).flatMap((p) => (p.id && p.nombre ? [{ id: p.id, nombre: p.nombre, cargo: p.cargo, area: p.area }] : []))
+}
+
+export type DetalleCharlaSsoma = {
+  id: string
+  tipo: string
+  tema: string
+  expositor: string
+  fecha: string
+  registro: string | null
+  creado_en: string
+  anulado_en: string | null
+  anulo: string | null
+  motivo_anulacion: string | null
+  asistentes: PersonaDeLaLista[]
+  fotosDeLaCharla: FotoSsoma[]
+}
+
+/** Una charla con sus asistentes y sus fotos. `null` si no existe o si quien mira no es SSOMA ni Gerencia. */
+export async function cargarCharlaSsoma(id: string): Promise<DetalleCharlaSsoma | null> {
+  const supabase = await createClient()
+  const [charla, asistentes, fotos] = await Promise.all([
+    supabase.rpc('ssoma_charla', { p_id: id }),
+    supabase.rpc('ssoma_asistentes_de_charla', { p_charla: id }),
+    supabase.from('ssoma_charla_fotos').select('id, orden, ruta').eq('charla_id', id).order('orden'),
+  ])
+  const error = charla.error ?? asistentes.error ?? fotos.error
+  if (error) throw new Error(`No se pudo leer la charla: ${error.message}`)
+  const c = (charla.data ?? [])[0]
+  if (!c?.id || !c.tipo || !c.tema || !c.expositor || !c.fecha || !c.creado_en) return null
+  const filas = fotos.data ?? []
+  const enlaces = await enlacesDeFotos(filas.map((f) => f.ruta))
+  return {
+    id: c.id,
+    tipo: c.tipo,
+    tema: c.tema,
+    expositor: c.expositor,
+    fecha: c.fecha,
+    registro: c.registro,
+    creado_en: c.creado_en,
+    anulado_en: c.anulado_en,
+    anulo: c.anulo,
+    motivo_anulacion: c.motivo_anulacion,
+    asistentes: (asistentes.data ?? []).flatMap((p) => (p.id && p.nombre ? [{ id: p.id, nombre: p.nombre, cargo: p.cargo, area: p.area }] : [])),
+    fotosDeLaCharla: filas.map((f) => ({ id: f.id, orden: f.orden, enlace: enlaces[f.ruta] ?? null })),
+  }
+}
