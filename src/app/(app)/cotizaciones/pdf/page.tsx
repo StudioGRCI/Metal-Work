@@ -20,6 +20,7 @@ import { diaLima, fecha as fmtFecha, hora, hoyLima, moneda as formatoMoneda } fr
 import { exigirPermiso, puede, puedeCorregirCotizacion, puedeQuitarCotizacion } from '@/lib/sesion'
 
 import { CargarCodigoYOt, CorregirCotizacion, EstadoDeLaOt, QuitarCotizacion, RevisarCotizacion } from './acciones-cotizacion'
+import { IrALaTarjetaDelAviso } from './ir-a-la-tarjeta-del-aviso'
 import { EstadoDeSubirCotizacion, SubirCotizacion } from './subir-cotizacion'
 
 export const metadata = { title: 'Cotización' }
@@ -299,6 +300,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
         </Tarjeta>
       ) : (
         <ul className="space-y-3">
+          <IrALaTarjetaDelAviso />
           {visibles.map((c) => {
             const estado = ESTADOS[c.estado ?? ''] ?? { etiqueta: c.estado ?? '—', tono: 'neutro' as const }
             const quitable = puedeQuitarCotizacion(perfil, c)
@@ -317,8 +319,9 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
             const siguiente = Array.from({ length: unidades }, (_, i) => i + 1).find((k) => !tomadas.has(k)) ?? c.ordenes.length + 1
 
             return (
-              // Con `id`: el aviso de la campana aterriza en esta fila (`#id`).
-              <li key={c.id} id={c.id ?? undefined} className="scroll-mt-20 target:[&>div]:border-acento">
+              // Con `id`: el aviso de la campana aterriza en esta fila (`#id`), y
+              // `IrALaTarjetaDelAviso` la marca con `data-del-aviso`.
+              <li key={c.id} id={c.id ?? undefined} className="scroll-mt-20 outline-none data-del-aviso:[&>div]:border-acento data-del-aviso:[&>div]:ring-1 data-del-aviso:[&>div]:ring-acento">
                 <Tarjeta>
                   <TarjetaCuerpo className="space-y-2.5">
                     <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
@@ -333,6 +336,29 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                         {c.registrado_por_nombre ?? 'Ventas'} · {fmtFecha(c.creado_en)} {hora(c.creado_en)}
                       </span>
                     </div>
+
+                    {/* La observación de Gerencia y el motivo de la anulación van arriba, antes que el
+                        cliente y el monto: es lo primero que el vendedor tiene que leer (Plan 9.1). */}
+                    {c.estado === 'RECHAZADA' && c.observacion && (
+                      <div className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-peligro-suave px-2.5 py-2 text-sm text-peligro">
+                        <MessageSquareWarning aria-hidden className="mt-0.5 size-4 shrink-0" />
+                        <div>
+                          <p>
+                            <span className="font-medium">{c.revisado_por_nombre ?? 'Gerencia'} la rechazó</span>
+                            {c.revisado_en ? ` el ${fmtFecha(c.revisado_en)}` : ''}: {c.observacion}
+                          </p>
+                          {corrige && (
+                            <p className="mt-0.5 text-xs">Corrígela y súbela con «Subir corrección»: vuelve a Gerencia con el mismo número.</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {c.estado === 'ANULADA' && (
+                      <p className="rounded-[var(--radius-base)] bg-peligro-suave px-2.5 py-2 text-sm text-peligro">
+                        Anulada: {c.observacion || 'Consulta el motivo con Gerencia.'} El número y el archivo se conservan en el historial.
+                      </p>
+                    )}
 
                     <p className="text-sm text-texto">
                       {c.cliente ?? 'Cliente reservado'}
@@ -353,27 +379,6 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
 
                     {c.url ? <EnlaceArchivo url={c.url} mime={c.mime_type} nombre={c.nombre_archivo} descarga={`/cotizaciones/pdf/archivo/${c.id}`} /> : (
                       <p role="alert" className="text-sm text-aviso">No se pudo abrir el archivo de esta cotización. Recarga la página; si continúa, avisa al administrador.</p>
-                    )}
-
-                    {c.estado === 'RECHAZADA' && c.observacion && (
-                      <div className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-peligro-suave px-2.5 py-2 text-sm text-peligro">
-                        <MessageSquareWarning aria-hidden className="mt-0.5 size-4 shrink-0" />
-                        <div>
-                          <p>
-                            <span className="font-medium">{c.revisado_por_nombre ?? 'Gerencia'} la rechazó</span>
-                            {c.revisado_en ? ` el ${fmtFecha(c.revisado_en)}` : ''}: {c.observacion}
-                          </p>
-                          {corrige && (
-                            <p className="mt-0.5 text-xs">Corrígela y súbela con «Subir corrección»: vuelve a Gerencia con el mismo número.</p>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {c.estado === 'ANULADA' && (
-                      <p className="rounded-[var(--radius-base)] bg-peligro-suave px-2.5 py-2 text-sm text-peligro">
-                        Anulada: {c.observacion || 'Consulta el motivo con Gerencia.'} El número y el archivo se conservan en el historial.
-                      </p>
                     )}
 
                     {c.estado === 'POR_REVISAR' && versionAnterior && (

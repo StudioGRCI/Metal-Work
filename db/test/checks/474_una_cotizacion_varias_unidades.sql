@@ -15,6 +15,7 @@ select test.crear_usuario('Gema', 'Gerente', 'gerencia474@demo.pe', 'GERENTE', (
 select test.crear_usuario('Vico', 'Ventas', 'ventas474@demo.pe', 'VENDEDOR', (select id from public.sedes where codigo = 'QA74')) as vendedor_id \gset
 select test.crear_usuario('Olga', 'Oficina', 'oficina474@demo.pe', 'ADMINISTRACION', (select id from public.sedes where codigo = 'QA74')) as oficina_id \gset
 select test.crear_usuario('Coni', 'Contable', 'contabilidad474@demo.pe', 'CONTABILIDAD', (select id from public.sedes where codigo = 'QA74')) as conta_id \gset
+select test.crear_usuario('Alma', 'Almacén', 'almacen474@demo.pe', 'ALMACENERO', (select id from public.sedes where codigo = 'QA74')) as almacen_id \gset
 
 insert into public.clientes (tipo_documento, numero_documento, razon_social) values ('RUC', '20990000474', 'QA CLIENTE 474');
 select id as cliente_id from public.clientes where numero_documento = '20990000474' \gset
@@ -34,7 +35,9 @@ select set_config('prueba.ot3', gen_random_uuid()::text, true);
 select set_config('prueba.ot4', gen_random_uuid()::text, true);
 select set_config('prueba.ots', gen_random_uuid()::text, true);
 select set_config('prueba.ots2', gen_random_uuid()::text, true);
+select set_config('prueba.almacen', :'almacen_id', true);
 select set_config('prueba.ot5', gen_random_uuid()::text, true);
+select set_config('prueba.ot6', gen_random_uuid()::text, true);
 
 alter table storage.objects enable row level security;
 grant select, insert, delete on storage.objects to authenticated;
@@ -198,6 +201,12 @@ begin
   set local role authenticated;
   update public.cotizaciones_pdf set estado = 'APROBADA' where id = current_setting('prueba.cot3')::uuid;
   reset role;
+  perform test.afirmar(
+    (select n.cuerpo from public.notificaciones n
+      where n.usuario_id = current_setting('prueba.oficina')::uuid and n.origen_id = current_setting('prueba.cot3')::uuid
+        and n.titulo = 'Cotización aprobada: le faltan OT')
+      = 'Gerencia aprobó la QA-474-3 de QA CLIENTE 474. Lleva 4 unidades y tiene 3 OT: carga la que falta.',
+    'Aprobada la corrección que suma una unidad, a Administración le llega que falta una OT');
 
   perform test.como_usuario(current_setting('prueba.oficina')::uuid);
   set local role authenticated;
@@ -263,6 +272,16 @@ begin
   update public.ordenes_trabajo set estado = 'ANULADA', motivo_anulacion = 'Prueba 474: otra vez la unidad 2'
    where id = current_setting('prueba.ot5')::uuid;
   reset role;
+  -- Con la 2 libre, una OT de la unidad de la 1 tampoco se cuelga por fuera de la carga.
+  insert into public.ordenes_trabajo (id, numero, cliente_id, unidad_id, tipo_carroceria_id, sede_id, tipo_trabajo, prioridad,
+                                      descripcion, fecha_entrega_comprometida, estado)
+  select current_setting('prueba.ot6')::uuid, '47406-2099', cliente_id, unidad_id, tipo_carroceria_id, sede_id, tipo_trabajo, prioridad,
+         'Prueba 474: la misma unidad', fecha_entrega_comprometida, 'APROBADA'
+    from public.ordenes_trabajo where id = current_setting('prueba.ot1')::uuid;
+  perform test.debe_fallar(format('update public.ordenes_trabajo set cotizacion_pdf_id = %L, numero_de_unidad = 2 where id = %L',
+    current_setting('prueba.cot3'), current_setting('prueba.ot6')),
+    'Por fuera de la carga tampoco entra otra OT de una unidad que ya está', 'cada unidad lleva su propio código');
+
   perform test.como_usuario(current_setting('prueba.vendedor')::uuid);
   set local role authenticated;
   perform test.debe_fallar(format(
@@ -270,6 +289,20 @@ begin
     'cot/' || current_setting('prueba.cot3') || '/v3.pdf', 'v3.pdf', 'Al final son tres', 'POR_REVISAR', current_setting('prueba.cot3')),
     'No queda con menos unidades que la mayor que ya tiene OT', 'es la unidad 4 de la cotización QA-474-3: no puede quedar con 3 unidades');
   reset role;
+end $$;
+
+-- 8. Quien no ve las órdenes cuenta las mismas OT, sin su número ------------------
+do $$
+declare v jsonb;
+begin
+  perform test.como_usuario(current_setting('prueba.almacen')::uuid);
+  set local role authenticated;
+  v := public.ordenes_de_cotizacion(current_setting('prueba.cot3')::uuid);
+  reset role;
+  perform test.afirmar(jsonb_array_length(v) = 3
+      and not exists (select 1 from jsonb_array_elements(v) o where o->>'id' is not null or o->>'numero' is not null or o->>'estado' is not null)
+      and (select bool_and(o->>'codigo_interno' is not null) from jsonb_array_elements(v) o),
+    format('Sin ordenes.ver se cuentan las OT con su código, sin id, número ni estado (%s)', v));
 end $$;
 
 rollback;

@@ -25,6 +25,30 @@ export const ESTADO_OT: Record<string, Def> = {
   ANULADA: { etiqueta: 'Anulada', tono: 'peligro', descripcion: 'Sin efecto' },
 }
 
+/** El estado de una cotización, con las mismas palabras de la pantalla Cotización. */
+export const ESTADO_COTIZACION: Record<string, Def> = {
+  POR_REVISAR: { etiqueta: 'Por revisar', tono: 'aviso' },
+  APROBADA: { etiqueta: 'Aprobada', tono: 'exito' },
+  RECHAZADA: { etiqueta: 'Rechazada', tono: 'peligro' },
+  ANULADA: { etiqueta: 'Anulada', tono: 'peligro' },
+}
+
+/**
+ * Cómo va la unidad del cliente, en una palabra, para Ventas (Plan 9.2). Lo
+ * decide la base (`unidades_del_cliente_con_su_entrega`) con la OT y el avance
+ * de su código, el acta y la salida que anotó Portería; aquí solo se dice.
+ * La función no entrega el porcentaje (el avance general de la OT lo sigue
+ * mostrando «Órdenes de trabajo» a quien tiene `ordenes.ver`).
+ */
+export const ESTADO_DE_LA_UNIDAD: Record<string, Def> = {
+  POR_APROBAR: { etiqueta: 'Por aprobar', tono: 'aviso', descripcion: 'El taller abrió su OT y falta que la aprueben' },
+  APROBADA: { etiqueta: 'Aprobada', tono: 'info', descripcion: 'Tiene su OT; el taller todavía no empieza' },
+  EN_FABRICACION: { etiqueta: 'En fabricación', tono: 'acento', descripcion: 'El taller ya la está trabajando' },
+  PAUSADA: { etiqueta: 'Pausada', tono: 'aviso', descripcion: 'Detenida; consulta el motivo con Producción' },
+  TERMINADA: { etiqueta: 'Terminada', tono: 'exito', descripcion: 'Lista en el taller; falta entregarla' },
+  ENTREGADA: { etiqueta: 'Entregada', tono: 'exito', descripcion: 'Ya salió de la planta: con su acta o con la salida que anotó Portería' },
+}
+
 /** Orden en que se muestran los estados en filtros y tableros. */
 export const ORDEN_ESTADO_OT = [
   'BORRADOR',

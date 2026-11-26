@@ -40,14 +40,51 @@
 -- cotización de varias unidades se cuelga del código de su última OT, como hoy.
 --
 -- Las funciones que se reescriben aquí se compararon con las de producción el
--- 2026-11-26: `cargar_codigo_y_ot_de_cotizacion` y `fn_cotizacion_pdf_revision`
--- son iguales a las de la `20261027200000`; `margen_ot`, a la de la
--- `20261001170000`; y `codigos_internos_costo_calculado`, a la de producción
--- (última en la `20261026210000`). La vista `v_cotizaciones_pdf` conserva sus
--- columnas en el mismo orden y suma las nuevas al final.
+-- 2026-11-26: `cargar_codigo_y_ot_de_cotizacion`, a la de la `20261126330000`
+-- (la OT se carga sin fecha; está en el PR de Administración y ya en
+-- producción); `fn_cotizacion_pdf_revision`, a la de la `20261027200000`;
+-- `margen_ot`, a la de la `20261001170000`; `codigos_internos_costo_calculado`,
+-- a la de la `20261017300000`; y `fn_cotizacion_pdf_avisa`, a la de la
+-- `20261126450000`. Cada una se reemplaza solo si sigue siendo esa (la guarda
+-- de la huella, abajo). La vista `v_cotizaciones_pdf` conserva sus columnas en
+-- el mismo orden y suma las nuevas al final.
 --
 -- Lo que ya existe —cotizaciones, OT y códigos— queda como está: nada se borra.
 -- =============================================================================
+
+-- 0. La guarda de la huella -----------------------------------------------------
+-- Cinco funciones se reemplazan enteras. Si en producción alguna se cambió a
+-- mano después del 2026-11-26, reemplazarla borraría ese cambio sin que nadie
+-- lo note: la migración se detiene antes de tocar nada. Cada una acepta la
+-- huella de la versión que conoce el repositorio y la de esta migración, para
+-- que volver a correrla no falle.
+do $$
+declare
+  f record;
+  huella text;
+begin
+  for f in
+    select * from (values
+      ('public.cargar_codigo_y_ot_de_cotizacion(uuid,uuid,text,text,public.tipo_unidad_carroceria,date,text,text,bigint,text,text)',
+       -- La de la 20261027200000 (el repositorio sin la 20261126330000), la de la
+       -- 20261126330000 (producción) y esta.
+       array['77d669c649a269f92309f2218384a0ff', '0b3b1cba7983f9dfbbb7caaf16210151', '3bdadf68ef26b720306de09e914c64a8']),
+      ('public.fn_cotizacion_pdf_revision()', array['8193153f0b3a50318c24251b2a507bf8', '70b788744ae098bf2a05b19e988de199']),
+      -- La de la 20261001170000 con y sin sus comentarios (producción los perdió) y esta.
+      ('public.margen_ot(uuid)', array['428f4a211325f86f7ab1b25a00987245', '0a852aba120e59362ad6ba63c6ab53de', '088e295d4723fba20ca7236eb322de0d']),
+      ('public.codigos_internos_costo_calculado(text)', array['e2fe09bb42d5872932489360fe533d20', '22510d6d4ab2a8494ee1488ca425f88f']),
+      ('public.fn_cotizacion_pdf_avisa()', array['899ecdee38949ebf55c6c4979e53b796', '17d327b8fcd95d8d051823d840c5e34f'])
+    ) as t(firma, conocidas)
+  loop
+    select md5(replace(p.prosrc, E'\r', '')) into huella from pg_proc p where p.oid = to_regprocedure(f.firma);
+    if huella is null then
+      raise exception 'Falta la función %: esta base no tiene las migraciones anteriores.', f.firma;
+    end if;
+    if not (huella = any (f.conocidas)) then
+      raise exception 'La función % no es la que conoce el repositorio (se cambió a mano): no se reemplaza. Avisa antes de seguir.', f.firma;
+    end if;
+  end loop;
+end $$;
 
 -- 1. Cuántas unidades lleva la cotización ---------------------------------------
 alter table public.cotizaciones_pdf
@@ -163,6 +200,19 @@ begin
     end if;
     raise exception 'La cotización % es de % unidades y ya tiene sus % OT. Si lleva otra unidad, Ventas sube la corrección con la cantidad.',
       v_numero, v_cantidad, v_vigentes using errcode = 'unique_violation';
+  end if;
+  -- Cada unidad, su código: también para la OT que se cuelga de la cotización
+  -- por fuera de la carga (un UPDATE de `cotizacion_pdf_id`).
+  select o.numero into v_otra
+    from public.ordenes_trabajo o
+    join public.unidades u on u.id = o.unidad_id
+    join public.unidades n on n.id = new.unidad_id
+   where o.cotizacion_pdf_id = new.cotizacion_pdf_id and o.estado <> 'ANULADA' and o.id <> new.id
+     and public.normalizar_codigo_interno(u.codigo_interno) = public.normalizar_codigo_interno(n.codigo_interno)
+   limit 1;
+  if v_otra is not null then
+    raise exception 'Esa unidad ya es la de la OT % de la cotización %: cada unidad lleva su propio código.', v_otra, v_numero
+      using errcode = 'unique_violation';
   end if;
   return new;
 end;
@@ -442,9 +492,8 @@ begin
   if p_tipo_unidad is null then
     raise exception 'Elige si es un semirremolque o una carrocería montada.' using errcode = 'check_violation';
   end if;
-  if p_fecha_entrega is null then
-    raise exception 'Falta la fecha de entrega que se le prometió al cliente.' using errcode = 'check_violation';
-  end if;
+  -- Sin fecha de entrega la OT se carga igual (migración 20261126330000): queda
+  -- en «Por completar», arriba de la lista de OT, hasta que se la ponga.
   if p_ruta_pdf is null or p_ruta_pdf <> 'ot/' || p_orden::text || '/' || split_part(p_ruta_pdf, '/', 3)
      or split_part(p_ruta_pdf, '/', 3) = '' then
     raise exception 'El PDF de la OT no llegó en su sitio: vuelve a elegirlo.' using errcode = 'check_violation';
@@ -511,7 +560,7 @@ begin
     'Código nuevo con su OT',
     format('%s: OT %s, %s (%s) de %s Entrega prometida: %s. Carga sus planos, materiales y etapas.',
            v_codigo, v_numero, v_cot.carroceria, lower(v_tipo), public.con_punto_final(coalesce(v_cot.cliente, 'un cliente')),
-           to_char(p_fecha_entrega, 'DD/MM/YYYY')),
+           coalesce(to_char(p_fecha_entrega, 'DD/MM/YYYY'), 'por definir')),
     v_enlace, 'ordenes_trabajo', p_orden, public.usuario_actual());
   perform public.notificar_a_permiso(
     'produccion.actividades',
@@ -586,6 +635,8 @@ select c.id,
     select ot.id, ot.numero, ot.estado
       from public.ordenes_trabajo ot
      where ot.cotizacion_pdf_id = c.id and ot.estado <> 'ANULADA'::public.estado_ot
+     -- Con varias, la última: la misma OT del código que da `codigo_interno_de_cotizacion`.
+     order by ot.creado_en desc, ot.numero desc
      limit 1
   ) o on true
   cross join lateral (select public.ordenes_de_cotizacion(c.id) as ordenes) oc;
@@ -813,3 +864,109 @@ begin
    order by 1;
 end;
 $function$;
+
+comment on function public.codigos_internos_costo_calculado(text) is
+  'El costo completo de cada código interno (o de uno) en soles, con lo que falta para que esté completo, el precio de su cotización aprobada sin IGV (con varias unidades, su parte: el total entre las unidades), el margen (solo con costo), el presupuesto (el fijado a mano en su OT o el de la hoja) con su semáforo, la fecha del acta de entrega de su OT y el cierre vigente. Sin pedir permiso: la llaman codigos_internos_costo y cerrar_costeo_codigo.';
+revoke all on function public.codigos_internos_costo_calculado(text) from public, anon, authenticated;
+
+-- 10. La aprobación que deja unidades sin OT avisa a Administración -----------------
+-- La de la `20261126450000`, con un cambio: avisaba solo si la cotización no
+-- tenía ninguna OT. Con varias unidades, la corrección aprobada que suma una
+-- unidad ya tiene OT y le falta otra: también avisa, con cuántas faltan.
+create or replace function public.fn_cotizacion_pdf_avisa()
+returns trigger
+language plpgsql
+security definer
+set search_path to 'public'
+as $function$
+declare
+  v_cliente text;
+  v_quien   text;
+  v_codigo  text;
+  v_con_ot  integer;
+begin
+  select c.razon_social into v_cliente from public.clientes c where c.id = new.cliente_id;
+  v_quien := public.puesto_de(new.registrado_por);
+
+  if tg_op = 'INSERT' then
+    perform public.notificar_a_permiso(
+      'cotizaciones.revisar',
+      'Cotización por revisar',
+      format('%s subió la %s de %s', coalesce(v_quien, 'Ventas'), new.numero, public.con_punto_final(coalesce(v_cliente, 'un cliente'))),
+      '/cotizaciones/pdf', 'cotizaciones_pdf', new.id, public.usuario_actual());
+    return null;
+  end if;
+
+  if new.estado is not distinct from old.estado then
+    return null;
+  end if;
+
+  if new.estado = 'POR_REVISAR' then
+    if new.version > old.version then
+      perform public.notificar_a_permiso(
+        'cotizaciones.revisar',
+        'Cotización corregida',
+        format('%s subió la corrección de la %s de %s (versión %s). Lo que habías observado: %s',
+               coalesce(v_quien, 'Ventas'), new.numero, coalesce(v_cliente, 'un cliente'), new.version,
+               coalesce(old.observacion, 'sin observación')),
+        '/cotizaciones/pdf', 'cotizaciones_pdf', new.id, public.usuario_actual());
+    end if;
+    return null;
+  end if;
+
+  if new.estado = 'APROBADA' then
+    v_codigo := public.codigo_interno_de_cotizacion(new.id);
+    select count(*) into v_con_ot from public.ordenes_trabajo o
+     where o.cotizacion_pdf_id = new.id and o.estado <> 'ANULADA';
+    if v_con_ot = 0 and new.cantidad_unidades > 1 then
+      perform public.notificar_a_permiso(
+        'ordenes.crear',
+        'Cotización aprobada: faltan sus códigos y sus OT',
+        format('Gerencia aprobó la %s de %s Lleva %s unidades: dale a cada una su código interno y sube su OT.',
+               new.numero, public.con_punto_final(coalesce(v_cliente, 'un cliente')), new.cantidad_unidades),
+        '/cotizaciones/pdf?estado=APROBADA_SIN_OT#' || new.id, 'cotizaciones_pdf', new.id, public.usuario_actual());
+    elsif v_con_ot > 0 and v_con_ot < new.cantidad_unidades then
+      -- La corrección que sumó unidades: ya tiene OT, pero le faltan.
+      perform public.notificar_a_permiso(
+        'ordenes.crear',
+        'Cotización aprobada: le faltan OT',
+        format('Gerencia aprobó la %s de %s Lleva %s unidades y tiene %s OT: carga %s.',
+               new.numero, public.con_punto_final(coalesce(v_cliente, 'un cliente')), new.cantidad_unidades, v_con_ot,
+               case when new.cantidad_unidades - v_con_ot = 1 then 'la que falta' else format('las %s que faltan', new.cantidad_unidades - v_con_ot) end),
+        '/cotizaciones/pdf?estado=APROBADA_SIN_OT#' || new.id, 'cotizaciones_pdf', new.id, public.usuario_actual());
+    elsif v_con_ot = 0 then
+      perform public.notificar_a_permiso(
+        'ordenes.crear',
+        'Cotización aprobada: falta su código y su OT',
+        format('Gerencia aprobó la %s de %s Dale su código interno y sube su OT.',
+               new.numero, public.con_punto_final(coalesce(v_cliente, 'un cliente'))),
+        '/cotizaciones/pdf?estado=APROBADA_SIN_OT#' || new.id, 'cotizaciones_pdf', new.id, public.usuario_actual());
+    end if;
+  end if;
+
+  -- Al vendedor que la subió: aprobada, rechazada o anulada, cada una con su
+  -- frase. La anulada sale de la lista de vigentes: su tarjeta está en el
+  -- filtro de anuladas (la campana le suma el #id a la que no lo trae).
+  perform public.notificar_a_usuario(
+    new.registrado_por,
+    case new.estado when 'APROBADA' then 'Gerencia aprobó tu cotización'
+                    when 'ANULADA'  then 'Gerencia anuló tu cotización'
+                    else 'Gerencia rechazó tu cotización' end,
+    case when new.estado = 'APROBADA' and v_codigo is not null
+         then public.con_punto_final(format('La %s de %s, con el código interno %s', new.numero, coalesce(v_cliente, 'un cliente'), v_codigo))
+         when new.estado = 'APROBADA'
+         then format('La %s de %s Administración le da su código interno y sube su OT.',
+                     new.numero, public.con_punto_final(coalesce(v_cliente, 'un cliente')))
+         when new.estado = 'ANULADA'
+         then format('La %s de %s Motivo: %s El número se conserva.',
+                     new.numero, public.con_punto_final(coalesce(v_cliente, 'un cliente')),
+                     public.con_punto_final(coalesce(nullif(btrim(new.observacion), ''), 'sin motivo')))
+         else format('La %s: %s Corrígela y sube la corrección.', new.numero, public.con_punto_final(coalesce(nullif(btrim(new.observacion), ''), 'Sin motivo'))) end,
+    case when new.estado = 'ANULADA' then '/cotizaciones/pdf?estado=ANULADA' else '/cotizaciones/pdf' end,
+    'cotizaciones_pdf', new.id, public.usuario_actual());
+
+  return null;
+end;
+$function$;
+
+revoke all on function public.fn_cotizacion_pdf_avisa() from public, anon, authenticated;

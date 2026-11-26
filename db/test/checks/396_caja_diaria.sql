@@ -111,12 +111,19 @@ begin
   foreach v_clave in array array['gerente', 'contabilidad'] loop
     perform pg_temp.como(v_clave);
     set local role authenticated;
-    perform test.afirmar((select count(*) from public.cajas where nombre like '%396') = 0, v_clave || ' no ve las cuentas');
-    perform test.afirmar((select count(*) from public.caja_del_dia(pg_temp.dia('d3')) where nombre like '%396') = 0,
-                         v_clave || ' no ve la caja del día');
-    perform test.afirmar((select count(*) from public.movimientos_caja_del_dia(pg_temp.dia('d3'))) = 0
-                         and (select count(*) from public.cierres_caja_reabiertos(pg_temp.dia('d3'))) = 0,
-                         v_clave || ' no ve sus movimientos ni sus cierres');
+    if v_clave = 'gerente' then
+      -- Gerencia la consulta desde la 20261126310000 (`tesoreria.ver_caja`), sin registrar nada.
+      perform test.afirmar((select count(*) from public.cajas where nombre like '%396') > 0, 'gerente consulta las cuentas');
+      perform test.afirmar((select count(*) from public.caja_del_dia(pg_temp.dia('d3')) where nombre like '%396') > 0,
+                           'gerente consulta la caja del día');
+    else
+      perform test.afirmar((select count(*) from public.cajas where nombre like '%396') = 0, v_clave || ' no ve las cuentas');
+      perform test.afirmar((select count(*) from public.caja_del_dia(pg_temp.dia('d3')) where nombre like '%396') = 0,
+                           v_clave || ' no ve la caja del día');
+      perform test.afirmar((select count(*) from public.movimientos_caja_del_dia(pg_temp.dia('d3'))) = 0
+                           and (select count(*) from public.cierres_caja_reabiertos(pg_temp.dia('d3'))) = 0,
+                           v_clave || ' no ve sus movimientos ni sus cierres');
+    end if;
     perform test.debe_fallar(format('select public.registrar_movimiento_caja(%L, %L, %L, ''EGRESO'', 10, ''ITF'', null, null, null)',
         pg_temp.id('m4'), pg_temp.id('bcp_pen'), pg_temp.dia('d3')), v_clave || ' no registra movimientos', 'tesoreria.caja');
     perform test.debe_fallar(format('select public.guardar_caja(%L, ''Otra 396'', ''EFECTIVO'', null, ''PEN'', 0, %L, true)',
