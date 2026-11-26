@@ -335,7 +335,7 @@ export const NAVEGACION = [
         icono: PackageCheck,
         permiso: ['almacen.recibir', 'almacen.despachar'],
         lectura: ['requerimientos.ver', 'requerimientos.administracion'],
-        descripcion: 'Los RQ por revisar insumo por insumo, por comprar, por validar y por entregar, con lo que espera por ti primero',
+        descripcion: 'Los RQ por revisar, por comprar, por validar y por entregar, con lo que espera por ti primero',
         disponible: true,
       },
       // Sin la OT desde el 2026-10-15 (migración 20261016110000): lo que lleva

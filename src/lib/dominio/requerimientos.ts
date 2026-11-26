@@ -128,8 +128,8 @@ export function loTieneQuienAtiende(espera: string | null | undefined, rq: { tip
  * La regla de antes, para cuando no se pudo leer el recorrido: si un
  * requerimiento abierto espera a quien mira en la bandeja de atención: el
  * que revisa el stock lo recibe por revisar y en compra (para recepcionarlo), el
- * que compra lo suyo sin stock, y el que despacha lo listo en almacén. La misma
- * regla para la bandeja y para el globo del menú, para que digan lo mismo.
+ * que compra lo suyo sin stock, y el que despacha lo listo en almacén. La usa
+ * la bandeja sin recorrido, y la revisión del stock en el globo del menú.
  */
 export function leTocaAtender(rq: { estado: string | null; tipo: string | null }, p: QuienAtiende): boolean {
   if (rq.estado === 'POR_ATENDER' || rq.estado === 'EN_ATENCION') return p.recibe

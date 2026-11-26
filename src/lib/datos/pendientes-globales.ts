@@ -850,7 +850,10 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
     texto: n =>
       almacen && compra ? plural(n, 'requerimiento espera por ti', 'requerimientos esperan por ti')
       : almacen ? plural(n, 'requerimiento por validar, dejar listo o entregar espera por ti', 'requerimientos por validar, dejar listos o entregar esperan por ti')
-      : plural(n, 'requerimiento por comprar o programar espera por ti', 'requerimientos por comprar o programar esperan por ti'),
+      // Programar el recojo es solo de Logística: a la administradora, lo que falta comprar.
+      : atiende.compraDe.OPERACION
+        ? plural(n, 'requerimiento por comprar o programar espera por ti', 'requerimientos por comprar o programar esperan por ti')
+        : plural(n, 'requerimiento por comprar espera por ti', 'requerimientos por comprar esperan por ti'),
     contar: async () => (await queEspera()).filter((r) => loTieneQuienAtiende(r.espera, r, atiende)).length,
   })
   // El supervisor recoge de Almacén lo que su área pidió.
@@ -861,7 +864,16 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       // todos los RQ del área y el que estaba listo había que buscarlo.
       clave: 'rq_por_recoger', ruta: '/requerimientos?ver=recoger', tono: 'acento',
       texto: n => plural(n, 'requerimiento de tu área listo para recoger en almacén', 'requerimientos de tu área listos para recoger en almacén'),
-      contar: async () => (await rqAbiertos()).filter((r) => r.estado === 'LISTO_EN_ALMACEN' && r.area_id === area).length,
+      // Solo los que todavía tienen algo por salir del kardex: el que ya salió
+      // entero espera que Almacén lo marque entregado (20261126170000).
+      contar: async () => {
+        const listos = (await rqAbiertos()).filter((r) => r.estado === 'LISTO_EN_ALMACEN' && r.area_id === area).map((r) => r.id)
+        if (listos.length === 0) return 0
+        const { data, error } = await supabase.from('v_rq_lineas_para_salida')
+          .select('requerimiento_id').in('requerimiento_id', listos).gt('pendiente', 0)
+        if (error) throw new Error('No se pudo consultar el pendiente.')
+        return new Set((data ?? []).map((l) => l.requerimiento_id)).size
+      },
     })
   }
 
@@ -1065,7 +1077,10 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
   const enMenu = rutasDeTrabajo(perfil.permisos, perfil.rol.codigo === 'ADMIN', perfil.rol.codigo)
   const suyas = tareas.filter((t) => enMenu.has(t.ruta.split(/[?#]/)[0]))
 
-  const cuentas = await Promise.all(suyas.map((t) => t.contar().catch(() => null)))
+  const cuentas = await Promise.all(suyas.map((t) => t.contar().catch((e: unknown) => {
+    console.error(`Pendientes: no se pudo contar «${t.clave}».`, e)
+    return null
+  })))
 
   const porRuta: Record<string, number> = {}
   const sinComprobar = new Set<string>()

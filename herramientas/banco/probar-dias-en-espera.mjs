@@ -209,6 +209,8 @@ for (const r of areasDeAntes) await base.query('update public.requerimientos set
 await base.query('commit')
 
 // ------------------------------------------------ 2. Atención de requerimiento
+// Las áreas del armazón se devuelven aunque algo de esta sección se caiga.
+try {
 for (const puesto of ['almacen', 'logistica', 'administracion']) {
   const { pagina, contexto } = await entrar(puesto)
   await ir(pagina, '/requerimientos/atencion')
@@ -326,10 +328,12 @@ for (const puesto of ['almacen', 'logistica', 'administracion']) {
   await contexto.close()
 }
 
-await base.query('begin')
-await base.query('set local session_replication_role = replica')
-for (const r of areasDeAntes) await base.query('update public.requerimientos set area_id = $2 where id = $1', [r.id, r.area_id])
-await base.query('commit')
+} finally {
+  await base.query('begin')
+  await base.query('set local session_replication_role = replica')
+  for (const r of areasDeAntes) await base.query('update public.requerimientos set area_id = $2 where id = $1', [r.id, r.area_id])
+  await base.query('commit')
+}
 
 // ------------------------------------------------ 2b. Por comprar, la vista de trabajo de Logística
 {
@@ -401,6 +405,36 @@ try {
 }
 // Los errores de consola de ese rato son los que se provocaron a propósito.
 errores.length = erroresAntes
+
+// ------------------------------------------------ 2d. El supervisor recoge solo lo que falta sacar
+// El RQ listo que ya salió entero del kardex lo tiene Almacén para marcarlo
+// entregado (20261126170000): al supervisor no se le cuenta como «listo para recoger».
+{
+  const [{ n: porRecoger }] = await comoCuenta(
+    'sup.mtz',
+    `select count(distinct v.requerimiento_id)::int as n
+       from public.v_rq_lineas_para_salida v
+       join public.requerimientos q on q.id = v.requerimiento_id
+       join public.areas a on a.id = q.area_id
+      where q.estado = 'LISTO_EN_ALMACEN' and a.nombre = 'Maestranza' and v.pendiente > 0`,
+  )
+  const [{ n: listos }] = await comoCuenta(
+    'sup.mtz',
+    `select count(*)::int as n from public.requerimientos q join public.areas a on a.id = q.area_id
+      where q.estado = 'LISTO_EN_ALMACEN' and a.nombre = 'Maestranza'`,
+  )
+  const { pagina, contexto } = await entrar('sup.mtz')
+  await ir(pagina, '/')
+  const recoger = await pagina.locator('[data-te-toca] a').evaluateAll((as) =>
+    as.map((a) => ({ texto: a.innerText.replace(/\s+/g, ' ').trim(), cantidad: Number(a.dataset.cantidad ?? 'NaN') }))
+      .filter((t) => /listos? para recoger en almacén/.test(t.texto)))
+  comprobar(
+    porRecoger === 0 ? recoger.length === 0 : recoger.length === 1 && recoger[0].cantidad === porRecoger,
+    `sup.mtz: «listos para recoger» cuenta los ${porRecoger} que tienen algo por salir del kardex, de ${listos} listos (dice ${recoger.map((t) => t.texto).join(' | ') || 'nada'})`,
+  )
+  comprobar(listos > porRecoger, `sup.mtz: el banco tiene un RQ listo que ya salió entero (${listos - porRecoger})`)
+  await contexto.close()
+}
 
 // ------------------------------------------------ 3. Portería
 {

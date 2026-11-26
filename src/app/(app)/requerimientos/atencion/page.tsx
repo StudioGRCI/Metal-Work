@@ -139,17 +139,16 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
   const grupoDe = new Map<string, string>()
   if (vista === 'abiertos') {
     const orden = (r: RequerimientoListado) => (leToca(r) ? 0 : frenoDelRq(r, metrado) ? 2 : 1)
-    // Dentro de cada grupo, primero lo que hoy tiene el puesto de quien mira
-    // (Almacén, Logística o la administradora, según su recorrido) y después lo
-    // demás; en cada parte, el que más espera arriba (plan 0): desde que lo tiene
-    // quien lo tiene. Sin el recorrido queda el orden de antes.
-    const ajeno = (r: RequerimientoListado) => (suyo(r) ? 0 : 1)
+    // Arriba lo que hoy tiene el puesto de quien mira (Almacén, Logística o la
+    // administradora, según su recorrido), después lo demás y al final lo frenado
+    // por el metrado; en cada grupo, el que más espera arriba (plan 0): desde que
+    // lo tiene quien lo tiene. Sin el recorrido queda el orden de antes.
     const desde = (r: RequerimientoListado) => {
       const en = espera.get(r.id)?.en
       return en ? Date.parse(en) : Number.POSITIVE_INFINITY
     }
-    requerimientos.sort((a, b) => orden(a) - orden(b) || ajeno(a) - ajeno(b) || desde(a) - desde(b))
-    for (const r of requerimientos) grupoDe.set(r.id, `${orden(r)}${ajeno(r)}`)
+    requerimientos.sort((a, b) => orden(a) - orden(b) || desde(a) - desde(b))
+    for (const r of requerimientos) grupoDe.set(r.id, String(orden(r)))
   }
   const grupos = compra ? insumosPorComprar(requerimientos, compraDe, metrado, espera) : []
   const porComprar = grupos.reduce((suma, g) => suma + g.insumos.length, 0)
