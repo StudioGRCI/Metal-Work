@@ -554,7 +554,9 @@ async function terminarVentana(pagina) {
   const insignias = await texto(filaG.locator('div:has(> h2)')).catch(() => '')
   comprobar(insignias.includes('Entregado con faltante') && !/Entregado(?! con faltante)/.test(insignias),
     `y dice «Entregado con faltante», nunca «Entregado» a secas: «${insignias.slice(0, 160)}»`)
-  await filaG.locator('summary').click()
+  // El pliegue de los insumos, no otro de la tarjeta; si ya sale abierto, no se cierra.
+  const insumosG = filaG.locator(`details[data-insumos="${nG}"]`)
+  if (!(await insumosG.evaluate((d) => d.open))) await insumosG.locator(':scope > summary').click()
   const insumoG = filaG.locator('[data-parte="no-salio"]')
   const diceInsumo = await texto(insumoG).catch(() => '')
   const entregadoG = await filaG.locator('[data-parte="entregado"]').count()
