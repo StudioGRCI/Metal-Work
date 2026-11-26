@@ -14322,6 +14322,16 @@ export type Database = {
         }
         Returns: null
       }
+      avisar_reembolso_a_tesoreria: {
+        Args: {
+          p_compra: string | null
+          p_nombre: string | null
+          p_vale: number | null
+          p_moneda: string | null
+          p_texto: string | null
+        }
+        Returns: null
+      }
       avisar_tiempos_de_entrega: {
         Args: {
           p_area: string | null
@@ -15575,6 +15585,12 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: number
       }
+      compra_con_factura_registrada: {
+        Args: {
+          p_compra: string | null
+        }
+        Returns: boolean
+      }
       compra_pagada_fuera_de_la_factura: {
         Args: {
           p_factura: string | null
@@ -16258,6 +16274,12 @@ export type Database = {
           minimo: number | null
           motivo: string | null
         }
+      }
+      devolucion_reembolsada: {
+        Args: {
+          p_devolucion: string | null
+        }
+        Returns: boolean
       }
       devoluciones_por_reponer: {
         Args: Record<PropertyKey, never>

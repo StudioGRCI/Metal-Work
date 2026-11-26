@@ -49,6 +49,7 @@ import {
 import { DescontarNota, DeshacerUsoDeLaNota, DevolvioLaNota } from '../notas-credito'
 import { AnularPagoParte, PagarParte } from '../partes-con-boleta'
 import { codigoMoneda, Vencimiento } from '../vencimiento'
+import { AbrirLoDelAncla } from './abrir-lo-del-ancla'
 
 export const metadata = { title: 'Cuentas por pagar' }
 
@@ -258,6 +259,7 @@ export default async function PaginaPorPagar() {
 
   return (
     <AvisoDeLaCaja>
+      <AbrirLoDelAncla />
       <EncabezadoPagina
         titulo="Cuentas por pagar"
         descripcion={
