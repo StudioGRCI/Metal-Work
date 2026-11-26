@@ -115,6 +115,7 @@ begin
     ('ssoma.local@metalwork.test',          'SSOMA',              'SST', 'SSOMA'),
     ('calidad.local@metalwork.test',        'CALIDAD',            'CAL', 'Control de calidad'),
     ('tesoreria.local@metalwork.test',      'TESORERIA',          null,  'Tesorería'),
+    ('tramitador.local@metalwork.test',     'TRAMITADOR',         'ADM', 'Trámites'),
     ('ventas.local@metalwork.test',         'VENDEDOR',           'GCO', 'Ventas')
   ) as t(correo, rol, area, nombre)
   loop
@@ -149,7 +150,7 @@ begin
    where email like '%.local@metalwork.test';
 
   if (select count(*) from auth.users
-       where email like '%.local@metalwork.test' and encrypted_password <> '') < 20 then
+       where email like '%.local@metalwork.test' and encrypted_password <> '') < 21 then
     raise exception 'Faltan cuentas locales por puesto.';
   end if;
 end $$;
