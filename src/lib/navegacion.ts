@@ -56,6 +56,7 @@ import {
   Users,
   Wallet,
   Warehouse,
+  TriangleAlert,
   Wrench,
 } from 'lucide-react'
 
@@ -657,6 +658,17 @@ export const NAVEGACION = [
         descripcion: 'El padrón de máquinas y herramientas de la planta',
         disponible: true,
       },
+      // Los reportes de avería (Plan 16.2): Mantenimiento los atiende y Gerencia
+      // los consulta, todos. La misma pantalla está otra vez en «Reportar», sin
+      // permiso: ahí reporta cualquier puesto y ve los suyos y los de su área.
+      {
+        titulo: 'Averías',
+        ruta: '/averias',
+        icono: TriangleAlert,
+        permiso: ['averias.atender', 'averias.ver'],
+        descripcion: 'Cada avería o posible avería reportada, con su número y cómo va',
+        disponible: true,
+      },
     ],
   },
   {
@@ -681,7 +693,8 @@ export const NAVEGACION = [
     ],
   },
   // Lo que reporta cualquier puesto, sin permiso: va al final del menú de todos
-  // (`RUTAS_PARA_TODOS`). Reportar un incidente no puede depender de un permiso.
+  // (`RUTAS_PARA_TODOS`). Reportar un incidente o una avería no puede depender
+  // de un permiso.
   {
     titulo: 'Reportar',
     items: [
@@ -690,6 +703,13 @@ export const NAVEGACION = [
         ruta: '/ssoma',
         icono: ShieldAlert,
         descripcion: 'Un accidente, un incidente o algo inseguro que viste: le llega a SSOMA al instante',
+        disponible: true,
+      },
+      {
+        titulo: 'Reportar avería',
+        ruta: '/averias',
+        icono: TriangleAlert,
+        descripcion: 'Una máquina o herramienta que falla o está por fallar: le llega a Mantenimiento al instante',
         disponible: true,
       },
     ],
@@ -847,6 +867,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
           '/equipos',
         ],
       },
+      // Las averías que reporta la gente (Plan 16.2): las consulta, sin anular.
+      { titulo: 'Mantenimiento', consulta: true, rutas: ['/averias'] },
       {
         titulo: 'Logística',
         consulta: true,
@@ -1030,8 +1052,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // planta. Las averías y el mantenimiento de las unidades de los clientes se
   // suman a este mismo menú en sus entregas, sin reemplazar este grupo.
   MANTENIMIENTO: {
-    grupos: [{ titulo: 'Mantenimiento', rutas: ['/equipos'] }],
-    telefono: ['/equipos', '/'],
+    grupos: [{ titulo: 'Mantenimiento', rutas: ['/averias', '/equipos'] }],
+    telefono: ['/averias', '/equipos', '/'],
   },
   // Sube su reporte diario, que es su trabajo de cada día. Desde el 2026-10-15,
   // los planos que Diseño carga para su área y las etapas que hace su área van
@@ -1107,7 +1129,7 @@ MENU_POR_PUESTO.DISENO_LIDER = MENU_POR_PUESTO.DISENO
  * no se repite en cada entrada de `MENU_POR_PUESTO`. Una pantalla que cualquier
  * puesto usa para avisar de algo (un incidente, una avería) se suma aquí.
  */
-const RUTAS_PARA_TODOS: readonly RutaDeModulo[] = ['/ssoma']
+const RUTAS_PARA_TODOS: readonly RutaDeModulo[] = ['/ssoma', '/averias']
 
 const comoLista = (p: string | readonly string[] | undefined): readonly string[] => (p === undefined ? [] : typeof p === 'string' ? [p] : p)
 
@@ -1312,4 +1334,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/almacen/stock', corto: 'Stock' },
   { ruta: '/almacen/reposicion', corto: 'Reposición' },
   { ruta: '/equipos', corto: 'Equipos' },
+  // Al final: solo el nombre corto. Antes quitaba una de las cuatro pestañas a
+  // los puestos sin menú propio (Operario, Calidad, Costos…).
+  { ruta: '/averias', corto: 'Averías' },
 ]
