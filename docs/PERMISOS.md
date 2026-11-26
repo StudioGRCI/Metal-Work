@@ -432,24 +432,36 @@ Desde el 2026-10-15 la pantalla de inicio se llama **Dashboard** (antes
 «Tablero») en el menú, en la pestaña del teléfono y en su título. Se lee de
 arriba abajo:
 
-1. **Las cifras de su área** (`src/lib/datos/dashboard.ts`, `CIFRAS_POR_PUESTO`):
-   cómo va su trabajo, cada cifra con el enlace a su pantalla.
-2. Gerencia, además, los seis códigos internos con movimiento más reciente, con
+1. **«Te toca»**: lo que espera por el puesto en cada pantalla de su trabajo, una
+   fila por cuenta, en el orden del menú y con el enlace a donde se atiende
+   (`pendientesGlobales`, en `src/lib/datos/pendientes-globales.ts`). Sin nada,
+   dice «Nada te espera por ahora»; una cuenta que no se pudo leer sale como
+   «No se pudo contar», nunca como cero. Portería y Mantenimiento no llevan
+   cuentas y no tienen este bloque.
+2. **Las cifras de su área** (`src/lib/datos/dashboard.ts`, `CIFRAS_POR_PUESTO`):
+   cómo va su trabajo, cada cifra con el enlace a su pantalla, en filas llenas.
+   Ninguna repite «Te toca»: el 2026-11-26 DKS quitó las que sumaban sus
+   mismas cuentas («Por aprobar» de Gerencia, «Aprobadas sin código» de
+   Administración, «Por facturar» de Contabilidad y «Planillas por pagar» de
+   Tesorería).
+3. Gerencia, además, los seis códigos internos con movimiento más reciente, con
    su avance y su costo. Diseño, su colaborador y Administración, que todavía
    llevan la OT, el bloque de órdenes de trabajo.
-3. En el teléfono, sus módulos a un toque.
+4. En el teléfono, sus módulos a un toque.
 
-Hasta el 2026-10-19 arriba iba un bloque **«Te toca hoy»** con la lista de lo
-que esperaba al puesto. Se quitó por decisión de DKS: el sistema no le dice al
-usuario qué debe hacer, lo guía en cada cosa que puede hacer. Lo que espera en
-cada pantalla sigue en los **globos del menú**
-(`src/lib/datos/pendientes-globales.ts`): al lado del nombre en la barra
-lateral, sobre la pestaña en el teléfono y, sumado, sobre «Más» cuando cuelga de
-un módulo sin pestaña. Un pendiente que no se pudo contar sale como «!», nunca
-como cero.
+Entre el 2026-10-19 y el 2026-11-25 no hubo «Te toca»: DKS lo había quitado
+para que el sistema no le dijera a nadie qué hacer. Volvió con la decisión 4 del
+plan de orden y diseño, porque lo pendiente era una cifra más entre ocho o diez
+y no llevaba a su lista. Dice qué espera y dónde, sin orden de prioridad. Lo
+mismo sigue en los **globos del menú**: al lado del nombre en la barra lateral,
+sobre la pestaña en el teléfono y, sumado, sobre «Más» cuando cuelga de un
+módulo sin pestaña.
 
-Las cifras y los globos siguen la misma regla: salen **solo si la pantalla a la
-que llevan está en el menú del puesto**, que ya se filtra por su permiso. Todo
+«Te toca», las cifras y los globos siguen la misma regla: salen **solo si la pantalla a la
+que llevan es trabajo del puesto** (`rutasDeTrabajo`, en `src/lib/navegacion.ts`):
+está en su menú, que ya se filtra por su permiso, y no en un grupo que solo
+consulta, salvo lo que su puesto pone en `alInicio`. Por eso las áreas que
+Gerencia consulta desde el 2026-11-25 no le traen pendientes ni cifras. Todo
 se lee con la sesión de quien mira, así que el RLS y las funciones de la base
 dejan fuera lo que no es suyo: el dashboard no abre nada que el puesto no vea
 en su pantalla. Lo que se resolvía en la OT ya no se le cuenta a quien no tiene
