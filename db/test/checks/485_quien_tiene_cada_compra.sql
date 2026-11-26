@@ -24,14 +24,14 @@ declare v text; v_id uuid;
 begin
   foreach v in array array['COMPRADOR:LOG', 'GERENTE:GGE', 'CONDUCTOR:LOG', 'ALMACENERO:ALM', 'VENDEDOR:VEN'] loop
     v_id := gen_random_uuid();
-    insert into auth.users (id, email) values (v_id, lower(replace(v, ':', '.')) || '.473@prueba.local');
+    insert into auth.users (id, email) values (v_id, lower(replace(v, ':', '.')) || '.485@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
-    select v_id, split_part(v, ':', 1), 'Check 473', lower(replace(v, ':', '.')) || '.473@prueba.local', r.id,
+    select v_id, split_part(v, ':', 1), 'Check 485', lower(replace(v, ':', '.')) || '.485@prueba.local', r.id,
            (select id from public.areas where codigo = split_part(v, ':', 2))
       from public.roles r where r.codigo = split_part(v, ':', 1);
     perform set_config('prueba.' || lower(split_part(v, ':', 1)), v_id::text, true);
   end loop;
-  perform test.afirmar((select count(*) from public.usuarios where apellidos = 'Check 473') = 5,
+  perform test.afirmar((select count(*) from public.usuarios where apellidos = 'Check 485') = 5,
     'se crearon los cinco usuarios del check, uno por puesto');
   foreach v in array array['oc1', 'oc2', 'oc3', 'os1', 'mot1', 'mot2', 'fec1', 'fec2', 'mov3'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
@@ -63,15 +63,15 @@ declare
   v_m uuid;
 begin
   insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id)
-  values ('CHK473-1', 'Disco de corte de prueba 473', v_cat, v_um) returning id into v_m;
+  values ('CHK485-1', 'Disco de corte de prueba 485', v_cat, v_um) returning id into v_m;
   perform set_config('prueba.disco', v_m::text, true);
   insert into public.proveedores (id, numero_documento, razon_social)
-  select gen_random_uuid(), r, 'PROVEEDOR DE PRUEBA 473'
-    from (select '2069' || lpad(n::text, 6, '0') || d::text as r from generate_series(473000, 473200) n, generate_series(0, 9) d) x
+  select gen_random_uuid(), r, 'PROVEEDOR DE PRUEBA 485'
+    from (select '2069' || lpad(n::text, 6, '0') || d::text as r from generate_series(485000, 485200) n, generate_series(0, 9) d) x
    where public.ruc_es_valido(r)
    order by r limit 1
   on conflict (tipo_documento, numero_documento) do update set activo = true;
-  perform set_config('prueba.proveedor', (select id::text from public.proveedores where razon_social = 'PROVEEDOR DE PRUEBA 473'), true);
+  perform set_config('prueba.proveedor', (select id::text from public.proveedores where razon_social = 'PROVEEDOR DE PRUEBA 485'), true);
 end $$;
 
 select pg_temp.como('comprador');
@@ -80,12 +80,12 @@ do $$
 declare v text;
 begin
   foreach v in array array['oc1', 'oc2', 'oc3'] loop
-    perform public.emitir_compra_directa(pg_temp.id(v), pg_temp.id('proveedor'), 'COT-473-' || v, 'Discos para el almacén',
+    perform public.emitir_compra_directa(pg_temp.id(v), pg_temp.id('proveedor'), 'COT-485-' || v, 'Discos para el almacén',
       jsonb_build_array(jsonb_build_object('material_id', pg_temp.id('disco'), 'cantidad', 5, 'precio', 8)),
       pg_temp.hoy() + 3, 'CONTADO', 0, 'PEN', true, 'PLANTA');
   end loop;
   perform public.emitir_orden_servicio(pg_temp.id('os1'), pg_temp.id('proveedor'), null, (select id from public.areas where codigo = 'ACB'),
-    'PLANTA', 'Torneado de ejes, prueba 473', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'PEN', 500, 'CONTADO', 0, '025', null);
+    'PLANTA', 'Torneado de ejes, prueba 485', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'PEN', 500, 'CONTADO', 0, '025', null);
 end $$;
 reset role;
 set constraints all immediate;

@@ -122,13 +122,13 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
       )}
 
       <Tarjeta className="overflow-hidden">
-        <Tabla>
+        <Tabla apilada>
           <TablaCabecera>
             <tr>
               <TH>Orden</TH>
               <TH className="hidden md:table-cell">Para</TH>
-              <TH className="hidden text-right sm:table-cell">Monto sin IGV</TH>
-              <TH className="hidden sm:table-cell">En qué va</TH>
+              <TH className="hidden text-right md:table-cell">Monto sin IGV</TH>
+              <TH className="hidden md:table-cell">En qué va</TH>
               <TH className="text-right">
                 <span className="sr-only">Acciones</span>
               </TH>
@@ -219,8 +219,8 @@ function FilaServicio({
           </span>
           {para && ` · ${para}`}
         </p>
-        {/* En el teléfono, el monto y en qué va van aquí: la tabla no cabe con sus columnas. */}
-        <div className="mt-2 space-y-1 sm:hidden">
+        {/* Por debajo de 768 px cada OS es una ficha (`apilada`): el monto y en qué va van aquí. */}
+        <div className="mt-2 space-y-1 md:hidden">
           <p className="tabular text-sm font-semibold text-texto">{moneda(s.monto, s.moneda === 'USD' ? 'USD' : 'PEN')} sin IGV</p>
           <EnQueVa servicio={s} plazo={plazo} recorrido={recorrido} />
         </div>
@@ -229,8 +229,8 @@ function FilaServicio({
         <p className={s.codigo_interno ? 'tabular font-medium text-texto' : 'text-aviso'}>{s.codigo_interno ?? 'Sin código interno'}</p>
         {para && <p className="text-xs text-texto-suave">{para}</p>}
       </TD>
-      <TD className="tabular hidden text-right whitespace-nowrap sm:table-cell">{moneda(s.monto, s.moneda === 'USD' ? 'USD' : 'PEN')}</TD>
-      <TD className="hidden sm:table-cell">
+      <TD className="tabular hidden text-right whitespace-nowrap md:table-cell">{moneda(s.monto, s.moneda === 'USD' ? 'USD' : 'PEN')}</TD>
+      <TD className="hidden md:table-cell">
         <EnQueVa servicio={s} plazo={plazo} recorrido={recorrido} />
       </TD>
       <TD className="text-right">

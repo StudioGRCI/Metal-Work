@@ -146,15 +146,15 @@ export default async function PaginaOrdenesCompra({ searchParams }: { searchPara
       )}
 
       <Tarjeta className="overflow-hidden">
-        <Tabla>
+        <Tabla apilada>
           <TablaCabecera>
             <tr>
               <TH>Orden</TH>
               <TH className="hidden md:table-cell">Para</TH>
-              {/* En el teléfono el monto y en qué va viajan bajo el número: con sus columnas, la tabla medía 461 px en una pantalla de 390. */}
-              <TH className="hidden text-right sm:table-cell">Monto sin IGV</TH>
-              <TH className="hidden sm:table-cell">En qué va</TH>
-              <TH className="hidden sm:table-cell">Comprobante</TH>
+              {/* Por debajo de 768 px cada OC es una ficha (`apilada`): el monto, en qué va y el plazo viajan bajo el número, y el recorrido abierto y los botones van a lo ancho. Con sus columnas la tabla medía 461 px en una pantalla de 390, y el recorrido quedaba en una columna de 150 px. */}
+              <TH className="hidden text-right md:table-cell">Monto sin IGV</TH>
+              <TH className="hidden md:table-cell">En qué va</TH>
+              <TH className="hidden md:table-cell">Comprobante</TH>
               {/* Con `relative`, el rótulo oculto queda dentro de la tabla que se desliza y no ensancha la página en el teléfono. */}
               <TH className="relative text-right">
                 <span className="sr-only">Acciones</span>
@@ -244,7 +244,7 @@ function FilaCompra({
         </div>
         {/* Lo único que distingue dos OC sin número del mismo proveedor: va primero, como en Gestión. */}
         {c.numero === null && <p className="text-xs text-texto-suave">Ref. del proveedor: {c.referencia}</p>}
-        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 sm:hidden">
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 md:hidden">
           <span className="tabular text-sm font-semibold text-texto">{moneda(c.monto, divisa(c.moneda))}</span>
           <span className="text-xs text-texto-suave">sin IGV</span>
           <Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>
@@ -277,8 +277,8 @@ function FilaCompra({
         )}
         <p className="text-xs text-texto-suave md:hidden">Para {para || '—'}</p>
         {/* En el teléfono el plazo va aquí, con el resto de la fila. */}
-        <PlazoDeLaCompra plazo={plazo} corregida={corregida} className="mt-1 sm:hidden" />
-        <UltimoMotivo pasos={recorrido} className="mt-1 sm:hidden" />
+        <PlazoDeLaCompra plazo={plazo} corregida={corregida} className="mt-1 md:hidden" />
+        <UltimoMotivo pasos={recorrido} className="mt-1 md:hidden" />
         <HistorialDeCorrecciones correcciones={correcciones} />
         {/* Quién la tiene ahora y hace cuántos días; abierto, cada paso y lo que anotó Logística. */}
         <Recorrido
@@ -289,8 +289,8 @@ function FilaCompra({
         />
       </TD>
       <TD className="hidden text-texto-suave md:table-cell">{para || '—'}</TD>
-      <TD className="tabular hidden text-right whitespace-nowrap sm:table-cell">{moneda(c.monto, divisa(c.moneda))}</TD>
-      <TD className="hidden sm:table-cell">
+      <TD className="tabular hidden text-right whitespace-nowrap md:table-cell">{moneda(c.monto, divisa(c.moneda))}</TD>
+      <TD className="hidden md:table-cell">
         <div className="flex flex-wrap gap-1">
           <Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>
           <InsigniaDelPlazo plazo={plazo} />
@@ -299,7 +299,7 @@ function FilaCompra({
         <PlazoDeLaCompra plazo={plazo} corregida={corregida} className="mt-1" />
         <UltimoMotivo pasos={recorrido} className="mt-1" />
       </TD>
-      <TD className="hidden sm:table-cell">
+      <TD className="hidden md:table-cell">
         {c.tiene_factura ? (
           <Insignia tono="exito">Adjunto</Insignia>
         ) : sinCurso ? (
