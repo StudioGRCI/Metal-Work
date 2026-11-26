@@ -25,7 +25,7 @@ import {
   porcentajeCorto,
 } from '@/lib/dominio/rrhh'
 import { fecha, hoyLima, mesLargo, moneda } from '@/lib/format'
-import { exigirPermiso, puede } from '@/lib/sesion'
+import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
 
 export const metadata = { title: 'Hoja de la persona' }
 
@@ -49,8 +49,10 @@ type Suceso =
 
 export default async function PaginaHojaDeLaPersona({ params, searchParams }: PageProps<'/rrhh/personal/[id]'>) {
   const perfil = await exigirPermiso(['rrhh.personal', 'asistencia.ver'])
-  const { id } = await params
-  if (!GUID.test(id)) notFound()
+  const { id: enLaUrl } = await params
+  if (!GUID.test(enLaUrl)) notFound()
+  // La base da los id en minúsculas: con la URL en mayúsculas los permisos y el descuento no encontraban a la persona.
+  const id = enLaUrl.toLowerCase()
   const busqueda = await searchParams
   const hoy = hoyLima()
   const mesActual = mesDeLima(hoy)
@@ -61,6 +63,8 @@ export default async function PaginaHojaDeLaPersona({ params, searchParams }: Pa
   // tardanzas, permisos y observaciones sin soles, sin cuenta y sin el costo de
   // la persona; los pagos, el sueldo y el costo son de Recursos Humanos.
   const llevaElPersonal = puede(perfil, 'rrhh.personal')
+  // Corrige y anula solo RR. HH.; el administrador lo ve todo, pero solo mira.
+  const corrige = editaComoRrhh(perfil, 'rrhh.personal')
   const ve: Record<Parte, boolean> = {
     tardanzas: true, // la misma puerta de la página: `rrhh.personal` o `asistencia.ver`, como Tardanzas
     permisos: puede(perfil, ['rrhh.permisos', 'asistencia.ver']),
@@ -88,7 +92,7 @@ export default async function PaginaHojaDeLaPersona({ params, searchParams }: Pa
     ...pagos.map((p) => ({ parte: 'pagos' as const, fecha: p.fecha, orden: `4${p.id}`, pago: p })),
   ].sort((a, b) => b.fecha.localeCompare(a.fecha) || a.orden.localeCompare(b.orden))
 
-  const filtro = typeof busqueda.ver === 'string' && busqueda.ver in PARTES && ve[busqueda.ver as Parte] ? (busqueda.ver as Parte) : null
+  const filtro = typeof busqueda.ver === 'string' && Object.hasOwn(PARTES, busqueda.ver) && ve[busqueda.ver as Parte] ? (busqueda.ver as Parte) : null
   const visibles = filtro ? sucesos.filter((s) => s.parte === filtro) : sucesos
   const dias = agruparPorDia(visibles)
 
@@ -129,7 +133,7 @@ export default async function PaginaHojaDeLaPersona({ params, searchParams }: Pa
           .join(' · ')}
         ayuda={
           llevaElPersonal
-            ? 'Todo lo de la persona en un mes, día por día: sus tardanzas, sus permisos, lo que se le observó y lo que se le pagó. La flecha de cada renglón abre su pantalla, donde se corrige o se anula. Lo anulado queda tachado, con su motivo.'
+            ? `Todo lo de la persona en un mes, día por día: sus tardanzas, sus permisos, lo que se le observó y lo que se le pagó. La flecha de cada renglón abre su pantalla${corrige ? ', donde se corrige o se anula' : ''}. Lo anulado queda tachado, con su motivo.`
             : 'Las tardanzas, los permisos y lo que se le observó a la persona en un mes, día por día. La flecha de cada renglón abre su pantalla. Los pagos, el sueldo, el costo y la cuenta los lleva Recursos Humanos.'
         }
         migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'Personal', ruta: '/rrhh/personal' }, { titulo: nombre }]}
@@ -220,7 +224,7 @@ export default async function PaginaHojaDeLaPersona({ params, searchParams }: Pa
           <TarjetaCabecera
             titulo="Lo del mes, día por día"
             ayuda={
-              llevaElPersonal
+              corrige
                 ? 'Del día más reciente al más antiguo. La flecha de cada renglón abre su pantalla, donde se corrige o se anula.'
                 : 'Del día más reciente al más antiguo. La flecha de cada renglón abre su pantalla.'
             }
@@ -264,7 +268,7 @@ export default async function PaginaHojaDeLaPersona({ params, searchParams }: Pa
           )}
         </Tarjeta>
 
-        <Ficha persona={persona} llevaElPersonal={llevaElPersonal} />
+        <Ficha persona={persona} llevaElPersonal={llevaElPersonal} corrige={corrige} />
       </div>
     </>
   )
@@ -501,7 +505,15 @@ function Linea({
 }
 
 /** Los datos de la ficha: para consultar, al final. La cuenta, el sueldo y el costo solo para RR. HH. */
-function Ficha({ persona: t, llevaElPersonal }: { persona: NonNullable<Awaited<ReturnType<typeof trabajadorPorId>>>; llevaElPersonal: boolean }) {
+function Ficha({
+  persona: t,
+  llevaElPersonal,
+  corrige,
+}: {
+  persona: NonNullable<Awaited<ReturnType<typeof trabajadorPorId>>>
+  llevaElPersonal: boolean
+  corrige: boolean
+}) {
   const datos: [string, ReactNode][] = [
     ...(llevaElPersonal ? ([['DNI', t.dni ?? 'Sin DNI']] as [string, ReactNode][]) : []),
     ['Horario', `${horaCorta(t.hora_entrada)} – ${horaCorta(t.hora_salida)}`],
@@ -524,7 +536,7 @@ function Ficha({ persona: t, llevaElPersonal }: { persona: NonNullable<Awaited<R
     <Tarjeta>
       <TarjetaCabecera
         titulo="Ficha"
-        ayuda={llevaElPersonal ? 'Se corrige en Personal, con «Editar» en su fila.' : undefined}
+        ayuda={corrige ? 'Se corrige en Personal, con «Corregir» en su fila.' : undefined}
       />
       <TarjetaCuerpo>
         <dl className="grid gap-3 sm:grid-cols-2" data-ficha-hoja>
