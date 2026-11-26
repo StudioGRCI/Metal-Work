@@ -135,8 +135,9 @@ async function entrar(puesto, viewport = ANCHO) {
   const pagina = await contexto.newPage()
   pagina.on('console', (m) => {
     if (cortando && /net::ERR_FAILED|Failed to fetch|TypeError/.test(m.text())) return
-    // La misma foto otra vez en su ruta: Storage contesta que ya está, y la subida sigue con ella.
-    if (puesto === 'almacen' && m.text().includes('status of 400')) return
+    // La misma foto (o la captura del cierre) otra vez en su ruta: Storage contesta que ya está,
+    // y la subida sigue con ella. Solo la de Storage: otro 400 sí cuenta.
+    if (m.text().includes('status of 400') && /\/storage\/v1\/object\//.test(m.location()?.url ?? '')) return
     if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(`${puesto}: ${m.text().slice(0, 300)}`)
   })
   await pagina.goto(`${BASE}/ingresar`, { waitUntil: 'networkidle' })
@@ -425,6 +426,14 @@ await reenvio({
 })
 
 // ---------------------------------------------------------------- 6. Cierre del día
+function capturaDelCierre() {
+  const ruta = join(CAPTURAS, 'captura-del-cierre.png')
+  if (!existsSync(ruta)) {
+    mkdirSync(CAPTURAS, { recursive: true })
+    writeFileSync(ruta, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'))
+  }
+  return ruta
+}
 await reenvio({
   nombre: 'Cierre del día',
   clave: 'cierre',
@@ -433,16 +442,21 @@ await reenvio({
   nuevo: (p) => p.locator(`[data-cerrar-dia="${CAJA}"]`),
   enviar: 'Cerrar el día',
   otro: false,
+  // Con la captura, la subida pregunta otra vez con el mismo id antes de decir que no llegó.
+  cortes: 2,
   valores: ['100000', '99990'],
   yaQuedo: 'Este cierre del día ya quedó registrado la primera vez que lo enviaste.',
   // La marca va en las observaciones: el corte reconoce el envío por ella.
+  // El banco se cierra con la captura del día (migración 20261126550000).
   async llenar(v, p, marca, saldo) {
     await v.locator('input[name="saldo_banco"]').fill(saldo)
     await v.locator('textarea[name="observaciones"]').fill(`Cuadra con el estado de cuenta ${marca}`)
+    await v.locator('input[name="captura"]').setInputFiles(capturaDelCierre())
   },
   async cambiar(v, p, saldo) {
     await v.locator('input[name="saldo_banco"]').fill(saldo)
     await v.locator('textarea[name="observaciones"]').fill('Comisión del banco que falta registrar')
+    if ((await v.locator('input[name="captura"]').evaluate((e) => e.files.length)) === 0) await v.locator('input[name="captura"]').setInputFiles(capturaDelCierre())
   },
   contar: () => consulta(`select k.saldo_banco::float as valor from cierres_caja k join cajas c on c.id = k.caja_id where c.nombre = $1 and k.anulado_en is null`, [CAJA]),
   enPantalla: async (p) => (await p.locator(`[data-cerrar-dia="${CAJA}"]`).count()) === 0,

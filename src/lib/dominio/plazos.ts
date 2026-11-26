@@ -57,3 +57,7 @@ export const FILTRO_ATRASADAS = 'atrasadas'
 export function faltaDe(l: LoQueFalta, formato: (n: number) => string): string {
   return `faltan ${formato(l.falta)} de ${formato(l.pedido)}${l.unidad ? ` ${l.unidad}` : ''}`
 }
+
+// Los motivos del atraso viven en `recorrido.ts`, que no puede importar nada para
+// que `node --test` lo cargue sin el alias `@/`; aquí se siguen ofreciendo.
+export { MOTIVOS_DE_ATRASO, MOTIVO_DE_ATRASO, motivoDeAtraso, type MotivoDeAtraso } from './recorrido'

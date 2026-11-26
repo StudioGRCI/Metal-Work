@@ -382,6 +382,10 @@ select public.avanzar_orden_servicio(current_setting('prueba.os1')::uuid, 'CONFO
 select test.debe_fallar(
   $q$select public.avanzar_orden_servicio(current_setting('prueba.os1')::uuid, 'ANULADA', 'Intento de anular lo conforme')$q$,
   'una OS conforme no se anula', 'no se anula');
+-- La conforme dice que ya tiene conformidad, no que espera a Gerencia (20261126625000).
+select test.debe_fallar(
+  $q$select public.avanzar_orden_servicio(current_setting('prueba.os1')::uuid, 'EN_EJECUCION', null)$q$,
+  'la OS conforme no vuelve a ejecución y lo dice', 'ya tiene conformidad');
 reset role;
 select test.afirmar(
   (select estado = 'CONFORME' and conformidad_por = current_setting('prueba.comprador')::uuid
