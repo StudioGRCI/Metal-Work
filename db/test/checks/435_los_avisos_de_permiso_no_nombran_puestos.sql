@@ -83,7 +83,7 @@ begin
 
   select string_agg(f, ', ') into v_quedan
     from (values
-           ('public.adjuntar_documento_servicio(uuid,uuid,text,text,text,text)', $t$'No tienes permiso para adjuntar documentos a la orden de servicio.'$t$),
+           ('public.adjuntar_documento_servicio(uuid,uuid,text,text,text,text,date)', $t$'No tienes permiso para adjuntar documentos a la orden de servicio.'$t$),
            ('public.anular_documento_servicio(uuid,text)', $t$'No tienes permiso para anular documentos de la orden de servicio.'$t$),
            ('public.anular_documento_compra(uuid,text)', $t$'No tienes permiso para anular documentos de compra.'$t$),
            ('public.cargar_cronograma(uuid,jsonb)', $t$'No tienes permiso para cargar el cronograma.'$t$),
