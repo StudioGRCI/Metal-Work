@@ -26,7 +26,8 @@ import { asignarResponsableDeArea } from './acciones'
  *
  * Un área puede ser llevada por otra (a Ingeniería la lleva Diseño: es un solo
  * puesto, migración 20261126998500). Mientras no tenga cuenta propia, la base
- * le anota la de esa, y la fila lo dice: no figura como «Sin cuenta».
+ * le anota la de esa, y la fila lo dice: no figura como «Sin cuenta». Quién
+ * lleva a quién sale de los datos, no de este archivo.
  */
 export function ResponsablesDeArea({
   areas,
@@ -41,6 +42,10 @@ export function ResponsablesDeArea({
   // El ámbar es para la excepción: mientras falten la mayoría, «Sin cuenta» es
   // lo de casi todas y va en gris; cuando quedan pocas, resalta.
   const tonoSinCuenta = faltan * 2 > areas.length ? 'neutro' : 'aviso'
+  // Quién lleva a quién, para la ayuda: lo dicen los datos.
+  const llevadas = areas
+    .filter((a) => a.llevadaPor)
+    .map((a) => `A ${a.nombre} la lleva ${a.llevadaPor!.nombre}, que es un solo puesto: mientras no tenga cuenta propia, responde la de ${a.llevadaPor!.nombre}.`)
 
   return (
     <Tarjeta id="responsables" className="scroll-mt-20">
@@ -55,7 +60,11 @@ export function ResponsablesDeArea({
                 ? `Ninguna de las ${areas.length} áreas tiene cuenta responsable todavía.`
               : `${conCuenta} de ${areas.length} áreas tienen cuenta responsable. ${faltan === 1 ? 'Falta 1.' : `Faltan ${faltan}.`}`
         }
-        ayuda="La cuenta que responde por cada área. Lo que las próximas entregas le avisen a un área (Calidad, Garantías, Mantenimiento) irá a esta cuenta. Cada cuenta se nombra por su puesto. El nombre del organigrama se conserva al lado hasta que todas tengan su cuenta. A Ingeniería la lleva Diseño, que es un solo puesto: mientras no tenga cuenta propia, responde la de Diseño. Las cuentas se dan de alta en Personal."
+        ayuda={[
+          'La cuenta que responde por cada área. Lo que las próximas entregas le avisen a un área (Calidad, Garantías, Mantenimiento) irá a esta cuenta. Cada cuenta se nombra por su puesto. El nombre del organigrama se conserva al lado hasta que todas tengan su cuenta.',
+          ...llevadas,
+          'Las cuentas se dan de alta en Personal.',
+        ].join(' ')}
       />
       <TarjetaCuerpo>
         {areas.length === 0 ? (
@@ -103,6 +112,20 @@ function FilaDeArea({
   const laLleva = area.llevadaPor
   const heredada = Boolean(laLleva && area.heredada)
   const propia = heredada ? null : responsable
+  // Qué pasa si esta área queda sin cuenta propia: depende de la cuenta que
+  // tenga hoy la que la lleva. Decir «responde la de Diseño» cuando Diseño no
+  // tiene, o la tiene de baja, sería prometer un aviso que no llega a nadie.
+  const sinPropia = !laLleva
+    ? null
+    : !laLleva.cuenta
+      ? `${laLleva.nombre} todavía no tiene cuenta responsable: sin una propia, por ${area.nombre} no responde nadie.`
+      : !laLleva.cuenta.activo
+        ? `La cuenta de ${laLleva.nombre} está dada de baja: sin una propia, por ${area.nombre} no responde nadie.`
+        : // El puesto de la cuenta, si no se llama igual que el área: «la de Diseño (Diseño e ingeniería)».
+          `Sin cuenta propia responde la de ${laLleva.nombre}${laLleva.cuenta.etiqueta === laLleva.nombre ? '' : ` (${laLleva.cuenta.etiqueta})`}.`
+  // Las que lleva esta área, según respondan con su cuenta o con una propia.
+  const conLaSuya = area.lleva.filter((l) => !l.propia).map((l) => l.nombre)
+  const conPropia = area.lleva.filter((l) => l.propia).map((l) => l.nombre)
   const idCampo = `responsable-${area.id}`
   // Las cuentas se nombran por su puesto, como en todo el sistema (migración
   // 109). Primero las de la misma área: entre diecisiete, la que se busca casi
@@ -143,24 +166,35 @@ function FilaDeArea({
           <p className="text-xs text-peligro">
             {heredada && laLleva
               ? `Es la cuenta de ${laLleva.nombre}, y está dada de baja: cámbiala en ${laLleva.nombre} o ponle a esta área una propia.`
-              : laLleva
+              : laLleva?.cuenta?.activo
                 ? `Esta cuenta está dada de baja: ya no responde por el área. Elige otra, o quítala para que responda la de ${laLleva.nombre}.`
                 : 'Esta cuenta está dada de baja: ya no responde por el área. Elige otra.'}
           </p>
         )}
-        {laLleva && (
+        {/* Con la cuenta dada de baja, el aviso rojo ya dice de quién es y qué hacer. */}
+        {laLleva && !deBaja && (
           <p className="text-xs text-texto-suave">
             {heredada
-              ? `La lleva ${laLleva.nombre}: responde su cuenta mientras esta área no tenga una propia.`
+              ? 'Es la cuenta del área que la lleva, mientras no tenga una propia.'
               : responsable
                 ? `La lleva ${laLleva.nombre}, y tiene su propia cuenta responsable.`
                 : `La lleva ${laLleva.nombre}: va a responder su cuenta cuando ${laLleva.nombre} tenga una.`}
           </p>
         )}
-        {area.lleva.length > 0 && (
+        {conLaSuya.length > 0 && (
           <p className="text-xs text-texto-suave">
-            Lleva también {LISTA.format(area.lleva)}: su cuenta responde por {area.lleva.length === 1 ? 'esa área' : 'esas áreas'} mientras no{' '}
-            {area.lleva.length === 1 ? 'tenga' : 'tengan'} una propia.
+            Lleva también {LISTA.format(conLaSuya)}:{' '}
+            {deBaja
+              ? 'tampoco responde nadie por'
+              : responsable
+                ? 'su cuenta responde por'
+                : 'la cuenta que le asignes va a responder también por'}{' '}
+            {conLaSuya.length === 1 ? 'esa área' : 'esas áreas'} mientras no {conLaSuya.length === 1 ? 'tenga' : 'tengan'} una propia.
+          </p>
+        )}
+        {conPropia.length > 0 && (
+          <p className="text-xs text-texto-suave">
+            Lleva también {LISTA.format(conPropia)}, que {conPropia.length === 1 ? 'tiene su propia cuenta' : 'tienen su propia cuenta'}.
           </p>
         )}
         {area.encargado && <p className="text-xs text-texto-suave">En el organigrama: {area.encargado}</p>}
@@ -173,7 +207,9 @@ function FilaDeArea({
 
       <Boton
         type="button"
-        variante={responsable ? 'fantasma' : 'secundario'}
+        // El que más pide un toque es el de la fila sin nadie que responda:
+        // sin cuenta, o con la cuenta dada de baja.
+        variante={responsable && !deBaja ? 'fantasma' : 'secundario'}
         tamano="sm"
         aria-label={`${propia ? 'Cambiar' : 'Asignar'} la cuenta responsable de ${area.nombre}`}
         onClick={() => setAbierta(true)}
@@ -188,7 +224,7 @@ function FilaDeArea({
         titulo={`Responsable de ${area.nombre}`}
         descripcion={
           laLleva
-            ? `A ${area.nombre} la lleva ${laLleva.nombre}: sin cuenta propia, responde la de ${laLleva.nombre}. Elige una solo si debe responder otra.`
+            ? `A ${area.nombre} la lleva ${laLleva.nombre}. Elige una cuenta solo si por ${area.nombre} debe responder otra.`
             : 'La cuenta que responde por el área. Las próximas entregas le avisarán a ella lo que vaya al área.'
         }
         ancho="sm"
@@ -198,12 +234,15 @@ function FilaDeArea({
           <Campo
             etiqueta="Cuenta responsable"
             htmlFor={idCampo}
-            ayuda={area.encargado ? `En el organigrama figura ${area.encargado}.` : 'El organigrama no nombra a nadie en esta área.'}
+            ayuda={[sinPropia, area.encargado ? `En el organigrama figura ${area.encargado}.` : 'El organigrama no nombra a nadie en esta área.']
+              .filter(Boolean)
+              .join(' ')}
             ayudaEnIcono={false}
             error={errorDeLaCuenta ?? undefined}
           >
             <Seleccion key={claveDeLaLista} ref={campo} id={idCampo} name="jefe_id" defaultValue={propia?.id ?? ''} className="w-full">
-              <option value="">{laLleva ? `Sin cuenta propia: responde la de ${laLleva.nombre}` : 'Sin cuenta responsable'}</option>
+              {/* Corta, para que quepa en el teléfono: quién responde entonces lo dice la ayuda del campo. */}
+              <option value="">{laLleva ? 'Sin cuenta propia' : 'Sin cuenta responsable'}</option>
               {/* La cuenta dada de baja no está entre las activas: se muestra
                   para que el campo diga lo que hay guardado. */}
               {deBaja && propia && (

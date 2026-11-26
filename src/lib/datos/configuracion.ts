@@ -97,10 +97,16 @@ export type AreaConResponsable = {
    * sola (`areas.jefe_heredado`, migración 20261126998500).
    */
   heredada: boolean
-  /** El área cuyo puesto lleva también esta (a Ingeniería la lleva Diseño). */
-  llevadaPor: { id: string; nombre: string } | null
-  /** Las áreas que esta lleva: su cuenta responde también por ellas. */
-  lleva: string[]
+  /**
+   * El área cuyo puesto lleva también esta (a Ingeniería la lleva Diseño), con
+   * la cuenta que tiene hoy: es la que responde si esta no tiene una propia.
+   */
+  llevadaPor: { id: string; nombre: string; cuenta: { etiqueta: string; activo: boolean } | null } | null
+  /**
+   * Las áreas que esta lleva. Su cuenta responde por las que no tienen una
+   * `propia`.
+   */
+  lleva: { nombre: string; propia: boolean }[]
 }
 
 /** Una cuenta activa que se puede asignar: `etiqueta` es su puesto (`etiquetasDePuesto`). */
@@ -134,23 +140,31 @@ export async function areasConResponsable() {
   const etiquetas = etiquetasDePuesto(activas)
 
   const filas = areas.data ?? []
+  // La dada de baja no está entre las activas: se nombra por su puesto a secas.
+  const cuentaDe = (a: (typeof filas)[number]) => {
+    const r = a.responsable as unknown as (Omit<Cuenta, 'area_id'> & { activo: boolean }) | null
+    return r && { id: r.id, etiqueta: etiquetas.get(r.id) ?? puesto(r), activo: r.activo }
+  }
+  const sinId = (c: ReturnType<typeof cuentaDe>) => c && { etiqueta: c.etiqueta, activo: c.activo }
   // La que lleva a otra está en la misma lista: solo un área activa lleva a otra (`fn_area_llevada_por`).
   const porId = new Map(filas.map((a) => [a.id as string, a]))
 
   return {
     areas: filas.map((a): AreaConResponsable => {
-      const r = a.responsable as unknown as (Omit<Cuenta, 'area_id'> & { activo: boolean }) | null
       const laLleva = a.llevada_por_id ? porId.get(a.llevada_por_id as string) : undefined
       return {
         id: a.id as string,
         codigo: a.codigo as string,
         nombre: a.nombre as string,
         encargado: (a.encargado as string | null)?.trim() || null,
-        // La dada de baja no está entre las activas: se nombra por su puesto a secas.
-        responsable: r && { id: r.id, etiqueta: etiquetas.get(r.id) ?? puesto(r), activo: r.activo },
-        heredada: Boolean(r && a.jefe_heredado),
-        llevadaPor: laLleva ? { id: laLleva.id as string, nombre: laLleva.nombre as string } : null,
-        lleva: filas.filter((b) => b.llevada_por_id === a.id).map((b) => b.nombre as string),
+        responsable: cuentaDe(a),
+        heredada: Boolean(a.responsable && a.jefe_heredado),
+        llevadaPor: laLleva
+          ? { id: laLleva.id as string, nombre: laLleva.nombre as string, cuenta: sinId(cuentaDe(laLleva)) }
+          : null,
+        lleva: filas
+          .filter((b) => b.llevada_por_id === a.id)
+          .map((b) => ({ nombre: b.nombre as string, propia: Boolean(b.responsable && !b.jefe_heredado) })),
       }
     }),
     cuentas: activas

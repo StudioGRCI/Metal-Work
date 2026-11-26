@@ -7,8 +7,11 @@
 --     deja sin ninguna;
 --   * quien responde por herencia abre lo del área: lo leen las funciones que
 --     ya había (`responsable_del_area`, `calidad_es_del_area`), sin cambiarlas;
---   * la marca de heredada no se escribe a mano; no hay cadenas ni un área que
---     se lleve a sí misma;
+--   * la marca de heredada solo vale si es verdad (la cuenta es la misma del
+--     área que la lleva); elegirle a mano esa misma cuenta, como hace la
+--     pantalla, la deja propia; no hay cadenas ni un área que se lleve a sí misma;
+--   * si la cuenta de Diseño se da de baja, Ingeniería la conserva igual que
+--     Diseño y nadie responde; al volver de alta, responden las dos;
 --   * quién lleva a quién solo lo cambia el administrador del sistema.
 -- Termina en rollback.
 \set ON_ERROR_STOP on
@@ -43,12 +46,15 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', current_setting('prueba.' || p_clave), 'role', 'authenticated')::text, true);
 end $$;
 
--- Lo que hace la acción de servidor: un UPDATE por la política de `areas`.
+-- Lo que hace la acción de servidor: un UPDATE por la política de `areas`, que
+-- manda la cuenta elegida (o ninguna) y `jefe_heredado = false`: lo que se elige
+-- a mano es propio, y si no se eligió nada lo decide la base.
 create or replace function pg_temp.asignar(p_area text, p_cuenta text) returns integer language plpgsql as $$
 declare v integer;
 begin
   update public.areas
-     set jefe_id = case when p_cuenta is null then null else current_setting('prueba.' || p_cuenta)::uuid end
+     set jefe_id = case when p_cuenta is null then null else current_setting('prueba.' || p_cuenta)::uuid end,
+         jefe_heredado = false
    where id = current_setting('prueba.area_' || p_area)::uuid;
   get diagnostics v = row_count;
   return v;
@@ -124,26 +130,39 @@ select pg_temp.como('admin');
 set local role authenticated;
 select test.afirmar(pg_temp.asignar('dis', 'gerente') = 1 and pg_temp.fila('ing') = 'GERENTE (heredada)',
   '3. Al cambiar la cuenta de Diseño, la de Ingeniería cambia con ella');
-select test.afirmar(pg_temp.asignar('ing', 'diseno_colaborador') = 1 and pg_temp.fila('ing') = 'DISENO_COLABORADOR',
-  '3. El administrador le pone a Ingeniería una cuenta propia: deja de ser heredada');
-select test.afirmar(pg_temp.asignar('dis', 'diseno') = 1 and pg_temp.fila('ing') = 'DISENO_COLABORADOR' and pg_temp.fila('dis') = 'DISENO',
-  '3. Con cuenta propia, cambiar la de Diseño no toca la de Ingeniería');
--- La marca no se escribe a mano.
-update public.areas set jefe_heredado = true where codigo in ('ING', 'PRD', 'DIS');
-select test.afirmar(pg_temp.fila('ing') = 'DISENO_COLABORADOR' and pg_temp.fila('prd') = 'nadie' and pg_temp.fila('dis') = 'DISENO',
-  '3. La marca de heredada no se escribe a mano');
--- Elegirle a mano la misma cuenta que tiene Diseño es ponerle una propia.
-select test.afirmar(pg_temp.asignar('ing', 'diseno') = 1 and pg_temp.fila('ing') = 'DISENO',
-  '3. Elegirle a mano la misma cuenta de Diseño es ponerle una propia');
+-- Elegirle a mano la misma cuenta que tiene Diseño, partiendo de la heredada,
+-- es ponerle una propia: es lo que hace la pantalla, y deja de seguir a Diseño.
+select test.afirmar(pg_temp.asignar('ing', 'gerente') = 1 and pg_temp.fila('ing') = 'GERENTE',
+  '3. Elegirle a mano la misma cuenta que heredaba de Diseño se la deja como propia');
+select test.afirmar(pg_temp.asignar('dis', 'diseno') = 1 and pg_temp.fila('ing') = 'GERENTE' and pg_temp.fila('dis') = 'DISENO',
+  '3. y ya no sigue a la de Diseño cuando esa cambia');
 select test.afirmar(pg_temp.asignar('ing', null) = 1 and pg_temp.fila('ing') = 'DISENO (heredada)',
   '3. Quitarle la propia la devuelve a la de Diseño');
 select test.afirmar(pg_temp.asignar('ing', null) = 1 and pg_temp.fila('ing') = 'DISENO (heredada)',
   '3. y guardar otra vez «sin cuenta propia» la deja igual');
+select test.afirmar(pg_temp.asignar('ing', 'diseno_colaborador') = 1 and pg_temp.fila('ing') = 'DISENO_COLABORADOR',
+  '3. El administrador le pone a Ingeniería otra cuenta: propia');
+select test.afirmar(pg_temp.asignar('dis', 'gerente') = 1 and pg_temp.fila('ing') = 'DISENO_COLABORADOR' and pg_temp.fila('dis') = 'GERENTE',
+  '3. Con cuenta propia, cambiar la de Diseño no toca la de Ingeniería');
+
+-- La marca escrita a mano solo vale si es verdad.
+update public.areas set jefe_heredado = true where codigo in ('ING', 'PRD', 'DIS');
+select test.afirmar(pg_temp.fila('ing') = 'DISENO_COLABORADOR' and pg_temp.fila('prd') = 'nadie' and pg_temp.fila('dis') = 'GERENTE',
+  '3. Decir «heredada» a mano no vale si la cuenta no es la del área que la lleva, ni en un área que nadie lleva');
+update public.areas set jefe_id = pg_temp.cuenta('gerente'), jefe_heredado = true where codigo = 'ING';
+select test.afirmar(pg_temp.fila('ing') = 'GERENTE (heredada)',
+  '3. y sí vale cuando es verdad: la misma cuenta de Diseño');
+-- Quien guarda la misma cuenta sin decir nada de la marca no cambia nada.
+update public.areas set jefe_id = pg_temp.cuenta('gerente') where codigo = 'ING';
+select test.afirmar(pg_temp.fila('ing') = 'GERENTE (heredada)', '3. Volver a escribir la heredada sin decir que es propia la deja heredada');
 -- Corregir otra cosa del área no cambia quién responde.
 update public.areas set nombre = nombre where codigo in ('ING', 'DIS');
-select test.afirmar(pg_temp.fila('ing') = 'DISENO (heredada)' and pg_temp.fila('dis') = 'DISENO', '3. Corregir otra cosa del área no cambia quién responde');
+select test.afirmar(pg_temp.fila('ing') = 'GERENTE (heredada)' and pg_temp.fila('dis') = 'GERENTE', '3. Corregir otra cosa del área no cambia quién responde');
 select test.afirmar(pg_temp.asignar('dis', null) = 1 and pg_temp.fila('ing') = 'nadie' and pg_temp.fila('dis') = 'nadie',
   '3. Al quitar la de Diseño, Ingeniería queda sin ninguna');
+select test.afirmar(
+  (select count(*) from public.areas where jefe_heredado and (jefe_id is null or llevada_por_id is null)) = 0,
+  '3. Ninguna fila dice «heredada» sin cuenta o sin quién la lleve');
 reset role;
 
 -- ============================================ 4. Cuentas dadas de baja
@@ -160,10 +179,20 @@ select test.afirmar(public.responsable_del_area('ING') is null and public.respon
 reset role;
 select pg_temp.como('admin');
 set local role authenticated;
+select test.afirmar(pg_temp.fila('ing') = 'DISENO_COLABORADOR', '4. La fila conserva la propia dada de baja: no vuelve sola a la de Diseño');
 select test.afirmar(pg_temp.asignar('ing', null) = 1 and pg_temp.fila('ing') = 'DISENO (heredada)',
   '4. Al quitarle la dada de baja, vuelve a responder la de Diseño');
+select test.debe_fallar($q$select pg_temp.asignar('ing', 'diseno_colaborador')$q$,
+  '4. Una cuenta dada de baja no se le pone como propia a Ingeniería', 'tiene que ser una cuenta activa');
+-- Ni colándola con la marca de heredada: no es la de Diseño, así que no vale.
+select test.debe_fallar(
+  format($q$update public.areas set jefe_id = '%s', jefe_heredado = true where codigo = 'ING'$q$, pg_temp.cuenta('diseno_colaborador')),
+  '4. ni diciendo a mano que es heredada', 'tiene que ser una cuenta activa');
+select test.afirmar(pg_temp.fila('ing') = 'DISENO (heredada)', '4. La fila sigue con la de Diseño');
 reset role;
--- La de Diseño se da de baja después: la copia de Ingeniería tampoco responde.
+
+-- La de Diseño se da de baja después: Ingeniería la conserva, igual que Diseño,
+-- y nadie responde por ninguna de las dos.
 update public.usuarios set activo = false where id = pg_temp.cuenta('diseno');
 select pg_temp.como('supervisor');
 set local role authenticated;
@@ -172,13 +201,44 @@ select test.afirmar(public.responsable_del_area('ING') is null and public.respon
 reset role;
 select pg_temp.como('admin');
 set local role authenticated;
--- Una cuenta dada de baja no se hereda: no falla, queda sin ninguna.
-select test.afirmar(pg_temp.asignar('ing', 'gerente') = 1 and pg_temp.asignar('ing', null) = 1 and pg_temp.fila('ing') = 'nadie',
-  '4. La cuenta dada de baja de Diseño no se hereda: Ingeniería queda sin ninguna, sin error');
-select test.afirmar(pg_temp.asignar('dis', 'gerente') = 1 and pg_temp.fila('ing') = 'GERENTE (heredada)',
-  '4. Al cambiar la de Diseño por una activa, Ingeniería la recibe');
+select test.afirmar(pg_temp.fila('ing') = 'DISENO (heredada)' and pg_temp.fila('dis') = 'DISENO',
+  '4. Las dos filas conservan la cuenta dada de baja: la pantalla lo marca en las dos');
+update public.areas set nombre = nombre where codigo in ('ING', 'DIS');
+select test.afirmar(pg_temp.fila('ing') = 'DISENO (heredada)', '4. Corregir otra cosa de Ingeniería no falla ni le quita la heredada dada de baja');
+-- Ponerle una propia y quitársela mientras la de Diseño está de baja: vuelve a
+-- la de Diseño sin error, para que responda sola cuando esa vuelva de alta.
+select test.afirmar(pg_temp.asignar('ing', 'gerente') = 1 and pg_temp.fila('ing') = 'GERENTE', '4. Mientras tanto se le puede poner una propia');
+select test.afirmar(pg_temp.asignar('ing', null) = 1 and pg_temp.fila('ing') = 'DISENO (heredada)',
+  '4. y al quitársela vuelve a la de Diseño, aunque esté de baja, sin error');
 reset role;
-update public.usuarios set activo = true where id in (pg_temp.cuenta('diseno'), pg_temp.cuenta('diseno_colaborador'));
+update public.usuarios set activo = true where id = pg_temp.cuenta('diseno');
+select pg_temp.como('supervisor');
+set local role authenticated;
+select test.afirmar(public.responsable_del_area('ING') = pg_temp.cuenta('diseno') and public.responsable_del_area('DIS') = pg_temp.cuenta('diseno'),
+  '4. Cuando la cuenta de Diseño vuelve de alta, responde otra vez por las dos, sin tocar nada');
+reset role;
+select pg_temp.como('admin');
+set local role authenticated;
+select test.afirmar(pg_temp.asignar('dis', 'gerente') = 1 and pg_temp.fila('ing') = 'GERENTE (heredada)',
+  '4. Al cambiar la de Diseño, Ingeniería la recibe');
+reset role;
+update public.usuarios set activo = true where id = pg_temp.cuenta('diseno_colaborador');
+
+-- Si la fila de Ingeniería no se pudo poner al día, el cambio de Diseño no se
+-- guarda: una fila desfasada avisaría a quien ya no responde.
+create or replace function pg_temp.traba_ing() returns trigger language plpgsql as $$
+begin
+  if new.codigo = 'ING' then return null; end if;
+  return new;
+end $$;
+create trigger trg_aaa_traba_498 before update on public.areas for each row execute function pg_temp.traba_ing();
+select pg_temp.como('admin');
+set local role authenticated;
+select test.debe_fallar($q$select pg_temp.asignar('dis', 'diseno')$q$,
+  '4. Si no se pudo anotar la cuenta en Ingeniería, el cambio de Diseño no se guarda', 'No se pudo anotar la cuenta');
+reset role;
+drop trigger trg_aaa_traba_498 on public.areas;
+select test.afirmar(pg_temp.fila('ing') = 'GERENTE (heredada)' and pg_temp.fila('dis') = 'GERENTE', '4. y las dos filas siguen como estaban');
 
 -- ============================================ 5. Quién lleva a quién
 select pg_temp.como('admin');
@@ -191,7 +251,7 @@ select test.debe_fallar($q$select pg_temp.llevar('dis', 'prd')$q$,
   '5. Diseño, que lleva a Ingeniería, no puede ser llevada por otra', 'ya lleva a otra área');
 select test.debe_fallar(
   format($q$update public.areas set llevada_por_id = '%s' where codigo = 'PRD'$q$, gen_random_uuid()),
-  '5. Un área que no existe no lleva a nadie');
+  '5. Un área que no existe no lleva a nadie', 'no existe o está dada de baja');
 update public.areas set activo = false where codigo = 'TIC';
 select test.debe_fallar($q$select pg_temp.llevar('sap', 'tic')$q$,
   '5. Un área dada de baja no lleva a otra', 'no existe o está dada de baja');
@@ -259,5 +319,10 @@ select test.afirmar(
 select test.afirmar(
   (select md5(replace(p.prosrc, E'\r', '')) from pg_proc p where p.oid = 'public.responsable_del_area(text)'::regprocedure) = 'a924e5a4e1b8886107e64e51e5d6b9a7',
   '7. responsable_del_area sigue siendo la de la entrega A.0: esta entrega no la reescribe');
+select test.afirmar(
+  (select string_agg(t.tgname, ',' order by t.tgname) from pg_trigger t
+    where t.tgrelid = 'public.areas'::regclass and not t.tgisinternal and t.tgtype & 2 = 2
+      and t.tgname in ('trg_area_llevada_por', 'trg_area_responsable_activo')) = 'trg_area_llevada_por,trg_area_responsable_activo',
+  '7. La regla de quién la lleva corre antes que la de la cuenta activa (por orden alfabético)');
 
 rollback;

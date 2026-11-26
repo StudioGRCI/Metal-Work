@@ -8,6 +8,9 @@
  * Ingeniería pasa a decir quién responde, sin que nadie la toque; le pone a
  * Ingeniería una cuenta propia, esa cuenta se da de baja y la fila lo marca;
  * se la quita y vuelve a responder la de Diseño, y la sigue cuando cambia.
+ * Elegirle a mano la misma cuenta de Diseño se la deja como propia. Si la de
+ * Diseño se da de baja, las dos filas lo marcan y la ventana no promete que
+ * responde alguien.
  * Después de cada clic se mira la base. Diseño no ve la tarjeta ni cambia quién lleva a Ingeniería aunque llame
  * a la base por su cuenta.
  *
@@ -209,12 +212,23 @@ async function guardar(pagina, ventana) {
     texto.includes('La lleva Diseño: va a responder su cuenta cuando Diseño tenga una.'),
     'y dice que la lleva Diseño y que va a responder su cuenta cuando la tenga',
   )
-  comprobar((await textoDe(filaDiseno)).includes('Lleva también Ingeniería'), 'la fila de Diseño dice que lleva también Ingeniería')
+  comprobar(
+    (await textoDe(filaDiseno)).includes('Lleva también Ingeniería: la cuenta que le asignes va a responder también por esa área mientras no tenga una propia.'),
+    'la fila de Diseño dice que la cuenta que se le asigne responde también por Ingeniería',
+  )
   comprobar((await resumenDe(pagina)).includes(resumenEsperado(antes.con, antes.total)), `el resumen cuenta ${antes.con} de ${antes.total}`)
   comprobar((await responde('ING')) === null, 'responsable_del_area(«ING») no da a nadie')
+  // La ventana no promete que responde la de Diseño cuando Diseño no tiene.
+  let ventana = await abrir(pagina, 'Ingeniería')
+  comprobar(
+    (await textoDe(ventana)).includes('Diseño todavía no tiene cuenta responsable: sin una propia, por Ingeniería no responde nadie.'),
+    'sin cuenta en Diseño, la ventana de Ingeniería dice que sin una propia no responde nadie',
+  )
+  await ventana.getByRole('button', { name: 'Cancelar' }).click()
+  await ventana.waitFor({ state: 'detached', timeout: 15000 })
 
   // --- se asigna la de Diseño: Ingeniería hereda sin que nadie la toque
-  let ventana = await abrir(pagina, 'Diseño')
+  ventana = await abrir(pagina, 'Diseño')
   await campoDe(ventana).selectOption(diseno.id)
   await guardar(pagina, ventana)
   await ingenieria.getByText('Responde Diseño').waitFor({ timeout: 15000 })
@@ -222,8 +236,12 @@ async function guardar(pagina, ventana) {
   comprobar(!texto.includes('Sin cuenta'), 'con la cuenta de Diseño asignada, Ingeniería ya no dice «Sin cuenta»')
   comprobar(texto.includes(`Cuenta responsable: ${diseno.puesto}`), `y muestra la cuenta que responde: ${diseno.puesto}`)
   comprobar(
-    texto.includes('La lleva Diseño: responde su cuenta mientras esta área no tenga una propia.'),
-    'y dice por qué: la lleva Diseño',
+    texto.includes('Es la cuenta del área que la lleva, mientras no tenga una propia.'),
+    'y dice por qué: es la del área que la lleva',
+  )
+  comprobar(
+    (await textoDe(filaDiseno)).includes('Lleva también Ingeniería: su cuenta responde por esa área mientras no tenga una propia.'),
+    'la fila de Diseño dice que su cuenta responde por Ingeniería',
   )
   let enLaBase = await area('ING')
   comprobar(enLaBase.jefe_id === diseno.id && enLaBase.jefe_heredado, 'en la base, la fila de Ingeniería tiene anotada la cuenta de Diseño, como heredada')
@@ -240,10 +258,9 @@ async function guardar(pagina, ventana) {
   ventana = await abrir(pagina, 'Ingeniería')
   const campo = campoDe(ventana)
   comprobar((await campo.inputValue()) === '', 'la ventana de Ingeniería abre sin cuenta propia')
-  comprobar(
-    (await campo.locator('option').first().textContent()) === 'Sin cuenta propia: responde la de Diseño',
-    'y la opción vacía dice quién responde entonces',
-  )
+  comprobar((await campo.locator('option').first().textContent()) === 'Sin cuenta propia', 'la opción vacía es corta: «Sin cuenta propia»')
+  const quienResponde = `Sin cuenta propia responde la de Diseño${diseno.puesto === 'Diseño' ? '' : ` (${diseno.puesto})`}.`
+  comprobar((await textoDe(ventana)).includes(quienResponde), `y la ayuda del campo dice quién responde entonces: «${quienResponde}»`)
   const grupos = await campo.locator('optgroup').evaluateAll((g) => g.map((x) => x.label))
   comprobar(grupos[0] === 'Cuentas de Diseño, que la lleva', `las cuentas de Diseño van primero (${grupos.join(' | ')})`)
   const delPuesto = await campo.locator('optgroup').first().locator('option').evaluateAll((o) => o.map((x) => x.value))
@@ -251,7 +268,7 @@ async function guardar(pagina, ventana) {
   const repetidas = await campo.locator('option').evaluateAll((o) => o.map((x) => x.value).filter((v, i, t) => v && t.indexOf(v) !== i))
   comprobar(repetidas.length === 0, 'y ninguna cuenta sale dos veces en la lista')
   comprobar(
-    (await textoDe(ventana)).includes('A Ingeniería la lleva Diseño: sin cuenta propia, responde la de Diseño.'),
+    (await textoDe(ventana)).includes('A Ingeniería la lleva Diseño. Elige una cuenta solo si por Ingeniería debe responder otra.'),
     'la ventana explica que elegir una es solo si debe responder otra',
   )
   await pagina.screenshot({ path: join(CAPTURAS, 'a4-ventana-ingenieria-1440.png') })
@@ -278,6 +295,11 @@ async function guardar(pagina, ventana) {
   texto = await textoDe(ingenieria)
   comprobar(!texto.includes('Responde Diseño'), 'la fila ya no dice «Responde Diseño»')
   comprobar(texto.includes('La lleva Diseño, y tiene su propia cuenta responsable.'), 'y dice que tiene su propia cuenta')
+  texto = await textoDe(filaDiseno)
+  comprobar(
+    texto.includes('Lleva también Ingeniería, que tiene su propia cuenta.') && !texto.includes('mientras no tenga una propia'),
+    'la fila de Diseño ya no dice que su cuenta responde por Ingeniería',
+  )
   comprobar((await cubiertas()).con === conDos.con, 'el resumen no cambia: ya estaba cubierta')
 
   // --- la cuenta propia se da de baja: como en cualquier área, nadie responde, y la fila dice cómo salir
@@ -310,14 +332,76 @@ async function guardar(pagina, ventana) {
   )
   comprobar((await responde('ING')) === diseno.id, 'responsable_del_area(«ING») da otra vez la de Diseño')
 
-  // --- cambia la de Diseño: la de Ingeniería la sigue
+  // --- elegirle a mano la misma cuenta de Diseño se la deja como propia
+  ventana = await abrir(pagina, 'Ingeniería')
+  comprobar((await campoDe(ventana).inputValue()) === '', 'con la heredada, la ventana abre otra vez sin cuenta propia')
+  await campoDe(ventana).selectOption(diseno.id)
+  await guardar(pagina, ventana)
+  await ingenieria.getByText('La lleva Diseño, y tiene su propia cuenta responsable.').waitFor({ timeout: 15000 })
+  enLaBase = await area('ING')
+  comprobar(
+    enLaBase.jefe_id === diseno.id && !enLaBase.jefe_heredado,
+    'elegirle a mano la misma cuenta que heredaba de Diseño la deja como propia en la base',
+  )
+  comprobar(!(await textoDe(ingenieria)).includes('Responde Diseño'), 'y la fila ya no dice «Responde Diseño»')
+  comprobar(
+    (await ingenieria.getByRole('status').textContent()).includes('Ingeniería ya tiene su cuenta responsable.'),
+    'el aviso dice que ya tiene su cuenta',
+  )
+
+  // --- cambia la de Diseño: la propia de Ingeniería no se mueve
   ventana = await abrir(pagina, 'Diseño')
   await campoDe(ventana).selectOption(supervisor.id)
   await guardar(pagina, ventana)
-  await ingenieria.getByText(supervisor.puesto).waitFor({ timeout: 15000 })
+  await filaDiseno.getByText(supervisor.puesto).waitFor({ timeout: 15000 })
   enLaBase = await area('ING')
-  comprobar(enLaBase.jefe_id === supervisor.id && enLaBase.jefe_heredado, 'al cambiar la cuenta de Diseño, la de Ingeniería cambia con ella')
-  comprobar((await textoDe(ingenieria)).includes('Responde Diseño'), 'y la fila sigue diciendo «Responde Diseño»')
+  comprobar(enLaBase.jefe_id === diseno.id && !enLaBase.jefe_heredado, 'al cambiar la cuenta de Diseño, la propia de Ingeniería no se mueve')
+
+  // --- se la quitan: ahora sigue a la de Diseño
+  ventana = await abrir(pagina, 'Ingeniería')
+  comprobar((await campoDe(ventana).inputValue()) === diseno.id, 'la ventana trae elegida la propia')
+  await campoDe(ventana).selectOption('')
+  await guardar(pagina, ventana)
+  await ingenieria.getByText('Responde Diseño').waitFor({ timeout: 15000 })
+  enLaBase = await area('ING')
+  comprobar(enLaBase.jefe_id === supervisor.id && enLaBase.jefe_heredado, 'al quitársela, recibe la que Diseño tiene ahora, como heredada')
+
+  // --- la cuenta de Diseño se da de baja: las dos filas lo marcan y nadie responde
+  await activar(supervisor.id, false)
+  await pagina.reload({ waitUntil: 'networkidle' })
+  texto = await textoDe(ingenieria)
+  comprobar(texto.includes('Cuenta dada de baja') && !texto.includes('Responde Diseño'), 'con la cuenta de Diseño dada de baja, la fila de Ingeniería lo marca')
+  comprobar(
+    texto.includes('Es la cuenta de Diseño, y está dada de baja: cámbiala en Diseño o ponle a esta área una propia.'),
+    'y dice de quién es y cómo salir',
+  )
+  comprobar(!texto.includes('Es la cuenta del área que la lleva'), 'sin la línea gris que diría lo contrario')
+  texto = await textoDe(filaDiseno)
+  comprobar(texto.includes('Cuenta dada de baja'), 'la fila de Diseño también lo marca')
+  comprobar(
+    texto.includes('Lleva también Ingeniería: tampoco responde nadie por esa área mientras no tenga una propia.') && !texto.includes('su cuenta responde por'),
+    'y no dice que su cuenta responde por Ingeniería',
+  )
+  enLaBase = await area('ING')
+  comprobar(enLaBase.jefe_id === supervisor.id && enLaBase.jefe_heredado, 'en la base, Ingeniería conserva la cuenta de Diseño, igual que Diseño')
+  comprobar((await responde('ING')) === null && (await responde('DIS')) === null, 'y a ninguna de las dos se le avisa mientras tanto')
+  ventana = await abrir(pagina, 'Ingeniería')
+  comprobar(
+    (await textoDe(ventana)).includes('La cuenta de Diseño está dada de baja: sin una propia, por Ingeniería no responde nadie.'),
+    'la ventana de Ingeniería no promete que responde la de Diseño',
+  )
+  comprobar((await campoDe(ventana).inputValue()) === '', 'y abre sin cuenta propia')
+  await ventana.getByRole('button', { name: 'Cancelar' }).click()
+  await ventana.waitFor({ state: 'detached', timeout: 15000 })
+  await ingenieria.scrollIntoViewIfNeeded()
+  await pagina.locator(TARJETA).screenshot({ path: join(CAPTURAS, 'a4-responsables-1440-diseno-de-baja.png') })
+  await activar(supervisor.id, true)
+  await pagina.reload({ waitUntil: 'networkidle' })
+  comprobar(
+    (await responde('ING')) === supervisor.id && (await responde('DIS')) === supervisor.id,
+    'cuando la cuenta de Diseño vuelve de alta, responde otra vez por las dos, sin tocar nada',
+  )
+  comprobar((await textoDe(ingenieria)).includes('Responde Diseño'), 'y la fila vuelve a decir «Responde Diseño»')
 
   // --- sin la de Diseño, ninguna de las dos
   ventana = await abrir(pagina, 'Diseño')
