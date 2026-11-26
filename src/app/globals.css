@@ -359,6 +359,23 @@ h1, h2, h3 {
   background-attachment: local, local, scroll, scroll;
 }
 
+/* La fila de secciones de un documento pegada bajo la barra de arriba
+   (`SeccionesDelDocumento pegada`): la página reserva su alto, más el de la
+   barra, para que el foco del teclado y el salto a un `#id` no caigan debajo
+   de ella (WCAG 2.4.11). El `max` cubre el borde del iPhone con la app
+   instalada, donde la barra crece con la muesca. */
+html:has([data-fila-pegada]) {
+  scroll-padding-top: calc(max(3.5rem, 2.8125rem + env(safe-area-inset-top)) + 4rem);
+}
+
+/* Abajo, en el teléfono, la barra de pestañas: el foco del teclado no cae
+   debajo de ella (el mismo alto que `<main>` deja libre). */
+@media (width < 64rem) {
+  html {
+    scroll-padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+  }
+}
+
 /* `relative` porque el `sr-only` de una cabecera sin título visible —la
    columna «Acciones»— se posiciona en absoluto: sin una caja que lo contenga
    se medía contra la página, la ensanchaba hasta 682 px en un teléfono de 390

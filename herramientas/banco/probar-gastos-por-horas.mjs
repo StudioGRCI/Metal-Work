@@ -218,6 +218,15 @@ try {
     comprobar(cierre.includes('que termine el mes'), `antes de intentar cerrarla, dice que espera a que termine el mes: «${cierre}»`)
 
     // Gerencia también abre Gastos del mes desde su menú (Consultas) y ve el sueldo de la oficina sumado.
+    // «Consultas» nace plegado (entrega 2 del plan de orden y diseño): se abre antes de tocar su enlace.
+    {
+      // Hasta que hidrata el botón no responde: se toca hasta que se abre.
+      const grupo = pagina.locator('nav[aria-label="Menú principal"] button[aria-expanded]', { hasText: 'Consultas' })
+      for (let i = 0; i < 20 && (await grupo.getAttribute('aria-expanded').catch(() => null)) === 'false'; i++) {
+        await grupo.click()
+        await pagina.waitForTimeout(300)
+      }
+    }
     const enlace = pagina.getByRole('navigation', { name: 'Menú principal' }).getByRole('link', { name: /Gastos del mes/ })
     comprobar((await enlace.count()) > 0, 'el menú de Gerencia lleva a Gastos del mes')
     await enlace.first().click()

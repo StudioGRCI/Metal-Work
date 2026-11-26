@@ -99,6 +99,7 @@ begin
     ('administracion.local@metalwork.test', 'ADMINISTRACION',     'ADM', 'Administración'),
     ('almacen.local@metalwork.test',        'ALMACENERO',         'ALM', 'Almacén'),
     ('logistica.local@metalwork.test',      'COMPRADOR',          'LOG', 'Logística'),
+    ('mantenimiento.local@metalwork.test',  'MANTENIMIENTO',      'MNT', 'Mantenimiento'),
     ('conductor.local@metalwork.test',      'CONDUCTOR',          'LOG', 'Conductor'),
     ('contabilidad.local@metalwork.test',   'CONTABILIDAD',       null,  'Contabilidad'),
     ('diseno.local@metalwork.test',         'DISENO',             'DIS', 'Diseño'),
@@ -144,7 +145,7 @@ begin
    where email like '%.local@metalwork.test';
 
   if (select count(*) from auth.users
-       where email like '%.local@metalwork.test' and encrypted_password <> '') < 16 then
+       where email like '%.local@metalwork.test' and encrypted_password <> '') < 17 then
     raise exception 'Faltan cuentas locales por puesto.';
   end if;
 end $$;
