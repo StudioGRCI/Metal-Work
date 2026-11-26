@@ -22,15 +22,15 @@ const GERENCIA = [
 
 const rutas = (grupos) => grupos.flatMap((g) => g.items.map((i) => i.ruta))
 
-test('Gerencia ve por área las 48 pantallas que su permiso le abre, cada una una vez', () => {
+test('Gerencia ve por área las 49 pantallas que su permiso le abre, cada una una vez', () => {
   const grupos = menuDe(GERENCIA, false, 'GERENTE')
   assert.deepEqual(grupos.map((g) => g.titulo), [
     'Principal', 'Por aprobar', 'Ventas', 'Diseño e Ingeniería', 'Requerimientos', 'Almacén', 'Logística', 'Administración', 'Finanzas',
     'Recursos Humanos', 'SSOMA',
   ])
   const todas = rutas(grupos)
-  assert.equal(todas.length, 48)
-  assert.equal(new Set(todas).size, 48)
+  assert.equal(todas.length, 49)
+  assert.equal(new Set(todas).size, 49)
   // Las once que se le abrieron en lectura el 2026-11-26, y Proveedores sin `proveedores.editar`.
   for (const r of [
     '/carrocerias', '/seguimiento', '/requerimientos/metrado', '/materiales', '/diseno/informe-semanal', '/diseno/dxf',
