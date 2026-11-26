@@ -30,12 +30,10 @@
 -- El nombre de la OC sale de `nombre_de_oc(numero, referencia)`, el mismo que
 -- usan sus pantallas.
 --
--- Cambia la forma de lo que devuelve (la columna `codigo`): se quita antes de
--- crearla, y volver a correr la migración deja lo mismo.
+-- Es nueva en producción: `create or replace`, sin `drop` (que cuelga
+-- `apply_migration`), y volver a correr la migración deja lo mismo.
 
-drop function if exists public.decisiones_tomadas(date, date);
-
-create function public.decisiones_tomadas(p_desde date, p_hasta date)
+create or replace function public.decisiones_tomadas(p_desde date, p_hasta date)
 returns table (
   tipo        text,         -- COTIZACION, COMPRA, SERVICIO, REPORTE_DIARIO, TRABAJO_SIN_ORDEN, CIERRE_CODIGO, ORDEN_TRABAJO
   documento   uuid,
