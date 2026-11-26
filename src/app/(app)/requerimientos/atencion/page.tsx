@@ -488,8 +488,10 @@ function Fila({
                 )}
               </span>
               <EntregaDelInsumo linea={l} estadoRq={rq.estado} />
+              {/* Entre 768 y 1279 px parte en dos renglones, como la de «En qué va»: «Se pasa del
+                  metrado» en uno solo pedía 153 px de columna y la tabla no cabía a 1024. */}
               {frenados.includes(l) && rq.estado !== 'ANULADO' && rq.estado !== 'ENTREGADO' && (
-                <Insignia tono={ESTADO_METRADO[metrado.get(l.id)!.estado].tono} className="mt-0.5 md:max-xl:rounded-[var(--radius-base)] md:max-xl:whitespace-normal" data-metrado={metrado.get(l.id)!.estado}>
+                <Insignia tono={ESTADO_METRADO[metrado.get(l.id)!.estado].tono} className="mt-0.5 md:max-xl:whitespace-normal" data-metrado={metrado.get(l.id)!.estado}>
                   {ESTADO_METRADO[metrado.get(l.id)!.estado].etiqueta}
                 </Insignia>
               )}
@@ -517,7 +519,7 @@ function Fila({
             desde={espera?.en}
             quien={espera?.puesto}
             verQuien
-            className="md:max-xl:rounded-[var(--radius-base)] md:max-xl:whitespace-normal"
+            className="md:max-xl:whitespace-normal"
           />
         </span>
         <AvanceDelRequerimiento rq={rq} frenado={enEspera && { etiqueta: enEspera.etapa, tono: enEspera.tono }} />
