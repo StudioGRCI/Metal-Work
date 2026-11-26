@@ -51,13 +51,24 @@ function estadoDe(c: CotizacionParaFacturar): { etiqueta: string; tono: 'aviso' 
 const porFacturar = (c: CotizacionParaFacturar) => estadoDe(c).tono === 'aviso'
 
 /**
- * Quién tiene la cotización que espera factura: Contabilidad; la que está en
- * corrección la tiene quien dice su recorrido (Gerencia o Ventas), y mientras
- * tanto Contabilidad no puede facturarla.
+ * Quién tiene la cotización que espera factura y desde cuándo. Contabilidad la
+ * tiene desde que la OT tiene su código interno; la que está en corrección la
+ * tiene quien dice su recorrido (Gerencia o Ventas), con sus días: contarlos
+ * desde el código le daba a Gerencia una demora que no era suya, y la misma
+ * tarjeta decía otra en su recorrido (auditoría de diseño, segunda vuelta).
  */
-function quienLaTiene(c: CotizacionParaFacturar, recorridos: Recorridos | null): string | null {
-  if (!c.en_correccion) return 'Contabilidad'
-  return (c.cotizacion_id ? recorridos?.get(c.cotizacion_id)?.find((p) => p.situacion === 'AHORA')?.puesto : null) ?? null
+function esperaDe(
+  c: CotizacionParaFacturar,
+  espera: Map<string, EsperaDeFacturacion> | null,
+  recorridos: Recorridos | null,
+): { dias: number | null; desde: string | null; quien: string | null } | null {
+  if (!c.cotizacion_id) return null
+  if (!c.en_correccion) {
+    const e = espera?.get(c.cotizacion_id)
+    return e ? { dias: e.dias, desde: e.desde, quien: 'Contabilidad' } : null
+  }
+  const ahora = recorridos?.get(c.cotizacion_id)?.find((p) => p.situacion === 'AHORA')
+  return ahora ? { dias: ahora.dias, desde: ahora.en, quien: ahora.puesto } : null
 }
 
 /** Cuánto falta facturar, en la moneda de la cotización; nulo si no tiene total. */
@@ -134,6 +145,7 @@ export default async function PaginaFacturacion() {
             const facturado = facturadoDe(c)
             const facturadoPct = total === null || enOtraMoneda(c) ? null : parteDe(facturado, total)
             const falta = total === null || enOtraMoneda(c) ? 0 : Math.max(0, total - facturado)
+            const aguarda = esperaDe(c, espera, recorridos)
             return (
               // Con `id`: el aviso de la campana aterriza en esta cotización (`#id`).
               <li key={c.cotizacion_id} id={c.cotizacion_id ?? undefined} className="scroll-mt-20" data-cotizacion={c.numero ?? undefined}>
@@ -145,14 +157,14 @@ export default async function PaginaFacturacion() {
                           <span className="text-base font-semibold text-texto">
                             {c.codigo_interno ? `Código ${c.codigo_interno}` : 'Sin código interno'}
                           </span>
-                          <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
-                          {porFacturar(c) && c.cotizacion_id && (
-                            <DiasEnEspera
-                              dias={espera?.get(c.cotizacion_id)?.dias}
-                              desde={espera?.get(c.cotizacion_id)?.desde}
-                              quien={quienLaTiene(c, recorridos)}
-                              verQuien={Boolean(c.en_correccion)}
-                            />
+                          {/* La que está en corrección no espera a Contabilidad: no se la llama «Por facturar». */}
+                          {c.en_correccion && porFacturar(c) ? (
+                            <Insignia>En corrección</Insignia>
+                          ) : (
+                            <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
+                          )}
+                          {porFacturar(c) && aguarda && (
+                            <DiasEnEspera dias={aguarda.dias} desde={aguarda.desde} quien={aguarda.quien} verQuien={Boolean(c.en_correccion)} />
                           )}
                         </p>
                         <p className="mt-0.5 text-sm text-texto">
@@ -339,9 +351,8 @@ function PorFacturar({
               const m = codigo(c.moneda)
               const falta = faltaDe(c)
               const enParte = c.facturas.some((f) => !f.anulada_en)
-              const e = c.cotizacion_id ? espera?.get(c.cotizacion_id) : undefined
+              const e = esperaDe(c, espera, recorridos)
               const faltaTexto = falta === null ? null : moneda(falta, m)
-              const quien = quienLaTiene(c, recorridos)
               return (
                 // Toda la fila lleva a su tarjeta: el enlace del código la cubre con su `::after`.
                 <TR key={c.cotizacion_id} data-por-facturar={c.codigo_interno ?? undefined} className="relative">
@@ -379,7 +390,7 @@ function PorFacturar({
                   <TD className="tabular hidden text-right align-top whitespace-nowrap sm:table-cell">{faltaTexto ?? 'Sin total registrado'}</TD>
                   <TD className="text-right align-top">
                     {e?.dias != null ? (
-                      <DiasEnEspera dias={e.dias} desde={e.desde} quien={quien} verQuien={Boolean(c.en_correccion)} className="relative" />
+                      <DiasEnEspera dias={e.dias} desde={e.desde} quien={e.quien} verQuien={Boolean(c.en_correccion)} />
                     ) : (
                       <span className="text-xs text-texto-tenue">—</span>
                     )}

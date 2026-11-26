@@ -249,8 +249,13 @@ const tarjeta = (pagina, cot) => pagina.locator(`li[id="${cot.id}"]`)
   comprobar(/En parte/.test(filas[2]?.texto ?? '') && /S\/\s?10,000\.00/.test(filas[2]?.texto ?? '') && /hace 2 días/.test(filas[2]?.texto ?? ''),
     'la facturada en parte dice «En parte», lo que falta y hace 2 días')
   comprobar(/hace 1 día\b/.test(filas[3]?.texto ?? ''), 'la de ayer, hace 1 día')
-  comprobar(/En corrección/.test(filas[4]?.texto ?? '') && /Gerencia · hace 8 días/.test(filas[4]?.texto ?? '') && !/Contabilidad/.test(filas[4]?.texto ?? ''),
+  comprobar(/En corrección/.test(filas[4]?.texto ?? '') && /Gerencia · hace \d+ días/.test(filas[4]?.texto ?? '') && !/Contabilidad/.test(filas[4]?.texto ?? ''),
     `la que está en corrección dice que la tiene Gerencia, no Contabilidad («${filas[4]?.texto}»)`)
+  // Sus días son los de Gerencia, los mismos que dice su recorrido, no los que van desde el código interno (8).
+  const diasG = (filas[4]?.texto ?? '').match(/Gerencia · hace (\d+) días/)?.[1]
+  const tarjetaG = limpio(await pagina.locator(`li[data-cotizacion="${G.numero}"]`).textContent())
+  comprobar(diasG !== undefined && diasG !== '8' && new RegExp(`La tiene Gerencia\\s*hace ${diasG} días`).test(tarjetaG) && /En corrección/.test(tarjetaG) && !/Por facturar/.test(tarjetaG),
+    `la que está en corrección cuenta los días de Gerencia, los mismos que su recorrido, y su tarjeta dice «En corrección» (${diasG} días)`)
   comprobar(await pagina.locator('#por-facturar tbody tr', { hasText: E.numero }).count() === 0, 'la que espera su OT no está por facturar')
   const todas = await pagina.locator('#por-facturar tbody tr[data-por-facturar]').count()
   const globo = (await pagina.locator('nav a[href="/contabilidad/facturacion"]').first().getAttribute('aria-label')) ?? ''
