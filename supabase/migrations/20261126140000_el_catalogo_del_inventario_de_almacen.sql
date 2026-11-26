@@ -1,5 +1,5 @@
 -- Almacén pasa al sistema su catálogo (INVENTARIO 2026.xlsx, hojas «INSUMOS Y OTROS»
--- y «ALMACEN - MWP», conteo del 21/11/2026 de Jesús Fabián, encargado de Almacén).
+-- y «ALMACEN - MWP», conteo del 21/11/2026 del encargado de Almacén).
 -- Hasta hoy el catálogo tenía la unidad provisional UND en 519 materiales, ningún
 -- stock mínimo y le faltaban los artículos que Almacén ya maneja (niples, cables,
 -- aros, brocas, pernos de otras medidas). Esta migración:
