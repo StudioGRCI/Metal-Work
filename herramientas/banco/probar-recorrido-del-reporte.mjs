@@ -214,7 +214,7 @@ for (const ancho of [390, 1440]) {
       comprobar(resumen.includes(`Lo ${espera.espera === 'VALIDACION' ? 'tienen' : 'tiene'} ${espera.puesto}`) && resumen.includes(haceDias(espera.dias)),
         `${ancho}: «${asuntos[clave].slice(sello.length + 1)}» dice quién lo tiene y hace cuánto, como la base: «${resumen}»`)
     } else {
-      comprobar(resumen.includes('Visto bueno de Gerencia'), `${ancho}: el validado dice su último paso: «${resumen}»`)
+      comprobar(resumen.includes('Validado'), `${ancho}: el validado dice su último paso: «${resumen}»`)
     }
   }
   // Abierto, cada paso con su puesto.

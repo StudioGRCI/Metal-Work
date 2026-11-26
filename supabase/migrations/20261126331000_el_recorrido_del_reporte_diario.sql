@@ -95,6 +95,13 @@ begin
     select r.id, 30, 'VISTO_GERENCIA', 'HECHO', r.visto_gerencia_por, null, r.visto_gerencia_en, null, null
       from rep r where r.visto_gerencia_en is not null
     union all
+    -- Con los dos vistos y sin observación, queda validado: lo cierra el último que lo dio.
+    select r.id, 35, 'VALIDACION', 'HECHO',
+           case when r.visto_rrhh_en >= r.visto_gerencia_en then r.visto_rrhh_por else r.visto_gerencia_por end, null,
+           greatest(r.visto_rrhh_en, r.visto_gerencia_en), null, null
+      from rep r
+     where r.visto_rrhh_en is not null and r.visto_gerencia_en is not null and r.observado_en is null and r.anulado_en is null
+    union all
     -- La observación, con el área que observó
     select r.id, 40, 'OBSERVACION', 'HECHO', r.observado_por, null, r.observado_en, null, r.observacion_area
       from rep r where r.observado_en is not null

@@ -27,7 +27,7 @@ begin
     perform set_config('prueba.area_' || split_part(v, ':', 3), split_part(v, ':', 2), true);
     perform set_config('prueba.' || split_part(v, ':', 3), v_id::text, true);
   end loop;
-  foreach v in array array['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'racb'] loop
+  foreach v in array array['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'racb'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
 end $$;
@@ -84,6 +84,8 @@ select x.id, (x.creado_en at time zone 'America/Lima')::date, 'CHK473', x.asunto
     (pg_temp.id('r5'), pg_temp.id('sup_mtz'), now() - interval '1 day', 'La corrección', null, null, null, null, pg_temp.id('r4')),
     -- r6: anulado a mano por quien lo subió
     (pg_temp.id('r6'), pg_temp.id('sup_mtz'), now() - interval '6 days', 'Anulado', null, null, null, pg_temp.id('sup_mtz'), null),
+    -- r7: Gerencia dio su visto primero; falta RR. HH.
+    (pg_temp.id('r7'), pg_temp.id('sup_mtz'), now() - interval '2 days', 'Falta RR. HH.', null, pg_temp.id('gpr'), null, null, null),
     -- racb: el de Acabados
     (pg_temp.id('racb'), pg_temp.id('sup_acb'), now() - interval '1 day', 'De Acabados', null, null, null, null, null)
   ) as x(id, autor, creado_en, asunto, vrrhh, vger, obs, anu, reemplaza);
@@ -110,8 +112,16 @@ select test.afirmar(pg_temp.camino('r2') = 'ENVIO:HECHO > VISTO_RRHH:HECHO > VIS
 select test.afirmar((select puesto = 'Gerencia' and dias = 2 from pg_temp.paso('r2', 'VISTO_GERENCIA', 'AHORA')),
   'Gerencia lo tiene desde que se subió');
 
-select test.afirmar(pg_temp.camino('r3') = 'ENVIO:HECHO > VISTO_RRHH:HECHO > VISTO_GERENCIA:HECHO',
+select test.afirmar(pg_temp.camino('r7') = 'ENVIO:HECHO > VISTO_GERENCIA:HECHO > VISTO_RRHH:AHORA',
+  'con el visto de Gerencia, lo tiene RR. HH.: ' || coalesce(pg_temp.camino('r7'), '(nada)'));
+select test.afirmar((select puesto = 'Recursos Humanos' and dias = 2 from pg_temp.paso('r7', 'VISTO_RRHH', 'AHORA')),
+  'RR. HH. lo tiene desde que se subió');
+
+select test.afirmar(pg_temp.camino('r3') = 'ENVIO:HECHO > VISTO_RRHH:HECHO > VISTO_GERENCIA:HECHO > VALIDACION:HECHO',
   'validado por las dos, ya no lo tiene nadie: ' || coalesce(pg_temp.camino('r3'), '(nada)'));
+select test.afirmar((select puesto from pg_temp.paso('r3', 'VALIDACION', 'HECHO')) = 'Gerencia de Producción'
+                    and (select en from pg_temp.paso('r3', 'VALIDACION', 'HECHO')) = (select en from pg_temp.paso('r3', 'VISTO_GERENCIA', 'HECHO')),
+  'lo valida el último visto, a su hora');
 select test.afirmar((select puesto from pg_temp.paso('r3', 'VISTO_GERENCIA', 'HECHO')) = 'Gerencia de Producción',
   'el visto de Gerencia dice qué Gerencia lo dio');
 

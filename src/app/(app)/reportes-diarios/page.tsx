@@ -55,10 +55,22 @@ export default async function PaginaReportesDiarios({ searchParams }: PageProps<
   // RR. HH. ve lo que cuestan esas horas: el costeo por código ya las tiene con su costo.
   const veCosto = puede(perfil, 'rrhh.personal')
   // Lo observado que espera su corrección va arriba, de cualquier mes: es lo único que le toca hacer al supervisor.
-  const [todos, tareos, observados] = await Promise.all([
-    listarReportesDiarios(mes),
+  const delMes = listarReportesDiarios(mes)
+  const porCorregir = sube ? reportesObservadosPorCorregir(perfil.id) : Promise.resolve([])
+  // Quién tiene cada reporte y hace cuántos días (migración 20261126331000), en
+  // cuanto llegan los reportes, sin esperar el tareo. Si la base no contesta,
+  // la lista sale igual y cada tarjeta dice que no se pudo leer.
+  const deCadaUno = Promise.all([delMes, porCorregir])
+    .then(([t, o]) => recorridoDeReportesDiarios([...t.map((r) => r.id), ...o.map((r) => r.id)]))
+    .catch((e: unknown) => {
+      console.error('Reporte diario: no se pudo leer el recorrido.', e)
+      return null
+    })
+  const [todos, tareos, observados, recorridos] = await Promise.all([
+    delMes,
     veCosto ? tareosDelMes(mes) : Promise.resolve([]),
-    sube ? reportesObservadosPorCorregir(perfil.id) : Promise.resolve([]),
+    porCorregir,
+    deCadaUno,
   ])
   const areas = [...new Set(todos.map((r) => r.area ?? 'Sin área'))].sort()
   const deLaArea = area ? todos.filter((r) => (r.area ?? 'Sin área') === area) : todos
@@ -72,12 +84,6 @@ export default async function PaginaReportesDiarios({ searchParams }: PageProps<
   const idsVigentes = new Set(vigentes.map((r) => r.id))
   const costoHoras = tareos.filter((t) => !t.anulado_en && t.reporte && idsVigentes.has(t.reporte.id)).reduce((n, t) => n + t.costo, 0)
   const cuantos = (e: EstadoReporte) => deLaArea.filter((r) => estadoDeReporte(r) === e).length
-  // Quién tiene cada reporte y hace cuántos días (migración 20261126331000). Si
-  // la base no contesta, la lista sale igual y cada tarjeta dice que no se pudo leer.
-  const recorridos = await recorridoDeReportesDiarios([...reportes.map((r) => r.id), ...observados.map((r) => r.id)]).catch((e: unknown) => {
-    console.error('Reporte diario: no se pudo leer el recorrido.', e)
-    return null
-  })
   const enlaceMes = (m: string) =>
     `/reportes-diarios?mes=${m}${area ? `&area=${encodeURIComponent(area)}` : ''}${filtro ? `&estado=${filtro}` : ''}`
 
