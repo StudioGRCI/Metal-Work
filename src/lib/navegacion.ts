@@ -808,7 +808,10 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       {
         titulo: 'Por aprobar',
         pliegue: 'fijo',
-        rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'],
+        // Las OT por aprobar (`ordenes.aprobar`, solo Gerencia) van aquí y no en
+        // Administración, que es de consulta y no cuenta pendientes: su globo no
+        // las contaba (StudioGRCI, 2026-11-26).
+        rutas: ['/cotizaciones/pdf', '/ordenes', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'],
       },
       { titulo: 'Ventas', consulta: true, rutas: ['/clientes', '/unidades', '/carrocerias'] },
       {
@@ -834,7 +837,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
         consulta: true,
         rutas: ['/compras/ordenes', '/compras/servicios', '/compras/gestion', '/proveedores', '/compras/valorizacion'],
       },
-      { titulo: 'Administración', consulta: true, rutas: ['/ordenes', '/subcontratos'] },
+      { titulo: 'Administración', consulta: true, rutas: ['/subcontratos'] },
       {
         titulo: 'Finanzas',
         consulta: true,
