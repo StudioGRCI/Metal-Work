@@ -119,6 +119,30 @@ export function totalConIgv(monto: number | null, incluyeIgv: boolean | null): n
   return incluyeIgv === false ? Math.round(Number(monto) * 118) / 100 : Number(monto)
 }
 
+export type ComoVaLaFactura = 'POR_FACTURAR' | 'OTRA_MONEDA' | 'EN_PARTE' | 'FACTURADA'
+
+/**
+ * En qué va la factura de una cotización aprobada, la regla de la bandeja de
+ * Contabilidad y de la cabecera del código. Facturada en otra moneda no se
+ * compara: no se puede decir qué parte cubre. Sin monto, no se sabe si falta:
+ * se da por facturada, como siempre dijo la bandeja; quien necesita saberlo lo
+ * mira aparte (`totalConIgv` en nulo).
+ */
+export function comoVaLaFactura(c: {
+  monto: number | null
+  incluyeIgv: boolean | null
+  /** Las vigentes. */
+  facturas: number
+  facturadoEnSuMoneda: number
+  enOtraMoneda: boolean
+}): ComoVaLaFactura {
+  if (c.facturas === 0) return 'POR_FACTURAR'
+  if (c.enOtraMoneda) return 'OTRA_MONEDA'
+  const total = totalConIgv(c.monto, c.incluyeIgv)
+  if (total !== null && c.facturadoEnSuMoneda < total - 0.005) return 'EN_PARTE'
+  return 'FACTURADA'
+}
+
 /**
  * La línea que va bajo el título de cada bandeja de Tesorería: cuánto espera,
  * en cada moneda, y en cuántos documentos —«S/ 10,280.40 y US$ 1,240.00 en 4
