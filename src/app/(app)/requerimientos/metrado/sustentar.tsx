@@ -22,8 +22,13 @@ export type InsumoPorSustentar = {
   pedido_antes: number
   exceso: number
   planos: string | null
-  /** El sustento que ya espera a Diseño: se corrige encima. */
+  /** El último sustento que se escribió: se corrige encima. */
   sustento: string | null
+  /**
+   * Si ese sustento todavía espera el visto de Diseño. Si no (el código del RQ,
+   * la cantidad o el material cambiaron después), hay que enviarlo de nuevo.
+   */
+  espera: boolean
   /** La nota con que Diseño no lo autorizó: hay que sustentarlo de nuevo. */
   rechazo: string | null
 }
@@ -44,7 +49,7 @@ export function SustentarInsumos({ id, numero, insumos }: { id: string; numero: 
     },
     { documento: id },
   )
-  const yaEnviado = insumos.every((i) => i.sustento && !i.rechazo)
+  const yaEnviado = insumos.every((i) => i.espera)
   return (
     <div className="space-y-1">
       <Boton

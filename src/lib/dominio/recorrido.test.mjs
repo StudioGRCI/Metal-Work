@@ -131,3 +131,22 @@ test('el recorrido de la avería dice las horas parado del cierre y que no qued�
     ],
   )
 })
+
+test('la cotización sigue hasta el cobro: la factura de lo que falta y el cobro en parte (Plan 10.1)', () => {
+  const pasos = describirRecorridoDeLaCotizacion([
+    paso(1, 'FACTURA', 'HECHO', { puesto: 'Contabilidad', en: '2026-11-24T15:00:00Z' }),
+    paso(2, 'FACTURA_RESTO', 'AHORA', { puesto: 'Contabilidad', dias: 4, espera: 'FACTURA_RESTO' }),
+    paso(3, 'COBRO', 'AHORA', { puesto: 'Tesorería', dias: 2, espera: 'COBRO', detalle: 'EN_PARTE' }),
+  ])
+  assert.equal(pasos[1].titulo, 'Factura de lo que falta')
+  assert.equal(pasos[1].nota, 'Registra la factura de lo que falta del total.')
+  assert.equal(pasos[2].nota, 'Cobra lo que falta: ya cobró una parte.')
+  const cobrada = describirRecorridoDeLaCotizacion([paso(1, 'COBRO', 'HECHO', { puesto: 'Tesorería' })])
+  assert.equal(cobrada[0].titulo, 'Cobrada')
+  const porCobrar = describirRecorridoDeLaCotizacion([paso(1, 'COBRO', 'AHORA', { espera: 'COBRO' })])
+  assert.equal(porCobrar[0].nota, 'Cobra sus facturas.')
+  // La factura hecha por una parte no se da por facturada entera.
+  const enParte = describirRecorridoDeLaCotizacion([paso(1, 'FACTURA', 'HECHO', { puesto: 'Contabilidad', detalle: 'EN_PARTE' })])
+  assert.equal(enParte[0].titulo, 'Facturada en parte')
+  assert.equal(describirRecorridoDeLaCotizacion([paso(1, 'FACTURA', 'HECHO', { puesto: 'Contabilidad' })])[0].titulo, 'Facturada')
+})

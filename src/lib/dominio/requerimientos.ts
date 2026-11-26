@@ -97,16 +97,28 @@ export function quienAtiende(perfil: Pick<PerfilSesion, 'permisos' | 'rol'>): Qu
 
 /**
  * Si un requerimiento abierto espera a quien mira en la bandeja de atención: el
- * que revisa el stock lo recibe por revisar y en compra (para recepcionarlo), el
- * que compra lo suyo sin stock, y el que despacha lo listo en almacén. La misma
- * regla para la bandeja y para el globo del menú, para que digan lo mismo.
+ * que revisa el stock lo recibe por revisar, el que compra lo suyo sin stock, y
+ * el que despacha lo listo en almacén. En compra, al que revisa el stock le toca
+ * solo cuando lo comprado ya llegó y falta dejarlo listo: lo dice el recorrido
+ * (`loTiene`, el puesto que lo tiene ahora). Antes contaba todo lo que estaba en
+ * compra y la bandeja decía «62 esperan por ti» con 42 esperando a Logística,
+ * mientras el globo del menú decía 20. La misma regla para la bandeja y para el
+ * globo, para que digan lo mismo.
  */
-export function leTocaAtender(rq: { estado: string | null; tipo: string | null }, p: QuienAtiende): boolean {
-  if (rq.estado === 'POR_ATENDER' || rq.estado === 'EN_ATENCION') return p.recibe
-  if (rq.estado === 'SIN_STOCK') return p.compraDe[tipoDeRequerimiento(rq)] || p.recibe
+export function leTocaAtender(rq: { estado: string | null; tipo: string | null }, p: QuienAtiende, loTiene?: string | null): boolean {
+  const loTieneAlmacen = p.recibe && loTiene === PUESTO_ALMACEN
+  if (rq.estado === 'POR_ATENDER') return p.recibe
+  if (rq.estado === 'EN_ATENCION') return loTieneAlmacen
+  if (rq.estado === 'SIN_STOCK') return p.compraDe[tipoDeRequerimiento(rq)] || loTieneAlmacen
   if (rq.estado === 'LISTO_EN_ALMACEN') return p.despacha
   return false
 }
+
+/** Cómo nombra el recorrido de un RQ a Almacén cuando lo tiene (`recorrido_de_requerimientos`). */
+export const PUESTO_ALMACEN = 'Almacén'
+
+/** Los estados en compra en que Almacén recibe lo que llega: le tocan solo si el recorrido dice que lo tiene. */
+export const RQ_EN_COMPRA = ['SIN_STOCK', 'EN_ATENCION'] as const
 
 /**
  * En qué etapa va cada insumo del RQ, con su porcentaje. Lo calcula la base
