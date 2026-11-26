@@ -13872,6 +13872,12 @@ export type Database = {
         }
         Returns: string
       }
+      codigo_interno_de_cotizacion_desde: {
+        Args: {
+          p_cotizacion: string | null
+        }
+        Returns: string
+      }
       codigo_interno_documentos: {
         Args: {
           p_codigo?: string | null
@@ -15586,6 +15592,16 @@ export type Database = {
           saldo: number | null
           moneda: string | null
           alcanza: boolean | null
+        }[]
+      }
+      facturacion_en_espera: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          cotizacion: string | null
+          desde: string | null
+          dias: number | null
         }[]
       }
       facturacion_pendientes: {

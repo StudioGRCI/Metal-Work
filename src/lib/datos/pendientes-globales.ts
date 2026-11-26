@@ -568,21 +568,30 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       texto: (n) => plural(n, 'cotización aprobada por facturar', 'cotizaciones aprobadas por facturar'),
       contar: async () => {
         // La cuenta es la de la base; lo que vale sale de la misma bandeja que
-        // Facturación: las aprobadas con código y sin factura vigente.
+        // Facturación: las que tienen código y no tienen factura vigente o están
+        // facturadas en parte (Plan 10.1), por lo que les falta facturar.
         // Con IGV, como la tarjeta de cada cotización en Facturación (`totalConIgv`).
         const [cuenta, bandeja] = await Promise.all([facturacion(), supabase.rpc('cotizaciones_para_facturar')])
         const cantidad = cuenta.por_facturar ?? 0
         // El monto es un dato más: si la bandeja no se lee, el globo sigue con su cuenta.
         if (bandeja.error) return cantidad
-        const sinFactura = (bandeja.data ?? []).filter((c) => c.codigo_interno && (c.facturas ?? 0) === 0)
-        // La bandeja trae las 300 más nuevas: si no están todas, un monto corto mentiría; va solo la cuenta.
-        if (sinFactura.length !== cantidad) return cantidad
+        const total = (c: { monto_venta: number | null; incluye_igv: boolean | null }) =>
+          totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
+        const falta = (c: { monto_venta: number | null; incluye_igv: boolean | null; facturado: number | null }) =>
+          Math.max(0, (total(c) ?? 0) - Number(c.facturado ?? 0))
+        // Sin factura, o facturada en parte: el monto es lo que falta facturar (Plan 10.1).
+        const porFacturar = (bandeja.data ?? []).filter(
+          (c) => c.codigo_interno && ((c.facturas ?? 0) === 0 || (total(c) !== null && falta(c) > 0.005)),
+        )
+        // La bandeja trae las 300 más nuevas, y una factura en otra moneda no se compara:
+        // si no son las mismas que cuenta la base, un monto corto mentiría; va solo la cuenta.
+        if (porFacturar.length !== cantidad) return cantidad
         // Como lo dice Facturación: «con IGV», o que falta confirmarlo si alguna no lo tiene.
-        const sinConfirmar = sinFactura.some((c) => c.incluye_igv === null)
+        const sinConfirmar = porFacturar.some((c) => c.incluye_igv === null)
         return {
           cantidad,
           monto: {
-            ...enMonedas(sinFactura, (c) => c.moneda, (c) => totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv) ?? 0),
+            ...enMonedas(porFacturar, (c) => c.moneda, falta),
             rotulo: sinConfirmar ? 'falta confirmar si incluye IGV' : 'con IGV',
           },
         }
