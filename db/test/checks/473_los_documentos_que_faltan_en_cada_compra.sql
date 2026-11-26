@@ -18,6 +18,8 @@
 --   7. (va antes que la 6) Lo que hallaron los auditores: la OC dejada sin guía la sigue pidiendo; la OC con
 --      boleta no pide nota de crédito; la factura anexada y el comprobante anotado al
 --      pagar están por registrar; la OS afecta bajo el mínimo no pide detracción.
+--      La OC con boleta sin factura le pide el reembolso a Tesorería, y lo que Tesorería ya
+--      cobró de vuelta no espera nota aunque llegue la factura (20261126975000).
 \set ON_ERROR_STOP on
 begin;
 
@@ -41,7 +43,7 @@ begin
     'se crearon los ocho usuarios del check, uno por puesto');
   perform set_config('prueba.area_mtz', (select id::text from public.areas where codigo = 'MTZ'), true);
   perform set_config('prueba.hoy', (now() at time zone 'America/Lima')::date::text, true);
-  foreach v in array array['rq', 'oc', 'ing', 'f1', 'dev1', 'nc1', 'guia', 'os', 'sin', 'p1', 'p2', 'p3', 'p4', 'rq2', 'rq3', 'ocb', 'oc2', 'ingb', 'devb', 'min', 'p5', 'fb'] loop
+  foreach v in array array['rq', 'oc', 'ing', 'f1', 'dev1', 'nc1', 'guia', 'os', 'sin', 'p1', 'p2', 'p3', 'p4', 'rq2', 'rq3', 'ocb', 'oc2', 'ingb', 'devb', 'devb2', 'devb3', 'devb4', 'min', 'p5', 'fb', 'reemb', 'reemb2', 'reemb3', 'devb5', 'devb6', 'devb7', 'devb8', 'reemb4', 'reemb5', 'parte', 'rep4', 'pagob'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
 end $$;
@@ -204,6 +206,9 @@ select pg_temp.como('almacenero');
 set local role authenticated;
 select public.devolver_al_proveedor(pg_temp.id('dev1'), pg_temp.id('ing'), 2, 'GR-DEV-473', 'Dos discos llegaron partidos', false);
 reset role;
+select test.afirmar(exists (select 1 from public.notificaciones n where n.usuario_id = pg_temp.id('contabilidad')
+                              and n.origen_id = pg_temp.id('oc') and n.titulo like 'Espera la nota de crédito%'),
+  'de la OC con factura, a Contabilidad le llega «Espera la nota de crédito»');
 select pg_temp.como('contabilidad');
 set local role authenticated;
 do $$ begin
@@ -342,7 +347,35 @@ select pg_temp.como('almacenero');
 set local role authenticated;
 select public.validar_ingresos_compra(pg_temp.id('ocb'), current_setting('prueba.ingresos_b')::jsonb, null);
 select public.devolver_al_proveedor(pg_temp.id('devb'), pg_temp.id('ingb'), 2, 'GR-DEV-473B', 'Dos discos llegaron partidos', false);
+-- Otro que el proveedor iba a reponer y después ya no repone.
+select public.devolver_al_proveedor(pg_temp.id('devb2'), pg_temp.id('ingb'), 1, 'GR-DEV-473C', 'Un disco llegó rayado', true);
+select public.dejar_de_esperar_reposicion(pg_temp.id('devb2'), 'El proveedor ya no tiene ese disco');
 reset role;
+-- La OC con boleta no tiene factura contra la cual registrar la nota: a Contabilidad
+-- no le llega «Espera la nota de crédito», ni al devolver ni al dejar de esperar
+-- la reposición; a Logística sí le llegan sus avisos (20261126975000).
+select test.afirmar(not exists (select 1 from public.notificaciones n where n.origen_id = pg_temp.id('ocb')
+                                  and n.titulo like 'Espera la nota de crédito%'),
+  'de la OC con boleta, a Contabilidad no le llega «Espera la nota de crédito»');
+select test.afirmar(exists (select 1 from public.notificaciones n where n.origen_id = pg_temp.id('ocb') and n.usuario_id = pg_temp.id('comprador')
+                              and n.titulo like 'Devuelto al proveedor%')
+                    and exists (select 1 from public.notificaciones n where n.origen_id = pg_temp.id('ocb') and n.usuario_id = pg_temp.id('comprador')
+                              and n.titulo like 'No repone lo devuelto%'),
+  'y a Logística le llegan «Devuelto al proveedor» y «No repone lo devuelto»');
+-- Y a Tesorería le llega un aviso por cada una, con lo que vale y el enlace a la OC en
+-- Cuentas por pagar, para que le pida el dinero al proveedor (DKS, 2026-11-26). De la OC con factura, nada.
+select test.afirmar((select count(*) from public.notificaciones n where n.usuario_id = pg_temp.id('tesoreria')
+                       and n.origen_id = pg_temp.id('ocb') and n.titulo like 'Págala sin lo devuelto%'
+                       and n.ruta = '/tesoreria/por-pagar#compra-' || pg_temp.id('ocb')
+                       and n.cuerpo ~ '(S/|US\$) [0-9,]+\.[0-9]{2} a su precio en la OC') = 2,
+  'de la OC con boleta, todavía sin pagar, a Tesorería le llegan los dos «Págala sin lo devuelto», con lo que vale cada uno');
+select test.afirmar(not exists (select 1 from public.notificaciones n where n.origen_id = pg_temp.id('oc')
+                                  and (n.titulo like 'Pide el reembolso%' or n.titulo like 'Págala sin lo devuelto%')),
+  'de la OC con factura, a Tesorería no le llega ese aviso');
+select test.afirmar(not exists (select 1 from public.notificaciones n where (n.titulo like 'Pide el reembolso%' or n.titulo like 'Págala sin lo devuelto%')
+                                  and n.usuario_id <> pg_temp.id('tesoreria')
+                                  and n.usuario_id in (select id from public.usuarios where apellidos = 'Check 473')),
+  'y no le llega a otro puesto del check');
 -- Logística anexa la factura de la otra OC con factura; Contabilidad todavía no la registra.
 insert into storage.objects (bucket_id, name, owner_id, metadata)
 values ('documentos-compras', 'compra/' || pg_temp.id('oc2') || '/anexo-473.pdf', pg_temp.id('comprador')::text,
@@ -381,6 +414,8 @@ do $$ begin
     'el conductor la dejó en el almacén sin guía: la guía sigue faltando');
   perform test.afirmar(not exists (select 1 from pg_temp.doc('ocb', 'NOTA_CREDITO')),
     'a la OC con boleta no se le pide nota de crédito de lo devuelto: no tiene factura contra la cual registrarla');
+  perform test.afirmar(not exists (select 1 from public.devoluciones_sin_nota_credito() where devolucion_id = pg_temp.id('devb')),
+    'y lo que devolvió no espera en «Esperan nota de crédito» (20261126975000)');
   perform test.afirmar((select situacion = 'FALTA' from pg_temp.doc('ocb', 'BOLETA')), 'y le falta su boleta');
   perform test.afirmar((select situacion = 'POR_REGISTRAR' and numeros = 'E102-473' and dias = 0 from pg_temp.doc('oc2', 'FACTURA')),
     'la factura que anexó Logística está por registrar, con su número, no «falta»');
@@ -398,8 +433,293 @@ do $$ begin
   perform test.afirmar((select estado = 'BORRADOR' from public.adquisiciones where id = pg_temp.id('fb')), 'el comprobante queda en borrador');
   perform test.afirmar((select situacion = 'POR_REGISTRAR' and numeros = 'FH2-473' from pg_temp.doc('ocb', 'BOLETA')),
     'con solo el borrador, la OC con boleta no se da por completa: su comprobante está por registrar');
+  perform test.afirmar(not exists (select 1 from public.devoluciones_sin_nota_credito() where devolucion_id = pg_temp.id('devb')),
+    'con la factura en borrador, lo devuelto de la OC con boleta todavía no espera nota');
 end $$;
 reset role;
+-- «Lo que falta» y «Esperan nota de crédito» piden la nota con la misma regla (20261126975000): la OC con
+-- factura, o la de boleta con una factura registrada, contra la que se registra la nota.
+-- a) Una boleta de una parte no es una factura: ni una ni otra piden la nota.
+set local session_replication_role = replica;
+insert into public.documentos_compra_material (orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes,
+       subido_por, numero_documento, fecha_emision, monto_de_la_parte, parte_trae_igv)
+values (pg_temp.id('ocb'), 'COMPROBANTE', 'b.pdf', 'chk473/b.pdf', 'application/pdf', 100,
+        pg_temp.id('comprador'), 'B001-473', current_setting('prueba.hoy')::date, 30, true);
+set local session_replication_role = origin;
+select pg_temp.como('contabilidad');
+set local role authenticated;
+do $$ begin
+  perform test.afirmar(not exists (select 1 from pg_temp.doc('ocb', 'NOTA_CREDITO'))
+                       and not exists (select 1 from public.devoluciones_sin_nota_credito() where devolucion_id = pg_temp.id('devb')),
+    'con una boleta de una parte, la OC con boleta no pide nota en ninguna de las dos');
+end $$;
+reset role;
+-- a2) Registrado como otro comprobante, que no es una factura: `registrar_nota_credito` no lo acepta, y nadie pide la nota.
+set local session_replication_role = replica;
+update public.adquisiciones set estado = 'REGISTRADA', ruta_storage = 'fb-473.pdf', tipo = 'OTRO' where id = pg_temp.id('fb');
+set local session_replication_role = origin;
+select pg_temp.como('contabilidad');
+set local role authenticated;
+do $$ begin
+  perform test.afirmar(not exists (select 1 from pg_temp.doc('ocb', 'NOTA_CREDITO'))
+                       and not exists (select 1 from public.devoluciones_sin_nota_credito() where devolucion_id = pg_temp.id('devb')),
+    'con otro comprobante registrado, que no es factura, la OC con boleta no pide nota en ninguna de las dos');
+end $$;
+reset role;
+set local session_replication_role = replica;
+update public.adquisiciones set tipo = 'RECIBO_HONORARIOS' where id = pg_temp.id('fb');
+set local session_replication_role = origin;
+select pg_temp.como('contabilidad');
+set local role authenticated;
+do $$ begin
+  perform test.afirmar(not exists (select 1 from pg_temp.doc('ocb', 'NOTA_CREDITO'))
+                       and not exists (select 1 from public.devoluciones_sin_nota_credito() where devolucion_id = pg_temp.id('devb')),
+    'ni con un recibo por honorarios registrado');
+end $$;
+reset role;
+select test.afirmar(not has_function_privilege('authenticated', 'public.compra_con_factura_registrada(uuid)', 'execute')
+                    and not has_function_privilege('anon', 'public.compra_con_factura_registrada(uuid)', 'execute'),
+  'la regla la llaman las funciones, no la gente');
+-- b) La misma factura, registrada en otra moneda que la OC (sin pasar por sus disparadores: solo importa su estado).
+set local session_replication_role = replica;
+delete from public.documentos_compra_material where ruta_storage = 'chk473/b.pdf';
+update public.adquisiciones set tipo = 'FACTURA_COMPRA', moneda = 'USD' where id = pg_temp.id('fb');
+set local session_replication_role = origin;
+select pg_temp.como('contabilidad');
+set local role authenticated;
+do $$ begin
+  perform test.afirmar((select situacion = 'FALTA' from pg_temp.doc('ocb', 'NOTA_CREDITO'))
+                       and (select facturas->0->>'numero' = 'FH2-473' from public.devoluciones_sin_nota_credito() where devolucion_id = pg_temp.id('devb')),
+    'con una factura registrada en dólares, las dos piden la nota de lo devuelto, contra esa factura');
+end $$;
+reset role;
+-- c) En la moneda de la OC, lo mismo.
+set local session_replication_role = replica;
+update public.adquisiciones set moneda = 'PEN' where id = pg_temp.id('fb');
+set local session_replication_role = origin;
+select pg_temp.como('contabilidad');
+set local role authenticated;
+do $$ begin
+  perform test.afirmar((select situacion = 'FALTA' from pg_temp.doc('ocb', 'NOTA_CREDITO'))
+                       and (select facturas->0->>'numero' = 'FH2-473' from public.devoluciones_sin_nota_credito() where devolucion_id = pg_temp.id('devb')),
+    'con la factura registrada en soles, las dos piden la nota, contra esa factura');
+end $$;
+reset role;
+-- Con esa factura registrada, lo que Almacén devuelve después de la OC con boleta sí avisa a Contabilidad,
+-- al devolver sin reposición y al dejar de esperar la reposición.
+select pg_temp.como('almacenero');
+set local role authenticated;
+select public.devolver_al_proveedor(pg_temp.id('devb3'), pg_temp.id('ingb'), 1, 'GR-DEV-473D', 'Un disco llegó doblado', false);
+-- Dos que el proveedor iba a reponer: repone uno y el otro ya no. Lo que espera nota es uno solo.
+select public.devolver_al_proveedor(pg_temp.id('devb4'), pg_temp.id('ingb'), 2, 'GR-DEV-473E', 'Dos discos llegaron oxidados', true);
+select public.recibir_reposicion(pg_temp.id('rep4'), pg_temp.id('devb4'), 1, 'GR-REP-473E');
+select public.dejar_de_esperar_reposicion(pg_temp.id('devb4'), 'El proveedor ya no tiene ese disco');
+reset role;
+select test.afirmar((select count(*) from public.notificaciones n where n.usuario_id = pg_temp.id('contabilidad')
+                       and n.origen_id = pg_temp.id('ocb') and n.titulo like 'Espera la nota de crédito%') = 2,
+  'con la factura registrada, de la OC con boleta a Contabilidad le llegan los dos «Espera la nota de crédito»');
+select test.afirmar((select count(*) from public.notificaciones n where n.origen_id = pg_temp.id('ocb')
+                       and (n.titulo like 'Pide el reembolso%' or n.titulo like 'Págala sin lo devuelto%')) = 2,
+  'y a Tesorería no le llega otro aviso: con factura, va por la nota de crédito');
+-- Las devoluciones de esta transacción llevan la misma hora: se separan para que el orden en que
+-- Almacén devolvió sea el de la prueba.
+set local session_replication_role = replica;
+update public.movimientos_materiales m set registrado_en = now() - (x.horas || ' hours')::interval,
+       reposicion_cancelada_en = case when m.reposicion_cancelada_en is not null then now() - (x.horas || ' hours')::interval end
+  from (values ('devb', 4), ('devb2', 3), ('devb3', 2), ('devb4', 1)) as x (clave, horas)
+ where m.id = pg_temp.id(x.clave);
+set local session_replication_role = origin;
+-- d) Tesorería ya cobró de vuelta lo devuelto (DKS, 2026-11-26). Cuenta el dinero: lo cobrado de vuelta
+-- cubre lo devuelto en el orden en que se devolvió, cada parte a su precio en la OC. Con u el precio de
+-- un disco: devb 2u, devb2 u, devb3 u, devb4 u (devolvió 2 y le repusieron 1). La factura sigue registrada.
+select set_config('prueba.u', (select precio_unitario::text from public.movimientos_materiales where id = pg_temp.id('devb')), true);
+create or replace function pg_temp.reembolso(p_clave text, p_monto numeric) returns void language sql as $$
+  insert into public.devoluciones_orden_compra (id, orden_compra_id, fecha, moneda, monto, operacion, archivo_ruta, archivo_mime, archivo_tamano, registrado_por)
+  values (pg_temp.id(p_clave), pg_temp.id('ocb'), current_setting('prueba.hoy')::date, 'PEN', p_monto, 'OP-' || p_clave,
+          'chk473/' || p_clave || '.pdf', 'application/pdf', 100, pg_temp.id('tesoreria'));
+$$;
+create or replace function pg_temp.esperan() returns text[] language sql as $$
+  select coalesce(array_agg(k order by k), '{}') from unnest(array['devb', 'devb2', 'devb3', 'devb4']) k
+   where exists (select 1 from public.devoluciones_sin_nota_credito() s where s.devolucion_id = pg_temp.id(k));
+$$;
+-- Lo que dice el aviso es lo que vale cada una, no un monto cualquiera.
+select test.afirmar(exists (select 1 from public.notificaciones n where n.usuario_id = pg_temp.id('tesoreria')
+                              and n.origen_id = pg_temp.id('ocb') and n.titulo like 'Págala sin lo devuelto%'
+                              and n.cuerpo like 'Lo devuelto vale S/ '
+                                  || to_char(round(2 * current_setting('prueba.u')::numeric, 2), 'FM999G999G990D00') || ' a su precio en la OC: todavía no se la has pagado: págale sin eso. %Dos discos llegaron partidos%')
+                    and exists (select 1 from public.notificaciones n where n.usuario_id = pg_temp.id('tesoreria')
+                              and n.origen_id = pg_temp.id('ocb') and n.titulo like 'Págala sin lo devuelto%'
+                              and n.cuerpo like 'Lo devuelto vale S/ ' || to_char(round(current_setting('prueba.u')::numeric, 2), 'FM999G999G990D00')
+                                  || ' a su precio en la OC: todavía no se la has pagado%' and n.cuerpo not like '%partidos%'),
+  'el aviso de los 2 discos dice 2u y el del disco que no se repuso dice u');
+set local session_replication_role = replica;
+select pg_temp.reembolso('reemb', 2 * current_setting('prueba.u')::numeric);
+set local session_replication_role = origin;
+do $$ begin
+  perform pg_temp.como('contabilidad');
+  set local role authenticated;
+  perform test.afirmar(pg_temp.esperan() = array['devb2', 'devb3', 'devb4'],
+    'con 2u cobrados de vuelta, solo los 2 discos de devb dejan de esperar nota (esperan: ' || pg_temp.esperan()::text || ')');
+  perform test.afirmar((select situacion = 'FALTA' from pg_temp.doc('ocb', 'NOTA_CREDITO')), 'y a la OC le sigue faltando la nota de lo demás');
+  reset role;
+end $$;
+set local session_replication_role = replica;
+select pg_temp.reembolso('reemb2', 3 * current_setting('prueba.u')::numeric);
+set local session_replication_role = origin;
+do $$ begin
+  perform pg_temp.como('contabilidad');
+  set local role authenticated;
+  perform test.afirmar(pg_temp.esperan() = '{}', 'con 5u cobrados de vuelta, nada de lo devuelto espera nota');
+  perform test.afirmar(not exists (select 1 from pg_temp.doc('ocb', 'NOTA_CREDITO')), 'ni falta su nota en «Lo que falta»');
+  reset role;
+end $$;
+-- El reembolso que Tesorería anota antes de que Almacén registre la devolución también cuenta, y
+-- al dejar de esperar la reposición no le llega aviso a nadie: el dinero ya volvió.
+set local session_replication_role = replica;
+select pg_temp.reembolso('reemb3', current_setting('prueba.u')::numeric);
+set local session_replication_role = origin;
+select pg_temp.como('almacenero');
+set local role authenticated;
+select public.devolver_al_proveedor(pg_temp.id('devb5'), pg_temp.id('ingb'), 1, 'GR-DEV-473F', 'Un disco llegó sin rosca', true);
+select public.dejar_de_esperar_reposicion(pg_temp.id('devb5'), 'El proveedor ya no tiene ese disco');
+reset role;
+select test.afirmar((select count(*) from public.notificaciones n where n.origen_id = pg_temp.id('ocb')
+                       and (n.titulo like 'Espera la nota de crédito%' or n.titulo like 'Pide el reembolso%' or n.titulo like 'Págala sin lo devuelto%')) = 4,
+  'lo ya cobrado de vuelta no manda «Espera la nota» ni aviso a Tesorería al dejar de esperar');
+select test.afirmar(public.devolucion_reembolsada(pg_temp.id('devb5')), 'y devb5 cuenta como reembolsada');
+-- Anulada la devolución del dinero de 3u, quedan 3u (2u + u): cubren devb y devb2, no devb3 ni devb4.
+set local session_replication_role = replica;
+update public.devoluciones_orden_compra set anulado_en = now(), anulado_por = pg_temp.id('tesoreria'),
+       motivo_anulacion = 'Operación equivocada del check' where id = pg_temp.id('reemb2');
+set local session_replication_role = origin;
+do $$ begin
+  perform pg_temp.como('contabilidad');
+  set local role authenticated;
+  perform test.afirmar(pg_temp.esperan() = array['devb3', 'devb4'],
+    'anulada una devolución del dinero, lo que ya no alcanza vuelve a esperar (esperan: ' || pg_temp.esperan()::text || ')');
+  perform test.afirmar((select situacion = 'FALTA' from pg_temp.doc('ocb', 'NOTA_CREDITO')), 'y vuelve a faltar en «Lo que falta»');
+  reset role;
+end $$;
+-- e) Lo que se deja de esperar entra a la cuenta desde que se dejó de esperar, no desde que se devolvió:
+-- si no, el dinero cobrado por otra devolución la cubriría y a nadie le llegaría su aviso. A (devb6) se
+-- devuelve para reponer y B (devb7) sin reposición; Tesorería cobra hasta B; después A se deja de esperar.
+set local session_replication_role = replica;
+update public.movimientos_materiales set registrado_en = now() - interval '20 minutes',
+       reposicion_cancelada_en = now() - interval '20 minutes' where id = pg_temp.id('devb5');
+set local session_replication_role = origin;
+select pg_temp.como('almacenero');
+set local role authenticated;
+select public.devolver_al_proveedor(pg_temp.id('devb6'), pg_temp.id('ingb'), 1, 'GR-DEV-473G', 'Un disco llegó torcido', true);
+select public.devolver_al_proveedor(pg_temp.id('devb7'), pg_temp.id('ingb'), 1, 'GR-DEV-473H', 'Un disco llegó sin etiqueta', false);
+reset role;
+set local session_replication_role = replica;
+update public.movimientos_materiales m set registrado_en = now() - (x.minutos || ' minutes')::interval
+  from (values ('devb6', 15), ('devb7', 10)) as x (clave, minutos) where m.id = pg_temp.id(x.clave);
+-- Vigentes: 2u + u. Con 4u más, 7u: devb 2u, devb2, devb3, devb4, devb5 y devb7, u cada uno.
+select pg_temp.reembolso('reemb4', 4 * current_setting('prueba.u')::numeric);
+set local session_replication_role = origin;
+select test.afirmar(public.devolucion_reembolsada(pg_temp.id('devb7')), 'con 7u cobrados de vuelta, B queda cubierta');
+create or replace function pg_temp.esperas_ocb() returns bigint language sql as $$
+  select count(*) from public.notificaciones n where n.origen_id = pg_temp.id('ocb')
+     and n.usuario_id = pg_temp.id('contabilidad') and n.titulo like 'Espera la nota de crédito%';
+$$;
+select set_config('prueba.avisos_ocb', pg_temp.esperas_ocb()::text, true);
+select pg_temp.como('almacenero');
+set local role authenticated;
+select public.dejar_de_esperar_reposicion(pg_temp.id('devb6'), 'El proveedor ya no tiene ese disco');
+reset role;
+select test.afirmar(public.devolucion_reembolsada(pg_temp.id('devb7')) and not public.devolucion_reembolsada(pg_temp.id('devb6')),
+  'al dejar de esperar A, el dinero de B sigue siendo de B y A queda sin cubrir');
+select test.afirmar(pg_temp.esperas_ocb() = current_setting('prueba.avisos_ocb')::bigint + 1,
+  'y por A, con la factura registrada, a Contabilidad le llega «Espera la nota de crédito»');
+-- Lo que Almacén devuelve sin reposición cuando el dinero ya volvió no le avisa a nadie.
+set local session_replication_role = replica;
+select pg_temp.reembolso('reemb5', 2 * current_setting('prueba.u')::numeric);
+set local session_replication_role = origin;
+select set_config('prueba.avisos_ocb', (select count(*)::text from public.notificaciones
+                                          where origen_id = pg_temp.id('ocb') and usuario_id in (pg_temp.id('contabilidad'), pg_temp.id('tesoreria'))), true);
+select pg_temp.como('almacenero');
+set local role authenticated;
+select public.devolver_al_proveedor(pg_temp.id('devb8'), pg_temp.id('ingb'), 1, 'GR-DEV-473I', 'Un disco llegó mojado', false);
+reset role;
+select test.afirmar(public.devolucion_reembolsada(pg_temp.id('devb8'))
+                    and (select count(*) from public.notificaciones where origen_id = pg_temp.id('ocb')
+                           and usuario_id in (pg_temp.id('contabilidad'), pg_temp.id('tesoreria'))) = current_setting('prueba.avisos_ocb')::bigint,
+  'lo devuelto con el dinero ya cobrado de vuelta no le avisa ni a Contabilidad ni a Tesorería');
+-- La OC que llegó en partes se paga en «Boletas de una parte»: el aviso lo dice y no enlaza a una tarjeta de OC.
+set local session_replication_role = replica;
+insert into public.documentos_compra_material (id, orden_compra_id, tipo, numero_documento, fecha_emision, nombre_archivo, ruta_storage, mime_type,
+                                               tamano_bytes, subido_por, monto_de_la_parte, parte_trae_igv)
+values (pg_temp.id('parte'), pg_temp.id('ocb'), 'COMPROBANTE', 'B001-473', current_setting('prueba.hoy')::date, 'parte-473.pdf',
+        'compra/' || pg_temp.id('ocb') || '/parte-473.pdf', 'application/pdf', 2048, pg_temp.id('comprador'), 30, true);
+set local session_replication_role = origin;
+select public.avisar_reembolso_a_tesoreria(pg_temp.id('ocb'), 'OC-PARTES-473', 7, 'PEN', 'Devolución de prueba.');
+select test.afirmar((select count(*) from public.notificaciones n where n.usuario_id = pg_temp.id('tesoreria')
+                       and n.titulo = 'Pide el reembolso: OC-PARTES-473' and n.ruta = '/tesoreria/por-pagar'
+                       and n.cuerpo like 'Lo devuelto vale S/ 7.00 a su precio en la OC. La OC se paga por partes, en «Boletas de una parte»%') = 1,
+  'la OC que llegó en partes: «Pide el reembolso» que dice dónde se paga, sin enlace a una tarjeta de OC');
+set local session_replication_role = replica;
+update public.documentos_compra_material set anulado_en = now(), anulado_por = pg_temp.id('comprador'),
+       motivo_anulacion = 'Fin del caso del check' where id = pg_temp.id('parte');
+update public.devoluciones_orden_compra set anulado_en = now(), anulado_por = pg_temp.id('tesoreria'),
+       motivo_anulacion = 'Fin del caso del check' where id in (pg_temp.id('reemb4'), pg_temp.id('reemb5'));
+set local session_replication_role = origin;
+-- f) Tesorería la dio por pagada con menos, sin lo devuelto («Págala sin lo devuelto»): lo que dejó de pagarle
+-- cuenta como cobrado de vuelta (DKS, 2026-11-26). Vigentes: 3u cobrados; se le deja de pagar 6u más.
+do $$ begin
+  perform pg_temp.como('contabilidad');
+  set local role authenticated;
+  perform test.afirmar(pg_temp.esperan() = array['devb3', 'devb4'], 'antes de pagar, devb3 y devb4 esperan su nota');
+  reset role;
+end $$;
+set local session_replication_role = replica;
+insert into public.pagos_orden_compra (id, orden_compra_id, fecha_pago, moneda, monto, cancela, cancela_sin_completar, archivo_ruta, archivo_mime, archivo_tamano, registrado_por)
+values (pg_temp.id('pagob'), pg_temp.id('ocb'), current_setting('prueba.hoy')::date, 'PEN',
+        public.total_orden_compra(pg_temp.id('ocb')) - 6 * current_setting('prueba.u')::numeric, true, true,
+        'chk473/pagob.pdf', 'application/pdf', 100, pg_temp.id('tesoreria'));
+set local session_replication_role = origin;
+do $$ begin
+  perform pg_temp.como('contabilidad');
+  set local role authenticated;
+  perform test.afirmar(pg_temp.esperan() = '{}' and not exists (select 1 from pg_temp.doc('ocb', 'NOTA_CREDITO')),
+    'dada por pagada con 6u menos, lo devuelto ya no espera nota (esperan: ' || pg_temp.esperan()::text || ')');
+  reset role;
+end $$;
+set local session_replication_role = replica;
+update public.pagos_orden_compra set cancela_sin_completar = false where id = pg_temp.id('pagob');
+set local session_replication_role = origin;
+do $$ begin
+  perform pg_temp.como('contabilidad');
+  set local role authenticated;
+  perform test.afirmar(pg_temp.esperan() = array['devb3', 'devb4'], 'un pago a cuenta con menos no cuenta: sigue esperando');
+  reset role;
+end $$;
+set local session_replication_role = replica;
+update public.pagos_orden_compra set anulado_en = now(), anulado_por = pg_temp.id('tesoreria'),
+       motivo_anulacion = 'Fin del caso del check' where id = pg_temp.id('pagob');
+set local session_replication_role = origin;
+-- La OC con boleta que se pagó fuera del sistema no está en Cuentas por pagar: el aviso lo dice y no manda a su tarjeta.
+set local session_replication_role = replica;
+update public.ordenes_compra_materiales set pago_en_tesoreria = false where id = pg_temp.id('ocb');
+set local session_replication_role = origin;
+select public.avisar_reembolso_a_tesoreria(pg_temp.id('ocb'), 'OC-FUERA-473', 12.5, 'USD', 'Devolución de prueba.');
+select test.afirmar((select count(*) from public.notificaciones n where n.usuario_id = pg_temp.id('tesoreria')
+                       and n.titulo = 'Pide el reembolso: OC-FUERA-473' and n.ruta = '/tesoreria/por-pagar'
+                       and n.cuerpo = 'Lo devuelto vale US$ 12.50 a su precio en la OC. La OC se pagó fuera del sistema: pídele al proveedor que te lo devuelva. Devolución de prueba.') = 1,
+  'la OC pagada fuera del sistema: «Pide el reembolso», sin enlace a una tarjeta que no existe');
+set local session_replication_role = replica;
+update public.ordenes_compra_materiales set pago_en_tesoreria = true where id = pg_temp.id('ocb');
+set local session_replication_role = origin;
+select test.afirmar(not has_function_privilege('authenticated', 'public.avisar_reembolso_a_tesoreria(uuid, text, numeric, text, text)', 'execute'),
+  'avisar_reembolso_a_tesoreria no la ejecuta authenticated');
+select test.afirmar(not has_function_privilege('authenticated', 'public.devolucion_reembolsada(uuid)', 'execute')
+                    and not has_function_privilege('anon', 'public.devolucion_reembolsada(uuid)', 'execute'),
+  'devolucion_reembolsada no la ejecutan authenticated ni anon');
+set local session_replication_role = replica;
+update public.devoluciones_orden_compra set anulado_en = now(), anulado_por = pg_temp.id('tesoreria'),
+       motivo_anulacion = 'Fin del caso del check' where id in (pg_temp.id('reemb'), pg_temp.id('reemb3'));
+update public.adquisiciones set estado = 'BORRADOR', ruta_storage = null where id = pg_temp.id('fb');
+set local session_replication_role = origin;
 
 -- ============================================ 6. Quién la lee, y que no toca nada
 do $$

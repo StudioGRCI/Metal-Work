@@ -127,7 +127,7 @@ test('el recorrido de la avería dice las horas parado del cierre y que no qued�
       ['Mantenimiento la cerró', 'Parado: 26.5 horas. Se cambiaron los carbones.'],
       ['No quedó bien: volvió a Mantenimiento', '«Se volvió a apagar.»'],
       ['Cierre: el equipo vuelve a operativo', 'La arregla y la cierra con el trabajo hecho y las horas parado.'],
-      ['Quien la reportó confirma que quedó bien', null],
+      ['Confirmar que quedó bien', null],
     ],
   )
 })
@@ -162,6 +162,19 @@ test('la cotización sigue hasta el cobro: la factura de lo que falta y el cobro
   const enParte = describirRecorridoDeLaCotizacion([paso(1, 'FACTURA', 'HECHO', { puesto: 'Contabilidad', detalle: 'EN_PARTE' })])
   assert.equal(enParte[0].titulo, 'Facturada en parte')
   assert.equal(describirRecorridoDeLaCotizacion([paso(1, 'FACTURA', 'HECHO', { puesto: 'Contabilidad' })])[0].titulo, 'Facturada')
+})
+
+test('sin la cuenta de quien reportó, el recorrido dice que confirma otra persona y quién lo hizo', () => {
+  const [espera] = describirRecorridoDeLaAveria([
+    paso(1, 'CONFIRMACION', 'AHORA', { puesto: 'Responsable del área o Mantenimiento', espera: 'CONFIRMACION', detalle: 'SIN_CUENTA' }),
+  ])
+  assert.equal(espera.titulo, 'Confirmación: si quedó bien')
+  assert.equal(espera.nota, 'Quien la reportó ya no tiene cuenta activa: prueba el equipo y dice si quedó bien.')
+  const [hecha] = describirRecorridoDeLaAveria([paso(1, 'CONFIRMACION', 'HECHO', { puesto: 'Producción', detalle: 'EN_LUGAR' })])
+  assert.equal(hecha.titulo, 'Confirmó que quedó bien, en lugar de quien la reportó')
+  assert.equal(hecha.nota, 'Quien la reportó ya no tenía cuenta activa.')
+  const [suya] = describirRecorridoDeLaAveria([paso(1, 'CONFIRMACION', 'HECHO', { puesto: 'Ventas' })])
+  assert.equal(suya.titulo, 'Quien la reportó confirmó que quedó bien')
 })
 
 test('la OC cerrada dice en qué terminó, no la anotación del atraso (DKS, 2026-11-26)', () => {

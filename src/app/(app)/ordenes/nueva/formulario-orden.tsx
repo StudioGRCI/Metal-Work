@@ -1,6 +1,7 @@
 'use client'
 
 import { X } from 'lucide-react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState, useTransition, type FormEvent } from 'react'
 
@@ -13,6 +14,7 @@ import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { motivoDeSubida } from '@/lib/acciones'
 import { PRIORIDAD, TIPO_TRABAJO, opciones } from '@/lib/dominio/estados'
+import { descripcionDeLaOt } from '@/lib/dominio/garantias'
 import { MAXIMO_ADJUNTO_MB } from '@/lib/adjuntos'
 import { camposDe, decirElRechazoSiSeFue, type DeFormulario, laPestanaEsDeLaVersionAnterior, laPestanaEsDeOtraCuenta, mientrasSeEnvia, navegarSiEsDeLaPestana, NO_SE_GUARDO_OTRA_CUENTA, nombreDe, OtraCuentaEnLaPestana, partida, quitarConLaCuenta, SE_ACTUALIZO_EL_SISTEMA, seguirConLaCuentaDeLaPestana, type SiSeVa, useCursorAlRechazo, useFormularioMontado } from '@/lib/envio'
 import { subirARutaNueva } from '@/lib/ruta-nueva'
@@ -41,7 +43,22 @@ type Catalogos = {
 const TIPOS_TRABAJO = opciones(TIPO_TRABAJO)
 const PRIORIDADES = opciones(PRIORIDAD)
 
-export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
+/** El reclamo de garantía del que nace la OT (`/ordenes/nueva?reclamo=`, A.2): al registrarse queda enlazada a él. */
+type ReclamoDeLaOt = { id: string; numero: string; cliente_id: string; cliente: string; unidad_id: string; unidad: string; descripcion: string }
+
+export function FormularioOrden({
+  catalogos,
+  reclamo: reclamoAlAbrir = null,
+  reclamoSinEfecto = null,
+}: {
+  catalogos: Catalogos
+  reclamo?: ReclamoDeLaOt | null
+  /** El reclamo pedido en la dirección que ya no espera su OT (o que quien mira no enlaza). */
+  reclamoSinEfecto?: string | null
+}) {
+  // El reclamo con el que se abrió: la página se repinta al registrar la OT y, si
+  // el reclamo se cerró entretanto, llega sin él; la pantalla no cambia por eso.
+  const [reclamo] = useState(reclamoAlAbrir)
   // Un envío por toque, como `useEnvio`; aquí a mano porque el PDF viaja antes
   // que la orden. El id se decide al abrir: un reintento tras perder la señal
   // encuentra la orden ya registrada en vez de crear otra.
@@ -70,10 +87,13 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
   const router = useRouter()
   const enCurso = useRef(false)
   const instancia = useFormularioMontado()
-  const [clienteId, setClienteId] = useState('')
-  const [unidadId, setUnidadId] = useState('')
+  // Desde un reclamo, con su cliente y su unidad ya elegidos.
+  const [clienteId, setClienteId] = useState(() => (reclamo && catalogos.clientes.some((c) => c.id === reclamo.cliente_id) ? reclamo.cliente_id : ''))
+  const [unidadId, setUnidadId] = useState(() => (reclamo && catalogos.clientes.some((c) => c.id === reclamo.cliente_id) ? reclamo.unidad_id : ''))
   // La garantía es de un vehículo que vuelve: va con su unidad (migración 20261021120000).
-  const [tipoTrabajo, setTipoTrabajo] = useState('FABRICACION')
+  const [tipoTrabajo, setTipoTrabajo] = useState(reclamo ? 'GARANTIA' : 'FABRICACION')
+  // Registrada y sin enlazar a su reclamo: el aviso de abajo va en ámbar.
+  const [aMedias, setAMedias] = useState(false)
   const esGarantia = tipoTrabajo === 'GARANTIA'
   const [carroceriaId, setCarroceriaId] = useState('')
   const [responsableId, setResponsableId] = useState('')
@@ -387,8 +407,17 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
         // Registrada: el formulario queda trabado hasta que se abre la orden.
         listo = true
         entro()
-        const ida = idaALaOrden(r.datos?.id ?? ordenId)
+        const ida = r.datos?.reclamo
+          ? idaAlReclamo(r.datos.reclamo.id, r.datos.reclamo.numero, r.datos.reclamo.noSeEnlazo, r.datos.id ?? ordenId)
+          : idaALaOrden(r.datos?.id ?? ordenId)
         setQuedo(ida)
+        // Registrada y sin enlazar (el reclamo se cerró mientras se llenaba): no
+        // se va a ningún lado, que al irse el aviso se perdía. Lo dice junto al
+        // botón, con el enlace a la OT para anularla si no hace falta.
+        if (r.datos?.reclamo?.noSeEnlazo) {
+          setAMedias(true)
+          return
+        }
         const { url, ...dicho } = ida
         navegarSiEsDeLaPestana(router, url, desde, { ...dicho, juntoAlBoton: true })
       } catch (e) {
@@ -412,10 +441,47 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
 
   return (
     <form onSubmit={enviar} className="max-w-4xl space-y-4">
+      {!reclamo && reclamoSinEfecto && !quedo && (
+        <p className="rounded-[var(--radius-base)] border border-borde bg-aviso-suave px-3 py-2 text-sm text-texto" data-reclamo-sin-efecto>
+          Ese reclamo de garantía ya no espera su OT, o no lo puedes enlazar: esta orden nace sin él.{' '}
+          <Link href={`/garantias/${reclamoSinEfecto}`} className="font-medium text-acento underline underline-offset-2">
+            Ver el reclamo
+          </Link>
+        </p>
+      )}
+      {reclamo && (
+        <>
+          <input type="hidden" name="reclamo_id" value={reclamo.id} />
+          <p className="rounded-[var(--radius-base)] border border-borde bg-superficie-2 px-3 py-2 text-sm text-texto" data-desde-el-reclamo>
+            Esta OT de garantía atiende el reclamo{' '}
+            <Link href={`/garantias/${reclamo.id}`} className="tabular font-semibold text-acento hover:underline">
+              {reclamo.numero}
+            </Link>
+            . Al registrarla queda enlazada a él y le avisamos a quien lo registró. Va con el cliente y la unidad del reclamo.
+          </p>
+        </>
+      )}
       {/* Mientras se registra, nada se cambia: la orden sale con lo que se envió. */}
       <fieldset disabled={pendiente || Boolean(quedo)} className="min-w-0 space-y-4">
         <Tarjeta>
           <TarjetaCabecera titulo="Cliente y unidad" />
+          {reclamo ? (
+            // Desde el reclamo, fijos: la base solo enlaza la OT de garantía de
+            // su misma unidad, y una OT registrada con otra ya no se borra.
+            <TarjetaCuerpo className="grid gap-4 sm:grid-cols-2" data-fijos-del-reclamo>
+              <input type="hidden" name="cliente_id" value={reclamo.cliente_id} />
+              <input type="hidden" name="unidad_id" value={reclamo.unidad_id} />
+              <div>
+                <p className="text-xs font-medium text-texto-suave">Cliente</p>
+                <p className="mt-1 text-sm text-texto">{reclamo.cliente}</p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-texto-suave">Unidad</p>
+                <p className="tabular mt-1 text-sm text-texto">{reclamo.unidad}</p>
+                <p className="mt-1 text-xs text-texto-suave">Los del reclamo {reclamo.numero}: no se cambian aquí.</p>
+              </div>
+            </TarjetaCuerpo>
+          ) : (
           <TarjetaCuerpo className="grid gap-4 sm:grid-cols-2">
             <Campo
               etiqueta="Cliente"
@@ -509,6 +575,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
               <RegistradoAparte dice={aparte.unidad} alQuitar={() => quitarAparte('unidad')} />
             </Campo>
           </TarjetaCuerpo>
+          )}
         </Tarjeta>
 
         <Tarjeta>
@@ -544,15 +611,23 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
               <RegistradoAparte dice={aparte.carroceria} alQuitar={() => quitarAparte('carroceria')} />
             </Campo>
 
-            <Campo etiqueta="Tipo de trabajo" htmlFor="tipo_trabajo" requerido>
-              <Seleccion id="tipo_trabajo" name="tipo_trabajo" value={tipoTrabajo} onChange={(e) => setTipoTrabajo(e.target.value)}>
-                {TIPOS_TRABAJO.map((o) => (
-                  <option key={o.valor} value={o.valor}>
-                    {o.etiqueta}
-                  </option>
-                ))}
-              </Seleccion>
-            </Campo>
+            {reclamo ? (
+              <div data-tipo-fijo>
+                <input type="hidden" name="tipo_trabajo" value="GARANTIA" />
+                <p className="text-xs font-medium text-texto-suave">Tipo de trabajo</p>
+                <p className="mt-1 text-sm text-texto">{TIPOS_TRABAJO.find((o) => o.valor === 'GARANTIA')?.etiqueta ?? 'Garantía'}</p>
+              </div>
+            ) : (
+              <Campo etiqueta="Tipo de trabajo" htmlFor="tipo_trabajo" requerido>
+                <Seleccion id="tipo_trabajo" name="tipo_trabajo" value={tipoTrabajo} onChange={(e) => setTipoTrabajo(e.target.value)}>
+                  {TIPOS_TRABAJO.map((o) => (
+                    <option key={o.valor} value={o.valor}>
+                      {o.etiqueta}
+                    </option>
+                  ))}
+                </Seleccion>
+              </Campo>
+            )}
 
             <Campo etiqueta="Prioridad" htmlFor="prioridad" requerido>
               <Seleccion id="prioridad" name="prioridad" defaultValue="NORMAL">
@@ -576,6 +651,7 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
                 required
                 minLength={5}
                 rows={2}
+                defaultValue={reclamo ? descripcionDeLaOt(reclamo.numero, reclamo.descripcion) : undefined}
                 placeholder="Ej.: Fabricación de tolva de volquete de 18 m3 en acero A36 con compuerta trasera"
               />
             </Campo>
@@ -698,10 +774,10 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
         </p>
       )}
 
-      <YaQuedo ida={quedo} />
+      <YaQuedo ida={quedo} aMedias={aMedias} />
 
       <div className="flex justify-end gap-2">
-        <EnlaceBoton href="/ordenes" variante="fantasma">
+        <EnlaceBoton href={reclamo ? `/garantias/${reclamo.id}` : '/ordenes'} variante="fantasma">
           Cancelar
         </EnlaceBoton>
         <Boton type="submit" cargando={pendiente} disabled={Boolean(quedo)}>
@@ -713,6 +789,16 @@ export function FormularioOrden({ catalogos }: { catalogos: Catalogos }) {
 }
 
 const idaALaOrden = (id: string) => ({ url: `/ordenes/${id}?creada=1`, dice: 'La orden quedó registrada.', enlace: 'Ver la orden' })
+// Desde un reclamo de garantía se vuelve a él: ahí se ve la OT enlazada. Si no
+// se enlazó, el enlace es a la OT, que ya está registrada y sin reclamo.
+const idaAlReclamo = (id: string, numero: string, noSeEnlazo: string | null, orden: string) =>
+  noSeEnlazo
+    ? {
+        url: `/ordenes/${orden}`,
+        dice: `La orden quedó registrada en borrador, pero no se enlazó al reclamo ${numero}: ${noSeEnlazo} Si atiende otro reclamo de la misma unidad, enlázala desde ese reclamo; si no, Gerencia la anula al revisarla.`,
+        enlace: 'Ver la orden',
+      }
+    : { url: `/garantias/${id}`, dice: `La orden quedó registrada y enlazada al reclamo ${numero}.`, enlace: `Ver el reclamo ${numero}` }
 // Si su rechazo vuelve cuando la persona ya pidió otra pantalla, lo dice arriba (`decirElRechazoSiSeFue`).
 const SI_SE_VA: SiSeVa = { que: 'la orden', enlace: 'Volver a la orden nueva' }
 

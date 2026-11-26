@@ -8,7 +8,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { equiposParaReportar, listarAverias, MAXIMO_AVERIAS, type Averia } from '@/lib/datos/averias'
-import { ESTADO_AVERIA, ordenarBandeja, TIPO_AVERIA } from '@/lib/dominio/averias'
+import { ESTADO_AVERIA, ordenarBandeja, quienConfirma, TIPO_AVERIA } from '@/lib/dominio/averias'
 import { fechaHora } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
 
@@ -38,7 +38,8 @@ const VACIO_DE: Record<Vista, { titulo: string; descripcion: string }> = {
   },
   'por-confirmar': {
     titulo: 'Nada esperando confirmación',
-    descripcion: 'Al cerrar una avería, queda aquí hasta que quien la reportó diga si quedó bien.',
+    descripcion:
+      'Al cerrar una avería, queda aquí hasta que quien la reportó diga si quedó bien. Si ya no tiene cuenta, la confirma el responsable del área o Mantenimiento.',
   },
   cerradas: { titulo: 'Todavía ninguna confirmada', descripcion: 'Las averías que quien las reportó dio por arregladas.' },
   anuladas: { titulo: 'No hay reportes anulados', descripcion: 'Un reporte mal hecho se anula desde su ficha, con su motivo.' },
@@ -83,8 +84,9 @@ export default async function PaginaAverias({ searchParams }: PageProps<'/averia
           estado={<EstadoDelReporteDeAveria />}
         />
         {sinPadron}
-        {/* Mantenimiento o Gerencia también reportan: las suyas por confirmar, arriba, como a los demás. */}
-        <PorConfirmar averias={averias.filter((a) => a.es_mia && a.estado === 'CERRADA')} className="mb-4" />
+        {/* Lo que le toca confirmar a quien mira, arriba: las suyas y, para Mantenimiento,
+            las de quien ya no tiene cuenta. La regla la da la base (`puede_confirmar`). */}
+        <PorConfirmar averias={averias.filter((a) => a.puede_confirmar)} className="mb-4" />
         <Vistas
           etiqueta="Vista"
           className="mb-4"
@@ -106,11 +108,12 @@ export default async function PaginaAverias({ searchParams }: PageProps<'/averia
 
   const mias = averias.filter((a) => a.alcance === 'PROPIA')
   // Lo que Mantenimiento cerró y espera que la persona diga si quedó bien: va
-  // primero, y no se repite en «Tus reportes».
-  const porConfirmar = mias.filter((a) => a.estado === 'CERRADA')
-  const otrasMias = mias.filter((a) => a.estado !== 'CERRADA')
+  // primero, y no se repite abajo. Al responsable del área le toca también la de
+  // quien ya no tiene cuenta.
+  const porConfirmar = averias.filter((a) => a.puede_confirmar)
+  const otrasMias = mias.filter((a) => !a.puede_confirmar && a.estado !== 'CERRADA')
   // Lo del área y lo de riesgo: lo que todavía espera a alguien.
-  const delArea = averias.filter((a) => a.alcance === 'AREA' && a.espera_de != null)
+  const delArea = averias.filter((a) => a.alcance === 'AREA' && a.espera_de != null && !a.puede_confirmar)
   // SSOMA recibe las que son un riesgo para las personas.
   const deRiesgo = averias.filter((a) => a.alcance === 'RIESGO' && a.espera_de != null)
   return (
@@ -250,6 +253,7 @@ function FilaAveria({ averia: a, conAutor }: { averia: Averia; conAutor: boolean
           {tipo ? <Insignia tono={tipo.tono}>{tipo.etiqueta}</Insignia> : a.tipo}
           {/* En rojo solo mientras espera a Mantenimiento: cerrada, el equipo ya no está parado por ella. */}
           {a.espera_de === 'MANTENIMIENTO' && <Urgencia averia={a} />}
+          {a.repite_a && a.estado !== 'ANULADA' && <Repite numero={a.repite_a} />}
         </div>
         <p className="mt-1 text-sm font-medium text-texto md:hidden">{equipo}</p>
         <p className="mt-1 line-clamp-2 max-w-xl text-sm text-texto">{a.descripcion}</p>
@@ -311,21 +315,45 @@ function Situacion({ averia: a }: { averia: Averia }) {
       <DiasEnEspera
         dias={a.dias_en_espera}
         desde={a.espera_desde}
-        quien={deQuienReporto ? 'quien la reportó' : 'Mantenimiento'}
+        quien={deQuienReporto ? quienConfirma(a.confirma) : 'Mantenimiento'}
       />
       {a.veces_reabierta > 0 && a.estado === 'EN_ATENCION' && <Insignia tono="aviso">No quedó bien</Insignia>}
     </div>
   )
 }
 
-/** Las averías que reportó quien mira, cerradas por Mantenimiento, esperando que diga si quedaron bien. */
+/** La avería que se reportó antes de 30 días desde que se cerró otra del mismo equipo. */
+function Repite({ numero }: { numero: string }) {
+  return (
+    <Insignia tono="aviso" title={`El mismo equipo tuvo la avería ${numero}, cerrada menos de 30 días antes`}>
+      Repite la {numero}
+    </Insignia>
+  )
+}
+
+/**
+ * Las averías cerradas por Mantenimiento que esperan que quien mira diga si
+ * quedaron bien: las que reportó y, si quien la reportó ya no tiene cuenta, las
+ * que le tocan como responsable del área o como Mantenimiento.
+ */
 function PorConfirmar({ averias, className }: { averias: Averia[]; className?: string }) {
   if (averias.length === 0) return null
+  const suyas = averias.filter((a) => a.es_mia).length
+  const ajenas = averias.length - suyas
+  const partes = [
+    suyas > 0 ? (suyas === 1 ? 'una avería que reportaste' : `${suyas} averías que reportaste`) : null,
+    // «una de alguien…» solo se entiende detrás de «una avería que reportaste».
+    ajenas > 0
+      ? ajenas === 1
+        ? `una ${suyas > 0 ? '' : 'avería '}de alguien que ya no tiene cuenta, y te toca a ti confirmarla`
+        : `${ajenas} ${suyas > 0 ? '' : 'averías '}de personas que ya no tienen cuenta, y te toca a ti confirmarlas`
+      : null,
+  ].filter(Boolean)
   return (
     <Tarjeta className={`overflow-hidden ${className ?? ''}`} data-por-confirmar>
       <TarjetaCabecera
         titulo="¿Quedaron bien?"
-        descripcion={`Mantenimiento cerró ${averias.length === 1 ? 'una avería que reportaste' : `${averias.length} averías que reportaste`}: ábrela, prueba el equipo y dinos si quedó bien.`}
+        descripcion={`Mantenimiento cerró ${partes.join(' y ')}: ábrela, prueba el equipo y dinos si quedó bien.`}
       />
       <TablaDeAverias averias={averias} vacio={{ titulo: '', descripcion: '' }} />
     </Tarjeta>
