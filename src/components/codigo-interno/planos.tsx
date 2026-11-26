@@ -3,7 +3,9 @@ import type { ReactNode } from 'react'
 
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Pliegue } from '@/components/ui/seccion-desplegable'
+import { LecturaDelAviso, avisoEnPalabras, subidoPor } from '@/components/codigo-interno/quien-subio-y-quien-leyo'
 import type { PlanoDeCodigo, RevisionDePlano } from '@/lib/datos/diseno-codigos'
+import type { QuienSubioYQuienLeyo } from '@/lib/datos/quien-subio-y-quien-leyo'
 import { cantidad, fecha, fechaHora, tamanoArchivo, porcentajeCorto } from '@/lib/format'
 
 /** El PDF se abre por la ruta que pide el enlace firmado en el momento del toque. */
@@ -15,12 +17,14 @@ export function enlacePdfPlano(revision: string) {
  * Los planos de un código por área, con su revisión vigente, si el área la
  * recibió y lo que cambió. La usan Diseño, el supervisor y Gerencia: cada uno
  * pone sus botones en `acciones`. Los anulados van al final, con su motivo.
+ * Diseño pasa `lecturas`: quién subió cada revisión y si el área leyó su aviso.
  */
 export function ListaPlanos({
   planos,
   historial,
   acciones,
   avisarSinPeso = false,
+  lecturas,
 }: {
   planos: PlanoDeCodigo[]
   /** Las revisiones de los planos que tienen más de una, por plano. */
@@ -28,6 +32,8 @@ export function ListaPlanos({
   acciones?: (plano: PlanoDeCodigo) => ReactNode
   /** Solo para Diseño, que es quien le pone el porcentaje: el plano sin él sale con aviso. */
   avisarSinPeso?: boolean
+  /** Solo para Diseño: por id de revisión, quién la subió y si el área leyó su aviso. */
+  lecturas?: Map<string, QuienSubioYQuienLeyo>
 }) {
   const vigentes = planos.filter((p) => !p.anulado_en)
   const anulados = planos.filter((p) => p.anulado_en)
@@ -48,7 +54,14 @@ export function ListaPlanos({
             </h3>
             <ul className="divide-y divide-borde rounded-[var(--radius-base)] border border-borde">
               {deArea.map((p) => (
-                <FilaPlano key={p.id} plano={p} anteriores={historial?.get(p.id)?.filter((r) => r.id !== p.revision_id)} acciones={acciones?.(p)} avisarSinPeso={avisarSinPeso} />
+                <FilaPlano
+                  key={p.id}
+                  plano={p}
+                  anteriores={historial?.get(p.id)?.filter((r) => r.id !== p.revision_id)}
+                  acciones={acciones?.(p)}
+                  avisarSinPeso={avisarSinPeso}
+                  lecturas={lecturas}
+                />
               ))}
             </ul>
           </section>
@@ -79,12 +92,15 @@ function FilaPlano({
   anteriores,
   acciones,
   avisarSinPeso,
+  lecturas,
 }: {
   plano: PlanoDeCodigo
   anteriores?: RevisionDePlano[]
   acciones?: ReactNode
   avisarSinPeso: boolean
+  lecturas?: Map<string, QuienSubioYQuienLeyo>
 }) {
+  const vigente = p.revision_id ? lecturas?.get(p.revision_id) : undefined
   return (
     <li className="flex flex-wrap items-start justify-between gap-3 p-3" data-plano={p.id}>
       <div className="min-w-0 flex-1 space-y-1">
@@ -116,25 +132,30 @@ function FilaPlano({
               Abrir PDF{p.tamano_bytes ? ` (${tamanoArchivo(p.tamano_bytes)})` : ''}
             </a>
           )}
-          <span className="text-texto-suave">Subido el {fechaHora(p.subido_en)}</span>
+          <span className="text-texto-suave">{vigente ? subidoPor(vigente) : `Subido el ${fechaHora(p.subido_en)}`}</span>
+          {vigente && <LecturaDelAviso areas={vigente.areas} />}
         </div>
         {p.cambios && <p className="text-xs text-texto">Cambió: {p.cambios}</p>}
         {p.observacion && <p className="text-xs text-texto-suave">{p.observacion}</p>}
         {anteriores && anteriores.length > 0 && (
           <Pliegue titulo={`Revisiones anteriores (${anteriores.length})`} className="text-xs">
             <ul className="space-y-1">
-              {anteriores.map((r) => (
-                <li key={r.id}>
-                  <a href={enlacePdfPlano(r.id)} target="_blank" rel="noopener" className="text-acento hover:underline">
-                    R{r.revision}
-                  </a>{' '}
-                  <span className="text-texto-suave">
-                    del {fecha(r.subido_en)}
-                    {r.recibido_en ? ` · recibida el ${fecha(r.recibido_en)}` : ' · no se recibió'}
-                    {r.cambios && ` · ${r.cambios}`}
-                  </span>
-                </li>
-              ))}
+              {anteriores.map((r) => {
+                const v = lecturas?.get(r.id)
+                return (
+                  <li key={r.id} data-revision={r.revision}>
+                    <a href={enlacePdfPlano(r.id)} target="_blank" rel="noopener" className="text-acento hover:underline">
+                      R{r.revision}
+                    </a>{' '}
+                    <span className="text-texto-suave">
+                      {v ? subidoPor(v, 'subida', fecha) : `del ${fecha(r.subido_en)}`}
+                      {r.recibido_en ? ` · recibida el ${fecha(r.recibido_en)}` : ' · no se recibió'}
+                      {v && v.areas.map((a) => ` · ${avisoEnPalabras(a).texto}`).join('')}
+                      {r.cambios && ` · ${r.cambios}`}
+                    </span>
+                  </li>
+                )
+              })}
             </ul>
           </Pliegue>
         )}
