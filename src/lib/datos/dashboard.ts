@@ -963,10 +963,37 @@ const CIFRAS = {
   ssoma_en_revision: {
     ruta: '/ssoma',
     calcular: async (c) => {
-      const r = await c.supabase.from('ssoma_reportes').select('id', { count: 'exact', head: true }).eq('estado', 'REPORTADO')
+      // Los por clasificar y, aparte, los clasificados sin ninguna acción: los dos esperan por SSOMA.
+      const r = await c.supabase.rpc('ssoma_por_atender').single()
       fallo(r)
-      const n = r.count ?? 0
-      return { titulo: 'Reportes en SSOMA', valor: String(n), pie: n > 0 ? 'vigentes, sin anular' : 'nadie ha reportado', icono: ShieldAlert, tono: n > 0 ? 'aviso' : 'neutro' }
+      const n = r.data?.por_clasificar ?? 0
+      const sin = r.data?.sin_accion ?? 0
+      const pie = [
+        n > 0 ? 'reportes que esperan su causa' : 'todos clasificados',
+        sin > 0 && plural(sin, 'clasificado sin acción', 'clasificados sin acción'),
+      ].filter(Boolean).join(' · ')
+      return { titulo: 'Por clasificar', valor: String(n), pie, icono: ShieldAlert, tono: n + sin > 0 ? 'aviso' : 'neutro' }
+    },
+  },
+  // 15.2: las acciones correctivas que pasaron su fecha límite (en Lima), de todos.
+  ssoma_acciones_vencidas: {
+    ruta: '/ssoma?vista=acciones',
+    calcular: async (c) => {
+      const [vencidas, abiertas] = await Promise.all([
+        c.supabase.from('ssoma_acciones').select('id', { count: 'exact', head: true }).eq('estado', 'ABIERTA').lt('fecha_limite', c.hoy),
+        c.supabase.from('ssoma_acciones').select('id', { count: 'exact', head: true }).eq('estado', 'ABIERTA'),
+      ])
+      fallo(vencidas)
+      fallo(abiertas)
+      const n = vencidas.count ?? 0
+      const total = abiertas.count ?? 0
+      return {
+        titulo: 'Acciones vencidas',
+        valor: String(n),
+        pie: total > 0 ? `de ${plural(total, 'acción abierta', 'acciones abiertas')}` : 'ninguna abierta',
+        icono: ClipboardList,
+        tono: n > 0 ? 'peligro' : 'neutro',
+      }
     },
   },
   ssoma_del_mes: {
@@ -1017,7 +1044,7 @@ const CIFRAS_POR_PUESTO: Record<string, { titulo: string; cifras: ClaveCifra[] }
   // Las mismas cifras de Ventas, pero de todo el equipo (`deVentas`).
   GERENTE_COMERCIAL: { titulo: 'Ventas', cifras: ['cotizaciones_en_gerencia', 'aprobadas_del_mes', 'clientes'] },
   GERENTE_PRODUCCION: { titulo: 'Avance', cifras: ['reportes_del_mes', 'seguimiento_en_curso'] },
-  SSOMA: { titulo: 'SSOMA', cifras: ['ssoma_en_revision', 'ssoma_del_mes'] },
+  SSOMA: { titulo: 'SSOMA', cifras: ['ssoma_en_revision', 'ssoma_acciones_vencidas', 'ssoma_del_mes'] },
 }
 // El líder de Diseño ve las cifras de Diseño (mismo menú, `navegacion.ts`).
 CIFRAS_POR_PUESTO.DISENO_LIDER = CIFRAS_POR_PUESTO.DISENO

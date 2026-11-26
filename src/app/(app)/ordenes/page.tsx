@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { Plus } from 'lucide-react'
 
@@ -26,6 +27,7 @@ import { pendientesDeLasOt } from '@/lib/datos/pendientes-de-las-ot'
 
 import { FiltrosOrdenes } from './filtros-ordenes'
 import { PendientesDeLasOt } from './pendientes-de-las-ot'
+import { TrabajoPorOtCargando, TrabajoPorOtDeLaCuenta } from './trabajo-por-ot'
 import { paginaPedida } from '@/lib/dominio/paginas'
 
 export const metadata = { title: 'Órdenes de trabajo' }
@@ -64,6 +66,11 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
   // `ordenes.crear`: quien solo corrige OT no ve las cotizaciones y la tarjeta
   // le diría que no falta ninguna.
   const verPendientes = puede(perfil, 'ordenes.crear') && !hayFiltros && filtros.pagina <= 1
+  // El colaborador de Diseño ve arriba su trabajo reunido por OT (Plan 7,
+  // entrega 7.2), en su propio `<Suspense>`: la lista no lo espera. Si no se
+  // lee, la lista sigue y la tarjeta lo dice. Por su permiso propio, no por
+  // `puede`: el administrador no anota actividades y vería una tarjeta vacía.
+  const veSuTrabajo = perfil.permisos.includes('diseno.preparar_informe')
   const [{ ordenes, total, pagina, paginas }, pendientes] = await Promise.all([
     listarOrdenes(filtros),
     verPendientes
@@ -160,6 +167,14 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
       />
 
       {pendientes !== undefined && <PendientesDeLasOt pendientes={pendientes} corrige={puede(perfil, 'ordenes.editar')} />}
+
+      {veSuTrabajo && (
+        <div className="mb-5">
+          <Suspense fallback={<TrabajoPorOtCargando />}>
+            <TrabajoPorOtDeLaCuenta />
+          </Suspense>
+        </div>
+      )}
 
       <FiltrosOrdenes />
 

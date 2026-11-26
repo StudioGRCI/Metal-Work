@@ -97,7 +97,7 @@ export default async function PaginaSubcontrato({ params, searchParams }: PagePr
         <Tarjeta>
           <TarjetaCabecera
             titulo="Cómo va"
-            ayuda="Lo recibido es el bruto de los recibos vigentes; Tesorería paga el neto, después de la retención."
+            ayuda="Lo recibido es el bruto de los recibos vigentes; Tesorería paga el neto, después de la retención. Pagado en bruto suma el neto pagado y su retención, y el saldo del contrato es lo pactado menos eso."
           />
           <TarjetaCuerpo>
             <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3" data-cuentas>
@@ -132,6 +132,20 @@ export default async function PaginaSubcontrato({ params, searchParams }: PagePr
                 pie={parteDe(c.porPagar, c.pagado + c.porPagar) === null ? undefined : `${porcentaje(parteDe(c.porPagar, c.pagado + c.porPagar))} del neto`}
                 tono={c.porPagar > 0 ? 'text-aviso' : undefined}
               />
+              {/* Lo mismo que la lista dice en «Pagado y saldo» (plan 8, entrega 8.2): el contrato se descuenta en bruto. */}
+              <Cifra
+                etiqueta="Pagado en bruto"
+                valor={moneda(c.pagadoBruto, s.moneda)}
+                pie={parteDe(c.pagadoBruto, s.monto) === null ? undefined : `${porcentaje(parteDe(c.pagadoBruto, s.monto))} del pactado, con la retención`}
+              />
+              {s.estado !== 'ANULADO' && (
+                <Cifra
+                  etiqueta={c.saldo < 0 ? 'Pagado de más' : 'Saldo del contrato'}
+                  valor={moneda(Math.abs(c.saldo), s.moneda)}
+                  pie={parteDe(Math.abs(c.saldo), s.monto) === null ? undefined : `${porcentaje(parteDe(Math.abs(c.saldo), s.monto))} del pactado`}
+                  tono={c.saldo < 0 ? 'text-peligro' : undefined}
+                />
+              )}
             </dl>
           </TarjetaCuerpo>
         </Tarjeta>
