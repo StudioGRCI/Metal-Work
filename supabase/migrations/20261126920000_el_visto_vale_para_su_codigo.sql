@@ -27,13 +27,13 @@
 -- La hora del sustento sigue siendo la de su transacción (`now()`), como la
 -- del visto de Diseño: el recorrido los ordena por hora. La del código es la
 -- del reloj (`fn_rq_metrado_al_revisar`). Si una corrección del código entra
--- justo mientras el sustento espera el bloqueo del RQ, el insumo queda «sin
--- sustento» y hay que sustentarlo otra vez: falla hacia el lado seguro.
+-- justo mientras el sustento espera el bloqueo del RQ, el sustento se rechaza
+-- con su motivo: lo escrito era para el código de antes.
 --
 -- Las dos funciones se redefinen enteras, con la misma firma y los mismos
 -- permisos; el resto queda como estaba. Sin DROP. Antes se mira que sean las
--- que conoce el repositorio (las de la 20261120400000, o estas si la migración
--- ya corrió): si en producción se cambiaron a mano, se detiene y no las pisa
+-- que conoce el repositorio (las de la 20261120400000, o estas o su primera
+-- versión si la migración ya corrió): si en producción se cambiaron a mano, se detiene y no las pisa
 -- (skill `esquema`).
 -- =============================================================================
 
@@ -52,7 +52,7 @@ begin
   if v_metrado not in ('bb8593c9a4e7703eb344e532afdee83c', '51e45ef463a6f1e7cd0aa0fc6d41bccb') then
     raise exception 'La función metrado_por_linea no es la que conoce el repositorio (se cambió a mano, huella %): no se reemplaza. Avisa antes de seguir.', v_metrado;
   end if;
-  if v_sustentar not in ('18c07949fb05cf49d9f78ddfb44db967', '21b232a41a8b1b054e481a8f44a6aa8f') then
+  if v_sustentar not in ('18c07949fb05cf49d9f78ddfb44db967', 'e688bb7c67ede4c889f03c0084e7af9c', '21b232a41a8b1b054e481a8f44a6aa8f', 'f25d9f53948c6c5e0fb143545743e7a3') then
     raise exception 'La función sustentar_insumos no es la que conoce el repositorio (se cambió a mano, huella %): no se reemplaza. Avisa antes de seguir.', v_sustentar;
   end if;
 end $$;
@@ -170,6 +170,13 @@ begin
   select * into v_rq from public.requerimientos where id = p_requerimiento for update;
   if not found then
     raise exception 'El requerimiento no existe.';
+  end if;
+  -- Una corrección del código entró mientras este envío esperaba el bloqueo:
+  -- lo escrito era para el código de antes. Se dice, en vez de dejarlo «sin
+  -- sustento» con la pantalla diciendo «enviado».
+  if v_rq.codigo_desde > now() then
+    raise exception 'El código del requerimiento % cambió mientras enviabas el sustento: recarga la pantalla y revisa el metrado de %.',
+      v_rq.numero, public.normalizar_codigo_interno(v_rq.codigo_interno) using errcode = 'check_violation';
   end if;
   perform public.rq_exigir_del_area(v_rq.tipo, 'CORREGIR', v_rq.area_id, v_rq.creado_por);
   -- El colaborador de Diseño pide con `requerimientos.emitir`, pero corrige, anula

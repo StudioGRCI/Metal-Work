@@ -259,8 +259,21 @@ export async function corregirRequerimiento(_previo: unknown, formulario: FormDa
   // Corregir no cambia el estado: el de ahora es el que eligió a quién avisar
   // (corregir_requerimiento: por revisar o listo, Almacén; si no, quien compra).
   // El RQA en compra avisa a la administradora, que es quien lo corrige: no se dice.
-  const { data: rq } = await supabase.from('requerimientos').select('estado, tipo').eq('id', id.data).maybeSingle()
+  const [{ data: rq }, { data: metrado }] = await Promise.all([
+    supabase.from('requerimientos').select('estado, tipo, codigo_interno').eq('id', id.data).maybeSingle(),
+    // Si pasó a otro código, el visto de Diseño era para el de antes
+    // (migración 20261126920000): lo que se pasa del metrado nuevo se sustenta otra vez.
+    supabase.rpc('metrado_de_requerimientos', { p_requerimientos: [id.data] }),
+  ])
   const aviso =
     rq?.estado === 'POR_ATENDER' || rq?.estado === 'LISTO_EN_ALMACEN' ? ' A Almacén le llegó el aviso.' : rq && rq.tipo !== 'ADMINISTRACION' ? ' A Logística le llegó el aviso.' : ''
+  const sePasan = (metrado ?? []).filter((m) => m.estado === 'SIN_SUSTENTO').map((m) => m.item)
+  if (sePasan.length > 0) {
+    const cuales = sePasan.length === 1 ? `El insumo ${sePasan[0]} se pasa` : `Los insumos ${sePasan.slice(0, -1).join(', ')} y ${sePasan.at(-1)} se pasan`
+    return {
+      ok: true,
+      mensaje: `Requerimiento corregido, con su justificante.${aviso} ${cuales} del metrado de Diseño para ${rq?.codigo_interno ?? 'su código'} y no ${sePasan.length === 1 ? 'tiene' : 'tienen'} su visto: escribe por qué en su tarjeta, con «Escribir el sustento». No sale del almacén hasta que Diseño lo autorice.`,
+    }
+  }
   return { ok: true, mensaje: `Requerimiento corregido, con su justificante.${aviso}` }
 }

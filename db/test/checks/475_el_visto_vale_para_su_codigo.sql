@@ -199,6 +199,18 @@ do $$ begin
 end $$;
 reset role;
 
+-- Un sustento que llega mientras se corrige el código (aquí, en la misma
+-- transacción: la corrección quedó después de su hora) se rechaza con su motivo.
+select pg_temp.como('requerimientos');
+set local role authenticated;
+do $$ begin
+  perform public.sustentar_insumos(pg_temp.id('rqa'), '[{"item": 1, "sustento": "El refuerzo del piso lleva dos planchas más"}]');
+  raise exception 'FALLA: entró un sustento escrito para el código de antes';
+exception when check_violation then
+  perform test.afirmar(sqlerrm like '%cambió mientras enviabas el sustento%', 'El sustento que llega durante la corrección del código se rechaza y dice por qué');
+end $$;
+reset role;
+
 -- Se sustenta contra U2 (al día siguiente de corregir el código) y Diseño lo autoriza.
 set local session_replication_role = replica;
 update public.requerimientos set codigo_desde = now() - interval '1 day' where id = pg_temp.id('rqa');

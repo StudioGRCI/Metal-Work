@@ -524,8 +524,11 @@ function InsumoConPartes({
           <BarraDePartes partes={partes} tonoPorLlegar={tono} noSalio={noSalio} />
           <ul className="mt-1.5 flex flex-col gap-1 text-xs sm:flex-row sm:flex-wrap sm:gap-x-5">
             {partes.recoger > 0 && (
-              <Parte color="bg-exito" cifra={`${cantidad(partes.recoger)} ${u}`} data-parte="recoger">
-                <span className="font-medium text-exito">para recoger en Almacén</span>
+              <Parte color={frena ? 'bg-aviso' : 'bg-exito'} cifra={`${cantidad(partes.recoger)} ${u}`} data-parte="recoger">
+                {/* Separado para el RQ, pero frenado por el metrado: no sale hasta el visto. */}
+                <span className={cn('font-medium', frena ? 'text-aviso' : 'text-exito')}>
+                  {frena ? 'en Almacén, sale con el visto de Diseño' : 'para recoger en Almacén'}
+                </span>
                 {rq.estado === 'LISTO_EN_ALMACEN' && rq.listo_en_almacen_en && (
                   <span className="text-texto-suave"> desde {fechaHora(rq.listo_en_almacen_en)}</span>
                 )}
@@ -698,7 +701,10 @@ function FrenoDelMetrado({
               exceso: m.exceso,
               planos: m.planos,
               sustento: m.sustento,
-              rechazo: m.estado === 'RECHAZADO' ? (m.nota_decision ?? 'sin nota') : null,
+              espera: m.estado === 'POR_AUTORIZAR',
+              // El rechazo sigue siendo el último sustento aunque después haya
+              // cambiado el código: el texto rechazado no se ofrece otra vez.
+              rechazo: m.decision === 'RECHAZADO' ? (m.nota_decision ?? 'sin nota') : null,
             }
           })}
         />
@@ -713,6 +719,9 @@ function FrenoDelMetrado({
  */
 function MetradoDeLaLinea({ metrado: m, unidad }: { metrado: MetradoDelInsumo; unidad: string }) {
   const e = ESTADO_METRADO[m.estado]
+  // Sin sustento con uno ya escrito: el código del RQ, la cantidad o el material
+  // cambiaron después, y lo escrito y el visto de Diseño eran para lo de antes.
+  const anterior = m.estado === 'SIN_SUSTENTO'
   return (
     <div className="mt-1 space-y-0.5 text-xs" data-metrado={m.estado}>
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -724,14 +733,14 @@ function MetradoDeLaLinea({ metrado: m, unidad }: { metrado: MetradoDelInsumo; u
       {pideSustento(m.estado) || m.estado === 'AUTORIZADO'
         ? m.sustento && (
             <p className="break-words text-texto-suave">
-              <span className="font-medium text-texto">Sustento:</span> {m.sustento}
+              <span className="font-medium text-texto">{anterior ? 'Sustento anterior, ya no vale:' : 'Sustento:'}</span> {m.sustento}
               {m.sustentado_por && <span className="text-texto-tenue"> · {m.sustentado_por}</span>}
             </p>
           )
         : null}
       {m.decision && m.nota_decision && (
         <p className={cn('break-words', m.decision === 'RECHAZADO' ? 'text-peligro' : 'text-texto-suave')}>
-          <span className="font-medium">Diseño:</span> {m.nota_decision}
+          <span className="font-medium">{anterior ? 'Diseño, antes del cambio:' : 'Diseño:'}</span> {m.nota_decision}
           {m.decidido_por && <span className="text-texto-tenue"> · {m.decidido_por}</span>}
         </p>
       )}
