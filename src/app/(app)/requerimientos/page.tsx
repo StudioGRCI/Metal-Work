@@ -327,7 +327,7 @@ function listaVacia({
   if (plazo) {
     // Quita solo este filtro: los demás (el tipo, el área, el código) siguen puestos.
     return {
-      titulo: plazo === 'vencidos' ? 'Ninguno vencido sin atender' : 'Ninguno se necesita esta semana',
+      titulo: plazo === 'vencidos' ? 'Ninguno vencido sin entregar' : 'Ninguno se necesita esta semana',
       descripcion:
         plazo === 'vencidos'
           ? `Ningún requerimiento en camino${deSuArea ? ' de tu área' : ''} tiene su fecha vencida.`

@@ -116,7 +116,7 @@ const SELECT_RQ =
 /**
  * Cuántos RQ en camino (por entregar) se necesitan entre esas fechas, con los
  * mismos filtros de la lista: las cifras de «Se necesita esta semana» y
- * «Vencido sin atender». Las cuenta la base, sin el tope de la lista.
+ * «Vencido sin entregar». Las cuenta la base, sin el tope de la lista.
  */
 export async function contarRequerimientosAbiertos(opciones: {
   tipo?: 'OPERACION' | 'ADMINISTRACION'
@@ -170,7 +170,7 @@ export async function cargarRequerimientos(
   if (opciones.codigo) consulta = consulta.eq('codigo_interno', opciones.codigo)
   if (opciones.necesitadoDesde) consulta = consulta.gte('fecha_requerida', opciones.necesitadoDesde)
   if (opciones.necesitadoHasta) consulta = consulta.lte('fecha_requerida', opciones.necesitadoHasta)
-  // Por fecha, el más vencido primero: es lo que se mira con «Vencido sin atender».
+  // Por fecha, el más vencido primero: es lo que se mira con «Vencido sin entregar».
   const { data, error } = await (opciones.necesitadoHasta
     ? consulta.order('fecha_requerida', { ascending: true }).order('creado_en', { ascending: true })
     : consulta.order('creado_en', { ascending: false })

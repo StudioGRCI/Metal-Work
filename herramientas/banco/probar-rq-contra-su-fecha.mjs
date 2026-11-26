@@ -13,7 +13,7 @@
  *      recepción, con cuánto entró de cada insumo, y lo ve en /avisos.
  *   3. Requerimientos ve en cada RQ cuánto le falta o cuánto lleva vencido, y en
  *      el vencido qué insumos lo tienen así. Las pastillas «Se necesita esta
- *      semana» y «Vencido sin atender» dejan solo los que cumplen, con su cifra.
+ *      semana» y «Vencido sin entregar» dejan solo los que cumplen, con su cifra.
  *      El supervisor de Maestranza ve lo mismo en los de su área.
  *   4. Portería no entra a Requerimientos.
  *   5. En el teléfono (390) nada se sale. Capturas en 390 y 1440.
@@ -237,7 +237,7 @@ const tarjetas = (pagina) =>
   // Las pastillas: con su cifra, y cada una deja solo lo suyo.
   const domingo = (7 - new Date(`${hoy}T12:00:00Z`).getUTCDay()) % 7
   for (const [valor, nombre, cumple] of [
-    ['vencidos', 'Vencido sin atender', (p) => p !== null && p < 0],
+    ['vencidos', 'Vencido sin entregar', (p) => p !== null && p < 0],
     ['semana', 'Se necesita esta semana', (p) => p !== null && p >= 0 && p <= domingo],
   ]) {
     const esperados = todas.filter((t) => cumple(t.plazo)).map((t) => t.numero).sort()

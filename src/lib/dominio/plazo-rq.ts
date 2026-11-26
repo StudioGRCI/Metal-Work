@@ -23,7 +23,7 @@ export function plazoDelRq(estado: string, dias: number | null): number | null {
   return dias !== null && (ESTADOS_CON_ALGO_POR_ENTREGAR as readonly string[]).includes(estado) ? dias : null
 }
 
-/** «Vencido sin atender»: la fecha pasó y todavía falta entregar algo. */
+/** «Vencido sin entregar»: la fecha pasó y todavía falta entregar algo. */
 export const estaVencido = (plazo: number | null) => plazo !== null && plazo < 0
 
 /**
@@ -46,7 +46,7 @@ export function seNecesitaEstaSemana(plazo: number | null, hoy: string): boolean
 /** Los filtros de la lista por la fecha en que se necesita (`?plazo=`). */
 export const FILTROS_DE_PLAZO = {
   semana: 'Se necesita esta semana',
-  vencidos: 'Vencido sin atender',
+  vencidos: 'Vencido sin entregar',
 } as const
 export type FiltroDePlazo = keyof typeof FILTROS_DE_PLAZO
 
