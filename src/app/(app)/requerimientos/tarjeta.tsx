@@ -4,11 +4,13 @@ import { ChevronDown, ClipboardList, PackageCheck, Truck, Workflow } from 'lucid
 import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
 import { Insignia, Punto, type Tono } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
+import { Recorrido } from '@/components/ui/recorrido'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import type { CorreccionVista } from '@/lib/datos/correcciones'
 import type { MetradoDelInsumo } from '@/lib/datos/metrado-rq'
 import type { LineaRequerimiento, MaterialParaRequerimiento, RequerimientoListado } from '@/lib/datos/requerimientos'
 import type { CodigoParaElegir } from '@/lib/dominio/codigos-internos'
+import type { PasoDescrito } from '@/lib/dominio/recorrido'
 import { cuentaDelMetrado, ESTADO_METRADO, FRENO_DEL_RQ, frenaElRq, frenoDelRq, listaDeItems, pideSustento } from '@/lib/dominio/metrado-rq'
 import {
   COMPRA_CORTA,
@@ -234,6 +236,7 @@ export function TarjetaRequerimiento({
   codigos,
   correcciones,
   metrado,
+  recorrido,
 }: {
   rq: RequerimientoListado
   insumosAbiertos: boolean
@@ -246,6 +249,8 @@ export function TarjetaRequerimiento({
   correcciones: CorreccionVista[] | undefined
   /** El metrado de cada insumo, por su id; `null` si no se pudo leer. */
   metrado: Map<string, MetradoDelInsumo> | null
+  /** Por dónde pasó, quién lo tiene y hace cuántos días; `null` si no se pudo leer. */
+  recorrido: PasoDescrito[] | null
 }) {
   // En compra pero con todo ya en almacén, la insignia no dice «En compra»: lo dicen la barra y los pasos.
   // Por atender y frenado por el metrado: la insignia y el primer paso dicen quién lo tiene, no «Almacén revisa».
@@ -313,6 +318,9 @@ export function TarjetaRequerimiento({
       {metrado && <FrenoDelMetrado rq={rq} metrado={metrado} sustenta={anula} />}
 
       <InsumosConPartes rq={rq} abierto={insumosAbiertos} metrado={metrado} />
+
+      {/* Para consultar: quién hizo cada paso, quién lo tiene ahora y hace cuántos días. */}
+      <Recorrido pasos={recorrido} className="border-t border-borde" />
 
       {(rq.nota_almacen || rq.entregado_en || (correcciones && correcciones.length > 0)) && (
         <div className="space-y-0.5 border-t border-borde bg-superficie-2 px-4 py-2 text-xs text-texto-suave">

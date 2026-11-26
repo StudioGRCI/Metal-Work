@@ -6,7 +6,9 @@ import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { correccionesDe } from '@/lib/datos/correcciones'
 import { metradoDeRequerimientos } from '@/lib/datos/metrado-rq'
+import { recorridoDeRequerimientos } from '@/lib/datos/recorrido'
 import { esperaSuSustento } from '@/lib/dominio/metrado-rq'
+import { describirRecorridoDelRequerimiento } from '@/lib/dominio/recorrido'
 import { cargarRequerimientos, catalogosDelRequerimiento } from '@/lib/datos/requerimientos'
 import { TIPO_REQUERIMIENTO, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -66,12 +68,17 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
   // cifra verde de arriba. Las cifras siguen contando todos.
   const soloRecoger = !soloUno && params.ver === 'recoger'
   const recogen = soloRecoger ? requerimientos.filter(tieneParaRecoger) : requerimientos
-  const [correcciones, metrado] = await Promise.all([
+  const [correcciones, metrado, recorridos] = await Promise.all([
     correccionesDe('REQUERIMIENTO', recogen.map((r) => r.id)),
     // De todos, no solo de los mostrados: las cifras de arriba y «esperan tu sustento» los cuentan.
     // Sin el metrado, la tarjeta sigue: solo no dice qué insumo se pasa, y arriba se avisa.
     metradoDeRequerimientos(requerimientos.map((r) => r.id)).catch((e: unknown) => {
       console.error('Requerimientos: no se pudo leer el metrado de Diseño.', e)
+      return null
+    }),
+    // Sin el recorrido, la tarjeta sigue con todo lo demás y lo dice en su lugar.
+    recorridoDeRequerimientos(recogen.map((r) => r.id)).catch((e: unknown) => {
+      console.error('Requerimientos: no se pudo leer el recorrido.', e)
       return null
     }),
   ])
@@ -225,6 +232,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
               codigos={catalogos?.codigos ?? null}
               correcciones={correcciones.get(r.id)}
               metrado={metrado}
+              recorrido={recorridos ? describirRecorridoDelRequerimiento(recorridos.get(r.id) ?? []) : null}
             />
           ))}
         </div>
