@@ -35,7 +35,7 @@ const CAPTURAS = process.env.CAPTURAS ?? '/tmp/banco-capturas'
 const PUESTOS = [
   'gerencia', 'gerencia.comercial', 'gerencia.produccion', 'administracion', 'almacen', 'logistica', 'mantenimiento',
   'conductor', 'contabilidad', 'diseno', 'colaborador', 'porteria', 'rrhh', 'requerimientos',
-  'sup.prd', 'sup.mtz', 'sup.acb', 'tesoreria', 'ventas',
+  'sup.prd', 'sup.mtz', 'sup.acb', 'tesoreria', 'tramitador', 'ventas',
 ]
 if (!CLAVE) {
   console.error('Falta BANCO_CLAVE.')

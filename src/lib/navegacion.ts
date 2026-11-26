@@ -15,6 +15,7 @@ import {
   ClipboardList,
   Clock,
   ClockAlert,
+  Cog,
   Contact,
   Coins,
   CreditCard,
@@ -54,6 +55,7 @@ import {
   Settings,
   ShieldAlert,
   ShieldCheck,
+  Stamp,
   Tag,
   Timer,
   Truck,
@@ -580,6 +582,18 @@ export const NAVEGACION = [
         descripcion: 'Trabajos encargados a terceros por código interno, con sus recibos por honorarios y su pago',
         disponible: true,
       },
+      // Los trámites (plan «El puesto de Tramitador», entrega 1, migración
+      // 20261126997100): el Tramitador, del área de Administración, los
+      // registra y los lleva; Gerencia y Administración los consultan, Ventas
+      // solo los de una unidad, y Gerencia aprueba la anulación.
+      {
+        titulo: 'Trámites',
+        ruta: '/tramites',
+        icono: Stamp,
+        permiso: ['tramites.gestionar', 'tramites.ver', 'tramites.ver_de_unidades', 'tramites.aprobar_anulacion'],
+        descripcion: 'Los trámites de las unidades y de la empresa, con su número TR, su plazo y en qué van',
+        disponible: true,
+      },
     ],
   },
   // La factura de venta cuelga del código interno (migración 20261015124000):
@@ -719,6 +733,18 @@ export const NAVEGACION = [
   {
     titulo: 'Mantenimiento',
     items: [
+      // El mantenimiento de las unidades de los clientes (plan «Las demás
+      // áreas», A.3): las OT de mantenimiento, sin montos, para el puesto que
+      // hace el trabajo. Gerencia las consulta en Órdenes de trabajo.
+      {
+        titulo: 'OT de mantenimiento',
+        ruta: '/mantenimiento',
+        // No la llave (Órdenes de servicio) ni el taladro (Equipos).
+        icono: Cog,
+        permiso: 'mantenimiento.ots',
+        descripcion: 'Las órdenes de mantenimiento de las unidades de los clientes: qué hay que hacer, su RQ y su reporte',
+        disponible: true,
+      },
       {
         titulo: 'Equipos',
         ruta: '/equipos',
@@ -953,7 +979,9 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
         consulta: true,
         rutas: ['/compras/ordenes', '/compras/servicios', '/compras/gestion', '/proveedores', '/compras/valorizacion'],
       },
-      { titulo: 'Administración', consulta: true, rutas: ['/subcontratos'] },
+      // Los trámites (plan «El puesto de Tramitador»), en consulta: aprueba su
+      // anulación, y por eso le cuentan como suyos (`alInicio`).
+      { titulo: 'Administración', consulta: true, rutas: ['/subcontratos', '/tramites'] },
       {
         titulo: 'Finanzas',
         consulta: true,
@@ -991,7 +1019,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     // «Por decidir» en lugar de «Aprobar»: lo eligió DKS el 2026-11-26 (plan 12, entrega 12.1).
     telefono: ['/codigos-internos', '/cotizaciones/pdf', '/por-decidir', '/reportes-diarios'],
     // Lo que consultaba desde su menú antes del 2026-11-25 sigue en su inicio.
-    alInicio: ['/rrhh/tiempos-de-entrega', '/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales'],
+    alInicio: ['/rrhh/tiempos-de-entrega', '/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales', '/tramites'],
   },
   // Cerrado desde #28, como lo estuvo Gerencia hasta el 2026-11-25.
   // Primero Adquisiciones y después la caja diaria, con la que abre y cierra
@@ -1111,7 +1139,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
         pliegue: 'plegado',
         rutas: ['/requerimientos', '/requerimientos/atencion', '/compras/ordenes', '/almacen/stock'],
       },
-      { titulo: 'Consultas', rutas: ['/diseno/evaluaciones', '/rrhh/tardanzas', '/rrhh/observaciones', '/vehiculos', '/clientes'] },
+      // Al final, los trámites que lleva el Tramitador, de su misma área: los consulta todos, sin registrar.
+      { titulo: 'Consultas', rutas: ['/diseno/evaluaciones', '/rrhh/tardanzas', '/rrhh/observaciones', '/vehiculos', '/clientes', '/tramites'] },
     ],
     telefono: ['/cotizaciones/pdf', '/ordenes', '/subcontratos', '/requerimientos'],
   },
@@ -1143,9 +1172,16 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // El puesto de Mantenimiento (Plan 16): lleva el padrón de equipos de la
   // planta. Las averías y el mantenimiento de las unidades de los clientes se
   // suman a este mismo menú en sus entregas, sin reemplazar este grupo.
+  // Desde A.3 (2026-11-26), arriba, el mantenimiento de las unidades de los
+  // clientes: sus OT, su reporte diario y sus requerimientos (pide desde la
+  // tarjeta de cada OT; la lista dice cuál está listo para recoger).
   MANTENIMIENTO: {
-    grupos: [{ titulo: 'Mantenimiento', rutas: ['/averias', '/equipos'] }],
-    telefono: ['/averias', '/equipos', '/'],
+    grupos: [
+      { titulo: 'Unidades de clientes', rutas: ['/mantenimiento', '/reportes-diarios', '/requerimientos'] },
+      { titulo: 'Mantenimiento', rutas: ['/averias', '/equipos'] },
+    ],
+    // Con cuatro pestañas el Dashboard queda en «Más».
+    telefono: ['/mantenimiento', '/reportes-diarios', '/averias', '/equipos'],
   },
   // Sube su reporte diario, que es su trabajo de cada día. Desde el 2026-10-15,
   // los planos que Diseño carga para su área y las etapas que hace su área van
@@ -1184,9 +1220,11 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     ],
     telefono: ['/seguimiento', '/requerimientos', '/almacen/kardex', '/'],
   },
-  // Al final, el reclamo del cliente que vuelve por garantía, que registra (A.2).
+  // Al final, el reclamo del cliente que vuelve por garantía, que registra (A.2),
+  // y los trámites de las unidades de los clientes, que consulta para decirle
+  // al cliente cómo va su tarjeta y sus placas (plan «El puesto de Tramitador»).
   VENDEDOR: {
-    grupos: [{ titulo: 'Ventas', rutas: ['/cotizaciones/pdf', '/clientes', '/unidades', '/carrocerias', '/garantias'] }],
+    grupos: [{ titulo: 'Ventas', rutas: ['/cotizaciones/pdf', '/clientes', '/unidades', '/carrocerias', '/garantias', '/tramites'] }],
     telefono: ['/cotizaciones/pdf', '/clientes', '/unidades', '/'],
   },
   // Desde el 2026-11-25 (migración 20261125200000): sigue el trabajo del Agente
@@ -1195,7 +1233,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // No aprueba: eso sigue siendo de Gerencia General.
   GERENTE_COMERCIAL: {
     // Registra también el reclamo de garantía, como Ventas (A.2, aprobado el 2026-11-26).
-    grupos: [{ titulo: 'Ventas', rutas: ['/cotizaciones/pdf', '/clientes', '/unidades', '/ordenes', '/garantias'] }],
+    // Y consulta, como Ventas, los trámites de las unidades de los clientes.
+    grupos: [{ titulo: 'Ventas', rutas: ['/cotizaciones/pdf', '/clientes', '/unidades', '/ordenes', '/garantias', '/tramites'] }],
     telefono: ['/cotizaciones/pdf', '/clientes', '/ordenes', '/'],
   },
   // Desde el 2026-11-25 (migración 20261125200000): valida el avance. Arriba lo
@@ -1224,6 +1263,14 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
     grupos: [{ titulo: 'Consultas', consulta: true, rutas: ['/seguimiento', '/ordenes'] }],
     // Anota la causa en el teléfono: los reclamos, en su barra (A.2).
     telefono: ['/calidad', '/garantias', '/seguimiento', '/'],
+  },
+  // El Tramitador (plan «El puesto de Tramitador», entrega 1): su única
+  // pantalla es la de los trámites que registra y lleva. Va arriba, junto al
+  // Dashboard: un grupo «Trámites» con una sola entrada «Trámites» repetía el nombre.
+  TRAMITADOR: {
+    principal: ['/tramites'],
+    grupos: [],
+    telefono: ['/tramites', '/'],
   },
 }
 // El líder de Diseño hace el trabajo de Diseño y además revisa el de su equipo
@@ -1444,9 +1491,11 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/almacen/reposicion', corto: 'Reposición' },
   { ruta: '/almacen/compras', corto: 'Control' },
   { ruta: '/equipos', corto: 'Equipos' },
+  { ruta: '/mantenimiento', corto: 'OT' },
   // Al final: solo el nombre corto. Antes quitaba una de las cuatro pestañas a
   // los puestos sin menú propio (Operario, Calidad, Costos…).
   { ruta: '/averias', corto: 'Averías' },
   { ruta: '/calidad', corto: 'Calidad' },
   { ruta: '/garantias', corto: 'Garantías' },
+  { ruta: '/tramites', corto: 'Trámites' },
 ]

@@ -218,7 +218,7 @@ function FilaServicio({
         {s.motivo_rechazo && <p className="mt-1 text-xs text-peligro">Rechazada: {s.motivo_rechazo}</p>}
         {s.motivo_anulacion && <p className="mt-1 text-xs text-peligro">Anulada: {s.motivo_anulacion}</p>}
         {s.observacion_conformidad && <p className="mt-1 text-xs text-texto-suave">Conformidad: {s.observacion_conformidad}</p>}
-        <ListaDocumentosServicio documentos={s.documentos} anula={adjunta && vigente} />
+        <ListaDocumentosServicio documentos={s.documentos} anula={adjunta && vigente} enOtraMoneda={s.moneda !== 'PEN'} />
         <p className="mt-1 text-xs text-texto-suave xl:hidden">
           <span className="tabular font-medium text-texto" data-codigo>
             {s.codigo_interno ?? 'Sin código interno'}
@@ -271,7 +271,7 @@ function FilaServicio({
               anular={false}
             />
           )}
-          {adjunta && vigente && <AdjuntarDocumentoServicio ordenServicioId={s.id} numero={s.numero} />}
+          {adjunta && vigente && <AdjuntarDocumentoServicio ordenServicioId={s.id} numero={s.numero} enOtraMoneda={s.moneda !== 'PEN'} />}
           {corrigeDetraccion && vigente && (
             <CorregirServicio
               id={s.id}

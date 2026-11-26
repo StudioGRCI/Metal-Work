@@ -652,7 +652,7 @@ export function FormularioReporteDiario({
           </h2>
           {sinPersonal ? (
             <p role="alert" className="rounded-lg border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto">
-              No hay nadie de planilla de taller en Maestranza, Producción o Acabados. Sin esa lista no se pueden cargar las horas: pídele
+              No hay nadie de planilla de taller en Maestranza, Producción, Acabados o Mantenimiento. Sin esa lista no se pueden cargar las horas: pídele
               a Recursos Humanos que registre a tu gente en Personal, con su área y en la planilla de taller.
             </p>
           ) : porPersona.size === 0 ? (
