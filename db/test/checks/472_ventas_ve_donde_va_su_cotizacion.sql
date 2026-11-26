@@ -1,4 +1,4 @@
--- Ventas ve dónde va su cotización (migración 20261126200000, Plan 9 · 9.1).
+-- Ventas ve dónde va su cotización (migración 20261126450000, Plan 9 · 9.1).
 --
 --   1. El recorrido da los días de cada paso hecho: las fechas de Lima desde el
 --      paso hecho anterior. La subida no tiene anterior; lo que espera sigue
