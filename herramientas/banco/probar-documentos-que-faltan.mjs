@@ -340,9 +340,36 @@ async function leerExcel(buffer) {
   await anular.waitFor({ timeout: 15000 }).catch(() => {})
   comprobar((await fila(B).locator('[data-falta="GUIA"]').count()) === 0, `${B}: ya no le falta la guía`)
   comprobar((await anular.count()) === 1, `${B}: la guía cargada después de dejada se puede anular`)
+  const avisosAntes = (await consulta(`select count(*)::int as n from public.notificaciones where titulo like 'Guía de remisión anulada%'`))[0].n
   await anular.click()
-  comprobar(/al conductor no le llega aviso/.test(limpio(await pagina.getByRole('dialog').textContent())), 'y su ventana no promete avisar al conductor')
-  await pagina.keyboard.press('Escape')
+  const ventanaAnular = pagina.getByRole('dialog')
+  comprobar(/al conductor no le llega aviso/.test(limpio(await ventanaAnular.textContent())), 'y su ventana no promete avisar al conductor')
+  await ventanaAnular.getByLabel('Por qué se anula').fill('Número mal escrito en la prueba')
+  await ventanaAnular.getByRole('button', { name: 'Anular guía' }).click()
+  await ventanaAnular.waitFor({ state: 'hidden', timeout: 20000 })
+  const cargarOtra = fila(B).locator('[data-falta="GUIA"]').getByRole('button', { name: /Cargar guía/ })
+  await cargarOtra.waitFor({ timeout: 15000 }).catch(() => {})
+  const anulada = await consulta(
+    `select g.anulada_en is not null as anulada, g.motivo_anulacion from public.guias_remision_compra g join public.ordenes_compra_materiales c on c.id = g.orden_compra_id where c.numero = $1 and g.numero = $2`, [B, guiaB])
+  comprobar(anulada[0]?.anulada === true && /mal escrito/.test(anulada[0]?.motivo_anulacion ?? ''), `${B}: la guía queda anulada con su motivo, no borrada`)
+  comprobar((await cargarOtra.count()) === 1, `${B}: vuelve «Falta la guía» con su «Cargar guía»`)
+  const avisosDespues = (await consulta(`select count(*)::int as n from public.notificaciones where titulo like 'Guía de remisión anulada%'`))[0].n
+  comprobar(avisosDespues === avisosAntes, `al conductor no le llega aviso de la guía anulada de una OC ya dejada (${avisosAntes} → ${avisosDespues})`)
+
+  // El formulario del Excel lleva los filtros: un mes que no se entiende vuelve a la misma lista.
+  await pagina.evaluate(() => {
+    const campo = document.querySelector('#excel-mes')
+    campo.type = 'text'
+    campo.removeAttribute('pattern')
+    campo.value = '2026-13'
+    campo.form.submit()
+  })
+  await pagina.waitForURL(/situacion=incompletas/)
+  await pagina.locator('#excel-aviso').waitFor({ timeout: 15000 }).catch(() => {})
+  await pagina.waitForFunction(() => !new URL(location.href).searchParams.has('excel'), null, { timeout: 15000 }).catch(() => {})
+  const trasFormulario = new URL(pagina.url())
+  comprobar((await pagina.locator('#excel-aviso').count()) === 1 && trasFormulario.searchParams.get('situacion') === 'incompletas' && !trasFormulario.searchParams.has('excel'),
+    `desde el formulario, el mes que no se entiende vuelve a «Incompletas» con el aviso (${trasFormulario.pathname}${trasFormulario.search})`)
   await contexto.close()
 }
 

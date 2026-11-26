@@ -92,7 +92,6 @@ export function CargarGuia({
         <form key={id} onSubmit={alEnviar} className="space-y-4">
           <input type="hidden" name="id" value={id} />
           <input type="hidden" name="orden_compra_id" value={ordenCompraId} />
-          {dejada && <input type="hidden" name="dejada" value="1" />}
           <Campo etiqueta="N.º de guía" htmlFor={`guia-numero-${ordenCompraId}`} requerido>
             <Entrada
               id={`guia-numero-${ordenCompraId}`}
