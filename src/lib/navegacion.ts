@@ -20,6 +20,7 @@ import {
   DraftingCompass,
   Drill,
   FileArchive,
+  FileCheck2,
   FilePenLine,
   FileSpreadsheet,
   FileText,
@@ -28,6 +29,7 @@ import {
   Handshake,
   Hash,
   IdCard,
+  Inbox,
   Landmark,
   Layers,
   LayoutDashboard,
@@ -38,9 +40,11 @@ import {
   ListOrdered,
   MessageSquareWarning,
   NotebookPen,
+  NotebookText,
   Receipt,
   ReceiptText,
   Route,
+  ScanSearch,
   ScrollText,
   Settings,
   ShieldAlert,
@@ -52,8 +56,16 @@ import {
   Users,
   Wallet,
   Warehouse,
+  TriangleAlert,
   Wrench,
 } from 'lucide-react'
+
+/**
+ * Quién entra a «Por decidir» (plan 12): la Gerencia General, que revisa las
+ * cotizaciones y cierra el costeo de los códigos. El menú y la puerta de la
+ * pantalla piden lo mismo; los grupos de adentro, cada uno el suyo.
+ */
+export const PERMISOS_POR_DECIDIR = ['cotizaciones.revisar', 'codigos_internos.cerrar']
 
 export type ItemNavegacion = {
   titulo: string
@@ -137,6 +149,16 @@ export const NAVEGACION = [
         descripcion: 'Cada código con sus etapas, planos, materiales, avance y lo que lleva costado',
         disponible: true,
       },
+      // Lo que espera la decisión de Gerencia, reunido de sus pantallas (plan 12,
+      // entrega 12.1). No se aprueba ahí: cada fila salta a la suya.
+      {
+        titulo: 'Por decidir',
+        ruta: '/por-decidir',
+        icono: Inbox,
+        permiso: PERMISOS_POR_DECIDIR,
+        descripcion: 'Lo que espera tu decisión en cada pantalla, lo más antiguo primero',
+        disponible: true,
+      },
       {
         titulo: 'Órdenes de trabajo',
         ruta: '/ordenes',
@@ -205,6 +227,7 @@ export const NAVEGACION = [
         ruta: '/diseno/dxf',
         icono: FileArchive,
         permiso: 'diseno.codigos',
+        lectura: 'diseno.ver_dxf',
         descripcion: 'Los DXF de cada unidad para el corte, para Maestranza y Producción',
         disponible: true,
       },
@@ -213,8 +236,9 @@ export const NAVEGACION = [
       {
         titulo: 'Insumos por autorizar',
         ruta: '/requerimientos/metrado',
-        icono: BadgeCheck,
+        icono: FileCheck2,
         permiso: 'requerimientos.autorizar_metrado',
+        lectura: 'requerimientos.ver_metrado',
         descripcion: 'Lo que un requerimiento pide de más sobre el metrado del código, con el sustento de quien lo pidió',
         disponible: true,
       },
@@ -225,16 +249,18 @@ export const NAVEGACION = [
         ruta: '/materiales',
         icono: Boxes,
         permiso: 'diseno.planos',
+        lectura: 'diseno.ver_materiales',
         descripcion: 'El catálogo del que Diseño arma el desglose',
         disponible: true,
       },
       {
         titulo: 'Informe semanal de Diseño',
         ruta: '/diseno/informe-semanal',
-        icono: FileText,
+        icono: NotebookText,
         // Lo llena el colaborador y lo aprueba Diseño; ahí termina (migración
         // 20261001213000). Administración ya no lo recibe.
         permiso: ['diseno.planos', 'diseno.subir_pdf', 'supervision.general'],
+        lectura: 'diseno.ver_informes',
         descripcion: 'Las actividades del día de los colaboradores, en el Word del formato',
         disponible: true,
       },
@@ -395,14 +421,16 @@ export const NAVEGACION = [
         disponible: true,
       },
       // Logística decide qué OC recoge el conductor, en qué orden y con qué
-      // peso. Es de Logística y del conductor, nada más (DKS, 2026-10-20):
-      // Contabilidad carga la guía de remisión desde Adquisiciones, y quien
-      // solo emite compras —Gerencia, Administración— no la abre.
+      // peso. Es de Logística y del conductor (DKS, 2026-10-20): Contabilidad
+      // carga la guía de remisión desde Adquisiciones, y quien solo emite
+      // compras —Administración— no la abre. Gerencia la consulta sin programar
+      // desde el 2026-11-26 (`compras.ver_gestion`).
       {
         titulo: 'Gestión de compras',
         ruta: '/compras/gestion',
         icono: Route,
         permiso: 'compras.programar_recojo',
+        lectura: 'compras.ver_gestion',
         descripcion: 'Qué órdenes de compra recoge el conductor, en qué orden y con qué peso',
         disponible: true,
       },
@@ -418,13 +446,15 @@ export const NAVEGACION = [
       },
       // Lo ven también Almacén, Costos y Supervisión (`proveedores.ver`), pero
       // en el menú solo de quienes llevan el padrón: Logística y Contabilidad.
-      // Gerencia también lo edita y, desde el 2026-11-25, lo tiene en su menú
-      // entre las pantallas de Logística que consulta.
+      // Gerencia lo tiene en su menú desde el 2026-11-25, entre las pantallas de
+      // Logística que consulta, y desde el 2026-11-26 sin editarlo (migración
+      // 20261126310000).
       {
         titulo: 'Proveedores',
         ruta: '/proveedores',
         icono: Building2,
         permiso: 'proveedores.editar',
+        lectura: 'proveedores.ver',
         descripcion: 'El padrón del que se elige en la orden de compra',
         disponible: true,
       },
@@ -501,7 +531,7 @@ export const NAVEGACION = [
       {
         titulo: 'Seguimiento por código',
         ruta: '/seguimiento',
-        icono: Hash,
+        icono: ScanSearch,
         permiso: 'codigos_internos.seguimiento',
         descripcion: 'Cada unidad por su código interno: etapas con su avance, materiales contra lo pedido y lo salido, y planos de cada área',
         disponible: true,
@@ -564,11 +594,12 @@ export const NAVEGACION = [
         ruta: '/tesoreria/caja-diaria',
         icono: Landmark,
         permiso: 'tesoreria.caja',
+        lectura: 'tesoreria.ver_caja',
         descripcion: 'El saldo de cada cuenta día por día: ingresos, egresos y el cierre contra el estado de cuenta',
         disponible: true,
       },
       { titulo: 'Gastos del mes', ruta: '/costos/gastos-generales', icono: Wallet, permiso: ['costos.gastos_generales', 'costos.ver'], descripcion: 'Servicios del local y gastos de operación', disponible: true },
-      { titulo: 'Tipo de cambio', ruta: '/tesoreria/tipo-de-cambio', icono: ArrowLeftRight, permiso: 'tesoreria.tipo_cambio', descripcion: 'El cambio del dólar de cada día, para el costo en soles', disponible: true },
+      { titulo: 'Tipo de cambio', ruta: '/tesoreria/tipo-de-cambio', icono: ArrowLeftRight, permiso: 'tesoreria.tipo_cambio', lectura: 'tesoreria.ver_tipo_cambio', descripcion: 'El cambio del dólar de cada día, para el costo en soles', disponible: true },
     ],
   },
   // Recursos Humanos lleva la ficha del personal y su horario; la portería, con
@@ -627,6 +658,17 @@ export const NAVEGACION = [
         descripcion: 'El padrón de máquinas y herramientas de la planta',
         disponible: true,
       },
+      // Los reportes de avería (Plan 16.2): Mantenimiento los atiende y Gerencia
+      // los consulta, todos. La misma pantalla está otra vez en «Reportar», sin
+      // permiso: ahí reporta cualquier puesto y ve los suyos y los de su área.
+      {
+        titulo: 'Averías',
+        ruta: '/averias',
+        icono: TriangleAlert,
+        permiso: ['averias.atender', 'averias.ver'],
+        descripcion: 'Cada avería o posible avería reportada, con su número y cómo va',
+        disponible: true,
+      },
     ],
   },
   {
@@ -651,7 +693,8 @@ export const NAVEGACION = [
     ],
   },
   // Lo que reporta cualquier puesto, sin permiso: va al final del menú de todos
-  // (`RUTAS_PARA_TODOS`). Reportar un incidente no puede depender de un permiso.
+  // (`RUTAS_PARA_TODOS`). Reportar un incidente o una avería no puede depender
+  // de un permiso.
   {
     titulo: 'Reportar',
     items: [
@@ -660,6 +703,13 @@ export const NAVEGACION = [
         ruta: '/ssoma',
         icono: ShieldAlert,
         descripcion: 'Un accidente, un incidente o algo inseguro que viste: le llega a SSOMA al instante',
+        disponible: true,
+      },
+      {
+        titulo: 'Reportar avería',
+        ruta: '/averias',
+        icono: TriangleAlert,
+        descripcion: 'Una máquina o herramienta que falla o está por fallar: le llega a Mantenimiento al instante',
         disponible: true,
       },
     ],
@@ -780,34 +830,49 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // leer, por área y en el orden del circuito (StudioGRCI: «en gerencia
   // general verdad quieren ver todo todas las pantallas aunque sean
   // diferentes en slide bar»). Las consulta
-  // sin registrar: Gerencia consulta y aprueba (migración 20261020206000); la
-  // única que todavía le deja registrar es Proveedores (`proveedores.editar`). Lo
-  // de las áreas no es su trabajo (`consulta`): no le cuenta pendientes, cifras
-  // ni el bloque de OT, y no va en «Tus módulos», salvo las cinco que ya
-  // consultaba desde su menú antes (`alInicio`). Las 25 pantallas que su
-  // permiso no abre no están aquí: las que se le abran en lectura, con su
-  // migración, se suman a su área. No ve los datos reservados del personal
-  // (planillas, costeo, pagos de la oficina, DNI), la evaluación de desempeño
-  // ni la administración del sistema.
+  // sin registrar: Gerencia consulta y aprueba (migraciones 20261020206000 y
+  // 20261126310000, que le abrió once más en lectura y le quitó editar
+  // proveedores). Lo de las áreas no es su trabajo (`consulta`): no le cuenta
+  // pendientes, cifras ni el bloque de OT, y no va en «Tus módulos», salvo las
+  // cinco que ya consultaba desde su menú antes (`alInicio`). No ve los datos
+  // reservados del personal (planillas, costeo, pagos de la oficina, DNI), la
+  // evaluación de desempeño ni la administración del sistema, ni las pantallas
+  // de trabajo de un solo puesto o área que repiten lo que ya ve de todas
+  // (los planos, materiales y etapas de Diseño, Planos y etapas, Subcontratos
+  // del área, RQ por unidad y Recojos).
   GERENTE: {
     principal: ['/codigos-internos'],
     grupos: [
       {
         titulo: 'Por aprobar',
         pliegue: 'fijo',
-        rutas: ['/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'],
+        rutas: ['/por-decidir', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios', '/avance/trabajos'],
       },
-      { titulo: 'Ventas', consulta: true, rutas: ['/clientes', '/unidades'] },
-      { titulo: 'Requerimientos', consulta: true, rutas: ['/requerimientos', '/vehiculos'] },
+      { titulo: 'Ventas', consulta: true, rutas: ['/clientes', '/unidades', '/carrocerias'] },
+      {
+        titulo: 'Diseño e Ingeniería',
+        consulta: true,
+        rutas: ['/seguimiento', '/requerimientos/metrado', '/materiales', '/diseno/informe-semanal', '/diseno/dxf'],
+      },
+      { titulo: 'Requerimientos', consulta: true, rutas: ['/requerimientos', '/vehiculos', '/requerimientos/gasto-por-codigo'] },
       {
         titulo: 'Almacén',
         consulta: true,
-        rutas: ['/requerimientos/atencion', '/almacen/kardex', '/almacen/stock', '/almacen/reposicion', '/equipos'],
+        rutas: [
+          '/requerimientos/atencion',
+          '/almacen/kardex',
+          '/almacen/stock',
+          '/seguimiento?vista=materiales',
+          '/almacen/reposicion',
+          '/equipos',
+        ],
       },
+      // Las averías que reporta la gente (Plan 16.2): las consulta, sin anular.
+      { titulo: 'Mantenimiento', consulta: true, rutas: ['/averias'] },
       {
         titulo: 'Logística',
         consulta: true,
-        rutas: ['/compras/ordenes', '/compras/servicios', '/proveedores', '/compras/valorizacion'],
+        rutas: ['/compras/ordenes', '/compras/servicios', '/compras/gestion', '/proveedores', '/compras/valorizacion'],
       },
       { titulo: 'Administración', consulta: true, rutas: ['/ordenes', '/subcontratos'] },
       {
@@ -820,6 +885,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
           '/tesoreria/por-pagar',
           '/tesoreria/pagos-de-servicio',
           '/tesoreria/recibos-por-honorarios',
+          '/tesoreria/caja-diaria',
+          '/tesoreria/tipo-de-cambio',
           '/costos/gastos-generales',
         ],
       },
@@ -840,7 +907,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       // Los reportes de seguridad, en consulta y sin anular (Plan 15).
       { titulo: 'SSOMA', consulta: true, rutas: ['/ssoma'] },
     ],
-    telefono: ['/codigos-internos', '/cotizaciones/pdf', '/compras/aprobacion', '/reportes-diarios'],
+    // «Por decidir» en lugar de «Aprobar»: lo eligió DKS el 2026-11-26 (plan 12, entrega 12.1).
+    telefono: ['/codigos-internos', '/cotizaciones/pdf', '/por-decidir', '/reportes-diarios'],
     // Lo que consultaba desde su menú antes del 2026-11-25 sigue en su inicio.
     alInicio: ['/rrhh/tiempos-de-entrega', '/adquisiciones', '/tesoreria/por-cobrar', '/tesoreria/por-pagar', '/costos/gastos-generales'],
   },
@@ -984,8 +1052,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // planta. Las averías y el mantenimiento de las unidades de los clientes se
   // suman a este mismo menú en sus entregas, sin reemplazar este grupo.
   MANTENIMIENTO: {
-    grupos: [{ titulo: 'Mantenimiento', rutas: ['/equipos'] }],
-    telefono: ['/equipos', '/'],
+    grupos: [{ titulo: 'Mantenimiento', rutas: ['/averias', '/equipos'] }],
+    telefono: ['/averias', '/equipos', '/'],
   },
   // Sube su reporte diario, que es su trabajo de cada día. Desde el 2026-10-15,
   // los planos que Diseño carga para su área y las etapas que hace su área van
@@ -1061,7 +1129,7 @@ MENU_POR_PUESTO.DISENO_LIDER = MENU_POR_PUESTO.DISENO
  * no se repite en cada entrada de `MENU_POR_PUESTO`. Una pantalla que cualquier
  * puesto usa para avisar de algo (un incidente, una avería) se suma aquí.
  */
-const RUTAS_PARA_TODOS: readonly RutaDeModulo[] = ['/ssoma']
+const RUTAS_PARA_TODOS: readonly RutaDeModulo[] = ['/ssoma', '/averias']
 
 const comoLista = (p: string | readonly string[] | undefined): readonly string[] => (p === undefined ? [] : typeof p === 'string' ? [p] : p)
 
@@ -1177,12 +1245,24 @@ export function pestanasDe(permisos: readonly string[], esAdmin: boolean, rolCod
 /**
  * Cuál de los módulos es el que se está mirando: gana el de ruta más larga que
  * encaje y comparando por segmento, así `/cotizaciones-viejas` no encaja en
- * `/cotizaciones`.
+ * `/cotizaciones`. Un módulo con búsqueda (`/seguimiento?vista=materiales`)
+ * encaja solo si la dirección la trae, y gana al de su misma ruta sin ella:
+ * Gerencia tiene los dos y «Materiales por código» marcaba «Seguimiento por
+ * código».
  */
-export function rutaActiva(ruta: string, rutas: string[]) {
-  const encaja = (base: string) =>
-    base === '/' ? ruta === '/' : ruta === base || ruta.startsWith(`${base}/`)
-  return rutas.filter(encaja).sort((a, b) => b.length - a.length)[0]
+export function rutaActiva(ruta: string, rutas: string[], busqueda?: { get(nombre: string): string | null }) {
+  const partes = (r: string) => {
+    const [base, consulta = ''] = r.split('?')
+    return { base, consulta: new URLSearchParams(consulta) }
+  }
+  const encaja = (r: string) => {
+    const { base, consulta } = partes(r)
+    const porRuta = base === '/' ? ruta === '/' : ruta === base || ruta.startsWith(`${base}/`)
+    return porRuta && [...consulta].every(([k, v]) => busqueda?.get(k) === v)
+  }
+  return rutas
+    .filter(encaja)
+    .sort((a, b) => partes(b).base.length - partes(a).base.length || b.length - a.length)[0]
 }
 
 /**
@@ -1215,6 +1295,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/recojos', corto: 'Recojos' },
   { ruta: '/compras/ordenes', corto: 'OC' },
   { ruta: '/compras/aprobacion', corto: 'Aprobar' },
+  { ruta: '/por-decidir', corto: 'Por decidir' },
   { ruta: '/compras/gestion', corto: 'Gestión' },
   { ruta: '/compras/servicios', corto: 'OS' },
   { ruta: '/requerimientos', corto: 'RQ' },
@@ -1253,4 +1334,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/almacen/stock', corto: 'Stock' },
   { ruta: '/almacen/reposicion', corto: 'Reposición' },
   { ruta: '/equipos', corto: 'Equipos' },
+  // Al final: solo el nombre corto. Antes quitaba una de las cuatro pestañas a
+  // los puestos sin menú propio (Operario, Calidad, Costos…).
+  { ruta: '/averias', corto: 'Averías' },
 ]
