@@ -17,7 +17,7 @@
  *      la orden de servicio conforme con su voucher. En el teléfono, sus
  *      cuatro pestañas.
  *   3. Contabilidad ya no ofrece anular la factura cobrada; Gerencia ve en la
- *      cotización la factura y su estado, y no tiene la OT en su menú.
+ *      cotización la factura y su estado, y Códigos internos en su menú.
  *   4. Supervisión General ya no ve la cotización; Diseño tampoco; Logística no
  *      entra a Facturación ni a los pagos de servicio.
  *
@@ -509,8 +509,11 @@ console.log(`     sembrado: ${COT} con la OT del código ${CODIGO}, ${COT_SIN} s
   comprobar(fila.includes(`Factura ${FACTURA}`) && fila.includes('cobro a cuenta'), 'en la cotización, Gerencia ve la factura y en qué va su cobro')
   // Gerencia ve todo por código: lo vendido junto a lo gastado, y la factura con su cobro.
   await ir(pagina, `${BASE}/codigos-internos/detalle?codigo=${encodeURIComponent(CODIGO)}`)
-  const linea = limpio(await pagina.locator('[data-facturado]').textContent().catch(() => ''))
-  comprobar(linea.includes('Facturado') && linea.includes('cobrado'), `en Códigos internos, Gerencia ve lo facturado y lo cobrado del código («${linea.slice(0, 110)}»)`)
+  // Desde la entrega 12.3, lo facturado y lo cobrado van en el recorrido de la cabecera del código.
+  const facturadoYCobrado = limpio(
+    await pagina.locator('[data-recorrido-del-codigo] [data-paso="facturado"], [data-recorrido-del-codigo] [data-paso="cobrado"]').allTextContents().then((t) => t.join(' ')).catch(() => ''),
+  )
+  comprobar(facturadoYCobrado.includes('Facturado') && facturadoYCobrado.includes('Cobrado'), `en Códigos internos, Gerencia ve lo facturado y lo cobrado del código («${facturadoYCobrado.slice(0, 110)}»)`)
   await pagina.getByRole('link', { name: 'Ver factura y cobro' }).click()
   await pagina.waitForURL((u) => u.searchParams.get('vista') === 'facturacion').catch(() => {})
   await quieta(pagina)

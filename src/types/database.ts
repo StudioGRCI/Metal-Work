@@ -823,6 +823,7 @@ export type Database = {
           motivo_anulacion: string | null
           creado_en: string
           actualizado_en: string
+          captura_ruta: string | null
         }
         Insert: {
           id?: string
@@ -840,6 +841,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          captura_ruta?: string | null
         }
         Update: {
           id?: string
@@ -857,6 +859,7 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          captura_ruta?: string | null
         }
         Relationships: [
           {
@@ -14016,6 +14019,7 @@ export type Database = {
           p_fecha: string | null
           p_saldo_banco: number | null
           p_observaciones: string | null
+          p_captura_ruta: string | null
         }
         Returns: string
       }
@@ -14626,6 +14630,40 @@ export type Database = {
           subido_en: string | null
           recibido_en: string | null
           recibido_por_area: string | null
+        }[]
+      }
+      codigo_interno_lo_vendido: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          cotizacion_id: string | null
+          numero: string | null
+          moneda: string | null
+          monto_venta: number | null
+          incluye_igv: boolean | null
+          facturas: number | null
+          facturado_en_su_moneda: number | null
+          en_otra_moneda: boolean | null
+        }[]
+      }
+      codigo_interno_recorrido: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          cotizacion_id: string | null
+          cotizacion_numero: string | null
+          cotizacion_estado: string | null
+          cotizacion_fecha: string | null
+          cotizaciones: number | null
+          ot_id: string | null
+          ot_numero: string | null
+          ot_estado: string | null
+          ot_tipo: string | null
+          ot_del_taller: boolean | null
+          ot_entregada_el: string | null
+          ordenes: number | null
         }[]
       }
       codigo_interno_reparto_a_todos: {
@@ -15369,6 +15407,22 @@ export type Database = {
           neto: number | null
           sin_reponer: number | null
           por_reponer: number | null
+        }[]
+      }
+      cumplimiento_de_proveedores: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          proveedor: string | null
+          compras: number | null
+          llegaron: number | null
+          medidas: number | null
+          a_tiempo: number | null
+          devueltas: number | null
+          atrasadas: number | null
+          sin_fecha: number | null
+          nuestras: number | null
         }[]
       }
       dar_por_terminada_la_garantia: {
@@ -16302,6 +16356,36 @@ export type Database = {
           proveedor: string | null
           peso_kg: number | null
           recojo: string | null
+        }[]
+      }
+      historia_cierres_caja: {
+        Args: {
+          p_desde: string | null
+          p_hasta: string | null
+        }
+        Returns: {
+          id: string | null
+          caja_id: string | null
+          cuenta: string | null
+          tipo: string | null
+          banco: string | null
+          moneda: string | null
+          cuenta_activa: boolean | null
+          con_captura: boolean | null
+          fecha: string | null
+          saldo_inicial: number | null
+          ingresos: number | null
+          egresos: number | null
+          saldo_final: number | null
+          saldo_banco: number | null
+          diferencia: number | null
+          observaciones: string | null
+          cerrado_por: string | null
+          cerrado_en: string | null
+          reabierto_por: string | null
+          reabierto_en: string | null
+          motivo_reapertura: string | null
+          con_captura_del_dia: boolean | null
         }[]
       }
       horas_en_texto: {
@@ -17321,6 +17405,22 @@ export type Database = {
           completa_en: string | null
           dias_atraso: number | null
           atrasada: boolean | null
+          por_llegar: Json | null
+          por_validar: boolean | null
+        }[]
+      }
+      plazos_de_compras_calculados: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          documento: string | null
+          original: string | null
+          esperada: string | null
+          vigente: boolean | null
+          llego_en: string | null
+          llego_todo_en: string | null
+          completa_en: string | null
           por_llegar: Json | null
           por_validar: boolean | null
         }[]
