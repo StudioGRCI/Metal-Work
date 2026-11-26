@@ -69,7 +69,7 @@ export function SinReporteDeHoy({
     <Tarjeta className={codigos.length > 0 ? 'mb-4 border-aviso' : 'mb-4'} data-sin-reporte={codigos.length}>
       <TarjetaCabecera
         titulo={codigos.length > 0 ? `Sin reporte de hoy (${codigos.length})` : 'Reporte de hoy'}
-        ayuda="Los códigos con una etapa de tu área en marcha, o que ya debía empezar, que todavía no tienen el reporte diario de hoy de tu área. El plazo es el del tablero de tiempos de entrega, en días hábiles. Toca el código para ver sus etapas con la fecha planeada y la real."
+        ayuda="Los códigos con una etapa de tu área en marcha, o que ya debía empezar, que todavía no tienen el reporte diario de hoy de tu área. El código cuya OT está pausada no lo pide. El plazo es el del tablero de tiempos de entrega, en días hábiles. Toca el código para ver sus etapas con la fecha planeada y la real."
       />
       {codigos.length === 0 ? (
         <TarjetaCuerpo>

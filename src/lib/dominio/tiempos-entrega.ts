@@ -79,6 +79,10 @@ export function comoTermino(finPlan: string | null, finReal: string): Def {
  * La etapa pide el reporte diario hoy: no terminó y ya empezó, o ya llegó su
  * inicio planeado o, sin él, su fecha comprometida. La que todavía no llega a
  * ninguna de las dos no pide reporte (Plan 1, entrega 1.3).
+ *
+ * La misma regla está en SQL en `fn_ot_avisa_la_pausa` (migración
+ * 20261126338000), para que el aviso de la pausa no le prometa el reporte a
+ * quien no se lo pide: si cambia aquí, cambia allá.
  */
 export function pideReporteHoy(
   e: { fin_real?: string | null; inicio_real: string | null; inicio_plan: string | null; fin_plan: string | null },

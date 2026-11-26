@@ -3922,6 +3922,172 @@ export type Database = {
           }
         ]
       }
+      garantia_reclamo_fotos: {
+        Row: {
+          id: string
+          reclamo_id: string
+          orden: number
+          ruta: string
+          mime_type: string
+          tamano_bytes: number
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          reclamo_id: string
+          orden: number
+          ruta: string
+          mime_type: string
+          tamano_bytes: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          reclamo_id?: string
+          orden?: number
+          ruta?: string
+          mime_type?: string
+          tamano_bytes?: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "garantia_reclamo_fotos_reclamo_id_fkey"
+            columns: ["reclamo_id"]
+            isOneToOne: false
+            referencedRelation: "garantia_reclamos"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      garantia_reclamos: {
+        Row: {
+          id: string
+          numero: string
+          unidad_id: string
+          cliente_id: string
+          descripcion: string
+          trae: string | null
+          contacto: string | null
+          estado: string
+          orden_id: string | null
+          ot_enlazada_por: string | null
+          ot_enlazada_en: string | null
+          no_procede_motivo: string | null
+          causa: string | null
+          causa_detalle: string | null
+          cerrado_por: string | null
+          cerrado_en: string | null
+          registrado_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          numero: string
+          unidad_id: string
+          cliente_id: string
+          descripcion: string
+          trae?: string | null
+          contacto?: string | null
+          estado?: string
+          orden_id?: string | null
+          ot_enlazada_por?: string | null
+          ot_enlazada_en?: string | null
+          no_procede_motivo?: string | null
+          causa?: string | null
+          causa_detalle?: string | null
+          cerrado_por?: string | null
+          cerrado_en?: string | null
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          numero?: string
+          unidad_id?: string
+          cliente_id?: string
+          descripcion?: string
+          trae?: string | null
+          contacto?: string | null
+          estado?: string
+          orden_id?: string | null
+          ot_enlazada_por?: string | null
+          ot_enlazada_en?: string | null
+          no_procede_motivo?: string | null
+          causa?: string | null
+          causa_detalle?: string | null
+          cerrado_por?: string | null
+          cerrado_en?: string | null
+          registrado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "garantia_reclamos_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "garantia_reclamos_cerrado_por_fkey"
+            columns: ["cerrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "garantia_reclamos_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "garantia_reclamos_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: true
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "garantia_reclamos_ot_enlazada_por_fkey"
+            columns: ["ot_enlazada_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "garantia_reclamos_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "garantia_reclamos_unidad_id_fkey"
+            columns: ["unidad_id"]
+            isOneToOne: false
+            referencedRelation: "unidades"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       gastos_generales_mes: {
         Row: {
           id: string
@@ -13839,6 +14005,14 @@ export type Database = {
         }
         Returns: boolean
       }
+      averia_que_repite: {
+        Args: {
+          p_equipo: string | null
+          p_averia: string | null
+          p_creado: string | null
+        }
+        Returns: string
+      }
       averias_a_quien_se_aviso: {
         Args: {
           p_averia: string | null
@@ -13894,6 +14068,7 @@ export type Database = {
           sigue_parado_por: string | null
           avisada: boolean | null
           equipo_estado: string | null
+          confirma: string | null
         }[]
       }
       averias_confirmar: {
@@ -13942,6 +14117,17 @@ export type Database = {
       averias_foto_anotada: {
         Args: {
           p_ruta: string | null
+        }
+        Returns: boolean
+      }
+      averias_por_confirmar: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      averias_puede_confirmar: {
+        Args: {
+          p_registrado_por: string | null
+          p_area: string | null
         }
         Returns: boolean
       }
@@ -14020,6 +14206,7 @@ export type Database = {
       averias_visibles: {
         Args: {
           p_id: string | null
+          p_equipo?: string | null
         }
         Returns: {
           id: string | null
@@ -14065,6 +14252,12 @@ export type Database = {
           rq_enlazados: number | null
           diagnostico_de: string | null
           diagnostico_en: string | null
+          puede_confirmar: boolean | null
+          reporto_activo: boolean | null
+          confirmo_en_lugar: string | null
+          devolvio_en_lugar: string | null
+          repite_a: string | null
+          confirma: string | null
         }[]
       }
       avisar_a_diseno: {
@@ -14126,6 +14319,16 @@ export type Database = {
       avisar_pago_por_confirmar: {
         Args: {
           p_compras: string[] | null
+        }
+        Returns: null
+      }
+      avisar_reembolso_a_tesoreria: {
+        Args: {
+          p_compra: string | null
+          p_nombre: string | null
+          p_vale: number | null
+          p_moneda: string | null
+          p_texto: string | null
         }
         Returns: null
       }
@@ -15366,6 +15569,12 @@ export type Database = {
           por_pagar_usd: number | null
         }[]
       }
+      codigos_pausados_de_mi_area: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          codigo: string | null
+        }[]
+      }
       completar_cuenta_acceso: {
         Args: {
           p_cuenta: string | null
@@ -15375,6 +15584,12 @@ export type Database = {
       completar_monto_pen_de_servicios: {
         Args: Record<PropertyKey, never>
         Returns: number
+      }
+      compra_con_factura_registrada: {
+        Args: {
+          p_compra: string | null
+        }
+        Returns: boolean
       }
       compra_pagada_fuera_de_la_factura: {
         Args: {
@@ -16060,6 +16275,12 @@ export type Database = {
           motivo: string | null
         }
       }
+      devolucion_reembolsada: {
+        Args: {
+          p_devolucion: string | null
+        }
+        Returns: boolean
+      }
       devoluciones_por_reponer: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -16425,6 +16646,27 @@ export type Database = {
           codigo: string | null
         }[]
       }
+      equipos_historia: {
+        Args: {
+          p_equipo: string | null
+        }
+        Returns: {
+          equipo_id: string | null
+          averias: number | null
+          averias_90: number | null
+          repetidas: number | null
+          repetidas_90: number | null
+          no_quedo_bien: number | null
+          horas_parado: number | null
+          horas_parado_90: number | null
+          abiertas: number | null
+          parado_por: string | null
+          parado_desde: string | null
+          ultima_en: string | null
+          codigo: string | null
+          descripcion: string | null
+        }[]
+      }
       es_admin: {
         Args: Record<PropertyKey, never>
         Returns: boolean
@@ -16730,6 +16972,152 @@ export type Database = {
           p_movimiento: string | null
         }
         Returns: string
+      }
+      garantias_a_quien_se_aviso: {
+        Args: {
+          p_reclamo: string | null
+        }
+        Returns: {
+          administracion: boolean | null
+          garantias: boolean | null
+          gerencia: boolean | null
+        }[]
+      }
+      garantias_anotar_causa: {
+        Args: {
+          p_reclamo: string | null
+          p_causa: string | null
+          p_detalle: string | null
+        }
+        Returns: string
+      }
+      garantias_anotar_fotos: {
+        Args: {
+          p_reclamo: string | null
+          p_fotos: Json | null
+        }
+        Returns: null
+      }
+      garantias_anular: {
+        Args: {
+          p_reclamo: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
+      garantias_avisar_la_causa: {
+        Args: {
+          p_reclamo: string | null
+        }
+        Returns: null
+      }
+      garantias_enlazar_ot: {
+        Args: {
+          p_reclamo: string | null
+          p_orden: string | null
+        }
+        Returns: {
+          reclamo: string | null
+          numero_ot: string | null
+        }[]
+      }
+      garantias_foto_anotada: {
+        Args: {
+          p_ruta: string | null
+        }
+        Returns: boolean
+      }
+      garantias_no_procede: {
+        Args: {
+          p_reclamo: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
+      garantias_ots_para_enlazar: {
+        Args: {
+          p_reclamo: string | null
+        }
+        Returns: {
+          orden: string | null
+          numero: string | null
+          estado: string | null
+          creada: string | null
+        }[]
+      }
+      garantias_reclamos_visibles: {
+        Args: {
+          p_id: string | null
+        }
+        Returns: {
+          id: string | null
+          numero: string | null
+          estado: string | null
+          situacion: string | null
+          creado_en: string | null
+          dias_en_espera: number | null
+          descripcion: string | null
+          trae: string | null
+          contacto: string | null
+          unidad_id: string | null
+          placa: string | null
+          codigo_interno: string | null
+          carroceria: string | null
+          cliente: string | null
+          orden_id: string | null
+          orden_numero: string | null
+          orden_estado: string | null
+          ot_enlazada_en: string | null
+          enlazo: string | null
+          no_procede_motivo: string | null
+          causa: string | null
+          causa_detalle: string | null
+          cerrado_en: string | null
+          cerro: string | null
+          cerro_puesto: string | null
+          registro: string | null
+          registro_puesto: string | null
+          fotos: number | null
+          anulado_en: string | null
+          anulo: string | null
+          motivo_anulacion: string | null
+          puede_enlazar: boolean | null
+          puede_no_procede: boolean | null
+          puede_causa: boolean | null
+          puede_anular: boolean | null
+          garantia_terminada_en: string | null
+          garantia_termino: string | null
+        }[]
+      }
+      garantias_registrar: {
+        Args: {
+          p_id: string | null
+          p_unidad: string | null
+          p_descripcion: string | null
+          p_trae: string | null
+          p_contacto: string | null
+          p_fotos: Json | null
+        }
+        Returns: {
+          reclamo: string | null
+          numero_reclamo: string | null
+          aviso_administracion: boolean | null
+          aviso_garantias: boolean | null
+          aviso_gerencia: boolean | null
+        }[]
+      }
+      garantias_unidades_para_elegir: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          placa: string | null
+          codigo_interno: string | null
+          carroceria: string | null
+          marca: string | null
+          cliente_id: string | null
+          cliente: string | null
+          reclamo_abierto: string | null
+        }[]
       }
       gastos_del_mes_oficina: {
         Args: {
@@ -18109,6 +18497,10 @@ export type Database = {
         Args: {
           p_area: string | null
         }
+        Returns: boolean
+      }
+      puede_ver_los_reclamos_de_garantia: {
+        Args: Record<PropertyKey, never>
         Returns: boolean
       }
       puede_ver_orden: {
@@ -20866,7 +21258,7 @@ export type Database = {
       magnitud_medida: "UNIDAD" | "MASA" | "LONGITUD" | "AREA" | "VOLUMEN"
       moneda: "PEN" | "USD"
       prioridad_ot: "BAJA" | "NORMAL" | "ALTA" | "URGENTE"
-      tipo_correlativo: "ORDEN_TRABAJO" | "REQUERIMIENTO" | "ORDEN_COMPRA" | "INGRESO_ALMACEN" | "SALIDA_ALMACEN" | "DEVOLUCION_ALMACEN" | "AJUSTE_INVENTARIO" | "PARTE_DIARIO" | "ACTA_CONFORMIDAD" | "INSPECCION_CALIDAD" | "TRANSFERENCIA_ALMACEN" | "RECEPCION_COMPRA" | "ORDEN_SERVICIO" | "PLANILLA_DIARIA" | "SUBCONTRATO" | "REPORTE_INCIDENTE" | "REPORTE_AVERIA"
+      tipo_correlativo: "ORDEN_TRABAJO" | "REQUERIMIENTO" | "ORDEN_COMPRA" | "INGRESO_ALMACEN" | "SALIDA_ALMACEN" | "DEVOLUCION_ALMACEN" | "AJUSTE_INVENTARIO" | "PARTE_DIARIO" | "ACTA_CONFORMIDAD" | "INSPECCION_CALIDAD" | "TRANSFERENCIA_ALMACEN" | "RECEPCION_COMPRA" | "ORDEN_SERVICIO" | "PLANILLA_DIARIA" | "SUBCONTRATO" | "REPORTE_INCIDENTE" | "REPORTE_AVERIA" | "RECLAMO_GARANTIA"
       tipo_documento_cliente: "RUC" | "DNI" | "CE" | "PASAPORTE"
       tipo_evento_ot: "CREACION" | "CAMBIO_ESTADO" | "AVANCE" | "MATERIAL" | "DOCUMENTO" | "INSPECCION" | "PAUSA" | "REANUDACION" | "COMENTARIO" | "ENTREGA"
       tipo_trabajo_ot: "FABRICACION" | "REPARACION" | "REPOTENCIACION" | "MANTENIMIENTO" | "GARANTIA"
