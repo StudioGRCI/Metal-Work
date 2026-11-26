@@ -21,12 +21,41 @@
 --      `sustentar_insumos` les ponía la hora de hoy aunque el texto no cambiara:
 --      sus días en espera volvían a cero. Ahora el insumo que ya espera el visto
 --      con el mismo texto, el mismo material y la misma cantidad conserva su
---      hora y quién lo sustentó; solo se pone al día lo que dice el metrado. Si
---      nada cambió, a Diseño no le llega otro aviso.
+--      hora, quién lo sustentó y lo que decía el metrado entonces. Si nada
+--      cambió, a Diseño no le llega otro aviso.
+--
+-- La hora del sustento sigue siendo la de su transacción (`now()`), como la
+-- del visto de Diseño: el recorrido los ordena por hora. La del código es la
+-- del reloj (`fn_rq_metrado_al_revisar`). Si una corrección del código entra
+-- justo mientras el sustento espera el bloqueo del RQ, el insumo queda «sin
+-- sustento» y hay que sustentarlo otra vez: falla hacia el lado seguro.
 --
 -- Las dos funciones se redefinen enteras, con la misma firma y los mismos
--- permisos; el resto queda como estaba. Sin DROP.
+-- permisos; el resto queda como estaba. Sin DROP. Antes se mira que sean las
+-- que conoce el repositorio (las de la 20261120400000, o estas si la migración
+-- ya corrió): si en producción se cambiaron a mano, se detiene y no las pisa
+-- (skill `esquema`).
 -- =============================================================================
+
+do $$
+declare
+  v_metrado text;
+  v_sustentar text;
+begin
+  select md5(replace(p.prosrc, E'\r', '')) into v_metrado
+    from pg_proc p where p.oid = to_regprocedure('public.metrado_por_linea(uuid[])');
+  select md5(replace(p.prosrc, E'\r', '')) into v_sustentar
+    from pg_proc p where p.oid = to_regprocedure('public.sustentar_insumos(uuid, jsonb)');
+  if v_metrado is null or v_sustentar is null then
+    raise exception 'Aplica antes la migración 20261120400000 (el RQ se sustenta con el metrado).';
+  end if;
+  if v_metrado not in ('bb8593c9a4e7703eb344e532afdee83c', '51e45ef463a6f1e7cd0aa0fc6d41bccb') then
+    raise exception 'La función metrado_por_linea no es la que conoce el repositorio (se cambió a mano, huella %): no se reemplaza. Avisa antes de seguir.', v_metrado;
+  end if;
+  if v_sustentar not in ('18c07949fb05cf49d9f78ddfb44db967', '21b232a41a8b1b054e481a8f44a6aa8f') then
+    raise exception 'La función sustentar_insumos no es la que conoce el repositorio (se cambió a mano, huella %): no se reemplaza. Avisa antes de seguir.', v_sustentar;
+  end if;
+end $$;
 
 -- 1. Cada insumo contra el metrado: el visto, para el código que tenía el RQ ------
 create or replace function public.metrado_por_linea(p_requerimientos uuid[])
@@ -179,15 +208,15 @@ begin
         using errcode = 'check_violation';
     end if;
     -- El que ya espera el visto (POR_AUTORIZAR: ni su cantidad, ni su material,
-    -- ni el código del RQ cambiaron) con el mismo texto no cambió: «Corregir el sustento» reenvía todos los
-    -- insumos, y ponerle la hora de hoy volvía a cero sus días en espera. Se
-    -- actualiza solo lo que dice el metrado ahora, sin aviso.
-    update public.requerimiento_sustentos
-       set exceso = v_m.exceso, metrado = v_m.metrado
-     where v_m.estado = 'POR_AUTORIZAR' and requerimiento_linea_id = v_linea.id and decision is null
-       and sustento = btrim(v_x.sustento)
-       and material_id is not distinct from v_linea.material_id and cantidad = v_linea.cantidad;
-    if found then
+    -- ni el código del RQ cambiaron) con el mismo texto no cambió: «Corregir el
+    -- sustento» reenvía todos los insumos, y ponerle la hora de hoy volvía a
+    -- cero sus días en espera. Se deja como está, con lo que decía el metrado
+    -- cuando se sustentó, y sin aviso.
+    if v_m.estado = 'POR_AUTORIZAR' and exists (
+         select 1 from public.requerimiento_sustentos
+          where requerimiento_linea_id = v_linea.id and decision is null
+            and sustento = btrim(v_x.sustento)
+            and material_id is not distinct from v_linea.material_id and cantidad = v_linea.cantidad) then
       continue;
     end if;
     update public.requerimiento_sustentos

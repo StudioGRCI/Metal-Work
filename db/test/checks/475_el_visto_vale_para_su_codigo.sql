@@ -13,41 +13,42 @@
 -- authenticated`. El cambio de código lo hace la corrección del RQ
 -- (`corregir_requerimiento`, con su justificante, check 382); aquí se escribe
 -- directo porque lo que se prueba es el metrado, y el disparador que anota
--- `codigo_desde` corre igual. Todo pasa en una transacción, así que «ayer» se
--- simula corriendo las horas hacia atrás. Termina en rollback.
+-- `codigo_desde` corre igual. Todo pasa en una transacción, así que «hace unos
+-- días» se simula corriendo las horas hacia atrás: el sustento toma la hora de
+-- la transacción y el código la del reloj. Termina en rollback.
 \set ON_ERROR_STOP on
 begin;
 
 insert into public.empresa (ruc, razon_social)
-select '20100000474', 'PRUEBAS 474 S.A.C.' where not exists (select 1 from public.empresa);
+select '20100000475', 'PRUEBAS 475 S.A.C.' where not exists (select 1 from public.empresa);
 
 do $$
 declare v text; v_id uuid; v_und uuid := (select id from public.unidades_medida where codigo = 'UND');
 begin
   foreach v in array array['REQUERIMIENTOS:REQ', 'ALMACENERO:ALM', 'DISENO:DIS'] loop
     v_id := gen_random_uuid();
-    insert into auth.users (id, email) values (v_id, lower(replace(v, ':', '.')) || '.474@prueba.local');
+    insert into auth.users (id, email) values (v_id, lower(replace(v, ':', '.')) || '.475@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
-    select v_id, split_part(v, ':', 1), 'Check 474', lower(replace(v, ':', '.')) || '.474@prueba.local', r.id,
+    select v_id, split_part(v, ':', 1), 'Check 475', lower(replace(v, ':', '.')) || '.475@prueba.local', r.id,
            (select id from public.areas where codigo = split_part(v, ':', 2))
       from public.roles r where r.codigo = split_part(v, ':', 1);
     perform set_config('prueba.' || lower(split_part(v, ':', 1)), v_id::text, true);
   end loop;
   perform set_config('prueba.area_mtz', (select id::text from public.areas where codigo = 'MTZ'), true);
-  foreach v in array array['rqa', 'rqb', 'rqc', 'rqlleno'] loop
+  foreach v in array array['rqa', 'rqb', 'rqc', 'rqd', 'rqlleno'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
 
   insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id) values
-    ('CHK474-PLA', 'Plancha LAF 3 mm (prueba 474)',
+    ('CHK475-PLA', 'Plancha LAF 3 mm (prueba 475)',
      (select id from public.categorias_material where activo and almacen = 'MATERIA_PRIMA' order by codigo limit 1), v_und),
-    ('CHK474-FAR', 'Faro LED (prueba 474)',
+    ('CHK475-FAR', 'Faro LED (prueba 475)',
      (select id from public.categorias_material where activo and almacen = 'ACCESORIOS' order by codigo limit 1), v_und);
   foreach v in array array['PLA', 'FAR'] loop
-    perform set_config('prueba.' || lower(v), (select id::text from public.materiales where codigo = 'CHK474-' || v), true);
+    perform set_config('prueba.' || lower(v), (select id::text from public.materiales where codigo = 'CHK475-' || v), true);
   end loop;
   insert into public.movimientos_materiales (id, tipo, material_id, cantidad, origen, documento_referencia, registrado_por)
-  select gen_random_uuid(), 'INGRESO', current_setting('prueba.' || x.m)::uuid, x.c, 'INGRESO_GENERAL', 'GR 474-' || x.m,
+  select gen_random_uuid(), 'INGRESO', current_setting('prueba.' || x.m)::uuid, x.c, 'INGRESO_GENERAL', 'GR 475-' || x.m,
          current_setting('prueba.almacenero')::uuid
     from (values ('pla', 40), ('far', 5)) x(m, c);
 end $$;
@@ -90,10 +91,10 @@ grant execute on all functions in schema pg_temp to authenticated;
 select pg_temp.como('diseno');
 set local role authenticated;
 do $$ begin
-  perform public.guardar_material_codigo(null, 'chk_474_u1', pg_temp.id('pla'), 10, null, 'Metrado del plano de piso');
-  perform public.guardar_material_codigo(null, 'chk_474_u2', pg_temp.id('pla'), 4, null, 'Metrado del plano de piso');
-  perform public.guardar_material_codigo(null, 'chk_474_u3', pg_temp.id('pla'), 30, null, 'Metrado del plano de piso');
-  perform public.guardar_material_codigo(null, 'chk_474_u4', pg_temp.id('pla'), 2, null, 'Metrado del plano de piso');
+  perform public.guardar_material_codigo(null, 'chk_475_u1', pg_temp.id('pla'), 10, null, 'Metrado del plano de piso');
+  perform public.guardar_material_codigo(null, 'chk_475_u2', pg_temp.id('pla'), 4, null, 'Metrado del plano de piso');
+  perform public.guardar_material_codigo(null, 'chk_475_u3', pg_temp.id('pla'), 30, null, 'Metrado del plano de piso');
+  perform public.guardar_material_codigo(null, 'chk_475_u4', pg_temp.id('pla'), 2, null, 'Metrado del plano de piso');
 end $$;
 reset role;
 
@@ -102,15 +103,18 @@ select pg_temp.como('requerimientos');
 set local role authenticated;
 do $$ begin
   -- U2 ya tiene pedidas sus 4 planchas.
-  perform public.emitir_requerimiento(pg_temp.id('rqlleno'), 'OPERACION', pg_temp.id('area_mtz'), 'CHK_474_U2',
+  perform public.emitir_requerimiento(pg_temp.id('rqlleno'), 'OPERACION', pg_temp.id('area_mtz'), 'CHK_475_U2',
     'Las planchas del metrado de la unidad', null, jsonb_build_array(pg_temp.linea('pla', 4)));
-  -- RQA: 12 planchas en U1 (se pasa en 2). RQC: 11 en U1 (se pasa: ya hay 12 pedidas).
-  perform public.emitir_requerimiento(pg_temp.id('rqa'), 'OPERACION', pg_temp.id('area_mtz'), 'CHK_474_U1',
+  -- RQA: 12 planchas en U1 (se pasa en 2). RQC: 11 en U1 (se pasa: ya hay 12
+  -- pedidas). RQD: 1 en U1 (se pasa: ya hay 23).
+  perform public.emitir_requerimiento(pg_temp.id('rqa'), 'OPERACION', pg_temp.id('area_mtz'), 'CHK_475_U1',
     'Planchas para el piso y el refuerzo', null, jsonb_build_array(pg_temp.linea('pla', 12)));
-  perform public.emitir_requerimiento(pg_temp.id('rqc'), 'OPERACION', pg_temp.id('area_mtz'), 'CHK_474_U1',
+  perform public.emitir_requerimiento(pg_temp.id('rqc'), 'OPERACION', pg_temp.id('area_mtz'), 'CHK_475_U1',
     'Planchas para las barandas de la unidad', null, jsonb_build_array(pg_temp.linea('pla', 11)));
+  perform public.emitir_requerimiento(pg_temp.id('rqd'), 'OPERACION', pg_temp.id('area_mtz'), 'CHK_475_U1',
+    'Una plancha para la tapa de la caja', null, jsonb_build_array(pg_temp.linea('pla', 1)));
   -- RQB: 5 planchas en U4 (se pasa en 3) y un faro que no está en el metrado.
-  perform public.emitir_requerimiento(pg_temp.id('rqb'), 'OPERACION', pg_temp.id('area_mtz'), 'CHK_474_U4',
+  perform public.emitir_requerimiento(pg_temp.id('rqb'), 'OPERACION', pg_temp.id('area_mtz'), 'CHK_475_U4',
     'Planchas y el faro de la unidad', null, jsonb_build_array(pg_temp.linea('pla', 5), pg_temp.linea('far', 1)));
 
   perform test.afirmar(pg_temp.estado('rqlleno', 1) = 'EN_METRADO', 'U2: las 4 planchas entran en su metrado');
@@ -120,6 +124,7 @@ do $$ begin
 
   perform public.sustentar_insumos(pg_temp.id('rqa'), '[{"item": 1, "sustento": "El refuerzo del piso lleva dos planchas más"}]');
   perform public.sustentar_insumos(pg_temp.id('rqc'), '[{"item": 1, "sustento": "Las barandas se hacen con plancha de 3 mm"}]');
+  perform public.sustentar_insumos(pg_temp.id('rqd'), '[{"item": 1, "sustento": "La tapa de la caja va en plancha de 3 mm"}]');
   perform public.sustentar_insumos(pg_temp.id('rqb'),
     '[{"item": 1, "sustento": "El piso de U4 se agrandó por pedido del cliente"}, {"item": 2, "sustento": "El cliente pidió un faro de trabajo atrás"}]');
 end $$;
@@ -136,14 +141,16 @@ reset role;
 set local session_replication_role = replica;
 update public.requerimiento_sustentos s set sustentado_en = now() - interval '2 days'
   from public.requerimiento_lineas l
- where l.id = s.requerimiento_linea_id and l.requerimiento_id in (pg_temp.id('rqa'), pg_temp.id('rqc'));
+ where l.id = s.requerimiento_linea_id and l.requerimiento_id in (pg_temp.id('rqa'), pg_temp.id('rqc'), pg_temp.id('rqd'));
 set local session_replication_role = origin;
 
--- El RQA pasa a U2, que ya tiene pedido todo su metrado; el RQC pasa a U3, donde entra.
+-- El RQA (autorizado) y el RQD (esperando el visto) pasan a U2, que ya tiene
+-- pedido todo su metrado; el RQC pasa a U3, donde entra.
 select pg_temp.como('requerimientos');
 select set_config('metalwork.corrigiendo', 'requerimiento', true);
-update public.requerimientos set codigo_interno = 'CHK_474_U2' where id = pg_temp.id('rqa');
-update public.requerimientos set codigo_interno = 'CHK_474_U3' where id = pg_temp.id('rqc');
+update public.requerimientos set codigo_interno = 'CHK_475_U2' where id = pg_temp.id('rqa');
+update public.requerimientos set codigo_interno = 'CHK_475_U3' where id = pg_temp.id('rqc');
+update public.requerimientos set codigo_interno = 'CHK_475_U2' where id = pg_temp.id('rqd');
 select set_config('metalwork.corrigiendo', '', true);
 select test.afirmar((select codigo_desde from public.requerimientos where id = pg_temp.id('rqa')) > now(),
                     'Corregir el código anota desde cuándo el RQ es de U2');
@@ -154,6 +161,7 @@ select test.afirmar(pg_temp.estado('rqa', 1) = 'SIN_SUSTENTO'
                     and (select exceso from public.metrado_de_requerimientos(array[pg_temp.id('rqa')]) where item = 1) = 12,
                     'En U2 las 12 planchas se pasan: el visto de U1 ya no vale y el insumo vuelve a «sin sustento»');
 select test.afirmar(pg_temp.estado('rqc', 1) = 'EN_METRADO', 'En U3 las 11 planchas entran en el metrado: no se pide nada');
+select test.afirmar(pg_temp.estado('rqd', 1) = 'SIN_SUSTENTO', 'El RQD, que esperaba el visto para U1, vuelve a «sin sustento» en U2');
 reset role;
 
 select pg_temp.como('almacenero');
@@ -180,6 +188,14 @@ do $$ begin
   exception when check_violation then
     perform test.afirmar(sqlerrm like '%ya no espera tu visto%', 'Diseño no autoriza para U2 hasta que se sustente contra U2');
   end;
+  begin
+    perform public.autorizar_insumos(pg_temp.id('rqd'), '{1}', true, null);
+    raise exception 'FALLA: Diseño autorizó para U2 el sustento que se escribió para U1';
+  exception when check_violation then
+    perform test.afirmar(sqlerrm like '%ya no espera tu visto%', 'Lo que esperaba el visto para U1 tampoco se autoriza en U2');
+  end;
+  perform test.afirmar(not exists (select 1 from public.requerimientos_por_autorizar() x where x.requerimiento_id = pg_temp.id('rqd')),
+                       'El RQD sale de lo que espera el visto de Diseño');
 end $$;
 reset role;
 
@@ -235,6 +251,8 @@ begin
                        and pg_temp.sustentado_en('rqb', 2) = now() - interval '3 days',
                        'Reenviar el mismo sustento conserva su hora: siguen 3 días en espera');
   perform test.afirmar(pg_temp.avisos_a_diseno() = v_antes, 'Si nada cambió, a Diseño no le llega otro aviso');
+  perform test.afirmar((select dias from public.recorrido_de_requerimientos(array[pg_temp.id('rqb')]) where situacion = 'AHORA') >= 3,
+                       'El recorrido del RQB sigue contando sus días en espera, no vuelve a cero');
   perform test.afirmar((select count(*) from public.requerimiento_sustentos s
                           join public.requerimiento_lineas l on l.id = s.requerimiento_linea_id
                          where l.requerimiento_id = pg_temp.id('rqb')) = 2,
@@ -244,20 +262,20 @@ begin
   perform public.sustentar_insumos(pg_temp.id('rqb'),
     '[{"item": 1, "sustento": "El piso de U4 se agrandó por pedido del cliente"}, {"item": 2, "sustento": "El cliente pidió un faro de trabajo en la puerta trasera"}]');
   perform test.afirmar(pg_temp.sustentado_en('rqb', 1) = now() - interval '3 days', 'La plancha, que no cambió, sigue con sus 3 días');
-  perform test.afirmar(pg_temp.sustentado_en('rqb', 2) = now(), 'El faro, con el texto nuevo, empieza hoy');
+  perform test.afirmar(pg_temp.sustentado_en('rqb', 2) >= now(), 'El faro, con el texto nuevo, empieza hoy');
   perform test.afirmar(pg_temp.avisos_a_diseno() = v_antes + 1
-                       and pg_temp.avisos_a_diseno_que_dicen('El insumo 2 de CHK_474_U4 %') = 1,
+                       and pg_temp.avisos_a_diseno_que_dicen('El insumo 2 de CHK_475_U4 %') = 1,
                        'A Diseño le llega un aviso, solo por el faro');
 end $$;
 reset role;
 
 -- Diseño amplía el metrado de U4 a 3 planchas: el exceso baja de 3 a 2. Reenviar el
--- mismo sustento pone al día lo que dice el metrado y no toca sus días.
+-- mismo sustento no toca sus días ni lo que decía el metrado cuando se escribió.
 select pg_temp.como('diseno');
 set local role authenticated;
 select public.guardar_material_codigo(
-  (select id from public.codigo_materiales where public.normalizar_codigo_interno(codigo_interno) = 'CHK_474_U4' limit 1),
-  'chk_474_u4', pg_temp.id('pla'), 3, null, 'El plano de piso se corrigió');
+  (select id from public.codigo_materiales where public.normalizar_codigo_interno(codigo_interno) = 'CHK_475_U4' limit 1),
+  'chk_475_u4', pg_temp.id('pla'), 3, null, 'El plano de piso se corrigió');
 reset role;
 
 select pg_temp.como('requerimientos');
@@ -266,9 +284,10 @@ do $$ begin
   perform public.sustentar_insumos(pg_temp.id('rqb'), '[{"item": 1, "sustento": "El piso de U4 se agrandó por pedido del cliente"}]');
   perform test.afirmar((select s.exceso from public.requerimiento_sustentos s
                           join public.requerimiento_lineas l on l.id = s.requerimiento_linea_id
-                         where l.requerimiento_id = pg_temp.id('rqb') and l.item = 1) = 2
+                         where l.requerimiento_id = pg_temp.id('rqb') and l.item = 1) = 3
+                       and (select exceso from public.metrado_de_requerimientos(array[pg_temp.id('rqb')]) where item = 1) = 2
                        and pg_temp.sustentado_en('rqb', 1) = now() - interval '3 days',
-                       'El sustento que no cambió anota el exceso de hoy (2) y conserva sus 3 días');
+                       'El sustento que no cambió guarda el exceso de cuando se escribió (3), el metrado dice el de hoy (2), y conserva sus 3 días');
 end $$;
 reset role;
 
@@ -284,5 +303,5 @@ do $$ begin
 end $$;
 reset role;
 
-select 'ok · 474 el visto vale para su código y el sustento que no cambió conserva sus días';
+select 'ok · 475 el visto vale para su código y el sustento que no cambió conserva sus días';
 rollback;
