@@ -41,7 +41,7 @@ import { estadoDeReporte } from '@/lib/dominio/reporte-diario'
 import { ESTADOS_RQ_ABIERTOS, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
 import { reglaTardanza, resumenTardanzas } from '@/lib/datos/rrhh'
 import { hoyLima, moneda, numero, parteDe, porcentaje, porcentajeCorto, sumarDias } from '@/lib/format'
-import { menuDe } from '@/lib/navegacion'
+import { rutasDeTrabajo } from '@/lib/navegacion'
 import { puede, puedeHojaDeArea, type PerfilSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -1042,7 +1042,8 @@ export async function dashboardDelPuesto(perfil: PerfilSesion): Promise<Dashboar
     },
   }
 
-  const enMenu = new Set(menuDe(perfil.permisos, esAdmin, perfil.rol.codigo).flatMap((g) => g.items.map((i) => i.ruta.split('?')[0])))
+  // Solo lo que es trabajo del puesto: lo que consulta no le trae cifras.
+  const enMenu = rutasDeTrabajo(perfil.permisos, esAdmin, perfil.rol.codigo)
   const suyas = propio.cifras.filter((clave) => enMenu.has(CIFRAS[clave].ruta.split('?')[0]))
 
   const cifras = await Promise.all(
