@@ -144,6 +144,63 @@ export function comoVaLaFactura(c: {
 }
 
 /**
+ * Una unidad de una cotización aprobada (migración 20261126998000): la
+ * cotización de varias unidades lleva una OT, un código interno y sus facturas
+ * por cada una. La de una sola unidad es su unidad 1.
+ */
+export type UnidadDeCotizacion = {
+  numero: number
+  /** Cuántas unidades tiene la cotización. */
+  de: number
+  /** El código interno de su OT; nulo mientras Administración no la cargue. */
+  codigo: string | null
+  /** Desde cuándo su OT tiene código, que es cuando se puede facturar, y los días que van (fecha de Lima). */
+  desde: string | null
+  dias: number | null
+  /** Lo que le toca del total de la cotización, con IGV; nulo si la cotización no tiene monto. */
+  parte: number | null
+  /** Sus facturas vigentes, contando las de toda la cotización, que le dejan una parte. */
+  facturas: number
+  /** Lo facturado y lo cobrado de esta unidad en la moneda de la cotización. */
+  facturado: number
+  cobrado: number
+  /** Lo de la otra moneda va aparte: no se suma ni se compara con lo que le toca. */
+  facturadoOtraMoneda: number
+  cobradoOtraMoneda: number
+}
+
+export type ComoVaLaUnidad = ComoVaLaFactura | 'SIN_OT'
+
+/**
+ * En qué va la factura de una unidad: la regla de `comoVaLaFactura` contra lo
+ * que le toca, que ya viene con IGV. Sin OT no se factura todavía. La misma
+ * cuenta que el globo del menú (`facturacion_pendientes`).
+ */
+export function comoVaLaUnidad(u: Pick<UnidadDeCotizacion, 'codigo' | 'parte' | 'facturas' | 'facturado' | 'facturadoOtraMoneda'>): ComoVaLaUnidad {
+  if (!u.codigo) return 'SIN_OT'
+  return comoVaLaFactura({
+    monto: u.parte,
+    incluyeIgv: true,
+    facturas: u.facturas,
+    facturadoEnSuMoneda: u.facturado,
+    enOtraMoneda: u.facturadoOtraMoneda > 0,
+  })
+}
+
+/** La unidad espera factura: tiene su OT y no tiene factura, o la tiene por una parte de lo que le toca. */
+export function esperaFactura(u: Parameters<typeof comoVaLaUnidad>[0]): boolean {
+  const como = comoVaLaUnidad(u)
+  return como === 'POR_FACTURAR' || como === 'EN_PARTE'
+}
+
+/** «Código MW-12», «Códigos MW-12 · MW-13» o «Sin código interno», con las unidades que ya tienen su OT. */
+export function rotuloDeCodigos(unidades: Pick<UnidadDeCotizacion, 'codigo'>[]): string {
+  const codigos = unidades.flatMap((u) => (u.codigo ? [u.codigo] : []))
+  if (codigos.length === 0) return 'Sin código interno'
+  return `${codigos.length === 1 ? 'Código' : 'Códigos'} ${codigos.join(' · ')}`
+}
+
+/**
  * La línea que va bajo el título de cada bandeja de Tesorería: cuánto espera,
  * en cada moneda, y en cuántos documentos —«S/ 10,280.40 y US$ 1,240.00 en 4
  * facturas»—. Es lo que cambia con los datos; para qué sirve la bandeja va en

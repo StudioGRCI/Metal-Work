@@ -3682,6 +3682,47 @@ export type Database = {
           }
         ]
       }
+      facturas_venta_unidades: {
+        Row: {
+          id: string
+          factura_id: string
+          numero_de_unidad: number
+          de_unidades: number
+          codigo_interno: string
+          monto: number
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          factura_id: string
+          numero_de_unidad: number
+          de_unidades: number
+          codigo_interno: string
+          monto: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          factura_id?: string
+          numero_de_unidad?: number
+          de_unidades?: number
+          codigo_interno?: string
+          monto?: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "facturas_venta_unidades_factura_id_fkey"
+            columns: ["factura_id"]
+            isOneToOne: false
+            referencedRelation: "facturas_venta"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       feriados: {
         Row: {
           fecha: string
@@ -13226,6 +13267,35 @@ export type Database = {
           cancelada: boolean | null
           saldo: number | null
           ultimo_cobro: string | null
+          unidades_cubiertas: number | null
+          numero_de_unidad: number | null
+          unidades_de_la_cotizacion: number | null
+        }
+        Relationships: []
+      }
+      v_facturas_venta_por_unidad: {
+        Row: {
+          id: string | null
+          factura_id: string | null
+          numero_de_unidad: number | null
+          de_unidades: number | null
+          codigo_interno: string | null
+          monto: number | null
+          cotizacion_pdf_id: string | null
+          cotizacion_numero: string | null
+          cliente: string | null
+          numero: string | null
+          fecha_emision: string | null
+          fecha_vencimiento: string | null
+          moneda: string | null
+          total: number | null
+          concepto: string | null
+          creado_en: string | null
+          anulada_en: string | null
+          cancelada: boolean | null
+          cobrado: number | null
+          saldo: number | null
+          unidades_cubiertas: number | null
         }
         Relationships: []
       }
@@ -14921,6 +14991,12 @@ export type Database = {
       codigo_interno_de_cotizacion_desde: {
         Args: {
           p_cotizacion: string | null
+        }
+        Returns: string
+      }
+      codigo_interno_de_ot_desde: {
+        Args: {
+          p_orden: string | null
         }
         Returns: string
       }
@@ -16804,6 +16880,25 @@ export type Database = {
           por_cobrar: number | null
         }[]
       }
+      facturacion_por_unidad: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          cotizacion: string | null
+          unidades: number | null
+          numero_de_unidad: number | null
+          codigo_interno: string | null
+          desde: string | null
+          dias: number | null
+          parte: number | null
+          facturas: number | null
+          facturado: number | null
+          cobrado: number | null
+          facturado_otra_moneda: number | null
+          cobrado_otra_moneda: number | null
+        }[]
+      }
       facturado_de_compras: {
         Args: {
           p_ids: string[] | null
@@ -18108,6 +18203,14 @@ export type Database = {
         }
         Returns: number
       }
+      parte_de_unidad: {
+        Args: {
+          p_total: number | null
+          p_unidades: number | null
+          p_unidad: number | null
+        }
+        Returns: number
+      }
       partes_con_boleta_de_la_compra: {
         Args: {
           p_compra: string | null
@@ -18942,6 +19045,22 @@ export type Database = {
           p_concepto: string | null
           p_ruta: string | null
           p_nombre_archivo: string | null
+        }
+        Returns: string
+      }
+      registrar_factura_venta_de_unidad: {
+        Args: {
+          p_id: string | null
+          p_cotizacion: string | null
+          p_numero: string | null
+          p_fecha_emision: string | null
+          p_fecha_vencimiento: string | null
+          p_moneda: string | null
+          p_total: number | null
+          p_concepto: string | null
+          p_ruta: string | null
+          p_nombre_archivo: string | null
+          p_unidad: number | null
         }
         Returns: string
       }
@@ -21081,6 +21200,13 @@ export type Database = {
           guias_anuladas: number | null
           pago: string | null
         }[]
+      }
+      unidad_de_la_factura_por_su_codigo: {
+        Args: {
+          p_cotizacion: string | null
+          p_codigo: string | null
+        }
+        Returns: number
       }
       unidades_del_cliente_con_su_entrega: {
         Args: {

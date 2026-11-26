@@ -14,7 +14,9 @@ const codigo = (m: string | null): CodigoMoneda => (m === 'USD' ? 'USD' : 'PEN')
 /**
  * Una factura de venta con sus cobros y sus vouchers, como la ven Contabilidad
  * (Facturación) y Tesorería (Cuentas por cobrar). Lo que cada una puede hacer
- * con ella llega por `acciones` y, por cobro, por `accionCobro`.
+ * con ella llega por `acciones` y, por cobro, por `accionCobro`. La de una
+ * cotización de varias unidades dice de cuál es, o que es por toda la
+ * cotización, con lo que le toca a cada una (migración 20261126998000).
  */
 export function FacturaDeVenta({
   factura: f,
@@ -22,6 +24,7 @@ export function FacturaDeVenta({
   acciones,
   accionCobro,
   cajas,
+  delCodigo,
 }: {
   factura: FacturaVenta
   /** Tesorería la lee suelta: dice de qué código interno y de qué cotización es. */
@@ -30,11 +33,23 @@ export function FacturaDeVenta({
   accionCobro?: (cobro: CobroFactura) => ReactNode
   /** Para quien lleva la caja: a qué cuenta entró cada cobro. */
   cajas?: Map<string, CajaDelPago>
+  /** En la ficha de un código: de la factura por toda la cotización, se marca la parte de ese código. */
+  delCodigo?: string
 }) {
   const m = codigo(f.moneda)
   const estado = estadoFacturaVenta(f)
   const saldo = Number(f.saldo ?? 0)
   const anulada = Boolean(f.anulada_en)
+  // Solo la de una cotización de varias unidades dice de cuál es: con una sola no hay qué decir.
+  const deVarias = Number(f.unidades_de_la_cotizacion ?? 1) > 1
+  const porToda = f.partes.length > 1
+  const deQue = !deVarias
+    ? null
+    : porToda
+      ? `Toda la cotización · ${f.partes.length} unidades`
+      : f.numero_de_unidad != null
+        ? `Unidad ${f.numero_de_unidad} de ${f.unidades_de_la_cotizacion}`
+        : null
   return (
     // Con `id`: el aviso de la campana aterriza en esta factura (`#id`).
     <article
@@ -46,6 +61,11 @@ export function FacturaDeVenta({
         <p className="flex flex-wrap items-center gap-2">
           <span className={`font-medium tabular ${anulada ? 'text-texto-suave line-through' : 'text-texto'}`}>Factura {f.numero}</span>
           <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
+          {deQue && (
+            <span className="text-sm text-texto" data-de-que-unidad>
+              {deQue}
+            </span>
+          )}
           {f.concepto && <span className="text-sm text-texto-suave">{f.concepto}</span>}
         </p>
         {!anulada && (
@@ -63,7 +83,9 @@ export function FacturaDeVenta({
           {f.cliente}
           <span className="text-texto-suave">
             {' '}
-            · código <span className="font-medium text-texto">{f.codigo_interno}</span> · cotización {f.cotizacion_numero}
+            · {porToda ? 'códigos' : 'código'}{' '}
+            <span className="font-medium text-texto">{porToda ? f.partes.map((p) => p.codigo_interno).join(', ') : f.codigo_interno}</span> · cotización{' '}
+            {f.cotizacion_numero}
           </span>
         </p>
       )}
@@ -84,6 +106,19 @@ export function FacturaDeVenta({
           </>
         )}
       </p>
+      {porToda && (
+        <ul className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-texto-suave" aria-label="Lo que le toca a cada unidad" data-partes>
+          {f.partes.map((p) => {
+            const este = delCodigo !== undefined && p.codigo_interno === delCodigo
+            return (
+              <li key={p.numero_de_unidad} className={este ? 'font-medium text-texto' : undefined} data-parte={p.numero_de_unidad}>
+                Unidad {p.numero_de_unidad} · {este ? 'este código' : `código ${p.codigo_interno}`} ·{' '}
+                <span className="tabular whitespace-nowrap">{moneda(p.monto, m)}</span>
+              </li>
+            )
+          })}
+        </ul>
+      )}
       {anulada && (
         <p className="mt-0.5 text-xs text-peligro">
           Anulada el {fecha(f.anulada_en)}: {f.motivo_anulacion}

@@ -566,7 +566,8 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       clave: 'por_facturar',
       ruta: '/contabilidad/facturacion',
       tono: 'acento',
-      texto: (n) => plural(n, 'cotización aprobada por facturar', 'cotizaciones aprobadas por facturar'),
+      // Cuenta unidades con su OT, no cotizaciones: la de varias unidades lleva una factura por unidad (migración 20261126998000).
+      texto: (n) => plural(n, 'unidad aprobada por facturar', 'unidades aprobadas por facturar'),
       contar: async () => {
         // La cuenta es la de la base; lo que vale sale de la misma bandeja que
         // Facturación: las que tienen código y no tienen factura vigente o están

@@ -13,7 +13,7 @@ import { COBRADAS_A_LA_VISTA, cotizacionesAprobadas, facturasDeVenta, saldoDeFac
 import { PERMISOS_BAJAR_COTIZACION, rutaParaBajarCotizacion } from '@/lib/descarga'
 import { revisionesDeSalidaPendientes } from '@/lib/datos/vehiculos'
 import { nombreMoneda } from '@/lib/dominio/caja'
-import { resumenPorMoneda, totalConIgv } from '@/lib/dominio/finanzas'
+import { resumenPorMoneda, rotuloDeCodigos, totalConIgv } from '@/lib/dominio/finanzas'
 import { hoyLima, moneda, parteDe, porcentaje, type CodigoMoneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -72,37 +72,42 @@ export default async function PaginaPorCobrar() {
     !veCotizaciones && salidas.length > 0
       ? await saldoDeFacturasPorCodigo(salidas.flatMap((s) => (s.codigo_interno ? [s.codigo_interno] : [])))
       : {}
+  // La cotización de varias unidades lleva un código por unidad (migración 20261126998000):
+  // a cada código, lo que le toca del total y lo facturado y cobrado de su unidad. Con una
+  // sola unidad es lo de la cotización entera, como siempre.
   for (const c of cotizaciones) {
-    if (!c.codigo_interno) continue
-    const total = totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
-    const previo = cobrosPorCodigo[c.codigo_interno]
-    // Lo facturado en la otra moneda va aparte, sin sumarse ni compararse con el total (20261126960000).
-    const facturadoOtra = Number(c.facturado_otra_moneda ?? 0)
-    const cobradoOtra = Number(c.cobrado_otra_moneda ?? 0)
-    if (!previo) {
-      cobrosPorCodigo[c.codigo_interno] = {
-        total,
-        facturado: Number(c.facturado ?? 0),
-        cobrado: Number(c.cobrado ?? 0),
-        moneda: codigo(c.moneda),
-        cotizaciones: 1,
-        monedasDistintas: false,
-        otraMoneda: facturadoOtra > 0 ? { facturado: facturadoOtra, cobrado: cobradoOtra } : null,
-      }
-    } else if (previo.moneda !== codigo(c.moneda)) {
-      previo.monedasDistintas = true
-      previo.cotizaciones += 1
-    } else {
-      if (facturadoOtra > 0) {
-        previo.otraMoneda = {
-          facturado: (previo.otraMoneda?.facturado ?? 0) + facturadoOtra,
-          cobrado: (previo.otraMoneda?.cobrado ?? 0) + cobradoOtra,
+    for (const u of c.unidades) {
+      if (!u.codigo) continue
+      const total = u.parte
+      const previo = cobrosPorCodigo[u.codigo]
+      // Lo facturado en la otra moneda va aparte, sin sumarse ni compararse con el total (20261126960000).
+      const facturadoOtra = u.facturadoOtraMoneda
+      const cobradoOtra = u.cobradoOtraMoneda
+      if (!previo) {
+        cobrosPorCodigo[u.codigo] = {
+          total,
+          facturado: u.facturado,
+          cobrado: u.cobrado,
+          moneda: codigo(c.moneda),
+          cotizaciones: 1,
+          monedasDistintas: false,
+          otraMoneda: facturadoOtra > 0 ? { facturado: facturadoOtra, cobrado: cobradoOtra } : null,
         }
+      } else if (previo.moneda !== codigo(c.moneda)) {
+        previo.monedasDistintas = true
+        previo.cotizaciones += 1
+      } else {
+        if (facturadoOtra > 0) {
+          previo.otraMoneda = {
+            facturado: (previo.otraMoneda?.facturado ?? 0) + facturadoOtra,
+            cobrado: (previo.otraMoneda?.cobrado ?? 0) + cobradoOtra,
+          }
+        }
+        previo.total = previo.total === null || total === null ? null : previo.total + total
+        previo.facturado += u.facturado
+        previo.cobrado += u.cobrado
+        previo.cotizaciones += 1
       }
-      previo.total = previo.total === null || total === null ? null : previo.total + total
-      previo.facturado += Number(c.facturado ?? 0)
-      previo.cobrado += Number(c.cobrado ?? 0)
-      previo.cotizaciones += 1
     }
   }
   const abreVehiculos = puede(perfil, 'vehiculos.ver') || puede(perfil, 'vehiculos.registrar')
@@ -212,14 +217,15 @@ export default async function PaginaPorCobrar() {
                   data-cotizacion={c.numero ?? undefined}
                 >
                   <span>
-                    <span className="font-medium text-texto">{c.codigo_interno ? `Código ${c.codigo_interno}` : 'Sin código interno'}</span>
+                    <span className="font-medium text-texto">{rotuloDeCodigos(c.unidades)}</span>
                     <span className="text-texto-suave">
                       {' '}
                       · {c.cliente ?? 'Cliente sin registrar'} · cotización {c.numero}
+                      {c.unidades.length > 1 && ` · ${c.unidades.length} unidades`}
                     </span>
                     <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-texto-suave">
                       {Number(c.facturas) === 0 ? (
-                        <Insignia tono="neutro">{c.codigo_interno ? 'Contabilidad aún no la factura' : 'Falta cargar la OT'}</Insignia>
+                        <Insignia tono="neutro">{c.unidades.some((u) => u.codigo) ? 'Contabilidad aún no la factura' : 'Falta cargar la OT'}</Insignia>
                       ) : (
                         // Facturada solo en la otra moneda, no se pinta «Facturado US$ 0.00 (0 %)»: diría que no se facturó nada.
                         (Number(c.facturado) > 0 || !otra) && (
