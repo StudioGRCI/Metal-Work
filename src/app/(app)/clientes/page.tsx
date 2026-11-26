@@ -91,7 +91,7 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
         marcador="Razón social, nombre comercial o RUC"
       />
 
-      <Tarjeta className="mt-4 overflow-hidden">
+      <Tarjeta className="mt-5 overflow-hidden">
         <Tabla>
           <TablaCabecera>
             <tr>

@@ -121,7 +121,7 @@ export default async function PaginaPorAutorizar({ searchParams }: PageProps<'/r
         migas={[{ titulo: 'Requerimientos', ruta: '/requerimientos' }, { titulo: 'Por autorizar' }]}
       />
 
-      <div className="mb-4 max-w-md">
+      <div className="mb-5 max-w-md">
         <BuscadorSimple
           ruta="/requerimientos/metrado"
           clave="codigo"
@@ -196,7 +196,7 @@ export default async function PaginaPorAutorizar({ searchParams }: PageProps<'/r
       </ConAvisos>
 
       {sinSustento.length > 0 && (
-        <section aria-labelledby="sin-sustento" className="mt-8 space-y-3">
+        <section aria-labelledby="sin-sustento" className="mt-5 space-y-3">
           <div>
             <h2 id="sin-sustento" className="text-sm font-semibold text-texto">
               Esperan el sustento de quien pidió <span className="tabular font-normal text-texto-suave">· {sinSustento.length}</span>
@@ -236,7 +236,7 @@ export default async function PaginaPorAutorizar({ searchParams }: PageProps<'/r
       )}
 
       {autorizados.length > 0 && (
-        <section aria-labelledby="ya-autorizados" className="mt-8 space-y-3" data-ya-autorizados>
+        <section aria-labelledby="ya-autorizados" className="mt-5 space-y-3" data-ya-autorizados>
           <div>
             <h2 id="ya-autorizados" className="text-sm font-semibold text-texto">
               Ya autorizados por Diseño <span className="tabular font-normal text-texto-suave">· {todosLosAutorizados.length}</span>

@@ -6,6 +6,7 @@ import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { codigosDeDiseno, dxfDeCodigo, otPorCodigo, type CodigoDeDiseno, type DxfDeCodigo, type OtDeCodigo } from '@/lib/datos/diseno-codigos'
 import { loQueDebeDiseno } from '@/lib/datos/lo-que-debe-diseno'
@@ -136,96 +137,100 @@ export async function ListaDeCodigosDeDiseno({
         migas={seguimiento ? [{ titulo }] : [{ titulo: 'Diseño e Ingeniería' }, { titulo }]}
       />
 
-      {seguimiento ? (
-        <PastillaFiltro
-          ruta={ruta}
-          clave="vista"
-          params={params}
-          activo={vista === 'etapas' ? null : vista}
-          etiqueta="Qué mirar de cada código"
-          opciones={VISTAS_SEGUIMIENTO.map((v) => ({ valor: v.valor === 'etapas' ? null : v.valor, etiqueta: v.etiqueta }))}
-          className="mb-4"
-        />
-      ) : soloLectura ? null : (
-        <Tarjeta className="mb-4">
-          <TarjetaCabecera titulo="Abrir un código" ayuda="Para una unidad nueva, escribe su código interno tal cual: aparece en la lista apenas cargues algo." />
-          <TarjetaCuerpo>
-            <AbrirCodigo codigos={todos.map((c) => c.codigo)} vista={vista} />
-          </TarjetaCuerpo>
-        </Tarjeta>
-      )}
+      {/* 20 px entre los bloques, 12 entre el buscador y sus filtros y entre las
+          fichas de la lista (la escala de la skill diseno; entrega 5). */}
+      <div className="space-y-5">
+        {seguimiento ? (
+          <PastillaFiltro
+            ruta={ruta}
+            clave="vista"
+            params={params}
+            activo={vista === 'etapas' ? null : vista}
+            etiqueta="Qué mirar de cada código"
+            opciones={VISTAS_SEGUIMIENTO.map((v) => ({ valor: v.valor === 'etapas' ? null : v.valor, etiqueta: v.etiqueta }))}
+          />
+        ) : soloLectura ? null : (
+          <Tarjeta>
+            <TarjetaCabecera titulo="Abrir un código" ayuda="Para una unidad nueva, escribe su código interno tal cual: aparece en la lista apenas cargues algo." />
+            <TarjetaCuerpo>
+              <AbrirCodigo codigos={todos.map((c) => c.codigo)} vista={vista} />
+            </TarjetaCuerpo>
+          </Tarjeta>
+        )}
 
-      <div className="mb-3 space-y-3">
-        <BuscadorSimple ruta={ruta} etiqueta="Buscar código interno" marcador={veOt ? 'Código, OT, cliente o placa' : 'Código, placa o vehículo'} />
-        <PastillaFiltro
-          ruta={ruta}
-          clave="ver"
-          params={params}
-          activo={filtro?.valor ?? null}
-          etiqueta="Qué códigos mostrar"
-          opciones={[
-            { valor: null, etiqueta: `Todos (${buscados.length})` },
-            ...filtros.map((f) => ({ valor: f.valor, etiqueta: `${f.etiqueta} (${buscados.filter(f.cumple).length})` })),
-          ]}
-        />
-      </div>
+        <div className="space-y-3">
+          <BuscadorSimple ruta={ruta} etiqueta="Buscar código interno" marcador={veOt ? 'Código, OT, cliente o placa' : 'Código, placa o vehículo'} />
+          <PastillaFiltro
+            ruta={ruta}
+            clave="ver"
+            params={params}
+            activo={filtro?.valor ?? null}
+            etiqueta="Qué códigos mostrar"
+            opciones={[
+              { valor: null, etiqueta: `Todos (${buscados.length})` },
+              ...filtros.map((f) => ({ valor: f.valor, etiqueta: `${f.etiqueta} (${buscados.filter(f.cumple).length})` })),
+            ]}
+          />
+        </div>
 
-      {codigos.length === 0 ? (
-        <Tarjeta>
-          <TarjetaCuerpo>
-            <p className="text-sm font-medium text-texto">{todos.length === 0 ? 'Todavía no hay códigos internos' : 'Ningún código con esta búsqueda o filtro'}</p>
-            <p className="text-sm text-texto-suave">
-              {todos.length === 0
-                ? consulta
-                  ? 'Aparecen aquí apenas Diseño cargue algo para una unidad o un área pida con su código.'
-                  : 'Escribe el código de la unidad arriba y ábrelo para empezar.'
-                : consulta
-                  ? 'Borra la búsqueda o quita el filtro con «Todos».'
-                  : 'Borra la búsqueda o quita el filtro con «Todos». Si es una unidad nueva, ábrela con su código arriba.'}
-            </p>
-          </TarjetaCuerpo>
-        </Tarjeta>
-      ) : (
-        <ul className="space-y-2">
-          {codigos.map((c) => (
-            <li key={c.codigo}>
-              {soloLectura ? (
-                <div className="rounded-[var(--radius-base)] border border-borde bg-superficie p-3" data-codigo={c.codigo}>
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <Nombre c={c} veOt={veOt} />
-                    <Resumen c={c} vista={vista} />
-                  </div>
-                  {vista === 'dxf' && c.dxf > 0 && (
-                    <div className="mt-3">
-                      <ListaDxf archivos={archivosDe(c.codigo)} />
-                    </div>
-                  )}
-                  {/* La ficha de Diseño no es suya: lo del código lo consulta en Seguimiento. */}
-                  <Link
-                    href={enlaceSeguimientoCodigo(c.codigo)}
-                    className="mt-2 inline-flex min-h-11 items-center text-sm font-medium text-acento hover:underline sm:min-h-0"
-                  >
-                    Ver el seguimiento de {c.codigo}
-                  </Link>
-                </div>
-              ) : (
-                <div className="rounded-[var(--radius-base)] border border-borde bg-superficie p-3 has-[a:hover]:border-acento">
-                  <Link href={enlace(c.codigo, vista)} className="block" data-codigo={c.codigo}>
+        {codigos.length === 0 ? (
+          <Tarjeta>
+            <SinDatos
+              enTabla={false}
+              titulo={todos.length === 0 ? 'Todavía no hay códigos internos' : 'Ningún código con esta búsqueda o filtro'}
+              descripcion={
+                todos.length === 0
+                  ? consulta
+                    ? 'Aparecen aquí apenas Diseño cargue algo para una unidad o un área pida con su código.'
+                    : 'Escribe el código de la unidad arriba y ábrelo para empezar.'
+                  : consulta
+                    ? 'Borra la búsqueda o quita el filtro con «Todos».'
+                    : 'Borra la búsqueda o quita el filtro con «Todos». Si es una unidad nueva, ábrela con su código arriba.'
+              }
+            />
+          </Tarjeta>
+        ) : (
+          <ul className="space-y-3">
+            {codigos.map((c) => (
+              <li key={c.codigo}>
+                {soloLectura ? (
+                  <div className="rounded-[var(--radius-base)] border border-borde bg-superficie p-3" data-codigo={c.codigo}>
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <Nombre c={c} veOt={veOt} />
                       <Resumen c={c} vista={vista} />
                     </div>
-                  </Link>
-                  {/* Fuera del enlace: dentro, el lector leía los cinco puntos como parte de su nombre. */}
-                  {debe !== null && esUnidadDeDiseno(c.codigo) && (
-                    <LineaLoQueDebeDiseno className="mt-2" d={debe === 'sin-leer' ? null : debe.get(c.codigo)} />
-                  )}
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+                    {vista === 'dxf' && c.dxf > 0 && (
+                      <div className="mt-3">
+                        <ListaDxf archivos={archivosDe(c.codigo)} />
+                      </div>
+                    )}
+                    {/* La ficha de Diseño no es suya: lo del código lo consulta en Seguimiento. */}
+                    <Link
+                      href={enlaceSeguimientoCodigo(c.codigo)}
+                      className="mt-2 inline-flex min-h-11 items-center text-sm font-medium text-acento hover:underline sm:min-h-0"
+                    >
+                      Ver el seguimiento de {c.codigo}
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="rounded-[var(--radius-base)] border border-borde bg-superficie p-3 has-[a:hover]:border-acento">
+                    <Link href={enlace(c.codigo, vista)} className="block" data-codigo={c.codigo}>
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <Nombre c={c} veOt={veOt} />
+                        <Resumen c={c} vista={vista} />
+                      </div>
+                    </Link>
+                    {/* Fuera del enlace: dentro, el lector leía los cinco puntos como parte de su nombre. */}
+                    {debe !== null && esUnidadDeDiseno(c.codigo) && (
+                      <LineaLoQueDebeDiseno className="mt-2" d={debe === 'sin-leer' ? null : debe.get(c.codigo)} />
+                    )}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </>
   )
 }

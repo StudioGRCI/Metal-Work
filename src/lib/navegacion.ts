@@ -23,6 +23,7 @@ import {
   FileCheck2,
   FilePenLine,
   FileSpreadsheet,
+  FileStack,
   FileText,
   Hammer,
   HandCoins,
@@ -47,6 +48,7 @@ import {
   Route,
   ScanSearch,
   ScrollText,
+  SearchCheck,
   Settings,
   ShieldAlert,
   ShieldCheck,
@@ -384,7 +386,8 @@ export const NAVEGACION = [
       {
         titulo: 'Control de compras',
         ruta: '/almacen/compras',
-        icono: FileCheck2,
+        // No `FileCheck2`: en el menú de Gerencia ya lo lleva «Insumos por autorizar», y dos iguales hacen dudar.
+        icono: FileStack,
         // Lo anota Almacén; lo leen Contabilidad y Tesorería, como en el Excel.
         permiso: ['almacen.ver', 'adquisiciones.ver', 'tesoreria.ver_documentos'],
         descripcion: 'Cada OC y OS del día con su destino, peso y monto; la factura y la guía que llegaron',
@@ -674,7 +677,8 @@ export const NAVEGACION = [
       {
         titulo: 'Inspecciones de calidad',
         ruta: '/calidad',
-        icono: ClipboardCheck,
+        // No `ClipboardCheck`: en el menú de Gerencia ya lo lleva «Asistencia».
+        icono: SearchCheck,
         permiso: ['calidad.inspeccionar', 'calidad.ver'],
         descripcion: 'Cada etapa revisada por código interno, lo no conforme y cómo va su corrección',
         disponible: true,
@@ -682,7 +686,7 @@ export const NAVEGACION = [
       {
         titulo: 'Observaciones de calidad',
         ruta: '/calidad',
-        icono: ClipboardCheck,
+        icono: SearchCheck,
         descripcion: 'Lo que Calidad observó en el trabajo de tu área, para corregirlo',
         disponible: true,
       },

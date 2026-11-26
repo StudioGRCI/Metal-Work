@@ -7,7 +7,8 @@ import { DiasEnEspera } from '@/components/ui/dias-en-espera'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
-import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { SinDatos } from '@/components/ui/tabla'
+import { Tarjeta } from '@/components/ui/tarjeta'
 import { diasEnEspera } from '@/lib/datos/dias-en-espera'
 import { listarReportesDiarios, type ReporteListado } from '@/lib/datos/reportes-diarios'
 import { tareosDelMes } from '@/lib/datos/rrhh'
@@ -92,97 +93,102 @@ export default async function PaginaReportesDiarios({ searchParams }: PageProps<
         }
       />
 
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-1">
-          <Link
-            href={enlaceMes(mesVecino(mes, -1))}
-            aria-label="Mes anterior"
-            className="inline-flex size-11 items-center justify-center rounded-lg border border-borde text-texto-suave hover:text-texto sm:size-9"
-          >
-            <ChevronLeft aria-hidden className="size-4" />
-          </Link>
-          <p className="px-1 text-sm font-medium text-texto first-letter:uppercase">{mesLargo(`${mes}-01`)}</p>
-          {mes < mesActual && (
-            <Link
-              href={enlaceMes(mesVecino(mes, 1))}
-              aria-label="Mes siguiente"
-              className="inline-flex size-11 items-center justify-center rounded-lg border border-borde text-texto-suave hover:text-texto sm:size-9"
-            >
-              <ChevronRight aria-hidden className="size-4" />
-            </Link>
+      {/* 20 px entre los filtros y la lista, 12 entre el mes y sus filtros (la
+          escala de la skill diseno; entrega 5). */}
+      <div className="space-y-5">
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-1">
+              <Link
+                href={enlaceMes(mesVecino(mes, -1))}
+                aria-label="Mes anterior"
+                className="inline-flex size-11 items-center justify-center rounded-lg border border-borde text-texto-suave hover:text-texto sm:size-9"
+              >
+                <ChevronLeft aria-hidden className="size-4" />
+              </Link>
+              <p className="px-1 text-sm font-medium text-texto first-letter:uppercase">{mesLargo(`${mes}-01`)}</p>
+              {mes < mesActual && (
+                <Link
+                  href={enlaceMes(mesVecino(mes, 1))}
+                  aria-label="Mes siguiente"
+                  className="inline-flex size-11 items-center justify-center rounded-lg border border-borde text-texto-suave hover:text-texto sm:size-9"
+                >
+                  <ChevronRight aria-hidden className="size-4" />
+                </Link>
+              )}
+            </div>
+            <p className="text-xs text-texto-suave">
+              <span className="tabular">{vigentes.length}</span> {vigentes.length === 1 ? 'reporte' : 'reportes'} ·{' '}
+              <span className="tabular">{horasCortas(horas)}</span> de personal
+              {veCosto && costoHoras > 0 && (
+                <>
+                  {' '}
+                  · <span className="tabular whitespace-nowrap">{moneda(costoHoras)}</span>
+                </>
+              )}
+            </p>
+          </div>
+
+          <PastillaFiltro
+            ruta="/reportes-diarios"
+            clave="estado"
+            params={params}
+            activo={filtro}
+            etiqueta="Estado"
+            opciones={[
+              { valor: null, etiqueta: 'Todos' },
+              ...(daVistoGerencia
+                ? [{ valor: FALTA_GERENCIA, etiqueta: `Falta Gerencia (${deLaArea.filter(faltaGerencia).length})` }]
+                : []),
+              { valor: 'por-validar', etiqueta: `Por validar (${cuantos('POR_VALIDAR')})` },
+              { valor: 'observados', etiqueta: `Observados (${cuantos('OBSERVADO')})` },
+              { valor: 'validados', etiqueta: `Validados (${cuantos('VALIDADO')})` },
+            ]}
+          />
+
+          {veTodos && areas.length > 1 && (
+            <PastillaFiltro
+              ruta="/reportes-diarios"
+              clave="area"
+              params={params}
+              activo={area}
+              etiqueta="Área"
+              opciones={[{ valor: null, etiqueta: 'Todas' }, ...areas.map((a) => ({ valor: a, etiqueta: a }))]}
+            />
           )}
         </div>
-        <p className="text-xs text-texto-suave">
-          <span className="tabular">{vigentes.length}</span> {vigentes.length === 1 ? 'reporte' : 'reportes'} ·{' '}
-          <span className="tabular">{horasCortas(horas)}</span> de personal
-          {veCosto && costoHoras > 0 && (
-            <>
-              {' '}
-              · <span className="tabular whitespace-nowrap">{moneda(costoHoras)}</span>
-            </>
-          )}
-        </p>
-      </div>
 
-      <PastillaFiltro
-        ruta="/reportes-diarios"
-        clave="estado"
-        params={params}
-        activo={filtro}
-        etiqueta="Estado"
-        opciones={[
-          { valor: null, etiqueta: 'Todos' },
-          ...(daVistoGerencia
-            ? [{ valor: FALTA_GERENCIA, etiqueta: `Falta Gerencia (${deLaArea.filter(faltaGerencia).length})` }]
-            : []),
-          { valor: 'por-validar', etiqueta: `Por validar (${cuantos('POR_VALIDAR')})` },
-          { valor: 'observados', etiqueta: `Observados (${cuantos('OBSERVADO')})` },
-          { valor: 'validados', etiqueta: `Validados (${cuantos('VALIDADO')})` },
-        ]}
-        className="mb-3"
-      />
-
-      {veTodos && areas.length > 1 && (
-        <PastillaFiltro
-          ruta="/reportes-diarios"
-          clave="area"
-          params={params}
-          activo={area}
-          etiqueta="Área"
-          opciones={[{ valor: null, etiqueta: 'Todas' }, ...areas.map((a) => ({ valor: a, etiqueta: a }))]}
-          className="mb-3"
-        />
-      )}
-
-      {reportes.length === 0 ? (
-        <Tarjeta>
-          <TarjetaCuerpo>
-            <p className="text-sm font-medium text-texto">{filtro ? 'Ningún reporte en este estado' : 'Sin reportes este mes'}</p>
-            <p className="text-sm text-texto-suave">
-              {filtro
-                ? 'Quita el filtro de estado con «Todos» para ver el resto.'
-                : sube
-                  ? 'Sube el del día con «Nuevo reporte»: un reporte por cada código interno en que trabajaste.'
-                  : 'Aparecen aquí cuando los supervisores suben su reporte del día.'}
+        {reportes.length === 0 ? (
+          <Tarjeta>
+            <SinDatos
+              enTabla={false}
+              titulo={filtro ? 'Ningún reporte en este estado' : 'Sin reportes este mes'}
+              descripcion={
+                filtro
+                  ? 'Quita el filtro de estado con «Todos» para ver el resto.'
+                  : sube
+                    ? 'Sube el del día con «Nuevo reporte»: un reporte por cada código interno en que trabajaste.'
+                    : 'Aparecen aquí cuando los supervisores suben su reporte del día.'
+              }
+            />
+          </Tarjeta>
+        ) : (
+          <>
+          {sinDias && (
+            <p role="status" className="mb-3 text-sm text-texto-suave">
+              No se pudieron contar los días que llevan esperando el visto de Recursos Humanos. Vuelve a cargar la pantalla en un momento.
             </p>
-          </TarjetaCuerpo>
-        </Tarjeta>
-      ) : (
-        <>
-        {sinDias && (
-          <p role="status" className="mb-3 text-sm text-texto-suave">
-            No se pudieron contar los días que llevan esperando el visto de Recursos Humanos. Vuelve a cargar la pantalla en un momento.
-          </p>
+          )}
+          <ul className="space-y-3">
+            {reportes.map((r) => (
+              <li key={r.id}>
+                <FilaReporte reporte={r} conArea={veTodos} diasRrhh={diasRrhh.get(r.id)} />
+              </li>
+            ))}
+          </ul>
+          </>
         )}
-        <ul className="space-y-3">
-          {reportes.map((r) => (
-            <li key={r.id}>
-              <FilaReporte reporte={r} conArea={veTodos} diasRrhh={diasRrhh.get(r.id)} />
-            </li>
-          ))}
-        </ul>
-        </>
-      )}
+      </div>
     </>
   )
 }

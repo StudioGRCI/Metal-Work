@@ -5,7 +5,8 @@ import { NuevaUnidad } from '@/app/(app)/clientes/nueva-unidad'
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
-import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
+import { Insignia } from '@/components/ui/etiqueta-estado'
+import { AccionesDeFila, SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { numero } from '@/lib/format'
 import { palabrasDeBusqueda } from '@/lib/dominio/busqueda'
@@ -46,40 +47,48 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
         ayuda="Vehículos de los clientes sobre los que trabaja el taller. Se registran desde la ficha de cada cliente."
       />
 
-      <BuscadorSimple
-        ruta="/unidades"
-        etiqueta="Buscar unidades"
-        marcador="Placa, código, marca, modelo o chasis"
-      />
-      <div className="mt-3 flex justify-end">
-        <Link
-          href={`/unidades${verOtras ? `?${verOtras}` : ''}`}
-          // Se lleva lo que se está escribiendo, como una pastilla.
-          data-filtro=""
-          className="text-sm text-acento hover:underline"
-        >
-          {incluirInactivas ? 'Ver solo activas' : 'Ver también desactivadas'}
-        </Link>
+      {/* 20 px entre el buscador y la lista (la escala de la skill diseno). */}
+      <div className="space-y-5">
+      <div className="space-y-3">
+        <BuscadorSimple
+          ruta="/unidades"
+          etiqueta="Buscar unidades"
+          marcador="Placa, código, marca, modelo o chasis"
+        />
+        <div className="flex justify-end">
+          <Link
+            href={`/unidades${verOtras ? `?${verOtras}` : ''}`}
+            // Se lleva lo que se está escribiendo, como una pastilla.
+            data-filtro=""
+            className="inline-flex min-h-11 items-center text-sm text-acento hover:underline sm:min-h-0"
+          >
+            {incluirInactivas ? 'Ver solo activas' : 'Ver también desactivadas'}
+          </Link>
+        </div>
       </div>
 
-      <Tarjeta className="mt-4 overflow-hidden">
-        <Tabla>
+      {/* En el teléfono cada unidad es una ficha con «Editar» y «Desactivar» en
+          un renglón (entrega 5 del plan de orden y diseño): en la tabla apretada
+          iban uno debajo del otro, también en el monitor. */}
+      <Tarjeta className="overflow-hidden">
+        <Tabla apilada>
           <TablaCabecera>
             <tr>
               {/* Se llamaba «Placa», pero la placa llega meses después de que
                   la unidad entra al taller: la columna nombra la unidad, con
                   la matrícula cuando la tiene. */}
               <TH>Unidad</TH>
-              <TH className="hidden sm:table-cell">Cliente</TH>
-              <TH className="hidden sm:table-cell">Vehículo</TH>
-              {/* Siete columnas no entran en un teléfono. Las de detalle se
-                  esconden y su contenido baja a la celda de la unidad en letra
-                  chica: se pierde la rejilla, no el dato. */}
-              <TH className="hidden sm:table-cell">Tipo</TH>
-              <TH className="hidden min-[1200px]:table-cell">Carrocería</TH>
-              <TH className="hidden text-right min-[1200px]:table-cell">Capacidad</TH>
+              <TH className="hidden md:table-cell">Cliente</TH>
+              <TH className="hidden md:table-cell">Vehículo</TH>
+              {/* Las columnas de detalle esperan a que haya ancho (1280 px y el
+                  chasis 1400): hasta ahí su contenido va bajo la unidad, en
+                  letra chica. Se pierde la rejilla, no el dato. */}
+              <TH className="hidden xl:table-cell">Tipo</TH>
+              <TH className="hidden xl:table-cell">Carrocería</TH>
+              <TH className="hidden text-right xl:table-cell">Capacidad</TH>
               <TH className="hidden min-[1400px]:table-cell">N.º de chasis</TH>
-              {puedeEditar && <TH>Acciones</TH>}
+              {/* El ancho, para que «Editar» y «Desactivar» quepan en un renglón. */}
+              {puedeEditar && <TH className="text-right md:w-56">Acciones</TH>}
             </tr>
           </TablaCabecera>
           <tbody>
@@ -141,23 +150,26 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                       >
                         {nombre}
                       </Link>
+                      {/* Con los botones en `AccionesDeFila`, el estado va junto al nombre. */}
+                      {!u.activo && <Insignia className="ml-2 font-normal">Inactiva</Insignia>}
                       {avisarFalta && (
                         <span className="block text-xs font-normal text-texto-tenue">
                           sin placa
                         </span>
                       )}
-                      {/* En el teléfono el dueño y el vehículo van aquí: con sus
-                          columnas y las acciones, la tabla se corría de costado. */}
-                      <span className="block w-44 font-normal whitespace-normal sm:hidden">
-                        <span className="line-clamp-2 text-xs text-texto-suave">
+                      {/* En la ficha del teléfono el dueño y el vehículo van aquí;
+                          el tipo, la carrocería, la capacidad y el chasis, hasta
+                          que cabe su columna. Entre 640 y 1199 px no se veían. */}
+                      <span className="block font-normal whitespace-normal">
+                        <span className="line-clamp-2 text-xs text-texto-suave md:hidden">
                           {cliente ? cliente.razon_social : u.cliente_id ? null : 'Del taller'}
                         </span>
-                        <span className="block text-xs text-texto">{[u.marca, u.modelo, u.anio].filter(Boolean).join(' ')}</span>
-                        {detalle && <span className="block text-xs text-texto-suave">{detalle}</span>}
-                        {u.numero_chasis && <span className="block font-mono text-xs break-all text-texto-tenue">chasis {u.numero_chasis}</span>}
+                        <span className="block text-xs text-texto md:hidden">{[u.marca, u.modelo, u.anio].filter(Boolean).join(' ')}</span>
+                        {detalle && <span className="block text-xs text-texto-suave xl:hidden" data-detalle-unidad>{detalle}</span>}
+                        {u.numero_chasis && <span className="block font-mono text-xs break-all text-texto-tenue min-[1400px]:hidden">chasis {u.numero_chasis}</span>}
                       </span>
                     </TD>
-                    <TD className="hidden sm:table-cell">
+                    <TD className="hidden md:table-cell">
                       {cliente ? (
                         <Link
                           href={`/clientes/${cliente.id}`}
@@ -174,14 +186,12 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                         <span className="text-texto-suave">Del taller</span>
                       )}
                     </TD>
-                    <TD className="hidden sm:table-cell">{[u.marca, u.modelo, u.anio].filter(Boolean).join(' ') || '—'}</TD>
-                    <TD className="hidden text-texto-suave sm:table-cell">{tipoDeVehiculo(u.tipo_vehiculo)}</TD>
-                    {/* Carrocería, capacidad y chasis están en la ficha: se esconden
-                        antes que dejar las acciones fuera de la pantalla. */}
-                    <TD className="hidden text-texto-suave min-[1200px]:table-cell">
+                    <TD className="hidden md:table-cell">{[u.marca, u.modelo, u.anio].filter(Boolean).join(' ') || '—'}</TD>
+                    <TD className="hidden text-texto-suave xl:table-cell">{tipoDeVehiculo(u.tipo_vehiculo)}</TD>
+                    <TD className="hidden text-texto-suave xl:table-cell">
                       {carroceria?.nombre ?? '—'}
                     </TD>
-                    <TD className="tabular hidden text-right whitespace-nowrap min-[1200px]:table-cell">
+                    <TD className="tabular hidden text-right whitespace-nowrap xl:table-cell">
                       {capacidad || '—'}
                     </TD>
                     <TD className="hidden font-mono text-xs text-texto-suave min-[1400px]:table-cell">
@@ -189,15 +199,15 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
                     </TD>
                     {puedeEditar && (
                       <TD>
-                        {/* Una debajo de la otra hasta las pantallas muy anchas: a
-                            1440 px, con el menú a la izquierda, lado a lado
-                            cortaban «Desactivar» y la tabla se corría de costado. */}
-                        <div className="flex flex-col items-start gap-2 min-[1800px]:flex-row min-[1800px]:items-center">
+                        {/* Un renglón: «Editar» con borde y «Desactivar» al final, sin
+                            borde (decisión 6). Caben porque el tipo, la carrocería
+                            y la capacidad ya no piden columna hasta 1280 px. */}
+                        <AccionesDeFila>
                           {/* Una unidad del taller todavía no tiene cliente: se edita
                               desde su orden, cuando Administración le pone uno. */}
                           {u.cliente_id && <NuevaUnidad clienteId={u.cliente_id} unidad={u} compacta />}
-                          <AccionesCatalogo tipo="unidad" id={u.id} nombre={nombre} activo={u.activo} puedeEditar esAdmin={perfil.rol.codigo === 'ADMIN'} />
-                        </div>
+                          <AccionesCatalogo tipo="unidad" id={u.id} nombre={nombre} activo={u.activo} puedeEditar esAdmin={perfil.rol.codigo === 'ADMIN'} enFila />
+                        </AccionesDeFila>
                       </TD>
                     )}
                   </TR>
@@ -207,6 +217,7 @@ export default async function PaginaUnidades({ searchParams }: PageProps<'/unida
           </tbody>
         </Tabla>
       </Tarjeta>
+      </div>
     </>
   )
 }

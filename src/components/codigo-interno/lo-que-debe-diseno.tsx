@@ -38,6 +38,26 @@ export function LineaLoQueDebeDiseno({
   const puntos = puntosDeDiseno(d)
   const resumen = resumenDeLoQueFalta(puntos)
   const urgente = planoMasUrgente((d?.compromisos ?? []).filter((c) => !areas || areas.includes(c.area)))
+  // Sin nada cargado, una línea en letra suave y no cinco casillas vacías: con
+  // 188 de 191 códigos así, las casillas se repetían en toda la lista y la
+  // fila que sí tenía algo no se distinguía (hallazgo 4 del plan de orden y
+  // diseño; entrega 5). Los cinco puntos siguen dichos, y con sus marcas.
+  if (!urgente && puntos.every((p) => !p.hecho)) {
+    return (
+      <div className={className} data-lo-que-debe-diseno={d?.codigo} data-sin-nada="">
+        <p className="sr-only">{resumen}.</p>
+        <ul aria-hidden className="flex flex-wrap items-center gap-x-1 text-xs text-texto-suave" title={resumen}>
+          <li>Diseño todavía no carga:</li>
+          {puntos.map((p, i) => (
+            <li key={p.clave} data-punto={p.clave} data-hecho={p.hecho}>
+              {p.etiqueta === p.etiqueta.toUpperCase() ? p.etiqueta : p.etiqueta.toLowerCase()}
+              {i < puntos.length - 1 ? ',' : '.'}
+            </li>
+          ))}
+        </ul>
+      </div>
+    )
+  }
   return (
     <div className={className} data-lo-que-debe-diseno={d?.codigo}>
       <p className="sr-only">

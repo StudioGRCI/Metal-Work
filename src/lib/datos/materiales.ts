@@ -22,7 +22,7 @@ const TAMANO_PAGINA = 50
  * Catálogo de Diseño y Almacén, incluida la codificación original del Excel.
  */
 export async function listarCatalogoMateriales(
-  filtros: { busqueda?: string; inactivos?: boolean; pagina?: number } = {},
+  filtros: { busqueda?: string; inactivos?: boolean; unidadPendiente?: boolean; pagina?: number } = {},
 ): Promise<{ materiales: MaterialDelCatalogo[]; total: number; tamanoPagina: number; pagina: number }> {
   const supabase = await createClient()
 
@@ -43,6 +43,8 @@ export async function listarCatalogoMateriales(
     .range((pagina - 1) * TAMANO_PAGINA, pagina * TAMANO_PAGINA - 1)
 
   if (!filtros.inactivos) consulta = consulta.eq('activo', true)
+  // Solo los que esperan que alguien confirme en qué se cuentan (el Excel no lo dice).
+  if (filtros.unidadPendiente) consulta = consulta.eq('unidad_pendiente', true)
 
   for (const filtro of filtrosDeBusqueda(['descripcion', 'codigo'], filtros.busqueda)) consulta = consulta.or(filtro)
 
@@ -52,6 +54,25 @@ export async function listarCatalogoMateriales(
   if (otra) return listarCatalogoMateriales({ ...filtros, pagina: otra })
   if (error) throw new Error(`No se pudo leer el catálogo de materiales: ${error.message}`)
   return { materiales: (data ?? []) as unknown as MaterialDelCatalogo[], total: count ?? 0, tamanoPagina: TAMANO_PAGINA, pagina }
+}
+
+/**
+ * Cuántos materiales en uso esperan que se confirme su unidad. Es el aviso que
+ * antes iba en ámbar en cada fila del catálogo: repetido en 572 filas dejaba de
+ * avisar (plan de orden y diseño, entrega 5). Con la búsqueda puesta cuenta
+ * solo lo buscado, como la lista. Si no se puede contar devuelve `null` y la
+ * pantalla sigue sin la cifra.
+ */
+export async function materialesConUnidadPendiente(busqueda?: string): Promise<number | null> {
+  const supabase = await createClient()
+  let consulta = supabase.from('materiales').select('id', { count: 'exact', head: true }).eq('activo', true).eq('unidad_pendiente', true)
+  for (const filtro of filtrosDeBusqueda(['descripcion', 'codigo'], busqueda)) consulta = consulta.or(filtro)
+  const { count, error } = await consulta
+  if (error) {
+    console.error('[materiales] unidades por confirmar:', error.message)
+    return null
+  }
+  return count ?? 0
 }
 
 /** Las categorías y unidades para dar de alta un material. */

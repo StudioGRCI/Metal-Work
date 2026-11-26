@@ -10,7 +10,8 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { PorcentajeYCosto } from '@/components/ui/porcentaje-y-costo'
 import { Progreso } from '@/components/ui/progreso'
 import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
-import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { SinDatos } from '@/components/ui/tabla'
+import { Tarjeta } from '@/components/ui/tarjeta'
 import { leerListaDeCodigos, sumarCodigosDeDiseno, type AvanceDeCodigo, type ResumenCodigo } from '@/lib/datos/codigos-internos'
 import type { CodigoDeDiseno } from '@/lib/datos/diseno-codigos'
 import { loQueDebeDiseno } from '@/lib/datos/lo-que-debe-diseno'
@@ -57,12 +58,18 @@ const ESTADOS: Record<string, (c: ResumenCodigo) => boolean> = {
 }
 const abierto = (c: ResumenCodigo) => c.cierre === null
 
-/** Los filtros de la lista. «Parecidos» es lo que Gerencia tiene que verificar a mano. */
-const FILTROS: Record<string, (c: ResumenCodigo, parecido: boolean) => boolean> = {
+/**
+ * Los filtros de la lista. «Parecidos» es lo que Gerencia tiene que verificar a
+ * mano. «Sin nada de Diseño» junta lo que antes decía cada fila —que Diseño
+ * todavía no cargó planos ni etapas—: repetido en casi todas dejaba de avisar
+ * (hallazgo 4 del plan de orden y diseño; entrega 5).
+ */
+const FILTROS: Record<string, (c: ResumenCodigo, parecido: boolean, diseno: CodigoDeDiseno | undefined) => boolean> = {
   reportes: (c) => c.reportes > 0,
   costo: (c) => tieneCosto(c),
   parecidos: (_, parecido) => parecido,
   'por-completar': (c) => porCompletar(c),
+  'sin-diseno': (c, _, d) => esUnidadDeDiseno(c.codigo) && (!d || d.planos + d.etapas + d.materiales === 0),
 }
 
 export default async function PaginaCodigosInternos({ searchParams }: PageProps<'/codigos-internos'>) {
@@ -85,8 +92,9 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
     ? todos.filter((c) => c.codigo.includes(q.toUpperCase()) || (llave && llaveParecido(c.codigo).includes(llave)) || coincide(palabras, [c.codigo, diseno.get(c.codigo)?.unidad]))
     : todos
   const enEstado = buscados.filter(estado ? ESTADOS[estado] : abierto)
-  const cuantos = (clave: string) => enEstado.filter((c) => FILTROS[clave](c, parecidosDe.has(c.codigo))).length
-  const codigos = filtro ? enEstado.filter((c) => FILTROS[filtro](c, parecidosDe.has(c.codigo))) : enEstado
+  const cumple = (clave: string) => (c: ResumenCodigo) => FILTROS[clave](c, parecidosDe.has(c.codigo), diseno.get(c.codigo))
+  const cuantos = (clave: string) => enEstado.filter(cumple(clave)).length
+  const codigos = filtro ? enEstado.filter(cumple(filtro)) : enEstado
   const paginas = Math.max(1, Math.ceil(codigos.length / POR_PAGINA))
   const pagina = Math.min(Math.max(1, Math.trunc(Number(params.pagina)) || 1), paginas)
   const mostrar = codigos.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA)
@@ -131,97 +139,99 @@ export default async function PaginaCodigosInternos({ searchParams }: PageProps<
         migas={[{ titulo: 'Códigos internos' }]}
       />
 
-      <SeccionDesplegable titulo="Cómo se calcula" className="mb-3">
-        <div className="space-y-2 text-sm text-texto-suave">
-          <p>
-            Aparece cada código que está en el sistema: reportes diarios, horas de RR. HH., salidas del almacén, requerimientos, compras,
-            órdenes de servicio, subcontratos, unidades e ingresos a la planta.
-          </p>
-          <p>
-            <strong className="text-texto">El avance</strong> sale de lo que arma Diseño. Si puso a cada plano el porcentaje de la unidad que
-            representa, cada plano aporta ese porcentaje por lo que avanzó: lo último que reportó su área, o 100 % si la etapa de su área ya
-            terminó. Lo que no se repartió en planos se mide por el promedio de las etapas, donde la terminada vale 100 % y la que no, el
-            promedio de las actividades de su área que no son de un plano (el plano ya contó por su lado); si no hay etapas, por el promedio
-            de las actividades del reporte diario que no son de un plano. Sin planos con porcentaje, el avance es el promedio de las etapas,
-            con lo que su área reporta en el reporte diario; sin etapas, el promedio del último avance de cada trabajo del reporte diario,
-            área por área. En el detalle de cada código, la pestaña Avance muestra cómo sale el suyo.
-          </p>
-          <p>
-            <strong className="text-texto">El costo</strong> suma, en soles, la mano de obra con el recargo de sus horas extras, los
-            materiales que salieron del almacén con la merma que Diseño evaluó en la OT, las órdenes de servicio aprobadas, los recibos por
-            honorarios de los subcontratos, los gastos del mes, los gastos que Administración aprobó en la OT y los egresos de caja con el
-            código. Lo que está en dólares pasa a soles con el tipo de cambio que Contabilidad registró para el día de cada línea. Las compras se
-            muestran aparte y no se suman: lo comprado se cuenta cuando sale del almacén.
-          </p>
-          <p>
-            <strong className="text-texto">El margen</strong> es la cotización aprobada sin IGV menos ese costo.
+      {/* 20 px entre los bloques y 12 entre el buscador, los filtros y la cuenta
+          (la escala de la skill diseno). */}
+      <div className="space-y-5">
+        <SeccionDesplegable titulo="Cómo se calcula">
+          <div className="space-y-2 text-sm text-texto-suave">
+            <p>
+              Aparece cada código que está en el sistema: reportes diarios, horas de RR. HH., salidas del almacén, requerimientos, compras,
+              órdenes de servicio, subcontratos, unidades e ingresos a la planta.
+            </p>
+            <p>
+              <strong className="text-texto">El avance</strong> sale de lo que arma Diseño. Si puso a cada plano el porcentaje de la unidad que
+              representa, cada plano aporta ese porcentaje por lo que avanzó: lo último que reportó su área, o 100 % si la etapa de su área ya
+              terminó. Lo que no se repartió en planos se mide por el promedio de las etapas, donde la terminada vale 100 % y la que no, el
+              promedio de las actividades de su área que no son de un plano (el plano ya contó por su lado); si no hay etapas, por el promedio
+              de las actividades del reporte diario que no son de un plano. Sin planos con porcentaje, el avance es el promedio de las etapas,
+              con lo que su área reporta en el reporte diario; sin etapas, el promedio del último avance de cada trabajo del reporte diario,
+              área por área. En el detalle de cada código, la pestaña Avance muestra cómo sale el suyo.
+            </p>
+            <p>
+              <strong className="text-texto">El costo</strong> suma, en soles, la mano de obra con el recargo de sus horas extras, los
+              materiales que salieron del almacén con la merma que Diseño evaluó en la OT, las órdenes de servicio aprobadas, los recibos por
+              honorarios de los subcontratos, los gastos del mes, los gastos que Administración aprobó en la OT y los egresos de caja con el
+              código. Lo que está en dólares pasa a soles con el tipo de cambio que Contabilidad registró para el día de cada línea. Las compras se
+              muestran aparte y no se suman: lo comprado se cuenta cuando sale del almacén.
+            </p>
+            <p>
+              <strong className="text-texto">El margen</strong> es la cotización aprobada sin IGV menos ese costo.
+            </p>
+          </div>
+        </SeccionDesplegable>
+
+        <div className="space-y-3">
+          <BuscadorSimple ruta="/codigos-internos" etiqueta="Buscar código interno" marcador="Código, placa o vehículo" />
+          <PastillaFiltro
+            ruta="/codigos-internos"
+            clave="costeo"
+            params={params}
+            activo={estado}
+            etiqueta="Abiertos o con el costeo cerrado"
+            opciones={[
+              { valor: null, etiqueta: `Abiertos (${cantidad(buscados.length - cerrados)})` },
+              { valor: 'cerrados', etiqueta: `Costeo cerrado (${cantidad(cerrados)})` },
+              { valor: 'todos', etiqueta: `Abiertos y cerrados (${cantidad(buscados.length)})` },
+            ]}
+          />
+          <PastillaFiltro
+            ruta="/codigos-internos"
+            clave="ver"
+            params={params}
+            activo={filtro}
+            etiqueta="Qué códigos mostrar"
+            opciones={[
+              { valor: null, etiqueta: `${todosDelEstado} (${cantidad(enEstado.length)})` },
+              { valor: 'reportes', etiqueta: `Con reporte diario (${cantidad(cuantos('reportes'))})` },
+              { valor: 'costo', etiqueta: `Con costo (${cantidad(cuantos('costo'))})` },
+              { valor: 'parecidos', etiqueta: `Parecidos a otro (${cantidad(cuantos('parecidos'))})` },
+              { valor: 'por-completar', etiqueta: `Sin precio, sin costo o sin cambio (${cantidad(cuantos('por-completar'))})` },
+              { valor: 'sin-diseno', etiqueta: `Sin planos, materiales ni etapas de Diseño (${cantidad(cuantos('sin-diseno'))})` },
+            ]}
+          />
+          <p className="text-xs text-texto-suave">
+            <span className="tabular">{cantidad(codigos.length)}</span> {codigos.length === 1 ? 'código' : 'códigos'} ·{' '}
+            <span className="tabular">{moneda(costo)}</span>
+            {dolares > 0 && (
+              <>
+                {' '}
+                + <span className="tabular">{moneda(dolares, 'USD')}</span> sin tipo de cambio
+              </>
+            )}{' '}
+            costados · <span className="tabular">{horasCortas(horas)}</span> de personal
           </p>
         </div>
-      </SeccionDesplegable>
 
-      <div className="mb-3 space-y-3">
-        <BuscadorSimple ruta="/codigos-internos" etiqueta="Buscar código interno" marcador="Código, placa o vehículo" />
-        <PastillaFiltro
-          ruta="/codigos-internos"
-          clave="costeo"
-          params={params}
-          activo={estado}
-          etiqueta="Abiertos o con el costeo cerrado"
-          opciones={[
-            { valor: null, etiqueta: `Abiertos (${cantidad(buscados.length - cerrados)})` },
-            { valor: 'cerrados', etiqueta: `Costeo cerrado (${cantidad(cerrados)})` },
-            { valor: 'todos', etiqueta: `Abiertos y cerrados (${cantidad(buscados.length)})` },
-          ]}
-        />
-        <PastillaFiltro
-          ruta="/codigos-internos"
-          clave="ver"
-          params={params}
-          activo={filtro}
-          etiqueta="Qué códigos mostrar"
-          opciones={[
-            { valor: null, etiqueta: `${todosDelEstado} (${cantidad(enEstado.length)})` },
-            { valor: 'reportes', etiqueta: `Con reporte diario (${cantidad(cuantos('reportes'))})` },
-            { valor: 'costo', etiqueta: `Con costo (${cantidad(cuantos('costo'))})` },
-            { valor: 'parecidos', etiqueta: `Parecidos a otro (${cantidad(cuantos('parecidos'))})` },
-            { valor: 'por-completar', etiqueta: `Sin precio, sin costo o sin cambio (${cantidad(cuantos('por-completar'))})` },
-          ]}
-        />
-        <p className="text-xs text-texto-suave">
-          <span className="tabular">{cantidad(codigos.length)}</span> {codigos.length === 1 ? 'código' : 'códigos'} ·{' '}
-          <span className="tabular">{moneda(costo)}</span>
-          {dolares > 0 && (
-            <>
-              {' '}
-              + <span className="tabular">{moneda(dolares, 'USD')}</span> sin tipo de cambio
-            </>
-          )}{' '}
-          costados · <span className="tabular">{horasCortas(horas)}</span> de personal
-        </p>
+        {codigos.length === 0 ? (
+          <Tarjeta>
+            <SinDatos enTabla={false} titulo={vacio.titulo} descripcion={vacio.texto} />
+          </Tarjeta>
+        ) : (
+          <ul className="space-y-3">
+            {mostrar.map((c) => (
+              <li key={c.codigo}>
+                <FilaCodigo
+                  codigo={c}
+                  parecidos={parecidosDe.get(c.codigo) ?? []}
+                  diseno={diseno.get(c.codigo)}
+                  debe={debe === null ? null : debe.get(c.codigo)}
+                  avance={avances.get(c.codigo)}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
-
-      {codigos.length === 0 ? (
-        <Tarjeta>
-          <TarjetaCuerpo>
-            <p className="text-sm font-medium text-texto">{vacio.titulo}</p>
-            <p className="text-sm text-texto-suave">{vacio.texto}</p>
-          </TarjetaCuerpo>
-        </Tarjeta>
-      ) : (
-        <ul className="space-y-3">
-          {mostrar.map((c) => (
-            <li key={c.codigo}>
-              <FilaCodigo
-                codigo={c}
-                parecidos={parecidosDe.get(c.codigo) ?? []}
-                diseno={diseno.get(c.codigo)}
-                debe={debe === null ? null : debe.get(c.codigo)}
-                avance={avances.get(c.codigo)}
-              />
-            </li>
-          ))}
-        </ul>
-      )}
 
       <Paginacion
         ruta="/codigos-internos"
