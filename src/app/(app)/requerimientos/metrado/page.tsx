@@ -2,14 +2,18 @@ import Link from 'next/link'
 
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
+import { DiasEnEspera } from '@/components/ui/dias-en-espera'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { Recorrido } from '@/components/ui/recorrido'
 import { SinDatos } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { metradoDeRequerimientos, requerimientosPorAutorizar, type MetradoDelInsumo } from '@/lib/datos/metrado-rq'
+import { recorridoDeRequerimientos, type Recorridos } from '@/lib/datos/recorrido'
 import { cargarRequerimientos, type RequerimientoListado } from '@/lib/datos/requerimientos'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { enlaceDisenoCodigo } from '@/lib/dominio/diseno-codigos'
 import { cuentaDelMetrado, ESTADO_METRADO } from '@/lib/dominio/metrado-rq'
+import { describirRecorridoDelRequerimiento, type PasoDelRecorrido } from '@/lib/dominio/recorrido'
 import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -22,7 +26,9 @@ export const metadata = { title: 'Insumos por autorizar' }
  * La bandeja de Diseño para el metrado (Almacén, 20/11/2026: «un requerimiento
  * no se aprueba sin sustento técnico»). Arriba lo que espera su visto, con el
  * sustento de quien pidió; abajo lo que todavía espera ese sustento, por si el
- * metrado del código está incompleto y basta con cargarlo.
+ * metrado del código está incompleto y basta con cargarlo. Al final, lo que ya
+ * autorizó y sigue abierto, con su recorrido: por dónde va después del visto
+ * (plan 6, entrega 6.2).
  */
 export default async function PaginaPorAutorizar({ searchParams }: PageProps<'/requerimientos/metrado'>) {
   const perfil = await exigirPermiso('requerimientos.autorizar_metrado')
@@ -44,13 +50,40 @@ export default async function PaginaPorAutorizar({ searchParams }: PageProps<'/r
   abiertos.sort((a, b) => b.creado_en.localeCompare(a.creado_en))
   const de = (r: RequerimientoListado, estados: MetradoDelInsumo['estado'][]) =>
     r.lineas.filter((l) => estados.includes(metrado.get(l.id)?.estado ?? 'NO_APLICA'))
-  // El más antiguo primero: es el que lleva más tiempo frenando a Almacén.
   const busca = (r: RequerimientoListado) =>
     palabras.length === 0 || coincide(palabras, [r.codigo_interno, r.numero, r.area, ...r.lineas.map((l) => l.descripcion)])
-  const porAutorizar = abiertos.filter((r) => de(r, ['POR_AUTORIZAR']).length > 0 && busca(r)).reverse()
-  const sinSustento = abiertos
-    .filter((r) => de(r, ['POR_AUTORIZAR']).length === 0 && de(r, ['SIN_SUSTENTO', 'RECHAZADO']).length > 0 && busca(r))
-    .reverse()
+  const porAutorizar = abiertos.filter((r) => de(r, ['POR_AUTORIZAR']).length > 0 && busca(r))
+  const sinSustento = abiertos.filter(
+    (r) => de(r, ['POR_AUTORIZAR']).length === 0 && de(r, ['SIN_SUSTENTO', 'RECHAZADO']).length > 0 && busca(r),
+  )
+  // Lo que ya autorizaste y sigue abierto: el visto más reciente arriba, hasta
+  // veinte. Lo que no autorizaste vuelve a quien pidió y ya sale arriba.
+  const ultimoVisto = (r: RequerimientoListado) =>
+    de(r, ['AUTORIZADO']).reduce((max, l) => {
+      const en = metrado.get(l.id)?.decidido_en ?? ''
+      return en > max ? en : max
+    }, '')
+  const autorizados = abiertos
+    .filter((r) => de(r, ['AUTORIZADO']).length > 0 && de(r, ['POR_AUTORIZAR', 'SIN_SUSTENTO', 'RECHAZADO']).length === 0 && busca(r))
+    .sort((a, b) => ultimoVisto(b).localeCompare(ultimoVisto(a)))
+    .slice(0, AUTORIZADOS_A_LA_VISTA)
+
+  // Quién pidió cada RQ, quién lo tiene ahora y desde cuándo, con los días que
+  // cuenta la base (fecha de Lima). Sin eso la bandeja sigue: sin días ni recorrido.
+  const recorridos: Recorridos | null = await recorridoDeRequerimientos(
+    [...porAutorizar, ...sinSustento, ...autorizados].map((r) => r.id),
+  ).catch((e: unknown) => {
+    console.error('Insumos por autorizar: no se pudo leer el recorrido de los requerimientos.', e)
+    return null
+  })
+  const paso = (r: RequerimientoListado, cual: (p: PasoDelRecorrido) => boolean) => recorridos?.get(r.id)?.find(cual)
+  const ahora = (r: RequerimientoListado) => paso(r, (p) => p.situacion === 'AHORA')
+  const pidio = (r: RequerimientoListado) => paso(r, (p) => p.paso === 'REGISTRO' && p.situacion === 'HECHO')?.puesto ?? null
+  // El que más espera arriba: desde que espera, según el recorrido; sin él, desde que se registró.
+  const desde = (r: RequerimientoListado) => ahora(r)?.en ?? r.creado_en
+  porAutorizar.sort((a, b) => desde(a).localeCompare(desde(b)))
+  sinSustento.sort((a, b) => desde(a).localeCompare(desde(b)))
+  const hayAlgo = porAutorizar.length + sinSustento.length + autorizados.length > 0
 
   return (
     <>
@@ -69,6 +102,13 @@ export default async function PaginaPorAutorizar({ searchParams }: PageProps<'/r
           marcador="Código interno, RQ o insumo"
         />
       </div>
+
+      {recorridos === null && hayAlgo && (
+        <p role="status" className="mb-3 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-dias-sin-leer>
+          No se pudo leer quién pidió cada requerimiento ni cuántos días lleva esperando: la bandeja sigue sin esos datos y sin
+          ordenarse por espera. Vuelve a cargar la pantalla en un momento.
+        </p>
+      )}
 
       <ConAvisos>
         <section aria-labelledby="por-autorizar" className="space-y-3">
@@ -94,7 +134,7 @@ export default async function PaginaPorAutorizar({ searchParams }: PageProps<'/r
           ) : (
             porAutorizar.map((r) => (
               <Tarjeta key={r.id} className="overflow-hidden" data-rq={r.numero}>
-                <CabeceraDelRq rq={r} cargaMetrado={cargaMetrado} />
+                <CabeceraDelRq rq={r} cargaMetrado={cargaMetrado} pidio={pidio(r)} espera={ahora(r)} />
                 <OtrosQueFrenan rq={r} items={de(r, ['SIN_SUSTENTO', 'RECHAZADO']).map((l) => l.item)} />
                 <VistoDelRequerimiento
                   id={r.id}
@@ -128,7 +168,7 @@ export default async function PaginaPorAutorizar({ searchParams }: PageProps<'/r
           </div>
           {sinSustento.map((r) => (
             <Tarjeta key={r.id} className="overflow-hidden" data-rq={r.numero}>
-              <CabeceraDelRq rq={r} cargaMetrado={cargaMetrado} />
+              <CabeceraDelRq rq={r} cargaMetrado={cargaMetrado} pidio={pidio(r)} espera={ahora(r)} verQuien />
               <ul className="divide-y divide-borde border-t border-borde">
                 {de(r, ['SIN_SUSTENTO', 'RECHAZADO']).map((l) => {
                   const m = metrado.get(l.id)!
@@ -153,9 +193,55 @@ export default async function PaginaPorAutorizar({ searchParams }: PageProps<'/r
           ))}
         </section>
       )}
+
+      {autorizados.length > 0 && (
+        <section aria-labelledby="ya-autorizados" className="mt-8 space-y-3" data-ya-autorizados>
+          <div>
+            <h2 id="ya-autorizados" className="text-sm font-semibold text-texto">
+              Ya los autorizaste <span className="tabular font-normal text-texto-suave">· {autorizados.length}</span>
+            </h2>
+            <p className="text-xs text-texto-suave">
+              Siguen abiertos: abre su recorrido para ver por dónde van después de tu visto, quién los tiene y hace cuántos días.
+              {autorizados.length === AUTORIZADOS_A_LA_VISTA && ` Van los ${AUTORIZADOS_A_LA_VISTA} de visto más reciente.`}
+            </p>
+          </div>
+          {autorizados.map((r) => (
+            <Tarjeta key={r.id} className="overflow-hidden" data-rq={r.numero} data-autorizado>
+              <CabeceraDelRq rq={r} cargaMetrado={cargaMetrado} pidio={pidio(r)} />
+              <ul className="divide-y divide-borde border-t border-borde">
+                {de(r, ['AUTORIZADO']).map((l) => {
+                  const m = metrado.get(l.id)!
+                  return (
+                    <li key={l.item} className="space-y-0.5 px-4 py-3 text-sm">
+                      <p className="break-words text-texto">
+                        <span className="tabular font-semibold">Ítem {l.item} ·</span> {cantidad(l.cantidad)} {l.unidad} {l.descripcion}{' '}
+                        <Insignia tono={ESTADO_METRADO.AUTORIZADO.tono}>
+                          {m.decidido_en ? `Autorizado el ${fecha(m.decidido_en)}` : ESTADO_METRADO.AUTORIZADO.etiqueta}
+                        </Insignia>
+                      </p>
+                      {m.nota_decision && (
+                        <p className="text-xs break-words text-texto-suave">
+                          <span className="font-medium text-texto">Tu nota:</span> {m.nota_decision}
+                        </p>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+              <Recorrido
+                pasos={recorridos === null ? null : describirRecorridoDelRequerimiento(recorridos.get(r.id) ?? [])}
+                className="border-t border-borde"
+              />
+            </Tarjeta>
+          ))}
+        </section>
+      )}
     </>
   )
 }
+
+/** Cuántos de los ya autorizados se muestran: los de visto más reciente. */
+const AUTORIZADOS_A_LA_VISTA = 20
 
 /**
  * Los otros insumos del mismo RQ que todavía esperan el sustento de quien pidió:
@@ -172,8 +258,25 @@ function OtrosQueFrenan({ rq, items }: { rq: RequerimientoListado; items: number
   )
 }
 
-/** Qué RQ es, de qué área y unidad, y para qué; con el enlace al metrado del código. */
-function CabeceraDelRq({ rq, cargaMetrado }: { rq: RequerimientoListado; cargaMetrado: boolean }) {
+/**
+ * Qué RQ es, de qué área y unidad, quién lo pidió y para qué; con el enlace al
+ * metrado del código. `espera` es el paso que lo tiene ahora (del recorrido):
+ * sus días van junto al número. `verQuien`, cuando no lo tiene quien mira.
+ */
+function CabeceraDelRq({
+  rq,
+  cargaMetrado,
+  pidio,
+  espera,
+  verQuien = false,
+}: {
+  rq: RequerimientoListado
+  cargaMetrado: boolean
+  /** El puesto de la cuenta que lo registró, nunca su nombre (plan 0). */
+  pidio: string | null
+  espera?: PasoDelRecorrido
+  verQuien?: boolean
+}) {
   return (
     <div className="space-y-1 px-4 pt-4 pb-3">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -181,7 +284,13 @@ function CabeceraDelRq({ rq, cargaMetrado }: { rq: RequerimientoListado; cargaMe
         <span className="text-sm text-texto">
           {rq.area} · <span className="font-mono font-medium">{rq.codigo_interno}</span>
         </span>
+        <DiasEnEspera dias={espera?.dias} desde={espera?.en} quien={espera?.puesto} verQuien={verQuien} />
       </div>
+      {pidio && (
+        <p className="text-sm text-texto" data-pidio>
+          <span className="text-texto-suave">Pidió:</span> <span className="font-medium">{pidio}</span>
+        </p>
+      )}
       <p className="text-sm break-words text-texto-suave">{rq.justificacion}</p>
       <p className="text-xs text-texto-tenue">
         {[`Registrado ${fechaHora(rq.creado_en)}`, rq.fecha_requerida ? `se necesita el ${fecha(rq.fecha_requerida)}` : null].filter(Boolean).join(' · ')}
