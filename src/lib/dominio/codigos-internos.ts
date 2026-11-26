@@ -217,6 +217,11 @@ export function noEsUnidad(codigo: string) {
   return codigo === CODIGO_SIN_AVANCE || codigo === CODIGO_TODOS_LOS_ACTIVOS
 }
 
+/** Si al código le toca lo que Diseño entrega por unidad: ni PLANTA, ni «todos los activos», ni OFICINA. */
+export function esUnidadDeDiseno(codigo: string) {
+  return !noEsUnidad(codigo) && codigo !== CODIGO_FIJO_OFICINA.codigo
+}
+
 /**
  * De dónde sale el porcentaje de un código, en una línea, con lo que devuelve
  * `codigos_internos_avance`. Sin fila, el código no tiene etapas ni reportes y

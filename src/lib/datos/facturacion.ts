@@ -174,7 +174,8 @@ async function conCobros(filas: FilaFactura[]): Promise<FacturaVenta[]> {
 /**
  * Lo que Contabilidad tiene por facturar: cada cotización aprobada con sus
  * facturas. Primero las que tienen código interno y ninguna factura vigente;
- * al final, las que esperan que Administración cargue la OT.
+ * al final, las que esperan que Administración cargue la OT. La pantalla de
+ * Facturación las vuelve a ordenar con los días que llevan esperando (Plan 10.1).
  */
 export async function bandejaDeFacturacion(): Promise<CotizacionParaFacturar[]> {
   const cotizaciones = await cotizacionesAprobadas()
@@ -199,6 +200,32 @@ export type FacturadoContraVendido = {
   como: ComoVaLaFactura[]
   /** Alguna sin confirmar si su monto incluye IGV: lo vendido se toma con IGV, como en la bandeja, y puede faltar el 18 %. */
   igvSinConfirmar: boolean
+}
+
+/** Desde cuándo espera su factura cada cotización y cuántos días van, por fecha de Lima. */
+export type EsperaDeFacturacion = { desde: string | null; dias: number | null }
+
+/**
+ * Desde que la OT de cada cotización tiene código interno, que es cuando se
+ * puede facturar (DKS, Plan 10), y los días que van contados por la base con
+ * la fecha de Lima (migración 20261126470000). Lo lee quien lee las
+ * cotizaciones aprobadas. Si la base no contesta, lanza: la pantalla sigue sin
+ * los días y lo dice.
+ */
+export async function esperaDeFacturacion(ids: string[]): Promise<Map<string, EsperaDeFacturacion>> {
+  const mapa = new Map<string, EsperaDeFacturacion>()
+  const unicos = [...new Set(ids)]
+  if (unicos.length === 0) return mapa
+  const supabase = await createClient()
+  // De a 500, el tope de la función.
+  for (let i = 0; i < unicos.length; i += 500) {
+    const { data, error } = await supabase.rpc('facturacion_en_espera', { p_ids: unicos.slice(i, i + 500) })
+    if (error) throw new Error(`No se pudieron contar los días que esperan su factura: ${error.message}`)
+    for (const f of data ?? []) {
+      if (f.cotizacion) mapa.set(f.cotizacion, { desde: f.desde, dias: f.dias == null ? null : Number(f.dias) })
+    }
+  }
+  return mapa
 }
 
 /** Lo facturado de un código, en cada moneda, sin las anuladas, y cómo va contra lo vendido. */

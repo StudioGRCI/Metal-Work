@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import { Download, FileText } from 'lucide-react'
 
 import { LineaDeDiseno } from '@/components/codigo-interno/linea-diseno'
+import { LineaLoQueDebeDiseno } from '@/components/codigo-interno/lo-que-debe-diseno'
 import { DelDocumento } from '@/components/estructura/del-documento'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { SeccionesDelDocumento } from '@/components/estructura/secciones-del-documento'
@@ -33,7 +34,8 @@ import {
   type ResumenCodigo,
 } from '@/lib/datos/codigos-internos'
 import { etapasDeCodigo } from '@/lib/datos/diseno-codigos'
-import { cotizacionesAprobadas, facturadoDelCodigo, facturasDelCodigo } from '@/lib/datos/facturacion'
+import { loQueDebeDiseno } from '@/lib/datos/lo-que-debe-diseno'
+import { cotizacionesAprobadas, facturadoDelCodigo, facturasDelCodigo, type FacturadoDelCodigo } from '@/lib/datos/facturacion'
 import { mesesSinPagosDeOficina, mesesSinPlanillaDeTaller, repartoDelMes } from '@/lib/datos/gastos-generales'
 import { recorridoDeCotizaciones } from '@/lib/datos/recorrido'
 import { PERMISOS_BAJAR_COTIZACION, rutaParaBajarCotizacion } from '@/lib/descarga'
@@ -55,6 +57,7 @@ import {
   faltaElPrecio,
   faltaParaCerrar,
   montoMixto,
+  esUnidadDeDiseno,
   noEsUnidad,
   normalizarCodigo,
   origenDelAvance,
@@ -107,7 +110,7 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
   const pedida = vistaValida(params.vista)
   const vista = vistas.some((v) => v.valor === pedida) ? pedida : 'avance'
 
-  const [{ codigos: conDocumentos, diseno: deDiseno, avances }, facturado, reparto, horasDelMes, faltaOficina, faltaPlanilla, lineas, delRecorrido] = await Promise.all([
+  const [{ codigos: conDocumentos, diseno: deDiseno, avances }, facturado, reparto, horasDelMes, faltaOficina, faltaPlanilla, lineas, delRecorrido, debe] = await Promise.all([
     leerListaDeCodigos(),
     // Lo facturado va en el recorrido de arriba, que solo tiene la unidad que se vende.
     veFacturas && tieneRecorrido
@@ -124,6 +127,15 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
     // La cotización y la OT del recorrido de arriba, que elige la base, y el recorrido de esa cotización
     // para quien la abre. Si no se leen, el recorrido lo dice en esos pasos y la página sigue.
     !tieneRecorrido ? Promise.resolve(null) : leerElRecorrido(codigo, puede(perfil, 'cotizaciones.ver_pdf_comercial')),
+    // Lo que Diseño le debe a la unidad (plan 6.1), en lectura; si no se lee, se dice.
+    !esUnidadDeDiseno(codigo)
+      ? Promise.resolve(undefined)
+      : loQueDebeDiseno([codigo])
+          .then((m) => m.get(codigo))
+          .catch((e: unknown) => {
+            console.error('[codigos-internos/detalle] lo que debe Diseño:', e)
+            return null
+          }),
   ])
   const ajuste = ajusteDePlanilla(lineas)
   const esperaElMes = horasDelMes.some((r) => r.codigo === codigo)
@@ -238,7 +250,12 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
                   faltaPlanilla={faltaPlanilla}
                   ajuste={ajuste}
                 />
-                <LineaDeDiseno d={diseno} />
+                {esUnidadDeDiseno(codigo) && (
+                  <div className="space-y-1">
+                    <LineaDeDiseno d={diseno} />
+                    <LineaLoQueDebeDiseno d={debe} />
+                  </div>
+                )}
               </>
             )}
 

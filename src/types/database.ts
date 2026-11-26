@@ -1525,6 +1525,90 @@ export type Database = {
         }
         Relationships: []
       }
+      conformidad_salidas: {
+        Row: {
+          id: string
+          movimiento_id: string
+          requerimiento_id: string
+          requerimiento_linea_id: string
+          tipo: string
+          cantidad_recibida: number | null
+          nota: string
+          registrado_por: string
+          registrado_en: string
+          respuesta: string | null
+          atendido_por: string | null
+          atendido_en: string | null
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          movimiento_id: string
+          requerimiento_id: string
+          requerimiento_linea_id: string
+          tipo: string
+          cantidad_recibida?: number | null
+          nota: string
+          registrado_por: string
+          registrado_en?: string
+          respuesta?: string | null
+          atendido_por?: string | null
+          atendido_en?: string | null
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          movimiento_id?: string
+          requerimiento_id?: string
+          requerimiento_linea_id?: string
+          tipo?: string
+          cantidad_recibida?: number | null
+          nota?: string
+          registrado_por?: string
+          registrado_en?: string
+          respuesta?: string | null
+          atendido_por?: string | null
+          atendido_en?: string | null
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conformidad_salidas_atendido_por_fkey"
+            columns: ["atendido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conformidad_salidas_movimiento_id_fkey"
+            columns: ["movimiento_id"]
+            isOneToOne: true
+            referencedRelation: "movimientos_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conformidad_salidas_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conformidad_salidas_requerimiento_id_fkey"
+            columns: ["requerimiento_id"]
+            isOneToOne: false
+            referencedRelation: "requerimientos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conformidad_salidas_requerimiento_linea_id_fkey"
+            columns: ["requerimiento_linea_id"]
+            isOneToOne: false
+            referencedRelation: "requerimiento_lineas"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       contactos_cliente: {
         Row: {
           id: string
@@ -12816,6 +12900,16 @@ export type Database = {
           orden_compra_id: string | null
         }[]
       }
+      anotar_conformidad_salida: {
+        Args: {
+          p_id: string | null
+          p_movimiento: string | null
+          p_tipo: string | null
+          p_cantidad_recibida: number | null
+          p_nota: string | null
+        }
+        Returns: string
+      }
       anotar_documentos_recibidos: {
         Args: {
           p_orden_compra: string | null
@@ -13105,6 +13199,13 @@ export type Database = {
       asistencia_buscar_por_dni: {
         Args: {
           p_dni: string | null
+        }
+        Returns: string
+      }
+      atender_conformidad_salida: {
+        Args: {
+          p_id: string | null
+          p_respuesta: string | null
         }
         Returns: string
       }
@@ -13766,6 +13867,12 @@ export type Database = {
         }[]
       }
       codigo_interno_de_cotizacion: {
+        Args: {
+          p_cotizacion: string | null
+        }
+        Returns: string
+      }
+      codigo_interno_de_cotizacion_desde: {
         Args: {
           p_cotizacion: string | null
         }
@@ -15135,6 +15242,18 @@ export type Database = {
           vinculos_ot: Json | null
         }[]
       }
+      documentos_de_las_compras: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          tipo: string | null
+          compra: string | null
+          documento: string | null
+          situacion: string | null
+          desde: string | null
+          dias: number | null
+          numeros: string | null
+        }[]
+      }
       documentos_por_aprobar: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -15403,6 +15522,12 @@ export type Database = {
         }
         Returns: boolean
       }
+      es_foto_de_salida_de_requerimiento: {
+        Args: {
+          p_nombre: string | null
+        }
+        Returns: boolean
+      }
       es_laborable: {
         Args: {
           p_fecha: string | null
@@ -15501,6 +15626,16 @@ export type Database = {
           saldo: number | null
           moneda: string | null
           alcanza: boolean | null
+        }[]
+      }
+      facturacion_en_espera: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          cotizacion: string | null
+          desde: string | null
+          dias: number | null
         }[]
       }
       facturacion_pendientes: {
@@ -15659,6 +15794,12 @@ export type Database = {
           p_ruta: string | null
         }
         Returns: boolean
+      }
+      foto_de_salida_de_requerimiento: {
+        Args: {
+          p_movimiento: string | null
+        }
+        Returns: string
       }
       gastos_del_mes_oficina: {
         Args: {
@@ -15994,6 +16135,33 @@ export type Database = {
           llegado: number | null
         }[]
       }
+      lo_que_debe_diseno: {
+        Args: {
+          p_codigos: string[] | null
+        }
+        Returns: {
+          codigo: string | null
+          tiene_ot: boolean | null
+          ficha_en: string | null
+          planos: number | null
+          planos_en: string | null
+          materiales: number | null
+          materiales_en: string | null
+          etapas: number | null
+          etapas_en: string | null
+          dxf: number | null
+          dxf_en: string | null
+          area: string | null
+          area_nombre: string | null
+          tiene_etapa: boolean | null
+          etapa: string | null
+          comprometido: string | null
+          entregado_en: string | null
+          situacion: string | null
+          dias: number | null
+          por_vencer: boolean | null
+        }[]
+      }
       lote_de_prueba: {
         Args: Record<PropertyKey, never>
         Returns: string
@@ -16292,6 +16460,33 @@ export type Database = {
           a_favor: number | null
           archivo_ruta: string | null
           usado: Json | null
+        }[]
+      }
+      notas_de_conformidad: {
+        Args: {
+          p_requerimientos?: string[] | null
+          p_solo_abiertas?: boolean | null
+        }
+        Returns: {
+          id: string | null
+          movimiento_id: string | null
+          requerimiento_id: string | null
+          requerimiento: string | null
+          item: number | null
+          material: string | null
+          unidad: string | null
+          salio: number | null
+          numero_salida: string | null
+          salio_en: string | null
+          tipo: string | null
+          cantidad_recibida: number | null
+          nota: string | null
+          anotado_por: string | null
+          anotado_en: string | null
+          respuesta: string | null
+          atendido_por: string | null
+          atendido_en: string | null
+          puede_atender: boolean | null
         }[]
       }
       notificar_a_permiso: {
@@ -16826,6 +17021,12 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
+      puede_anotar_conformidad: {
+        Args: {
+          p_rq: string | null
+        }
+        Returns: boolean
+      }
       puede_armar_hoja_de_area: {
         Args: {
           p_area_id: string | null
@@ -16938,6 +17139,23 @@ export type Database = {
           p_usuario: string | null
         }
         Returns: string
+      }
+      quien_subio_y_quien_leyo: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          tipo: string | null
+          clave: string | null
+          subido_por: string | null
+          subido_en: string | null
+          area: string | null
+          area_nombre: string | null
+          destinatarios: number | null
+          leidos: number | null
+          primera_lectura: string | null
+          ultima_lectura: string | null
+        }[]
       }
       quitar_descuento_nota_credito: {
         Args: {
@@ -18413,6 +18631,26 @@ export type Database = {
         Returns: {
           id: string | null
           en_recojo_en: string | null
+        }[]
+      }
+      salidas_de_requerimientos: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          movimiento_id: string | null
+          requerimiento_id: string | null
+          requerimiento_linea_id: string | null
+          item: number | null
+          cantidad: number | null
+          unidad: string | null
+          material: string | null
+          numero_salida: string | null
+          salio_en: string | null
+          recibido_por: string | null
+          con_foto: boolean | null
+          puede_anotar: boolean | null
+          nota_abierta: string | null
         }[]
       }
       seguimiento_de_insumos: {

@@ -4,6 +4,7 @@ import { cache } from 'react'
 
 import type { Tono } from '@/components/ui/etiqueta-estado'
 import { codigosDeDiseno, planosDeCodigo } from '@/lib/datos/diseno-codigos'
+import { recorridoDeRequerimientos } from '@/lib/datos/recorrido'
 import { cargarRequerimientos } from '@/lib/datos/requerimientos'
 import { planillaAjusteDesde } from '@/lib/datos/rrhh'
 import { todasLasFilas } from '@/lib/datos/todas-las-filas'
@@ -11,7 +12,7 @@ import { ESTADOS_ACTIVOS_OT } from '@/lib/dominio/estados'
 import { totalConIgv } from '@/lib/dominio/finanzas'
 import { devueltaEntera } from '@/lib/dominio/pago-de-boleta'
 import { estadoDePlanilla } from '@/lib/dominio/planilla-diaria'
-import { ESTADOS_RQ_ABIERTOS, leTocaAtender, quienAtiende, tieneParaRecoger, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
+import { ESTADOS_RQ_ABIERTOS, leTocaAtender, PUESTO_ALMACEN, quienAtiende, RQ_EN_COMPRA, tieneParaRecoger, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
 import { hoyLima } from '@/lib/format'
 import { rutasDeTrabajo } from '@/lib/navegacion'
 import { apruebaSinOrden, puede, type PerfilSesion } from '@/lib/sesion'
@@ -567,21 +568,30 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       texto: (n) => plural(n, 'cotización aprobada por facturar', 'cotizaciones aprobadas por facturar'),
       contar: async () => {
         // La cuenta es la de la base; lo que vale sale de la misma bandeja que
-        // Facturación: las aprobadas con código y sin factura vigente.
+        // Facturación: las que tienen código y no tienen factura vigente o están
+        // facturadas en parte (Plan 10.1), por lo que les falta facturar.
         // Con IGV, como la tarjeta de cada cotización en Facturación (`totalConIgv`).
         const [cuenta, bandeja] = await Promise.all([facturacion(), supabase.rpc('cotizaciones_para_facturar')])
         const cantidad = cuenta.por_facturar ?? 0
         // El monto es un dato más: si la bandeja no se lee, el globo sigue con su cuenta.
         if (bandeja.error) return cantidad
-        const sinFactura = (bandeja.data ?? []).filter((c) => c.codigo_interno && (c.facturas ?? 0) === 0)
-        // La bandeja trae las 300 más nuevas: si no están todas, un monto corto mentiría; va solo la cuenta.
-        if (sinFactura.length !== cantidad) return cantidad
+        const total = (c: { monto_venta: number | null; incluye_igv: boolean | null }) =>
+          totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
+        const falta = (c: { monto_venta: number | null; incluye_igv: boolean | null; facturado: number | null }) =>
+          Math.max(0, (total(c) ?? 0) - Number(c.facturado ?? 0))
+        // Sin factura, o facturada en parte: el monto es lo que falta facturar (Plan 10.1).
+        const porFacturar = (bandeja.data ?? []).filter(
+          (c) => c.codigo_interno && ((c.facturas ?? 0) === 0 || (total(c) !== null && falta(c) > 0.005)),
+        )
+        // La bandeja trae las 300 más nuevas, y una factura en otra moneda no se compara:
+        // si no son las mismas que cuenta la base, un monto corto mentiría; va solo la cuenta.
+        if (porFacturar.length !== cantidad) return cantidad
         // Como lo dice Facturación: «con IGV», o que falta confirmarlo si alguna no lo tiene.
-        const sinConfirmar = sinFactura.some((c) => c.incluye_igv === null)
+        const sinConfirmar = porFacturar.some((c) => c.incluye_igv === null)
         return {
           cantidad,
           monto: {
-            ...enMonedas(sinFactura, (c) => c.moneda, (c) => totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv) ?? 0),
+            ...enMonedas(porFacturar, (c) => c.moneda, falta),
             rotulo: sinConfirmar ? 'falta confirmar si incluye IGV' : 'con IGV',
           },
         }
@@ -827,6 +837,19 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       return (data ?? []).length
     },
   })
+  // En compra, a Almacén le toca cuando lo comprado ya llegó y falta dejarlo
+  // listo: lo dice el recorrido, como en la bandeja de atención (leTocaAtender).
+  if (atiende.recibe) tareas.push({
+    clave: 'rq_por_dejar_listo', ruta: '/requerimientos/atencion', tono: 'aviso',
+    texto: n => plural(n, 'requerimiento con lo comprado en almacén por dejar listo', 'requerimientos con lo comprado en almacén por dejar listos'),
+    contar: async () => {
+      const enCompra = (await rqAbiertos()).filter((r) => (RQ_EN_COMPRA as readonly string[]).includes(r.estado))
+      if (enCompra.length === 0) return 0
+      const recorridos = await recorridoDeRequerimientos(enCompra.map((r) => r.id))
+      const loTiene = (id: string) => recorridos.get(id)?.find((p) => p.situacion === 'AHORA')?.puesto
+      return enCompra.filter((r) => loTiene(r.id) === PUESTO_ALMACEN && leTocaAtender(r, atiende, PUESTO_ALMACEN)).length
+    },
+  })
   if (atiende.compraDe.OPERACION || atiende.compraDe.ADMINISTRACION) tareas.push({
     clave: 'rq_por_comprar', ruta: '/requerimientos/atencion', tono: 'aviso',
     texto: n => plural(n, 'requerimiento sin stock por comprar', 'requerimientos sin stock por comprar'),
@@ -837,6 +860,16 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
     clave: 'rq_por_entregar', ruta: '/requerimientos/atencion', tono: 'acento',
     texto: n => plural(n, 'requerimiento listo por entregar al área', 'requerimientos listos por entregar al área'),
     contar: rqQueTeTocan('LISTO_EN_ALMACEN'),
+  })
+  // Las notas de las entregas que Almacén todavía no responde (plan 2, entrega
+  // 2.2): las cierra quien despacha (`atender_conformidad_salida`), y DKS
+  // decidió que sumen en su globo, no solo en la campana. ADMIN no: la
+  // bandeja no le ofrece «Responder» (`puede_atender` mira el permiso, no
+  // `es_admin()`), y el globo no invita a lo que la pantalla no da.
+  if (atiende.despacha && perfil.rol.codigo !== 'ADMIN') tareas.push({
+    clave: 'notas_por_responder', ruta: '/requerimientos/atencion', tono: 'peligro',
+    texto: n => plural(n, 'nota de entrega por responder', 'notas de entrega por responder'),
+    contar: () => cabeza(supabase.from('conformidad_salidas').select('id', { count: 'exact', head: true }).is('atendido_en', null)),
   })
   // El supervisor recoge de Almacén lo que su área pidió. Cuenta lo mismo que
   // la lista a la que lleva (`?ver=recoger`): los RQ con algún insumo que ya
