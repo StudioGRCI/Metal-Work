@@ -163,6 +163,11 @@ revoke all on function public.tiempos_de_entrega_codigos_calculado(text) from pu
 -- muestra). Avisa a Recursos Humanos al pasar a ámbar; al vencer, también a
 -- Gerencia. La entrega no es de un área: el supervisor ya se entera por sus
 -- etapas. La OT de un lote de prueba no avisa.
+--
+-- La primera corrida encuentra entregas que vencieron antes de que existiera
+-- el aviso (en producción, 15 el 2026-11-26): no se manda un aviso por cada una,
+-- que taparía la campana (muestra 20), sino uno solo con la lista. Desde ahí,
+-- cada una que vence avisa sola.
 create or replace function public.revisar_entregas_al_cliente(p_hoy date)
 returns table (tipo text, avisos integer, cuentas integer)
 language plpgsql security definer set search_path to 'public' as $$
@@ -174,6 +179,10 @@ declare
   v_n integer;
   v_ultimo date;
   v_recordar text[] := '{}';
+  -- Sin ningún aviso de entrega anotado todavía: es la primera corrida.
+  v_arranque boolean := not exists (select 1 from public.tiempos_entrega_avisos a
+                                     where a.tipo in ('ENTREGA_POR_VENCER', 'ENTREGA_VENCIDA', 'ENTREGA_RECORDATORIO'));
+  v_ya_vencidas text[] := '{}';
   v_por_vencer integer := 0; v_c_por_vencer integer := 0;
   v_vencidas integer := 0;   v_c_vencidas integer := 0;
   v_c_record integer := 0;
@@ -205,6 +214,14 @@ begin
 
     elsif not exists (select 1 from public.tiempos_entrega_avisos a
                        where a.codigo = c.codigo and a.tipo = 'ENTREGA_VENCIDA' and a.fin_plan = c.fecha_entrega) then
+      if v_arranque then
+        -- Ya venía vencida: va en la lista del aviso único de abajo.
+        insert into public.tiempos_entrega_avisos (codigo, tipo, fin_plan, fecha, avisados)
+        values (c.codigo, 'ENTREGA_VENCIDA', c.fecha_entrega, v_hoy, 0)
+        on conflict do nothing;
+        v_ya_vencidas := v_ya_vencidas || c.codigo;
+        continue;
+      end if;
       v_n := public.avisar_tiempos_de_entrega(null, c.codigo,
                'Entrega vencida: ' || c.codigo,
                v_de || ' venció el ' || to_char(c.fecha_entrega, 'DD/MM/YYYY') || ' y la unidad no se ha entregado.',
@@ -224,6 +241,28 @@ begin
       v_recordar := v_recordar || c.codigo;
     end if;
   end loop;
+
+  -- Las que ya venían vencidas en la primera corrida: un solo aviso a Recursos
+  -- Humanos y a Gerencia, con el tablero en «Vencidos».
+  if cardinality(v_ya_vencidas) > 0 then
+    insert into public.notificaciones (usuario_id, titulo, cuerpo, ruta, origen_tabla, origen_id, creado_en)
+    select u.id,
+           case when cardinality(v_ya_vencidas) = 1 then 'Entrega ya vencida: ' || v_ya_vencidas[1]
+                else 'Entregas ya vencidas: ' || cardinality(v_ya_vencidas) end,
+           case when cardinality(v_ya_vencidas) = 1 then 'Al empezar los avisos de la entrega al cliente, la de ' || v_ya_vencidas[1] || ' ya estaba vencida'
+                else 'Al empezar los avisos de la entrega al cliente, ' || cardinality(v_ya_vencidas) || ' entregas ya estaban vencidas: '
+                     || array_to_string(v_ya_vencidas, ', ') end
+             || '. Desde ahora cada entrega avisa al vencer, y las vencidas se recuerdan cada 2 días hábiles.',
+           '/rrhh/tiempos-de-entrega?ver=vencidos', 'tiempos_entrega_avisos', null, clock_timestamp()
+      from public.usuarios u
+     where u.activo
+       and exists (select 1 from public.roles_permisos rp where rp.rol_id = u.rol_id
+                     and rp.permiso_codigo in ('rrhh.tiempos_entrega_asignar', 'rrhh.tiempos_entrega'));
+    get diagnostics v_n = row_count;
+    update public.tiempos_entrega_avisos a set avisados = v_n
+     where a.tipo = 'ENTREGA_VENCIDA' and a.fecha = v_hoy and a.codigo = any (v_ya_vencidas);
+    v_vencidas := v_vencidas + cardinality(v_ya_vencidas); v_c_vencidas := v_c_vencidas + v_n;
+  end if;
 
   -- Las que siguen vencidas, en un solo aviso a Recursos Humanos (quien lleva los
   -- tiempos), con el tablero en «Vencidos». No a Gerencia: ya supo al vencer.

@@ -95,22 +95,20 @@ select set_config('prueba.r1', (
 select test.afirmar(current_setting('prueba.r1') = 'ENTREGA_POR_VENCER=1,ENTREGA_RECORDATORIO=0,ENTREGA_VENCIDA=1',
   'avisa la entrega por vencer y la vencida; ni la de holgura, ni la del lote de prueba, ni la de la OT anulada (' || current_setting('prueba.r1') || ')');
 
+-- La primera corrida: la que ya venía vencida va en un aviso único con la lista.
 select test.afirmar(
   pg_temp.entregas_de('recursos_humanos') =
-    'Entrega por vencer: CHK477_P → /rrhh/tiempos-de-entrega/codigo?codigo=CHK477_P | Entrega vencida: CHK477_V → /rrhh/tiempos-de-entrega/codigo?codigo=CHK477_V',
-  'RR. HH. recibe las dos, con el detalle del código');
+    'Entrega por vencer: CHK477_P → /rrhh/tiempos-de-entrega/codigo?codigo=CHK477_P | Entrega ya vencida: CHK477_V → /rrhh/tiempos-de-entrega?ver=vencidos',
+  'RR. HH. recibe la por vencer y, la primera vez, la ya vencida en un aviso único con el tablero en «Vencidos»');
 select test.afirmar(
-  pg_temp.entregas_de('gerente') = 'Entrega vencida: CHK477_V → /rrhh/tiempos-de-entrega/codigo?codigo=CHK477_V',
+  pg_temp.entregas_de('gerente') = 'Entrega ya vencida: CHK477_V → /rrhh/tiempos-de-entrega?ver=vencidos',
   'Gerencia recibe solo la vencida');
+select test.afirmar(
+  exists (select 1 from public.notificaciones n where n.titulo = 'Entrega ya vencida: CHK477_V'
+             and n.cuerpo like 'Al empezar los avisos de la entrega al cliente, la de CHK477_V ya estaba vencida.%'),
+  'el aviso de la primera corrida dice que ya venía vencida');
 select test.afirmar(pg_temp.entregas_de('supervisor') = '' and pg_temp.entregas_de('tesoreria') = '' and pg_temp.entregas_de('diseno') = '',
   'el supervisor, Tesorería y Diseño no reciben avisos de la entrega al cliente');
-select test.afirmar(
-  exists (select 1 from public.notificaciones n join public.ordenes_trabajo o on o.id = current_setting('prueba.ot_v')::uuid
-           where n.titulo = 'Entrega vencida: CHK477_V'
-             and n.cuerpo = 'La entrega a CLIENTE DE PRUEBA 477 S.A.C. (OT ' || o.numero || ') venció el '
-                            || to_char(current_date - 1, 'DD/MM/YYYY') || ' y la unidad no se ha entregado.'
-             and n.origen_tabla = 'ordenes_trabajo' and n.origen_id = o.id),
-  'el aviso dice el cliente, la OT y la fecha, y apunta a la OT');
 select test.afirmar(
   exists (select 1 from public.notificaciones n where n.titulo = 'Entrega por vencer: CHK477_P'
              and n.cuerpo like 'La entrega a CLIENTE DE PRUEBA 477 S.A.C. (OT %) es %'),
@@ -139,6 +137,15 @@ do $$ begin
 end $$;
 select set_config('prueba.r5', (select r.avisos::text from public.revisar_tiempos_de_entrega(public.sumar_dias_habiles(current_setting('prueba.hoy')::date, 2)) r where r.tipo = 'ENTREGA_VENCIDA'), true);
 select test.afirmar(current_setting('prueba.r5') = '1', 'con la fecha comprometida cambiada, la entrega vencida avisa de nuevo');
+select test.afirmar(
+  (select count(*) = 1 from public.notificaciones n join public.ordenes_trabajo o on o.id = current_setting('prueba.ot_v')::uuid
+           where n.titulo = 'Entrega vencida: CHK477_V'
+             and n.cuerpo = 'La entrega a CLIENTE DE PRUEBA 477 S.A.C. (OT ' || o.numero || ') venció el '
+                            || to_char(current_date - 2, 'DD/MM/YYYY') || ' y la unidad no se ha entregado.'
+             and n.ruta = '/rrhh/tiempos-de-entrega/codigo?codigo=CHK477_V'
+             and n.origen_tabla = 'ordenes_trabajo' and n.origen_id = o.id
+             and n.usuario_id = current_setting('prueba.gerente')::uuid),
+  'pasada la primera corrida, la que vence avisa sola: con el cliente, la OT y la fecha, también a Gerencia');
 
 -- ============================================ 3. La OT anulada sale del tablero
 select pg_temp.como('recursos_humanos');

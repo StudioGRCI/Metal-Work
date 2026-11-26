@@ -56,6 +56,10 @@ begin
   if v_dis is null then raise exception 'Faltan las cuentas locales: corre preparar.sh'; end if;
   delete from public.notificaciones where titulo like '%AVI_UNO%' or titulo like '%AVI_ENT%';
   delete from public.tiempos_entrega_avisos where codigo = 'AVI_ENT';
+  -- Que no sea la primera corrida de los avisos de entrega (esa junta las ya
+  -- vencidas en un solo aviso, lo prueba el check 477): un aviso viejo anotado.
+  insert into public.tiempos_entrega_avisos (codigo, tipo, fin_plan, fecha)
+  values ('AVI_PREVIO', 'ENTREGA_POR_VENCER', date '2026-01-02', date '2026-01-02') on conflict do nothing;
   delete from public.tiempos_entrega_avisos a using public.codigo_etapas e where e.id = a.etapa_id and e.codigo_interno = 'AVI_UNO';
   update public.codigo_etapas set quitada_en = now(), quitada_por = v_dis where codigo_interno = 'AVI_UNO' and quitada_en is null;
   insert into public.codigo_etapas (codigo_interno, orden, nombre, area_id, fin_plan, inicio_real, creado_por) values
