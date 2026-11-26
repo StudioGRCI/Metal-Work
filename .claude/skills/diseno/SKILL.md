@@ -138,6 +138,15 @@ debajo de lo pendiente, al filtrar hay que llevar la vista hasta ellos: cada
 cambio de URL devuelve la página arriba y parece que el toque no hizo nada
 (`almacen/kardex/ir-a-la-consulta.tsx`).
 
+El Dashboard sigue el mismo orden: «Te toca» primero, con una fila por
+cuenta de `pendientesGlobales` (las mismas de los globos del menú), en el
+orden del menú del puesto y con el enlace a donde se atiende; después las
+cifras, en filas llenas (`COLUMNAS_DEL_MONITOR`), y al final, en el teléfono,
+«Tus módulos». Hasta el 2026-11-25 lo pendiente era una cifra más entre ocho
+o diez y no llevaba a su lista (decisión 4 del plan de orden y diseño). Una
+cuenta nueva en `pendientesGlobales` sale sola en «Te toca»: su `texto` es lo
+que se lee, así que dice qué espera, no qué hacer.
+
 ## Jerarquía de las pestañas de la OT
 
 Toda pestaña de la OT se lee de arriba abajo en el mismo orden, para que la
