@@ -11,7 +11,7 @@ import { ESTADOS_ACTIVOS_OT } from '@/lib/dominio/estados'
 import { totalConIgv } from '@/lib/dominio/finanzas'
 import { devueltaEntera } from '@/lib/dominio/pago-de-boleta'
 import { estadoDePlanilla } from '@/lib/dominio/planilla-diaria'
-import { ESTADOS_RQ_ABIERTOS, leTocaAtender, puestosDeQuienAtiende, quienAtiende, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
+import { ESTADOS_RQ_ABIERTOS, leTocaAtender, loTieneQuienAtiende, quienAtiende, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
 import { hoyLima } from '@/lib/format'
 import { rutasDeTrabajo } from '@/lib/navegacion'
 import { apruebaSinOrden, puede, type PerfilSesion } from '@/lib/sesion'
@@ -764,28 +764,22 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       return data ?? []
     })())
   const atiende = quienAtiende(perfil)
-  // Quién tiene hoy cada RQ abierto, según su recorrido: el globo cuenta solo lo
-  // que tiene el puesto de quien mira, igual que «N esperan por ti» en la
-  // bandeja (DKS, 2026-11-26). Sin el recorrido, la regla de antes.
-  let tenencia: Promise<Map<string, string> | null> | null = null
-  const quienLoTiene = () =>
-    (tenencia ??= (async () => {
-      const ids = (await rqAbiertos()).map((r) => r.id)
-      if (ids.length === 0) return new Map<string, string>()
-      try {
-        const recorridos = await recorridoDeRequerimientos(ids)
-        const quien = new Map<string, string>()
-        for (const [id, pasos] of recorridos) {
-          const ahora = pasos.find((p) => p.situacion === 'AHORA')
-          if (ahora?.puesto) quien.set(id, ahora.puesto)
-        }
-        return quien
-      } catch (e) {
-        console.error('Pendientes: no se pudo leer quién tiene cada requerimiento.', e)
-        return null
-      }
+  // Qué espera hoy cada RQ abierto después de la revisión del stock, según su
+  // recorrido: el globo cuenta solo lo que tiene el puesto de quien mira, igual
+  // que «N esperan por ti» en la bandeja (DKS, 2026-11-26). Los por revisar van
+  // en su propia línea y no se piden: el recorrido cuesta por cada RQ. Si no se
+  // puede leer, el error sube y el globo sale con «!» en vez de contar otra cosa.
+  let esperas: Promise<{ tipo: string | null; espera: string | undefined }[]> | null = null
+  const queEspera = () =>
+    (esperas ??= (async () => {
+      const despues = (await rqAbiertos()).filter((r) => r.estado !== 'POR_ATENDER')
+      if (despues.length === 0) return []
+      const recorridos = await recorridoDeRequerimientos(despues.map((r) => r.id))
+      return despues.map((r) => ({
+        tipo: r.tipo,
+        espera: recorridos.get(r.id)?.find((p) => p.situacion === 'AHORA')?.espera ?? undefined,
+      }))
     })())
-  const propios = puestosDeQuienAtiende(atiende)
   // Los RQ con algún insumo que se pasa del metrado de Diseño sin su visto
   // (migración 20261120400000), y con cuál falta el sustento de quien pidió.
   let frenados: Promise<{ frenados: Set<string>; sinSustento: Set<string> }> | null = null
@@ -846,21 +840,18 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
   })
   // Lo que tiene su puesto después de la revisión del stock: a quien compra, lo
   // que falta comprar, programar o volver a traer; a Almacén, lo que llegó y
-  // falta validar o dejar listo. Lo que espera a Gerencia, al conductor o al área
-  // que lo recoge no cuenta (DKS, 2026-11-26). La revisión va en su propia línea.
-  if (propios.size > 0) tareas.push({
+  // falta validar o dejar listo, y lo que ya salió del kardex y falta marcar
+  // entregado. Lo que espera a Gerencia, al conductor o al área que lo recoge no
+  // cuenta (DKS, 2026-11-26). La revisión va en su propia línea.
+  const almacen = atiende.recibe || atiende.despacha
+  const compra = atiende.compraDe.OPERACION || atiende.compraDe.ADMINISTRACION
+  if (almacen || compra) tareas.push({
     clave: 'rq_te_esperan', ruta: '/requerimientos/atencion', tono: 'aviso',
-    texto: n => plural(n, 'requerimiento en compra espera por ti', 'requerimientos en compra esperan por ti'),
-    contar: async () => {
-      const [lista, quien] = await Promise.all([rqAbiertos(), quienLoTiene()])
-      const despues = lista.filter((r) => r.estado !== 'POR_ATENDER')
-      if (quien === null) {
-        return despues.filter((r) =>
-          (r.estado === 'SIN_STOCK' && atiende.compraDe[tipoDeRequerimiento(r)]) ||
-          (r.estado === 'LISTO_EN_ALMACEN' && leTocaAtender(r, atiende))).length
-      }
-      return despues.filter((r) => propios.has(quien.get(r.id) ?? '')).length
-    },
+    texto: n =>
+      almacen && compra ? plural(n, 'requerimiento espera por ti', 'requerimientos esperan por ti')
+      : almacen ? plural(n, 'requerimiento por validar, dejar listo o entregar espera por ti', 'requerimientos por validar, dejar listos o entregar esperan por ti')
+      : plural(n, 'requerimiento por comprar o programar espera por ti', 'requerimientos por comprar o programar esperan por ti'),
+    contar: async () => (await queEspera()).filter((r) => loTieneQuienAtiende(r.espera, r, atiende)).length,
   })
   // El supervisor recoge de Almacén lo que su área pidió.
   if (puede(perfil, 'reporte_diario.registrar') && perfil.area_id && perfil.rol.codigo !== 'ADMIN') {

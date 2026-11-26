@@ -95,19 +95,33 @@ export function quienAtiende(perfil: Pick<PerfilSesion, 'permisos' | 'rol'>): Qu
   }
 }
 
+// Lo que espera a otro puesto: a quien pidió (el sustento, lo que la compra no
+// alcanzó), a Diseño, a Gerencia, al conductor o al área que lo recoge.
+const ESPERAS_DE_OTROS = new Set([
+  'SUSTENTO', 'VISTO_DISENO', 'COMPRA_CORTA', 'OC_POR_APROBAR', 'PENDIENTE_RECOJO', 'EN_RECOJO', 'RECOGIDO', 'RECOJO_DEL_AREA',
+])
+
 /**
- * Los puestos con los que el recorrido del RQ (`recorrido_de_requerimientos`)
- * nombra a quien mira cuando el RQ lo tiene él: Almacén a quien recibe o
- * despacha, Logística a quien compra lo de operación y Administración a quien
- * compra lo suyo. «N esperan por ti» y el globo del menú cuentan los RQ que
- * tiene hoy alguno de estos puestos, no los que pasarán por él (DKS, 2026-11-26).
+ * Si quien mira tiene hoy el RQ, según lo que espera su recorrido
+ * (`recorrido_de_requerimientos`, la fila `AHORA`). «N esperan por ti» y el
+ * globo del menú cuentan lo que tiene hoy su puesto, no lo que pasará por él
+ * (DKS, 2026-11-26).
+ *
+ * Se decide por la clave de la espera, no por el puesto que muestra la
+ * insignia: ese texto es el nombre del área en el RQ listo (y hay un área
+ * «Almacén»), y el cargo de quien lo pidió en el que espera su sustento.
+ * Almacén tiene lo que revisa, lo que llegó y falta validar o dejar listo, y lo
+ * que ya salió del kardex y falta marcar entregado; quien compra, lo suyo que
+ * falta comprar o volver a traer. Programar el recojo es de Logística, también
+ * el de un RQA. Una espera que no está en la lista va a quien compra, como en
+ * la base.
  */
-export function puestosDeQuienAtiende(p: QuienAtiende): ReadonlySet<string> {
-  return new Set([
-    ...(p.recibe || p.despacha ? ['Almacén'] : []),
-    ...(p.compraDe.OPERACION ? ['Logística'] : []),
-    ...(p.compraDe.ADMINISTRACION ? ['Administración'] : []),
-  ])
+export function loTieneQuienAtiende(espera: string | null | undefined, rq: { tipo: string | null }, p: QuienAtiende): boolean {
+  if (!espera || ESPERAS_DE_OTROS.has(espera)) return false
+  if (espera === 'REVISION_STOCK' || espera === 'POR_VALIDAR' || espera === 'YA_LLEGO_TODO') return p.recibe
+  if (espera === 'POR_ENTREGAR') return p.despacha
+  if (espera === 'POR_PROGRAMAR') return p.compraDe.OPERACION
+  return p.compraDe[tipoDeRequerimiento(rq)]
 }
 
 /**

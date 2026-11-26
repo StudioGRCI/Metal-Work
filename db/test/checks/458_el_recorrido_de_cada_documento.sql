@@ -372,6 +372,79 @@ begin
 end $$;
 reset role;
 
+-- El RQ listo lo tiene el área mientras falte sacar algo del kardex. Cuando ya
+-- salió todo, lo único que falta es que Almacén lo marque entregado: lo tiene
+-- Almacén, desde la última salida (20261126170000). La salida va sin
+-- disparadores porque aquí solo se prueba cómo la lee el recorrido; la salida
+-- de verdad la prueba el check 331.
+set local session_replication_role = replica;
+update public.requerimientos set listo_en_almacen_en = now() - interval '3 days' where id = pg_temp.id('rqa');
+insert into public.movimientos_materiales (id, tipo, origen, material_id, cantidad, documento_referencia, recibido_por_nombre,
+                                           codigo_unidad, codigo_interno, requerimiento_linea_id, registrado_por, registrado_en)
+select gen_random_uuid(), 'SALIDA', 'SALIDA_GENERAL', l.material_id, 3, 'RQ 458', 'Supervisor de Maestranza',
+       'CHK_458_U1', 'CHK_458_U1', l.id, pg_temp.id('almacenero'), now() - interval '2 days'
+  from public.requerimiento_lineas l where l.requerimiento_id = pg_temp.id('rqa') and l.item = 1;
+set local session_replication_role = origin;
+
+select pg_temp.como('almacenero');
+set local role authenticated;
+do $$
+declare v record;
+begin
+  select * into v from pg_temp.paso_rq('rqa', 'ENTREGA', 'AHORA');
+  perform test.afirmar(v.puesto = 'Maestranza' and v.espera = 'RECOJO_DEL_AREA',
+    'salieron 3 de 4: el área todavía recoge (dice ' || coalesce(v.puesto, '?') || ', ' || coalesce(v.espera, '?') || ')');
+end $$;
+reset role;
+
+set local session_replication_role = replica;
+insert into public.movimientos_materiales (id, tipo, origen, material_id, cantidad, documento_referencia, recibido_por_nombre,
+                                           codigo_unidad, codigo_interno, requerimiento_linea_id, registrado_por, registrado_en)
+select gen_random_uuid(), 'SALIDA', 'SALIDA_GENERAL', l.material_id, 1, 'RQ 458', 'Supervisor de Maestranza',
+       'CHK_458_U1', 'CHK_458_U1', l.id, pg_temp.id('almacenero'), now() - interval '1 day'
+  from public.requerimiento_lineas l where l.requerimiento_id = pg_temp.id('rqa') and l.item = 1;
+set local session_replication_role = origin;
+
+select pg_temp.como('almacenero');
+set local role authenticated;
+do $$
+declare v record;
+begin
+  select * into v from pg_temp.paso_rq('rqa', 'ENTREGA', 'AHORA');
+  perform test.afirmar(v.puesto = 'Almacén' and v.espera = 'POR_ENTREGAR' and v.dias = 1,
+    'salió todo del kardex: lo tiene Almacén para marcarlo entregado, desde la última salida (dice '
+    || coalesce(v.puesto, '?') || ', ' || coalesce(v.espera, '?') || ', ' || coalesce(v.dias::text, '?') || ' día(s))');
+end $$;
+reset role;
+
+-- Almacén devuelve una al kardex: vuelve a faltar sacar algo y lo tiene el área.
+set local session_replication_role = replica;
+insert into public.movimientos_materiales (id, tipo, origen, material_id, cantidad, documento_referencia, devolucion_de, registrado_por)
+select gen_random_uuid(), 'INGRESO', 'DEVOLUCION', m.material_id, 1, 'Devolución 458', m.id, pg_temp.id('almacenero')
+  from public.movimientos_materiales m
+  join public.requerimiento_lineas l on l.id = m.requerimiento_linea_id
+ where l.requerimiento_id = pg_temp.id('rqa') and m.tipo = 'SALIDA' and m.cantidad = 1;
+set local session_replication_role = origin;
+
+select pg_temp.como('almacenero');
+set local role authenticated;
+do $$
+declare v record;
+begin
+  select * into v from pg_temp.paso_rq('rqa', 'ENTREGA', 'AHORA');
+  perform test.afirmar(v.puesto = 'Maestranza' and v.espera = 'RECOJO_DEL_AREA',
+    'con lo devuelto vuelve a faltar sacar algo: el área recoge (dice ' || coalesce(v.puesto, '?') || ', ' || coalesce(v.espera, '?') || ')');
+end $$;
+reset role;
+
+-- Se quitan las salidas de prueba: lo que sigue prueba la vuelta a compra sin ellas.
+set local session_replication_role = replica;
+delete from public.movimientos_materiales where documento_referencia = 'Devolución 458';
+delete from public.movimientos_materiales m
+ using public.requerimiento_lineas l
+ where l.id = m.requerimiento_linea_id and l.requerimiento_id = pg_temp.id('rqa');
+set local session_replication_role = origin;
+
 -- La vuelta a compra: el RQ listo que vuelve porque Almacén devolvió parte al
 -- proveedor. Lo hace `reabrir_rq_por_lo_devuelto`; aquí, su misma sentencia con
 -- la sesión de Almacén, para que la bitácora la anote.
