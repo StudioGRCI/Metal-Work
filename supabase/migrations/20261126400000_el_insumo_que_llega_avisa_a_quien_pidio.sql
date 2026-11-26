@@ -24,8 +24,9 @@
 --   · una recepción de seis materiales entra en seis movimientos, uno tras
 --     otro; al cerrar, cada RQ recibe un solo aviso con todos sus insumos, no
 --     seis (auditor de realización, 26/11);
---   · si con ese ingreso el RQ quedó «Listo en almacén», ya recibió ese aviso y
---     este no se suma.
+--   · si el RQ quedó «Listo en almacén» en la misma transacción, ya recibió ese
+--     aviso y este no se suma. Hoy la aplicación marca «Listo» en otro pedido,
+--     así que el RQ que se completa recibe los dos: «Llegó» y después «Listo».
 -- Por ser diferido, en la transacción que registró un ingreso la tabla
 -- `movimientos_materiales` no acepta `alter table` («pending trigger events»)
 -- hasta adelantarlo con `set constraints trg_rq_avisar_lo_que_llego immediate`.
@@ -36,6 +37,9 @@
 -- (`llegado_de_la_linea_de_compra`): si entran 3 de 8 y le tocan todos al RQ
 -- más antiguo, el más nuevo no recibe nada y no se le dice que vaya a recoger.
 -- Tampoco avisa lo que entra de más cuando los insumos ya tienen lo suyo.
+-- La cuenta toma lo neto de la línea al cerrar menos este ingreso: supone un
+-- ingreso por línea de OC en cada transacción, que es lo que hacen hoy la
+-- validación (`uq_ingreso_pendiente_linea`) y la recepción a mano.
 --
 -- No avisa:
 --   · lo que vuelve al almacén de una salida (`devolucion_de`): no es compra;

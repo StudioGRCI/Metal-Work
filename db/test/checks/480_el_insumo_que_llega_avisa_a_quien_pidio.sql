@@ -1,4 +1,4 @@
--- El insumo que llega avisa a quien lo pidió (migración 20261126300000, plan 3,
+-- El insumo que llega avisa a quien lo pidió (migración 20261126400000, plan 3,
 -- entrega 3.1). Cuando entra al kardex lo comprado para un insumo de un RQ en
 -- compra, la campana le avisa a quien registró ese RQ cuánto le llegó: un aviso
 -- por RQ y por recepción, aunque la recepción traiga varios materiales, y solo
@@ -31,9 +31,9 @@ begin
   foreach v in array array['REQUERIMIENTOS:REQ:requerimientos', 'SUPERVISOR:-:supervisor', 'ALMACENERO:ALM:almacenero',
                            'COMPRADOR:LOG:comprador', 'GERENTE:GER:gerente', 'CONDUCTOR:LOG:conductor', 'VENDEDOR:GCO:vendedor'] loop
     v_id := gen_random_uuid();
-    insert into auth.users (id, email) values (v_id, split_part(v, ':', 3) || '.472@prueba.local');
+    insert into auth.users (id, email) values (v_id, split_part(v, ':', 3) || '.480@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
-    select v_id, split_part(v, ':', 1), 'Check 472', split_part(v, ':', 3) || '.472@prueba.local', r.id,
+    select v_id, split_part(v, ':', 1), 'Check 480', split_part(v, ':', 3) || '.480@prueba.local', r.id,
            case when split_part(v, ':', 2) = '-' then current_setting('prueba.area_prd')::uuid
                 else (select id from public.areas where codigo = split_part(v, ':', 2)) end
       from public.roles r where r.codigo = split_part(v, ':', 1);
@@ -48,11 +48,11 @@ begin
   insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id)
   select c, d, (select id from public.categorias_material where activo and codigo <> 'ALM_POR_CLASIFICAR' order by codigo limit 1),
          (select id from public.unidades_medida where codigo = 'UND')
-    from (values ('CHK472-PLA', 'Plancha LAF 2 mm (prueba 472)'), ('CHK472-DIS', 'Disco de corte (prueba 472)')) x(c, d);
-  perform set_config('prueba.pla', (select id::text from public.materiales where codigo = 'CHK472-PLA'), true);
-  perform set_config('prueba.dis', (select id::text from public.materiales where codigo = 'CHK472-DIS'), true);
+    from (values ('CHK480-PLA', 'Plancha LAF 2 mm (prueba 480)'), ('CHK480-DIS', 'Disco de corte (prueba 480)')) x(c, d);
+  perform set_config('prueba.pla', (select id::text from public.materiales where codigo = 'CHK480-PLA'), true);
+  perform set_config('prueba.dis', (select id::text from public.materiales where codigo = 'CHK480-DIS'), true);
   insert into public.proveedores (numero_documento, razon_social, direccion, telefono)
-  values ('20999472002', 'Proveedor de prueba 472', 'Av. Argentina 457, Lima', '999 333 472');
+  values ('20999472002', 'Proveedor de prueba 480', 'Av. Argentina 457, Lima', '999 333 472');
   perform set_config('prueba.prov', (select id::text from public.proveedores where numero_documento = '20999472002'), true);
 end $$;
 
@@ -94,17 +94,17 @@ end $$;
 select pg_temp.como('requerimientos');
 set local role authenticated;
 select public.emitir_requerimiento(current_setting('prueba.rq1')::uuid, 'OPERACION', current_setting('prueba.area_mtz')::uuid,
-  'CHK472_A', 'Armado de la tolva de prueba 472', null,
+  'CHK480_A', 'Armado de la tolva de prueba 480', null,
   format('[{"material_id": "%s", "cantidad": 5}, {"material_id": "%s", "cantidad": 4}]',
          current_setting('prueba.pla'), current_setting('prueba.dis'))::jsonb);
 select public.emitir_requerimiento(current_setting('prueba.rq3')::uuid, 'OPERACION', current_setting('prueba.area_mtz')::uuid,
-  'CHK472_A', 'Refuerzo de la tolva de prueba 472', null,
+  'CHK480_A', 'Refuerzo de la tolva de prueba 480', null,
   format('[{"material_id": "%s", "cantidad": 1}]', current_setting('prueba.dis'))::jsonb);
 reset role;
 select pg_temp.como('supervisor');
 set local role authenticated;
 select public.emitir_requerimiento(current_setting('prueba.rq2')::uuid, 'OPERACION', current_setting('prueba.area_prd')::uuid,
-  'CHK472_B', 'Pintura del furgón de prueba 472', null,
+  'CHK480_B', 'Pintura del furgón de prueba 480', null,
   format('[{"material_id": "%s", "cantidad": 3}]', current_setting('prueba.pla'))::jsonb);
 reset role;
 
@@ -123,10 +123,10 @@ set local role authenticated;
 select public.emitir_compra_de_requerimientos(current_setting('prueba.oc')::uuid,
   format('[{"material_id": "%s", "cantidad": 8, "precio": 10, "insumos": ["%s", "%s"]}, {"material_id": "%s", "cantidad": 4, "precio": 6, "insumos": ["%s"]}]',
          current_setting('prueba.pla'), pg_temp.insumo('rq1', 1), pg_temp.insumo('rq2', 1), current_setting('prueba.dis'), pg_temp.insumo('rq1', 2))::jsonb,
-  current_setting('prueba.prov')::uuid, 'Cotización 472', null, 'CONTADO', 0, 'PEN', true);
+  current_setting('prueba.prov')::uuid, 'Cotización 480', null, 'CONTADO', 0, 'PEN', true);
 select public.emitir_compra_de_requerimientos(current_setting('prueba.oc3')::uuid,
   format('[{"material_id": "%s", "cantidad": 1, "precio": 6, "insumos": ["%s"]}]', current_setting('prueba.dis'), pg_temp.insumo('rq3', 1))::jsonb,
-  current_setting('prueba.prov')::uuid, 'Cotización 472-B', null, 'CONTADO', 0, 'PEN', true);
+  current_setting('prueba.prov')::uuid, 'Cotización 480-B', null, 'CONTADO', 0, 'PEN', true);
 reset role;
 -- La aprobación se decide al confirmar la transacción: se adelanta aquí.
 set constraints all immediate;
@@ -162,17 +162,17 @@ select public.validar_ingresos_compra(current_setting('prueba.oc')::uuid, (
   select jsonb_agg(jsonb_build_object('id', p.id, 'movimiento_id', gen_random_uuid(),
            'cantidad', case when p.material_id = current_setting('prueba.pla')::uuid then 3 else p.cantidad end,
            'observacion', case when p.material_id = current_setting('prueba.pla')::uuid then 'Llegaron 3, el resto llega el viernes' end))
-    from public.ingresos_pendientes_almacen p where p.orden_compra_id = current_setting('prueba.oc')::uuid), 'GR 001-472');
+    from public.ingresos_pendientes_almacen p where p.orden_compra_id = current_setting('prueba.oc')::uuid), 'GR 001-482');
 reset role;
 select pg_temp.cerrar();
 select test.afirmar(pg_temp.avisos('rq1') = 1, 'la recepción de dos materiales deja un solo aviso al RQ 1, no uno por material');
 select test.afirmar(pg_temp.avisos('rq2') = 0, 'al RQ 2 no le llegó nada de esas 3 planchas: no se le avisa');
 select test.afirmar((select usuario_id = current_setting('prueba.requerimientos')::uuid
                             and ruta = '/requerimientos?rq=' || current_setting('prueba.rq1')
-                            and cuerpo like 'Entró al almacén, para CHK472_A: %'
-                            and cuerpo like '%3 UND del insumo 1, Plancha LAF 2 mm (prueba 472)%'
-                            and cuerpo like '%4 UND del insumo 2, Disco de corte (prueba 472)%'
-                            and cuerpo like '%(prueba 472) (OC-%). Mira en el RQ cuánto ya puedes recoger.'
+                            and cuerpo like 'Entró al almacén, para CHK480_A: %'
+                            and cuerpo like '%3 UND del insumo 1, Plancha LAF 2 mm (prueba 480)%'
+                            and cuerpo like '%4 UND del insumo 2, Disco de corte (prueba 480)%'
+                            and cuerpo like '%(prueba 480) (OC-%). Mira en el RQ cuánto ya puedes recoger.'
                             and cuerpo not like '%(OC-%(OC-%'
                        from public.notificaciones
                       where origen_id = current_setting('prueba.rq1')::uuid and titulo like 'Llegó a almacén:%'),
@@ -181,7 +181,7 @@ select test.afirmar((select usuario_id = current_setting('prueba.requerimientos'
 -- ============================================ 3. Llega el resto de las planchas, a mano: a cada RQ lo suyo
 select pg_temp.como('almacenero');
 set local role authenticated;
-select public.registrar_recepcion_material(gen_random_uuid(), pg_temp.linea_oc('rq1', 1), 5, 'GR 001-473');
+select public.registrar_recepcion_material(gen_random_uuid(), pg_temp.linea_oc('rq1', 1), 5, 'GR 001-483');
 reset role;
 select pg_temp.cerrar();
 select test.afirmar(pg_temp.avisos('rq1') = 2 and pg_temp.avisos('rq2') = 1, 'el resto avisa a los dos RQ de la línea');
@@ -197,16 +197,16 @@ select test.afirmar((select usuario_id = current_setting('prueba.supervisor')::u
 -- Lo que entra de más no se puede recibir: la recepción no pasa de lo comprado
 -- («La recepción supera lo pendiente»). Si entrara, los insumos ya completos no
 -- suben y nadie recibe aviso: el cálculo es el mismo de la sección 2, con el RQ 2.
--- El RQ que queda «Listo en almacén» antes de cerrar ya tuvo ese aviso: no recibe «Llegó».
+-- El RQ que queda «Listo en almacén» en la misma transacción ya tuvo ese aviso: no recibe «Llegó».
 select pg_temp.como('almacenero');
 set local role authenticated;
 select public.validar_ingresos_compra(current_setting('prueba.oc3')::uuid, (
   select jsonb_agg(jsonb_build_object('id', p.id, 'movimiento_id', gen_random_uuid(), 'cantidad', p.cantidad))
-    from public.ingresos_pendientes_almacen p where p.orden_compra_id = current_setting('prueba.oc3')::uuid), 'GR 001-475');
+    from public.ingresos_pendientes_almacen p where p.orden_compra_id = current_setting('prueba.oc3')::uuid), 'GR 001-485');
 select public.rq_marcar_listo_en_almacen(current_setting('prueba.rq3')::uuid, null);
 reset role;
 select pg_temp.cerrar();
-select test.afirmar(pg_temp.avisos('rq3') = 0, 'el RQ que quedó listo con ese ingreso no recibe además «Llegó»');
+select test.afirmar(pg_temp.avisos('rq3') = 0, 'el RQ que quedó listo en la misma transacción no recibe además «Llegó»');
 -- Lo que vuelve al almacén de una salida no es compra; y corre al cerrar la transacción.
 select test.afirmar(exists (
   select 1 from pg_trigger t where t.tgname = 'trg_rq_avisar_lo_que_llego'

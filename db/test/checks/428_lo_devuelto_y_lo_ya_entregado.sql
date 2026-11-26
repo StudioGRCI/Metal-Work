@@ -230,7 +230,7 @@ insert into public.movimientos_materiales (id, tipo, material_id, cantidad, orig
 select gen_random_uuid(), 'INGRESO', id, 10, 'INGRESO_GENERAL', 'Otra marca K', current_setting('prueba.almacenero')::uuid
   from public.materiales where codigo = 'CHK428-2';
 -- Una entrega con otro material de antes de la regla de la salida (20261120410000): aquí se prueba lo que se devuelve de la OC; la regla, en el check 457.
--- El aviso de lo que llega (20261126300000) corre al cerrar la transacción: se adelanta
+-- El aviso de lo que llega (20261126400000) corre al cerrar la transacción: se adelanta
 -- para poder tocar la tabla, que no se altera con eventos pendientes.
 set constraints trg_rq_avisar_lo_que_llego immediate;
 set constraints trg_rq_avisar_lo_que_llego deferred;

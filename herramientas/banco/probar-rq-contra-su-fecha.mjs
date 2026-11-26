@@ -1,6 +1,6 @@
 /**
  * Clic real sobre el plan 3, entrega 3.1: el RQ contra la fecha en que se
- * necesita y el aviso cuando llega lo comprado (migración 20261126300000).
+ * necesita y el aviso cuando llega lo comprado (migración 20261126400000).
  * Con la cuenta de cada puesto, nunca ADMIN:
  *
  *   1. Siembra, con el rol de cada puesto, cuatro RQ de Requerimientos: uno
