@@ -191,7 +191,8 @@ export function FilaMaterial({
             de costado (producción, 2026-10-20). */}
         {material.unidad_pendiente && (
           <Insignia tono="aviso" className="mt-1 sm:mt-0 sm:ml-2">
-            Confirmar<span className="sr-only sm:not-sr-only"> unidad</span>
+            {/* A quien solo consulta no se le da la orden: es Diseño quien la confirma. */}
+            {puedeEditar ? 'Confirmar' : 'Por confirmar'}<span className="sr-only sm:not-sr-only">{puedeEditar ? ' unidad' : ' la unidad'}</span>
           </Insignia>
         )}
       </TD>
