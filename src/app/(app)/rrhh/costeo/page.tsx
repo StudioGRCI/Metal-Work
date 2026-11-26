@@ -88,8 +88,10 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
   // código en el mes y, si se eligió, solo las de una persona, con su reporte diario.
   const delCodigo = typeof params.codigo === 'string' ? grupos.find((g) => g.codigo === params.codigo) : undefined
   const dePersona = delCodigo && typeof params.persona === 'string' ? delCodigo.personas.get(params.persona) : undefined
+  // El día elegido viaja con el importe, para que «Volver a los días» regrese a él.
+  const conDia = fechaValida(params.dia) ? `&dia=${params.dia}` : ''
   const enlaceImporte = (codigo: string, persona?: string) =>
-    `/rrhh/costeo?mes=${mes}&codigo=${encodeURIComponent(codigo)}${persona ? `&persona=${persona}` : ''}#dia`
+    `/rrhh/costeo?mes=${mes}${conDia}&codigo=${encodeURIComponent(codigo)}${persona ? `&persona=${persona}` : ''}#dia`
   // El detalle va por día, como llega el parte: por defecto, el último día con horas cargadas.
   const dias = [...new Set(tareos.map((t) => t.fecha))].sort()
   const dia = fechaValida(params.dia) && dias.includes(params.dia) ? params.dia : dias.at(-1)
@@ -257,7 +259,11 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
                       </tbody>
                     </Tabla>
                     <div className="border-t border-borde px-4 py-3">
-                      <Link href={enlaceImporte(g.codigo)} className="text-sm font-medium text-acento hover:underline" data-importe-codigo={g.codigo}>
+                      <Link
+                        href={enlaceImporte(g.codigo)}
+                        className="inline-flex min-h-11 items-center text-sm font-medium text-acento hover:underline sm:min-h-0"
+                        data-importe-codigo={g.codigo}
+                      >
                         Ver las {g.cargas} {g.cargas === 1 ? 'carga' : 'cargas'} que suman <span className="tabular whitespace-nowrap">{moneda(g.costo)}</span>
                       </Link>
                     </div>
@@ -349,7 +355,11 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
             }
             acciones={
               delCodigo && (
-                <Link href={`/rrhh/costeo?mes=${mes}#dia`} className="text-sm font-medium text-acento hover:underline" data-quitar-importe>
+                <Link
+                  href={`/rrhh/costeo?mes=${mes}${conDia}#dia`}
+                  className="inline-flex min-h-11 items-center text-sm font-medium text-acento hover:underline sm:min-h-0"
+                  data-quitar-importe
+                >
                   Volver a los días
                 </Link>
               )

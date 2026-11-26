@@ -177,6 +177,10 @@ try {
     await pagina.waitForURL(/persona=/, { timeout: 20000 })
     const dePedro = await texto(pagina.locator('#dia'))
     comprobar(dePedro.includes(`${CODIGO} · ${pedro.apellidos}, ${pedro.nombres}`), `${ancho}: el importe de la persona abre sus cargas: «${dePedro.slice(0, 160)}» ${pagina.url()}`)
+    if (ancho === 390) {
+      const alto = (await pagina.locator('[data-quitar-importe]').boundingBox())?.height ?? 0
+      comprobar(alto >= 44, `390: «Volver a los días» mide ${alto} px de alto (44 para el dedo)`)
+    }
     await pagina.locator('[data-quitar-importe]').click()
     await pagina.waitForURL((u) => !u.search.includes('codigo='), { timeout: 20000 })
     comprobar(!(await texto(pagina.locator('#dia'))).includes('De dónde sale'), `${ancho}: «Volver a los días» vuelve al detalle por día`)
@@ -185,7 +189,11 @@ try {
     await pagina.goto(`${BASE}/reportes-diarios?mes=${mes}`, { waitUntil: 'networkidle' })
     const espera = pagina.locator(`[data-reporte="${reportes.faltaRrhh}"] [data-dias-en-espera]`)
     comprobar((await espera.getAttribute('data-dias-en-espera').catch(() => null)) === '3', `${ancho}: el reporte que espera a RR. HH. lleva 3 días`)
-    comprobar((await texto(espera)).startsWith('hace 3 días'), `${ancho}: a RR. HH. se le dice solo el tiempo: «${await texto(espera)}»`)
+    comprobar((await texto(espera)).startsWith('hace 3 días'), `${ancho}: la insignia dice solo el tiempo: «${await texto(espera)}»`)
+    const renglon = await texto(espera.locator('xpath=..'))
+    comprobar(renglon.startsWith('Falta Recursos Humanos') && renglon.includes('hace 3 días'), `${ancho}: lo que falta y desde cuándo van en un renglón: «${renglon}»`)
+    const deLosDos = await texto(pagina.locator(`[data-reporte="${reportes.faltanDos}"] [data-dias-en-espera]`).locator('xpath=..'))
+    comprobar(deLosDos.startsWith('Faltan Gerencia y Recursos Humanos'), `${ancho}: el que espera a los dos no nombra solo a RR. HH.: «${deLosDos}»`)
     comprobar((await pagina.locator(`[data-reporte="${reportes.faltanDos}"] [data-dias-en-espera]`).count()) === 1, `${ancho}: el que espera a los dos también`)
     comprobar((await pagina.locator(`[data-reporte="${reportes.validado}"] [data-dias-en-espera]`).count()) === 0, `${ancho}: el validado no espera`)
     await pagina.locator(`[data-reporte="${reportes.faltaRrhh}"]`).scrollIntoViewIfNeeded()
@@ -198,8 +206,8 @@ try {
   {
     const { pagina, contexto } = await entrar(CUENTAS.gerencia, { width: 1440, height: 900 })
     await pagina.goto(`${BASE}/reportes-diarios?mes=${mes}`, { waitUntil: 'networkidle' })
-    const espera = await texto(pagina.locator(`[data-reporte="${reportes.faltaRrhh}"] [data-dias-en-espera]`))
-    comprobar(espera.startsWith('RR. HH. · hace 3 días'), `Gerencia lee que lo tiene RR. HH.: «${espera}»`)
+    const espera = await texto(pagina.locator(`[data-reporte="${reportes.faltaRrhh}"] [data-dias-en-espera]`).locator('xpath=..'))
+    comprobar(espera.startsWith('Falta Recursos Humanos') && espera.includes('hace 3 días'), `Gerencia lee en un renglón que falta RR. HH. y desde cuándo: «${espera}»`)
     await pagina.locator(`[data-reporte="${reportes.faltaRrhh}"]`).scrollIntoViewIfNeeded()
     await pagina.screenshot({ path: `${CAPTURAS}/13-2-reportes-diarios-gerencia-1440.png` })
     await pagina.goto(`${BASE}/rrhh/costeo?mes=${mes}`, { waitUntil: 'networkidle' })

@@ -14,7 +14,7 @@ import { tareosDelMes } from '@/lib/datos/rrhh'
 import { ESTADO_REPORTE, estadoDeReporte, faltaParaValidar, horasPorPersona, type EstadoReporte } from '@/lib/dominio/reporte-diario'
 import { horasCortas, mesDeLima, mesValido, mesVecino } from '@/lib/dominio/rrhh'
 import { fechaLarga, hoyLima, mesLargo, moneda } from '@/lib/format'
-import { editaComoRrhh, exigirPermiso, puede } from '@/lib/sesion'
+import { exigirPermiso, puede } from '@/lib/sesion'
 
 export const metadata = { title: 'Reporte diario' }
 
@@ -67,8 +67,7 @@ export default async function PaginaReportesDiarios({ searchParams }: PageProps<
     return null
   })
   esperanRrhh.forEach((r, i) => diasRrhh.set(r.id, contados?.[i] ?? null))
-  // A RR. HH. no hace falta decirle quién lo tiene: lo tiene ella.
-  const esRrhh = editaComoRrhh(perfil, 'reporte_diario.validar_rrhh')
+  const sinDias = esperanRrhh.length > 0 && contados === null
   const cuantos = (e: EstadoReporte) => deLaArea.filter((r) => estadoDeReporte(r) === e).length
   const enlaceMes = (m: string) =>
     `/reportes-diarios?mes=${m}${area ? `&area=${encodeURIComponent(area)}` : ''}${filtro ? `&estado=${filtro}` : ''}`
@@ -169,13 +168,20 @@ export default async function PaginaReportesDiarios({ searchParams }: PageProps<
           </TarjetaCuerpo>
         </Tarjeta>
       ) : (
+        <>
+        {sinDias && (
+          <p role="status" className="mb-3 text-sm text-texto-suave">
+            No se pudieron contar los días que llevan esperando el visto de Recursos Humanos. Vuelve a cargar la pantalla en un momento.
+          </p>
+        )}
         <ul className="space-y-3">
           {reportes.map((r) => (
             <li key={r.id}>
-              <FilaReporte reporte={r} conArea={veTodos} diasRrhh={diasRrhh.get(r.id)} quienRrhh={!esRrhh} />
+              <FilaReporte reporte={r} conArea={veTodos} diasRrhh={diasRrhh.get(r.id)} />
             </li>
           ))}
         </ul>
+        </>
       )}
     </>
   )
@@ -190,14 +196,12 @@ function FilaReporte({
   reporte: r,
   conArea,
   diasRrhh,
-  quienRrhh,
 }: {
   reporte: ReporteListado
   conArea: boolean
   /** Los días que lleva esperando el visto de RR. HH.; `undefined` si no lo espera. */
   diasRrhh?: number | null
   /** Decir que lo tiene RR. HH.: a quien no es RR. HH., el número solo se leería como su propia demora. */
-  quienRrhh: boolean
 }) {
   const personas = horasPorPersona(r.personal).size
   const horas = r.personal.reduce((n, p) => n + p.horas, 0)
@@ -221,15 +225,19 @@ function FilaReporte({
         </div>
         <div className="text-right">
           <Insignia tono={ESTADO_REPORTE[estado].tono}>{ESTADO_REPORTE[estado].etiqueta}</Insignia>
-          {falta && <p className="mt-1 text-xs text-texto-suave">{falta}</p>}
-          {diasRrhh !== undefined && (
-            <DiasEnEspera
-              dias={diasRrhh}
-              desde={r.creado_en}
-              quien="RR. HH."
-              verQuien={quienRrhh}
-              className="mt-1"
-            />
+          {/* Lo que falta y desde cuándo, en un solo renglón: quién lo tiene ya lo dice
+              «Falta…»; si faltan los dos, la insignia no nombra a nadie. */}
+          {falta && (
+            <p className="mt-1 flex flex-wrap items-center justify-end gap-2 text-xs text-texto-suave">
+              <span>{falta}</span>
+              {diasRrhh !== undefined && (
+                <DiasEnEspera
+                  dias={diasRrhh}
+                  desde={r.creado_en}
+                  quien={r.visto_gerencia_en ? 'Recursos Humanos' : null}
+                />
+              )}
+            </p>
           )}
         </div>
       </div>
