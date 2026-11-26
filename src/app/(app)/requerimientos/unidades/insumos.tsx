@@ -15,8 +15,8 @@ import {
 import { cantidad, fecha, hoyLima } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-/** Cada clase entera: Tailwind no ve las que se arman. */
-const COLUMNAS: Record<number, string> = { 3: 'grid-cols-3', 4: 'grid-cols-4', 5: 'grid-cols-5', 6: 'grid-cols-6' }
+import { PasosDelInsumo } from '../pasos-del-insumo'
+
 const TEXTO: Record<Tono, string> = {
   neutro: 'text-texto-suave',
   exito: 'text-exito',
@@ -282,57 +282,5 @@ function TituloDelPliegue({
         </span>
       )}
     </span>
-  )
-}
-
-/**
- * La línea de pasos del insumo: hecho en verde, el de ahora en acento (rojo si
- * Diseño no lo autorizó), lo que falta con su borde. En el teléfono los
- * nombres no entran bajo cada tramo: el de ahora se dice en la línea de abajo.
- */
-function PasosDelInsumo({
-  item,
-  pasos,
-  actual,
-  terminado,
-  rechazado,
-  conFaltante,
-}: {
-  item: number
-  pasos: PasoDelInsumo[]
-  actual: PasoDelInsumo
-  terminado: boolean
-  rechazado: boolean
-  conFaltante: boolean
-}) {
-  const indice = pasos.indexOf(actual)
-  return (
-    <ol className={cn('grid gap-1', COLUMNAS[pasos.length])} aria-label={`En qué va el insumo ${item}`}>
-      {pasos.map((p, i) => {
-        const hecho = i < indice || terminado
-        const ahora = i === indice && !terminado
-        return (
-          <li key={p} aria-current={ahora ? 'step' : undefined} className="min-w-0" data-paso-del-insumo={p}>
-            <span
-              aria-hidden
-              className={cn(
-                'block h-1.5 rounded-full',
-                hecho ? 'bg-exito' : ahora ? (rechazado ? 'bg-peligro' : conFaltante ? 'bg-aviso' : 'bg-acento') : 'border border-texto-tenue bg-superficie',
-              )}
-            />
-            <span
-              className={cn(
-                'mt-1 hidden text-xs leading-tight sm:block',
-                ahora ? 'font-semibold text-texto' : hecho ? 'text-texto-suave' : 'text-texto-tenue',
-              )}
-            >
-              {TITULO_PASO_DEL_INSUMO[p]}
-            </span>
-            <span className="sr-only sm:hidden">{TITULO_PASO_DEL_INSUMO[p]}</span>
-            <span className="sr-only">{hecho ? ': hecho' : ahora ? (conFaltante ? ': con faltante' : ': ahora') : ': falta'}</span>
-          </li>
-        )
-      })}
-    </ol>
   )
 }
