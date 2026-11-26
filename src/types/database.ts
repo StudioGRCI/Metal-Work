@@ -15700,6 +15700,21 @@ export type Database = {
         }
         Returns: Database["public"]["Enums"]["estado_plazo"]
       }
+      etapas_abiertas_de_mi_area: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          codigo: string | null
+          nombre: string | null
+          padre_id: string | null
+          inicio_plan: string | null
+          fin_plan: string | null
+          inicio_real: string | null
+          ultimo_reporte: string | null
+          semaforo: string | null
+          dias_habiles: number | null
+        }[]
+      }
       etapas_de_siempre_codigo: {
         Args: {
           p_codigo: string | null
@@ -18676,6 +18691,19 @@ export type Database = {
         Returns: {
           id: string | null
           en_recojo_en: string | null
+        }[]
+      }
+      seguimiento_de_insumos: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          requerimiento_id: string | null
+          item: number | null
+          visto_diseno: string | null
+          fecha_esperada: string | null
+          recibido_por: string | null
+          recibido_en: string | null
         }[]
       }
       semaforo_de_fecha: {
