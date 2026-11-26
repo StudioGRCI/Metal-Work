@@ -98,9 +98,12 @@ export default async function PaginaTardanzas({ searchParams }: PageProps<'/rrhh
                   return (
                     <TR key={r.trabajador.id} className={r.trabajador.activo ? undefined : 'opacity-60'} data-tardanzas={r.trabajador.id}>
                       <TD>
-                        <p className="font-medium text-texto">
+                        <Link
+                          href={`/rrhh/personal/${r.trabajador.id}?mes=${mes}`}
+                          className="font-medium text-texto hover:text-acento hover:underline"
+                        >
                           {r.trabajador.apellidos}, {r.trabajador.nombres}
-                        </p>
+                        </Link>
                         <p className="text-xs text-texto-suave">
                           {r.trabajador.cargo ?? 'Sin cargo'}
                           {!r.trabajador.activo && ' · de baja'}
