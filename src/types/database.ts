@@ -14628,6 +14628,40 @@ export type Database = {
           recibido_por_area: string | null
         }[]
       }
+      codigo_interno_lo_vendido: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          cotizacion_id: string | null
+          numero: string | null
+          moneda: string | null
+          monto_venta: number | null
+          incluye_igv: boolean | null
+          facturas: number | null
+          facturado_en_su_moneda: number | null
+          en_otra_moneda: boolean | null
+        }[]
+      }
+      codigo_interno_recorrido: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          cotizacion_id: string | null
+          cotizacion_numero: string | null
+          cotizacion_estado: string | null
+          cotizacion_fecha: string | null
+          cotizaciones: number | null
+          ot_id: string | null
+          ot_numero: string | null
+          ot_estado: string | null
+          ot_tipo: string | null
+          ot_del_taller: boolean | null
+          ot_entregada_el: string | null
+          ordenes: number | null
+        }[]
+      }
       codigo_interno_reparto_a_todos: {
         Args: Record<PropertyKey, never>
         Returns: {
