@@ -15,6 +15,7 @@ import { createClient } from '@/lib/supabase/server'
  * funciones). La OC y la OS no cambian: cada anotación es una fila nueva.
  */
 
+const SOLO_SU_RQA = 'Tu puesto sigue solo las OC de su RQA: las demás las lleva Logística.'
 const SIN_PERMISO = 'El motivo del atraso y la fecha prometida los anota quien emite las compras.'
 
 function dato(formulario: FormData, nombre: string) {
@@ -53,7 +54,7 @@ export async function anotarMotivoAtraso(_previo: unknown, formulario: FormData)
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el motivo.' }
   const d = analisis.data
   // Administración sigue solo las OC de su RQA; la base mira además de dónde nace la OC.
-  if (d.tipo === 'OS' && !compraComoLogistica(perfil)) return { ok: false, error: SIN_PERMISO }
+  if (d.tipo === 'OS' && !compraComoLogistica(perfil)) return { ok: false, error: SOLO_SU_RQA }
   const falta = conNota(d)
   if (falta) return { ok: false, error: falta }
 
@@ -87,7 +88,7 @@ export async function corregirFechaPrometida(_previo: unknown, formulario: FormD
   if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa la fecha.' }
   const d = analisis.data
   // Administración sigue solo las OC de su RQA; la base mira además de dónde nace la OC.
-  if (d.tipo === 'OS' && !compraComoLogistica(perfil)) return { ok: false, error: SIN_PERMISO }
+  if (d.tipo === 'OS' && !compraComoLogistica(perfil)) return { ok: false, error: SOLO_SU_RQA }
   const falta = conNota(d)
   if (falta) return { ok: false, error: falta }
 

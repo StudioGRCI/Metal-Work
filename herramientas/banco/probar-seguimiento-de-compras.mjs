@@ -194,7 +194,9 @@ const atrasadasDeLogistica = () =>
     `select c.id, coalesce(c.numero, c.referencia) as nombre, p.esperada::text as esperada
        from public.ordenes_compra_materiales c
        cross join lateral public.plazos_de_compras(array[c.id]) p
-      where p.atrasada order by p.dias_atraso desc, c.numero`,
+      where p.atrasada
+      -- La que menos anotaciones tiene primero: cada corrida anota un motivo, y la captura se lee mejor sin la pila de corridas anteriores.
+      order by (select count(*) from public.seguimiento_de_compras g where g.orden_compra_id = c.id), p.dias_atraso desc, c.numero`,
   )
 const osAtrasadasDeLogistica = () =>
   comoCuenta(
@@ -275,9 +277,8 @@ const fila = (pagina, nombre) => pagina.locator(`tr[data-compra="${nombre}"]`)
   await ventana.getByRole('button', { name: 'Corregir' }).click()
   await pagina.getByRole('status').filter({ hasText: 'Fecha prometida corregida' }).first().waitFor({ timeout: 15000 })
   await pagina.waitForLoadState('networkidle')
-  // El aviso sale con la respuesta de la acción; la fila se repinta con el refresco que viene detrás.
+  // Con `corrige`, el aviso sale cuando la fila ya se repintó: se lee en el acto, sin esperar.
   const celda = fila(pagina, ocFecha.nombre).locator('td').nth(3).locator('[data-plazo]')
-  await celda.filter({ hasText: '(corregida' }).waitFor({ timeout: 10000 }).catch(() => {})
   const plazo = limpio(await celda.textContent())
   comprobar(plazo.includes(`Prometida ${ddmm(nueva)} (corregida`), `la fila dice la fecha nueva, corregida: «${plazo}»`)
   const [{ fecha_estimada: despues }] = await consulta('select fecha_estimada::text from public.ordenes_compra_materiales where id = $1', [ocFecha.id])

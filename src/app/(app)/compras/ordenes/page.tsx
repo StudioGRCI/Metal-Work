@@ -162,7 +162,7 @@ export default async function PaginaOrdenesCompra({ searchParams }: { searchPara
               {/* «Comprobante» también espera a 1 280 px: entre 768 y 1 279 la columna «Orden» quedaba de 83 px y partía el proveedor palabra por palabra. Su dato va bajo el número. */}
               <TH className="hidden xl:table-cell">Comprobante</TH>
               {/* Con `relative`, el rótulo oculto queda dentro de la tabla que se desliza y no ensancha la página en el teléfono. El ancho, solo para quien tiene los botones: a quien consulta le queda «PDF». */}
-              <TH className={cn('relative text-right', (emite || llevaSuRqa) && 'md:w-64')}>
+              <TH className={cn('relative text-right', (emite || (llevaSuRqa && visibles.some(esDeUnRqa))) && 'md:w-64')}>
                 <span className="sr-only">Acciones</span>
               </TH>
             </tr>
