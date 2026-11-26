@@ -28,7 +28,7 @@ begin
   if huella is null then
     raise exception 'Aplica antes la migración 20261125130000 (el recorrido de cada documento).';
   end if;
-  if huella not in ('7961d3562d9e68872c5244766d7b87e1', 'f50cfab44c53e60436e2550e297f30c5') then
+  if huella not in ('7961d3562d9e68872c5244766d7b87e1', '132f6803923f5c9ad8d1c1a6ee2dbb9f') then
     raise exception 'La función recorrido_de_requerimientos no es la que conoce el repositorio (se cambió a mano, huella %): no se reemplaza. Avisa antes de seguir.', huella;
   end if;
 end $$;
@@ -85,13 +85,15 @@ begin
   -- Y desde cuándo, insumo por insumo: lo que le pasa a uno no les cambia los
   -- días a los demás (20261126160000). El que falta sustentar espera desde lo
   -- último que se lo pidió a él: el registro, el código del RQ, su cantidad
-  -- corregida o el último visto de Diseño sobre él. El que tiene Diseño, desde
-  -- que se sustentó. El RQ, desde el que más espera.
+  -- corregida o el último visto de Diseño sobre él. Si su último sustento quedó
+  -- sin visto porque la cantidad bajó y se sigue pasando, desde ese sustento: la
+  -- hora de la baja no se guarda, así que es lo más cerca que se sabe. El que
+  -- tiene Diseño, desde que se sustentó. El RQ, desde el que más espera.
   freno as (
     select m.requerimiento_id as rq,
            bool_or(m.estado in ('SIN_SUSTENTO', 'RECHAZADO')) as falta_sustento,
            bool_or(m.estado = 'POR_AUTORIZAR') as espera_diseno,
-           min(greatest(r.creado_en, r.codigo_desde, l.cantidad_desde, s.decidido_en))
+           min(greatest(r.creado_en, r.codigo_desde, l.cantidad_desde, s.sustentado_en, s.decidido_en))
              filter (where m.estado in ('SIN_SUSTENTO', 'RECHAZADO')) as sustento_desde,
            min(s.sustentado_en) filter (where m.estado = 'POR_AUTORIZAR') as diseno_desde
       from public.metrado_por_linea(p_ids) m
