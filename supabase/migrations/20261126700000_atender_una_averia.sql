@@ -489,7 +489,7 @@ declare
   v_av public.averias%rowtype;
   r    record;
 begin
-  if v_yo is null or not (public.es_admin() or public.tiene_permiso('averias.atender')) then
+  if v_yo is null or not public.es_usuario_activo() or not (public.es_admin() or public.tiene_permiso('averias.atender')) then
     raise exception 'Un reporte de avería lo anula Mantenimiento.' using errcode = 'insufficient_privilege';
   end if;
   if char_length(btrim(coalesce(p_motivo, ''))) not between 10 and 500 then

@@ -293,6 +293,18 @@ const verde = (pagina) => hasta(() => pagina.locator('p[role="status"]').first()
 // ---------------------------------------------------------------------------
 // 4. Se cierra otra vez y Ventas confirma
 // ---------------------------------------------------------------------------
+// Mantenimiento, en su teléfono: la avería que volvió está arriba de su bandeja, con lo que dijo quien la reportó.
+{
+  const { pagina, contexto, errores } = await entrar('mantenimiento.local@metalwork.test', true)
+  await pagina.goto(`${BASE}/averias`, { waitUntil: 'networkidle' })
+  comprobar((await pagina.locator(`tr[data-averia="${NUMERO}"]`).count()) === 1, '[Mantenimiento 390] la que no quedó bien vuelve a su bandeja')
+  await pagina.screenshot({ path: join(CAPTURAS, '16.3-bandeja-mantenimiento-390.png'), fullPage: true })
+  await pagina.goto(`${BASE}/averias/${id}`, { waitUntil: 'networkidle' })
+  comprobar((await pagina.locator('[data-cerrar-averia]').count()) === 1, '[Mantenimiento 390] y la puede cerrar otra vez desde el teléfono')
+  await pagina.screenshot({ path: join(CAPTURAS, '16.3-ficha-en-atencion-mantenimiento-390.png'), fullPage: true })
+  comprobar(errores.length === 0, `[Mantenimiento 390] sin errores en la consola${errores.length ? `: ${errores[0]}` : ''}`)
+  await contexto.close()
+}
 await como(mantenimiento, `select * from public.averias_cerrar($1, 'Se cambió también el sensor de temperatura del relé.', 2)`, [id])
 {
   const { pagina, contexto, errores } = await entrar('ventas.local@metalwork.test')

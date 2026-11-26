@@ -26,7 +26,7 @@ test('las horas parado se proponen desde que quedó parado, a la media hora', ()
   assert.equal(horasParadoSugeridas('2026-11-26T16:00:00Z', ahora), null)
 })
 
-test('las horas se dicen con coma y en singular cuando es una', () => {
+test('las horas se dicen con punto decimal y en singular cuando es una', () => {
   assert.equal(horas(1), '1 hora')
   assert.equal(horas(26.5), '26.5 horas')
   assert.equal(horas(0), '0 horas')

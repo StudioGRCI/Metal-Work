@@ -120,7 +120,10 @@ export function AtenderAveria({ id, numero, diagnostico }: { id: string; numero:
  * como siempre, aquí solo se dice cuál es. El id del enlace vive aquí y no en la
  * ventana: si no llegó la respuesta, el reintento no lo enlaza dos veces. Cada
  * vez que se abre la ventana es otro envío, con otro id: si no, cambiar el RQ o
- * la nota tras una respuesta perdida chocaba con el primero hasta recargar.
+ * la nota tras una respuesta perdida chocaba con el primero hasta recargar. Se
+ * aparta de la regla de «el id nace con el envío, no al abrir» porque aquí no
+ * hay cómo duplicar: el mismo RQ vigente dos veces lo rechaza la base
+ * (`uq_averia_rq_vigente`, «ya está enlazado»).
  */
 export function EnlazarRequerimiento({ averia, opciones }: { averia: string; opciones: RqParaEnlazar[] }) {
   const [enlace, setEnlace] = useState(() => crypto.randomUUID())

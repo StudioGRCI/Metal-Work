@@ -263,7 +263,9 @@ export async function cerrarAveria(_previo: unknown, formulario: FormData): Prom
       ? ` El equipo sigue parado: el reporte ${data.sigue_parado_por} dice que detiene el trabajo.`
       : data.equipo_estado === 'PARADO'
         ? ' El equipo sigue parado en el padrón: si ya funciona, cámbialo en Equipos.'
-        : ''
+        : data.equipo_estado === 'CON_OBSERVACION'
+          ? ' El equipo sigue «con observación» en el padrón: si ya quedó bien, cámbialo en Equipos.'
+          : ''
   const aviso = data.avisada ? ' Le avisamos a quien la reportó para que confirme si quedó bien.' : ''
   return { ok: true, mensaje: `Avería cerrada.${equipo}${aviso}` }
 }

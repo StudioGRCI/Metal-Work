@@ -34,21 +34,6 @@ export const ESTADO_AVERIA: Record<string, Def> = {
   ANULADA: { etiqueta: 'Anulada', tono: 'neutro', descripcion: 'Mantenimiento la anuló con su motivo.' },
 }
 
-/** Las que todavía esperan a alguien: a Mantenimiento o a quien la reportó. */
-export const AVERIA_VIGENTE = new Set(['REPORTADA', 'EN_ATENCION', 'CERRADA'])
-
-/**
- * La gravedad, como la cuenta la base (`averias_visibles`): primero lo que
- * detiene el trabajo y es un riesgo, al final la posible avería.
- */
-export const GRAVEDAD_AVERIA: Record<number, { etiqueta: string; tono: Tono }> = {
-  1: { etiqueta: 'Detiene el trabajo y es un riesgo', tono: 'peligro' },
-  2: { etiqueta: 'Detiene el trabajo', tono: 'peligro' },
-  3: { etiqueta: 'Riesgo para las personas', tono: 'peligro' },
-  4: { etiqueta: 'Avería', tono: 'aviso' },
-  5: { etiqueta: 'Posible avería', tono: 'neutro' },
-}
-
 /**
  * La bandeja de Mantenimiento (DKS: «por gravedad y días en espera»): primero la
  * más grave; entre las de la misma gravedad, la que lleva más días esperando; y

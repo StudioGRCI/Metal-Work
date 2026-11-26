@@ -599,6 +599,12 @@ dejan fuera lo que no es suyo: el dashboard no abre nada que el puesto no vea
 en su pantalla. Lo que se resolvía en la OT ya no se le cuenta a quien no tiene
 la OT en su menú.
 
+Lo que es de la persona y no de su puesto se cuenta a cualquiera, esté o no la
+pantalla en su trabajo (`DE_CUALQUIER_PUESTO`): las acciones correctivas de
+SSOMA a su cargo y, desde la `20261126700000`, las averías que reportó y
+Mantenimiento cerró, que esperan que diga si quedaron bien (globo en «Averías»
+o «Reportar avería», y una línea en «Te toca»).
+
 | Puesto | Globos del menú | Cifras |
 | --- | --- | --- |
 | Requerimientos | Salidas de vehículo observadas por Tesorería | Requerimientos abiertos (y listos en almacén), Esperan compra, Vehículos en la planta, Salido del almacén por código |
@@ -612,7 +618,7 @@ la OT en su menú.
 | Administración | Requerimientos de Administración por comprar y lo de la OT | Requerimientos abiertos, Subcontratos vigentes, Gastos generales del mes, Clientes; y el bloque de la OT |
 | Recursos Humanos | Reportes diarios que esperan su visto, Días con horas extras por decidir, Personas por enviar a la planilla diaria, Planilla del mes por cerrar | Personal activo, Marcaron ingreso hoy, Tardanzas del mes, Reportes diarios del mes |
 | Portería | — | Marcaron ingreso hoy, Marcaron salida hoy, Tardanzas de hoy |
-| Mantenimiento | — | Averías por atender (reportadas o en atención desde la `20261126700000`, y cuántas detienen el trabajo, desde el 2026-11-26), Equipos parados, Con observación, Equipos en el padrón |
+| Mantenimiento | Averías por atender (desde la `20261126700000`) | Averías por atender (reportadas o en atención desde la `20261126700000`, y cuántas detienen el trabajo, desde el 2026-11-26), Equipos parados, Con observación, Equipos en el padrón |
 | Supervisor de área | Su reporte de hoy por subir (no el domingo), Reportes observados por corregir, Planos de su área por recibir, Requerimientos de su área listos para recoger | Reportes diarios del mes, Planos de su área (y etapas abiertas), Requerimientos de su área |
 | Supervisor General | Códigos con etapas vencidas | Códigos en curso, Requerimientos abiertos, Vehículos en la planta, Bajo su stock mínimo |
 | Agente de Ventas | Cotizaciones rechazadas por corregir | En revisión de Gerencia, Aprobadas este mes, Clientes |
