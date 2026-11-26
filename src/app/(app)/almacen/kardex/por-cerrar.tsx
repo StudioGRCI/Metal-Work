@@ -4,6 +4,7 @@ import { FileCheck2, Printer } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
 
+import { AvisoEnfocado } from '@/components/ui/aviso-enfocado'
 import { Boton } from '@/components/ui/boton'
 import { Campo } from '@/components/ui/campos'
 import { ElegirArchivo } from '@/components/ui/elegir-archivo'
@@ -40,23 +41,55 @@ const TIPOS = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp']
  * recibe, y se cierra cargando el escaneo o la foto del formato firmado.
  */
 export function SalidasPorCerrar({ salidas, puedeCerrar, almacen = null }: { salidas: SalidaParaCerrar[]; puedeCerrar: boolean; almacen?: string | null }) {
-  if (salidas.length === 0) {
-    // Con un almacén elegido lo dice, para que no parezca que no hay ninguna en los demás.
-    const donde = almacen && esAlmacen(almacen) ? ` en ${ALMACENES[almacen].etiqueta}` : ''
-    return <SinDatos compacto titulo={`Ninguna salida abierta${donde}`} descripcion="Las de materia prima y EPP tienen su formato firmado." />
+  // El aviso de la salida que se cerró vive aquí y no en su fila: al ponerse al
+  // día la pantalla, la salida cerrada sale de la lista y se llevaba el aviso
+  // con ella. Se pinta donde estaba la fila (`indice`) y se lleva el cursor y la
+  // vista (`AvisoEnfocado`): arriba de la lista quedaba 560 px por encima de la
+  // pantalla en el teléfono, y el cursor caía en la página con el botón que se
+  // desmontó. La `key` de cada cierre lo vuelve a enfocar y a anunciar.
+  const [cerrada, setCerrada] = useState<{ texto: string; vez: number; indice: number } | null>(null)
+  // Con un almacén elegido lo dice, para que no parezca que no hay ninguna en los demás.
+  const donde = almacen && esAlmacen(almacen) ? ` en ${ALMACENES[almacen].etiqueta}` : ''
+  const filas = salidas.map((s, i) => (
+    <Salida key={s.id} salida={s} puedeCerrar={puedeCerrar}
+      alEmpezar={() => setCerrada(null)}
+      alCerrar={(texto) => setCerrada((c) => ({ texto, vez: (c?.vez ?? 0) + 1, indice: i }))} />
+  ))
+  if (cerrada) {
+    filas.splice(Math.min(cerrada.indice, filas.length), 0, (
+      <li key={`cerrada-${cerrada.vez}`} className="py-3">
+        <AvisoEnfocado>
+          <FileCheck2 aria-hidden className="mr-1 inline size-4" />
+          {cerrada.texto}
+        </AvisoEnfocado>
+      </li>
+    ))
   }
   return (
-    <ul className="divide-y divide-borde">
-      {salidas.map((s) => <Salida key={s.id} salida={s} puedeCerrar={puedeCerrar} />)}
-    </ul>
+    <div className="space-y-2">
+      {filas.length > 0 && <ul className="divide-y divide-borde">{filas}</ul>}
+      {salidas.length === 0 && (
+        <SinDatos compacto titulo={`Ninguna salida abierta${donde}`} descripcion="Las de materia prima y EPP tienen su formato firmado." />
+      )}
+    </div>
   )
 }
 
-function Salida({ salida, puedeCerrar }: { salida: SalidaParaCerrar; puedeCerrar: boolean }) {
+function Salida({ salida, puedeCerrar, alEmpezar, alCerrar }: {
+  salida: SalidaParaCerrar
+  puedeCerrar: boolean
+  /** Antes de enviar: el aviso de un cierre anterior ya no es lo último que pasó. */
+  alEmpezar: () => void
+  /** Lo que dice la lista cuando esta salida se cerró, aunque la fila ya no esté. */
+  alCerrar: (texto: string) => void
+}) {
   const [abierto, setAbierto] = useState(false)
+  // Cerrada, la fila se va en el acto: sin esto quedaba un momento con «Cargar
+  // firmado» hasta que la pantalla se ponía al día, y el aviso lo da la lista.
+  const [cerrada, setCerrada] = useState(false)
   const def = esAlmacen(salida.almacen) ? ALMACENES[salida.almacen] : null
 
-  const { alEnviar, enviando, error, resultado } = useEnvio(async (_previo, datos) => {
+  const { alEnviar, enviando, error } = useEnvio(async (_previo, datos) => {
     const archivo = datos.get('formato')
     if (!(archivo instanceof File) || archivo.size === 0 || archivo.size > 10485760 || !TIPOS.includes(archivo.type)) {
       return { ok: false, error: 'Selecciona el formato firmado en PDF o foto (JPG, PNG o WebP) de hasta 10 MB.' }
@@ -74,18 +107,13 @@ function Salida({ salida, puedeCerrar }: { salida: SalidaParaCerrar; puedeCerrar
       bucket: 'evidencias-almacen', ruta, archivo, contentType: archivo.type,
       registrar: () => cerrarSalidaConFormato(null, datos),
     })
-  }, () => setAbierto(false), { siSeVa: { que: 'el formato firmado', enlace: 'Volver a la salida' }, documento: salida.id })
+  }, (r) => {
+    setAbierto(false)
+    setCerrada(true)
+    alCerrar(`${salida.numero_salida ? `${salida.numero_salida} · ` : ''}${salida.material ?? 'Material'} · ${cantidad(salida.salida)} ${salida.unidad_medida ?? ''}: ${r.mensaje ?? 'salida cerrada con su formato firmado.'}`)
+  }, { siSeVa: { que: 'el formato firmado', enlace: 'Volver a la salida' }, documento: salida.id })
 
-  if (resultado?.ok) {
-    return (
-      <li className="py-3">
-        <p role="status" className="text-sm text-exito">
-          <FileCheck2 aria-hidden className="mr-1 inline size-4" />
-          {salida.material} · {cantidad(salida.salida)} {salida.unidad_medida ?? ''}: {resultado.mensaje}
-        </p>
-      </li>
-    )
-  }
+  if (cerrada) return null
 
   return (
     <li className="flex flex-wrap items-start gap-x-4 gap-y-2 py-3">
@@ -114,7 +142,7 @@ function Salida({ salida, puedeCerrar }: { salida: SalidaParaCerrar; puedeCerrar
         )}
       </div>
       {abierto && puedeCerrar && (
-        <form onSubmit={alEnviar} className="flex w-full flex-wrap items-end gap-3">
+        <form onSubmit={(e) => { alEmpezar(); alEnviar(e) }} className="flex w-full flex-wrap items-end gap-3">
           <input type="hidden" name="movimiento_id" value={salida.id} />
           <Campo etiqueta="Formato firmado (escaneo o foto)" htmlFor={`fmt-${salida.id}`} requerido
             ayuda="Firmado por el almacenero y por quien recibe." className="min-w-0 flex-1 basis-64">
