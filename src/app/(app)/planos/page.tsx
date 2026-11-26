@@ -174,7 +174,8 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
   // Los códigos con una etapa del área que pide el reporte de hoy, y cuáles no
   // lo tienen. Las etapas, su semáforo y el último reporte del área los da la
   // base (`etapas_abiertas_de_mi_area`): ni el atraso ni el reporte se cuentan
-  // aquí otra vez. Los códigos ya entregados o con el costeo cerrado no entran.
+  // aquí otra vez. Los códigos ya entregados, con el costeo cerrado o con su
+  // única OT pausada no entran.
   const pidenHoy = new Map<string, EtapaAbiertaDelArea[]>()
   for (const e of abiertasDelArea ?? []) {
     if (!pideReporteHoy(e, hoy)) continue
