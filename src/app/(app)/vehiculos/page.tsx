@@ -1,4 +1,4 @@
-import { Camera } from 'lucide-react'
+import { Camera, Clock } from 'lucide-react'
 import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
@@ -6,6 +6,7 @@ import { Vistas } from '@/components/estructura/vistas'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
+import { diasEnEspera } from '@/lib/datos/dias-en-espera'
 import {
   cargarVehiculos,
   codigosParaIngreso,
@@ -14,8 +15,9 @@ import {
   type EstadoDeSalida,
   type RegistroVehiculo,
 } from '@/lib/datos/vehiculos'
+import { diasEntre, textoEnPlanta, textoEstuvo } from '@/lib/dominio/dias-en-planta'
 import { conQueVuelveDelArenado, MOTIVO_VEHICULO } from '@/lib/dominio/requerimientos'
-import { fechaHora } from '@/lib/format'
+import { diaLima, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { ControlesVehiculo } from './controles'
@@ -40,13 +42,23 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
   const registros = await cargarVehiculos(vista)
   // Lo que le falta a cada vehículo de trabajo para salir.
   const enPlanta = registros.filter((r) => !r.salida_en && !r.anulado_en).map((r) => r.id)
-  const [estados, codigos, ots] = await Promise.all([estadosDeSalida(enPlanta), pidiendoCodigos, pidiendoOts])
+  const [estados, codigos, ots, dias] = await Promise.all([
+    estadosDeSalida(enPlanta),
+    pidiendoCodigos,
+    pidiendoOts,
+    // Los días en planta de cada uno, contados por la base con la fecha de Lima (plan 3,
+    // entrega 3.2). Sin ellos la lista sigue con todo lo demás: solo no dice los días.
+    diasEnEspera(registros.map((r) => (!r.salida_en && !r.anulado_en ? r.ingreso_en : null))).catch((e: unknown) => {
+      console.error('Vehículos: no se pudieron contar los días en planta.', e)
+      return registros.map(() => null)
+    }),
+  ])
 
   return (
     <>
       <EncabezadoPagina
         titulo="Ingreso y salida de vehículos"
-        ayuda="Cada vez que un vehículo entra a la planta —para fabricación, mantenimiento, garantía o de vuelta del arenado— y cuándo sale, con fotos de cómo entró y cómo salió. La fabricación entra con su código interno; el mantenimiento y la garantía, con el N.º de su OT. Reemplaza el seguimiento de portería en Excel."
+        ayuda="Cada vez que un vehículo entra a la planta —para fabricación, mantenimiento, garantía o de vuelta del arenado— y cuándo sale, con fotos de cómo entró y cómo salió. La fabricación entra con su código interno; el mantenimiento y la garantía, con el N.º de su OT. En planta va primero el que lleva más días, y cada uno dice cuántos lleva, qué puesto registró su ingreso y su salida, y qué le falta para salir según las reglas de la base. Reemplaza el seguimiento de portería en Excel."
         migas={[{ titulo: 'Vehículos' }]}
         acciones={registra && <NuevoIngresoVehiculo cuentaId={perfil.id} codigos={codigos} ots={ots} />}
       />
@@ -83,8 +95,8 @@ export default async function PaginaVehiculos({ searchParams }: PageProps<'/vehi
                 descripcion={registra ? 'Cuando entre uno, anótalo con «Registrar ingreso».' : 'El área de Requerimientos registra cada ingreso.'}
               />
             ) : (
-              registros.map((r) => (
-                <FilaVehiculo key={r.id} registro={r} registra={registra} cuentaId={perfil.id} estado={estados.get(r.id)} />
+              registros.map((r, i) => (
+                <FilaVehiculo key={r.id} registro={r} registra={registra} cuentaId={perfil.id} estado={estados.get(r.id)} dias={dias[i]} />
               ))
             )}
           </tbody>
@@ -99,11 +111,14 @@ function FilaVehiculo({
   registra,
   cuentaId,
   estado,
+  dias,
 }: {
   registro: RegistroVehiculo
   registra: boolean
   cuentaId: string
   estado: EstadoDeSalida | undefined
+  /** Los días que lleva en planta, si sigue adentro; `null` si salió o no se pudieron contar. */
+  dias: number | null
 }) {
   const motivo = MOTIVO_VEHICULO[r.motivo]
   const nombre = r.placa ?? r.chasis ?? r.codigo_interno ?? 'vehículo'
@@ -134,8 +149,12 @@ function FilaVehiculo({
         {r.motivo_anulacion && <p className="mt-1 text-xs text-peligro">Anulado: {r.motivo_anulacion}</p>}
         {/* En el teléfono, el ingreso y la salida van aquí: la tabla no se desliza de costado. */}
         <div className="mt-1 space-y-1 sm:hidden">
-          <p className="tabular text-xs text-texto-suave">Entró {fechaHora(r.ingreso_en)}</p>
-          <Situacion registro={r} estado={estado} />
+          <p className="tabular text-xs text-texto-suave">
+            Entró {fechaHora(r.ingreso_en)}
+            {r.ingreso_puesto && ` · lo registró ${r.ingreso_puesto}`}
+          </p>
+          {r.salida_en && r.salida_puesto && <p className="text-xs text-texto-suave">Su salida la registró {r.salida_puesto}</p>}
+          <Situacion registro={r} estado={estado} dias={dias} />
         </div>
         {estado?.falta_para_salir && (
           <p id={`veh-bloqueo-${r.id}`} className="mt-1 max-w-sm text-xs text-texto-suave" data-bloqueo-salida>
@@ -148,16 +167,19 @@ function FilaVehiculo({
       </TD>
       <TD className="hidden align-top sm:table-cell">
         <p className="tabular text-xs text-texto whitespace-nowrap">{fechaHora(r.ingreso_en)}</p>
+        {r.ingreso_puesto && <p className="text-xs text-texto-suave" data-registro-ingreso>Lo registró {r.ingreso_puesto}</p>}
         {r.observacion_ingreso && <p className="mt-1 max-w-xs text-xs text-texto-suave">{r.observacion_ingreso}</p>}
       </TD>
       <TD className="hidden align-top sm:table-cell">
         {r.salida_en ? (
           <>
             <p className="tabular text-xs text-texto whitespace-nowrap">{fechaHora(r.salida_en)}</p>
+            {r.salida_puesto && <p className="text-xs text-texto-suave" data-registro-salida>La registró {r.salida_puesto}</p>}
+            <p className="text-xs text-texto-suave">{textoEstuvo(diasEntre(diaLima(r.ingreso_en), diaLima(r.salida_en)))}</p>
             {r.observacion_salida && <p className="mt-1 max-w-xs text-xs text-texto-suave">{r.observacion_salida}</p>}
           </>
         ) : (
-          <Situacion registro={r} estado={estado} />
+          <Situacion registro={r} estado={estado} dias={dias} />
         )}
       </TD>
       <TD className="text-right align-top">
@@ -177,18 +199,37 @@ function FilaVehiculo({
   )
 }
 
-/** En planta, salió o anulado; y del que espera para salir, el avance de su código. */
-function Situacion({ registro: r, estado }: { registro: RegistroVehiculo; estado: EstadoDeSalida | undefined }) {
+/**
+ * En planta, salió o anulado; del que sigue adentro, cuántos días lleva y si ya
+ * puede salir; y del que espera para salir, el avance de su código o su OT.
+ * Lo que falta lo dice la base (`vehiculos_estado_de_salida`): aquí solo se muestra.
+ */
+function Situacion({ registro: r, estado, dias }: { registro: RegistroVehiculo; estado: EstadoDeSalida | undefined; dias: number | null }) {
   if (r.anulado_en) return <Insignia tono="peligro">Anulado</Insignia>
   if (r.salida_en)
     return (
-      <Insignia tono="neutro">
-        {r.sale_al_arenado ? 'Salió al arenado' : 'Salió'} {fechaHora(r.salida_en)}
-      </Insignia>
+      <div className="flex flex-wrap items-center gap-1">
+        <Insignia tono="neutro">
+          {r.sale_al_arenado ? 'Salió al arenado' : 'Salió'} {fechaHora(r.salida_en)}
+        </Insignia>
+        {/* En el teléfono no hay columna de salida: aquí va cuánto estuvo. */}
+        <span className="text-xs text-texto-suave sm:hidden">{textoEstuvo(diasEntre(diaLima(r.ingreso_en), diaLima(r.salida_en)))}</span>
+      </div>
     )
   return (
     <div className="flex flex-wrap items-center gap-1">
       <Insignia tono="aviso">En planta</Insignia>
+      {dias != null && (
+        <Insignia className="tabular" title={`Entró el ${fechaHora(r.ingreso_en)}`} data-dias-en-planta={dias}>
+          <Clock aria-hidden className="size-3" />
+          {textoEnPlanta(dias)}
+        </Insignia>
+      )}
+      {estado && !estado.falta_para_salir && (
+        <Insignia tono="exito" data-puede-salir>
+          Puede salir
+        </Insignia>
+      )}
       {/* Garantía y mantenimiento esperan que Administración dé por terminado el trabajo de su OT. */}
       {estado?.exige && estado.garantia_ot && (
         <span className="tabular text-xs text-texto-suave" data-garantia-salida={estado.garantia_estado ?? ''}>
