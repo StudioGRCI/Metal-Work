@@ -331,6 +331,10 @@ async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo:
           : dicho('El uso de las horas reservadas', 'Los usos de las horas reservadas', 'otro', detalle),
       }
     }
+    case 'reporte_averia': {
+      const { data } = await supabase.from('averias').select('numero, registrado_por').eq('id', id).maybeSingle()
+      return data && { por: data.registrado_por, lo: dicho('El reporte', 'Los reportes', 'otro', data.numero) }
+    }
     case 'motivo_atraso':
     case 'fecha_prometida': {
       const { data } = await supabase

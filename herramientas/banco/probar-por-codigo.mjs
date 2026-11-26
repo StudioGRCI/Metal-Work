@@ -282,9 +282,9 @@ async function marcarPuntos(pagina, fase, observado) {
 async function responder(estado, respuesta, mensaje) {
   const { pagina, contexto, errores } = await entrar('tesoreria@local.test')
   await pagina.goto(`${BASE}/`, { waitUntil: 'networkidle' })
-  // El Dashboard ya no lista pendientes (2026-10-19): el globo del menú los
-  // cuenta (en Cuentas por cobrar suma cobros y salidas; que sea la salida lo
-  // prueba #salidas-por-revisar, justo abajo).
+  // El globo del menú cuenta lo que espera (en Cuentas por cobrar suma cobros y
+  // salidas; que sea la salida lo prueba #salidas-por-revisar, justo abajo).
+  // «Te toca», en el Dashboard, cuenta lo mismo.
   comprobar(/, 1 pendiente$/.test((await pagina.locator('nav a[href="/tesoreria/por-cobrar"]').first().getAttribute('aria-label')) ?? ''), 'Tesorería tiene el pendiente en su menú')
   await pagina.goto(`${BASE}/tesoreria/por-cobrar`, { waitUntil: 'networkidle' })
   const pedido = pagina.locator('#salidas-por-revisar [data-revision]')

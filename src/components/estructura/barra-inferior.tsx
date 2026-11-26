@@ -2,7 +2,7 @@
 
 import { LayoutGrid } from 'lucide-react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { type ReactNode } from 'react'
 import { useContextoMenu } from './contexto-menu'
 
@@ -44,6 +44,7 @@ export function BarraInferior({
   children: ReactNode
 }) {
   const ruta = usePathname()
+  const busqueda = useSearchParams()
   const { abierto, abrir: setAbierto } = useContextoMenu()
 
   const visibles = menuDe(permisos, esAdmin, rolCodigo).flatMap((g) => g.items)
@@ -52,11 +53,12 @@ export function BarraInferior({
   const activa = rutaActiva(
     ruta,
     visibles.map((i) => i.ruta),
+    busqueda,
   )
   const enMas = activa !== undefined && !pestanas.some((p) => p.ruta === activa)
   // Lo que espera en los módulos que no tienen pestaña: sin este globo, en el
   // teléfono nadie se enteraba de un servicio o una planilla por pagar hasta
-  // abrir «Más». El Dashboard ya no lo lista (2026-10-19); el menú sí lo cuenta.
+  // abrir «Más». El Dashboard lo lista en «Te toca», pero de otra pantalla no se ve.
   const base = (r: string) => r.split('?')[0]
   const otros = visibles.filter((i) => !pestanas.some((p) => p.ruta === i.ruta))
   const enOtros = otros.reduce((suma, i) => suma + (pendientes[base(i.ruta)] ?? 0), 0)

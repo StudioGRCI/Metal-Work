@@ -298,7 +298,7 @@ reset role;
 do $$
 declare v text;
 begin
-  foreach v in array array['contabilidad', 'gerente', 'administracion', 'tesoreria', 'vendedor'] loop
+  foreach v in array array['contabilidad', 'administracion', 'tesoreria', 'vendedor'] loop
     perform pg_temp.como(v);
     set local role authenticated;
     perform test.debe_fallar('select count(*) from public.compras_en_gestion()', v || ' no abre la gestión de compras',
@@ -310,6 +310,16 @@ begin
     perform test.afirmar((select count(*) from public.programacion_recojo) = 0, v || ' no lee la lista del conductor');
     reset role;
   end loop;
+  -- Gerencia la consulta desde la 20261126310000 (`compras.ver_gestion`): abre
+  -- la gestión y lee la lista, pero no programa ni saca nada de ella.
+  perform pg_temp.como('gerente');
+  set local role authenticated;
+  perform count(*) from public.compras_en_gestion();
+  perform test.debe_fallar(format('select public.programar_recojo(%L, 100, null)', current_setting('prueba.oc6')),
+    'gerente no programa el recojo', 'compras.programar_recojo');
+  perform test.debe_fallar(format('select public.quitar_recojo_de_la_lista(%L)', current_setting('prueba.oc3')),
+    'gerente no saca una compra de la lista', 'compras.programar_recojo');
+  reset role;
 end $$;
 
 select pg_temp.como('conductor');

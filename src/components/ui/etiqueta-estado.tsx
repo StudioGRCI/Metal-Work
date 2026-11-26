@@ -4,7 +4,8 @@ import { cn } from '@/lib/utils'
 
 export type Tono = 'neutro' | 'exito' | 'aviso' | 'peligro' | 'info' | 'acento'
 
-const TONOS: Record<Tono, string> = {
+/** El fondo suave y el texto de cada tono: la insignia, y el ícono de cada fila de «Te toca». */
+export const TONOS: Record<Tono, string> = {
   neutro: 'bg-neutro-suave text-texto-suave',
   exito: 'bg-exito-suave text-exito',
   aviso: 'bg-aviso-suave text-aviso',
