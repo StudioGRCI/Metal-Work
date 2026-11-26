@@ -18,6 +18,7 @@ import {
   Coins,
   CreditCard,
   DraftingCompass,
+  Drill,
   FileArchive,
   FilePenLine,
   FileSpreadsheet,
@@ -592,6 +593,23 @@ export const NAVEGACION = [
       { titulo: 'Planillas', ruta: '/rrhh', icono: UserCog, permiso: 'rrhh.ver_planillas', descripcion: 'Planillas del mes y su distribución por unidad', disponible: true },
     ],
   },
+  // El padrón de equipos de la planta (Plan 16). Lo lleva Mantenimiento; Almacén
+  // entra a anotar quién tiene cada equipo. Gerencia lo consulta desde su
+  // grupo Almacén (2026-11-26).
+  {
+    titulo: 'Mantenimiento',
+    items: [
+      {
+        titulo: 'Equipos',
+        ruta: '/equipos',
+        // No la llave: es la de Órdenes de servicio, y Gerencia ve las dos.
+        icono: Drill,
+        permiso: ['equipos.gestionar', 'equipos.asignar', 'equipos.ver'],
+        descripcion: 'El padrón de máquinas y herramientas de la planta',
+        disponible: true,
+      },
+    ],
+  },
   {
     titulo: 'Administración del sistema',
     items: [
@@ -692,7 +710,9 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   ALMACENERO: {
     grupos: [
       { titulo: 'Por atender', rutas: ['/requerimientos/atencion', '/seguimiento?vista=materiales'] },
-      { titulo: 'Almacén', rutas: ['/almacen/kardex', '/almacen/reposicion', '/almacen/stock'] },
+      // Al final, el padrón de equipos: Almacén entrega la herramienta y anota
+      // ahí quién se la lleva (Plan 16.1).
+      { titulo: 'Almacén', rutas: ['/almacen/kardex', '/almacen/reposicion', '/almacen/stock', '/equipos'] },
     ],
     telefono: ['/requerimientos/atencion', '/seguimiento?vista=materiales', '/almacen/kardex', '/'],
   },
@@ -749,7 +769,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       {
         titulo: 'Almacén',
         consulta: true,
-        rutas: ['/requerimientos/atencion', '/almacen/kardex', '/almacen/stock', '/almacen/reposicion'],
+        rutas: ['/requerimientos/atencion', '/almacen/kardex', '/almacen/stock', '/almacen/reposicion', '/equipos'],
       },
       {
         titulo: 'Logística',
@@ -918,6 +938,13 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   PORTERO: {
     grupos: [{ titulo: 'Portería', rutas: ['/rrhh/asistencia'] }],
     telefono: ['/rrhh/asistencia', '/'],
+  },
+  // El puesto de Mantenimiento (Plan 16): lleva el padrón de equipos de la
+  // planta. Las averías y el mantenimiento de las unidades de los clientes se
+  // suman a este mismo menú en sus entregas, sin reemplazar este grupo.
+  MANTENIMIENTO: {
+    grupos: [{ titulo: 'Mantenimiento', rutas: ['/equipos'] }],
+    telefono: ['/equipos', '/'],
   },
   // Sube su reporte diario, que es su trabajo de cada día. Desde el 2026-10-15,
   // los planos que Diseño carga para su área y las etapas que hace su área van
@@ -1164,4 +1191,5 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   // Al final: así no le quita la pestaña a nadie que no tenga menú propio.
   { ruta: '/almacen/stock', corto: 'Stock' },
   { ruta: '/almacen/reposicion', corto: 'Reposición' },
+  { ruta: '/equipos', corto: 'Equipos' },
 ]

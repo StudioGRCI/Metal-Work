@@ -3,11 +3,12 @@ import assert from 'node:assert/strict'
 import { menuDe, modulosDelInicio, pestanasDe, rutasDeTrabajo } from './navegacion.ts'
 
 // Los 32 permisos de Gerencia en producción el 2026-11-25 (leídos de `roles_permisos`), más
-// `rrhh.tiempos_entrega`, que le da la migración 20261125100000 (Semáforo de entregas, #186).
+// `rrhh.tiempos_entrega`, que le da la migración 20261125100000 (Semáforo de entregas, #186), y
+// `equipos.ver`, que le da la 20261125160000 (padrón de equipos, #191).
 const GERENCIA = [
   'adquisiciones.ver', 'almacen.ver', 'asistencia.ver', 'auditoria.ver', 'clientes.ver', 'codigos_internos.cerrar',
   'codigos_internos.ver', 'compras.configurar_aprobacion', 'compras.ver', 'costos.ver', 'cotizaciones.revisar',
-  'cotizaciones.ver_aprobadas', 'cotizaciones.ver_pdf_comercial', 'diseno.revisar', 'ordenes.anular', 'ordenes.aprobar',
+  'cotizaciones.ver_aprobadas', 'cotizaciones.ver_pdf_comercial', 'diseno.revisar', 'equipos.ver', 'ordenes.anular', 'ordenes.aprobar',
   'ordenes.listar', 'ordenes.ver', 'planilla_diaria.ver', 'produccion.aprobar_sin_orden', 'produccion.cualquier_area',
   'produccion.ver', 'proveedores.editar', 'proveedores.ver', 'proveedores.ver_cuentas', 'reporte_diario.validar_gerencia',
   'reporte_diario.ver', 'requerimientos.ver', 'rrhh.tiempos_entrega', 'subcontratos.ver', 'tesoreria.liberar', 'tesoreria.ver_documentos',
@@ -16,15 +17,16 @@ const GERENCIA = [
 
 const rutas = (grupos) => grupos.flatMap((g) => g.items.map((i) => i.ruta))
 
-test('Gerencia ve por área las 35 pantallas que su permiso le abre, cada una una vez', () => {
+test('Gerencia ve por área las 36 pantallas que su permiso le abre, cada una una vez', () => {
   const grupos = menuDe(GERENCIA, false, 'GERENTE')
   assert.deepEqual(grupos.map((g) => g.titulo), [
     'Principal', 'Por aprobar', 'Ventas', 'Requerimientos', 'Almacén', 'Logística', 'Administración', 'Finanzas', 'Recursos Humanos',
   ])
   const todas = rutas(grupos)
-  assert.equal(todas.length, 35)
-  assert.equal(new Set(todas).size, 35)
+  assert.equal(todas.length, 36)
+  assert.equal(new Set(todas).size, 36)
   // Las cuatro que el catálogo pide con un permiso de registro le abren con el de lectura.
+  assert.ok(todas.includes('/equipos'))
   for (const r of ['/requerimientos/atencion', '/compras/ordenes', '/compras/servicios', '/contabilidad/facturacion']) {
     assert.ok(todas.includes(r), r)
   }

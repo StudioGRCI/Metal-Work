@@ -170,6 +170,8 @@ try {
   console.log('\n2. «Dentro ahora» y «Todavía no llegan», solo para leer')
   await buscar(pagina, '')
   let cuentas = await cuentasDeHoy()
+  // La lista llega con la respuesta de la acción, un poco después de la confirmación.
+  await pagina.getByRole('group', { name: 'Qué lista se ve' }).getByRole('button', { name: `Dentro ahora (${cuentas.dentro})` }).waitFor({ timeout: 15000 })
   const etiquetas = (await pagina.getByRole('group', { name: 'Qué lista se ve' }).getByRole('button').allTextContents()).map(limpio)
   console.log(`     pastillas: ${etiquetas.join(' | ')}`)
   comprobar(etiquetas.includes(`Todos (${cuentas.todos})`), `«Todos» cuenta al personal activo (${cuentas.todos})`)
@@ -183,6 +185,7 @@ try {
   console.log(`     dentro ahora (${filasDentro.length}): ${filasDentro.slice(0, 3).join(' · ')}`)
   comprobar(filasDentro.length === cuentas.dentro, `la lista trae ${cuentas.dentro} filas`)
   comprobar(filasDentro.some((f) => f.includes(ana.nombres) && f.includes(filas[0]?.hora)), 'Ana está dentro, con la hora de su ingreso')
+  comprobar(filasDentro.some((f) => f.includes(ana.nombres) && f.includes('A tiempo')), 'y dice si llegó a tiempo')
   comprobar(!filasDentro.some((f) => f.includes(beto.nombres)), 'Beto, que no llegó, no está dentro')
   comprobar((await pagina.locator('main').getByRole('button', { name: /Marcar (el ingreso|la salida)/ }).count()) === 0, 'en la lista de lectura no hay botones de marcar')
   await pagina.waitForTimeout(300) // la pastilla cambia de color con una transición
@@ -195,6 +198,10 @@ try {
   console.log(`     todavía no llegan (${filasFaltan.length}): ${filasFaltan.slice(0, 3).join(' · ')}`)
   comprobar(filasFaltan.length === cuentas.faltan, `la lista trae ${cuentas.faltan} filas`)
   comprobar(filasFaltan.some((f) => f.includes(beto.nombres)) && !filasFaltan.some((f) => f.includes(ana.nombres)), 'Beto falta y Ana no')
+  comprobar(
+    filasFaltan.filter((f) => f.includes(beto.nombres)).every((f) => /(Le toca|Pasó su hora) \d\d:\d\d/.test(f) && !f.includes('Sin ingreso')),
+    'la fila de Beto dice a qué hora le toca entrar, no «Sin ingreso» otra vez',
+  )
   await pagina.waitForTimeout(300)
   await pagina.screenshot({ path: `${CAPTURAS}/porteria-390-4-todavia-no-llegan.png` })
   const html = await pagina.content()
@@ -219,6 +226,10 @@ try {
   await confirmacionDe(pagina).getByRole('button', { name: 'Anular esta marca' }).click()
   const ventana = pagina.getByRole('dialog')
   await ventana.waitFor({ timeout: 10000 })
+  const tituloVentana = limpio(await ventana.getByRole('heading').first().innerText())
+  console.log(`     ventana: «${tituloVentana}»`)
+  comprobar(tituloVentana.includes(tomas.nombres) && /de las \d\d:\d\d/.test(tituloVentana), 'la ventana dice de quién es la marca y de qué hora')
+  comprobar((await ventana.getByText('Al menos 10 caracteres.').count()) === 1, 'y que el motivo pide al menos 10 caracteres')
   await ventana.getByRole('button', { name: 'Anular', exact: true }).click()
   comprobar((await marcasDe(tomas)).every((m) => !m.anulada), 'sin motivo no se anula')
   const motivo = `Se marcó a quien no era ${sello}`
@@ -319,9 +330,20 @@ try {
 } finally {
   await navegador.close()
   // El personal de la prueba no se queda en la lista del banco.
-  await base
-    .query(`update public.trabajadores set activo = false where id = any($1)`, [[ana.id, beto.id, tomas.id]])
-    .catch((e) => fallas.push(`no se pudo dar de baja al personal de prueba: ${e.message}`))
+  // Como RR. HH., con su fecha de baja, como lo haría la pantalla de Personal.
+  try {
+    await base.query('begin')
+    await base.query(`select set_config('request.jwt.claim.sub', $1, true), set_config('request.jwt.claim.role', 'authenticated', true)`, [rrhhId])
+    await base.query('set local role authenticated')
+    for (const id of [ana.id, beto.id, tomas.id]) {
+      const [{ activo }] = await consulta('select activo from public.trabajadores where id = $1', [id])
+      if (activo) await base.query(`select public.rrhh_dar_de_baja_trabajador($1, (now() at time zone 'America/Lima')::date)`, [id])
+    }
+    await base.query('commit')
+  } catch (e) {
+    await base.query('rollback').catch(() => {})
+    fallas.push(`no se pudo dar de baja al personal de prueba: ${e.message}`)
+  }
   await base.end()
 }
 
