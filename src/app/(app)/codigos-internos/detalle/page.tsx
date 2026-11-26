@@ -31,7 +31,7 @@ import {
   type ResumenCodigo,
 } from '@/lib/datos/codigos-internos'
 import { etapasDeCodigo } from '@/lib/datos/diseno-codigos'
-import { cotizacionesAprobadas, facturadoDelCodigo, facturasDelCodigo, type FacturadoDelCodigo } from '@/lib/datos/facturacion'
+import { cotizacionesAprobadas, facturadoDelCodigo, facturasDelCodigo } from '@/lib/datos/facturacion'
 import { mesesSinPagosDeOficina, mesesSinPlanillaDeTaller, repartoDelMes } from '@/lib/datos/gastos-generales'
 import { PERMISOS_BAJAR_COTIZACION, rutaParaBajarCotizacion } from '@/lib/descarga'
 import { partesDeNombreDeOc } from '@/lib/dominio/adquisiciones'
@@ -67,6 +67,7 @@ import { exigirPermiso, puede, type PerfilSesion } from '@/lib/sesion'
 
 import { CerrarCosteo, ReabrirCosteo } from './cierre-costeo'
 import { VistaEtapas, VistaMateriales, VistaPlanos } from './vistas-diseno'
+import { RecorridoDelCodigo } from './recorrido-del-codigo'
 import { VistaFicha } from './vista-ficha'
 
 export const metadata = { title: 'Código interno' }
@@ -95,7 +96,7 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
   const pedida = vistaValida(params.vista)
   const vista = vistas.some((v) => v.valor === pedida) ? pedida : 'avance'
 
-  const [{ codigos: conDocumentos, diseno: deDiseno, avances }, facturado, reparto, horasDelMes, faltaOficina, faltaPlanilla, lineas] = await Promise.all([
+  const [{ codigos: conDocumentos, diseno: deDiseno, avances }, facturado, reparto, horasDelMes, faltaOficina, faltaPlanilla, lineas, documentos] = await Promise.all([
     leerListaDeCodigos(),
     veFacturas && !aTodos ? facturadoDelCodigo(codigo) : Promise.resolve(null),
     aTodos ? repartoATodosLosActivos() : Promise.resolve<RepartoATodosFila[]>([]),
@@ -106,6 +107,14 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
     cierra && !aTodos && !noEsUnidad(codigo) ? mesesSinPlanillaDeTaller(codigo) : Promise.resolve<string[]>([]),
     // El resumen dice cuánto de la mano de obra es el ajuste de la planilla (la vista de costeo reusa la lectura).
     aTodos ? Promise.resolve([]) : costeoDelCodigo(codigo),
+    // La cotización y la OT del recorrido de arriba, las mismas de «RQ, OT y cotización». Si no se
+    // leen, el recorrido lo dice en esos pasos y la página sigue.
+    aTodos || noEsUnidad(codigo)
+      ? Promise.resolve(null)
+      : documentosDelCodigo(codigo).catch((e: unknown) => {
+          console.error('Código interno: no se pudieron leer la OT y la cotización del recorrido.', e)
+          return null
+        }),
   ])
   const ajuste = ajusteDePlanilla(lineas)
   const esperaElMes = horasDelMes.some((r) => r.codigo === codigo)
@@ -196,10 +205,21 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
               <CifrasDelReparto filas={reparto} />
             ) : (
               <>
+                {/* De la cotización al cobro, en una fila: cada paso lleva a donde se ve entero (plan 12, entrega 12.3). */}
+                {/* PLANTA no se cotiza ni se factura: no tiene recorrido. */}
+                {!noEsUnidad(codigo) && (
+                  <RecorridoDelCodigo
+                    codigo={codigo}
+                    c={resumen}
+                    documentos={documentos}
+                    facturado={facturado}
+                    abreOrden={puede(perfil, 'ordenes.ver')}
+                    abreCotizacion={puede(perfil, 'cotizaciones.ver_pdf_comercial')}
+                  />
+                )}
                 <ComoVa
                   c={resumen}
                   avance={avance}
-                  facturado={facturado}
                   codigo={codigo}
                   verPrecio={puede(perfil, 'cotizaciones.ver_pdf_comercial')}
                   cierra={cierra}
@@ -230,7 +250,6 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
 function ComoVa({
   c,
   avance,
-  facturado,
   codigo,
   verPrecio,
   cierra,
@@ -241,7 +260,6 @@ function ComoVa({
 }: {
   c: ResumenCodigo
   avance: AvanceDeCodigo | undefined
-  facturado: FacturadoDelCodigo | null
   codigo: string
   /** Quien ve el precio de venta (`cotizaciones.ver_pdf_comercial`) ve el margen. */
   verPrecio: boolean
@@ -407,7 +425,6 @@ function ComoVa({
           {dolaresAlCambio(c)}
         </p>
       )}
-      {facturado && <LineaFacturado f={facturado} codigo={codigo} />}
       {(c.compras_pen > 0 || c.compras_usd > 0 || c.compras > 0) && (
         <p className="text-xs text-texto-suave">
           Compras con este código: <span className="tabular text-texto">{moneda(c.compras_pen)}</span>
@@ -704,38 +721,6 @@ function LineaCierre({
       </div>
       {cierra && <ReabrirCosteo codigo={codigo} />}
     </div>
-  )
-}
-
-/** «Facturado US$ 29,500.00 en 1 factura · cobrado … · por cobrar …»: lo vendido junto a lo gastado. */
-function LineaFacturado({ f, codigo }: { f: FacturadoDelCodigo; codigo: string }) {
-  const montos = (r: Record<CodigoMoneda, number>) =>
-    (['PEN', 'USD'] as const)
-      .filter((m) => r[m] > 0)
-      .map((m) => moneda(r[m], m))
-      .join(' + ') || moneda(0)
-  const porCobrar = f.saldo.PEN + f.saldo.USD > 0
-  return (
-    <p className="text-xs text-texto-suave" data-facturado>
-      {f.facturas === 0 ? (
-        'Sin factura de venta todavía: la registra Contabilidad sobre la cotización aprobada.'
-      ) : (
-        <>
-          Facturado <span className="tabular text-texto">{montos(f.total)}</span> en {f.facturas} {f.facturas === 1 ? 'factura' : 'facturas'} · cobrado{' '}
-          <span className="tabular text-texto">{montos(f.cobrado)}</span>
-          {porCobrar && (
-            <>
-              {' '}
-              · por cobrar <span className="tabular text-texto">{montos(f.saldo)}</span>
-            </>
-          )}
-          .
-        </>
-      )}{' '}
-      <Link href={enlaceCodigo(codigo, 'facturacion')} className="text-acento hover:underline">
-        Ver factura y cobro
-      </Link>
-    </p>
   )
 }
 
