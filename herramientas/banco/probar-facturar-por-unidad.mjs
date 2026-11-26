@@ -492,9 +492,12 @@ async function llenar(v, { numero, total, unidad }) {
   await tarjeta.getByRole('button', { name: 'Registrar factura' }).click()
   const v = pagina.locator('[role="dialog"]')
   await v.locator('select[name="unidad"]').selectOption('1')
+  // La captura, con la pregunta de la unidad a la vista y sin el indicador de `next dev`.
+  await pagina.addStyleTag({ content: 'nextjs-portal { display: none !important; }' })
+  await v.getByText('De qué unidad es').first().scrollIntoViewIfNeeded()
+  await pagina.screenshot({ path: join(CAPTURAS, 'unidad-390-formulario.png') })
   await v.locator('input[name="total"]').fill('8466.67')
   comprobar((await desborde(pagina)) <= 0, 'ni con la ventana de la factura abierta')
-  await pagina.screenshot({ path: join(CAPTURAS, 'unidad-390-formulario.png') })
   await v.getByRole('button', { name: 'Cancelar' }).click()
   await contexto.close()
 }
