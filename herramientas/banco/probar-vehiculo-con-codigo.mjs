@@ -171,7 +171,7 @@ let registroId = null
   await fila.first().waitFor({ timeout: 15000 }).catch(() => {})
   const salida = fila.getByRole('button', { name: 'Marcar salida' })
   comprobar(await salida.isDisabled(), 'en la lista, «Marcar salida» queda apagado')
-  const porque = limpio(await fila.locator('[data-bloqueo-salida]').innerText().catch(() => ''))
+  const porque = limpio(await fila.locator('[data-bloqueo-salida]:visible').innerText().catch(() => ''))
   comprobar(porque.includes('100 %'), `y dice por qué: «${porque}»`)
   // La fila lo pinta dos veces (bajo el código en el celular, en su columna en
   // la pantalla ancha); se cuenta el que se ve.

@@ -191,3 +191,21 @@ export function diasEnEspera(dias: number | null): string | null {
   if (dias <= 0) return 'hoy'
   return `hace ${dias} ${dias === 1 ? 'día' : 'días'}`
 }
+
+/*
+ * Entrega 15.3 (migración 20261126985000): las charlas de seguridad y las
+ * inducciones, con sus asistentes de la lista de RR. HH. y quién no asistió en el mes.
+ */
+
+export const TIPOS_CHARLA_SSOMA = ['CHARLA', 'INDUCCION'] as const
+export type TipoCharlaSsoma = (typeof TIPOS_CHARLA_SSOMA)[number]
+
+export const TIPO_CHARLA_SSOMA: Record<string, Def> = {
+  CHARLA: { etiqueta: 'Charla', tono: 'info', descripcion: 'La charla de seguridad del día, de cinco minutos o más.' },
+  INDUCCION: { etiqueta: 'Inducción', tono: 'acento', descripcion: 'La de quien entra a la planta o cambia de puesto.' },
+}
+
+/** Fotos por charla: las mismas que pide la base. */
+export const MAXIMO_FOTOS_CHARLA = 4
+/** Hasta cuántos días atrás se registra una charla: la base dice lo mismo. */
+export const DIAS_PARA_REGISTRAR_CHARLA = 60

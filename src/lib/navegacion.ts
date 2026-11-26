@@ -41,6 +41,7 @@ import {
   MessageSquareWarning,
   NotebookPen,
   NotebookText,
+  Presentation,
   Receipt,
   ReceiptText,
   Route,
@@ -652,6 +653,15 @@ export const NAVEGACION = [
         descripcion: 'Cada accidente, incidente o condición insegura reportada, con su número y cómo va',
         disponible: true,
       },
+      // Plan 15.3: las charlas y las inducciones, con quién no asistió en el mes.
+      {
+        titulo: 'Charlas e inducciones',
+        ruta: '/ssoma/charlas',
+        icono: Presentation,
+        permiso: ['ssoma.gestionar', 'ssoma.ver'],
+        descripcion: 'Cada charla de seguridad e inducción, con su foto y quiénes asistieron; quién no asistió en el mes',
+        disponible: true,
+      },
     ],
   },
   // Calidad inspecciona por código interno y etapa (plan «Las demás áreas», A.1,
@@ -947,10 +957,10 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
           '/rrhh/tiempos-de-entrega',
         ],
       },
-      // Los reportes de seguridad (Plan 15) y las inspecciones de calidad (A.1),
+      // Los reportes de seguridad, las charlas (Plan 15) y las inspecciones de calidad (A.1),
       // en consulta: no registra ni anula. Van en un mismo grupo porque un grupo
       // más no entra en un monitor de 1440 × 760 (ver Almacén, con Averías).
-      { titulo: 'SSOMA y Calidad', consulta: true, rutas: ['/ssoma', '/calidad'] },
+      { titulo: 'SSOMA y Calidad', consulta: true, rutas: ['/ssoma', '/ssoma/charlas', '/calidad'] },
     ],
     // «Por decidir» en lugar de «Aprobar»: lo eligió DKS el 2026-11-26 (plan 12, entrega 12.1).
     telefono: ['/codigos-internos', '/cotizaciones/pdf', '/por-decidir', '/reportes-diarios'],
@@ -1165,8 +1175,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // que espera por SSOMA cada día. Las acciones correctivas, las charlas, las
   // inspecciones y la entrega de EPP se suman aquí con sus entregas.
   SSOMA: {
-    grupos: [{ titulo: 'SSOMA', rutas: ['/ssoma'] }],
-    telefono: ['/ssoma', '/'],
+    grupos: [{ titulo: 'SSOMA', rutas: ['/ssoma', '/ssoma/charlas'] }],
+    telefono: ['/ssoma', '/ssoma/charlas', '/'],
   },
   // Control de calidad (A.1): lo que inspecciona y lo que espera su revisión
   // arriba; los códigos internos y las OT, en consulta y sin montos.
@@ -1369,6 +1379,7 @@ export const PESTANAS_TELEFONO: { ruta: RutaDeModulo; corto: string }[] = [
   { ruta: '/rrhh/pagos-oficina', corto: 'Pagos' },
   { ruta: '/rrhh/observaciones', corto: 'Observaciones' },
   { ruta: '/ssoma', corto: 'Seguridad' },
+  { ruta: '/ssoma/charlas', corto: 'Charlas' },
   { ruta: '/reportes-diarios', corto: 'Reporte' },
   { ruta: '/codigos-internos', corto: 'Códigos' },
   { ruta: '/diseno/planos', corto: 'Planos' },

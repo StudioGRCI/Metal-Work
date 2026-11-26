@@ -154,7 +154,7 @@ export function ResumenDeRequerimientos({
   const listos = requerimientos.filter((r) => r.estado === 'LISTO_EN_ALMACEN' || llegoTodo(r)).length
   const quien = compran.size === 1 ? `que trae ${[...compran][0]}` : compran.size > 1 ? 'que traen Logística y Administración' : 'que se compran'
   return (
-    <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4" data-resumen-rq>
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-resumen-rq>
       <Indicador
         titulo="Para recoger en Almacén"
         valor={recoger}
