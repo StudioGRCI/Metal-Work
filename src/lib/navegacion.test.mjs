@@ -26,7 +26,7 @@ const GERENCIA = [
 
 const rutas = (grupos) => grupos.flatMap((g) => g.items.map((i) => i.ruta))
 
-test('Gerencia ve por área las 55 pantallas que su permiso le abre, cada una una vez', () => {
+test('Gerencia ve por área las 56 pantallas que su permiso le abre, cada una una vez', () => {
   const grupos = menuDe(GERENCIA, false, 'GERENTE')
   assert.deepEqual(grupos.map((g) => g.titulo), [
     'Principal', 'Por aprobar', 'Ventas', 'Diseño e Ingeniería', 'Requerimientos', 'Almacén', 'Logística', 'Administración',
@@ -35,17 +35,17 @@ test('Gerencia ve por área las 55 pantallas que su permiso le abre, cada una un
   const todas = rutas(grupos)
   // 49 en main el 2026-11-26 (con Averías), más Por decidir (plan 12, entrega 12.1), el Control de compras de Almacén,
   // las inspecciones de calidad (A.1), las charlas e inducciones de SSOMA (plan 15, entrega 15.3), los reclamos de garantía (A.2)
-  // y las inspecciones de seguridad (plan 15, entrega 15.4).
-  assert.equal(todas.length, 55)
-  assert.equal(new Set(todas).size, 55)
+  // las inspecciones de seguridad (plan 15, entrega 15.4) y el EPP por persona (plan 15, entrega 15.5).
+  assert.equal(todas.length, 56)
+  assert.equal(new Set(todas).size, 56)
   // Los reclamos de garantía, en lo que consulta de Ventas: un grupo más no entraba en el monitor.
   assert.deepEqual(rutas(grupos.filter((g) => g.titulo === 'Ventas')), ['/clientes', '/unidades', '/carrocerias', '/garantias'])
   // Calidad la consulta con su permiso: la entrada del área (sin permiso) no la reemplaza.
-  assert.equal(grupos.find((g) => g.titulo === 'SSOMA y Calidad')?.items[3]?.titulo, 'Inspecciones de calidad')
+  assert.equal(grupos.find((g) => g.titulo === 'SSOMA y Calidad')?.items[4]?.titulo, 'Inspecciones de calidad')
   // Las averías y los reportes de seguridad, en lo que consulta: no se repiten en «Reportar», que va al final para todos.
   // Las averías van con los equipos en Almacén: un grupo más no entraba en el monitor.
   assert.deepEqual(rutas(grupos.filter((g) => g.titulo === 'Almacén')).slice(-2), ['/equipos', '/averias'])
-  assert.deepEqual(rutas(grupos.filter((g) => g.titulo === 'SSOMA y Calidad')), ['/ssoma', '/ssoma/charlas', '/ssoma/inspecciones', '/calidad'])
+  assert.deepEqual(rutas(grupos.filter((g) => g.titulo === 'SSOMA y Calidad')), ['/ssoma', '/ssoma/charlas', '/ssoma/inspecciones', '/ssoma/epp', '/calidad'])
   assert.ok(!grupos.some((g) => g.titulo === 'Reportar'))
   // Las once que se le abrieron en lectura el 2026-11-26, y Proveedores sin `proveedores.editar`.
   for (const r of [

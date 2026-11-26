@@ -399,6 +399,33 @@ arriba. El área inspeccionada no ve la inspección: ve la acción quien la tien
 a cargo. `ssoma_acciones_visibles` (15.2) se queda para las pestañas abiertas
 antes del despliegue; la aplicación lee `ssoma_acciones_a_la_vista`.
 
+### Entrega de EPP por persona (entrega 15.5)
+
+Migración `20261126998500_ssoma_epp_por_persona`, comprobada con los roles
+reales en la base local (check 493: SSOMA, una segunda cuenta de SSOMA,
+Gerencia, Almacén, Ventas, RR. HH. y Supervisor General, nunca ADMIN) y con clic
+real en el banco (`herramientas/banco/probar-ssoma-epp.mjs`). Pantalla
+`/ssoma/epp`, en el menú de SSOMA y en el grupo «SSOMA y Calidad» de Gerencia.
+La entrega no lleva número propio: se nombra por el número de la salida de
+Almacén (`SA-…`). **El kardex no cambia**: las dos tablas solo apuntan a
+`movimientos_materiales`, y ninguna función de esta entrega escribe en ella ni
+en `materiales`.
+
+| Qué | Quién | Cómo lo hace cumplir la base |
+| --- | --- | --- |
+| Anotar a quién le tocó el equipo de una salida del almacén de EPP: las personas de la lista de RR. HH., cuánto a cada una y hasta cuándo dura (después del día de la salida y hasta cinco años) | `ssoma.gestionar`: SSOMA | `ssoma_registrar_entregas_epp`; la acción exige el mismo permiso (`registrarEntregasEpp`). Solo de una salida de EPP, solo a quien estaba en la planta ese día, una vez por persona y salida, y sin pasar de lo que salió y no volvió a Almacén. Las guarda todas o ninguna. El mismo pedido repetido devuelve lo mismo (`useIdDelEnvio('epp_ssoma')`). No se edita |
+| Leer la lista del personal para marcar: nombre, cargo y área (los activos y quien se fue en los últimos 60 días) | `ssoma.gestionar`: SSOMA | `ssoma_personal_para_epp`. Nunca el DNI, las cuentas ni los costos |
+| Sacar una entrega vigente de «Por renovar» con motivo (5 a 300): ese equipo ya no se le repone | `ssoma.gestionar`: SSOMA | `ssoma_epp_no_se_renueva`; la acción exige el mismo permiso (`eppNoSeRenueva`). El mismo pedido repetido entra; otro motivo u otra cuenta se rechaza diciendo el que quedó. Lo ya renovado no se saca |
+| Anular una entrega mal anotada con motivo (10 a 500): lo asignado vuelve a quedar por asignar en su salida | `ssoma.gestionar`: SSOMA | `ssoma_anular_entrega_epp`; la acción exige el mismo permiso (`anularEntregaEpp`). Nadie la borra ni la cambia, tampoco el administrador (`fn_ssoma_epp_entrega_guardia`, que sella quién y cuándo) |
+| Decir que lo que queda de una salida no va por persona, con motivo (5 a 300), y deshacerlo con «Repartir» | `ssoma.gestionar`: SSOMA | `ssoma_epp_salida_sin_reparto` y `ssoma_epp_salida_se_reparte`; las acciones exigen el mismo permiso (`eppSalidaSinReparto`, `eppSalidaSeReparte`). La marca no se borra: se deshace, con quién y cuándo (`fn_ssoma_epp_sin_reparto_guardia`). Con la marca puesta no se anota a nadie de esa salida |
+| Ver lo que hay por renovar (vencido o a 15 días de vencer, de quien sigue en la planta), el EPP de cada persona, su hoja con el historial y las salidas del almacén de EPP de los últimos 60 días (y hasta 180 las que esperan reparto) | SSOMA y Gerencia (`ssoma.ver`, en consulta, sin botones) | `ssoma_epp_entregas_a_la_vista`, `ssoma_epp_por_persona`, `ssoma_salidas_de_epp`; políticas de las dos tablas por `puede_ver_reportes_ssoma()`. De la salida se lee número, fecha, equipo, cantidad y quién recibió; nunca el precio |
+
+El estado de una entrega no se guarda, se calcula: vigente, renovada (después
+se le anotó otro igual), sin renovación o anulada. Almacén registra la salida
+como siempre y no ve a quién le tocó; RR. HH. tampoco: su lista la lee SSOMA,
+no al revés. Las dos tablas no llevan `activar_auditoria`, por la misma razón
+que las de arriba.
+
 ## Calidad: la inspección por código interno y etapa
 
 Plan aparte de las demás áreas, entrega A.1. Migración

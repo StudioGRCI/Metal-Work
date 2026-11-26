@@ -697,3 +697,79 @@ begin
   perform set_config('request.jwt.claim.sub', '', true);
 end;
 $$;
+
+-- -----------------------------------------------------------------------------
+-- SSOMA 15.5 (migración 20261126998500): salidas del almacén de EPP y a quién
+-- le tocó cada equipo, para que «Por renovar», «Por persona», «Salidas de
+-- Almacén» y la hoja de una persona tengan qué mostrar: cascos vencidos y uno
+-- ya renovado, guantes por vencer, lentes a medio repartir, respiradores sin
+-- repartir y unas lunas que no van por persona. Las salidas se insertan a mano
+-- y no con `registrar_salida_material`, que exige una foto ya subida a Storage.
+-- Con la cuenta de administrador de la demostración: las del banco todavía no están.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_admin  uuid;
+  v_alm    uuid;
+  v_hoy    date := (now() at time zone 'America/Lima')::date;
+  v_casco  uuid := (select id from public.materiales where codigo = 'EP-PC-CA-PO-00021');
+  v_guante uuid := (select id from public.materiales where codigo = 'EP-PM-GU-CU-00002');
+  v_lente  uuid := (select id from public.materiales where codigo = 'EP-PV-LE-PO-00023');
+  v_resp   uuid := (select id from public.materiales where codigo = 'EP-PR-RE-FS-00027');
+  v_luna   uuid := (select id from public.materiales where codigo = 'EP-PF-LU-VI-00035');
+  v_s1 uuid := gen_random_uuid();
+  v_s2 uuid := gen_random_uuid();
+  v_s3 uuid := gen_random_uuid();
+  v_s4 uuid := gen_random_uuid();
+  v_s5 uuid := gen_random_uuid();
+  v_s6 uuid := gen_random_uuid();
+  v_e4 uuid := gen_random_uuid();
+begin
+  if exists (select 1 from public.ssoma_epp_entregas) then
+    return;
+  end if;
+  select u.id into v_admin from public.usuarios u join public.roles r on r.id = u.rol_id where r.codigo = 'ADMIN' and u.activo limit 1;
+  select u.id into v_alm from public.usuarios u where u.correo = 'almacen@metalworkperusac.com' and u.activo;
+  if v_admin is null or v_alm is null or v_casco is null or v_guante is null or v_lente is null or v_resp is null or v_luna is null
+     or (select count(*) from public.trabajadores where dni between '70000001' and '70000011') < 11 then
+    return;
+  end if;
+
+  -- Lo que Almacén tenía y lo que entregó. Los números de salida los da la base.
+  insert into public.movimientos_materiales (id, tipo, origen, material_id, cantidad, documento_referencia, registrado_por, registrado_en)
+  select gen_random_uuid(), 'INGRESO', 'INGRESO_GENERAL', m, 60, 'Ingreso de la demostración', v_alm, now() - interval '420 days'
+    from unnest(array[v_casco, v_guante, v_lente, v_resp, v_luna]) as m;
+  insert into public.movimientos_materiales (id, tipo, origen, material_id, cantidad, documento_referencia, recibido_por_nombre, codigo_unidad, registrado_por, registrado_en)
+  values (v_s1, 'SALIDA', 'SALIDA_GENERAL', v_casco,  3,  'Vale de EPP 0101', 'Jorge Quispe',  'PLANTA', v_alm, now() - interval '400 days'),
+         (v_s3, 'SALIDA', 'SALIDA_GENERAL', v_guante, 5,  'Vale de EPP 0188', 'Luis Torres',   'PLANTA', v_alm, now() - interval '80 days'),
+         (v_s2, 'SALIDA', 'SALIDA_GENERAL', v_casco,  1,  'Vale de EPP 0240', 'Jorge Quispe',  'PLANTA', v_alm, now() - interval '5 days'),
+         (v_s6, 'SALIDA', 'SALIDA_GENERAL', v_luna,   10, 'Vale de EPP 0241', 'Luis Torres',   'PLANTA', v_alm, now() - interval '3 days'),
+         (v_s4, 'SALIDA', 'SALIDA_GENERAL', v_lente,  6,  'Vale de EPP 0242', 'Pedro Ccama',   'PLANTA', v_alm, now() - interval '2 days'),
+         (v_s5, 'SALIDA', 'SALIDA_GENERAL', v_resp,   2,  'Vale de EPP 0243', 'Raúl Mendoza',  'PLANTA', v_alm, now() - interval '3 hours');
+  insert into public.movimientos_materiales (id, tipo, origen, material_id, cantidad, documento_referencia, devolucion_de, registrado_por, registrado_en)
+  values (gen_random_uuid(), 'INGRESO', 'DEVOLUCION', v_lente, 1, 'Devolución: un lente rayado', v_s4, v_alm, now() - interval '1 day');
+
+  perform set_config('request.jwt.claim.sub', v_admin::text, true);
+  -- Cascos de hace más de un año, por un año: vencidos. A Jorge ya se le dio otro.
+  perform public.ssoma_registrar_entregas_epp(gen_random_uuid(), v_s1, ((now() - interval '400 days') at time zone 'America/Lima')::date + 365,
+    (select jsonb_agg(jsonb_build_object('trabajador', id, 'cantidad', 1)) from public.trabajadores where dni in ('70000001', '70000002', '70000003')));
+  perform public.ssoma_registrar_entregas_epp(gen_random_uuid(), v_s2, v_hoy - 5 + 365,
+    (select jsonb_agg(jsonb_build_object('trabajador', id, 'cantidad', 1)) from public.trabajadores where dni = '70000001'));
+  -- Guantes de hace 80 días, por 90: vencen en 10. Elsa ya dejó la planta; Óscar pasó a otra máquina.
+  perform public.ssoma_registrar_entregas_epp(gen_random_uuid(), v_s3, v_hoy - 80 + 90,
+    (select jsonb_agg(jsonb_build_object('trabajador', id, 'cantidad', 1)) from public.trabajadores
+      where dni in ('70000001', '70000002', '70000010', '70000011', '70000006')));
+  perform public.ssoma_epp_no_se_renueva(
+    (select e.id from public.ssoma_epp_entregas e join public.trabajadores t on t.id = e.trabajador_id where e.movimiento_id = v_s3 and t.dni = '70000006'),
+    'Pasó a la plegadora y ya no suelda.');
+  -- Lentes de anteayer: dos repartidos y uno anotado a quien no era; quedan tres por asignar.
+  perform public.ssoma_registrar_entregas_epp(v_e4, v_s4, v_hoy - 2 + 180,
+    (select jsonb_agg(jsonb_build_object('trabajador', id, 'cantidad', 1)) from public.trabajadores where dni in ('70000004', '70000005', '70000008')));
+  perform public.ssoma_anular_entrega_epp(
+    (select e.id from public.ssoma_epp_entregas e join public.trabajadores t on t.id = e.trabajador_id where e.envio_id = v_e4 and t.dni = '70000008'),
+    'Se anotó a Ana por error: esos lentes siguen en la caseta.');
+  -- Las lunas son del área, no de una persona.
+  perform public.ssoma_epp_salida_sin_reparto(v_s6, 'Lunas de repuesto del área de soldadura.');
+  perform set_config('request.jwt.claim.sub', '', true);
+end;
+$$;

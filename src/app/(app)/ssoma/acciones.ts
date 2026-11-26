@@ -675,3 +675,143 @@ export async function activarPuntoSsoma(_previo: unknown, formulario: FormData):
   revalidatePath('/ssoma', 'layout')
   return { ok: true, mensaje: activo ? 'Punto restituido a la lista.' : 'Punto retirado: ya no se pide en las inspecciones nuevas.' }
 }
+
+/*
+ * Entrega 15.5: la entrega de EPP por persona. Las tres acciones exigen el mismo
+ * permiso que sus funciones en la base (`ssoma.gestionar`). Ninguna toca el
+ * kardex: la salida es de Almacén y aquí solo se anota a quién le tocó.
+ */
+
+const personaDeLaEntrega = z.object({
+  trabajador: z.guid(),
+  cantidad: z.number('Pon cuánto recibió cada persona.').positive('La cantidad de cada persona es mayor que cero.').max(999, 'La cantidad de cada persona va hasta 999.'),
+})
+
+/**
+ * SSOMA anota a quién se le entregó el equipo de una salida del almacén de EPP,
+ * cuánto a cada uno y hasta cuándo dura. Mismo permiso que
+ * `ssoma_registrar_entregas_epp`, que las guarda todas o ninguna.
+ */
+export async function registrarEntregasEpp(_previo: unknown, formulario: FormData): Promise<ResultadoAccion<{ movimiento: string }>> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'ssoma.gestionar')) return { ok: false, error: 'La entrega de EPP la anota SSOMA.' }
+
+  const analisis = z
+    .object({
+      operacion_id: z.guid(),
+      movimiento_id: z.guid('Vuelve a abrir la ventana desde la salida de Almacén.'),
+      renovar_el: z.string().regex(FECHA, 'Pon hasta cuándo dura el equipo.'),
+      personas: z
+        .array(personaDeLaEntrega, 'Marca a quién se le entregó.')
+        .min(1, 'Marca a quién se le entregó.')
+        .max(200, 'Van hasta 200 personas por entrega.'),
+    })
+    .safeParse({
+      operacion_id: dato(formulario, 'operacion_id'),
+      movimiento_id: dato(formulario, 'movimiento_id'),
+      renovar_el: dato(formulario, 'renovar_el'),
+      personas: json(formulario, 'personas'),
+    })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa la entrega.' }
+  const d = analisis.data
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('ssoma_registrar_entregas_epp', {
+    p_envio: d.operacion_id,
+    p_movimiento: d.movimiento_id,
+    p_renovar_el: d.renovar_el,
+    p_personas: d.personas,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== d.operacion_id) return { ok: false, error: 'La entrega no quedó anotada. Recarga la pantalla.' }
+
+  revalidatePath('/ssoma', 'layout')
+  const n = d.personas.length
+  return {
+    ok: true,
+    mensaje: n === 1 ? 'Entrega anotada a 1 persona.' : `Entrega anotada a ${n} personas.`,
+    datos: { movimiento: d.movimiento_id },
+  }
+}
+
+/** SSOMA anula una entrega mal anotada, con su motivo; no se borra. Mismo permiso que `ssoma_anular_entrega_epp`. */
+export async function anularEntregaEpp(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'ssoma.gestionar')) return { ok: false, error: 'Una entrega de EPP la anula SSOMA.' }
+  const analisis = z
+    .object({
+      id: z.guid(),
+      motivo: z.string().min(10, 'Cuenta por qué se anula, en al menos 10 caracteres.').max(500, 'El motivo pasa de 500 caracteres.'),
+    })
+    .safeParse({ id: formulario.get('id'), motivo: dato(formulario, 'motivo') })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('ssoma_anular_entrega_epp', { p_id: analisis.data.id, p_motivo: analisis.data.motivo })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== analisis.data.id) return { ok: false, error: 'La entrega no se anuló. Recarga la pantalla.' }
+
+  revalidatePath('/ssoma', 'layout')
+  return { ok: true, mensaje: 'Entrega anulada: lo que tenía asignado vuelve a quedar por asignar en su salida.' }
+}
+
+/** SSOMA saca una entrega vigente de «Por renovar», con su motivo. Mismo permiso que `ssoma_epp_no_se_renueva`. */
+export async function eppNoSeRenueva(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'ssoma.gestionar')) return { ok: false, error: 'Lo que se renueva de EPP lo lleva SSOMA.' }
+  const analisis = z
+    .object({
+      id: z.guid(),
+      motivo: z.string().min(5, 'Cuenta por qué ya no se renueva, en al menos 5 caracteres.').max(300, 'El motivo pasa de 300 caracteres.'),
+    })
+    .safeParse({ id: formulario.get('id'), motivo: dato(formulario, 'motivo') })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('ssoma_epp_no_se_renueva', { p_id: analisis.data.id, p_motivo: analisis.data.motivo })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== analisis.data.id) return { ok: false, error: 'No se guardó. Recarga la pantalla.' }
+
+  revalidatePath('/ssoma', 'layout')
+  return { ok: true, mensaje: 'Listo: ese equipo ya no sale en «Por renovar».' }
+}
+
+/**
+ * SSOMA dice que lo que queda por asignar de una salida no se reparte por persona
+ * (un consumible del área, algo para una visita). Mismo permiso que `ssoma_epp_salida_sin_reparto`.
+ */
+export async function eppSalidaSinReparto(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'ssoma.gestionar')) return { ok: false, error: 'Qué se reparte del EPP lo lleva SSOMA.' }
+  const analisis = z
+    .object({
+      movimiento_id: z.guid(),
+      motivo: z.string().min(5, 'Cuenta por qué no va por persona, en al menos 5 caracteres.').max(300, 'El motivo pasa de 300 caracteres.'),
+    })
+    .safeParse({ movimiento_id: formulario.get('movimiento_id'), motivo: dato(formulario, 'motivo') })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('ssoma_epp_salida_sin_reparto', { p_movimiento: analisis.data.movimiento_id, p_motivo: analisis.data.motivo })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (!data) return { ok: false, error: 'No se guardó. Recarga la pantalla.' }
+
+  revalidatePath('/ssoma', 'layout')
+  return { ok: true, mensaje: 'Listo: lo que queda de esa salida ya no espera reparto.' }
+}
+
+/** SSOMA deshace «no va por persona»: la salida vuelve a esperar su reparto. Mismo permiso que `ssoma_epp_salida_se_reparte`. */
+export async function eppSalidaSeReparte(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'ssoma.gestionar')) return { ok: false, error: 'Qué se reparte del EPP lo lleva SSOMA.' }
+  const analisis = z.object({ movimiento_id: z.guid() }).safeParse({ movimiento_id: formulario.get('movimiento_id') })
+  if (!analisis.success) return { ok: false, error: 'Vuelve a cargar la pantalla.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('ssoma_epp_salida_se_reparte', { p_movimiento: analisis.data.movimiento_id })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== analisis.data.movimiento_id) return { ok: false, error: 'No se guardó. Recarga la pantalla.' }
+
+  revalidatePath('/ssoma', 'layout')
+  return { ok: true, mensaje: 'Listo: esa salida vuelve a esperar que anotes a quién le tocó.' }
+}

@@ -1,4 +1,5 @@
 import type { Tono } from '@/components/ui/etiqueta-estado'
+import { fecha } from '@/lib/format'
 
 /*
  * SSOMA (migración 20261125150100): el reporte de un accidente, un incidente o
@@ -237,4 +238,55 @@ export const DIAS_PARA_REGISTRAR_INSPECCION = 60
 /** Adónde lleva una acción correctiva: a su reporte o a su inspección, con el ancla en ella. */
 export function rutaDeAccion(a: { id: string; reporte_id: string | null; inspeccion_id: string | null }) {
   return `${a.reporte_id ? `/ssoma/${a.reporte_id}` : `/ssoma/inspecciones/${a.inspeccion_id}`}#accion-${a.id}`
+}
+
+/*
+ * Entrega 15.5 (migración 20261126998500): la entrega de EPP por persona. Almacén
+ * registra la salida; SSOMA anota a quién le tocó y hasta cuándo le dura.
+ */
+
+/** En qué quedó una entrega: lo calcula la base (`ssoma_epp_estado`). */
+export const ESTADO_ENTREGA_EPP: Record<string, Def> = {
+  VIGENTE: { etiqueta: 'Vigente', tono: 'exito', descripcion: 'Es el que la persona tiene ahora.' },
+  RENOVADA: { etiqueta: 'Renovado', tono: 'neutro', descripcion: 'Después se le entregó otro igual.' },
+  SIN_RENOVACION: { etiqueta: 'No se renueva', tono: 'neutro', descripcion: 'SSOMA lo sacó de «Por renovar» con su motivo.' },
+  ANULADA: { etiqueta: 'Anulada', tono: 'neutro', descripcion: 'Estaba mal anotada: no cuenta.' },
+}
+
+/** Con cuántos días se avisa antes de que venza un equipo: la base dice lo mismo (`ssoma_epp_dias_de_aviso`). */
+export const DIAS_DE_AVISO_EPP = 15
+
+/** Las duraciones que se ofrecen de un toque al anotar una entrega, en meses desde el día de la salida. */
+export const MESES_DE_DURACION_EPP = [1, 3, 6, 12] as const
+
+/** Hasta cuántos días después de la entrega va la renovación (cinco años): la base dice lo mismo. */
+export const DIAS_MAXIMOS_DE_EPP = 1826
+
+/** «Venció hace 3 días», «Vence hoy», «Vence en 5 días»: los días los cuenta la base con la fecha de Lima. */
+export function cuandoSeRenueva(dias: number): string {
+  if (dias < 0) return `Venció hace ${-dias} ${dias === -1 ? 'día' : 'días'}`
+  if (dias === 0) return 'Vence hoy'
+  return `Vence en ${dias} ${dias === 1 ? 'día' : 'días'}`
+}
+
+/** El tono de una entrega vigente según cuánto le queda. */
+export function tonoDeRenovacion(situacion: string | null): Tono {
+  return situacion === 'VENCIDA' ? 'peligro' : situacion === 'POR_VENCER' ? 'aviso' : 'neutro'
+}
+
+/**
+ * El mismo día `meses` después («2026-01-31» + 1 → «2026-02-28»). Con texto y UTC,
+ * sin pasar por la hora local: una fecha sin hora no se corre de día.
+ */
+export function sumarMeses(dia: string, meses: number): string {
+  const [a, m, d] = dia.split('-').map(Number)
+  const primero = new Date(Date.UTC(a, m - 1 + meses, 1))
+  const ultimoDelMes = new Date(Date.UTC(primero.getUTCFullYear(), primero.getUTCMonth() + 1, 0)).getUTCDate()
+  primero.setUTCDate(Math.min(d, ultimoDelMes))
+  return primero.toISOString().slice(0, 10)
+}
+
+/** Cómo se nombra una salida de Almacén: su número y su día («SA-0004-2026 del 26/11/2026»). */
+export function nombreDeSalidaEpp(s: { numero: string | null; fecha: string }) {
+  return `${s.numero ?? 'Salida'} del ${fecha(s.fecha)}`
 }
