@@ -18,7 +18,7 @@ import { hoyLima, moneda, parteDe, porcentaje, type CodigoMoneda } from '@/lib/f
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { AnularCobro, CobrarFactura } from '../formularios'
-import { RevisionesDeSalida, type CobroDelCodigo } from '../revisiones-de-salida'
+import { RevisionesDeSalida, type CobroDelCodigo, type PorCobrarDelCodigo } from '../revisiones-de-salida'
 import { SolicitudesOT } from '../solicitudes-ot'
 
 export const metadata = { title: 'Cuentas por cobrar' }
@@ -65,6 +65,18 @@ export default async function PaginaPorCobrar() {
   // aprobadas», junto a la revisión. Un código con dos cotizaciones las suma
   // (antes quedaba solo la más vieja); en monedas distintas no se suman y se dice.
   const cobrosPorCodigo: Record<string, CobroDelCodigo> = {}
+  // Quien responde las salidas sin leer las cotizaciones aprobadas (Costos) ve al
+  // menos lo que falta cobrar de las facturas del código: las pendientes llegan
+  // todas, no solo las últimas, así que esa cifra es entera.
+  const porCobrarPorCodigo: Record<string, PorCobrarDelCodigo> = {}
+  if (!veCotizaciones) {
+    for (const f of pendientes) {
+      if (!f.codigo_interno) continue
+      const fila = (porCobrarPorCodigo[f.codigo_interno] ??= { saldo: { PEN: 0, USD: 0 }, facturas: 0 })
+      fila.saldo[codigo(f.moneda)] += Number(f.saldo)
+      fila.facturas += 1
+    }
+  }
   for (const c of cotizaciones) {
     if (!c.codigo_interno) continue
     const total = totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
@@ -110,7 +122,7 @@ export default async function PaginaPorCobrar() {
         }`}
       />
 
-      {salidas.length > 0 && <RevisionesDeSalida revisiones={salidas} paraTi={avisado} cobros={veCotizaciones ? cobrosPorCodigo : null} abreVehiculos={abreVehiculos} />}
+      {salidas.length > 0 && <RevisionesDeSalida revisiones={salidas} paraTi={avisado} cobros={veCotizaciones ? cobrosPorCodigo : null} porCobrarDeFacturas={porCobrarPorCodigo} abreVehiculos={abreVehiculos} />}
       {solicitudes.length > 0 && <SolicitudesOT solicitudes={solicitudes} />}
 
       <Tarjeta>
