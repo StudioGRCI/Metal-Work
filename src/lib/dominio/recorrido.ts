@@ -7,9 +7,8 @@
  * su mapa de pasos en este archivo.
  */
 
-import { fecha } from '@/lib/format'
-
-import { motivoDeAtraso } from './plazos'
+// Sin imports de valores: `recorrido.test.mjs` lo carga con `node --test`, que no
+// resuelve el alias `@/` ni las rutas sin extensión.
 
 /** HECHO: alguien lo hizo. AHORA: alguien lo tiene. PENDIENTE: todavía no le toca a nadie. */
 export type SituacionDelPaso = 'HECHO' | 'AHORA' | 'PENDIENTE'
@@ -265,6 +264,32 @@ export function correccionDeLaFecha(pasos: readonly PasoDelRecorrido[] | null | 
     .at(-1)
   if (!ultima) return null
   return { antes: partirSeguimiento(ultima.paso, ultima.detalle)?.anterior ?? null }
+}
+
+/**
+ * Por qué se atrasó una compra, de la lista corta que decidió el plan 4.2
+ * (migración 20261126462000). Con «Otro», la nota es obligatoria.
+ */
+export const MOTIVOS_DE_ATRASO = ['PROVEEDOR', 'PAGO', 'TRANSPORTE', 'APROBACION', 'OTRO'] as const
+export type MotivoDeAtraso = (typeof MOTIVOS_DE_ATRASO)[number]
+
+export const MOTIVO_DE_ATRASO: Record<MotivoDeAtraso, string> = {
+  PROVEEDOR: 'Proveedor',
+  PAGO: 'Pago',
+  TRANSPORTE: 'Transporte',
+  APROBACION: 'Aprobación',
+  OTRO: 'Otro',
+}
+
+/** El motivo en palabras; una clave que la pantalla no conoce, en llano. */
+export function motivoDeAtraso(clave: string): string {
+  return MOTIVO_DE_ATRASO[clave as MotivoDeAtraso] ?? clave.replaceAll('_', ' ').toLowerCase()
+}
+
+/** Una fecha `YYYY-MM-DD` como DD/MM/AAAA, reordenada como texto, igual que `fecha()` de `format.ts`. */
+function fecha(valor: string): string {
+  const partes = /^(\d{4})-(\d{2})-(\d{2})$/.exec(valor.trim())
+  return partes ? `${partes[3]}/${partes[2]}/${partes[1]}` : valor
 }
 
 function notaDelSeguimiento(paso: string) {
