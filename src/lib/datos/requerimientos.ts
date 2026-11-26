@@ -3,6 +3,7 @@ import 'server-only'
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import { todasLasFilas } from '@/lib/datos/todas-las-filas'
 import { nombreDeOc } from '@/lib/dominio/adquisiciones'
+import { ESTADOS_RQ_ABIERTOS } from '@/lib/dominio/requerimientos'
 import { createClient } from '@/lib/supabase/server'
 
 export type LineaRequerimiento = {
@@ -57,6 +58,13 @@ export type LineaRequerimiento = {
   llegado: number | null
   /** Lo que no salió del kardex cuando Almacén entregó el RQ con faltante; vacío si salió todo. */
   sin_salida: number | null
+  /**
+   * La fecha en que Logística espera la compra (la de su OC), sin precios.
+   * Vacía si no va en una OC viva, o si quien mira no lee las compras
+   * (Supervisión); la ven quienes leen la OC: Almacén, quien compra,
+   * Requerimientos y Administración (plan 2, entrega 2.1).
+   */
+  fecha_esperada: string | null
 }
 
 /** En qué porcentaje va el RQ (el promedio de sus insumos) y la etapa de su insumo más atrasado. */
@@ -110,7 +118,30 @@ export type OpcionCatalogo = { id: string; codigo: string; nombre: string }
 export type AreaParaRequerimiento = OpcionCatalogo & { requerimiento: string }
 
 const SELECT_RQ =
-  'id, numero, tipo, area_id, creado_por, codigo_interno, justificacion, fecha_requerida, estado, motivo_anulacion, nota_almacen, nota_logistica, nota_entrega, faltante_al_entregar, motivo_del_faltante, revision_stock_en, en_atencion_en, listo_en_almacen_en, entregado_en, creado_en, area:areas(nombre), lineas:requerimiento_lineas(id, item, descripcion, cantidad, cantidad_en_stock, sin_salida_al_entregar, material_id, material_nuevo, recompra_de, material:materiales(codigo, descripcion, unidad_pendiente), unidad:unidades_medida(codigo), categoria:categorias_material(nombre), orden_compra:ordenes_compra_materiales(numero, referencia, aprobacion))'
+  'id, numero, tipo, area_id, creado_por, codigo_interno, justificacion, fecha_requerida, estado, motivo_anulacion, nota_almacen, nota_logistica, nota_entrega, faltante_al_entregar, motivo_del_faltante, revision_stock_en, en_atencion_en, listo_en_almacen_en, entregado_en, creado_en, area:areas(nombre), lineas:requerimiento_lineas(id, item, descripcion, cantidad, cantidad_en_stock, sin_salida_al_entregar, material_id, material_nuevo, recompra_de, material:materiales(codigo, descripcion, unidad_pendiente), unidad:unidades_medida(codigo), categoria:categorias_material(nombre), orden_compra:ordenes_compra_materiales(numero, referencia, aprobacion, fecha_estimada))'
+
+/**
+ * Cuántos RQ en camino (por entregar) se necesitan entre esas fechas, con los
+ * mismos filtros de la lista: las cifras de «Se necesita esta semana» y
+ * «Vencido sin entregar». Las cuenta la base, sin el tope de la lista.
+ */
+export async function contarRequerimientosAbiertos(opciones: {
+  tipo?: 'OPERACION' | 'ADMINISTRACION'
+  area?: string
+  codigo?: string
+  necesitadoDesde: string | null
+  necesitadoHasta: string
+}): Promise<number> {
+  const supabase = await createClient()
+  let consulta = supabase.from('requerimientos').select('id', { count: 'exact', head: true }).in('estado', [...ESTADOS_RQ_ABIERTOS])
+  if (opciones.tipo) consulta = consulta.eq('tipo', opciones.tipo)
+  if (opciones.area) consulta = consulta.eq('area_id', opciones.area)
+  if (opciones.codigo) consulta = consulta.eq('codigo_interno', opciones.codigo)
+  if (opciones.necesitadoDesde) consulta = consulta.gte('fecha_requerida', opciones.necesitadoDesde)
+  const { count, error } = await consulta.lte('fecha_requerida', opciones.necesitadoHasta)
+  if (error) throw new Error(`No se pudieron contar los requerimientos por su fecha: ${error.message}`)
+  return count ?? 0
+}
 
 /**
  * Los requerimientos, del más nuevo al más viejo. Con `soloAbiertos`, los que
@@ -119,7 +150,7 @@ const SELECT_RQ =
  * los de Administración. Con `id`, solo ese: es el que abre Adquisiciones. Con
  * `area`, los que pidió esa área (el supervisor ve primero los de la suya); con
  * `codigo`, los de ese código interno. Con `conEntregado`, también lo que ya
- * salió del almacén de cada insumo: lo pinta la lista de RQ, no la bandeja.
+ * salió del almacén de cada insumo: lo pintan la lista de RQ y la bandeja.
  */
 export async function cargarRequerimientos(
   opciones: {
@@ -131,17 +162,26 @@ export async function cargarRequerimientos(
     area?: string
     codigo?: string
     conEntregado?: boolean
+    /** Solo los que se necesitan entre estas fechas (YYYY-MM-DD, inclusive), del que vence primero al último. */
+    necesitadoDesde?: string | null
+    necesitadoHasta?: string
   } = {},
 ): Promise<RequerimientoListado[]> {
   const supabase = await createClient()
   let consulta = supabase.from('requerimientos').select(SELECT_RQ)
-  if (opciones.soloAbiertos) consulta = consulta.in('estado', ['POR_ATENDER', 'SIN_STOCK', 'EN_ATENCION', 'LISTO_EN_ALMACEN'])
+  if (opciones.soloAbiertos) consulta = consulta.in('estado', [...ESTADOS_RQ_ABIERTOS])
   if (opciones.tipo) consulta = consulta.eq('tipo', opciones.tipo)
   if (opciones.id) consulta = consulta.eq('id', opciones.id)
   if (opciones.ids) consulta = consulta.in('id', opciones.ids)
   if (opciones.area) consulta = consulta.eq('area_id', opciones.area)
   if (opciones.codigo) consulta = consulta.eq('codigo_interno', opciones.codigo)
-  const { data, error } = await consulta.order('creado_en', { ascending: false }).limit(300)
+  if (opciones.necesitadoDesde) consulta = consulta.gte('fecha_requerida', opciones.necesitadoDesde)
+  if (opciones.necesitadoHasta) consulta = consulta.lte('fecha_requerida', opciones.necesitadoHasta)
+  // Por fecha, el más vencido primero: es lo que se mira con «Vencido sin entregar».
+  const { data, error } = await (opciones.necesitadoHasta
+    ? consulta.order('fecha_requerida', { ascending: true }).order('creado_en', { ascending: true })
+    : consulta.order('creado_en', { ascending: false })
+  ).limit(300)
   if (error) throw new Error(`No se pudieron leer los requerimientos: ${error.message}`)
   // El avance lo calcula la base con la OC y el recojo de cada insumo. Trae
   // también el nombre de la OC (migración 20261023130000), porque Supervisión no
@@ -221,6 +261,7 @@ export async function cargarRequerimientos(
             entregado: opciones.conEntregado ? (entregados.get(`${r.id}:${l.item}`)?.entregado ?? 0) : null,
             llegado: entregados.get(`${r.id}:${l.item}`)?.llegado ?? null,
             sin_salida: l.sin_salida_al_entregar == null ? null : Number(l.sin_salida_al_entregar),
+            fecha_esperada: l.orden_compra && !['RECHAZADA', 'ANULADA'].includes(l.orden_compra.aprobacion ?? '') ? l.orden_compra.fecha_estimada : null,
           }
         })
         .sort((a, b) => a.item - b.item),

@@ -1,17 +1,19 @@
+import { Users } from 'lucide-react'
 import Link from 'next/link'
 
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Paginacion } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { codigosConTiempos, type CodigoConTiempos } from '@/lib/datos/tiempos-entrega'
+import { codigosConTiempos, ultimaRevisionDeAvisos, type CodigoConTiempos } from '@/lib/datos/tiempos-entrega'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { llaveParecido } from '@/lib/dominio/codigos-internos'
 import { FILTROS_DE_TIEMPOS, RUTA_TIEMPOS, SEMAFORO_DE_CODIGO, enlaceDeTiempos, plazoEnPalabras } from '@/lib/dominio/tiempos-entrega'
-import { fecha, hoyLima } from '@/lib/format'
+import { fecha, fechaHora, hoyLima, sumarDias } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 
 export const metadata = { title: 'Tiempos de entrega' }
@@ -19,7 +21,7 @@ export const metadata = { title: 'Tiempos de entrega' }
 const POR_PAGINA = 50
 
 const AYUDA =
-  'Cada código interno que todavía no se entrega, con la fecha de entrega al cliente de su OT, la etapa en que va y su semáforo: rojo si una etapa o la entrega ya venció, ámbar si vence hoy o en 3 días hábiles o menos, verde si va a tiempo. Las fechas de cada etapa las pone Diseño y las marca el supervisor del área; aquí se consultan.'
+  'Cada código interno que todavía no se entrega, con la fecha de entrega al cliente de su OT, la etapa en que va y su semáforo: rojo si una etapa o la entrega ya venció, ámbar si vence hoy o en 3 días hábiles o menos, verde si va a tiempo. Las fechas de cada etapa las pone Diseño y las marca el supervisor del área; aquí se consultan. Cada día laborable a las 7:00 a. m. el sistema avisa en la campana a Recursos Humanos y al supervisor del área cuando una etapa pasa a ámbar y cuando vence, y la recuerda cada 2 días hábiles mientras siga vencida; a Gerencia, cuando vence y con un resumen los lunes.'
 
 /**
  * El tablero de tiempos de entrega que lleva Recursos Humanos (DKS,
@@ -33,8 +35,11 @@ export default async function PaginaTiemposDeEntrega({ searchParams }: PageProps
   const filtro = FILTROS_DE_TIEMPOS.find((f) => f.valor === params.ver) ?? null
   const areaPedida = typeof params.area === 'string' ? params.area : ''
 
-  const todos = await codigosConTiempos()
+  const [todos, revision] = await Promise.all([codigosConTiempos(), ultimaRevisionDeAvisos()])
   const hoy = hoyLima()
+  // Corre y se anota todos los días a las 7:00 a. m., también el feriado (que no
+  // avisa): si ayer no corrió, se cayó. Antes de las 7:00 la última es la de ayer.
+  const revisionAtrasada = !revision || sumarDias(revision.fecha, 1) < hoy
 
   const llave = llaveParecido(q)
   const palabras = palabrasDeBusqueda(q)
@@ -73,7 +78,20 @@ export default async function PaginaTiemposDeEntrega({ searchParams }: PageProps
         }
         ayuda={AYUDA}
         migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'Tiempos de entrega' }]}
+        acciones={
+          <EnlaceBoton href={`${RUTA_TIEMPOS}/personas`} variante="secundario">
+            <Users aria-hidden className="size-4" />
+            Por persona
+          </EnlaceBoton>
+        }
       />
+
+      <p className={`mb-3 text-sm ${revisionAtrasada ? 'text-peligro' : 'text-texto-suave'}`} data-revision-avisos={revision?.fecha ?? ''}>
+        {revision
+          ? // La hora ya termina en «a. m.» o «p. m.»: sin otro punto.
+            `Avisos automáticos: la última revisión fue el ${fechaHora(revision.hora)}${revisionAtrasada ? ' No corre desde entonces: los avisos no están saliendo.' : ''}`
+          : 'Avisos automáticos: la revisión diaria todavía no corrió. Los avisos salen desde su primera corrida, a las 7:00 a. m.'}
+      </p>
 
       {todos.length > 0 && (
         // En el teléfono no van: repiten el filtro de abajo y dejaban la lista fuera de la vista.

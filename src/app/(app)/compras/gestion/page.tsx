@@ -1,6 +1,7 @@
 import { FileText, MapPin, Scale } from 'lucide-react'
 import Link from 'next/link'
 
+import { FotosDelRecojo, NoSeLogroRecoger } from '@/components/compras/evidencia-del-recojo'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos } from '@/components/ui/tabla'
@@ -26,9 +27,12 @@ type Quien = { programa: boolean }
  * Desde la migración 20261020171000 la gestión es de Logística
  * (`compras.programar_recojo`) y del conductor (`compras.recojo`, que la ve sin
  * programar nada): ni Contabilidad ni quien solo emite compras la abren.
+ * Gerencia la consulta sin programar (`compras.ver_gestion`, migración
+ * 20261126310000).
  */
 export default async function PaginaGestionCompras() {
-  const perfil = await exigirPermiso(['compras.programar_recojo', 'compras.recojo'])
+  const perfil = await exigirPermiso(['compras.programar_recojo', 'compras.recojo', 'compras.ver_gestion'])
+  const conduce = puede(perfil, 'compras.recojo')
   const quien: Quien = { programa: puede(perfil, 'compras.programar_recojo') }
   const compras = await cargarRecojos()
   const porProgramar = compras.filter((c) => c.recojo === 'POR_RECOGER' && !c.en_lista)
@@ -45,7 +49,9 @@ export default async function PaginaGestionCompras() {
         ayuda={
           quien.programa
             ? 'Decide qué órdenes de compra recoge el conductor y en qué orden, con el peso de cada una. Con ese peso Contabilidad emite la guía de remisión y la carga en Adquisiciones, y el conductor la ve en su lista antes de salir.'
-            : 'Las órdenes de compra que recoges, en el orden que fijó Logística y con su peso. Para salir y marcar cada paso, usa tu lista de Recojos.'
+            : conduce
+              ? 'Las órdenes de compra que recoges, en el orden que fijó Logística y con su peso. Para salir y marcar cada paso, usa tu lista de Recojos.'
+              : 'Las órdenes de compra que Logística programa para el conductor, en su orden y con su peso, las que ya salió a recoger y las que dejó en el almacén. Con ese peso Contabilidad emite la guía de remisión.'
         }
       />
 
@@ -66,7 +72,11 @@ export default async function PaginaGestionCompras() {
               <SinDatos
                 enTabla={false}
                 titulo="Nada por programar"
-                descripcion="Cuando Gerencia apruebe una orden de compra que va con el conductor, aparece aquí para ponerle su peso y su lugar en la lista."
+                descripcion={
+                  quien.programa || conduce
+                    ? 'Cuando Gerencia apruebe una orden de compra que va con el conductor, aparece aquí para ponerle su peso y su lugar en la lista.'
+                    : 'Cuando apruebes una orden de compra que va con el conductor, aparece aquí hasta que Logística le ponga su peso y su lugar en la lista.'
+                }
               />
             </Tarjeta>
           ) : (
@@ -125,6 +135,10 @@ export default async function PaginaGestionCompras() {
 function TarjetaGestion({ compra: c, quien, cuantas }: { compra: CompraParaRecojo; quien: Quien; cuantas: number }) {
   const estado = RECOJO_COMPRA[c.recojo]
   const pendiente = c.recojo === 'POR_RECOGER'
+  // La devolvió el conductor y Logística no la volvió a programar desde entonces
+  // (si la programó y después la sacó ella de la lista, no es «devuelta»).
+  const devuelta =
+    pendiente && !c.en_lista && c.no_logrado !== null && (!c.programado_en || new Date(c.no_logrado.registrado_en).getTime() >= new Date(c.programado_en).getTime())
   // La OC de antes de la serie no tiene número: «OC sin número», y su referencia abajo.
   const titulo = `${c.lugar ? `${c.lugar}.º · ` : ''}${c.numero ?? 'OC sin número'} · ${c.proveedor}`
   return (
@@ -142,13 +156,20 @@ function TarjetaGestion({ compra: c, quien, cuantas }: { compra: CompraParaRecoj
           .join(' · ')}
         acciones={
           <>
-            {estado && <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>}
+            {/* Entre las que esperan programarse, la que devolvió el conductor se distingue sin leer el recuadro. */}
+            {devuelta ? (
+              <Insignia tono="aviso">Devuelta por el conductor</Insignia>
+            ) : (
+              estado && <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
+            )}
             {c.recojo !== 'DEJADO' &&
               (c.guia ? <Insignia tono="exito">Con guía</Insignia> : c.peso_kg !== null ? <Insignia tono="aviso">Sin guía</Insignia> : null)}
           </>
         }
       />
       <TarjetaCuerpo className="space-y-4">
+        {/* El conductor la devolvió: el porqué, para volver a programarla. */}
+        {pendiente && <NoSeLogroRecoger compra={c} />}
         <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <ul className="space-y-1.5 text-sm text-texto">
             <li className="flex items-start gap-2">
@@ -207,6 +228,8 @@ function TarjetaGestion({ compra: c, quien, cuantas }: { compra: CompraParaRecoj
             )}
           </ul>
         </div>
+
+        <FotosDelRecojo compra={c} />
 
         {quien.programa && pendiente && (
           <div className="space-y-3 border-t border-borde pt-3">
