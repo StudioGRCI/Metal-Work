@@ -15,7 +15,8 @@
 --   · BOLETA, de la OC que va sin factura (boleta, nota de venta o recibo, o la
 --     factura que el proveedor entregó igual): desde su aprobación. La de antes
 --     que se pagó fuera del sistema (`pago_en_tesoreria` falso) no la pide, como
---     Adquisiciones ya no la pedía.
+--     Adquisiciones ya no la pedía. Si lo único que hay es el borrador de
+--     Contabilidad, sin PDF adjunto, es POR_REGISTRAR: no se da por completa.
 --   · COMPROBANTE, de la OS (factura, boleta o recibo adjuntos): desde que
 --     Gerencia la aprobó. El que Tesorería anotó al pagar, sin su PDF, es
 --     POR_REGISTRAR: se sabe su número, falta adjuntarlo.
@@ -86,7 +87,7 @@ begin
         select a.numero_documento from public.adquisiciones a
          where a.estado = 'BORRADOR'
            and (a.orden_compra_id = c.id
-                or exists (select 1 from public.adquisiciones_ordenes_compra l where l.adquisicion_id = a.id and l.orden_compra_id = c.id))
+                or exists (select 1 from public.adquisiciones_ordenes_compra l where l.adquisicion_id = a.id and l.orden_compra_id = c.id and l.quitada_en is null))
       ) x on true
      group by c.id
   ),
@@ -105,11 +106,14 @@ begin
   -- 2. El comprobante de la OC con boleta: la boleta adjunta, o la factura que el proveedor entregó igual.
   boleta as (
     select 'OC'::text, c.id, 'BOLETA'::text,
-           case when d.numeros is not null or d.hay or coalesce(f.facturado, 0) > 0 or r.orden_compra_id is not null then 'ESTA' else 'FALTA' end,
+           case when d.hay or coalesce(f.facturado, 0) > 0 then 'ESTA'
+                -- Solo el borrador de Contabilidad, sin PDF adjunto: está, pero falta registrarlo.
+                when r.orden_compra_id is not null then 'POR_REGISTRAR'
+                else 'FALTA' end,
            c.aprobada_en, coalesce(f.numeros, d.numeros, r.numeros)
       from oc c
       left join facturado f on f.orden_compra_id = c.id
-      -- La factura en borrador: la pantalla ya no pedía la boleta con ella al lado.
+      -- La factura en borrador: la pantalla ya no pide la boleta con ella al lado, pero falta registrarla.
       left join por_registrar r on r.orden_compra_id = c.id
       left join lateral (
         select bool_or(true) as hay, string_agg(x.numero_documento, ', ' order by x.numero_documento) as numeros

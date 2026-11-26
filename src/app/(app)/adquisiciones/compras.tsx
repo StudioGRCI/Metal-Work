@@ -1,12 +1,10 @@
-import { Download, FileUp } from 'lucide-react'
+import { FileUp } from 'lucide-react'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { Paginacion } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
-import { Boton } from '@/components/ui/boton'
-import { Entrada } from '@/components/ui/campos'
 import { DiasEnEspera } from '@/components/ui/dias-en-espera'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
@@ -34,6 +32,7 @@ import {
   guiaPorCargar,
   textoDelDocumento,
   type DocumentoDeLaCompra,
+  FILTROS_QUE_VUELVEN,
 } from '@/lib/dominio/adquisiciones'
 import { controlDeFacturas, type ControlDeFactura } from '@/lib/datos/adquisiciones'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
@@ -46,6 +45,7 @@ import { puede, type PerfilSesion } from '@/lib/sesion'
 import { PasarCompraATesoreria } from '@/app/(app)/tesoreria/formularios'
 
 import { AnularAnexo } from './anular-anexo'
+import { ExcelDelMes } from './excel-del-mes'
 import { AnularGuia, CargarGuia } from './guia-remision'
 
 const POR_PAGINA = 50
@@ -177,6 +177,9 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
   // varias OC (decisión 16), y el aviso de que pasa su OC se mide contra todas.
   const control = await controlDeFacturas([...new Set(visibles.flatMap((f) => f.facturas.filter((x) => x.estado === 'REGISTRADA').map((x) => x.id)))])
   const hayFiltros = Boolean(busqueda || tipo || situacion)
+  // El aviso del Excel (`?excel=`) es de una sola vuelta: los filtros y la paginación no lo arrastran.
+  const { excel: avisoDelExcel, ...filtrosDeLaLista } = params
+  const filtrosDelExcel = Object.fromEntries(FILTROS_QUE_VUELVEN.flatMap((clave) => (texto(params[clave]) ? [[clave, texto(params[clave])]] : [])))
   const vacio =
     todas.length === 0
       ? {
@@ -220,7 +223,7 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
         <PastillaFiltro
           ruta={RUTA}
           clave="tipo"
-          params={params}
+          params={filtrosDeLaLista}
           activo={texto(params.tipo) || null}
           etiqueta="Qué órdenes mostrar"
           opciones={[
@@ -232,7 +235,7 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
         <PastillaFiltro
           ruta={RUTA}
           clave="situacion"
-          params={params}
+          params={filtrosDeLaLista}
           activo={situacion}
           etiqueta="En qué van"
           opciones={[
@@ -240,7 +243,12 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
             ...situaciones.map((s) => ({ valor: s.valor, etiqueta: `${s.etiqueta} (${delTipo.filter((f) => enSituacion(f, s.valor)).length})` })),
           ]}
         />
-        <ExcelDelMes mes={mes} aviso={params.excel === 'mes' ? 'mes' : params.excel === 'fallo' ? 'fallo' : null} />
+        <ExcelDelMes
+          key={texto(avisoDelExcel) || 'sin-aviso'}
+          mes={mes}
+          aviso={avisoDelExcel === 'mes' ? 'mes' : avisoDelExcel === 'fallo' ? 'fallo' : null}
+          filtros={filtrosDelExcel}
+        />
       </div>
 
       {/* En el teléfono, una tarjeta por orden: siete columnas se corrían de costado. */}
@@ -326,7 +334,7 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
       </Tarjeta>
 
       <div className="mt-4">
-        <Paginacion ruta={RUTA} pagina={pagina} paginas={paginas} total={filas.length} porPagina={POR_PAGINA} params={params} />
+        <Paginacion ruta={RUTA} pagina={pagina} paginas={paginas} total={filas.length} porPagina={POR_PAGINA} params={filtrosDeLaLista} />
       </div>
       {hayFiltros && filas.length > 0 && (
         <p className="mt-2 text-xs text-texto-suave">
@@ -564,7 +572,14 @@ function Documentos({ f, urls, acceso }: { f: Fila; urls: Map<string, string>; a
           </p>
           {/* La OC que el conductor ya dejó sin guía: se carga igual (Plan 10, auditoría). */}
           {d.documento === 'GUIA' && acceso.cargaGuia && !f.guia && f.peso_kg !== null && (
-            <CargarGuia ordenCompraId={f.id} solicitudId={crypto.randomUUID()} numero={nombreDe(f)} peso={f.peso_kg} hoy={acceso.hoy} />
+            <CargarGuia
+              ordenCompraId={f.id}
+              solicitudId={crypto.randomUUID()}
+              numero={nombreDe(f)}
+              peso={f.peso_kg}
+              hoy={acceso.hoy}
+              dejada={f.recojo === 'DEJADO'}
+            />
           )}
         </li>
       ))}
@@ -629,7 +644,8 @@ function Documentos({ f, urls, acceso }: { f: Fila; urls: Map<string, string>; a
               Guía de remisión <span className="tabular">{f.guia.numero}</span>
             </span>
           </a>
-          {acceso.cargaGuia && f.recojo !== 'DEJADO' && <AnularGuia id={f.guia.id} numero={f.guia.numero} />}
+          {/* También la de una OC ya dejada: desde que se carga después (Plan 10), un número mal escrito no tendría corrección. */}
+          {acceso.cargaGuia && <AnularGuia id={f.guia.id} numero={f.guia.numero} dejada={f.recojo === 'DEJADO'} />}
         </li>
       )}
       {porCargar && f.peso_kg !== null && (
@@ -890,50 +906,5 @@ function Vouchers({
         </li>
       ))}
     </ul>
-  )
-}
-
-/**
- * El Excel del mes (Plan 10): las OC y OS emitidas ese mes, con las columnas de
- * esta tabla y un documento por columna. Un formulario simple, sin JavaScript: el
- * navegador baja el archivo de `/adquisiciones/excel`, que pide el mismo permiso
- * que esta pantalla.
- */
-function ExcelDelMes({ mes, aviso }: { mes: string; aviso: 'mes' | 'fallo' | null }) {
-  return (
-    <form method="get" action="/adquisiciones/excel" className="space-y-1">
-      <div className="flex flex-wrap items-center gap-2">
-        <label htmlFor="excel-mes" className="text-sm text-texto-suave">
-          Excel del mes
-        </label>
-        {/* Donde el navegador no tiene calendario de meses (Safari de escritorio) es un campo de texto: el formato lo dice el ejemplo. */}
-        <Entrada
-          id="excel-mes"
-          type="month"
-          name="mes"
-          defaultValue={mes}
-          max={mes}
-          pattern="[0-9]{4}-[0-9]{2}"
-          placeholder={mes}
-          title="El mes, como año-mes: 2026-11"
-          required
-          aria-invalid={aviso === 'mes' || undefined}
-          aria-describedby={aviso ? 'excel-aviso' : undefined}
-          className="w-auto"
-        />
-        <Boton type="submit" variante="contorno">
-          <Download aria-hidden className="size-4" />
-          Descargar Excel
-        </Boton>
-      </div>
-      {/* La descarga es un GET: si no sale, la ruta vuelve aquí y lo dice, en vez de dejar una página de error. */}
-      {aviso && (
-        <p id="excel-aviso" role="alert" className="text-sm text-peligro">
-          {aviso === 'mes'
-            ? 'Ese mes no se entiende: elígelo en el calendario o escríbelo como año-mes (2026-11).'
-            : 'No se pudo armar el Excel: no se leyó qué documento falta en cada orden. Vuelve a intentarlo.'}
-        </p>
-      )}
-    </form>
   )
 }

@@ -28,14 +28,15 @@ export type CompraParaExcel = CompraTrazada & { papeles: DocumentoDeLaCompra[] }
 
 /**
  * Una celda por documento: lo que está con su número; lo que falta, desde cuándo y
- * hace cuánto, con las palabras de la pantalla («hace 5 días», «desde hoy»).
+ * hace cuánto, con las palabras de la pantalla («hace 5 días»). La de hoy dice
+ * «(hoy)»: «desde el 26/11/2026 (desde hoy)» repetía.
  */
 function celdaDelDocumento(d: DocumentoDeLaCompra | undefined): string {
   if (!d) return '—'
   const texto = textoDelDocumento(d)
   if (d.situacion === 'ESTA') return texto
   const desde = d.desde ? ` desde el ${fecha(d.desde)}` : ''
-  const dias = d.dias === null ? '' : ` (${haceDias(d.dias)})`
+  const dias = d.dias === null ? '' : d.dias <= 0 ? ' (hoy)' : ` (${haceDias(d.dias)})`
   if (d.situacion === 'FALTA') return `Falta${desde}${dias}`
   if (d.situacion === 'POR_REGISTRAR') return `${texto},${desde}${dias}`
   return `${texto}; lo demás falta${desde}${dias}`
@@ -46,7 +47,8 @@ function pago(f: CompraTrazada): string {
   const partes = [definir(ESTADO_PAGO, f.pago).etiqueta]
   for (const x of f.facturas) {
     if (x.estado !== 'REGISTRADA' || x.saldo <= 0) continue
-    partes.push(`${f.facturas.length > 1 ? `${x.numero}: ` : ''}${x.pagado > 0 ? 'saldo' : 'por pagar'} ${moneda(x.saldo, codigo(x.moneda))}`)
+    // Sin nada pagado basta el monto: «Por pagar · por pagar S/ 118.00» lo decía dos veces.
+    partes.push(`${f.facturas.length > 1 ? `${x.numero}: ` : ''}${x.pagado > 0 ? 'saldo ' : ''}${moneda(x.saldo, codigo(x.moneda))}`)
   }
   const pagado = new Map<string, number>()
   for (const p of f.pagos) pagado.set(p.moneda, (pagado.get(p.moneda) ?? 0) + p.monto)

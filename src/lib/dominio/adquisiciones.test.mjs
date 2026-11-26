@@ -35,6 +35,7 @@ test('cada documento se nombra según falte, esté a medias o esté', () => {
   // El papel está y falta registrarlo: no se dice «falta la factura» al lado de la factura.
   assert.equal(textoDelDocumento({ documento: 'FACTURA', situacion: 'POR_REGISTRAR', numeros: 'E102-1' }), 'Factura E102-1 por registrar')
   assert.equal(textoDelDocumento({ documento: 'COMPROBANTE', situacion: 'POR_REGISTRAR', numeros: 'E555-1' }), 'Falta el PDF del comprobante E555-1 (anotado al pagar)')
+  assert.equal(textoDelDocumento({ documento: 'BOLETA', situacion: 'POR_REGISTRAR', numeros: 'FH2-1' }), 'Comprobante FH2-1 por registrar')
 })
 
 test('lo que falta va del que más espera al que menos, y lo que está no cuenta', () => {

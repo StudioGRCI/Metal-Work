@@ -76,7 +76,14 @@ export async function registrarGuiaRemision(_previo: unknown, formulario: FormDa
   if (error) return { ok: false, error: mensajeDeError(error) }
 
   repintar()
-  return { ok: true, mensaje: `Guía ${datos.data.numero} cargada: el conductor ya la ve en su lista.` }
+  // La de una OC ya dejada en el almacén no viaja: solo completa la compra.
+  return {
+    ok: true,
+    mensaje:
+      formulario.get('dejada') === '1'
+        ? `Guía ${datos.data.numero} cargada.`
+        : `Guía ${datos.data.numero} cargada: el conductor ya la ve en su lista.`,
+  }
 }
 
 /** Anular la guía con su motivo; queda como evidencia y se puede cargar otra. */

@@ -293,18 +293,56 @@ async function leerExcel(buffer) {
   comprobar(/^Factura /.test(de(B)?.['Factura o comprobante'] ?? '') && /^Falta desde el /.test(de(B)?.['Nota de crédito'] ?? ''),
     `${B} en el Excel: la factura está y la nota de crédito falta («${de(B)?.['Factura o comprobante']}», «${de(B)?.['Nota de crédito']}»)`)
   comprobar(new RegExp(`^Falta el PDF del comprobante ${COMPROBANTE_OS} \\(anotado al pagar\\), desde el .+ \\(hace 3 días\\)$`).test(de(S)?.['Factura o comprobante'] ?? '') &&
-      /^Falta desde el .+ \(desde hoy\)$/.test(de(S)?.Detracción ?? '') && de(S)?.['Nota de crédito'] === '—' && /Servicio de prueba 473/.test(de(S)?.['Descripción del servicio'] ?? ''),
+      /^Falta desde el .+ \(hoy\)$/.test(de(S)?.Detracción ?? '') && de(S)?.['Nota de crédito'] === '—' && /Servicio de prueba 473/.test(de(S)?.['Descripción del servicio'] ?? ''),
     `${S} en el Excel: falta el PDF del comprobante (hace 3 días) y la detracción, con su descripción y sin nota («${de(S)?.['Factura o comprobante']}», «${de(S)?.Detracción}»)`)
-  comprobar(/Pagada en parte · pagado S\/\s?1,000\.00/.test(de(S)?.Pago ?? '') && /por pagar S\/\s?118\.00/.test(de(B)?.Pago ?? ''),
+  comprobar(/Pagada en parte · pagado S\/\s?1,000\.00/.test(de(S)?.Pago ?? '') && /^Por pagar · S\/\s?118\.00$/.test(de(B)?.Pago ?? ''),
     `el pago dice lo pagado y lo que falta, como la pantalla («${de(S)?.Pago}», «${de(B)?.Pago}»)`)
   comprobar(de(C) && !de(C)['Qué falta'] && de(C)['Días de la espera más larga'] === null, `${C} en el Excel, sin nada que falte`)
   comprobar(de(A)?.Proveedor === PROVEEDOR && de(A)?.Total === 118, `${A} en el Excel con su proveedor y su total (${de(A)?.Total})`)
 
-  // Un mes que no se entiende no baja otro mes callado: vuelve a la pantalla y lo dice junto al botón.
-  await pagina.goto(`${BASE}/adquisiciones/excel?mes=noviembre`, { waitUntil: 'networkidle' })
+  // Un mes que no se entiende no baja otro mes callado: vuelve a la pantalla, con sus filtros, y lo dice junto al botón.
+  await pagina.goto(`${BASE}/adquisiciones/excel?mes=noviembre&situacion=incompletas`, { waitUntil: 'networkidle' })
   const avisoMes = limpio(await pagina.locator('#excel-aviso').textContent().catch(() => ''))
-  comprobar(/\/adquisiciones\?excel=mes/.test(pagina.url()) && /Ese mes no se entiende/.test(avisoMes),
-    `un mes que no se entiende vuelve a Adquisiciones con el aviso («${avisoMes}»)`)
+  comprobar(/Ese mes no se entiende/.test(avisoMes), `un mes que no se entiende vuelve a Adquisiciones con el aviso («${avisoMes}»)`)
+  const urlTrasAviso = new URL(pagina.url())
+  comprobar(urlTrasAviso.searchParams.get('situacion') === 'incompletas' && !urlTrasAviso.searchParams.has('excel'),
+    `vuelve con su filtro, y el aviso no queda en la dirección (${urlTrasAviso.pathname}${urlTrasAviso.search})`)
+  comprobar(await pagina.evaluate(() => document.activeElement?.closest('#excel-aviso') !== null), 'el cursor va al aviso')
+  // Ni los filtros ni la paginación lo arrastran.
+  const enlacesConExcel = await pagina.locator('a[href*="excel="]').count()
+  comprobar(enlacesConExcel === 0, `ningún filtro ni página lleva el aviso consigo (${enlacesConExcel})`)
+  // Y se va con la descarga siguiente, que sí sale.
+  const [otra] = await Promise.all([pagina.waitForEvent('download'), pagina.getByRole('button', { name: 'Descargar Excel' }).click()])
+  comprobar(otra.suggestedFilename() === `MW-Adquisiciones-${MES}.xlsx` && (await pagina.locator('#excel-aviso').count()) === 0,
+    `tras una descarga buena, el aviso se va (${await pagina.locator('#excel-aviso').count()})`)
+  await pagina.goto(`${BASE}/adquisiciones/excel?mes=2026-13`, { waitUntil: 'networkidle' })
+  await Promise.all([pagina.waitForURL(/situacion=incompletas/), pagina.getByRole('link', { name: /^Incompletas \(\d+\)$/ }).first().click()])
+  await pagina.waitForLoadState('networkidle')
+  comprobar((await pagina.locator('#excel-aviso').count()) === 0 && !new URL(pagina.url()).searchParams.has('excel'),
+    `al tocar un filtro, el aviso no sigue (${pagina.url()})`)
+
+  // La OC que el conductor dejó sin guía: Contabilidad la carga, y la puede anular si escribió mal el número.
+  const guiaB = `T473-${SUFIJO}`
+  await fila(B).locator('[data-falta="GUIA"]').getByRole('button', { name: /Cargar guía/ }).click()
+  const ventana = pagina.getByRole('dialog')
+  comprobar(/ya la dejó en el almacén/.test(limpio(await ventana.textContent())) && !/El conductor la ve en su lista/.test(limpio(await ventana.textContent())),
+    'la ventana de la guía de una OC dejada no dice que el conductor la ve en su lista')
+  await ventana.getByLabel('N.º de guía').fill(guiaB)
+  await ventana.locator('input[type="file"]').setInputFiles({ name: 'guia.pdf', mimeType: 'application/pdf', buffer: Buffer.from(PDF) })
+  await ventana.getByRole('button', { name: 'Cargar guía' }).click()
+  await ventana.waitFor({ state: 'hidden', timeout: 20000 })
+  await pagina.waitForLoadState('networkidle')
+  const vigentes = await consulta(
+    `select count(*)::int as n from public.guias_remision_compra g join public.ordenes_compra_materiales c on c.id = g.orden_compra_id where c.numero = $1 and g.anulada_en is null`, [B])
+  comprobar(vigentes[0]?.n === 1, `${B}: una guía vigente en la base (${vigentes[0]?.n})`)
+  // La fila se repinta cuando llega el refresco de la pantalla.
+  const anular = fila(B).getByRole('button', { name: /Anular guía/ })
+  await anular.waitFor({ timeout: 15000 }).catch(() => {})
+  comprobar((await fila(B).locator('[data-falta="GUIA"]').count()) === 0, `${B}: ya no le falta la guía`)
+  comprobar((await anular.count()) === 1, `${B}: la guía cargada después de dejada se puede anular`)
+  await anular.click()
+  comprobar(/al conductor no le llega aviso/.test(limpio(await pagina.getByRole('dialog').textContent())), 'y su ventana no promete avisar al conductor')
+  await pagina.keyboard.press('Escape')
   await contexto.close()
 }
 

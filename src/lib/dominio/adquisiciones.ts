@@ -249,6 +249,8 @@ export const DOCUMENTO_DE_COMPRA: Record<
     falta: 'Falta la boleta, nota de venta o recibo',
     enParte: 'Boleta en parte',
     esta: 'Boleta o factura',
+    // Solo el borrador de Contabilidad, sin PDF adjunto: está, falta registrarlo.
+    porRegistrar: (n) => (n ? `Comprobante ${n} por registrar` : 'Comprobante por registrar'),
   },
   COMPROBANTE: {
     nombre: 'Factura, boleta o recibo',
@@ -304,3 +306,11 @@ export function documentosQueFaltan<T extends DocumentoDeLaCompra>(docs: readonl
     .filter((d) => d.situacion !== 'ESTA')
     .sort((a, b) => (b.dias ?? -1) - (a.dias ?? -1) || ORDEN_DE_DOCUMENTOS.indexOf(a.documento as never) - ORDEN_DE_DOCUMENTOS.indexOf(b.documento as never))
 }
+
+/**
+ * Los filtros de la lista de Adquisiciones que la ruta del Excel devuelve si el
+ * archivo no sale (Plan 10): vuelve a la misma lista con el aviso. Aquí y no en el
+ * formulario, que es del navegador: una constante de un archivo `'use client'` no
+ * llega como tal a la pantalla del servidor.
+ */
+export const FILTROS_QUE_VUELVEN = ['q', 'tipo', 'situacion', 'pagina'] as const

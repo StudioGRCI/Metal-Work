@@ -41,7 +41,7 @@ begin
     'se crearon los ocho usuarios del check, uno por puesto');
   perform set_config('prueba.area_mtz', (select id::text from public.areas where codigo = 'MTZ'), true);
   perform set_config('prueba.hoy', (now() at time zone 'America/Lima')::date::text, true);
-  foreach v in array array['rq', 'oc', 'ing', 'f1', 'dev1', 'nc1', 'guia', 'os', 'sin', 'p1', 'p2', 'p3', 'p4', 'rq2', 'rq3', 'ocb', 'oc2', 'ingb', 'devb', 'min', 'p5'] loop
+  foreach v in array array['rq', 'oc', 'ing', 'f1', 'dev1', 'nc1', 'guia', 'os', 'sin', 'p1', 'p2', 'p3', 'p4', 'rq2', 'rq3', 'ocb', 'oc2', 'ingb', 'devb', 'min', 'p5', 'fb'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
 end $$;
@@ -388,6 +388,16 @@ do $$ begin
     'la OS afecta que no llega al mínimo no pide detracción aunque se pague entera');
   perform test.afirmar((select situacion = 'POR_REGISTRAR' and numeros = 'E555-473' and dias = 1 from pg_temp.doc('min', 'COMPROBANTE')),
     'el comprobante que Tesorería anotó al pagar está por registrar: falta su PDF');
+end $$;
+-- d) Contabilidad deja en borrador, sin PDF, la factura que el proveedor de la OC con boleta entregó igual.
+insert into public.adquisiciones (id, tipo, proveedor, ruc_proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total,
+                                  condicion_pago, orden_compra_id)
+values (pg_temp.id('fb'), 'FACTURA_COMPRA', 'PROVEEDOR DE PRUEBA 473 S.A.C.', current_setting('prueba.ruc'), 'FH2-473',
+        current_setting('prueba.hoy')::date, current_setting('prueba.hoy')::date, 'PEN', 50, 'CONTADO', pg_temp.id('ocb'));
+do $$ begin
+  perform test.afirmar((select estado = 'BORRADOR' from public.adquisiciones where id = pg_temp.id('fb')), 'el comprobante queda en borrador');
+  perform test.afirmar((select situacion = 'POR_REGISTRAR' and numeros = 'FH2-473' from pg_temp.doc('ocb', 'BOLETA')),
+    'con solo el borrador, la OC con boleta no se da por completa: su comprobante está por registrar');
 end $$;
 reset role;
 

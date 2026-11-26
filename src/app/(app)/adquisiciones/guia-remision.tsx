@@ -27,6 +27,7 @@ export function CargarGuia({
   numero,
   peso,
   hoy,
+  dejada = false,
 }: {
   ordenCompraId: string
   /** El id de la guía lo decide el servidor: el PDF viaja a su ruta antes de que la fila exista. */
@@ -34,6 +35,8 @@ export function CargarGuia({
   numero: string
   peso: number
   hoy: string
+  /** El conductor ya la dejó en el almacén sin guía: se carga como respaldo, ya no viaja con ella. */
+  dejada?: boolean
 }) {
   const [abierta, setAbierta] = useState(false)
   const [id, setId] = useState(solicitudId)
@@ -79,12 +82,17 @@ export function CargarGuia({
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo={`Guía de remisión de ${numero}`}
-        descripcion={`Emítela con el peso que puso Logística: ${cantidad(peso)} kg. El conductor la ve en su lista en cuanto la cargas.`}
+        descripcion={
+          dejada
+            ? `El conductor ya la dejó en el almacén sin guía. Cárgala con el peso que puso Logística (${cantidad(peso)} kg) para que la compra quede completa.`
+            : `Emítela con el peso que puso Logística: ${cantidad(peso)} kg. El conductor la ve en su lista en cuanto la cargas.`
+        }
         ancho="sm"
       >
         <form key={id} onSubmit={alEnviar} className="space-y-4">
           <input type="hidden" name="id" value={id} />
           <input type="hidden" name="orden_compra_id" value={ordenCompraId} />
+          {dejada && <input type="hidden" name="dejada" value="1" />}
           <Campo etiqueta="N.º de guía" htmlFor={`guia-numero-${ordenCompraId}`} requerido>
             <Entrada
               id={`guia-numero-${ordenCompraId}`}
@@ -119,7 +127,7 @@ export function CargarGuia({
 }
 
 /** Anular una guía mal emitida, con su motivo. Queda como evidencia. */
-export function AnularGuia({ id, numero }: { id: string; numero: string }) {
+export function AnularGuia({ id, numero, dejada = false }: { id: string; numero: string; dejada?: boolean }) {
   const [abierta, setAbierta] = useState(false)
   const { alEnviar, enviando, error } = useEnvio(anularGuiaRemision, () => setAbierta(false))
   return (
@@ -132,7 +140,11 @@ export function AnularGuia({ id, numero }: { id: string; numero: string }) {
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo={`Anular la guía ${numero}`}
-        descripcion="La guía queda en el sistema como anulada, con su motivo, y al conductor le llega el aviso de que ya no vale. Después cargas la buena."
+        descripcion={
+          dejada
+            ? 'La guía queda en el sistema como anulada, con su motivo. La compra ya está en el almacén: al conductor no le llega aviso. Después cargas la buena.'
+            : 'La guía queda en el sistema como anulada, con su motivo, y al conductor le llega el aviso de que ya no vale. Después cargas la buena.'
+        }
         ancho="sm"
       >
         <form onSubmit={alEnviar} className="space-y-4">
