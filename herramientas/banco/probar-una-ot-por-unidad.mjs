@@ -1,6 +1,6 @@
 /**
  * Recorre con clic real «una cotización de varias unidades, una OT por unidad»
- * (migración 20261126700000), con la cuenta de cada puesto (nunca ADMIN):
+ * (migración 20261126760000), con la cuenta de cada puesto (nunca ADMIN):
  *
  *   1. Ventas sube una cotización de tres camabajas: el PDF dice «CANTIDAD : 03»
  *      y «Unidades» se llena con 3 (con otra cifra avisa en ámbar). La

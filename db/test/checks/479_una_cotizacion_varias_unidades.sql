@@ -1,4 +1,4 @@
--- Una cotización de varias unidades, una OT por cada una (migración 20261126700000).
+-- Una cotización de varias unidades, una OT por cada una (migración 20261126760000).
 -- Ventas preguntó el 26/11 qué hacer con una cotización de tres camabajas: hasta
 -- aquí la base dejaba una sola OT vigente por cotización. Ventas dice cuántas
 -- unidades lleva, Gerencia la aprueba y Administración carga una OT por unidad,

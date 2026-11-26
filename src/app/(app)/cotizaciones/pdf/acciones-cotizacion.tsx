@@ -133,7 +133,7 @@ export function CorregirCotizacion({
   version: number
   clienteId: string
   carroceriaId: string
-  /** Cuántas unidades lleva hoy (migración 20261126700000). */
+  /** Cuántas unidades lleva hoy (migración 20261126760000). */
   unidades: number
   /** Las OT que ya tiene: la cantidad no baja de ahí. */
   conOrdenes: number
@@ -713,7 +713,7 @@ export function CargarCodigoYOt({
   tipoUnidad?: string | null
   /**
    * La unidad que se carga y cuántas lleva la cotización (migración
-   * 20261126700000): con más de una, el botón y la ventana dicen cuál es, y
+   * 20261126760000): con más de una, el botón y la ventana dicen cuál es, y
    * `otras` los códigos que ya tienen las demás, para no repetirlos de memoria.
    */
   unidad?: { cual: number; de: number; otras?: { unidad: number; codigo: string }[] }

@@ -16,7 +16,7 @@ import type { Vistas } from '@/types/database'
 export type VersionCotizacion = Vistas<'v_cotizaciones_pdf_versiones'> & { url: string | null }
 
 /**
- * Una OT vigente de la cotización (migración 20261126700000): el código
+ * Una OT vigente de la cotización (migración 20261126760000): el código
  * interno lo ve quien ve la cotización; el id, el número y el estado, solo
  * quien ve las órdenes.
  */
@@ -187,7 +187,7 @@ export async function cotizacionPdfDeOrden(ordenId: string) {
   const supabase = await createClient()
   // Por la cotización de la OT, no por `orden_id` de la vista: una cotización
   // de varias unidades tiene varias OT y la vista nombra solo una (migración
-  // 20261126700000).
+  // 20261126760000).
   const { data: orden, error: errorOrden } = await supabase
     .from('ordenes_trabajo')
     .select('cotizacion_pdf_id, estado')

@@ -55,7 +55,7 @@ assert.equal(leerTextoDeCotizacion(cotizacionEnColumnas).producto,
   'FURGÓN SEMIRREMOLQUE CUELLO GANSO DOBLE NIVEL CRUCERO RIELES ALUMINIO - SUSPENSION NEUMÁTICA')
 assert.deepEqual(leerTotalDeCotizacion(cotizacionEnColumnas), { monto: '68000.00', moneda: 'USD' })
 
-// Cuántas unidades cotiza (migración 20261126700000): la COT 3588 son dos furgones.
+// Cuántas unidades cotiza (migración 20261126760000): la COT 3588 son dos furgones.
 assert.equal(leerCantidadDeCotizacion(cotizacionEnColumnas), 2)
 assert.equal(leerCantidadDeCotizacion('CANTIDAD : 03 UNIDADES\nTOTAL US$ 135,000.00'), 3)
 assert.equal(leerCantidadDeCotizacion('CANTIDAD DESCRIPCIÓN PRECIO TOTAL\n01 CAMA BAJA 3 EJES\n$ 45,000.00'), 1)

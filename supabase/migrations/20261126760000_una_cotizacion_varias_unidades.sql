@@ -107,7 +107,7 @@ begin
 end $$;
 
 comment on column public.cotizaciones_pdf.cantidad_unidades is
-  'Cuántas unidades (camabajas, furgones…) lleva la cotización: Administración carga una OT por cada una (migración 20261126700000).';
+  'Cuántas unidades (camabajas, furgones…) lleva la cotización: Administración carga una OT por cada una (migración 20261126760000).';
 
 -- Qué unidad de su cotización es cada OT. Sin relleno: las OT de antes son de
 -- cotizaciones de una unidad y se leen como la 1 (`coalesce(…, 1)`), y una OT
@@ -124,7 +124,7 @@ begin
 end $$;
 
 comment on column public.ordenes_trabajo.numero_de_unidad is
-  'Qué unidad de su cotización es (1, 2, 3…); null en las de antes, que valen como la 1 (migración 20261126700000).';
+  'Qué unidad de su cotización es (1, 2, 3…); null en las de antes, que valen como la 1 (migración 20261126760000).';
 
 -- Dos OT vigentes no son la misma unidad de la misma cotización. Con una unidad,
 -- es el mismo «una OT por cotización» de antes.
@@ -159,7 +159,7 @@ as $$
 $$;
 
 comment on function public.ordenes_de_cotizacion(uuid) is
-  'Las OT vigentes de la cotización, por su número de unidad, con su código interno; el id, el número y el estado solo para quien ve las órdenes (migración 20261126700000).';
+  'Las OT vigentes de la cotización, por su número de unidad, con su código interno; el id, el número y el estado solo para quien ve las órdenes (migración 20261126760000).';
 
 revoke all on function public.ordenes_de_cotizacion(uuid) from public, anon;
 grant execute on function public.ordenes_de_cotizacion(uuid) to authenticated;
@@ -621,7 +621,7 @@ end;
 $$;
 
 comment on function public.cargar_codigo_y_ot_de_cotizacion(uuid, uuid, text, text, public.tipo_unidad_carroceria, date, text, text, bigint, text, text) is
-  'Administración (ordenes.crear) da el código interno de una unidad y sube el PDF de su OT, de una cotización ya aprobada, todo junto o nada; una OT por unidad hasta cantidad_unidades (migraciones 20261027200000 y 20261126700000).';
+  'Administración (ordenes.crear) da el código interno de una unidad y sube el PDF de su OT, de una cotización ya aprobada, todo junto o nada; una OT por unidad hasta cantidad_unidades (migraciones 20261027200000 y 20261126760000).';
 
 revoke all on function public.cargar_codigo_y_ot_de_cotizacion(uuid, uuid, text, text, public.tipo_unidad_carroceria, date, text, text, bigint, text, text)
   from public, anon;
@@ -1313,7 +1313,7 @@ end;
 $$;
 
 comment on function public.pendientes_de_las_ot() is
-  'Lo que Administración tiene por completar en las OT, lo más viejo primero (hasta 500, con el total): cotización aprobada a la que le falta alguna OT vigente, una por unidad, con cuántas faltan en `trabajo` (desde su aprobación o la anulación de su OT; dice si su OT se anuló o si fue la venta anterior de una OT que pasó a otro comprador), y OT abierta sin código interno (fabricación, reparación o repotenciación; mantenimiento y garantía van por su N.º; dice si no tiene unidad o si la comparte con otra OT) o sin fecha de entrega comprometida (desde que se creó). Días por fecha de Lima. Corre como quien llama y la pide ordenes.crear. Sin importes. Migraciones 20261126330000 y 20261126700000.';
+  'Lo que Administración tiene por completar en las OT, lo más viejo primero (hasta 500, con el total): cotización aprobada a la que le falta alguna OT vigente, una por unidad, con cuántas faltan en `trabajo` (desde su aprobación o la anulación de su OT; dice si su OT se anuló o si fue la venta anterior de una OT que pasó a otro comprador), y OT abierta sin código interno (fabricación, reparación o repotenciación; mantenimiento y garantía van por su N.º; dice si no tiene unidad o si la comparte con otra OT) o sin fecha de entrega comprometida (desde que se creó). Días por fecha de Lima. Corre como quien llama y la pide ordenes.crear. Sin importes. Migraciones 20261126330000 y 20261126760000.';
 
 revoke all on function public.pendientes_de_las_ot() from public, anon;
 grant execute on function public.pendientes_de_las_ot() to authenticated;

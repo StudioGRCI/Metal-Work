@@ -32,7 +32,7 @@ const mimeCotizacion = z.enum(Object.keys(EXTENSION_DE) as [string, ...string[]]
 })
 
 // Cuántas unidades lleva la cotización: Administración carga una OT por cada una
-// (migración 20261126700000). La base pone el mismo tope.
+// (migración 20261126760000). La base pone el mismo tope.
 const cantidadUnidades = z.coerce
   .number({ error: 'Escribe cuántas unidades lleva la cotización.' })
   .int('Las unidades se cuentan enteras: 1, 2, 3…')
@@ -392,7 +392,7 @@ export async function cargarCodigoYOt(
   } else if (!data) return { ok: false, error: NO_TOCO_NADA }
 
   // Con varias unidades, decir cuántas faltan: «ya la puede facturar» no es
-  // cierto de una cotización a medio cargar (migración 20261126700000).
+  // cierto de una cotización a medio cargar (migración 20261126760000).
   // Si no se pudo leer, no se dice ni lo uno ni lo otro.
   const { data: cuenta, error: errorCuenta } = await supabase
     .from('v_cotizaciones_pdf')

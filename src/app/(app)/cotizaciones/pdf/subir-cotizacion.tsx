@@ -116,7 +116,7 @@ export function SubirCotizacion({ clientes, carrocerias }: { clientes: Cliente[]
   const aMano = useRef(new Set<'numero' | 'unidades' | 'monto' | 'moneda' | 'igv' | 'cliente' | 'carroceria'>())
 
   const [numero, setNumero] = useState('')
-  // Cuántas unidades lleva: Administración carga una OT por cada una (migración 20261126700000).
+  // Cuántas unidades lleva: Administración carga una OT por cada una (migración 20261126760000).
   const [unidades, setUnidades] = useState('1')
   // Las que dice el documento: si quedan otras, se avisa en ámbar, como el monto.
   const [unidadesLeidas, setUnidadesLeidas] = useState<number | null>(null)

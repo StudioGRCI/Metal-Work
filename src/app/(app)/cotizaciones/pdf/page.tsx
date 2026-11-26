@@ -104,7 +104,7 @@ function aprobadaEsteMes(c: { estado: string | null; revisado_en: string | null 
 }
 
 // Le falta alguna OT: la aprobada a la que Administración todavía no le cargó
-// todas sus unidades (una OT por unidad, migración 20261126700000).
+// todas sus unidades (una OT por unidad, migración 20261126760000).
 function faltaSuOt(c: { estado: string | null; ordenes_faltantes: number | null }) {
   return c.estado === 'APROBADA' && (c.ordenes_faltantes ?? 0) > 0
 }
@@ -310,7 +310,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
             const corrige = corregiria && !c.facturada
             const version = c.version ?? 1
             const versionAnterior = c.versiones[0]
-            // Una cotización de varias unidades lleva una OT por cada una (migración 20261126700000).
+            // Una cotización de varias unidades lleva una OT por cada una (migración 20261126760000).
             const unidades = c.cantidad_unidades ?? 1
             const varias = unidades > 1
             const faltan = c.ordenes_faltantes ?? 0

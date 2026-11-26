@@ -106,7 +106,7 @@ export function leerIgvDeCotizacion(texto: string): boolean | null {
 
 /**
  * Cuántas unidades cotiza el papel: Administración carga una OT por cada una
- * (migración 20261126700000). La propuesta económica de la casa abre con la
+ * (migración 20261126760000). La propuesta económica de la casa abre con la
  * columna CANTIDAD y la cifra sale sola en su línea («02», COT 3588) o al
  * comienzo de la descripción («03 CAMA BAJA…»); a veces se escribe
  * «CANTIDAD : 03». Se toma la primera fila: si hay otra, la persona confirma.

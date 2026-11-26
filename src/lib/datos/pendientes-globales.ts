@@ -185,7 +185,7 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
             .from('v_cotizaciones_pdf')
             .select('id', { count: 'exact', head: true })
             .eq('estado', 'APROBADA')
-            // Le falta alguna OT: una por unidad (migración 20261126700000).
+            // Le falta alguna OT: una por unidad (migración 20261126760000).
             .gt('ordenes_faltantes', 0),
         ),
     })

@@ -261,7 +261,7 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
                               <p className="text-sm text-pretty text-texto sm:truncate">
                                 {c.carroceria ?? 'Sin carrocería'}
                                 {(c.cantidad_unidades ?? 1) > 1 ? (
-                                  // Una OT por unidad (migración 20261126700000): cada código está en su tarjeta.
+                                  // Una OT por unidad (migración 20261126760000): cada código está en su tarjeta.
                                   <span className="text-texto-suave">
                                     {' '}· {c.cantidad_unidades} unidades · {c.ordenes_vigentes ? `${c.ordenes_vigentes} con su OT` : 'ninguna con su OT'}
                                   </span>
