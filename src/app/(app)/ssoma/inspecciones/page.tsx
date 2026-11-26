@@ -52,15 +52,9 @@ export default async function PaginaInspeccionesSsoma({ searchParams }: PageProp
   const activos = puntos.filter((p) => p.activo)
   const abiertas = porArea.reduce((n, a) => n + a.abiertas, 0)
   const vencidas = porArea.reduce((n, a) => n + a.vencidas, 0)
-  const sinInspeccion = porArea.filter((a) => !a.ultima).length
   const resumen = enLista
     ? `${activos.length} ${activos.length === 1 ? 'punto vigente' : 'puntos vigentes'}`
-    : [
-        `${abiertas} ${abiertas === 1 ? 'acción abierta' : 'acciones abiertas'}${vencidas > 0 ? `, ${vencidas} ${vencidas === 1 ? 'vencida' : 'vencidas'}` : ''}`,
-        sinInspeccion > 0 ? `${sinInspeccion} ${sinInspeccion === 1 ? 'área sin inspeccionar' : 'áreas sin inspeccionar'}` : null,
-      ]
-        .filter(Boolean)
-        .join(' · ')
+    : `${abiertas} ${abiertas === 1 ? 'acción abierta' : 'acciones abiertas'}${vencidas > 0 ? `, ${vencidas} ${vencidas === 1 ? 'vencida' : 'vencidas'}` : ''}`
 
   return (
     <>
@@ -355,7 +349,8 @@ function ListaDeVerificacion({ puntos, areas, gestiona }: { puntos: PuntoDeLista
                 <h3 className="px-4 pt-3 text-xs font-medium text-texto-suave">
                   {nombreDe(id)} · <span className="tabular">{suyos.length}</span>
                 </h3>
-                <FilasDePuntos puntos={suyos} gestiona={gestiona} />
+                {/* Con el número que llevan en la inspección de su área: después de los de todas. */}
+                <FilasDePuntos puntos={suyos} gestiona={gestiona} desde={generales.length} />
               </section>
             )
           })
@@ -386,10 +381,13 @@ function FilasDePuntos({
   puntos,
   gestiona,
   vacio,
+  desde = 0,
 }: {
   puntos: PuntoDeLista[]
   gestiona: boolean
   vacio?: { titulo: string; descripcion: string }
+  /** Cuántos puntos van antes en la inspección: los propios de un área siguen a los de todas. */
+  desde?: number
 }) {
   if (puntos.length === 0) {
     return vacio ? (
@@ -401,7 +399,7 @@ function FilasDePuntos({
   return (
     <ol className="divide-y divide-borde px-4 pb-1">
       {puntos.map((p, i) => (
-        <FilaPunto key={p.id} punto={p} gestiona={gestiona} numero={i + 1} />
+        <FilaPunto key={p.id} punto={p} gestiona={gestiona} numero={desde + i + 1} />
       ))}
     </ol>
   )

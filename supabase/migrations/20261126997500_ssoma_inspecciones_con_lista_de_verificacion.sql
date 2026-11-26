@@ -300,10 +300,15 @@ begin
     raise exception 'Ese punto ya está en la lista de %.', v_donde using errcode = 'check_violation';
   end if;
 
-  insert into public.ssoma_lista_puntos (id, area_id, texto, orden, creado_por)
-  values (p_id, p_area, v_texto,
-          (select coalesce(max(p.orden), 0) + 1 from public.ssoma_lista_puntos p where p.area_id is not distinct from p_area),
-          v_yo);
+  begin
+    insert into public.ssoma_lista_puntos (id, area_id, texto, orden, creado_por)
+    values (p_id, p_area, v_texto,
+            (select coalesce(max(p.orden), 0) + 1 from public.ssoma_lista_puntos p where p.area_id is not distinct from p_area),
+            v_yo);
+  exception when unique_violation then
+    -- Dos envíos del mismo punto a la vez: la comprobación de arriba no ve la fila del otro, que todavía no terminó.
+    raise exception 'Ese punto ya está en la lista: se acaba de agregar.' using errcode = 'check_violation';
+  end;
   return p_id;
 end;
 $$;
@@ -414,7 +419,7 @@ begin
      or (select count(distinct x.r ->> 'punto') from jsonb_array_elements(p_respuestas) x(r)
           where exists (select 1 from public.ssoma_lista_puntos p
                          where p.id::text = lower(x.r ->> 'punto') and p.activo and (p.area_id is null or p.area_id = p_area))) <> v_puntos then
-    raise exception 'La lista de verificación de % cambió mientras llenabas la inspección: vuelve a abrirla y márcala de nuevo.', v_area
+    raise exception 'La lista de verificación de % cambió mientras llenabas la inspección. Revisa los puntos, que ya están al día, y marca lo que falte.', v_area
       using errcode = 'check_violation';
   end if;
 
@@ -474,7 +479,7 @@ begin
       insert into public.ssoma_accion_eventos (accion_id, tipo, responsable_id, fecha_limite, hecho_por)
       values (v_accion, 'ASIGNADA', v_quien, v_limite, v_yo);
       perform public.ssoma_avisar_a(v_quien,
-        'Acción correctiva a tu cargo (inspección de ' || v_area || '): vence el ' || public.ssoma_dia(v_limite),
+        'Acción correctiva a tu cargo (inspección de ' || v_area || ' del ' || public.ssoma_dia(p_fecha) || '): vence el ' || public.ssoma_dia(v_limite),
         v_que, '/ssoma/inspecciones/' || p_id::text || '#accion-' || v_accion::text, 'ssoma_acciones', v_accion);
     end if;
   end loop;
@@ -548,7 +553,7 @@ begin
 
   select a.nombre into v_area from public.areas a where a.id = v_ins.area_id;
   perform public.ssoma_avisar_a(p_responsable,
-    'Acción correctiva a tu cargo (inspección de ' || v_area || '): vence el ' || public.ssoma_dia(p_fecha_limite),
+    'Acción correctiva a tu cargo (inspección de ' || v_area || ' del ' || public.ssoma_dia(v_ins.fecha) || '): vence el ' || public.ssoma_dia(p_fecha_limite),
     v_que, '/ssoma/inspecciones/' || v_ins.id::text || '#accion-' || p_id::text, 'ssoma_acciones', p_id);
   return p_id;
 end;
@@ -908,7 +913,8 @@ language sql stable security definer set search_path to 'public' rows 200 as $$
                 and (r.registrado_por = yo.id or (r.area_id = yo.area_id and r.estado <> 'ANULADO'))))
   )
   select v.id, v.reporte_id, v.rep_numero, v.rep_tipo,
-         v.respuesta_id, v.ins_id, v.ins_fecha, v.ins_hallazgo,
+         -- Lo que se encontró, mientras la acción sea suya: anulada, ya no (SSOMA y Gerencia lo ven siempre).
+         v.respuesta_id, v.ins_id, v.ins_fecha, case when v.alcance = 'TODOS' or v.estado <> 'ANULADA' then v.ins_hallazgo end,
          ar.nombre, v.descripcion,
          v.responsable_id, btrim(u.nombres || ' ' || u.apellidos), coalesce(nullif(btrim(u.cargo), ''), ro.nombre),
          v.fecha_limite, v.estado,
@@ -990,12 +996,13 @@ language sql stable security definer set search_path to 'public' rows 100 as $$
        where p.inspeccion_id = i.id) c
    where (p_id is null or i.id = p_id)
      and (yo.todo
+          -- Con una acción vigente: como en la ficha del reporte (15.2), a quien se le anuló la suya ya no se le abre.
           or exists (select 1 from public.ssoma_acciones a
                        join public.ssoma_inspeccion_respuestas p on p.id = a.respuesta_id
-                      where p.inspeccion_id = i.id and a.responsable_id = yo.id));
+                      where p.inspeccion_id = i.id and a.responsable_id = yo.id and a.estado <> 'ANULADA'));
 $$;
 comment on function public.ssoma_inspecciones_a_la_vista(uuid) is
-  'Las inspecciones de seguridad que ve quien pregunta: SSOMA y Gerencia, todas, con su resultado y cómo van sus acciones; quien tiene a cargo una acción de la inspección, solo el área y la fecha.';
+  'Las inspecciones de seguridad que ve quien pregunta: SSOMA y Gerencia, todas, con su resultado y cómo van sus acciones; quien tiene a cargo una acción vigente de la inspección, solo el área y la fecha.';
 revoke all on function public.ssoma_inspecciones_a_la_vista(uuid) from public, anon;
 grant execute on function public.ssoma_inspecciones_a_la_vista(uuid) to authenticated;
 
@@ -1009,11 +1016,11 @@ language sql stable security definer set search_path to 'public' rows 30 as $$
    where p.inspeccion_id = p_inspeccion
      and (public.puede_ver_reportes_ssoma()
           or exists (select 1 from public.ssoma_acciones a
-                      where a.respuesta_id = p.id and a.responsable_id = public.usuario_actual()))
+                      where a.respuesta_id = p.id and a.responsable_id = public.usuario_actual() and a.estado <> 'ANULADA'))
    order by p.orden;
 $$;
 comment on function public.ssoma_respuestas_de_inspeccion(uuid) is
-  'Cada punto de una inspección con su resultado y, del no conforme, lo que se encontró. SSOMA y Gerencia los ven todos; el responsable de una acción, solo su hallazgo.';
+  'Cada punto de una inspección con su resultado y, del no conforme, lo que se encontró. SSOMA y Gerencia los ven todos; el responsable de una acción vigente, solo su hallazgo.';
 revoke all on function public.ssoma_respuestas_de_inspeccion(uuid) from public, anon;
 grant execute on function public.ssoma_respuestas_de_inspeccion(uuid) to authenticated;
 

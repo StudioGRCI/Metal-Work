@@ -125,16 +125,11 @@ export default async function PaginaInspeccionSsoma({ params }: PageProps<'/ssom
                   const sinVigente = !suyas.some((s) => s.accion.estado !== 'ANULADA')
                   return (
                     <li key={h.id} className="rounded-[var(--radius-base)] border border-borde" data-hallazgo={h.id} data-sin-accion={sinVigente || undefined}>
-                      <div className="flex flex-col gap-3 border-b border-borde px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="min-w-0 space-y-1">
-                          <p className="text-xs text-texto-suave">
-                            <span className="tabular">Punto {h.orden}</span> · {h.texto}
-                          </p>
-                          <p className="max-w-3xl text-sm font-medium whitespace-pre-wrap text-texto">{h.hallazgo}</p>
-                        </div>
-                        {gestiona && !anulada && (
-                          <AgregarAccion respuestaId={h.id} numero={`hallazgo del punto ${h.orden}`} cuentas={cuentas} hoy={hoy} discreto />
-                        )}
+                      <div className="space-y-1 border-b border-borde px-4 py-3">
+                        <p className="text-xs text-texto-suave">
+                          <span className="tabular">Punto {h.orden}</span> · {h.texto}
+                        </p>
+                        <p className="max-w-3xl text-sm font-medium whitespace-pre-wrap text-texto">{h.hallazgo}</p>
                       </div>
                       <div className="px-4 py-3">
                         {sinVigente && !anulada && (
@@ -142,7 +137,7 @@ export default async function PaginaInspeccionSsoma({ params }: PageProps<'/ssom
                             <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
                             <span>
                               Este hallazgo quedó sin acción vigente: nadie tiene encargado corregirlo.
-                              {gestiona ? ' Agrégale una con «Agregar acción».' : ''}
+                              {gestiona ? ' Encárgale una con «Agregar acción».' : ''}
                             </span>
                           </p>
                         )}
@@ -161,6 +156,18 @@ export default async function PaginaInspeccionSsoma({ params }: PageProps<'/ssom
                               />
                             ))}
                           </ul>
+                        )}
+                        {/* Otra acción es la excepción: va después de la que ya tiene. Sin ninguna vigente, es lo que toca. */}
+                        {gestiona && !anulada && (
+                          <div className={suyas.length > 0 ? 'mt-3 flex justify-end border-t border-borde pt-3' : 'flex justify-start'}>
+                            <AgregarAccion
+                              respuestaId={h.id}
+                              numero={`hallazgo del punto ${h.orden}`}
+                              cuentas={cuentas}
+                              hoy={hoy}
+                              discreto={!sinVigente}
+                            />
+                          </div>
                         )}
                       </div>
                     </li>

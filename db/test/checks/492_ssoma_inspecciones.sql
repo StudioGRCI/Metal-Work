@@ -278,7 +278,8 @@ begin
 
   select * into v_aviso from public.notificaciones where usuario_id = current_setting('prueba.sup')::uuid and origen_id = v_accion.id;
   perform test.afirmar(
-    v_aviso.titulo = 'Acción correctiva a tu cargo (inspección de ' || (select nombre from public.areas where id = v_mtz) || '): vence el '
+    v_aviso.titulo = 'Acción correctiva a tu cargo (inspección de ' || (select nombre from public.areas where id = v_mtz) || ' del '
+                     || to_char(current_setting('prueba.hoy')::date, 'DD/MM/YYYY') || '): vence el '
                      || to_char(current_setting('prueba.en7')::date, 'DD/MM/YYYY')
     and v_aviso.ruta = '/ssoma/inspecciones/' || current_setting('prueba.i1') || '#accion-' || v_accion.id,
     'al responsable le llega el aviso, con el enlace a su acción en la inspección');
@@ -471,6 +472,20 @@ begin
     exists (select 1 from public.notificaciones n where n.usuario_id = current_setting('prueba.almacen')::uuid and n.origen_id = v_a1
                and n.titulo = 'SSOMA anuló tu acción correctiva (' || v_donde || ')' and n.ruta = '/ssoma'),
     'anular avisa al responsable, con el nombre de la inspección');
+  -- A quien se le anuló la acción ya no se le abre ese hallazgo: sigue viendo el de la que le queda.
+  perform test.como_usuario(current_setting('prueba.almacen')::uuid);
+  set local role authenticated;
+  perform test.afirmar(
+    (select count(*) from public.ssoma_respuestas_de_inspeccion(v_i1)) = 1
+    and not exists (select 1 from public.ssoma_respuestas_de_inspeccion(v_i1) r
+                     where r.id = (select respuesta_id from public.ssoma_acciones where id = v_a1))
+    and (select count(*) from public.ssoma_inspecciones_a_la_vista(v_i1)) = 1,
+    'Almacén deja de ver el hallazgo de su acción anulada y sigue viendo el de la vigente');
+  perform test.afirmar(
+    (select hallazgo is null and estado = 'ANULADA' from public.ssoma_acciones_a_la_vista(null, null, v_a1))
+    and (select hallazgo is not null from public.ssoma_acciones_a_la_vista(null, null, v_a2)),
+    'y su acción anulada ya no le trae lo que se encontró; la vigente sí');
+  reset role;
   perform test.como_usuario(current_setting('prueba.ssoma')::uuid);
   set local role authenticated;
   perform test.afirmar((select sin_accion = 1 and abiertas = 1 from public.ssoma_inspecciones_a_la_vista(v_i1)), 'la inspección dice que un hallazgo quedó sin acción');

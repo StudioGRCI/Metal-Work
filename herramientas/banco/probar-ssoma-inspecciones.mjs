@@ -9,6 +9,7 @@
  *      rechaza la fecha de mañana junto al campo; corregida, tres toques dan
  *      una sola, con su hallazgo y la acción a cargo de Almacén, que recibe el
  *      aviso con el enlace a la inspección. Con la acción viva no se anula.
+ *      Si la lista cambia con la ventana abierta, se pone al día sin cerrarla.
  *   2. Almacén, en el celular: llega por «Acciones» a la inspección y ve solo
  *      su hallazgo; cierra la acción con una foto (tres toques, un envío). La
  *      lista de inspecciones no es suya.
@@ -162,6 +163,7 @@ const [{ hoy, manana }] = await consulta(
 )
 const [mtz] = await consulta(`select id, nombre from public.areas where codigo = 'MTZ'`)
 const [alm] = await consulta(`select id, nombre from public.areas where codigo = 'ALM'`)
+const [acb] = await consulta(`select id, nombre from public.areas where codigo = 'ACB'`)
 /** La última inspección vigente de un área, como la cuenta la base. */
 const ultimaDe = async (area) =>
   (await consulta(`select id, fecha::text as fecha from public.ssoma_inspecciones where area_id = $1 and anulado_en is null order by fecha desc, creado_en desc limit 1`, [area]))[0] ?? null
@@ -234,8 +236,15 @@ let respuestas = 0
   comprobar(await pagina.evaluate(() => document.activeElement?.id === 'punto-texto'), '[SSOMA 1440] y el cursor vuelve al campo')
   await ventana.getByRole('button', { name: 'Cancelar' }).click()
 
-  // Retirar y restituir.
+  // Retirar pregunta antes; restituir va de un toque.
   await pagina.locator(`[data-cambiar-punto="${punto?.id}"]`).click()
+  ventana = pagina.getByRole('dialog')
+  await ventana.waitFor()
+  comprobar(
+    limpio(await ventana.locator('[data-punto-por-retirar]').innerText()) === PUNTO && (await consulta(`select activo from public.ssoma_lista_puntos where id = $1`, [punto?.id]))[0]?.activo === true,
+    '[SSOMA 1440] «Retirar» pregunta antes, con el punto a la vista, y todavía no lo retira',
+  )
+  await ventana.getByRole('button', { name: 'Retirar', exact: true }).click()
   await hasta(async () => (await consulta(`select activo from public.ssoma_lista_puntos where id = $1`, [punto?.id]))[0]?.activo, (a) => a === false, 15000)
   const [retirado] = await consulta(`select activo, retirado_por is not null as quien, retirado_en is not null as cuando from public.ssoma_lista_puntos where id = $1`, [punto?.id])
   comprobar(retirado?.activo === false && retirado?.quien && retirado?.cuando, '[SSOMA 1440] «Retirar» lo retira en la base, con quién y cuándo')
@@ -265,10 +274,13 @@ let respuestas = 0
     `[SSOMA 1440] la lista de Maestranza trae sus ${delArea.length} puntos, el propio al final`)
   for (const p of delArea.slice(2)) await marcar(ventana, p.id, 'Conforme')
   await marcar(ventana, delArea[0].id, 'No aplica')
-  comprobar((await registrar.isDisabled()) && /Falta 1 punto por marcar: el primero es el 2/.test(limpio(await ventana.innerText())), '[SSOMA 1440] con un punto sin marcar no se puede registrar, y dice cuál falta')
+  comprobar((await registrar.isDisabled()) && /Falta 1 punto por marcar: ir al 2/.test(limpio(await ventana.innerText())), '[SSOMA 1440] con un punto sin marcar no se puede registrar, y dice cuál falta')
+  await ventana.locator('[data-ir-al-que-falta]').click()
+  comprobar(await pagina.evaluate(() => document.activeElement?.id === 'inspeccion-punto-2'), '[SSOMA 1440] la nota lleva el cursor al punto que falta')
   await marcar(ventana, delArea[1].id, 'No conforme')
   await ventana.locator(`#inspeccion-hallazgo-${delArea[1].id}`).fill(HALLAZGO)
   await ventana.locator(`#inspeccion-que-${delArea[1].id}`).fill(QUE)
+  comprobar((await registrar.isDisabled()) && /Falta el responsable de la acción del punto 2/.test(limpio(await ventana.innerText())), '[SSOMA 1440] sin responsable en el hallazgo no se puede registrar, y dice en qué punto')
   await elegirCuenta(pagina, ventana, `#inspeccion-responsable-${delArea[1].id}`, 'Almacén Banco')
   await ventana.locator('#inspeccion-observacion').fill(OBSERVACION)
   comprobar(await registrar.isEnabled(), '[SSOMA 1440] con todo marcado y el hallazgo con su acción, se puede registrar')
@@ -338,6 +350,50 @@ let respuestas = 0
   comprobar((await pagina.locator(`[data-accion-ssoma="${accion?.id}"]`).count()) === 1 && (await pagina.locator(`[data-reasignar-accion], [data-anular-accion]`).count()) >= 2, '[SSOMA 1440] la acción lleva los botones de SSOMA: reasignar y anular')
   comprobar((await pagina.locator('[data-anular-inspeccion]').count()) === 0, '[SSOMA 1440] con una acción vigente no se ofrece anular la inspección')
   await pagina.screenshot({ path: join(CAPTURAS, 'ssoma-inspeccion-ficha-1440.png'), fullPage: true })
+
+  // --- La lista cambia con la ventana abierta: se pone al día sin cerrarla y sin perder lo marcado.
+  await ir(pagina, `${BASE}/ssoma/inspecciones`)
+  await pagina.locator('[data-nueva-inspeccion]').click()
+  ventana = pagina.getByRole('dialog')
+  await ventana.waitFor()
+  await quieta(pagina)
+  await ventana.locator('#inspeccion-area').selectOption(acb.id)
+  const antesDelCambio = await puntosDe(acb.id)
+  for (const p of antesDelCambio) await marcar(ventana, p.id, 'Conforme')
+  const OBS_ACB = `La lista cambió mientras se llenaba (${sello}).`
+  await ventana.locator('#inspeccion-observacion').fill(OBS_ACB)
+  {
+    const otra = await contexto.newPage()
+    await ir(otra, `${BASE}/ssoma/inspecciones?vista=lista`)
+    await otra.locator('[data-agregar-punto]').click()
+    const v = otra.getByRole('dialog')
+    await v.waitFor()
+    await v.locator('#punto-area').selectOption(acb.id)
+    await v.locator('#punto-texto').fill(`Cabina de pintura con sus filtros al día (${sello})`)
+    await v.getByRole('button', { name: 'Agregar', exact: true }).click()
+    await hasta(async () => (await puntosDe(acb.id)).length, (n) => n === antesDelCambio.length + 1, 20000)
+    await otra.close()
+  }
+  const registrarAcb = ventana.getByRole('button', { name: 'Registrar inspección' })
+  await registrarAcb.click()
+  const alDia = await hasta(() => ventana.locator('[data-punto]').count(), (n) => n === antesDelCambio.length + 1, 20000)
+  const textoCambio = limpio(await ventana.innerText())
+  comprobar(/cambió mientras llenabas la inspección/.test(textoCambio) && (await consulta(`select 1 from public.ssoma_inspecciones where observacion = $1`, [OBS_ACB])).length === 0,
+    '[SSOMA 1440] si la lista cambió con la ventana abierta, la base lo rechaza y lo dice')
+  comprobar(
+    alDia === antesDelCambio.length + 1 && Number(await ventana.locator('[data-marcados]').getAttribute('data-marcados')) === antesDelCambio.length && (await ventana.locator('#inspeccion-observacion').inputValue()) === OBS_ACB,
+    `[SSOMA 1440] la ventana se pone al día sola (${alDia} puntos) y conserva lo marcado y lo escrito`,
+  )
+  comprobar((await registrarAcb.isDisabled()) && new RegExp(`Falta 1 punto por marcar: ir al ${alDia}`).test(limpio(await ventana.innerText())), '[SSOMA 1440] y pide marcar el punto nuevo')
+  const delAreaAhora = await puntosDe(acb.id)
+  await marcar(ventana, delAreaAhora.at(-1).id, 'Conforme')
+  await registrarAcb.click()
+  await hasta(async () => (await consulta(`select 1 from public.ssoma_inspecciones where observacion = $1`, [OBS_ACB])).length, (n) => n === 1, 20000)
+  const [deAcb] = await consulta(
+    `select (select count(*)::int from public.ssoma_inspeccion_respuestas r where r.inspeccion_id = i.id) as respuestas from public.ssoma_inspecciones i where i.observacion = $1`,
+    [OBS_ACB],
+  )
+  comprobar(deAcb?.respuestas === delAreaAhora.length, `[SSOMA 1440] marcado el que faltaba, entra con sus ${deAcb?.respuestas} puntos`)
   comprobar(errores.length === 0, `[SSOMA 1440] sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }

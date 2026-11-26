@@ -1,6 +1,6 @@
 'use client'
 
-import { Ban, ClipboardCheck, ListPlus, RotateCcw, X } from 'lucide-react'
+import { Ban, Check, ClipboardCheck, ListPlus, RotateCcw, X } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useMemo, useState, type FormEvent } from 'react'
@@ -75,9 +75,13 @@ export function NuevaInspeccion({
   const router = useRouter()
   const id = useIdDelEnvio('inspeccion_ssoma', () => refrescarSiEsDeLaPestana(router))
   const { alEnviar, enviando, error, limpiar } = useEnvio(
-    (previo: unknown, datos: FormData) => {
+    async (previo: unknown, datos: FormData) => {
       id.salio()
-      return registrarInspeccionSsoma(previo, datos)
+      const r = await registrarInspeccionSsoma(previo, datos)
+      // La lista cambió con la ventana abierta: se pone al día sin cerrarla. Lo marcado va por punto y se conserva;
+      // «vuelve a abrirla» no servía, porque la ventana volvía a abrir con la lista de cuando se pintó la página.
+      if (!r.ok && LA_LISTA_CAMBIO.test(r.error ?? '')) refrescarSiEsDeLaPestana(router)
+      return r
     },
     (r) => {
       id.otro()
@@ -97,6 +101,8 @@ export function NuevaInspeccion({
           id.abrir()
           setVez((v) => v + 1)
           setAbierta(true)
+          // La lista y las cuentas, como están ahora: la página pudo pintarse hace horas.
+          refrescarSiEsDeLaPestana(router)
         }}
       >
         <ClipboardCheck aria-hidden className="size-4" />
@@ -106,7 +112,7 @@ export function NuevaInspeccion({
         abierta={abierta}
         alCerrar={() => setAbierta(false)}
         titulo="Nueva inspección"
-        descripcion="Recorre el área y marca cada punto de su lista. Lo que no esté conforme nace con su acción correctiva. Una vez registrada no se edita: si quedó mal, se anula con su motivo."
+        descripcion="Marca cada punto de la lista del área. Lo que no esté conforme lleva su acción correctiva."
         ancho="xl"
       >
         <EnvioAnterior texto={id.anterior} />
@@ -133,13 +139,17 @@ const OPCION =
   'flex min-h-11 cursor-pointer items-start gap-3 rounded-[var(--radius-base)] border border-borde px-3 py-2 text-sm text-texto has-[:checked]:border-acento has-[:checked]:bg-acento-suave'
 const RADIO = 'mt-0.5 size-4 shrink-0 accent-[var(--acento)]'
 
-/** Cada resultado se marca con un toque; el elegido toma su color. */
+/**
+ * Cada resultado se marca con un toque; el elegido toma su color, su borde grueso
+ * y un visto. El visto y el borde, porque el gris de «No aplica» casi no se
+ * distinguía de un punto sin marcar al repasar la lista con sol en el taller.
+ */
 const BOTON_RESULTADO =
-  'flex min-h-11 cursor-pointer items-center justify-center rounded-[var(--radius-base)] border border-borde-fuerte px-2 text-center text-sm text-texto has-[:checked]:font-medium has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-acento'
+  'group/resultado flex min-h-11 cursor-pointer items-center justify-center gap-1 rounded-[var(--radius-base)] border border-borde-fuerte px-2 text-center text-sm text-texto has-[:checked]:border-2 has-[:checked]:font-medium has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-acento'
 const COLOR_RESULTADO: Record<ResultadoInspeccion, string> = {
   CONFORME: 'has-[:checked]:border-exito has-[:checked]:bg-exito-suave',
   NO_CONFORME: 'has-[:checked]:border-peligro has-[:checked]:bg-peligro-suave',
-  NO_APLICA: 'has-[:checked]:border-texto-suave has-[:checked]:bg-superficie-2',
+  NO_APLICA: 'has-[:checked]:border-texto has-[:checked]:bg-neutro-suave',
 }
 
 /** Lo que se marca de un punto; del no conforme, lo que se encontró y su acción. */
@@ -156,6 +166,8 @@ type Respuesta = {
 /** Los rechazos de la base que son de un campo: se dicen junto a él y el cursor va ahí. */
 const DE_LA_FECHA = /posterior a hoy|últimos 60 días|fecha de la inspección/
 const DE_UN_PUNTO = /^En el punto (\d+) /
+/** El rechazo de `ssoma_registrar_inspeccion` cuando los puntos enviados ya no son los de la lista. */
+const LA_LISTA_CAMBIO = /cambió mientras llenabas/
 
 function FormularioInspeccion({
   id,
@@ -221,11 +233,30 @@ function FormularioInspeccion({
       ? [{ punto: p.id, resultado: m.resultado, hallazgo: m.hallazgo, accion: { que: m.que, responsable: m.responsable, fecha_limite: m.limite } }]
       : [{ punto: p.id, resultado: m.resultado }]
   })
+  // El buscador de responsables no es un campo del navegador: lo que falta se dice aquí, antes de enviar.
+  const sinResponsable = delArea.findIndex((p) => marcas[p.id]?.resultado === 'NO_CONFORME' && !marcas[p.id]?.responsable) + 1
+  // Con una lista larga en el teléfono, el pie queda lejos del punto que falta: la nota lleva a él.
+  const irA = (n: number, texto: string) => (
+    <button
+      type="button"
+      className="min-h-11 text-left text-acento underline underline-offset-2 sm:min-h-0"
+      data-ir-al-que-falta={n}
+      onClick={() => {
+        const punto = document.getElementById(`inspeccion-punto-${n}`)
+        punto?.scrollIntoView({ block: 'center' })
+        punto?.focus({ preventScroll: true })
+      }}
+    >
+      {texto}
+    </button>
+  )
   const nota = !area
     ? 'Elige el área para ver su lista.'
     : faltan > 0
-      ? `${faltan === 1 ? 'Falta 1 punto' : `Faltan ${faltan} puntos`} por marcar: el primero es el ${primeroSinMarcar}.`
-      : undefined
+      ? irA(primeroSinMarcar, `${faltan === 1 ? 'Falta 1 punto' : `Faltan ${faltan} puntos`} por marcar: ir al ${primeroSinMarcar}.`)
+      : sinResponsable > 0
+        ? irA(sinResponsable, `Falta el responsable de la acción del punto ${sinResponsable}: ir a él.`)
+        : undefined
 
   return (
     <form onSubmit={alEnviar} className="space-y-4">
@@ -308,7 +339,7 @@ function FormularioInspeccion({
                         tabIndex={-1}
                         aria-describedby={delError ? `inspeccion-punto-${n}-error` : undefined}
                         className={cn(
-                          'rounded-[var(--radius-base)] border border-borde p-3 outline-none',
+                          'rounded-[var(--radius-base)] border border-borde p-3 focus:outline-2 focus:outline-offset-2 focus:outline-acento',
                           m?.resultado === 'NO_CONFORME' && 'border-peligro',
                         )}
                         data-punto={p.id}
@@ -331,6 +362,7 @@ function FormularioInspeccion({
                                 onChange={() => marcar(p.id, { resultado: valor })}
                                 className="sr-only"
                               />
+                              <Check aria-hidden className="hidden size-4 shrink-0 group-has-[:checked]/resultado:block" />
                               {RESULTADO_INSPECCION[valor].etiqueta}
                             </label>
                           ))}
@@ -417,7 +449,7 @@ function FormularioInspeccion({
         enviando={enviando}
         alCancelar={alCancelar}
         texto="Registrar inspección"
-        disabled={!area || delArea.length === 0 || faltan > 0}
+        disabled={!area || delArea.length === 0 || faltan > 0 || sinResponsable > 0}
         nota={nota}
       />
     </form>
@@ -563,36 +595,78 @@ export function AgregarPunto({ areas }: { areas: AreaParaInspeccionar[] }) {
   )
 }
 
-/** Retirar un punto de la lista o restituirlo: un toque, y se puede deshacer. */
+/**
+ * Retirar un punto de la lista o restituirlo. Retirar pregunta antes: un toque
+ * de más entre diez botones iguales dejaba de pedir el punto en toda inspección
+ * nueva, y el aviso salía arriba, fuera de la vista. Restituir va de un toque.
+ */
 export function CambiarPunto({ id, activo, texto }: { id: string; activo: boolean; texto: string }) {
+  const [abierta, setAbierta] = useState(false)
   const [, setEntro] = useEstadoCompartido<string | null>(`${CLAVE_PUNTO}:aviso`, null)
-  const { alEnviar, enviando, error } = useEnvio(activarPuntoSsoma, (r) => setEntro(r.mensaje ?? null))
-  return (
-    <form
-      onSubmit={(e) => {
-        setEntro(null)
-        alEnviar(e)
-      }}
-      className="flex flex-col items-end gap-1"
-    >
+  const { alEnviar, enviando, error, limpiar } = useEnvio(activarPuntoSsoma, (r) => {
+    setAbierta(false)
+    setEntro(r.mensaje ?? null)
+  })
+  const campos = (
+    <>
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="activo" value={activo ? 'NO' : 'SI'} />
+    </>
+  )
+  if (!activo) {
+    return (
+      <form
+        onSubmit={(e) => {
+          setEntro(null)
+          alEnviar(e)
+        }}
+        className="flex flex-col items-end gap-1"
+      >
+        {campos}
+        <Boton type="submit" variante="contorno" tamano="sm" cargando={enviando} aria-label={`Restituir el punto «${texto}»`} data-cambiar-punto={id}>
+          {!enviando && <RotateCcw aria-hidden className="size-4" />}
+          Restituir
+        </Boton>
+        {error && (
+          <p role="alert" className="max-w-xs text-right text-xs text-peligro">
+            {error}
+          </p>
+        )}
+      </form>
+    )
+  }
+  return (
+    <>
       <Boton
-        type="submit"
+        type="button"
         variante="contorno"
         tamano="sm"
-        cargando={enviando}
-        aria-label={`${activo ? 'Retirar' : 'Restituir'} el punto «${texto}»`}
+        aria-label={`Retirar el punto «${texto}»`}
         data-cambiar-punto={id}
+        onClick={() => {
+          limpiar()
+          setEntro(null)
+          setAbierta(true)
+        }}
       >
-        {!enviando && (activo ? <X aria-hidden className="size-4" /> : <RotateCcw aria-hidden className="size-4" />)}
-        {activo ? 'Retirar' : 'Restituir'}
+        <X aria-hidden className="size-4" />
+        Retirar
       </Boton>
-      {error && (
-        <p role="alert" className="max-w-xs text-right text-xs text-peligro">
-          {error}
-        </p>
-      )}
-    </form>
+      <Ventana
+        abierta={abierta}
+        alCerrar={() => setAbierta(false)}
+        titulo="Retirar el punto de la lista"
+        descripcion="Deja de pedirse en las inspecciones nuevas. Las ya registradas no cambian, y lo puedes restituir cuando quieras."
+        ancho="md"
+      >
+        <form onSubmit={alEnviar} className="space-y-4">
+          {campos}
+          <p className="rounded-[var(--radius-base)] border border-borde px-3 py-2 text-sm text-texto" data-punto-por-retirar={id}>
+            {texto}
+          </p>
+          <PieDeVentana error={error} enviando={enviando} alCancelar={() => setAbierta(false)} texto="Retirar" variante="peligro" />
+        </form>
+      </Ventana>
+    </>
   )
 }

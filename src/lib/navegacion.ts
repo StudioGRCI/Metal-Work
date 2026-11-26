@@ -26,6 +26,7 @@ import {
   FileSpreadsheet,
   FileText,
   Hammer,
+  HardHat,
   HandCoins,
   Handshake,
   Hash,
@@ -679,7 +680,7 @@ export const NAVEGACION = [
       {
         titulo: 'Inspecciones de seguridad',
         ruta: '/ssoma/inspecciones',
-        icono: ListChecks,
+        icono: HardHat,
         permiso: ['ssoma.gestionar', 'ssoma.ver'],
         descripcion: 'Cuándo se inspeccionó cada área, qué se encontró y cómo van las acciones que salieron de ahí',
         disponible: true,

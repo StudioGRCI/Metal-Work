@@ -218,8 +218,8 @@ export const DIAS_PARA_REGISTRAR_CHARLA = 60
 export const TIPOS_INSPECCION_SSOMA = ['PLANEADA', 'NO_PLANEADA'] as const
 
 export const TIPO_INSPECCION_SSOMA: Record<string, Def> = {
-  PLANEADA: { etiqueta: 'Planeada', tono: 'info', descripcion: 'La del programa de inspecciones.' },
-  NO_PLANEADA: { etiqueta: 'No planeada', tono: 'acento', descripcion: 'Sin aviso, o por algo que pasó.' },
+  PLANEADA: { etiqueta: 'Planeada', tono: 'neutro', descripcion: 'La del programa de inspecciones.' },
+  NO_PLANEADA: { etiqueta: 'No planeada', tono: 'info', descripcion: 'Sin aviso, o por algo que pasó.' },
 }
 
 export const RESULTADOS_INSPECCION = ['CONFORME', 'NO_CONFORME', 'NO_APLICA'] as const
