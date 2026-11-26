@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Hace un video de punta a punta, en sus dos formatos:
+ * Hace un video de punta a punta. Los videos se entregan en horizontal; el
+ * vertical sigue en la plantilla y se hace solo si se pide por su nombre:
  *
  *   node scripts/hacer.mjs videos/como-pedir-un-rq [horizontal] [vertical] [--desde=voz|imagen|mezcla|revision]
  *
@@ -39,7 +40,9 @@ const argumentos = process.argv.slice(2)
 const desde = (argumentos.find((a) => a.startsWith('--desde='))?.split('=')[1] ?? 'voz').replace('revisión', 'revision')
 const posicionales = argumentos.filter((a) => !a.startsWith('--'))
 const carpeta = posicionales[0] ? resolve(posicionales[0]) : null
-const formatos = posicionales.slice(1).length > 0 ? posicionales.slice(1) : Object.keys(FORMATOS)
+/** Todos los videos son horizontales (lo pidió DKS el 26/11/2026). */
+const FORMATOS_QUE_SE_ENTREGAN = ['horizontal']
+const formatos = posicionales.slice(1).length > 0 ? posicionales.slice(1) : FORMATOS_QUE_SE_ENTREGAN
 if (!carpeta || !existsSync(join(carpeta, 'guion.json')) || !ETAPAS.includes(desde) || formatos.some((f) => !FORMATOS[f])) {
   console.error('Uso: node scripts/hacer.mjs videos/<video> [horizontal] [vertical] [--desde=voz|imagen|mezcla|revision]')
   process.exit(2)

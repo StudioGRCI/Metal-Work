@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import difflib
 import hashlib
+import io
 import json
 import os
 import re
@@ -209,13 +210,17 @@ def revisar(carpeta: Path, formato: str) -> bool:
     inf.paso(v['width'] == f['ancho'] and v['height'] == f['alto'], f"{v['width']}×{v['height']} (se pide {f['ancho']}×{f['alto']})")
     inf.paso(v['r_frame_rate'] == f'{fps}/1', f"{v['r_frame_rate'].split('/')[0]} cuadros por segundo")
     inf.paso(v['codec_name'] == 'h264' and a is not None and a['codec_name'] == 'aac', f"video {v['codec_name']} y audio {a['codec_name'] if a else 'ninguno'} (se pide H.264 + AAC)")
+    # Una pista que arranca tarde corre la voz contra la imagen en cualquier reproductor.
+    arranques = {s['codec_type']: float(s.get('start_time') or 0) for s in sonda['streams']}
+    inf.paso(all(abs(t) <= 0.05 for t in arranques.values()), 'el video y el audio arrancan juntos, en cero' if all(abs(t) <= 0.05 for t in arranques.values()) else f"las pistas no arrancan juntas: {', '.join(f'{c} en {t:.2f} s' for c, t in arranques.items())}")
     inf.paso(f['duracion']['minimo'] <= duracion <= f['duracion']['maximo'], f"dura {duracion:.1f} s (el formato pide de {f['duracion']['minimo']} a {f['duracion']['maximo']} s)")
 
     # ---------------------------------------------------- 2. voz contra guion
     inf.seccion('2. La voz del video final contra el guion (Whisper)')
-    crudo = correr('ffmpeg', '-v', 'error', '-i', str(video), '-f', 'f32le', '-ac', '1', '-ar', '16000', '-', binario=True)
+    # El audio se mide donde lo pone el reproductor: si la pista arranca tarde, ese silencio cuenta.
+    crudo = correr('ffmpeg', '-v', 'error', '-i', str(video), '-af', 'aresample=async=1:first_pts=0', '-f', 'f32le', '-ac', '1', '-ar', '16000', '-', binario=True)
     audio16 = np.frombuffer(crudo, dtype=np.float32)
-    crudo = correr('ffmpeg', '-v', 'error', '-i', str(video), '-f', 'f32le', '-ac', '1', '-ar', str(FRECUENCIA), '-', binario=True)
+    crudo = correr('ffmpeg', '-v', 'error', '-i', str(video), '-af', 'aresample=async=1:first_pts=0', '-f', 'f32le', '-ac', '1', '-ar', str(FRECUENCIA), '-', binario=True)
     audio = np.frombuffer(crudo, dtype=np.float32)
     oidas = oir(audio16, guion.get('pista_whisper', ''))
     frases = [t for e in guion['escenas'] for t in (texto_del_formato(x, formato) for x in e.get('frases', [])) if t]
@@ -318,6 +323,25 @@ def revisar(carpeta: Path, formato: str) -> bool:
         textos = list(grupo.map(leer_texto, cuadros))
     en_cuadros = []
     dudosos = []
+
+    def se_mueve(i: int) -> bool:
+        return any(0 <= j < total - 1 and float(np.mean(np.abs(chicos[j + 1] - chicos[j]))) >= 0.05 for j in (i - 1, i))
+
+    def lecturas_del_quieto(i: int, paso: int) -> set:
+        """Lo que se lee, a los tres tamaños, en el cuadro quieto más cercano a `i` hacia un lado; si en un segundo no hay ninguno, en el de 0,6 s (un fundido dura 0,5 s como mucho)."""
+        j = next((k for k in range(i + paso, i + paso * (fps + 1), paso) if 0 <= k < total and not se_mueve(k)), None)
+        if j is None:
+            j = i + paso * round(0.6 * fps)
+        if not 0 <= j < total:
+            return set()
+        png = correr('ffmpeg', '-v', 'error', '-ss', f'{j / fps:.4f}', '-i', str(video), '-frames:v', '1', '-f', 'image2pipe', '-c:v', 'png', '-', binario=True)
+        gris = Image.open(io.BytesIO(png)).convert('L')
+        leidos = set()
+        for veces in (1, 2, 3):
+            imagen = gris if veces == 1 else gris.resize((gris.width * veces, gris.height * veces), Image.LANCZOS)
+            leidos |= {mismo_dato(h) for h in datos_en(leer_texto(imagen), inventados)}
+        return leidos
+
     for archivo, numero, t in zip(cuadros, elegidos, textos):
         hallados = datos_en(t, inventados, vistos)
         if not hallados:
@@ -342,6 +366,13 @@ def revisar(carpeta: Path, formato: str) -> bool:
             and not es_texto_pegado(h)
             and any(mismo_dato(h) in lectura for lectura in otras)
         ]
+        # A medio fundido hay dos pantallas encimadas y de dos letras cruzadas sale un «08.24» que
+        # se repite al agrandar. Un número suelto (sin moneda) leído en un cuadro en movimiento
+        # cuenta solo si sigue ahí cuando la imagen se detiene, antes o después.
+        sueltos = [h for h in confirmados if h[0] == 'DNI' or (h[0] == 'monto' and not moneda_del_monto(h[1]))]
+        if sueltos and se_mueve(numero):
+            quietos = lecturas_del_quieto(numero, -1) | lecturas_del_quieto(numero, 1)
+            confirmados = [h for h in confirmados if h not in sueltos or mismo_dato(h) in quietos]
         if confirmados:
             en_cuadros.append((numero, confirmados))
             archivo.rename(trabajo / f'DATO-{numero / fps:07.2f}s.png')
@@ -358,7 +389,7 @@ def revisar(carpeta: Path, formato: str) -> bool:
     for numero, hallados in en_cuadros[:20]:
         inf.nota(f"{numero / fps:.2f} s: {', '.join(f'{n} «{v}»' for n, v in hallados)}")
     for numero, hallados in dudosos[:20]:
-        inf.nota(f"lectura dudosa en {numero / fps:.2f} s ({', '.join(f'{n} «{v}»' for n, v in hallados)}): trozo de un monto inventado, texto de las capturas leído sin su guion o su espacio, o lectura que no se repite al leer el cuadro otra vez al doble y al triple de tamaño; queda en generado/{formato}/revision/ para mirarlo")
+        inf.nota(f"lectura dudosa en {numero / fps:.2f} s ({', '.join(f'{n} «{v}»' for n, v in hallados)}): trozo de un monto inventado, texto de las capturas leído sin su guion o su espacio, número suelto que solo se lee a medio fundido, o lectura que no se repite al leer el cuadro otra vez al doble y al triple de tamaño; queda en generado/{formato}/revision/ para mirarlo")
 
     if inventados:
         dicho = lambda d: f'{d[0]} {d[1]:,.2f}'  # noqa: E731
@@ -378,8 +409,6 @@ def revisar(carpeta: Path, formato: str) -> bool:
     def cuadro(numero: int) -> Image.Image:
         numero = max(0, min(total - 1, numero))
         png = correr('ffmpeg', '-v', 'error', '-ss', f'{numero / fps:.4f}', '-i', str(video), '-frames:v', '1', '-f', 'image2pipe', '-c:v', 'png', '-', binario=True)
-        import io
-
         return Image.open(io.BytesIO(png)).convert('L').crop(caja)
 
     def se_lee(numero: int, texto: str) -> float:

@@ -9,7 +9,11 @@ Es un proyecto aparte de la aplicación, con sus propias dependencias
 
 ## El formato
 
-| | Horizontal | Vertical (WhatsApp) |
+**Todos los videos se entregan en horizontal** (lo pidió DKS el 26/11/2026).
+El vertical sigue en la plantilla, apagado: `hacer.mjs` no lo hace si no se le
+pide por su nombre.
+
+| | Horizontal | Vertical (no se entrega) |
 | --- | --- | --- |
 | Tamaño | 1920×1080, 30 fps | 1080×1920 (9:16), 30 fps |
 | Duración | de 1 a 2 min | de 30 a 60 s |
@@ -76,12 +80,11 @@ la aplicación en el puerto 3111:
 
 ```bash
 BANCO_CLAVE='la-del-banco' node herramientas/videos/videos/como-subir-una-cotizacion-con-varias-unidades/capturar.mjs horizontal
-BANCO_CLAVE='la-del-banco' node herramientas/videos/videos/como-subir-una-cotizacion-con-varias-unidades/capturar.mjs vertical
 ```
 
-Cada formato hace la tarea de verdad y deja su documento en el banco: se rehace
-el banco entre uno y otro (`preparar.sh`) para que los dos salgan con el mismo
-número.
+Cada corrida hace la tarea de verdad y deja su documento en el banco: se rehace
+el banco (`preparar.sh`) antes de tomar las capturas otra vez, para que salgan
+con el mismo número.
 
 Cada video trae su `capturar.mjs`: entra con la cuenta `*.local@metalwork.test`
 del puesto, hace la tarea de verdad en el banco y en cada paso guarda la
@@ -114,13 +117,14 @@ node scripts/hacer.mjs videos/como-subir-una-cotizacion-con-varias-unidades
 | mezcla | ffmpeg une imagen, voz y música | `salida/<video>-<formato>.mp4` |
 | revisión | la revisión automática (abajo) | `salida/revision-<formato>.md` |
 
-`--desde=imagen` (o `mezcla`, o `revision`) retoma sin repetir lo anterior, y
-`horizontal` o `vertical` hace uno solo. Si la voz se sale de la duración del
+`--desde=imagen` (o `mezcla`, o `revision`) retoma sin repetir lo anterior. Sin
+más, hace el horizontal; con `vertical` detrás de la carpeta haría ese (antes,
+sus capturas con `capturar.mjs vertical`). Si la voz se sale de la duración del
 formato o el gancho no cabe en 5 s, se detiene ahí: se corrige el guion.
 
 **4. Verlo completo** y corregir. La revisión automática no reemplaza mirarlo.
 
-**5. Entregar** los dos MP4 y el proyecto editable:
+**5. Entregar** el MP4 y el proyecto editable:
 
 ```bash
 node scripts/empaquetar.mjs videos/como-subir-una-cotizacion-con-varias-unidades   # salida/<video>-proyecto-editable.tar.gz
@@ -158,8 +162,10 @@ pantallas encimadas, y el OCR se equivoca («90012026» por «9001-2026»,
 «135,900.00» por «135,000.00»): cada cuadro marcado se lee dos veces más, al
 doble y al triple de tamaño. Lo que sale igual en otra lectura es un dato y
 queda como `DATO-…png` en `generado/<formato>/revision/`; lo que no se repite,
-el trozo de un monto inventado y lo que las capturas dicen con un guion o un
-espacio que el OCR se comió («1. 10 KG» leído «1.10»), queda como `dudoso-…png`, anotado y contado en
+el trozo de un monto inventado, lo que las capturas dicen con un guion o un
+espacio que el OCR se comió («1. 10 KG» leído «1.10») y el número suelto, sin
+moneda, que solo se lee a medio fundido y ya no está cuando la imagen se
+detiene, queda como `dudoso-…png`, anotado y contado en
 el veredicto. Unos y otros se miran: nada se da por bueno sin mirarlo.
 
 La revisión se probó en rojo con tres videos estropeados a propósito —un RUC y
