@@ -596,6 +596,25 @@ begin
   set local role authenticated;
   perform public.ssoma_anular_accion(current_setting('prueba.a2')::uuid, 'La inspección se va a anular entera');
   perform public.ssoma_anular_accion(current_setting('prueba.a3')::uuid, 'La inspección se va a anular entera');
+  reset role;
+  -- A quien solo le quedan acciones anuladas en la inspección, ya no se le abre: ni ella ni ningún hallazgo.
+  perform test.como_usuario(current_setting('prueba.almacen')::uuid);
+  set local role authenticated;
+  perform test.afirmar(
+    (select count(*) from public.ssoma_inspecciones_a_la_vista(v_i1)) = 0
+    and (select count(*) from public.ssoma_inspecciones_a_la_vista(null)) = 0
+    and (select count(*) from public.ssoma_respuestas_de_inspeccion(v_i1)) = 0,
+    'con todas sus acciones anuladas, Almacén ya no ve la inspección ni sus hallazgos');
+  reset role;
+  perform test.como_usuario(current_setting('prueba.sup')::uuid);
+  set local role authenticated;
+  perform test.afirmar(
+    (select count(*) from public.ssoma_inspecciones_a_la_vista(v_i1)) = 0
+    and (select count(*) from public.ssoma_respuestas_de_inspeccion(v_i1)) = 0,
+    'y quien tenía la otra, tampoco');
+  reset role;
+  perform test.como_usuario(current_setting('prueba.ssoma')::uuid);
+  set local role authenticated;
   perform public.ssoma_anular_inspeccion(v_i1, 'Se inspeccionó con la lista vieja');
   perform test.afirmar(
     (select anulado_en is not null and motivo_anulacion = 'Se inspeccionó con la lista vieja' and anulo = 'Sara Seguridad'

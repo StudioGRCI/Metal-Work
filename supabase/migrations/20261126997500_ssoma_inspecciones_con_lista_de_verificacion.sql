@@ -20,8 +20,8 @@
 --   * NO SE BORRA. Una inspección mal registrada se anula con su motivo; con
 --     acciones vigentes no se anula.
 --   * QUIÉN VE: SSOMA registra (`ssoma.gestionar`); SSOMA y Gerencia consultan
---     (`ssoma.ver`). El responsable de una acción ve la inspección solo con el
---     hallazgo que le toca. Nadie más.
+--     (`ssoma.ver`). El responsable de una acción vigente ve la inspección
+--     solo con el hallazgo que le toca. Nadie más.
 --
 -- Sin DROP: el conector de producción no deja pasar ninguno.
 -- =============================================================================
@@ -283,6 +283,11 @@ begin
     raise exception 'La lista de verificación la lleva SSOMA.' using errcode = 'insufficient_privilege';
   end if;
   if p_id is null then raise exception 'Vuelve a abrir el formulario del punto.' using errcode = 'check_violation'; end if;
+  -- De a uno por texto, y antes de mirar si el envío ya entró: el reintento que llega con el primero todavía en
+  -- camino espera aquí y después lo encuentra. Y el mismo punto enviado a la vez para todas las áreas y para una
+  -- sola ya no pasa las dos comprobaciones (ninguna veía la fila de la otra, y el índice único mira cada lista
+  -- por separado): el área lo habría pedido dos veces.
+  perform pg_advisory_xact_lock(hashtext('ssoma_lista_puntos:' || lower(v_texto)));
   select * into v_actual from public.ssoma_lista_puntos where id = p_id;
   if found then
     if v_actual.creado_por = v_yo and v_actual.area_id is not distinct from p_area and v_actual.texto = v_texto then return p_id; end if;
@@ -306,7 +311,11 @@ begin
             (select coalesce(max(p.orden), 0) + 1 from public.ssoma_lista_puntos p where p.area_id is not distinct from p_area),
             v_yo);
   exception when unique_violation then
-    -- Dos envíos del mismo punto a la vez: la comprobación de arriba no ve la fila del otro, que todavía no terminó.
+    -- Por si otro camino lo metió sin pasar por el candado. El mismo envío repetido es ok; otro, se dice.
+    if exists (select 1 from public.ssoma_lista_puntos p
+                where p.id = p_id and p.creado_por = v_yo and p.area_id is not distinct from p_area and p.texto = v_texto) then
+      return p_id;
+    end if;
     raise exception 'Ese punto ya está en la lista: se acaba de agregar.' using errcode = 'check_violation';
   end;
   return p_id;
@@ -335,6 +344,8 @@ begin
   -- Lo mismo que ya tiene (se perdió la respuesta): nada que cambiar.
   if v_punto.activo = p_activo then return p_id; end if;
   if p_activo then
+    -- El mismo candado que al agregar: restituir y agregar el mismo texto a la vez no dejan dos.
+    perform pg_advisory_xact_lock(hashtext('ssoma_lista_puntos:' || lower(v_punto.texto)));
     v_donde := public.ssoma_punto_repetido(v_punto.area_id, v_punto.texto, p_id);
     if v_donde is not null then
       raise exception 'Ese punto ya está en la lista de %: no hace falta restituirlo.', v_donde using errcode = 'check_violation';
@@ -948,9 +959,9 @@ comment on function public.ssoma_acciones_visibles(uuid, uuid) is
   'La de la entrega 15.2: solo las acciones de un reporte. La aplicación lee ssoma_acciones_a_la_vista (15.4), que trae también las de inspección; esta queda para las pestañas abiertas antes de ese despliegue.';
 
 -- Las inspecciones que ve quien pregunta (una, o todas). SSOMA y Gerencia, todas
--- y enteras (alcance TODOS); quien tiene a cargo una acción de la inspección, su
--- área, su fecha y nada más (alcance RESPONSABLE): los hallazgos que le tocan
--- los da `ssoma_respuestas_de_inspeccion`.
+-- y enteras (alcance TODOS); quien tiene a cargo una acción vigente de la
+-- inspección, su área, su fecha y nada más (alcance RESPONSABLE): los hallazgos
+-- que le tocan los da `ssoma_respuestas_de_inspeccion`.
 create or replace function public.ssoma_inspecciones_a_la_vista(p_id uuid)
 returns table (
   id uuid, area_id uuid, area text, fecha date, tipo text, observacion text, registro text, creado_en timestamptz,
@@ -1007,7 +1018,7 @@ revoke all on function public.ssoma_inspecciones_a_la_vista(uuid) from public, a
 grant execute on function public.ssoma_inspecciones_a_la_vista(uuid) to authenticated;
 
 -- Los puntos de una inspección con lo que se marcó. SSOMA y Gerencia, todos; el
--- responsable de una acción, solo el hallazgo que esa acción corrige.
+-- responsable de una acción vigente, solo el hallazgo que esa acción corrige.
 create or replace function public.ssoma_respuestas_de_inspeccion(p_inspeccion uuid)
 returns table (id uuid, orden integer, texto text, resultado text, hallazgo text)
 language sql stable security definer set search_path to 'public' rows 30 as $$

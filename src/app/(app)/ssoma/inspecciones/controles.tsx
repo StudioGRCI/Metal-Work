@@ -127,6 +127,7 @@ export function NuevaInspeccion({
             alEnviar={alEnviar}
             enviando={enviando}
             error={error}
+            alLimpiar={limpiar}
             alCancelar={() => setAbierta(false)}
           />
         )}
@@ -153,7 +154,7 @@ const COLOR_RESULTADO: Record<ResultadoInspeccion, string> = {
 }
 
 /** Lo que se marca de un punto; del no conforme, lo que se encontró y su acción. */
-type Marca = { resultado: ResultadoInspeccion | ''; hallazgo: string; que: string; responsable: string; limite: string }
+type Marca = { areaDelPunto: string | null; texto: string; resultado: ResultadoInspeccion | ''; hallazgo: string; que: string; responsable: string; limite: string }
 
 /** Como viaja cada punto a `ssoma_registrar_inspeccion`. */
 type Respuesta = {
@@ -178,6 +179,7 @@ function FormularioInspeccion({
   alEnviar,
   enviando,
   error,
+  alLimpiar,
   alCancelar,
 }: {
   id: string
@@ -188,6 +190,8 @@ function FormularioInspeccion({
   alEnviar: (evento: FormEvent<HTMLFormElement>) => void
   enviando: boolean
   error: string | null
+  /** Quita el rechazo a la vista: el de «la lista cambió» deja de valer en cuanto se marca lo que faltaba. */
+  alLimpiar: () => void
   alCancelar: () => void
 }) {
   const [area, setArea] = useState('')
@@ -215,8 +219,18 @@ function FormularioInspeccion({
   )
 
   function marcar(punto: string, cambio: Partial<Marca>) {
+    // «…marca lo que falte» seguía en rojo con todo ya marcado, hasta el envío siguiente.
+    if (error && LA_LISTA_CAMBIO.test(error)) alLimpiar()
     setMarcas((antes) => {
-      const actual = antes[punto] ?? { resultado: '', hallazgo: '', que: '', responsable: propuesto, limite: sumarDias(hoy, 7) }
+      const actual = antes[punto] ?? {
+        areaDelPunto: puntos.find((p) => p.id === punto)?.area_id ?? null,
+        texto: puntos.find((p) => p.id === punto)?.texto ?? '',
+        resultado: '',
+        hallazgo: '',
+        que: '',
+        responsable: propuesto,
+        limite: sumarDias(hoy, 7),
+      }
       return { ...antes, [punto]: { ...actual, ...cambio } }
     })
   }
@@ -233,6 +247,14 @@ function FormularioInspeccion({
       ? [{ punto: p.id, resultado: m.resultado, hallazgo: m.hallazgo, accion: { que: m.que, responsable: m.responsable, fecha_limite: m.limite } }]
       : [{ punto: p.id, resultado: m.resultado }]
   })
+  // La lista se puso al día con la ventana abierta y un punto marcado «No conforme» ya no está: lo anotado de él
+  // no viaja, y se dice, para que el hallazgo no se pierda sin que nadie lo note.
+  const retirados = Object.entries(marcas).flatMap(([punto, m]) =>
+    // Los de todas las áreas valen para la que se elija; los propios, solo para la suya.
+    (m.areaDelPunto === null || m.areaDelPunto === area) && m.resultado === 'NO_CONFORME' && !puntos.some((p) => p.id === punto)
+      ? [{ punto, texto: m.texto }]
+      : [],
+  )
   // El buscador de responsables no es un campo del navegador: lo que falta se dice aquí, antes de enviar.
   const sinResponsable = delArea.findIndex((p) => marcas[p.id]?.resultado === 'NO_CONFORME' && !marcas[p.id]?.responsable) + 1
   // Con una lista larga en el teléfono, el pie queda lejos del punto que falta: la nota lleva a él.
@@ -252,11 +274,13 @@ function FormularioInspeccion({
   )
   const nota = !area
     ? 'Elige el área para ver su lista.'
-    : faltan > 0
+    : retirados.length > 0
+      ? 'Se retiró de la lista un punto que habías marcado como no conforme: mira el aviso sobre la lista.'
+      : faltan > 0
       ? irA(primeroSinMarcar, `${faltan === 1 ? 'Falta 1 punto' : `Faltan ${faltan} puntos`} por marcar: ir al ${primeroSinMarcar}.`)
       : sinResponsable > 0
         ? irA(sinResponsable, `Falta el responsable de la acción del punto ${sinResponsable}: ir a él.`)
-        : undefined
+        : 'Una vez registrada no se edita: si quedó mal, se anula con su motivo.'
 
   return (
     <form onSubmit={alEnviar} className="space-y-4">
@@ -312,7 +336,7 @@ function FormularioInspeccion({
         </fieldset>
 
         {area && (
-          <section aria-labelledby="inspeccion-lista-titulo" className="space-y-2" data-lista-de-inspeccion>
+          <section id="inspeccion-lista" tabIndex={-1} aria-labelledby="inspeccion-lista-titulo" className="space-y-2 outline-none" data-lista-de-inspeccion>
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <p id="inspeccion-lista-titulo" className="text-xs font-medium text-texto-suave">
                 Lista de verificación<span className="ml-0.5 text-peligro">*</span>
@@ -322,6 +346,29 @@ function FormularioInspeccion({
                 {hallazgos > 0 ? ` · ${hallazgos} no ${hallazgos === 1 ? 'conforme' : 'conformes'}` : ''}
               </p>
             </div>
+            {retirados.length > 0 && (
+              <div role="status" className="rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-puntos-retirados-al-llenar>
+                {retirados.map((r) => (
+                  <p key={r.punto}>
+                    El punto «{r.texto}» se retiró de la lista mientras llenabas la inspección: lo que anotaste de él como no conforme no va en esta
+                    inspección. Si todavía hay que corregirlo, repórtalo en «Reportes de seguridad».
+                  </p>
+                ))}
+                <button
+                  type="button"
+                  className="mt-1 min-h-11 font-medium text-acento underline underline-offset-2 sm:min-h-0"
+                  data-entendido-retirados
+                  onClick={() => {
+                    alLimpiar()
+                    // El botón se va con el aviso: el cursor se queda en la lista, no cae a la página.
+                    document.getElementById('inspeccion-lista')?.focus({ preventScroll: true })
+                    setMarcas((antes) => Object.fromEntries(Object.entries(antes).filter(([punto]) => !retirados.some((r) => r.punto === punto))))
+                  }}
+                >
+                  Entendido, seguir sin {retirados.length === 1 ? 'ese punto' : 'esos puntos'}
+                </button>
+              </div>
+            )}
             {delArea.length === 0 ? (
               <p className="rounded-[var(--radius-base)] border border-borde px-3 py-2 text-sm text-texto-suave">
                 Esta área no tiene puntos en su lista de verificación: agrégalos en «Lista de verificación» antes de inspeccionar.
@@ -449,7 +496,7 @@ function FormularioInspeccion({
         enviando={enviando}
         alCancelar={alCancelar}
         texto="Registrar inspección"
-        disabled={!area || delArea.length === 0 || faltan > 0 || sinResponsable > 0}
+        disabled={!area || delArea.length === 0 || retirados.length > 0 || faltan > 0 || sinResponsable > 0}
         nota={nota}
       />
     </form>

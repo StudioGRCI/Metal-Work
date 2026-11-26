@@ -394,6 +394,57 @@ let respuestas = 0
     [OBS_ACB],
   )
   comprobar(deAcb?.respuestas === delAreaAhora.length, `[SSOMA 1440] marcado el que faltaba, entra con sus ${deAcb?.respuestas} puntos`)
+
+  // --- Se retira el punto que ya estaba marcado «No conforme»: lo anotado no se pierde sin que la persona lo vea.
+  await ir(pagina, `${BASE}/ssoma/inspecciones`)
+  await pagina.locator('[data-nueva-inspeccion]').click()
+  ventana = pagina.getByRole('dialog')
+  await ventana.waitFor()
+  await quieta(pagina)
+  await ventana.locator('#inspeccion-area').selectOption(acb.id)
+  const elQueSeVa = delAreaAhora.at(-1)
+  for (const p of delAreaAhora.slice(0, -1)) await marcar(ventana, p.id, 'Conforme')
+  await marcar(ventana, elQueSeVa.id, 'No conforme')
+  const HALLAZGO_QUE_SE_VA = `Filtros de la cabina saturados (${sello}).`
+  await ventana.locator(`#inspeccion-hallazgo-${elQueSeVa.id}`).fill(HALLAZGO_QUE_SE_VA)
+  await ventana.locator(`#inspeccion-que-${elQueSeVa.id}`).fill(`Cambiar los filtros de la cabina (${sello}).`)
+  await elegirCuenta(pagina, ventana, `#inspeccion-responsable-${elQueSeVa.id}`, 'Almacén Banco')
+  const OBS_RETIRO = `Se retiró un punto mientras se llenaba (${sello}).`
+  await ventana.locator('#inspeccion-observacion').fill(OBS_RETIRO)
+  {
+    const otra = await contexto.newPage()
+    await ir(otra, `${BASE}/ssoma/inspecciones?vista=lista`)
+    await otra.locator(`[data-cambiar-punto="${elQueSeVa.id}"]`).click()
+    const v = otra.getByRole('dialog')
+    await v.waitFor()
+    await v.getByRole('button', { name: 'Retirar', exact: true }).click()
+    await hasta(async () => (await consulta(`select activo from public.ssoma_lista_puntos where id = $1`, [elQueSeVa.id]))[0]?.activo, (a) => a === false, 20000)
+    await otra.close()
+  }
+  const registrarRetiro = ventana.getByRole('button', { name: 'Registrar inspección' })
+  await registrarRetiro.click()
+  await hasta(() => ventana.locator('[data-puntos-retirados-al-llenar]').count(), (n) => n === 1, 20000)
+  const avisoRetiro = limpio(await ventana.locator('[data-puntos-retirados-al-llenar]').innerText())
+  comprobar(
+    avisoRetiro.includes(elQueSeVa.texto) && /no va en esta inspección/.test(avisoRetiro) && (await registrarRetiro.isDisabled())
+      && (await consulta(`select 1 from public.ssoma_inspecciones where observacion = $1`, [OBS_RETIRO])).length === 0,
+    '[SSOMA 1440] si se retira el punto marcado «No conforme», la ventana lo nombra y no deja registrar sin verlo',
+  )
+  await ventana.locator('[data-entendido-retirados]').click()
+  await hasta(() => ventana.locator('[data-puntos-retirados-al-llenar]').count(), (n) => n === 0, 10000)
+  comprobar(
+    (await registrarRetiro.isEnabled()) && !/cambió mientras llenabas/.test(limpio(await ventana.innerText())) && (await pagina.evaluate(() => document.activeElement?.id === 'inspeccion-lista')),
+    '[SSOMA 1440] con «Entendido» se puede registrar, el rechazo ya no está a la vista y el cursor queda en la lista',
+  )
+  await registrarRetiro.click()
+  await hasta(async () => (await consulta(`select 1 from public.ssoma_inspecciones where observacion = $1`, [OBS_RETIRO])).length, (n) => n === 1, 20000)
+  const [deRetiro] = await consulta(
+    `select (select count(*)::int from public.ssoma_inspeccion_respuestas r where r.inspeccion_id = i.id) as respuestas,
+            (select count(*)::int from public.ssoma_inspeccion_respuestas r where r.inspeccion_id = i.id and r.resultado = 'NO_CONFORME') as hallazgos
+       from public.ssoma_inspecciones i where i.observacion = $1`,
+    [OBS_RETIRO],
+  )
+  comprobar(deRetiro?.respuestas === delAreaAhora.length - 1 && deRetiro?.hallazgos === 0, `[SSOMA 1440] y entra con los ${deRetiro?.respuestas} puntos que quedan`)
   comprobar(errores.length === 0, `[SSOMA 1440] sin errores de consola${errores.length ? `: ${errores[0]}` : ''}`)
   await contexto.close()
 }

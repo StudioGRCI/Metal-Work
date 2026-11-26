@@ -21,8 +21,8 @@ export const metadata = { title: 'Seguridad: inspección' }
 /**
  * Una inspección: el área, la fecha, cada punto de la lista con su resultado y,
  * de cada punto no conforme, lo que se encontró y la acción que lo corrige.
- * SSOMA y Gerencia la ven entera; quien tiene a cargo una de sus acciones ve
- * solo el hallazgo que le toca. Lo que cada quien ve lo decide la base.
+ * SSOMA y Gerencia la ven entera; quien tiene a cargo una de sus acciones
+ * vigentes ve solo el hallazgo que le toca. Lo que cada quien ve lo decide la base.
  */
 export default async function PaginaInspeccionSsoma({ params }: PageProps<'/ssoma/inspecciones/[id]'>) {
   // Sin permiso de módulo a propósito: llega también el responsable de una acción, de cualquier puesto.
