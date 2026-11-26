@@ -9,11 +9,11 @@ import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
-import { codigosConTiempos, type CodigoConTiempos } from '@/lib/datos/tiempos-entrega'
+import { codigosConTiempos, ultimaRevisionDeAvisos, type CodigoConTiempos } from '@/lib/datos/tiempos-entrega'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { llaveParecido } from '@/lib/dominio/codigos-internos'
 import { FILTROS_DE_TIEMPOS, RUTA_TIEMPOS, SEMAFORO_DE_CODIGO, enlaceDeTiempos, plazoEnPalabras } from '@/lib/dominio/tiempos-entrega'
-import { fecha, hoyLima } from '@/lib/format'
+import { fecha, fechaHora, hoyLima, sumarDias } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
 
 export const metadata = { title: 'Tiempos de entrega' }
@@ -35,8 +35,10 @@ export default async function PaginaTiemposDeEntrega({ searchParams }: PageProps
   const filtro = FILTROS_DE_TIEMPOS.find((f) => f.valor === params.ver) ?? null
   const areaPedida = typeof params.area === 'string' ? params.area : ''
 
-  const todos = await codigosConTiempos()
+  const [todos, revision] = await Promise.all([codigosConTiempos(), ultimaRevisionDeAvisos()])
   const hoy = hoyLima()
+  // Corre de lunes a sábado: más de 3 días sin correr es que se cayó.
+  const revisionAtrasada = !revision || sumarDias(revision.fecha, 3) < hoy
 
   const llave = llaveParecido(q)
   const palabras = palabrasDeBusqueda(q)
@@ -82,6 +84,13 @@ export default async function PaginaTiemposDeEntrega({ searchParams }: PageProps
           </EnlaceBoton>
         }
       />
+
+      <p className={`mb-3 text-sm ${revisionAtrasada ? 'text-peligro' : 'text-texto-suave'}`} data-revision-avisos={revision?.fecha ?? ''}>
+        {revision
+          ? // La hora ya termina en «a. m.» o «p. m.»: sin otro punto.
+            `Avisos automáticos: la última revisión fue el ${fechaHora(revision.hora)}${revisionAtrasada ? ' No corre desde entonces: los avisos no están saliendo.' : ''}`
+          : 'Avisos automáticos: la revisión diaria todavía no corrió. Los avisos salen desde su primera corrida, a las 7:00 a. m.'}
+      </p>
 
       {todos.length > 0 && (
         // En el teléfono no van: repiten el filtro de abajo y dejaban la lista fuera de la vista.

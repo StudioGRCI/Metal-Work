@@ -98,6 +98,11 @@ const deAvi = async (panel) => (await panel.innerText()).replace(/\s+/g, ' ')
 {
   const { pagina, contexto, errores } = await entrar('rrhh.local@metalwork.test')
   await pagina.goto(`${BASE}/rrhh/tiempos-de-entrega`, { waitUntil: 'networkidle' })
+  const revision = pagina.locator('[data-revision-avisos]')
+  comprobar(
+    (await revision.getAttribute('data-revision-avisos')) !== '' && /la última revisión fue el/.test(await revision.innerText()),
+    'el tablero dice cuándo fue la última revisión de avisos',
+  )
   const panel = await abrirCampana(pagina)
   const t = await deAvi(panel)
   comprobar(t.includes('Vencida: AVI_UNO · Armado de chasis') && t.includes('Por vencer: AVI_UNO · Soldadura de paneles'), 'RR. HH. ve en la campana la vencida y la por vencer')

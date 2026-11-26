@@ -263,3 +263,21 @@ export async function personasParaAsignar(): Promise<{ id: string; nombre: strin
     return { id: t.id, nombre: `${t.apellidos}, ${t.nombres}`, detalle: [area?.nombre, t.cargo].filter(Boolean).join(' · ') || null }
   })
 }
+
+/**
+ * La última revisión diaria de avisos (migración 20261126310000): el día que
+ * corrió y a qué hora terminó. Vacía si todavía no corrió nunca. Así el
+ * tablero no promete avisos que no salen.
+ */
+export async function ultimaRevisionDeAvisos(): Promise<{ fecha: string; hora: string } | null> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('tiempos_entrega_avisos')
+    .select('fecha, actualizado_en')
+    .eq('tipo', 'REVISION')
+    .order('fecha', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw new Error(`No se pudo leer la última revisión de avisos: ${error.message}`)
+  return data ? { fecha: data.fecha, hora: data.actualizado_en } : null
+}

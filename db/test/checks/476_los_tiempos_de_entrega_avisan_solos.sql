@@ -35,7 +35,24 @@ begin
     ('47600000-0000-4000-8000-0000000000e3', 'CHK476_A', 3, 'Con holgura', (select id from public.areas where codigo = 'PRD'),
      public.sumar_dias_habiles(current_date, 10), null, null, current_setting('prueba.diseno_dis')::uuid),
     ('47600000-0000-4000-8000-0000000000e4', 'CHK476_A', 4, 'Terminada tarde', (select id from public.areas where codigo = 'PRD'),
-     current_date - 5, current_date - 9, current_date - 2, current_setting('prueba.diseno_dis')::uuid);
+     current_date - 5, current_date - 9, current_date - 2, current_setting('prueba.diseno_dis')::uuid),
+    -- Una etapa de un lote de prueba: no avisa.
+    ('47600000-0000-4000-8000-0000000000e6', 'CHK476_P', 1, 'De la prueba', (select id from public.areas where codigo = 'PRD'),
+     current_date - 1, current_date - 2, null, current_setting('prueba.diseno_dis')::uuid);
+  -- Un mantenimiento sin unidad va por el número de su OT, con espacio. Sin
+  -- disparadores: la OT de verdad no hace falta para probar la ruta.
+  perform set_config('session_replication_role', 'replica', true);
+  insert into public.codigo_etapas (id, codigo_interno, orden, nombre, area_id, fin_plan, inicio_real, fin_real, creado_por) values
+    ('47600000-0000-4000-8000-0000000000e5', 'OT 9476-2026', 1, 'Del mantenimiento', (select id from public.areas where codigo = 'MTZ'),
+     current_date - 1, current_date - 2, null, current_setting('prueba.diseno_dis')::uuid);
+  perform set_config('session_replication_role', 'origin', true);
+  -- Una subetapa vencida debajo de la con holgura: se nombra con su etapa.
+  insert into public.codigo_etapas (id, codigo_interno, orden, nombre, area_id, fin_plan, padre_id, de_area, creado_por) values
+    ('47600000-0000-4000-8000-0000000000e7', 'CHK476_A', 5, 'Fondo', (select id from public.areas where codigo = 'PRD'),
+     current_date - 1, '47600000-0000-4000-8000-0000000000e3', true, current_setting('prueba.diseno_dis')::uuid);
+  insert into public.pruebas_lotes (id, motivo) values ('47600000-0000-4000-8000-00000000a0a0', 'Check 476');
+  insert into public.pruebas_filas (lote_id, tabla, fila_id)
+  values ('47600000-0000-4000-8000-00000000a0a0', 'codigo_etapas', '47600000-0000-4000-8000-0000000000e6');
 
   insert into public.etapa_responsables (etapa_id, trabajador_id, asignado_por)
   values ('47600000-0000-4000-8000-0000000000e2', '47600000-0000-4000-8000-000000000001', current_setting('prueba.recursos_humanos_rrh')::uuid);
@@ -79,20 +96,35 @@ reset role;
 select test.afirmar(
   (select string_agg(r.tipo || '=' || r.avisos, ',' order by r.tipo)
      from public.revisar_tiempos_de_entrega(current_setting('prueba.hoy')::date) r
-    where r.tipo in ('POR_VENCER', 'VENCIDA', 'RECORDATORIO')) = 'POR_VENCER=1,RECORDATORIO=0,VENCIDA=1',
-  'avisa una etapa por vencer y una vencida; ni la con holgura ni la terminada');
+    where r.tipo in ('POR_VENCER', 'VENCIDA', 'RECORDATORIO')) = 'POR_VENCER=1,RECORDATORIO=0,VENCIDA=3',
+  'avisa la por vencer y las vencidas (la etapa, la de arriba de la subetapa y la del mantenimiento); ni la terminada, ni la del lote de prueba');
+select test.afirmar(
+  not exists (select 1 from public.notificaciones n where n.titulo like '%CHK476_P%')
+  and not exists (select 1 from public.tiempos_entrega_avisos a where a.etapa_id = '47600000-0000-4000-8000-0000000000e6'),
+  'la etapa del lote de prueba no avisa ni queda anotada');
+select test.afirmar(
+  exists (select 1 from public.notificaciones n where n.titulo = 'Vencida: CHK476_A · Con holgura'
+             and n.cuerpo like '%Por la subetapa «Fondo».%'),
+  'la subetapa vencida avisa por su etapa de arriba y se nombra en el aviso');
+select test.afirmar(
+  (select bool_and(n.ruta in ('/rrhh/tiempos-de-entrega/codigo?codigo=OT+9476-2026', '/planos?q=OT+9476-2026'))
+     and count(*) > 0 from public.notificaciones n where n.titulo like '%OT 9476-2026%'),
+  'el código con espacio va escapado en la ruta, para que la campana lo abra');
+select test.afirmar(
+  (select count(*) = 1 from public.tiempos_entrega_avisos a where a.tipo = 'REVISION' and a.fecha = current_setting('prueba.hoy')::date and a.avisados > 0),
+  'la corrida queda anotada con cuántos avisos dejó');
 
 select test.afirmar(
   pg_temp.avisos_de('recursos_humanos_rrh') =
-    'Por vencer: CHK476_A · Por vencer → /rrhh/tiempos-de-entrega/codigo?codigo=CHK476_A | Vencida: CHK476_A · Vencida → /rrhh/tiempos-de-entrega/codigo?codigo=CHK476_A',
+    'Por vencer: CHK476_A · Por vencer → /rrhh/tiempos-de-entrega/codigo?codigo=CHK476_A | Vencida: CHK476_A · Con holgura → /rrhh/tiempos-de-entrega/codigo?codigo=CHK476_A | Vencida: CHK476_A · Vencida → /rrhh/tiempos-de-entrega/codigo?codigo=CHK476_A',
   'RR. HH. recibe los dos, con el detalle del código');
 select test.afirmar(
   pg_temp.avisos_de('supervisor_prd') =
-    'Por vencer: CHK476_A · Por vencer → /planos?q=CHK476_A | Vencida: CHK476_A · Vencida → /planos?q=CHK476_A',
+    'Por vencer: CHK476_A · Por vencer → /planos?q=CHK476_A | Vencida: CHK476_A · Con holgura → /planos?q=CHK476_A | Vencida: CHK476_A · Vencida → /planos?q=CHK476_A',
   'el supervisor de Producción recibe los dos, con su pantalla de planos y etapas');
-select test.afirmar(pg_temp.avisos_de('supervisor_mtz') = '', 'el supervisor de otra área no recibe nada');
+select test.afirmar(pg_temp.avisos_de('supervisor_mtz') = '', 'el supervisor de otra área no recibe nada de CHK476_A');
 select test.afirmar(
-  pg_temp.avisos_de('gerente_gge') = 'Vencida: CHK476_A · Vencida → /rrhh/tiempos-de-entrega/codigo?codigo=CHK476_A',
+  pg_temp.avisos_de('gerente_gge') = 'Vencida: CHK476_A · Con holgura → /rrhh/tiempos-de-entrega/codigo?codigo=CHK476_A | Vencida: CHK476_A · Vencida → /rrhh/tiempos-de-entrega/codigo?codigo=CHK476_A',
   'Gerencia recibe solo la vencida, no la por vencer');
 select test.afirmar(pg_temp.avisos_de('tesoreria_tes') = '' and pg_temp.avisos_de('diseno_dis') = '',
   'Tesorería y Diseño no reciben avisos de tiempos');
@@ -110,15 +142,24 @@ select test.afirmar(
     where r.tipo = 'RECORDATORIO'),
   'al día hábil siguiente todavía no toca recordar');
 select test.afirmar(
-  (select r.avisos = 1 from public.revisar_tiempos_de_entrega(public.sumar_dias_habiles(current_setting('prueba.hoy')::date, 2)) r
+  (select r.avisos = 3 from public.revisar_tiempos_de_entrega(public.sumar_dias_habiles(current_setting('prueba.hoy')::date, 2)) r
     where r.tipo = 'RECORDATORIO'),
-  'a los 2 días hábiles sale el recordatorio de la que sigue vencida');
+  'a los 2 días hábiles sale el recordatorio de cada una que sigue vencida');
 select test.afirmar(
-  (select count(*) = 1 from public.notificaciones n where n.titulo = 'Sigue vencida: CHK476_A · Vencida'
-      and n.usuario_id = current_setting('prueba.recursos_humanos_rrh')::uuid)
-  and not exists (select 1 from public.notificaciones n where n.titulo like 'Sigue vencida%'
+  (select count(*) = 1 and bool_and(n.titulo = 'Siguen vencidas: 3 etapas' and n.ruta = '/rrhh/tiempos-de-entrega?ver=vencidos'
+                                     and n.cuerpo like '3 etapas siguen vencidas en 2 códigos: CHK476_A, OT 9476-2026.%')
+     from public.notificaciones n where n.titulo like 'Sigue%' and n.usuario_id = current_setting('prueba.recursos_humanos_rrh')::uuid),
+  'a RR. HH. le llega un solo recordatorio con todas, que abre el tablero en «Vencidos»');
+select test.afirmar(
+  (select count(*) = 1 and bool_and(n.titulo = 'Siguen vencidas: 2 etapas' and n.ruta = '/planos' and n.cuerpo like '2 etapas siguen vencidas, en CHK476_A.%')
+     from public.notificaciones n where n.titulo like 'Sigue%' and n.usuario_id = current_setting('prueba.supervisor_prd')::uuid)
+  and (select count(*) = 1 and bool_and(n.titulo = 'Sigue vencida: OT 9476-2026')
+     from public.notificaciones n where n.titulo like 'Sigue%' and n.usuario_id = current_setting('prueba.supervisor_mtz')::uuid),
+  'a cada supervisor, uno con las de su área');
+select test.afirmar(
+  not exists (select 1 from public.notificaciones n where n.titulo like 'Sigue%'
       and n.usuario_id = current_setting('prueba.gerente_gge')::uuid),
-  'el recordatorio va a RR. HH. y no a Gerencia');
+  'el recordatorio no va a Gerencia');
 
 -- Si Diseño mueve la fecha, la etapa vuelve a avisar por la fecha nueva.
 update public.codigo_etapas set fin_plan = current_date - 1 where id = '47600000-0000-4000-8000-0000000000e2';
