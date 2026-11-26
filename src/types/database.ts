@@ -14566,6 +14566,21 @@ export type Database = {
           unidad: string | null
         }[]
       }
+      codigo_interno_lo_vendido: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          cotizacion_id: string | null
+          numero: string | null
+          moneda: string | null
+          monto_venta: number | null
+          incluye_igv: boolean | null
+          facturas: number | null
+          facturado_en_su_moneda: number | null
+          en_otra_moneda: boolean | null
+        }[]
+      }
       codigo_interno_materiales: {
         Args: {
           p_codigo: string | null
@@ -14640,21 +14655,6 @@ export type Database = {
           subido_en: string | null
           recibido_en: string | null
           recibido_por_area: string | null
-        }[]
-      }
-      codigo_interno_lo_vendido: {
-        Args: {
-          p_codigo: string | null
-        }
-        Returns: {
-          cotizacion_id: string | null
-          numero: string | null
-          moneda: string | null
-          monto_venta: number | null
-          incluye_igv: boolean | null
-          facturas: number | null
-          facturado_en_su_moneda: number | null
-          en_otra_moneda: boolean | null
         }[]
       }
       codigo_interno_recorrido: {
@@ -14928,6 +14928,10 @@ export type Database = {
         }
         Returns: null
       }
+      completar_monto_pen_de_servicios: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
       compra_pagada_fuera_de_la_factura: {
         Args: {
           p_factura: string | null
@@ -14938,6 +14942,13 @@ export type Database = {
           total: number | null
           moneda: string | null
         }[]
+      }
+      compra_paso_su_primera_fecha: {
+        Args: {
+          p_tipo: string | null
+          p_documento: string | null
+        }
+        Returns: boolean
       }
       compra_solo_su_rqa: {
         Args: Record<PropertyKey, never>
@@ -15103,6 +15114,22 @@ export type Database = {
           ordenes: string[] | null
           lineas: Json | null
         }[]
+      }
+      compras_que_aceptan_motivo: {
+        Args: {
+          p_tipo: string | null
+          p_ids: string[] | null
+        }
+        Returns: {
+          documento: string | null
+        }[]
+      }
+      compras_que_pasaron_su_primera_fecha: {
+        Args: {
+          p_tipo: string | null
+          p_ids: string[] | null
+        }
+        Returns: string[]
       }
       compras_que_se_pueden_anular: {
         Args: Record<PropertyKey, never>
@@ -17780,6 +17807,14 @@ export type Database = {
           p_etapa_id: string | null
         }
         Returns: null
+      }
+      recalcular_monto_pen_de_servicios: {
+        Args: {
+          p_fecha: string | null
+          p_venta_vieja: number | null
+          p_venta_nueva: number | null
+        }
+        Returns: number
       }
       rechazar_compra: {
         Args: {

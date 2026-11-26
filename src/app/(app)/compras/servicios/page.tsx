@@ -250,7 +250,7 @@ function FilaServicio({
           {emite && vigente && plazo && (
             <SeguimientoDeLaCompra
               documento={{ tipo: 'OS', id: s.id, nombre: s.numero }}
-              motivo={(plazo.dias_atraso ?? 0) > 0}
+              motivo={(plazo.dias_atraso ?? 0) > 0 || plazo.acepta_motivo}
               fecha={plazo.completa_en ? undefined : plazo.esperada}
             />
           )}

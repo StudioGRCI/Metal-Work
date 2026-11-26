@@ -356,7 +356,7 @@ function FilaCompra({
           {emite && vigente && plazo && (
             <SeguimientoDeLaCompra
               documento={{ tipo: 'OC', id: c.id, nombre: c.nombre }}
-              motivo={(plazo.dias_atraso ?? 0) > 0}
+              motivo={(plazo.dias_atraso ?? 0) > 0 || plazo.acepta_motivo}
               fecha={plazo.completa_en || (plazo.llego_en && !plazo.por_llegar?.length) ? undefined : plazo.esperada}
             />
           )}

@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { LoQueFalta, PlazoDeCompra, PlazoDeServicio } from '@/lib/dominio/plazos'
+import { todasLasFilas } from '@/lib/datos/todas-las-filas'
 import { createClient } from '@/lib/supabase/server'
 
 /**
@@ -32,12 +33,33 @@ function loQueFalta(valor: unknown): LoQueFalta[] | null {
   }))
 }
 
+/**
+ * De esas OC u OS, las que pasaron la fecha del documento y aceptan el motivo del atraso aunque no
+ * pasen la corregida (20261126945000). La base solo se las dice a quien anota. Si no contesta, el
+ * botón sale solo en las atrasadas contra la fecha corregida, como antes: no se cae la lista.
+ */
+async function aceptanMotivo(supabase: Awaited<ReturnType<typeof createClient>>, tipo: 'OC' | 'OS', ids: readonly string[]) {
+  const aceptan = new Set<string>()
+  const respuestas = await Promise.all(tandas(ids).map((t) => supabase.rpc('compras_que_aceptan_motivo', { p_tipo: tipo, p_ids: t })))
+  for (const { data, error } of respuestas) {
+    if (error) {
+      console.error('Plazos: no se pudo leer qué compras aceptan el motivo del atraso.', error.message)
+      continue
+    }
+    for (const f of data ?? []) if (f.documento) aceptan.add(f.documento)
+  }
+  return aceptan
+}
+
 /** El plazo de esas OC, por id. La que quien mira no ve no sale. */
 export async function plazosDeCompras(ids: readonly string[]): Promise<Map<string, PlazoDeCompra>> {
   const porId = new Map<string, PlazoDeCompra>()
   if (ids.length === 0) return porId
   const supabase = await createClient()
-  const respuestas = await Promise.all(tandas(ids).map((t) => supabase.rpc('plazos_de_compras', { p_ids: t })))
+  const [respuestas, aceptan] = await Promise.all([
+    Promise.all(tandas(ids).map((t) => supabase.rpc('plazos_de_compras', { p_ids: t }))),
+    aceptanMotivo(supabase, 'OC', ids),
+  ])
   for (const { data, error } of respuestas) {
     if (error) throw new Error(`No se pudo leer el plazo de las órdenes de compra: ${error.message}`)
     for (const f of data ?? []) {
@@ -50,6 +72,7 @@ export async function plazosDeCompras(ids: readonly string[]): Promise<Map<strin
         atrasada: f.atrasada === true,
         por_llegar: loQueFalta(f.por_llegar),
         por_validar: f.por_validar === true,
+        acepta_motivo: aceptan.has(f.documento),
       })
     }
   }
@@ -61,7 +84,10 @@ export async function plazosDeServicios(ids: readonly string[]): Promise<Map<str
   const porId = new Map<string, PlazoDeServicio>()
   if (ids.length === 0) return porId
   const supabase = await createClient()
-  const respuestas = await Promise.all(tandas(ids).map((t) => supabase.rpc('plazos_de_servicios', { p_ids: t })))
+  const [respuestas, aceptan] = await Promise.all([
+    Promise.all(tandas(ids).map((t) => supabase.rpc('plazos_de_servicios', { p_ids: t }))),
+    aceptanMotivo(supabase, 'OS', ids),
+  ])
   for (const { data, error } of respuestas) {
     if (error) throw new Error(`No se pudo leer el plazo de las órdenes de servicio: ${error.message}`)
     for (const f of data ?? []) {
@@ -74,6 +100,7 @@ export async function plazosDeServicios(ids: readonly string[]): Promise<Map<str
         atrasada: f.atrasada === true,
         por_llegar: null,
         por_validar: false,
+        acepta_motivo: aceptan.has(f.documento),
       })
     }
   }
@@ -111,16 +138,17 @@ export async function fechasCorregidas(
   if (pedidos.length === 0) return porId
   const respuestas = await Promise.all(
     pedidos.map(([columna, t]) =>
-      supabase
-        .from('seguimiento_de_compras')
-        .select('orden_compra_id, orden_servicio_id, fecha_anterior, fecha_nueva')
-        .eq('tipo', 'FECHA_ESPERADA')
-        .in(columna, t)
-        // La que vale es la última: el mismo orden que `fecha_prometida_de_compra`.
-        .order('registrado_en', { ascending: false })
-        .order('creado_en', { ascending: false })
-        .order('id', { ascending: false })
-        .limit(1000),
+      // Todas: Supabase corta en mil sin avisar. La que vale es la última: el mismo orden que
+      // `fecha_prometida_de_compra`, con el id al final para que el orden sea total.
+      todasLasFilas(
+        () =>
+          supabase
+            .from('seguimiento_de_compras')
+            .select('orden_compra_id, orden_servicio_id, fecha_anterior, fecha_nueva')
+            .eq('tipo', 'FECHA_ESPERADA')
+            .in(columna, t),
+        ['registrado_en.desc', 'creado_en.desc', 'id.desc'],
+      ),
     ),
   )
   for (const { data, error } of respuestas) {
