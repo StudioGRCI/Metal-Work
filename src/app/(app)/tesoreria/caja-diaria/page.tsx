@@ -110,12 +110,18 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
               titulo={`Saldos del ${fechaLarga(dia)}`}
               ayuda="Cada cuenta en su moneda. El saldo final de un día es el inicial del siguiente."
               acciones={
-                abiertas.length > 0 ? (
-                  <>
-                    <Transferir cuentas={abiertas} dia={dia} />
-                    <RegistrarMovimiento cuentas={abiertas} dia={dia} codigos={caja.codigos} />
-                  </>
-                ) : undefined
+                <>
+                  {abiertas.length > 0 && (
+                    <>
+                      <Transferir cuentas={abiertas} dia={dia} />
+                      <RegistrarMovimiento cuentas={abiertas} dia={dia} codigos={caja.codigos} />
+                    </>
+                  )}
+                  {/* Para consultar, al final: la historia de los días cerrados (plan 11.3). */}
+                  <EnlaceBoton href="/tesoreria/caja-diaria/cierres" variante="contorno" tamano="sm">
+                    Días cerrados
+                  </EnlaceBoton>
+                </>
               }
             />
             <Tabla>

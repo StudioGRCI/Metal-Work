@@ -318,3 +318,70 @@ export async function cajaTrasAnular(origen: string, id: string, tipo: TipoDeLaC
   if (!mov.anulado) return ''
   return tipo === 'pago' ? 'Su egreso en la caja diaria también quedó anulado.' : 'Su ingreso en la caja diaria también quedó anulado.'
 }
+
+/** Un día cerrado de una cuenta, vigente o reabierto (plan 11, entrega 11.3). */
+export type CierreDeLaHistoria = {
+  id: string
+  cajaId: string
+  cuenta: string
+  tipo: string
+  banco: string | null
+  moneda: string
+  cuentaActiva: boolean
+  /** La cuenta tiene la captura del saldo con que se abrió. */
+  conCaptura: boolean
+  fecha: string
+  saldoInicial: number
+  ingresos: number
+  egresos: number
+  saldoFinal: number
+  saldoBanco: number
+  diferencia: number
+  observaciones: string | null
+  cerradoPor: string | null
+  cerradoEn: string
+  reabiertoPor: string | null
+  reabiertoEn: string | null
+  motivoReapertura: string | null
+}
+
+/**
+ * Los días cerrados de todas las cuentas entre dos fechas, del más reciente al
+ * más antiguo (migración 20261126100000). Solo lectura: la base exige
+ * `tesoreria.caja` o `tesoreria.ver_documentos`, y Gerencia, que no lee la
+ * caja, la ve por esta función y nada más.
+ */
+export async function historiaDeCierres(desde: string, hasta: string): Promise<CierreDeLaHistoria[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('historia_cierres_caja', { p_desde: desde, p_hasta: hasta })
+  if (error) throw new Error(`No se pudieron leer los días cerrados: ${error.message}`)
+  return (data ?? []).flatMap((k) =>
+    k.id && k.caja_id && k.fecha && k.cerrado_en
+      ? [
+          {
+            id: k.id,
+            cajaId: k.caja_id,
+            cuenta: k.cuenta ?? '',
+            tipo: k.tipo ?? 'BANCO',
+            banco: k.banco,
+            moneda: k.moneda ?? 'PEN',
+            cuentaActiva: k.cuenta_activa ?? true,
+            conCaptura: k.con_captura ?? false,
+            fecha: k.fecha,
+            saldoInicial: n(k.saldo_inicial),
+            ingresos: n(k.ingresos),
+            egresos: n(k.egresos),
+            saldoFinal: n(k.saldo_final),
+            saldoBanco: n(k.saldo_banco),
+            diferencia: n(k.diferencia),
+            observaciones: k.observaciones,
+            cerradoPor: k.cerrado_por,
+            cerradoEn: k.cerrado_en,
+            reabiertoPor: k.reabierto_por,
+            reabiertoEn: k.reabierto_en,
+            motivoReapertura: k.motivo_reapertura,
+          },
+        ]
+      : [],
+  )
+}

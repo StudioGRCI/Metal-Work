@@ -12811,6 +12811,15 @@ export type Database = {
         }
         Returns: string
       }
+      captura_de_caja: {
+        Args: {
+          p_caja: string | null
+        }
+        Returns: {
+          nombre: string | null
+          apertura_ruta: string | null
+        }[]
+      }
       cargar_codigo_y_ot_de_cotizacion: {
         Args: {
           p_cotizacion: string | null
@@ -14674,6 +14683,12 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
+      es_captura_de_caja: {
+        Args: {
+          p_ruta: string | null
+        }
+        Returns: boolean
+      }
       es_codigo_de_ot: {
         Args: {
           p_codigo: string | null
@@ -15048,6 +15063,35 @@ export type Database = {
           proveedor: string | null
           peso_kg: number | null
           recojo: string | null
+        }[]
+      }
+      historia_cierres_caja: {
+        Args: {
+          p_desde: string | null
+          p_hasta: string | null
+        }
+        Returns: {
+          id: string | null
+          caja_id: string | null
+          cuenta: string | null
+          tipo: string | null
+          banco: string | null
+          moneda: string | null
+          cuenta_activa: boolean | null
+          con_captura: boolean | null
+          fecha: string | null
+          saldo_inicial: number | null
+          ingresos: number | null
+          egresos: number | null
+          saldo_final: number | null
+          saldo_banco: number | null
+          diferencia: number | null
+          observaciones: string | null
+          cerrado_por: string | null
+          cerrado_en: string | null
+          reabierto_por: string | null
+          reabierto_en: string | null
+          motivo_reapertura: string | null
         }[]
       }
       horas_en_texto: {

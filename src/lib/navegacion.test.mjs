@@ -17,14 +17,14 @@ const GERENCIA = [
 
 const rutas = (grupos) => grupos.flatMap((g) => g.items.map((i) => i.ruta))
 
-test('Gerencia ve por área las 36 pantallas que su permiso le abre, cada una una vez', () => {
+test('Gerencia ve por área las 38 pantallas que su permiso le abre, cada una una vez', () => {
   const grupos = menuDe(GERENCIA, false, 'GERENTE')
   assert.deepEqual(grupos.map((g) => g.titulo), [
-    'Principal', 'Por aprobar', 'Ventas', 'Requerimientos', 'Almacén', 'Logística', 'Administración', 'Finanzas', 'Recursos Humanos',
+    'Principal', 'Por aprobar', 'Ventas', 'Requerimientos', 'Almacén', 'Logística', 'Administración', 'Finanzas', 'Recursos Humanos', 'SSOMA',
   ])
   const todas = rutas(grupos)
-  assert.equal(todas.length, 36)
-  assert.equal(new Set(todas).size, 36)
+  assert.equal(todas.length, 38)
+  assert.equal(new Set(todas).size, 38)
   // Las cuatro que el catálogo pide con un permiso de registro le abren con el de lectura.
   assert.ok(todas.includes('/equipos'))
   for (const r of ['/requerimientos/atencion', '/compras/ordenes', '/compras/servicios', '/contabilidad/facturacion']) {
@@ -89,6 +89,7 @@ test('en Gerencia, lo que espera su visto va siempre abierto y cada área nace p
     [
       ['Principal', 'fijo'], ['Por aprobar', 'fijo'], ['Ventas', 'plegado'], ['Requerimientos', 'plegado'], ['Almacén', 'plegado'],
       ['Logística', 'plegado'], ['Administración', 'plegado'], ['Finanzas', 'plegado'], ['Recursos Humanos', 'plegado'],
+      ['SSOMA', 'plegado'],
     ],
   )
 })

@@ -53,6 +53,7 @@ import {
   Wallet,
   Warehouse,
   Wrench,
+  CalendarCheck,
 } from 'lucide-react'
 
 export type ItemNavegacion = {
@@ -567,6 +568,15 @@ export const NAVEGACION = [
         descripcion: 'El saldo de cada cuenta día por día: ingresos, egresos y el cierre contra el estado de cuenta',
         disponible: true,
       },
+      // La historia de los cierres la consulta también Gerencia (plan 11.3, migración 20261126100000).
+      {
+        titulo: 'Días cerrados de la caja',
+        ruta: '/tesoreria/caja-diaria/cierres',
+        icono: CalendarCheck,
+        permiso: ['tesoreria.caja', 'tesoreria.ver_documentos'],
+        descripcion: 'Cada día cerrado de cada cuenta: quién lo cerró, el saldo del sistema, el del estado de cuenta y la diferencia',
+        disponible: true,
+      },
       { titulo: 'Gastos del mes', ruta: '/costos/gastos-generales', icono: Wallet, permiso: ['costos.gastos_generales', 'costos.ver'], descripcion: 'Servicios del local y gastos de operación', disponible: true },
       { titulo: 'Tipo de cambio', ruta: '/tesoreria/tipo-de-cambio', icono: ArrowLeftRight, permiso: 'tesoreria.tipo_cambio', descripcion: 'El cambio del dólar de cada día, para el costo en soles', disponible: true },
     ],
@@ -820,6 +830,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
           '/tesoreria/por-pagar',
           '/tesoreria/pagos-de-servicio',
           '/tesoreria/recibos-por-honorarios',
+          '/tesoreria/caja-diaria/cierres',
           '/costos/gastos-generales',
         ],
       },
