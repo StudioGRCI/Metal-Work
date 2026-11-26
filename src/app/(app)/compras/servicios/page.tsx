@@ -195,7 +195,7 @@ function FilaServicio({
   const abierta = s.estado === 'EMITIDA' || s.estado === 'EN_EJECUCION'
   const vigente = s.estado !== 'ANULADA' && s.aprobacion !== 'RECHAZADA'
   return (
-    <TR data-servicio={s.numero}>
+    <TR id={`os-${s.id}`} data-servicio={s.numero} className="scroll-mt-20 target:bg-acento-suave">
       <TD>
         <p className="tabular font-semibold whitespace-nowrap text-texto">{s.numero}</p>
         <p className="text-xs text-texto">{s.proveedor}</p>
