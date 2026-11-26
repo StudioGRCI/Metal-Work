@@ -16,7 +16,11 @@
 --     pedido, con la misma cuenta que usa Almacén al validar
 --     (`cuenta_de_la_linea_de_compra`): lo pedido menos lo que entró neto y menos
 --     lo devuelto que ya no se repone. Lo devuelto que el proveedor repone
---     todavía falta. Su fecha real es la del último ingreso que la completó.
+--     todavía falta. Lo que el conductor dejó y Almacén todavía no valida no
+--     falta: está por validar, y la OC no está completa hasta que se valide.
+--     Su fecha real es cuándo llegó lo último que la completó: lo que trajo el
+--     conductor, cuando lo dejó (no cuando Almacén lo validó, que no es demora
+--     del proveedor); lo recibido a mano y la reposición, cuando se registró.
 --   · La OS vuelve cuando Logística la marca conforme (`conformidad_en`).
 --   · Los días de atraso se cuentan por fecha de Lima: de la completa, lo que
 --     pasó de la fecha prometida a la real; de la abierta, de la prometida a hoy.
@@ -60,7 +64,8 @@ returns table (
   completa_en timestamptz,
   dias_atraso integer,
   atrasada    boolean,
-  por_llegar  jsonb
+  por_llegar  jsonb,
+  por_validar boolean
 )
 language plpgsql
 stable
@@ -98,19 +103,24 @@ begin
   -- menos lo devuelto que ya no se repone (eso no viene más por esta OC).
   lineas as (
     select d.orden_compra_id as oc, d.id, d.cantidad,
-           greatest(d.cantidad - k.sin_reponer - k.neto, 0) as falta,
+           greatest(d.cantidad - k.sin_reponer - k.neto - coalesce(pv.cantidad, 0), 0) as falta,
+           coalesce(pv.cantidad, 0) as por_validar,
            coalesce(d.material_id, om.material_id) as material_id
       from public.orden_compra_material_detalles d
       left join public.requerimiento_material_detalles rd on rd.id = d.requerimiento_detalle_id
       left join public.ot_materiales om on om.id = rd.ot_material_id
      cross join lateral public.cuenta_de_la_linea_de_compra(d.id) k
+      left join lateral (select sum(ip.cantidad) as cantidad from public.ingresos_pendientes_almacen ip
+                          where ip.orden_compra_detalle_id = d.id and ip.estado = 'PENDIENTE') pv on true
      where d.orden_compra_id = any(p_ids)
   ),
   cuenta as (
     select l.oc,
            count(*) as n,
            count(*) filter (where l.falta > 0) as con_falta,
-           (select max(m.registrado_en) from public.movimientos_materiales m
+           count(*) filter (where l.por_validar > 0) as con_por_validar,
+           (select max(coalesce(ip.dejado_en, m.registrado_en)) from public.movimientos_materiales m
+              left join public.ingresos_pendientes_almacen ip on ip.movimiento_id = m.id
              where m.tipo = 'INGRESO' and m.orden_compra_detalle_id in (select x.id from lineas x where x.oc = l.oc)) as ultimo_ingreso
       from lineas l
      group by l.oc
@@ -128,9 +138,10 @@ begin
   ),
   estado as (
     select o.id, o.fecha_estimada as esperada, o.entregado_almacen_en as llego_en, o.vigente,
+           coalesce(c.con_por_validar, 0) > 0 as por_validar,
            case
              when a.oc is not null then o.entregado_almacen_en
-             when o.entregado_almacen_en is not null and coalesce(c.con_falta, 0) = 0
+             when o.entregado_almacen_en is not null and coalesce(c.con_falta, 0) = 0 and coalesce(c.con_por_validar, 0) = 0
                then greatest(o.entregado_almacen_en, c.ultimo_ingreso)
            end as completa_en
       from oc o
@@ -155,13 +166,14 @@ begin
              left join public.materiales mat on mat.id = l.material_id
              left join public.unidades_medida um on um.id = mat.unidad_medida_id
             where l.oc = e.id and l.falta > 0)
-         end
+         end,
+         e.por_validar
     from estado e;
 end;
 $$;
 
 comment on function public.plazos_de_compras(uuid[]) is
-  'De cada OC: la fecha que prometió el proveedor, cuándo llegó al almacén y cuándo quedó completa, los días de atraso por fecha de Lima, si está atrasada (vigente, vencida y sin llegar completa) y, de la que llegó a medias, lo que falta por material. Lo lee quien lee el listado de OC, con el mismo alcance. Sin importes.';
+  'De cada OC: la fecha que prometió el proveedor, cuándo llegó al almacén y cuándo quedó completa (cuando se dejó lo último que la completó, no cuando se validó), los días de atraso por fecha de Lima, si está atrasada (vigente, vencida y sin llegar completa), de la que llegó a medias lo que falta por material y si tiene ingresos que Almacén todavía no valida. Lo lee quien lee el listado de OC, con el mismo alcance. Sin importes.';
 
 revoke all on function public.plazos_de_compras(uuid[]) from public, anon;
 grant execute on function public.plazos_de_compras(uuid[]) to authenticated;

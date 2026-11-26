@@ -21,6 +21,8 @@ export type PlazoDeCompra = {
   atrasada: boolean
   /** De la que llegó a medias, lo que falta; vacío antes de llegar y una vez completa. */
   por_llegar: LoQueFalta[] | null
+  /** Lo que el conductor dejó y Almacén todavía no valida: no falta, está por validar. */
+  por_validar: boolean
 }
 
 export type PlazoDeServicio = PlazoDeCompra

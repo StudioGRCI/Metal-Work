@@ -23,7 +23,8 @@ import { compraComoLogistica, exigirPermiso, puede } from '@/lib/sesion'
 
 import { EsperanReposicion } from '../../almacen/kardex/devolucion-proveedor'
 
-import { PlazoDeLaCompra } from '../plazo'
+import { InsigniaDelPlazo, PlazoDeLaCompra } from '../plazo'
+import { VerTodas } from '../ver-todas'
 
 import { AccionesCompra } from './acciones-compra'
 import { NuevaCompraDirecta } from './formulario-directa'
@@ -50,18 +51,26 @@ export default async function PaginaOrdenesCompra({ searchParams }: { searchPara
     puede(perfil, ['compras.crear', 'almacen.ver']) ? devolucionesPorReponer() : Promise.resolve([]),
   ])
   const monedaDe = new Map(compras.map((c) => [c.id, c.moneda]))
-  const correcciones = await correccionesDe('ORDEN_COMPRA', compras.map((c) => c.id), (id) => monedaDe.get(id) ?? null)
+  const [correcciones, plazos, params] = await Promise.all([
+    correccionesDe('ORDEN_COMPRA', compras.map((c) => c.id), (id) => monedaDe.get(id) ?? null),
+    // Cada OC contra la fecha que prometió el proveedor. Si la base no contesta,
+    // la lista sale igual, sin plazos, y lo dice arriba.
+    plazosDeCompras(compras.map((c) => c.id)).catch((e: unknown) => {
+      console.error(e)
+      return null
+    }),
+    searchParams,
+  ])
   const esperan = new Set(porReponer.map((d) => d.orden_compra_id))
-  // Cada OC contra la fecha que prometió el proveedor. Si la base no contesta, la
-  // lista sale igual, sin plazos, y lo dice arriba.
-  const plazos = await plazosDeCompras(compras.map((c) => c.id)).catch((e: unknown) => {
-    console.error(e)
-    return null
-  })
-  const params = await searchParams
-  const soloAtrasadas = params.ver === FILTRO_ATRASADAS && plazos !== null
+  const pideAtrasadas = params.ver === FILTRO_ATRASADAS
+  const soloAtrasadas = pideAtrasadas && plazos !== null
   const atrasadas = plazos ? compras.filter((c) => plazos.get(c.id)?.atrasada).length : 0
-  const visibles = soloAtrasadas ? compras.filter((c) => plazos?.get(c.id)?.atrasada) : compras
+  // Las atrasadas, de la que más días lleva a la que menos.
+  const visibles = soloAtrasadas
+    ? compras
+        .filter((c) => plazos?.get(c.id)?.atrasada)
+        .sort((a, b) => (plazos?.get(b.id)?.dias_atraso ?? 0) - (plazos?.get(a.id)?.dias_atraso ?? 0))
+    : compras
   const sinComprobante = compras.filter((c) => !c.tiene_factura && c.aprobacion !== 'RECHAZADA' && c.aprobacion !== 'ANULADA').length
 
   return (
@@ -105,7 +114,9 @@ export default async function PaginaOrdenesCompra({ searchParams }: { searchPara
 
       {plazos === null ? (
         <p role="status" className="mb-3 text-sm text-aviso">
-          No se pudo leer el plazo de las órdenes: la lista sale sin sus fechas. Recarga la página; si continúa, avisa al administrador.
+          No se pudo leer el plazo de las órdenes: la lista sale sin sus fechas
+          {pideAtrasadas ? ', y el filtro «Atrasadas» no está disponible: se ven todas' : ''}. Recarga la página; si continúa, avisa al
+          administrador.
         </p>
       ) : (
         compras.length > 0 && (
@@ -141,10 +152,11 @@ export default async function PaginaOrdenesCompra({ searchParams }: { searchPara
             </tr>
           </TablaCabecera>
           <tbody>
-            {soloAtrasadas && visibles.length === 0 ? (
+            {soloAtrasadas && compras.length > 0 && visibles.length === 0 ? (
               <SinDatos
                 titulo="Ninguna orden de compra está atrasada"
-                descripcion="Todas las vigentes llegaron completas o siguen dentro de la fecha que prometió el proveedor. Vuelve a «Todas» para ver la lista entera."
+                descripcion="Ninguna vigente pasó la fecha que prometió el proveedor sin llegar completa."
+                accion={<VerTodas ruta="/compras/ordenes" params={params} />}
               />
             ) : compras.length === 0 ? (
               <SinDatos
@@ -221,6 +233,7 @@ function FilaCompra({
           <span className="tabular text-sm font-semibold text-texto">{moneda(c.monto, divisa(c.moneda))}</span>
           <span className="text-xs text-texto-suave">sin IGV</span>
           <Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>
+          <InsigniaDelPlazo plazo={plazo} />
           {reposicion}
           {c.tiene_factura ? (
             <Insignia tono="exito">Comprobante adjunto</Insignia>
@@ -257,6 +270,7 @@ function FilaCompra({
       <TD className="hidden sm:table-cell">
         <div className="flex flex-wrap gap-1">
           <Insignia tono={situacion.tono}>{situacion.etiqueta}</Insignia>
+          <InsigniaDelPlazo plazo={plazo} />
           {reposicion}
         </div>
         <PlazoDeLaCompra plazo={plazo} className="mt-1" />

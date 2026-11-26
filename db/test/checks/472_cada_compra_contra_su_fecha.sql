@@ -125,6 +125,29 @@ select public.marcar_compra_recogida(pg_temp.id('oc3'));
 select public.marcar_compra_dejada_almacen(pg_temp.id('oc3'));
 reset role;
 
+-- La tercera se dejó ayer: Almacén la valida hoy, y esa demora no es del proveedor.
+-- El recojo registrado no se corrige: se corre sin disparadores, como dueño.
+set local session_replication_role = replica;
+update public.ordenes_compra_materiales
+   set recogido_en = now() - interval '1 day', dejado_en = now() - interval '1 day', entregado_almacen_en = now() - interval '1 day'
+ where id = pg_temp.id('oc3');
+update public.ingresos_pendientes_almacen set dejado_en = now() - interval '1 day' where orden_compra_id = pg_temp.id('oc3');
+set local session_replication_role = origin;
+
+-- Dejada y sin validar: no falta nada, está por validar, y todavía no está completa.
+select pg_temp.como('comprador');
+set local role authenticated;
+do $$
+declare r record;
+begin
+  select * into r from public.plazos_de_compras(array[pg_temp.id('oc1')]);
+  perform test.afirmar(r.llego_en is not null and r.completa_en is null and r.por_validar
+                       and jsonb_array_length(coalesce(r.por_llegar, '[]'::jsonb)) = 0,
+    format('la OC dejada y sin validar está por validar, sin nada que falte (por_llegar %s, por_validar %s)', r.por_llegar, r.por_validar));
+  perform test.afirmar(r.atrasada, 'la OC dejada sin validar y vencida sigue atrasada hasta que Almacén la valida');
+end $$;
+reset role;
+
 -- Almacén recibe 6 de 10 discos y nada del perno de la primera; la tercera, entera.
 select set_config('prueba.ingresos1', (
   select jsonb_agg(jsonb_build_object('id', i.id, 'movimiento_id', case when i.material_id = pg_temp.id('disco') then pg_temp.id('mov1') end,
@@ -164,11 +187,17 @@ begin
     'la OC prometida en 3 días no está atrasada y no dice lo que falta antes de llegar');
 
   select * into r from public.plazos_de_compras(array[pg_temp.id('oc3')]);
-  perform test.afirmar(r.completa_en is not null and not r.atrasada and r.dias_atraso = 2 and r.por_llegar is null,
-    format('la OC que llegó entera hoy llegó con 2 días, sin estar atrasada (dice %s)', r.dias_atraso));
+  perform test.afirmar(r.completa_en is not null and not r.atrasada and r.dias_atraso = 1 and r.por_llegar is null
+                       and not r.por_validar,
+    format('la OC dejada ayer y validada hoy llegó con 1 día de atraso, no con 2 (dice %s)', r.dias_atraso));
 
   select * into r from public.plazos_de_compras(array[pg_temp.id('oc4')]);
   perform test.afirmar(not r.atrasada and r.dias_atraso is null, 'la OC anulada no se atrasa');
+
+  -- El día del taller: a las 11 p. m. de Lima ya son las 4 a. m. del día siguiente en UTC.
+  perform test.afirmar(public.fecha_de_lima('2026-11-26 04:00:00+00') = date '2026-11-25'
+                       and public.fecha_de_lima('2026-11-26 05:00:00+00') = date '2026-11-26',
+    'la fecha de Lima cambia a las 5 a. m. UTC');
 
   select count(*) into v_n from public.plazos_de_compras(array[]::uuid[]);
   perform test.afirmar(v_n = 0, 'sin OC no devuelve nada');

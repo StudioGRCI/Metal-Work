@@ -23,7 +23,8 @@ import { APROBACION_COMPRA, condicionDePago } from '@/lib/dominio/proveedores'
 import { fecha, moneda } from '@/lib/format'
 import { compraComoLogistica, exigirPermiso, puede } from '@/lib/sesion'
 
-import { PlazoDeLaCompra } from '../plazo'
+import { InsigniaDelPlazo, PlazoDeLaCompra } from '../plazo'
+import { VerTodas } from '../ver-todas'
 
 import { AvanceServicio, CorregirServicio } from './controles'
 import { AdjuntarDocumentoServicio, ListaDocumentosServicio } from './documentos-servicio'
@@ -57,8 +58,14 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
     return null
   })
   const soloAtrasadas = params.ver === FILTRO_ATRASADAS
-  const atrasadas = delCodigo.filter((s) => plazos?.get(s.id)?.atrasada ?? s.atrasada).length
-  const visibles = soloAtrasadas ? delCodigo.filter((s) => plazos?.get(s.id)?.atrasada ?? s.atrasada) : delCodigo
+  const esAtrasada = (s: OrdenServicioListada) => plazos?.get(s.id)?.atrasada ?? s.atrasada
+  const atrasadas = delCodigo.filter(esAtrasada).length
+  // Las atrasadas, de la que más días lleva a la que menos.
+  const visibles = soloAtrasadas
+    ? delCodigo
+        .filter(esAtrasada)
+        .sort((a, b) => (plazos?.get(b.id)?.dias_atraso ?? 0) - (plazos?.get(a.id)?.dias_atraso ?? 0))
+    : delCodigo
 
   return (
     <>
@@ -120,7 +127,8 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
             {soloAtrasadas && delCodigo.length > 0 && visibles.length === 0 ? (
               <SinDatos
                 titulo="Ninguna orden de servicio está atrasada"
-                descripcion="Las que siguen abiertas están dentro de su fecha de fin. Vuelve a «Todas» para ver la lista entera."
+                descripcion="Ninguna abierta pasó la fecha en que el trabajo debía volver."
+                accion={<VerTodas ruta="/compras/servicios" params={params} />}
               />
             ) : visibles.length === 0 ? (
               <SinDatos
@@ -259,9 +267,10 @@ function EnQueVa({ servicio: s, plazo }: { servicio: OrdenServicioListada; plazo
       <div className="flex flex-wrap gap-1">
         {mostrar && <Insignia tono={mostrar.tono}>{mostrar.etiqueta}</Insignia>}
         {/* Sin el plazo de la base, la marca que ya trae el listado. */}
-        {!plazo && s.atrasada && <Insignia tono="peligro">Atrasada</Insignia>}
+        {plazo ? <InsigniaDelPlazo plazo={plazo} servicio /> : s.atrasada && <Insignia tono="peligro">Atrasada</Insignia>}
       </div>
-      <PlazoDeLaCompra plazo={plazo} servicio className="mt-1" />
+      {/* La fecha de fin ya va en la primera celda: aquí solo si cambió, y cuándo volvió. */}
+      <PlazoDeLaCompra plazo={plazo} servicio fechaDelDocumento={s.fecha_fin} className="mt-1" />
       <div className="mt-1" data-detraccion>
         {/* Puede partirse: «Detracción 12 %: falta el tipo de cambio» de un solo
             renglón corría la tabla de costado en el teléfono. */}

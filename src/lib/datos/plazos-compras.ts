@@ -49,6 +49,7 @@ export async function plazosDeCompras(ids: readonly string[]): Promise<Map<strin
         dias_atraso: f.dias_atraso == null ? null : Number(f.dias_atraso),
         atrasada: f.atrasada === true,
         por_llegar: loQueFalta(f.por_llegar),
+        por_validar: f.por_validar === true,
       })
     }
   }
@@ -72,6 +73,7 @@ export async function plazosDeServicios(ids: readonly string[]): Promise<Map<str
         dias_atraso: f.dias_atraso == null ? null : Number(f.dias_atraso),
         atrasada: f.atrasada === true,
         por_llegar: null,
+        por_validar: false,
       })
     }
   }

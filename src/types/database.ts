@@ -15630,6 +15630,7 @@ export type Database = {
           dias_atraso: number | null
           atrasada: boolean | null
           por_llegar: Json | null
+          por_validar: boolean | null
         }[]
       }
       plazos_de_servicios: {
