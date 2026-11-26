@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { describirRecorridoDeLaCotizacion, describirRecorridoDeLaOrdenDeCompra, describirRecorridoDeLaOrdenDeServicio, describirRecorridoDelRequerimiento, enQueTermino, haceDias, insumos, tardo } from './recorrido.ts'
+import { describirRecorridoDeLaAveria, describirRecorridoDeLaCotizacion, describirRecorridoDeLaOrdenDeCompra, describirRecorridoDeLaOrdenDeServicio, describirRecorridoDelRequerimiento, enQueTermino, haceDias, insumos, tardo } from './recorrido.ts'
 
 const paso = (orden, paso, situacion, mas = {}) => ({
   orden, paso, situacion, puesto: null, en: null, dias: null, espera: null, detalle: null, ...mas,
@@ -108,6 +108,28 @@ test('un paso que este mapa no conoce se pinta en llano, no se esconde', () => {
   assert.equal(hecho.nota, null)
   assert.equal(ahora.titulo, 'otro paso')
   assert.equal(ahora.nota, null)
+})
+
+test('el recorrido de la avería dice las horas parado del cierre y que no quedó bien', () => {
+  const pasos = describirRecorridoDeLaAveria([
+    { orden: 1, paso: 'REPORTE', situacion: 'HECHO', puesto: 'Ventas', en: '2026-11-25T10:00:00Z', dias: null, espera: null, detalle: 'PARADO' },
+    { orden: 2, paso: 'ATENCION', situacion: 'HECHO', puesto: 'Mantenimiento', en: '2026-11-25T11:00:00Z', dias: null, espera: null, detalle: null },
+    { orden: 3, paso: 'CIERRE', situacion: 'HECHO', puesto: 'Mantenimiento', en: '2026-11-26T10:00:00Z', dias: null, espera: null, detalle: '26.5|Se cambiaron los carbones.' },
+    { orden: 4, paso: 'REAPERTURA', situacion: 'HECHO', puesto: 'Ventas', en: '2026-11-26T12:00:00Z', dias: null, espera: null, detalle: 'Se volvió a apagar.' },
+    { orden: 5, paso: 'CIERRE', situacion: 'AHORA', puesto: 'Mantenimiento', en: '2026-11-26T12:00:00Z', dias: 0, espera: 'CIERRE', detalle: null },
+    { orden: 6, paso: 'CONFIRMACION', situacion: 'PENDIENTE', puesto: null, en: null, dias: null, espera: null, detalle: null },
+  ])
+  assert.deepEqual(
+    pasos.map((p) => [p.titulo, p.nota]),
+    [
+      ['Reportada: el equipo quedó parado', null],
+      ['Mantenimiento anotó su diagnóstico', null],
+      ['Mantenimiento la cerró', 'Parado: 26.5 horas. Se cambiaron los carbones.'],
+      ['No quedó bien: volvió a Mantenimiento', '«Se volvió a apagar.»'],
+      ['Cierre: el equipo vuelve a operativo', 'La arregla y la cierra con el trabajo hecho y las horas parado.'],
+      ['Quien la reportó confirma que quedó bien', null],
+    ],
+  )
 })
 
 test('con varias unidades, Administración la tiene hasta cargar la OT de cada una', () => {

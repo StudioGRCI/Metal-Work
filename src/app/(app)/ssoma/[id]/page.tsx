@@ -16,7 +16,6 @@ import {
   seguimientoDeReportes,
   type AccionSsoma,
   type DetalleReporteSsoma,
-  type FotoSsoma,
   type PasoDeAccion,
   type SeguimientoSsoma,
 } from '@/lib/datos/ssoma'
@@ -32,6 +31,8 @@ import type { PasoDescrito } from '@/lib/dominio/recorrido'
 import { fecha, fechaHora, hoyLima } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { cn } from '@/lib/utils'
+
+import { Galeria } from '../galeria'
 
 import { AgregarAccion, AnularAccion, AnularReporte, AvisoDelCierre, CerrarAccion, ClasificarReporte, ReabrirAccion, ReasignarAccion } from './controles'
 
@@ -228,27 +229,6 @@ function Dato({ titulo, children }: { titulo: string; children: React.ReactNode 
       <p className="text-xs text-texto-suave">{titulo}</p>
       <div className="tabular text-texto">{children}</div>
     </div>
-  )
-}
-
-function Galeria({ fotos, texto }: { fotos: FotoSsoma[]; texto: (f: FotoSsoma) => string }) {
-  return (
-    <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-      {fotos.map((f) => (
-        <li key={f.id}>
-          {f.enlace ? (
-            <a href={f.enlace} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg border border-borde">
-              {/* eslint-disable-next-line @next/next/no-img-element -- enlace firmado de Storage, no pasa por el optimizador */}
-              <img src={f.enlace} alt={texto(f)} className="aspect-square w-full object-cover" loading="lazy" />
-            </a>
-          ) : (
-            <p className="flex aspect-square items-center justify-center rounded-lg border border-borde p-2 text-center text-xs text-texto-suave">
-              La foto {f.orden} no se pudo abrir ahora
-            </p>
-          )}
-        </li>
-      ))}
-    </ul>
   )
 }
 

@@ -65,7 +65,7 @@ const enMonedas = <T,>(filas: T[], moneda: (f: T) => string | null, monto: (f: T
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`
 
 /** Pendientes que son de la persona y no de su puesto: se cuentan aunque su pantalla no esté en su menú de trabajo. */
-const DE_CUALQUIER_PUESTO = new Set(['ssoma_acciones_vencidas', 'ssoma_acciones_abiertas'])
+const DE_CUALQUIER_PUESTO = new Set(['ssoma_acciones_vencidas', 'ssoma_acciones_abiertas', 'averias_por_confirmar'])
 
 /**
  * Con `cache`: el layout lo lee para los globos y el Dashboard para su cifra
@@ -581,8 +581,11 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
         const falta = (c: { monto_venta: number | null; incluye_igv: boolean | null; facturado: number | null }) =>
           Math.max(0, (total(c) ?? 0) - Number(c.facturado ?? 0))
         // Sin factura, o facturada en parte: el monto es lo que falta facturar (Plan 10.1).
+        // Con una factura en otra moneda no se compara, como en la base (20261126470000).
         const porFacturar = (bandeja.data ?? []).filter(
-          (c) => c.codigo_interno && ((c.facturas ?? 0) === 0 || (total(c) !== null && falta(c) > 0.005)),
+          (c) =>
+            c.codigo_interno &&
+            ((c.facturas ?? 0) === 0 || (Number(c.facturado_otra_moneda ?? 0) === 0 && total(c) !== null && falta(c) > 0.005)),
         )
         // La bandeja trae las 300 más nuevas, y una factura en otra moneda no se compara:
         // si no son las mismas que cuenta la base, un monto corto mentiría; va solo la cuenta.
@@ -1089,6 +1092,24 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
     })
     break
   }
+
+  // Averías (Plan 16.3): a Mantenimiento, las que esperan su atención; a quien
+  // reportó, las que Mantenimiento cerró y esperan que diga si quedaron bien.
+  // Sin esto, el circuito dependía de que la persona viera la campana.
+  if (puede(perfil, 'averias.atender')) tareas.push({
+    clave: 'averias_por_atender', ruta: '/averias', tono: 'peligro',
+    texto: n => plural(n, 'avería por atender', 'averías por atender'),
+    contar: () =>
+      cabeza(supabase.from('averias').select('id', { count: 'exact', head: true }).in('estado', ['REPORTADA', 'EN_ATENCION'])),
+  })
+  tareas.push({
+    clave: 'averias_por_confirmar', ruta: '/averias', tono: 'aviso',
+    texto: n => plural(n, 'avería que reportaste espera que digas si quedó bien', 'averías que reportaste esperan que digas si quedaron bien'),
+    contar: () =>
+      cabeza(
+        supabase.from('averias').select('id', { count: 'exact', head: true }).eq('estado', 'CERRADA').eq('registrado_por', perfil.id),
+      ),
+  })
 
   // Calidad (A.1): al área, lo que Calidad le observó y espera su corrección; a
   // Calidad, lo que el área dice que corrigió y espera su revisión. Cuál le toca

@@ -388,6 +388,15 @@ async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo:
       const { data } = await supabase.from('ssoma_accion_eventos').select('hecho_por, tipo').eq('id', id).maybeSingle()
       return data?.tipo === 'CERRADA' ? { por: data.hecho_por, lo: dicho('El cierre', 'Los cierres', 'otro', null) } : null
     }
+    case 'charla_ssoma': {
+      const { data } = await supabase.from('ssoma_charlas').select('tipo, tema, creado_por').eq('id', id).maybeSingle()
+      return (
+        data && {
+          por: data.creado_por,
+          lo: data.tipo === 'INDUCCION' ? dicho('La inducción', 'Las inducciones', 'otra', data.tema) : dicho('La charla', 'Las charlas', 'otra', data.tema),
+        }
+      )
+    }
     case 'transferencia_caja': {
       const { data } = await supabase
         .from('movimientos_caja')

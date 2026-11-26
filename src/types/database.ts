@@ -390,6 +390,125 @@ export type Database = {
           }
         ]
       }
+      averia_pasos: {
+        Row: {
+          id: string
+          averia_id: string
+          paso: string
+          hecho_por: string
+          hecho_en: string
+          texto: string | null
+          horas_parado: number | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          averia_id: string
+          paso: string
+          hecho_por: string
+          hecho_en?: string
+          texto?: string | null
+          horas_parado?: number | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          averia_id?: string
+          paso?: string
+          hecho_por?: string
+          hecho_en?: string
+          texto?: string | null
+          horas_parado?: number | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "averia_pasos_averia_id_fkey"
+            columns: ["averia_id"]
+            isOneToOne: false
+            referencedRelation: "averias"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "averia_pasos_hecho_por_fkey"
+            columns: ["hecho_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      averia_requerimientos: {
+        Row: {
+          id: string
+          averia_id: string
+          requerimiento_id: string
+          nota: string
+          enlazado_por: string
+          enlazado_en: string
+          quitado_por: string | null
+          quitado_en: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          averia_id: string
+          requerimiento_id: string
+          nota: string
+          enlazado_por: string
+          enlazado_en?: string
+          quitado_por?: string | null
+          quitado_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          averia_id?: string
+          requerimiento_id?: string
+          nota?: string
+          enlazado_por?: string
+          enlazado_en?: string
+          quitado_por?: string | null
+          quitado_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "averia_requerimientos_averia_id_fkey"
+            columns: ["averia_id"]
+            isOneToOne: false
+            referencedRelation: "averias"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "averia_requerimientos_enlazado_por_fkey"
+            columns: ["enlazado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "averia_requerimientos_quitado_por_fkey"
+            columns: ["quitado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "averia_requerimientos_requerimiento_id_fkey"
+            columns: ["requerimiento_id"]
+            isOneToOne: false
+            referencedRelation: "requerimientos"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       averias: {
         Row: {
           id: string
@@ -411,6 +530,20 @@ export type Database = {
           motivo_anulacion: string | null
           creado_en: string
           actualizado_en: string
+          diagnostico: string | null
+          atendida_por: string | null
+          atendida_en: string | null
+          trabajo_hecho: string | null
+          horas_parado: number | null
+          cerrada_por: string | null
+          cerrada_en: string | null
+          confirmada_en: string | null
+          nota_de_quien_reporto: string | null
+          veces_reabierta: number
+          reabierta_en: string | null
+          diagnostico_por: string | null
+          diagnostico_en: string | null
+          paro_al_reportar: boolean
         }
         Insert: {
           id?: string
@@ -432,6 +565,20 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          diagnostico?: string | null
+          atendida_por?: string | null
+          atendida_en?: string | null
+          trabajo_hecho?: string | null
+          horas_parado?: number | null
+          cerrada_por?: string | null
+          cerrada_en?: string | null
+          confirmada_en?: string | null
+          nota_de_quien_reporto?: string | null
+          veces_reabierta?: number
+          reabierta_en?: string | null
+          diagnostico_por?: string | null
+          diagnostico_en?: string | null
+          paro_al_reportar?: boolean
         }
         Update: {
           id?: string
@@ -453,6 +600,20 @@ export type Database = {
           motivo_anulacion?: string | null
           creado_en?: string
           actualizado_en?: string
+          diagnostico?: string | null
+          atendida_por?: string | null
+          atendida_en?: string | null
+          trabajo_hecho?: string | null
+          horas_parado?: number | null
+          cerrada_por?: string | null
+          cerrada_en?: string | null
+          confirmada_en?: string | null
+          nota_de_quien_reporto?: string | null
+          veces_reabierta?: number
+          reabierta_en?: string | null
+          diagnostico_por?: string | null
+          diagnostico_en?: string | null
+          paro_al_reportar?: boolean
         }
         Relationships: [
           {
@@ -467,6 +628,27 @@ export type Database = {
             columns: ["area_id"]
             isOneToOne: false
             referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "averias_atendida_por_fkey"
+            columns: ["atendida_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "averias_cerrada_por_fkey"
+            columns: ["cerrada_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "averias_diagnostico_por_fkey"
+            columns: ["diagnostico_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           },
           {
@@ -11088,6 +11270,143 @@ export type Database = {
           }
         ]
       }
+      ssoma_charla_asistentes: {
+        Row: {
+          id: string
+          charla_id: string
+          trabajador_id: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          charla_id: string
+          trabajador_id: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          charla_id?: string
+          trabajador_id?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ssoma_charla_asistentes_charla_id_fkey"
+            columns: ["charla_id"]
+            isOneToOne: false
+            referencedRelation: "ssoma_charlas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_charla_asistentes_trabajador_id_fkey"
+            columns: ["trabajador_id"]
+            isOneToOne: false
+            referencedRelation: "trabajadores"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ssoma_charla_fotos: {
+        Row: {
+          id: string
+          charla_id: string
+          orden: number
+          ruta: string
+          mime_type: string
+          tamano_bytes: number
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          charla_id: string
+          orden: number
+          ruta: string
+          mime_type: string
+          tamano_bytes: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          charla_id?: string
+          orden?: number
+          ruta?: string
+          mime_type?: string
+          tamano_bytes?: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ssoma_charla_fotos_charla_id_fkey"
+            columns: ["charla_id"]
+            isOneToOne: false
+            referencedRelation: "ssoma_charlas"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ssoma_charlas: {
+        Row: {
+          id: string
+          tipo: string
+          tema: string
+          expositor: string
+          fecha: string
+          creado_por: string
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          tipo: string
+          tema: string
+          expositor: string
+          fecha: string
+          creado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          tipo?: string
+          tema?: string
+          expositor?: string
+          fecha?: string
+          creado_por?: string
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ssoma_charlas_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_charlas_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       ssoma_clasificaciones: {
         Row: {
           id: string
@@ -13514,6 +13833,12 @@ export type Database = {
         }
         Returns: string
       }
+      averia_la_ve: {
+        Args: {
+          p_id: string | null
+        }
+        Returns: boolean
+      }
       averias_a_quien_se_aviso: {
         Args: {
           p_averia: string | null
@@ -13547,6 +13872,55 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string[]
       }
+      averias_atender: {
+        Args: {
+          p_id: string | null
+          p_diagnostico: string | null
+        }
+        Returns: {
+          averia: string | null
+          estado: string | null
+        }[]
+      }
+      averias_cerrar: {
+        Args: {
+          p_id: string | null
+          p_trabajo: string | null
+          p_horas: number | null
+        }
+        Returns: {
+          averia: string | null
+          equipo_vuelve_a: string | null
+          sigue_parado_por: string | null
+          avisada: boolean | null
+          equipo_estado: string | null
+        }[]
+      }
+      averias_confirmar: {
+        Args: {
+          p_id: string | null
+          p_quedo_bien: boolean | null
+          p_nota: string | null
+        }
+        Returns: {
+          averia: string | null
+          estado: string | null
+          equipo_parado: boolean | null
+          avisado_a: string | null
+        }[]
+      }
+      averias_enlazar_rq: {
+        Args: {
+          p_enlace: string | null
+          p_averia: string | null
+          p_requerimiento: string | null
+          p_nota: string | null
+        }
+        Returns: {
+          enlace: string | null
+          numero_rq: string | null
+        }[]
+      }
       averias_equipos_para_elegir: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -13561,11 +13935,24 @@ export type Database = {
           estado: string | null
         }[]
       }
+      averias_exigir_mantenimiento: {
+        Args: Record<PropertyKey, never>
+        Returns: null
+      }
       averias_foto_anotada: {
         Args: {
           p_ruta: string | null
         }
         Returns: boolean
+      }
+      averias_quitar_rq: {
+        Args: {
+          p_enlace: string | null
+        }
+        Returns: {
+          enlace: string | null
+          numero_rq: string | null
+        }[]
       }
       averias_reportar: {
         Args: {
@@ -13586,6 +13973,44 @@ export type Database = {
           aviso_responsable: boolean | null
           aviso_ssoma: boolean | null
           aviso_gerencia: boolean | null
+        }[]
+      }
+      averias_rq_enlazados: {
+        Args: {
+          p_averias: string[] | null
+        }
+        Returns: {
+          enlace: string | null
+          averia: string | null
+          requerimiento: string | null
+          numero: string | null
+          estado: string | null
+          nota: string | null
+          enlazado_en: string | null
+          puede_abrir: boolean | null
+        }[]
+      }
+      averias_rq_para_enlazar: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          numero: string | null
+          tipo: string | null
+          area: string | null
+          codigo_interno: string | null
+          estado: string | null
+          justificacion: string | null
+          creado_en: string | null
+        }[]
+      }
+      averias_soltar_el_equipo: {
+        Args: {
+          p_id: string | null
+          p_vuelve_a: string | null
+        }
+        Returns: {
+          vuelve_a: string | null
+          sigue_parado_por: string | null
         }[]
       }
       averias_ve_las_de_riesgo: {
@@ -13621,6 +14046,25 @@ export type Database = {
           anulado_en: string | null
           anulo: string | null
           motivo_anulacion: string | null
+          gravedad: number | null
+          espera_de: string | null
+          espera_desde: string | null
+          es_mia: boolean | null
+          diagnostico: string | null
+          atendida_en: string | null
+          atendio: string | null
+          trabajo_hecho: string | null
+          horas_parado: number | null
+          cerrada_en: string | null
+          cerro: string | null
+          confirmada_en: string | null
+          nota_de_quien_reporto: string | null
+          veces_reabierta: number | null
+          paro_al_reportar: boolean | null
+          equipo_parado_desde: string | null
+          rq_enlazados: number | null
+          diagnostico_de: string | null
+          diagnostico_en: string | null
         }[]
       }
       avisar_a_diseno: {
@@ -15365,6 +15809,8 @@ export type Database = {
           facturas: number | null
           facturado: number | null
           cobrado: number | null
+          facturado_otra_moneda: number | null
+          cobrado_otra_moneda: number | null
         }[]
       }
       crear_compra_agrupada: {
@@ -15508,6 +15954,24 @@ export type Database = {
           p_config: Json | null
         }
         Returns: number
+      }
+      decisiones_tomadas: {
+        Args: {
+          p_desde: string | null
+          p_hasta: string | null
+        }
+        Returns: {
+          tipo: string | null
+          documento: string | null
+          nombre: string | null
+          detalle: string | null
+          codigo: string | null
+          decision: string | null
+          decidido_en: string | null
+          puesto: string | null
+          motivo: string | null
+          enlace: string | null
+        }[]
       }
       dejar_de_esperar_reposicion: {
         Args: {
@@ -19473,12 +19937,30 @@ export type Database = {
         }
         Returns: string
       }
+      ssoma_anular_charla: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       ssoma_anular_reporte: {
         Args: {
           p_id: string | null
           p_motivo: string | null
         }
         Returns: string
+      }
+      ssoma_asistentes_de_charla: {
+        Args: {
+          p_charla: string | null
+        }
+        Returns: {
+          id: string | null
+          nombre: string | null
+          cargo: string | null
+          area: string | null
+        }[]
       }
       ssoma_avisar_a: {
         Args: {
@@ -19499,6 +19981,41 @@ export type Database = {
           p_fotos: Json | null
         }
         Returns: string
+      }
+      ssoma_charla: {
+        Args: {
+          p_id: string | null
+        }
+        Returns: {
+          id: string | null
+          tipo: string | null
+          tema: string | null
+          expositor: string | null
+          fecha: string | null
+          registro: string | null
+          creado_en: string | null
+          anulado_en: string | null
+          anulo: string | null
+          motivo_anulacion: string | null
+        }[]
+      }
+      ssoma_charlas_del_mes: {
+        Args: {
+          p_mes: string | null
+        }
+        Returns: {
+          id: string | null
+          tipo: string | null
+          tema: string | null
+          expositor: string | null
+          fecha: string | null
+          asistentes: number | null
+          fotos: number | null
+          registro: string | null
+          anulado_en: string | null
+          anulo: string | null
+          motivo_anulacion: string | null
+        }[]
       }
       ssoma_clasificar: {
         Args: {
@@ -19535,6 +20052,17 @@ export type Database = {
         }
         Returns: string
       }
+      ssoma_estuvo_en_la_planta: {
+        Args: {
+          p_trabajador: string | null
+          p_activo: boolean | null
+          p_ingreso: string | null
+          p_baja: string | null
+          p_desde: string | null
+          p_hasta: string | null
+        }
+        Returns: boolean
+      }
       ssoma_foto_anotada: {
         Args: {
           p_ruta: string | null
@@ -19565,11 +20093,39 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
+      ssoma_no_asistieron: {
+        Args: {
+          p_mes: string | null
+        }
+        Returns: {
+          id: string | null
+          nombre: string | null
+          cargo: string | null
+          area: string | null
+          ultima: string | null
+        }[]
+      }
       ssoma_nombre_de: {
         Args: {
           p_usuario: string | null
         }
         Returns: string
+      }
+      ssoma_personal_del_mes: {
+        Args: {
+          p_mes: string | null
+        }
+        Returns: number
+      }
+      ssoma_personal_para_charla: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          nombre: string | null
+          cargo: string | null
+          area: string | null
+          en_planta: boolean | null
+        }[]
       }
       ssoma_personal_para_elegir: {
         Args: Record<PropertyKey, never>
@@ -19608,6 +20164,18 @@ export type Database = {
           p_reporte: string | null
         }
         Returns: boolean
+      }
+      ssoma_registrar_charla: {
+        Args: {
+          p_id: string | null
+          p_tipo: string | null
+          p_tema: string | null
+          p_expositor: string | null
+          p_fecha: string | null
+          p_asistentes: string[] | null
+          p_fotos: Json | null
+        }
+        Returns: string
       }
       ssoma_reportar: {
         Args: {
@@ -19674,6 +20242,16 @@ export type Database = {
           vencidas: number | null
           cerradas: number | null
         }[]
+      }
+      ssoma_vigente_en_el_mes: {
+        Args: {
+          p_activo: boolean | null
+          p_ingreso: string | null
+          p_baja: string | null
+          p_desde: string | null
+          p_hasta: string | null
+        }
+        Returns: boolean
       }
       stock_al_aprobar_compras: {
         Args: {

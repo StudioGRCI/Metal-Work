@@ -104,7 +104,7 @@ export default async function PaginaOrdenesCompra({ searchParams }: { searchPara
       />
 
       {sinComprobante > 0 && (
-        <p className="mb-3 text-sm text-texto-suave">
+        <p className="mb-5 text-sm text-texto-suave">
           <span className="tabular font-semibold text-texto">{sinComprobante}</span>{' '}
           {sinComprobante === 1
             ? 'orden sigue sin su comprobante adjunto (factura, o boleta si es sin factura).'
@@ -113,7 +113,7 @@ export default async function PaginaOrdenesCompra({ searchParams }: { searchPara
       )}
 
       {porReponer.length > 0 && (
-        <Tarjeta id="por-reponer" className="mb-4 scroll-mt-20">
+        <Tarjeta id="por-reponer" className="mb-5 scroll-mt-20">
           <TarjetaCabecera
             titulo={`Devuelto al proveedor · ${porReponer.length === 1 ? '1 espera reposición' : `${porReponer.length} esperan reposición`}`}
             ayuda="Almacén devolvió lo que llegó malo y el proveedor dijo que lo repone. Si ya no viene, dilo: lo que falta vuelve a la lista para comprarlo en otra OC."
@@ -149,11 +149,18 @@ export default async function PaginaOrdenesCompra({ searchParams }: { searchPara
 
       {/* Lo que dijo la ventana del motivo o de la fecha va arriba: con «Atrasadas», corregir la fecha saca la fila de la lista. */}
       <ConAvisos>
+      {/* En el teléfono cada orden es una ficha y sus botones van en un renglón
+          (entrega 4 del plan de orden y diseño); en el monitor la columna de
+          acciones tiene su ancho y ya no los apila uno bajo otro. */}
       <Tarjeta className="overflow-hidden">
         <Tabla apilada>
           <TablaCabecera>
             <tr>
-              <TH>Orden</TH>
+              {/* Su ancho: con los botones en un renglón, la columna de acciones
+                  se comía la de la orden y cada fila crecía un 21 %. Desde 1280 px
+                  «Para» y «Comprobante» salen de esta celda, y lo que sobra va a
+                  los botones: con el plazo (#209) una OC lleva hasta cinco. */}
+              <TH className="md:w-1/4 xl:w-1/6">Orden</TH>
               {/* «Para» espera a 1 280 px: entre 768 y 1 279 la tabla se deslizaba de costado y tapaba los botones. */}
               <TH className="hidden xl:table-cell">Para</TH>
               {/* Por debajo de 768 px cada OC es una ficha (`apilada`): el monto, en qué va y el plazo viajan bajo el número, y el recorrido abierto y los botones van a lo ancho. Con sus columnas la tabla medía 461 px en una pantalla de 390, y el recorrido quedaba en una columna de 150 px. */}
@@ -162,7 +169,7 @@ export default async function PaginaOrdenesCompra({ searchParams }: { searchPara
               {/* «Comprobante» también espera a 1 280 px: entre 768 y 1 279 la columna «Orden» quedaba de 83 px y partía el proveedor palabra por palabra. Su dato va bajo el número. */}
               <TH className="hidden xl:table-cell">Comprobante</TH>
               {/* Con `relative`, el rótulo oculto queda dentro de la tabla que se desliza y no ensancha la página en el teléfono. El ancho, solo para quien tiene los botones: a quien consulta le queda «PDF». */}
-              <TH className={cn('relative text-right', (emite || (llevaSuRqa && visibles.some(esDeUnRqa))) && 'md:w-64')}>
+              <TH className={cn('relative text-right', (emite || (llevaSuRqa && visibles.some(esDeUnRqa))) && 'md:w-80 xl:w-[28rem]')}>
                 <span className="sr-only">Acciones</span>
               </TH>
             </tr>
@@ -252,7 +259,7 @@ function FilaCompra({
   const sinCurso = c.aprobacion === 'RECHAZADA' || c.aprobacion === 'ANULADA'
   return (
     // La OC sin número se encuentra por su referencia: es lo que cita el proveedor.
-    <TR data-compra={c.numero ?? c.referencia}>
+    <TR id={`oc-${c.id}`} data-compra={c.numero ?? c.referencia} className="scroll-mt-20 target:bg-acento-suave">
       <TD>
         <div className="flex flex-wrap items-center gap-2">
           <span className={c.numero ? 'tabular font-semibold whitespace-nowrap text-texto' : 'font-semibold text-texto'}>{c.numero ?? 'OC sin número'}</span>
@@ -267,8 +274,9 @@ function FilaCompra({
           <InsigniaDelPlazo plazo={plazo} />
           {reposicion}
         </div>
-        {/* Lo que la columna «Comprobante» dice, hasta que la columna aparece (1 280 px). */}
+        {/* Lo mismo que la columna «Comprobante», que no se ve hasta 1280 px. */}
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 xl:hidden">
+          <span className="text-xs text-texto-suave">Comprobante:</span>
           {c.tiene_factura ? (
             <Insignia tono="exito">Comprobante adjunto</Insignia>
           ) : sinCurso ? (
@@ -277,7 +285,7 @@ function FilaCompra({
             <span className="text-xs text-texto-suave">{comprobantePendiente(c)}</span>
           )}
           {/* En la ficha, lo que la columna «Comprobante» dice debajo: qué se pidió y qué facturas tiene. */}
-          {!sinCurso && <span className="text-xs text-texto-suave">{comprobante.etiqueta}</span>}
+          {!sinCurso && <span className="text-xs text-texto-suave">· {comprobante.etiqueta.toLowerCase()}</span>}
           {c.facturas.length > 0 && (
             <span className="tabular text-xs text-texto">{c.facturas.map((f) => f.numero).join(', ')}</span>
           )}
@@ -340,7 +348,7 @@ function FilaCompra({
           </ul>
         )}
       </TD>
-      <TD className="text-right">
+      <TD>
         <AccionesDeFila>
           {compraConPdf(c.aprobacion) && (
             <a
