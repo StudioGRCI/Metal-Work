@@ -4,13 +4,15 @@ import { cache } from 'react'
 
 import type { Tono } from '@/components/ui/etiqueta-estado'
 import { codigosDeDiseno, planosDeCodigo } from '@/lib/datos/diseno-codigos'
+import { recorridoDeRequerimientos } from '@/lib/datos/recorrido'
+import { cargarRequerimientos } from '@/lib/datos/requerimientos'
 import { planillaAjusteDesde } from '@/lib/datos/rrhh'
 import { todasLasFilas } from '@/lib/datos/todas-las-filas'
 import { ESTADOS_ACTIVOS_OT } from '@/lib/dominio/estados'
 import { totalConIgv } from '@/lib/dominio/finanzas'
 import { devueltaEntera } from '@/lib/dominio/pago-de-boleta'
 import { estadoDePlanilla } from '@/lib/dominio/planilla-diaria'
-import { ESTADOS_RQ_ABIERTOS, leTocaAtender, quienAtiende, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
+import { ESTADOS_RQ_ABIERTOS, leTocaAtender, PUESTO_ALMACEN, quienAtiende, RQ_EN_COMPRA, tieneParaRecoger, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
 import { hoyLima } from '@/lib/format'
 import { rutasDeTrabajo } from '@/lib/navegacion'
 import { apruebaSinOrden, puede, type PerfilSesion } from '@/lib/sesion'
@@ -826,6 +828,19 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       return (data ?? []).length
     },
   })
+  // En compra, a Almacén le toca cuando lo comprado ya llegó y falta dejarlo
+  // listo: lo dice el recorrido, como en la bandeja de atención (leTocaAtender).
+  if (atiende.recibe) tareas.push({
+    clave: 'rq_por_dejar_listo', ruta: '/requerimientos/atencion', tono: 'aviso',
+    texto: n => plural(n, 'requerimiento con lo comprado en almacén por dejar listo', 'requerimientos con lo comprado en almacén por dejar listos'),
+    contar: async () => {
+      const enCompra = (await rqAbiertos()).filter((r) => (RQ_EN_COMPRA as readonly string[]).includes(r.estado))
+      if (enCompra.length === 0) return 0
+      const recorridos = await recorridoDeRequerimientos(enCompra.map((r) => r.id))
+      const loTiene = (id: string) => recorridos.get(id)?.find((p) => p.situacion === 'AHORA')?.puesto
+      return enCompra.filter((r) => loTiene(r.id) === PUESTO_ALMACEN && leTocaAtender(r, atiende, PUESTO_ALMACEN)).length
+    },
+  })
   if (atiende.compraDe.OPERACION || atiende.compraDe.ADMINISTRACION) tareas.push({
     clave: 'rq_por_comprar', ruta: '/requerimientos/atencion', tono: 'aviso',
     texto: n => plural(n, 'requerimiento sin stock por comprar', 'requerimientos sin stock por comprar'),
@@ -837,15 +852,26 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
     texto: n => plural(n, 'requerimiento listo por entregar al área', 'requerimientos listos por entregar al área'),
     contar: rqQueTeTocan('LISTO_EN_ALMACEN'),
   })
-  // El supervisor recoge de Almacén lo que su área pidió.
+  // Las notas de las entregas que Almacén todavía no responde (plan 2, entrega
+  // 2.2): las cierra quien despacha (`atender_conformidad_salida`), y DKS
+  // decidió que sumen en su globo, no solo en la campana. ADMIN no: la
+  // bandeja no le ofrece «Responder» (`puede_atender` mira el permiso, no
+  // `es_admin()`), y el globo no invita a lo que la pantalla no da.
+  if (atiende.despacha && perfil.rol.codigo !== 'ADMIN') tareas.push({
+    clave: 'notas_por_responder', ruta: '/requerimientos/atencion', tono: 'peligro',
+    texto: n => plural(n, 'nota de entrega por responder', 'notas de entrega por responder'),
+    contar: () => cabeza(supabase.from('conformidad_salidas').select('id', { count: 'exact', head: true }).is('atendido_en', null)),
+  })
+  // El supervisor recoge de Almacén lo que su área pidió. Cuenta lo mismo que
+  // la lista a la que lleva (`?ver=recoger`): los RQ con algún insumo que ya
+  // se puede recoger, aunque el resto siga en compra, no solo los que están
+  // listos enteros.
   if (puede(perfil, 'reporte_diario.registrar') && perfil.area_id && perfil.rol.codigo !== 'ADMIN') {
     const area = perfil.area_id
     tareas.push({
-      // A la lista con solo lo que tiene algo para recoger: sin filtro abría
-      // todos los RQ del área y el que estaba listo había que buscarlo.
       clave: 'rq_por_recoger', ruta: '/requerimientos?ver=recoger', tono: 'acento',
-      texto: n => plural(n, 'requerimiento de tu área listo para recoger en almacén', 'requerimientos de tu área listos para recoger en almacén'),
-      contar: async () => (await rqAbiertos()).filter((r) => r.estado === 'LISTO_EN_ALMACEN' && r.area_id === area).length,
+      texto: n => plural(n, 'requerimiento de tu área con algo para recoger en almacén', 'requerimientos de tu área con algo para recoger en almacén'),
+      contar: async () => (await cargarRequerimientos({ soloAbiertos: true, area, conEntregado: true })).filter(tieneParaRecoger).length,
     })
   }
 
