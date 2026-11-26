@@ -4,6 +4,7 @@ import { FileText, Receipt, ShoppingCart } from 'lucide-react'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { AvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
 import { GruposPorVencimiento } from '@/components/finanzas/grupos-por-vencimiento'
+import { LoQueFaltaDeLaFila } from '@/components/finanzas/lo-que-falta'
 import { ParaPagar, type DocumentoParaPagar } from '@/components/finanzas/para-pagar'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -27,6 +28,8 @@ import { notasAFavor, type NotaAFavor } from '@/lib/datos/notas-credito'
 import { TIPO_COMPROBANTE, TIPO_PLANILLA, definir } from '@/lib/dominio/estados'
 import { nombreMoneda, type CuentaParaPagar } from '@/lib/dominio/caja'
 import { nombreDeOc } from '@/lib/dominio/adquisiciones'
+import { faltaDeLaBoleta, faltaDeLaCompraACredito, faltaDeLaFactura, faltaDeLaParte, textoDeLaRegla, type QuienLoTiene } from '@/lib/dominio/lo-que-falta'
+import { esperaDeGerencia, reglaDeAprobacion, type EsperaDeGerencia } from '@/lib/datos/lo-que-falta'
 import { CONTROL_FACTURA_COMPRA, detalleDelControl, resumenPorMoneda } from '@/lib/dominio/finanzas'
 import { devueltaEntera, queQuedaSinElPago, queQuedaTrasLaDevolucion, topeDeLaDevolucion, type BoletaParaDevolver } from '@/lib/dominio/pago-de-boleta'
 import { fecha, hoyLima, moneda, parteDe, periodo, porcentaje, type CodigoMoneda } from '@/lib/format'
@@ -100,6 +103,11 @@ export default async function PaginaPorPagar() {
     codigosDeOcs((pendientes.data ?? []).flatMap((c) => (c.orden_compra_id ? [c.orden_compra_id] : []))),
   ])
   // La factura en otra moneda que espera lo pagado por la boleta no se paga encima: primero se le pasa al cambio.
+  // Lo que espera a Gerencia, con los días desde que se pidió su aprobación (plan 11.2), y la regla que la pide.
+  const ocsPorAprobar = cuentas.flatMap((c) => ocsSinAprobar(c).filter((o) => o.aprobacion === 'POR_APROBAR').map((o) => o.id))
+  const [esperas, regla] = await Promise.all([esperaDeGerencia(ocsPorAprobar), reglaDeAprobacion()])
+  // Lo que le toca a quien mira: Tesorería paga, Gerencia aprueba.
+  const mias: QuienLoTiene[] = [...(paga ? (['Tesorería'] as const) : []), ...(apruebaCompras ? (['Gerencia'] as const) : [])]
   const esperanBoleta = new Map(boletas.flatMap((b) => (b.id && b.otra_moneda && b.otra_factura_id ? [[b.otra_factura_id, b] as const] : [])))
   const nombresOc = new Map(boletas.flatMap((b) => (b.id ? [[b.id, nombreDeOc(b)] as const] : [])))
   // Las que esperan a Contabilidad van al final: no se pagan hasta que lo diga.
@@ -191,6 +199,8 @@ export default async function PaginaPorPagar() {
       esperaBoleta={esperanBoleta.get(c.id ?? '')}
       nombresOc={nombresOc}
       aFavor={aFavorDe.get(c.id ?? '') ?? []}
+      mias={mias}
+      esperas={esperas}
     />
   )
   const filaBoleta = (b: CompraConBoleta) => (
@@ -206,6 +216,7 @@ export default async function PaginaPorPagar() {
       cajasDevolucion={cajasDevolucion}
       descontables={ventanas.descontables.get(b.id ?? '')}
       cambios={ventanas.cambios}
+      mias={mias}
     />
   )
 
@@ -235,6 +246,7 @@ export default async function PaginaPorPagar() {
       <Tarjeta>
         <TarjetaCabecera
           titulo="Facturas por pagar"
+          descripcion={regla ? textoDeLaRegla(regla) : undefined}
           ayuda="Cada factura con sus OC y su saldo, por vencimiento: lo vencido, lo que vence hoy, lo que vence esta semana (hasta el domingo) y lo de después, con los días de cada una contados con la fecha de Lima. El total de cada grupo va en soles y en dólares por separado: no se suman. Al final, aparte, las que esperan a Contabilidad o a Gerencia: no se pueden pagar todavía."
         />
         <TarjetaCuerpo className="space-y-3">
@@ -320,7 +332,7 @@ export default async function PaginaPorPagar() {
               monto={(x) => Number(x.saldo ?? 0)}
               clave={(x) => x.documento_id ?? ''}
               nombre={['boleta', 'boletas']}
-              fila={(x) => <ParteConBoletaFila parte={x} paga={paga} verOc={verOc} verCuentas={verCuentas} hoy={hoy} cuentasCaja={cuentasCaja} cajas={cajasParte} />}
+              fila={(x) => <ParteConBoletaFila parte={x} mias={mias} paga={paga} verOc={verOc} verCuentas={verCuentas} hoy={hoy} cuentasCaja={cuentasCaja} cajas={cajasParte} />}
             />
             {partesPagadas.length > 0 && (
               <SeccionDesplegable titulo={`Boletas de una parte pagadas (${partesPagadas.length})`}>
@@ -352,6 +364,7 @@ export default async function PaginaPorPagar() {
                   <span className="block text-xs text-texto-suave">
                     Comprada el {fecha(c.fecha_compra)} · <Vencimiento dia={c.fecha_vencimiento} saldo={Number(c.total_estimado ?? 1)} />
                   </span>
+                  <LoQueFaltaDeLaFila className="mt-1" mias={mias} falta={faltaDeLaCompraACredito()} />
                 </span>
                 <strong className="tabular">
                   {c.total_estimado === null ? <span className="font-normal text-aviso">Precio pendiente</span> : moneda(c.total_estimado, codigoMoneda(c.moneda))}
@@ -447,6 +460,7 @@ export default async function PaginaPorPagar() {
  */
 function ParteConBoletaFila({
   parte: x,
+  mias = [],
   paga,
   verOc,
   verCuentas,
@@ -455,6 +469,8 @@ function ParteConBoletaFila({
   cajas,
 }: {
   parte: ParteConBoleta
+  /** Las áreas de quien mira: lo suyo dice «Te toca» (plan 11.2). */
+  mias?: QuienLoTiene[]
   paga: boolean
   verOc: boolean
   verCuentas: boolean
@@ -525,6 +541,7 @@ function ParteConBoletaFila({
         </div>
       </div>
       <div className="mt-2 space-y-2">
+        <LoQueFaltaDeLaFila mias={mias} falta={faltaDeLaParte({ saldo })} />
         <ParaPagar documentos={documentos} cuentas={saldo > 0 ? x.cuentasProveedor : []} monedaDocumento={m} sinCuentas={saldo > 0 ? sinCuentas(verCuentas, true) : null} />
         {paga && saldo > 0 && (
           <div className="flex flex-wrap items-center gap-2">
@@ -1007,6 +1024,8 @@ function Factura({
   nombresOc,
   aFavor = [],
   apruebaCompras = false,
+  mias = [],
+  esperas,
 }: {
   cuenta: CuentaPorPagar
   paga: boolean
@@ -1022,6 +1041,10 @@ function Factura({
   cajas: Map<string, CajaDelPago> | undefined
   /** La OC con boleta cuyo pago espera esta factura en otra moneda, si la hay. */
   esperaBoleta: CompraConBoleta | undefined
+  /** Las áreas de quien mira: lo suyo dice «Te toca» (plan 11.2). */
+  mias?: QuienLoTiene[]
+  /** Desde cuándo y cuántos días espera cada OC por aprobar. */
+  esperas?: Map<string, EsperaDeGerencia>
   nombresOc: Map<string, string>
   /** Las notas del proveedor con algo a favor que se pueden descontar de esta factura. */
   aFavor?: NotaQueDescuenta[]
@@ -1154,6 +1177,16 @@ function Factura({
 
       {/* La factura, sus OC y a dónde transferir, como en la OC con boleta y la OS; debajo, el pago. */}
       <div className="mt-2 space-y-2">
+        {/* Qué le falta para pagarla y de quién (plan 11.2). */}
+        <LoQueFaltaDeLaFila
+          mias={mias}
+          falta={faltaDeLaFactura({
+            saldo,
+            enEspera: Boolean(c.enEspera),
+            esperaLaBoleta: Boolean(espera),
+            ordenes: ordenes.map((o) => ({ nombre: nombreDeOc(o), aprobacion: o.aprobacion, pedidaEn: esperas?.get(o.id)?.desde, dias: esperas?.get(o.id)?.dias })),
+          })}
+        />
         <ParaPagar
           documentos={documentos}
           cuentas={saldo > 0 && !espera && !c.enEspera && sinAprobar.length === 0 ? c.cuentasProveedor : []}
@@ -1364,6 +1397,7 @@ function CompraConBoletaFila({
   cajasDevolucion,
   descontables,
   cambios,
+  mias = [],
 }: {
   compra: CompraConBoleta
   paga: boolean
@@ -1378,6 +1412,8 @@ function CompraConBoletaFila({
   descontables: FacturaParaDescontar[] | undefined
   /** El cambio de venta de cada día, para proponerlo al pasar lo pagado a la factura en otra moneda. */
   cambios: Map<string, number | null>
+  /** Las áreas de quien mira: lo suyo dice «Te toca» (plan 11.2). */
+  mias?: QuienLoTiene[]
 }) {
   if (!b.id) return null
   const m = codigoMoneda(b.moneda)
@@ -1492,12 +1528,8 @@ function CompraConBoletaFila({
                 </>
               ))}
           </p>
-          {aviso ? (
-            <p className={`text-xs ${deMas > 0 ? 'text-peligro' : 'text-aviso'}`}>{aviso}</p>
-          ) : (
-            sinBoleta &&
-            !b.cancelada && <p className="text-xs text-texto-suave">Falta la boleta: Logística la adjunta en la OC cuando el proveedor la entregue.</p>
-          )}
+          {/* Que falta la boleta lo dice «Falta…» de abajo, con quién la tiene (plan 11.2). */}
+          {aviso && <p className={`text-xs ${deMas > 0 ? 'text-peligro' : 'text-aviso'}`}>{aviso}</p>}
           {aOtras > 0 && b.a_otras_facturas && (
             <p className="text-xs text-texto-suave">
               <span className="whitespace-nowrap">{moneda(aOtras, m)}</span> de lo pagado de más se descontaron de la factura {b.a_otras_facturas}, en
@@ -1579,6 +1611,22 @@ function CompraConBoletaFila({
       </div>
 
       <div className="mt-2 space-y-2">
+        {/* Qué le falta y de quién (plan 11.2). */}
+        <LoQueFaltaDeLaFila
+          mias={mias}
+          falta={faltaDeLaBoleta({
+            saldo,
+            cancelada: Boolean(b.cancelada),
+            comprobanteEnCamino: enCamino,
+            conFactura,
+            anexoPorRevisar: anexoPorRevisar(b),
+            sinPrecio: Boolean(b.sin_precio),
+            sinBoleta,
+            devuelta,
+            deMas,
+            otraMoneda: Boolean(b.otra_moneda),
+          })}
+        />
         <ParaPagar
           documentos={documentos}
           cuentas={cobra ? b.cuentasProveedor : []}

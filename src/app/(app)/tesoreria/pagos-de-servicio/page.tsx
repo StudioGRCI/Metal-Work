@@ -3,6 +3,7 @@ import { FileText, Wrench } from 'lucide-react'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { AvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
 import { CajaDeLaLinea } from '@/components/finanzas/caja-del-pago'
+import { LoQueFaltaDeLaFila } from '@/components/finanzas/lo-que-falta'
 import { ParaPagar } from '@/components/finanzas/para-pagar'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
@@ -13,6 +14,7 @@ import { AdjuntarDocumentoServicio } from '@/app/(app)/compras/servicios/documen
 import { etiquetaDocumentoServicio } from '@/lib/dominio/adquisiciones'
 import type { CuentaParaPagar } from '@/lib/dominio/caja'
 import { faltaDelServicio, resumenDetraccion } from '@/lib/dominio/detraccion'
+import { faltaDelServicio as queLeFaltaAlServicio } from '@/lib/dominio/lo-que-falta'
 import { resumenPorMoneda } from '@/lib/dominio/finanzas'
 import { ESTADO_SERVICIO } from '@/lib/dominio/logistica'
 import { fecha, hoyLima, moneda, parteDe, porcentaje } from '@/lib/format'
@@ -206,12 +208,20 @@ function Servicio({
       </div>
 
       <div className="mt-2 space-y-2">
+        {/* Qué le falta y de quién (plan 11.2): la OS ya la aprobó Gerencia, o no saldría aquí. */}
+        <LoQueFaltaDeLaFila
+          mias={paga ? ['Tesorería'] : []}
+          falta={queLeFaltaAlServicio({
+            adjuntaTesoreria: adjunta,
+            cancelada: Boolean(s.cancelada),
+            conComprobante: comprobante,
+            conforme: s.estado === 'CONFORME',
+            todoPagado,
+            saldoProveedor: saldo.saldoProveedor,
+            saldoDetraccion: saldo.saldoDetraccion,
+          })}
+        />
         <ParaPagar documentos={documentos} cuentas={s.cancelada ? [] : s.cuentas} monedaDocumento={m} sinCuentas={s.cancelada ? null : sinCuentas} />
-        {!s.cancelada && !comprobante && (
-          <p className="text-xs text-texto-suave">
-            Falta la factura o el recibo del proveedor: la adjunta Logística en la OS{adjunta ? ', o tú aquí' : ''}.
-          </p>
-        )}
         {/* El pago, encima de los pagos anteriores como en Cuentas por pagar y por cobrar. */}
         {s.id && !s.cancelada && ((paga && !todoPagado) || adjunta) && (
           <div className="flex flex-wrap items-center gap-2">
