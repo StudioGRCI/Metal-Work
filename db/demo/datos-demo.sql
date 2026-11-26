@@ -486,6 +486,43 @@ begin
 end;
 $$;
 
+-- SSOMA 15.2 (migración 20261126151500): la condición insegura de Almacén ya
+-- clasificada, con su causa y dos acciones correctivas a cargo de Almacén, una
+-- de ellas vencida, para que la lista las ponga arriba. Las encarga la cuenta
+-- de administrador de la demostración: aquí todavía no están las del banco.
+do $$
+declare
+  v_admin uuid;
+  v_alm   uuid;
+  v_rep   uuid;
+  v_acc   uuid := gen_random_uuid();
+  v_hoy   date := (now() at time zone 'America/Lima')::date;
+begin
+  if exists (select 1 from public.ssoma_acciones) then
+    return;
+  end if;
+  select u.id into v_admin from public.usuarios u join public.roles r on r.id = u.rol_id where r.codigo = 'ADMIN' and u.activo limit 1;
+  select u.id into v_alm from public.usuarios u where u.correo = 'almacen@metalworkperusac.com' and u.activo;
+  select id into v_rep from public.ssoma_reportes where tipo = 'CONDICION_INSEGURA' and estado = 'REPORTADO' order by creado_en limit 1;
+  if v_admin is null or v_alm is null or v_rep is null then
+    return;
+  end if;
+
+  perform set_config('request.jwt.claim.sub', v_admin::text, true);
+  perform public.ssoma_clasificar(v_rep, 'CONDICION_INSEGURA', null, null,
+    'Las planchas se apilan sobre la altura del estante porque falta espacio, y nadie revisa el piso al empezar el turno.');
+  perform public.ssoma_crear_accion(gen_random_uuid(), v_rep,
+    'Limpiar el aceite del pasillo de planchas y dejar arena absorbente junto al estante 3.', v_alm, v_hoy);
+  perform public.ssoma_crear_accion(v_acc, v_rep,
+    'Reacomodar las planchas para que no pasen la altura del estante y marcar en el piso el límite de apilado.', v_alm, v_hoy + 5);
+  -- Solo en la demostración: la primera acción quedó vencida hace dos días.
+  perform set_config('session_replication_role', 'replica', true);
+  update public.ssoma_acciones set fecha_limite = v_hoy - 2 where reporte_id = v_rep and id <> v_acc;
+  perform set_config('session_replication_role', 'origin', true);
+  perform set_config('request.jwt.claim.sub', '', true);
+end;
+$$;
+
 -- -----------------------------------------------------------------------------
 -- El padrón de equipos de la planta (Plan 16). Códigos con la forma de la hoja
 -- de máquinas del taller y personas inventadas: unos operativos, uno con
@@ -535,5 +572,69 @@ begin
   update public.equipos
      set activo = false, baja_motivo = 'Carcasa rota, no tiene arreglo.'
    where codigo = 'AM-07-03';
+end;
+$$;
+
+-- -----------------------------------------------------------------------------
+-- SSOMA 15.3 (migración 20261126985000): el personal de la planta que lista
+-- RR. HH., con nombres y DNI inventados, y dos charlas para que la lista y «No
+-- asistieron» tengan qué mostrar: una de este mes con seis de las diez
+-- personas y una inducción del mes pasado. Se insertan a mano y no con
+-- `ssoma_registrar_charla`, que exige fotos ya subidas a Storage: aquí no hay.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_quien uuid;
+  v_hoy   date := (now() at time zone 'America/Lima')::date;
+  v_charla uuid := gen_random_uuid();
+  v_induccion uuid := gen_random_uuid();
+begin
+  if exists (select 1 from public.ssoma_charlas) then
+    return;
+  end if;
+  select u.id into v_quien
+    from public.usuarios u join public.roles r on r.id = u.rol_id
+   where r.codigo in ('SSOMA', 'ADMIN') and u.activo
+   order by r.codigo = 'SSOMA' desc, u.creado_en
+   limit 1;
+  if v_quien is null then
+    return;
+  end if;
+  perform set_config('request.jwt.claim.sub', v_quien::text, true);
+
+  if not exists (select 1 from public.trabajadores) then
+    insert into public.trabajadores (nombres, apellidos, dni, cargo, area_id)
+    select t.nombres, t.apellidos, t.dni, t.cargo, (select id from public.areas where codigo = t.area)
+      from (values
+        ('JORGE',   'QUISPE MAMANI',   '70000001', 'Soldador',             'PRD'),
+        ('LUIS',    'TORRES CHÁVEZ',   '70000002', 'Soldador',             'PRD'),
+        ('MARCO',   'HUAMÁN ROJAS',    '70000003', 'Armador',              'PRD'),
+        ('PEDRO',   'CCAMA FLORES',    '70000004', 'Pintor',               'ACB'),
+        ('RAÚL',    'MENDOZA SALAS',   '70000005', 'Masillador',           'ACB'),
+        ('ÓSCAR',   'NÚÑEZ PAREDES',   '70000006', 'Operario de plegadora','MTZ'),
+        ('CARLOS',  'VARGAS LEÓN',     '70000007', 'Cortador',             'MTZ'),
+        ('ANA',     'RAMOS QUISPE',    '70000008', 'Auxiliar de almacén',  'ALM'),
+        ('WILMER',  'CHOQUE APAZA',    '70000009', 'Electricista',         'MNT'),
+        ('JULIO',   'PARI CONDORI',    '70000010', 'Ayudante',             'PRD')
+      ) as t(nombres, apellidos, dni, cargo, area);
+    -- Alguien que se fue hace veinte días: en la lista para marcar va aparte, y
+    -- cuenta en «No asistieron» del mes en que estuvo.
+    insert into public.trabajadores (nombres, apellidos, dni, cargo, area_id, activo, fecha_ingreso, fecha_baja)
+    values ('ELSA', 'ROJAS VERA', '70000011', 'Ayudante', (select id from public.areas where codigo = 'PRD'),
+            false, v_hoy - 400, v_hoy - 20);
+  end if;
+
+  insert into public.ssoma_charlas (id, tipo, tema, expositor, fecha, creado_por)
+  values (v_charla, 'CHARLA', 'Uso correcto de la amoladora y sus guardas', 'Supervisión de SSOMA',
+          greatest(date_trunc('month', v_hoy)::date, v_hoy - 3), v_quien),
+         (v_induccion, 'INDUCCION', 'Inducción de seguridad para personal nuevo', 'Supervisión de SSOMA',
+          (date_trunc('month', v_hoy) - interval '10 days')::date, v_quien);
+  insert into public.ssoma_charla_asistentes (charla_id, trabajador_id)
+  select v_charla, t.id from public.trabajadores t where t.activo and t.dni in
+    ('70000001', '70000002', '70000003', '70000004', '70000006', '70000008');
+  insert into public.ssoma_charla_asistentes (charla_id, trabajador_id)
+  select v_induccion, t.id from public.trabajadores t where t.activo and t.dni in ('70000009', '70000010');
+
+  perform set_config('request.jwt.claim.sub', '', true);
 end;
 $$;

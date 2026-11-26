@@ -3,6 +3,8 @@ import { FileText, Receipt, ShoppingCart } from 'lucide-react'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { AvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
+import { GruposPorVencimiento } from '@/components/finanzas/grupos-por-vencimiento'
+import { LoQueFaltaDeLaFila } from '@/components/finanzas/lo-que-falta'
 import { ParaPagar, type DocumentoParaPagar } from '@/components/finanzas/para-pagar'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -26,6 +28,9 @@ import { notasAFavor, type NotaAFavor } from '@/lib/datos/notas-credito'
 import { TIPO_COMPROBANTE, TIPO_PLANILLA, definir } from '@/lib/dominio/estados'
 import { nombreMoneda, type CuentaParaPagar } from '@/lib/dominio/caja'
 import { nombreDeOc } from '@/lib/dominio/adquisiciones'
+import { faltaDeLaBoleta, faltaDeLaCompraACredito, faltaDeLaFactura, faltaDeLaParte, ocsQueTraban, textoDeLaRegla, type OcQueTraba, type QuienLoTiene } from '@/lib/dominio/lo-que-falta'
+import { esAprobadorDeCompras } from '@/lib/datos/aprobacion-compras'
+import { esperaDeGerencia, ocsQueTrabanLasFacturas, reglaDeAprobacion } from '@/lib/datos/lo-que-falta'
 import { CONTROL_FACTURA_COMPRA, detalleDelControl, resumenPorMoneda } from '@/lib/dominio/finanzas'
 import { devueltaEntera, queQuedaSinElPago, queQuedaTrasLaDevolucion, topeDeLaDevolucion, type BoletaParaDevolver } from '@/lib/dominio/pago-de-boleta'
 import { fecha, hoyLima, moneda, parteDe, periodo, porcentaje, type CodigoMoneda } from '@/lib/format'
@@ -44,6 +49,7 @@ import {
 import { DescontarNota, DeshacerUsoDeLaNota, DevolvioLaNota } from '../notas-credito'
 import { AnularPagoParte, PagarParte } from '../partes-con-boleta'
 import { codigoMoneda, Vencimiento } from '../vencimiento'
+import { AbrirLoDelAncla } from './abrir-lo-del-ancla'
 
 export const metadata = { title: 'Cuentas por pagar' }
 
@@ -86,8 +92,6 @@ export default async function PaginaPorPagar() {
   // Las correcciones de cada factura, con su justificante: Tesorería paga lo que quedó.
   // Y, para quien lleva la caja, de qué cuenta salió cada pago.
   const verCaja = puede(perfil, 'tesoreria.caja')
-  // Gerencia, que aprueba, salta desde la factura en espera a Aprobación de compras.
-  const apruebaCompras = puede(perfil, 'compras.configurar_aprobacion')
   const [correcciones, cajas, cajasBoleta, cajasDevolucion, cajasParte, ventanas, codigosCredito] = await Promise.all([
     correccionesDe('FACTURA_COMPRA', cuentas.flatMap((c) => (c.id ? [c.id] : []))),
     verCaja ? cajaDeLosPagos('PAGO_ADQUISICION', cuentas.flatMap((c) => c.pagos.map((p) => p.id))) : undefined,
@@ -99,6 +103,30 @@ export default async function PaginaPorPagar() {
     codigosDeOcs((pendientes.data ?? []).flatMap((c) => (c.orden_compra_id ? [c.orden_compra_id] : []))),
   ])
   // La factura en otra moneda que espera lo pagado por la boleta no se paga encima: primero se le pasa al cambio.
+  // Lo que espera a Gerencia, con los días desde que se pidió su aprobación (plan 11.2), y la regla que la pide.
+  // Las compras a crédito sin comprobante también: su OC puede estar esperando a Gerencia.
+  // Qué OC traba cada factura lo dice la base, con la misma regla que rechaza el pago (20261126560000):
+  // también la que Logística anexó a una OC con boleta por aprobar, que la tabla puente no trae.
+  const [trabasLeidas, esperas, regla, aprueba] = await Promise.all([
+    ocsQueTrabanLasFacturas(cuentas.flatMap((c) => (c.id && Number(c.saldo) > 0 ? [c.id] : []))),
+    esperaDeGerencia((pendientes.data ?? []).flatMap((c) => (c.orden_compra_id ? [c.orden_compra_id] : []))),
+    reglaDeAprobacion(),
+    // Quién aprueba lo decide la base (`es_aprobador_compras`, el puesto de la regla), no un permiso.
+    esAprobadorDeCompras().catch((e: unknown) => {
+      console.error(e instanceof Error ? e.message : e)
+      return false
+    }),
+  ])
+  // Si no se pudo leer, la factura cae a sus OC de la tabla puente: sin la anexada, pero sin callar las suyas.
+  const trabas: Map<string, OcQueTraba> =
+    trabasLeidas === 'error'
+      ? new Map(cuentas.flatMap((c) => { const t = trabaPorSusOc(c); return c.id && t ? [[c.id, t] as const] : [] }))
+      : trabasLeidas
+  const trabaDe = (c: CuentaPorPagar) => (c.id && Number(c.saldo) > 0 ? (trabas.get(c.id) ?? null) : null)
+  // El puesto que aprueba, el de la regla; Gerencia si no se lee.
+  const quienAprueba = regla && regla !== 'error' && regla.puesto ? regla.puesto : 'Gerencia'
+  // Lo que le toca a quien mira: Tesorería paga, quien aprueba aprueba.
+  const mias: QuienLoTiene[] = [...(paga ? (['Tesorería'] as const) : []), ...(aprueba ? [quienAprueba] : [])]
   const esperanBoleta = new Map(boletas.flatMap((b) => (b.id && b.otra_moneda && b.otra_factura_id ? [[b.otra_factura_id, b] as const] : [])))
   const nombresOc = new Map(boletas.flatMap((b) => (b.id ? [[b.id, nombreDeOc(b)] as const] : [])))
   // Las que esperan a Contabilidad van al final: no se pagan hasta que lo diga.
@@ -113,15 +141,25 @@ export default async function PaginaPorPagar() {
   // La que espera su comprobante o ya tiene su factura se paga por ella: no suma al «Por pagar» ni a lo vencido.
   // Tampoco la que el proveedor devolvió entera: no se le debe hasta que la vuelva a cobrar.
   const pagables = boletasPorPagar.filter((b) => !b.comprobante_en_camino && !b.factura && !devueltaEntera(b))
+  // En los grupos por vencimiento, solo lo que de verdad se paga aquí: con saldo y sin pedir otra cosa
+  // (lo pagado de más, la factura en otra moneda). Lo demás va al final, en «No se pagan aquí».
+  const boletasConFecha = pagables.filter((b) => saldoDeLaBoleta(b) > 0 && !pideAlgo(b))
   // Lo que le pide a Tesorería algo que no es pagar: el encabezado lo cuenta y lleva a su tarjeta.
-  const deMas = boletasPorPagar.filter((b) => Number(b.de_mas ?? 0) > 0).length
-  const otraMoneda = boletasPorPagar.filter((b) => b.otra_moneda).length
+  // Cada aviso lleva a la primera OC que lo causa, en el grupo donde haya caído.
+  const pagadasDeMas = boletasPorPagar.filter((b) => Number(b.de_mas ?? 0) > 0)
+  const conOtraMoneda = boletasPorPagar.filter((b) => b.otra_moneda)
+  const deMas = pagadasDeMas.length
+  const otraMoneda = conOtraMoneda.length
   const partesPorPagar = partes.filter((x) => Number(x.saldo ?? 0) > 0)
   const partesPagadas = partes.filter((x) => Number(x.saldo ?? 0) <= 0)
   // La factura que espera a Contabilidad pudo pagarse fuera: no suma hasta que lo diga.
   // La que espera a Gerencia tampoco: no se puede pagar todavía.
-  const esperanGerencia = porPagar.filter((c) => !c.enEspera && ocsSinAprobar(c).length > 0)
-  const exigibles = porPagar.filter((c) => !c.enEspera && ocsSinAprobar(c).length === 0)
+  // Las que esperan a quien aprueba, aparte de las de una OC rechazada o anulada, que no se pagan y
+  // las ve Contabilidad: en el encabezado no se cuentan juntas.
+  const rechazadaOAnulada = (c: CuentaPorPagar) => ['RECHAZADA', 'ANULADA'].includes(trabaDe(c)?.aprobacion ?? '')
+  const esperanGerencia = porPagar.filter((c) => !c.enEspera && trabaDe(c) && !rechazadaOAnulada(c))
+  const conOcRechazada = porPagar.filter((c) => !c.enEspera && rechazadaOAnulada(c))
+  const exigibles = porPagar.filter((c) => !c.enEspera && !trabaDe(c))
   const vencidas =
     exigibles.filter((c) => c.fecha_vencimiento && c.fecha_vencimiento < hoy).length +
     pagables.filter((b) => b.vence && b.vence < hoy && saldoDeLaBoleta(b) > 0).length +
@@ -152,9 +190,16 @@ export default async function PaginaPorPagar() {
       : null,
     esperanGerencia.length > 0
       ? {
-          texto: esperanGerencia.length === 1 ? 'una espera a Gerencia' : `${esperanGerencia.length} esperan a Gerencia`,
+          texto: esperanGerencia.length === 1 ? `una espera a ${quienAprueba}` : `${esperanGerencia.length} esperan a ${quienAprueba}`,
           href: `#factura-${esperanGerencia[0].id}`,
           tono: 'text-aviso',
+        }
+      : null,
+    conOcRechazada.length > 0
+      ? {
+          texto: conOcRechazada.length === 1 ? 'una con la OC rechazada o anulada' : `${conOcRechazada.length} con la OC rechazada o anulada`,
+          href: `#factura-${conOcRechazada[0].id}`,
+          tono: 'text-peligro',
         }
       : null,
     primeraEnEspera
@@ -164,18 +209,57 @@ export default async function PaginaPorPagar() {
           tono: 'text-aviso',
         }
       : null,
-    deMas > 0 ? { texto: deMas === 1 ? 'una OC pagada de más' : `${deMas} OC pagadas de más`, href: '#compras-con-boleta', tono: 'text-peligro' } : null,
+    deMas > 0 ? { texto: deMas === 1 ? 'una OC pagada de más' : `${deMas} OC pagadas de más`, href: `#compra-${pagadasDeMas[0].id}`, tono: 'text-peligro' } : null,
     otraMoneda > 0
       ? {
           texto: otraMoneda === 1 ? 'una OC con factura en otra moneda' : `${otraMoneda} OC con factura en otra moneda`,
-          href: '#compras-con-boleta',
+          href: `#compra-${conOtraMoneda[0].id}`,
           tono: 'text-peligro',
         }
       : null,
   ].filter((a) => a !== null)
 
+  // Cada fila tal como ya se pintaba; los grupos por vencimiento solo la ponen en su lugar.
+  const filaFactura = (c: CuentaPorPagar) => (
+    <Factura
+      cuenta={c}
+      paga={paga}
+      pasa={pasa}
+      verOc={verOc}
+      verCuentas={verCuentas}
+      apruebaCompras={aprueba}
+      quienAprueba={quienAprueba}
+      traba={trabaDe(c)}
+      hoy={hoy}
+      correcciones={correcciones.get(c.id ?? '')}
+      cuentasCaja={cuentasCaja}
+      cajas={cajas}
+      esperaBoleta={esperanBoleta.get(c.id ?? '')}
+      nombresOc={nombresOc}
+      aFavor={aFavorDe.get(c.id ?? '') ?? []}
+      mias={mias}
+    />
+  )
+  const filaBoleta = (b: CompraConBoleta) => (
+    <CompraConBoletaFila
+      compra={b}
+      paga={paga}
+      pasa={pasa}
+      verOc={verOc}
+      verCuentas={verCuentas}
+      hoy={hoy}
+      cuentasCaja={cuentasCaja}
+      cajas={cajasBoleta}
+      cajasDevolucion={cajasDevolucion}
+      descontables={ventanas.descontables.get(b.id ?? '')}
+      cambios={ventanas.cambios}
+      mias={mias}
+    />
+  )
+
   return (
     <AvisoDeLaCaja>
+      <AbrirLoDelAncla />
       <EncabezadoPagina
         titulo="Cuentas por pagar"
         descripcion={
@@ -198,7 +282,21 @@ export default async function PaginaPorPagar() {
       />
 
       <Tarjeta>
-        <TarjetaCabecera titulo="Facturas por pagar" ayuda="Cada factura con sus OC y su saldo; lo vencido sale en rojo." />
+        <TarjetaCabecera
+          titulo="Facturas por pagar"
+          descripcion={
+            <>
+              {regla === 'error' ? 'No se pudo leer la regla de aprobación de compras: recarga la pantalla para verla.' : regla ? textoDeLaRegla(regla) : null}
+              {/* Sin la lista de la base, cada factura mira solo sus OC: la que la anexó a otra no se ve. */}
+              {trabasLeidas === 'error' && (
+                <span role="alert" className="mt-1 block font-medium text-peligro">
+                  No se pudo comprobar qué OC traba cada factura: alguna que dice «Te toca» puede esperar a {quienAprueba}. Recarga la pantalla antes de pagar.
+                </span>
+              )}
+            </>
+          }
+          ayuda="Cada factura con sus OC y su saldo, por vencimiento: lo vencido, lo que vence hoy, lo que vence esta semana (hasta el domingo) y lo de después, con los días de cada una contados con la fecha de Lima. El total de cada grupo va en soles y en dólares por separado: no se suman. Al final, aparte, las que esperan a Contabilidad o a Gerencia: no se pueden pagar todavía."
+        />
         <TarjetaCuerpo className="space-y-3">
           {porPagar.length === 0 ? (
             <div className="flex flex-col items-center py-8 text-center">
@@ -209,24 +307,21 @@ export default async function PaginaPorPagar() {
               <p className="mt-1 max-w-lg text-sm text-texto-suave">Aparecen cuando Contabilidad registra una factura de compra en Adquisiciones.</p>
             </div>
           ) : (
-            porPagar.map((c) => (
-              <Factura
-                key={c.id}
-                cuenta={c}
-                paga={paga}
-                pasa={pasa}
-                verOc={verOc}
-                verCuentas={verCuentas}
-                apruebaCompras={apruebaCompras}
-                hoy={hoy}
-                correcciones={correcciones.get(c.id ?? '')}
-                cuentasCaja={cuentasCaja}
-                cajas={cajas}
-                esperaBoleta={esperanBoleta.get(c.id ?? '')}
-                nombresOc={nombresOc}
-                aFavor={aFavorDe.get(c.id ?? '') ?? []}
-              />
-            ))
+            // Por vencimiento (plan 11.1). Las que esperan a Contabilidad o a Gerencia no se pueden pagar
+            // todavía: van aparte, al final, para que no inflen lo que vence.
+            <GruposPorVencimiento
+              lista="facturas"
+              filas={exigibles}
+              hoy={hoy}
+              dia={(c) => c.fecha_vencimiento}
+              moneda={(c) => c.moneda}
+              monto={(c) => Number(c.saldo)}
+              clave={(c) => c.id ?? ''}
+              nombre={['factura', 'facturas']}
+              fila={filaFactura}
+              // Sin total: las que esperan a Contabilidad pudieron pagarse fuera, y el encabezado tampoco las suma.
+              aparte={{ titulo: 'No se pagan todavía', filas: porPagar.filter((c) => !exigibles.includes(c)), conTotal: false }}
+            />
           )}
         </TarjetaCuerpo>
       </Tarjeta>
@@ -249,22 +344,23 @@ export default async function PaginaPorPagar() {
               <p className="mt-1 max-w-lg text-sm text-texto-suave">Aparecen cuando Logística emite una OC con boleta y queda aprobada.</p>
             </div>
           ) : (
-            boletasPorPagar.map((b) => (
-              <CompraConBoletaFila
-                key={b.id}
-                compra={b}
-                paga={paga}
-                pasa={pasa}
-                verOc={verOc}
-                verCuentas={verCuentas}
-                hoy={hoy}
-                cuentasCaja={cuentasCaja}
-                cajas={cajasBoleta}
-                cajasDevolucion={cajasDevolucion}
-                descontables={ventanas.descontables.get(b.id ?? '')}
-                cambios={ventanas.cambios}
-              />
-            ))
+            // Por vencimiento (plan 11.1): solo las que se pagan aquí. Las que piden una devolución o pasar
+            // lo pagado a su factura van primero; las demás (su comprobante está en camino, ya tienen
+            // factura o el proveedor la devolvió) van al final.
+            <GruposPorVencimiento
+              lista="boletas"
+              filas={boletasConFecha}
+              hoy={hoy}
+              dia={(b) => b.vence}
+              moneda={(b) => b.moneda}
+              monto={saldoDeLaBoleta}
+              clave={(b) => b.id ?? ''}
+              nombre={['OC', 'OC']}
+              fila={filaBoleta}
+              // Lo pagado de más y la factura en otra moneda le piden algo a Tesorería: arriba, como salían antes.
+              primero={{ titulo: pasa ? 'Te piden algo' : 'Le piden algo a Tesorería', filas: boletasPorPagar.filter((b) => !boletasConFecha.includes(b) && pideAlgo(b)) }}
+              aparte={{ titulo: 'No se pagan aquí', filas: boletasPorPagar.filter((b) => !boletasConFecha.includes(b) && !pideAlgo(b)), conTotal: false }}
+            />
           )}
         </TarjetaCuerpo>
       </Tarjeta>
@@ -278,9 +374,18 @@ export default async function PaginaPorPagar() {
             ayuda="Cuando una OC llega en partes, unas con boleta y otras con factura, Logística anexa cada boleta con su monto. Aquí se paga cada boleta, hasta lo que dice; lo demás de la OC se paga por su factura, en «Facturas por pagar», y esa factura no toma lo pagado aquí."
           />
           <TarjetaCuerpo className="space-y-3">
-            {partesPorPagar.map((x) => (
-              <ParteConBoletaFila key={x.documento_id} parte={x} paga={paga} verOc={verOc} verCuentas={verCuentas} hoy={hoy} cuentasCaja={cuentasCaja} cajas={cajasParte} />
-            ))}
+            {/* Por vencimiento (plan 11.1), como las facturas y las OC con boleta. */}
+            <GruposPorVencimiento
+              lista="partes"
+              filas={partesPorPagar}
+              hoy={hoy}
+              dia={(x) => x.vence}
+              moneda={(x) => x.moneda}
+              monto={(x) => Number(x.saldo ?? 0)}
+              clave={(x) => x.documento_id ?? ''}
+              nombre={['boleta', 'boletas']}
+              fila={(x) => <ParteConBoletaFila parte={x} mias={mias} paga={paga} verOc={verOc} verCuentas={verCuentas} hoy={hoy} cuentasCaja={cuentasCaja} cajas={cajasParte} />}
+            />
             {partesPagadas.length > 0 && (
               <SeccionDesplegable titulo={`Boletas de una parte pagadas (${partesPagadas.length})`}>
                 <div className="space-y-3">
@@ -302,6 +407,7 @@ export default async function PaginaPorPagar() {
             {pendientesCredito.map((c) => (
               <div
                 key={c.orden_compra_id}
+                data-compra-credito={c.orden_compra_id ?? undefined}
                 className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 rounded-[var(--radius-base)] border border-borde p-3 text-sm"
               >
                 <span>
@@ -311,6 +417,11 @@ export default async function PaginaPorPagar() {
                   <span className="block text-xs text-texto-suave">
                     Comprada el {fecha(c.fecha_compra)} · <Vencimiento dia={c.fecha_vencimiento} saldo={Number(c.total_estimado ?? 1)} />
                   </span>
+                  <LoQueFaltaDeLaFila
+                    className="mt-1"
+                    mias={mias}
+                    falta={faltaDeLaCompraACredito({ nombre: nombreDeOc(c), aprobacion: null, aprueba: quienAprueba, ...(c.orden_compra_id ? esperas.get(c.orden_compra_id) : undefined) })}
+                  />
                 </span>
                 <strong className="tabular">
                   {c.total_estimado === null ? <span className="font-normal text-aviso">Precio pendiente</span> : moneda(c.total_estimado, codigoMoneda(c.moneda))}
@@ -335,7 +446,8 @@ export default async function PaginaPorPagar() {
                 pasa={pasa}
                 verOc={verOc}
                 verCuentas={verCuentas}
-                apruebaCompras={apruebaCompras}
+                apruebaCompras={aprueba}
+                quienAprueba={quienAprueba}
                 hoy={hoy}
                 correcciones={correcciones.get(c.id ?? '')}
                 cuentasCaja={cuentasCaja}
@@ -406,6 +518,7 @@ export default async function PaginaPorPagar() {
  */
 function ParteConBoletaFila({
   parte: x,
+  mias = [],
   paga,
   verOc,
   verCuentas,
@@ -414,6 +527,8 @@ function ParteConBoletaFila({
   cajas,
 }: {
   parte: ParteConBoleta
+  /** Las áreas de quien mira: lo suyo dice «Te toca» (plan 11.2). */
+  mias?: QuienLoTiene[]
   paga: boolean
   verOc: boolean
   verCuentas: boolean
@@ -484,6 +599,7 @@ function ParteConBoletaFila({
         </div>
       </div>
       <div className="mt-2 space-y-2">
+        <LoQueFaltaDeLaFila mias={mias} falta={faltaDeLaParte({ saldo })} />
         <ParaPagar documentos={documentos} cuentas={saldo > 0 ? x.cuentasProveedor : []} monedaDocumento={m} sinCuentas={saldo > 0 ? sinCuentas(verCuentas, true) : null} />
         {paga && saldo > 0 && (
           <div className="flex flex-wrap items-center gap-2">
@@ -865,11 +981,15 @@ function queQuedaAlAnular(b: CompraConBoleta, pagoId: string, m: CodigoMoneda): 
 const redondear = (n: number) => Math.round(n * 100) / 100
 
 /**
- * Las OC de la factura que todavía no dejan pagarla: la base rechaza el pago de
- * la factura de una OC por aprobar, rechazada o anulada (migración 20261027100000).
+ * Por si no se pudo preguntar a la base: la OC de la tabla puente que no deja
+ * pagar la factura, en el orden en que la base lo dice (rechazada, anulada, por
+ * aprobar). No ve la OC que la anexó: para eso está `ocs_que_traban_las_facturas`.
  */
-function ocsSinAprobar(c: CuentaPorPagar) {
-  return Number(c.saldo) > 0 ? (c.control?.ordenes ?? []).filter((o) => o.aprobacion !== null && o.aprobacion !== 'APROBADA' && o.aprobacion !== 'NO_REQUERIDA') : []
+function trabaPorSusOc(c: CuentaPorPagar): OcQueTraba | null {
+  if (Number(c.saldo) <= 0) return null
+  const orden = (a: string | null) => (a === 'RECHAZADA' ? 0 : a === 'ANULADA' ? 1 : 2)
+  const [o] = ocsQueTraban(c.control?.ordenes ?? []).sort((a, b) => orden(a.aprobacion) - orden(b.aprobacion))
+  return o ? { nombre: nombreDeOc(o), aprobacion: o.aprobacion } : null
 }
 
 /** Lo que le pide a Tesorería algo que no es pagar: lo pagado de más, o la factura en otra moneda que espera lo pagado por la boleta. */
@@ -966,11 +1086,18 @@ function Factura({
   nombresOc,
   aFavor = [],
   apruebaCompras = false,
+  quienAprueba = 'Gerencia',
+  traba = null,
+  mias = [],
 }: {
   cuenta: CuentaPorPagar
   paga: boolean
-  /** Gerencia: la factura en espera lleva a Aprobación de compras. */
+  /** Quien aprueba las compras: la factura en espera lleva a Aprobación de compras. */
   apruebaCompras?: boolean
+  /** El puesto que aprueba, según la regla. */
+  quienAprueba?: string
+  /** La OC que no deja pagarla, según la base (`ocs_que_traban_las_facturas`). */
+  traba?: OcQueTraba | null
   /** Puede pasar a una factura lo pagado por la boleta, o deshacerlo. */
   pasa: boolean
   verOc: boolean
@@ -981,6 +1108,8 @@ function Factura({
   cajas: Map<string, CajaDelPago> | undefined
   /** La OC con boleta cuyo pago espera esta factura en otra moneda, si la hay. */
   esperaBoleta: CompraConBoleta | undefined
+  /** Las áreas de quien mira: lo suyo dice «Te toca» (plan 11.2). */
+  mias?: QuienLoTiene[]
   nombresOc: Map<string, string>
   /** Las notas del proveedor con algo a favor que se pueden descontar de esta factura. */
   aFavor?: NotaQueDescuenta[]
@@ -992,9 +1121,8 @@ function Factura({
   const avisos = avisosDeFacturaRegistrada(c, control)
   const ordenes = control?.ordenes ?? []
   // La base no deja pagar la factura de una OC que Gerencia no aprobó (migración 20261027100000):
-  // en vez del botón, la factura dice a quién espera.
-  const sinAprobar = ocsSinAprobar(c)
-  const rechazada = sinAprobar.find((o) => o.aprobacion === 'RECHAZADA' || o.aprobacion === 'ANULADA')
+  // en vez del botón, la factura dice a quién espera. La OC la dice la base (20261126560000).
+  const rechazada = traba && (traba.aprobacion === 'RECHAZADA' || traba.aprobacion === 'ANULADA') ? traba : null
   // Lo que Tesorería mira al pagar: la factura, sus OC y a dónde transferir.
   const documentos: DocumentoParaPagar[] = [
     ...(c.url ? [{ clave: 'factura', etiqueta: `Factura ${c.numero_documento ?? ''}`.trim(), url: c.url }] : []),
@@ -1062,11 +1190,11 @@ function Factura({
             {saldo <= 0 && <Insignia tono="exito">Pagada</Insignia>}
             {saldo > 0 && Number(c.pagado) > 0 && <Insignia tono="aviso">Pagada en parte</Insignia>}
             {c.enEspera && saldo > 0 && <Insignia tono="aviso">Espera a Contabilidad</Insignia>}
-            {sinAprobar.length > 0 &&
+            {traba &&
               (rechazada ? (
                 <Insignia tono="peligro">{rechazada.aprobacion === 'ANULADA' ? 'OC anulada' : 'OC rechazada'}</Insignia>
               ) : (
-                <Insignia tono="aviso">Espera a Gerencia</Insignia>
+                <Insignia tono="aviso">Espera a {quienAprueba}</Insignia>
               ))}
             {aviso && <Insignia tono={aviso.tono}>{aviso.etiqueta}</Insignia>}
             <InsigniaDelDetector avisos={avisos} />
@@ -1113,11 +1241,16 @@ function Factura({
 
       {/* La factura, sus OC y a dónde transferir, como en la OC con boleta y la OS; debajo, el pago. */}
       <div className="mt-2 space-y-2">
+        {/* Qué le falta para pagarla y de quién (plan 11.2). */}
+        <LoQueFaltaDeLaFila
+          mias={mias}
+          falta={faltaDeLaFactura({ saldo, enEspera: Boolean(c.enEspera), esperaLaBoleta: Boolean(espera), traba, aprueba: quienAprueba })}
+        />
         <ParaPagar
           documentos={documentos}
-          cuentas={saldo > 0 && !espera && !c.enEspera && sinAprobar.length === 0 ? c.cuentasProveedor : []}
+          cuentas={saldo > 0 && !espera && !c.enEspera && !traba ? c.cuentasProveedor : []}
           monedaDocumento={m}
-          sinCuentas={saldo > 0 && !espera && !c.enEspera && sinAprobar.length === 0 ? sinCuentas(verCuentas, ordenes.length > 0) : null}
+          sinCuentas={saldo > 0 && !espera && !c.enEspera && !traba ? sinCuentas(verCuentas, ordenes.length > 0) : null}
         />
         {paga &&
           faltaDeAnulados > 0.005 && (
@@ -1156,36 +1289,20 @@ function Factura({
             <span className={c.enEspera.compra.startsWith('OC sin número') ? undefined : 'whitespace-nowrap'}>{c.enEspera.compra}</span> va con boleta y se dio por pagada fuera del
             sistema. Contabilidad dice si ya se pagó o si falta pagarla, y entonces se paga aquí lo que corresponda.
           </p>
-        ) : sinAprobar.length > 0 ? (
-          <p className={`text-xs ${rechazada ? 'text-peligro' : 'text-aviso'}`}>
-            {rechazada ? (
-              <>
-                {rechazada.aprobacion === 'ANULADA' ? 'La ' : 'Gerencia rechazó la '}
-                <span className={rechazada.numero ? 'whitespace-nowrap' : undefined}>{nombreDeOc(rechazada)}</span>
-                {rechazada.aprobacion === 'ANULADA' ? ' está anulada' : ''}: esta factura no se paga. Contabilidad ve con el proveedor qué pasa con ella.
-              </>
-            ) : (
-              <>
-                {sinAprobar.length === 1 ? 'La ' : 'Las '}
-                {sinAprobar.map((o, i) => (
-                  <span key={o.id}>
-                    {i > 0 && (i === sinAprobar.length - 1 ? ' y ' : ', ')}
-                    <span className={o.numero ? 'whitespace-nowrap' : undefined}>{nombreDeOc(o)}</span>
-                  </span>
-                ))}{' '}
-                {sinAprobar.length === 1 ? 'todavía espera' : 'todavía esperan'} la aprobación de Gerencia: la factura se paga cuando Gerencia{' '}
-                {sinAprobar.length === 1 ? 'la apruebe' : 'las apruebe'}.
-                {apruebaCompras && (
-                  <>
-                    {' '}
-                    <a href="/compras/aprobacion" className="inline-flex min-h-11 items-center font-medium underline-offset-2 hover:underline sm:min-h-0">
-                      Ir a Aprobación de compras
-                    </a>
-                  </>
-                )}
-              </>
-            )}
-          </p>
+        ) : rechazada ? (
+          // Qué pasa y de quién es ya lo dice la línea de lo que falta: aquí no se repite.
+          null
+        ) : traba ? (
+          // Qué falta y de quién ya lo dice la línea de arriba, con sus días; aquí queda solo el camino de quien aprueba.
+          apruebaCompras && (
+            // Directo a la tarjeta de la OC que la traba, que puede no ser una de las de la factura (la que la anexó).
+            <a
+              href={traba.id ? `/compras/aprobacion#OC-${traba.id}` : '/compras/aprobacion'}
+              className="inline-flex min-h-11 items-center text-xs font-medium text-aviso underline-offset-2 hover:underline sm:min-h-0"
+            >
+              Aprobar la <span className="ml-1 whitespace-nowrap">{traba.nombre}</span>
+            </a>
+          )
         ) : espera ? (
           <p className="text-xs text-aviso">
             Espera lo pagado por la boleta de la <span className={espera.numero ? 'whitespace-nowrap' : undefined}>{nombreDeOc(espera)}</span>:{' '}
@@ -1323,6 +1440,7 @@ function CompraConBoletaFila({
   cajasDevolucion,
   descontables,
   cambios,
+  mias = [],
 }: {
   compra: CompraConBoleta
   paga: boolean
@@ -1337,6 +1455,8 @@ function CompraConBoletaFila({
   descontables: FacturaParaDescontar[] | undefined
   /** El cambio de venta de cada día, para proponerlo al pasar lo pagado a la factura en otra moneda. */
   cambios: Map<string, number | null>
+  /** Las áreas de quien mira: lo suyo dice «Te toca» (plan 11.2). */
+  mias?: QuienLoTiene[]
 }) {
   if (!b.id) return null
   const m = codigoMoneda(b.moneda)
@@ -1451,12 +1571,8 @@ function CompraConBoletaFila({
                 </>
               ))}
           </p>
-          {aviso ? (
-            <p className={`text-xs ${deMas > 0 ? 'text-peligro' : 'text-aviso'}`}>{aviso}</p>
-          ) : (
-            sinBoleta &&
-            !b.cancelada && <p className="text-xs text-texto-suave">Falta la boleta: Logística la adjunta en la OC cuando el proveedor la entregue.</p>
-          )}
+          {/* Que falta la boleta lo dice «Falta…» de abajo, con quién la tiene (plan 11.2). */}
+          {aviso && <p className={`text-xs ${deMas > 0 ? 'text-peligro' : 'text-aviso'}`}>{aviso}</p>}
           {aOtras > 0 && b.a_otras_facturas && (
             <p className="text-xs text-texto-suave">
               <span className="whitespace-nowrap">{moneda(aOtras, m)}</span> de lo pagado de más se descontaron de la factura {b.a_otras_facturas}, en
@@ -1538,6 +1654,22 @@ function CompraConBoletaFila({
       </div>
 
       <div className="mt-2 space-y-2">
+        {/* Qué le falta y de quién (plan 11.2). */}
+        <LoQueFaltaDeLaFila
+          mias={mias}
+          falta={faltaDeLaBoleta({
+            saldo,
+            cancelada: Boolean(b.cancelada),
+            comprobanteEnCamino: enCamino,
+            conFactura,
+            anexoPorRevisar: anexoPorRevisar(b),
+            sinPrecio: Boolean(b.sin_precio),
+            sinBoleta,
+            devuelta,
+            deMas,
+            otraMoneda: Boolean(b.otra_moneda),
+          })}
+        />
         <ParaPagar
           documentos={documentos}
           cuentas={cobra ? b.cuentasProveedor : []}

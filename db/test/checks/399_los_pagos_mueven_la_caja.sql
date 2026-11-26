@@ -400,7 +400,8 @@ declare
 begin
   perform pg_temp.como('teso');
   set local role authenticated;
-  perform public.cerrar_dia_caja(gen_random_uuid(), current_setting('prueba.ccierre')::uuid, v_hoy - 2, 0, null);
+  perform public.cerrar_dia_caja(gen_random_uuid(), current_setting('prueba.ccierre')::uuid, v_hoy - 2, 0, null,
+                                 test.captura_de_cierre(current_setting('prueba.ccierre')::uuid));
   v_ruta := pg_temp.voucher('pagos-servicio', current_setting('prueba.os'));
   perform test.debe_fallar(format('select public.registrar_pago_servicio(%L, %L, %L, 500, true, ''OP-398-9'', null, %L, %L, null)',
       current_setting('prueba.pago9'), current_setting('prueba.os'), v_hoy - 2, v_ruta, current_setting('prueba.ccierre')),
@@ -410,7 +411,8 @@ begin
 
   perform public.registrar_pago_servicio(current_setting('prueba.pago9')::uuid, current_setting('prueba.os')::uuid, v_hoy - 1, 500, true,
     'OP-398-9', null, v_ruta, current_setting('prueba.ccierre')::uuid, null);
-  perform public.cerrar_dia_caja(gen_random_uuid(), current_setting('prueba.ccierre')::uuid, v_hoy - 1, -500, null);
+  perform public.cerrar_dia_caja(gen_random_uuid(), current_setting('prueba.ccierre')::uuid, v_hoy - 1, -500, null,
+                                 test.captura_de_cierre(current_setting('prueba.ccierre')::uuid));
 
   -- Anular un pago cuyo día ya se cerró: ese día no se toca y la devolución entra hoy.
   perform public.anular_pago_servicio(current_setting('prueba.pago9')::uuid, 'El proveedor devolvió el pago');
@@ -432,7 +434,8 @@ begin
   v_ruta := pg_temp.voucher('pagos-servicio', current_setting('prueba.os'));
   perform public.registrar_pago_servicio(current_setting('prueba.pago11')::uuid, current_setting('prueba.os')::uuid, v_hoy, 500, true,
     'OP-398-11', null, v_ruta, current_setting('prueba.ccierre')::uuid, null);
-  perform public.cerrar_dia_caja(gen_random_uuid(), current_setting('prueba.ccierre')::uuid, v_hoy, -500, null);
+  perform public.cerrar_dia_caja(gen_random_uuid(), current_setting('prueba.ccierre')::uuid, v_hoy, -500, null,
+                                 test.captura_de_cierre(current_setting('prueba.ccierre')::uuid));
   perform test.debe_fallar(format('select public.anular_pago_servicio(%L, ''El proveedor devolvió el pago'')', current_setting('prueba.pago11')),
     'con la cuenta cerrada hasta hoy el pago no se anula', 'reabre el cierre de hoy');
   perform test.afirmar((select anulado_en is null from public.pagos_orden_servicio where id = current_setting('prueba.pago11')::uuid)
@@ -486,7 +489,8 @@ begin
   perform test.debe_fallar(format('select public.registrar_pago_factura(gen_random_uuid(), %L, %L, 10, ''OP-398-G'', null, %L, null)',
       current_setting('prueba.adq1'), v_hoy, current_setting('prueba.cpen')),
     'Gerencia consulta, no paga', 'tesoreria.registrar_pagos');
-  perform test.afirmar((select count(*) from public.movimientos_caja) = 0, 'ni ve los movimientos de la caja');
+  -- Los consulta desde la 20261126310000 (`tesoreria.ver_caja`); la auditoría de la caja sigue pidiendo `tesoreria.caja`.
+  perform test.afirmar((select count(*) from public.movimientos_caja) > 0, 'consulta los movimientos de la caja, sin moverla');
   perform test.afirmar((select count(*) from public.audit_log where tabla in ('cajas', 'movimientos_caja', 'cierres_caja')) = 0,
     'ni los lee por la auditoría, aunque tenga auditoria.ver');
   perform test.afirmar((select count(*) from public.audit_log where tabla = 'pagos_adquisicion') > 0,

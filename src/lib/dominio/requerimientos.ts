@@ -2,6 +2,9 @@ import type { Tono } from '@/components/ui/etiqueta-estado'
 import { CODIGO_FIJO_OFICINA, CODIGO_FIJO_PLANTA } from '@/lib/dominio/codigos-internos'
 import type { PerfilSesion } from '@/lib/sesion'
 
+import { ESTADOS_CON_ALGO_POR_ENTREGAR } from '@/lib/dominio/plazo-rq'
+import { fecha } from '@/lib/format'
+
 type Def = { etiqueta: string; tono: Tono; descripcion: string }
 
 /**
@@ -67,7 +70,7 @@ export const CODIGOS_FIJOS_DEL_RQ: Record<TipoRequerimiento, { codigo: string; d
 }
 
 /** Los que todavía esperan a alguien: lo que la bandeja de atención muestra primero. */
-export const ESTADOS_RQ_ABIERTOS = ['POR_ATENDER', 'SIN_STOCK', 'EN_ATENCION', 'LISTO_EN_ALMACEN'] as const
+export const ESTADOS_RQ_ABIERTOS = ESTADOS_CON_ALGO_POR_ENTREGAR
 
 /** Quién compra cada requerimiento: el de operación, Logística; el de Administración, la administradora. */
 export type CompraDe = Record<TipoRequerimiento, boolean>
@@ -93,18 +96,61 @@ export function quienAtiende(perfil: Pick<PerfilSesion, 'permisos' | 'rol'>): Qu
   }
 }
 
+// Lo que espera a otro puesto: a quien pidió (el sustento, lo que la compra no
+// alcanzó), a Diseño, a Gerencia o al conductor. El recojo es del área que pidió.
+const ESPERAS_DE_OTROS = new Set([
+  'SUSTENTO', 'VISTO_DISENO', 'COMPRA_CORTA', 'OC_POR_APROBAR', 'PENDIENTE_RECOJO', 'EN_RECOJO', 'RECOGIDO',
+])
+
 /**
- * Si un requerimiento abierto espera a quien mira en la bandeja de atención: el
- * que revisa el stock lo recibe por revisar y en compra (para recepcionarlo), el
- * que compra lo suyo sin stock, y el que despacha lo listo en almacén. La misma
- * regla para la bandeja y para el globo del menú, para que digan lo mismo.
+ * Si quien mira tiene hoy el RQ, según lo que espera su recorrido
+ * (`recorrido_de_requerimientos`, la fila `AHORA`). «N esperan por ti» y el
+ * globo del menú cuentan lo que tiene hoy su puesto, no lo que pasará por él
+ * (DKS, 2026-11-26).
+ *
+ * Se decide por la clave de la espera, no por el puesto que muestra la
+ * insignia: ese texto es el nombre del área en el RQ listo (y hay un área
+ * «Almacén»), y el cargo de quien lo pidió en el que espera su sustento.
+ * Almacén tiene lo que revisa, lo que llegó y falta validar o dejar listo, y lo
+ * que ya salió del kardex y falta marcar entregado; quien compra, lo suyo que
+ * falta comprar o volver a traer. Programar el recojo es de Logística, también
+ * el de un RQA. El RQ listo que el área todavía recoge es de quien mira solo
+ * si es de su área (el del área Almacén lo recoge el almacenero). Una espera
+ * que no está en la lista va a quien compra, como en la base.
  */
-export function leTocaAtender(rq: { estado: string | null; tipo: string | null }, p: QuienAtiende): boolean {
-  if (rq.estado === 'POR_ATENDER' || rq.estado === 'EN_ATENCION') return p.recibe
-  if (rq.estado === 'SIN_STOCK') return p.compraDe[tipoDeRequerimiento(rq)] || p.recibe
+export function loTieneQuienAtiende(
+  espera: string | null | undefined,
+  rq: { tipo: string | null; area_id: string | null },
+  p: QuienAtiende,
+  areaDeQuienMira: string | null,
+): boolean {
+  if (!espera || ESPERAS_DE_OTROS.has(espera)) return false
+  if (espera === 'RECOJO_DEL_AREA') return areaDeQuienMira != null && rq.area_id === areaDeQuienMira
+  if (espera === 'REVISION_STOCK' || espera === 'POR_VALIDAR' || espera === 'YA_LLEGO_TODO') return p.recibe
+  if (espera === 'POR_ENTREGAR') return p.despacha
+  if (espera === 'POR_PROGRAMAR') return p.compraDe.OPERACION
+  return p.compraDe[tipoDeRequerimiento(rq)]
+}
+
+/**
+ * La regla de antes, para cuando no se pudo leer la espera del recorrido: si
+ * un requerimiento abierto espera a quien mira en la bandeja de atención: el
+ * que revisa el stock lo recibe por revisar, el que compra lo suyo sin stock, y
+ * el que despacha lo listo en almacén. En compra, al que revisa el stock le toca
+ * solo cuando el recorrido dice que lo tiene (`loTiene`). La usa la bandeja sin
+ * recorrido, y la revisión del stock en el globo del menú.
+ */
+export function leTocaAtender(rq: { estado: string | null; tipo: string | null }, p: QuienAtiende, loTiene?: string | null): boolean {
+  const loTieneAlmacen = p.recibe && loTiene === PUESTO_ALMACEN
+  if (rq.estado === 'POR_ATENDER') return p.recibe
+  if (rq.estado === 'EN_ATENCION') return loTieneAlmacen
+  if (rq.estado === 'SIN_STOCK') return p.compraDe[tipoDeRequerimiento(rq)] || loTieneAlmacen
   if (rq.estado === 'LISTO_EN_ALMACEN') return p.despacha
   return false
 }
+
+/** Cómo nombra el recorrido de un RQ a Almacén cuando lo tiene (`recorrido_de_requerimientos`). */
+export const PUESTO_ALMACEN = 'Almacén'
 
 /**
  * En qué etapa va cada insumo del RQ, con su porcentaje. Lo calcula la base
@@ -184,6 +230,17 @@ export function partesDelInsumo(
   }
 }
 
+/**
+ * ¿Tiene algún insumo que ya se puede recoger en Almacén? Es la lista
+ * `?ver=recoger` y el pendiente del supervisor: los dos cuentan lo mismo.
+ */
+export function tieneParaRecoger(rq: {
+  estado: string
+  lineas: { cantidad: number; en_stock: number | null; etapa: string | null; entregado: number | null; llegado: number | null; sin_salida?: number | null }[]
+}): boolean {
+  return rq.lineas.some((l) => (partesDelInsumo(l, rq.estado)?.recoger ?? 0) > 0)
+}
+
 /** Quién trae lo que falta: Logística en el RQ de operación, la administradora en el de Administración. */
 export const quienCompra = (rq: { tipo: string | null }) => (tipoDeRequerimiento(rq) === 'ADMINISTRACION' ? 'Administración' : 'Logística')
 
@@ -244,6 +301,118 @@ export function pasoDelRequerimiento(estado: string, partes?: readonly (PartesDe
   if (estado === 'LISTO_EN_ALMACEN') return 'EN_ALMACEN'
   if (estado === 'ENTREGADO') return 'ENTREGADO'
   return null
+}
+
+/**
+ * Los pasos de un insumo, de principio a fin, como los sigue el supervisor en
+ * «RQ por unidad» (Plan 1, entrega 1.2). El visto de Diseño va primero y solo
+ * cuando lo pedido se pasa del metrado: mientras no lo da, Almacén no lo
+ * revisa. La compra y el camino se saltan cuando Almacén ya lo tenía.
+ */
+export const PASOS_DEL_INSUMO = ['VISTO_DISENO', 'POR_ATENDER', 'EN_COMPRA', 'EN_CAMINO', 'EN_ALMACEN', 'ENTREGADO'] as const
+export type PasoDelInsumo = (typeof PASOS_DEL_INSUMO)[number]
+
+export const TITULO_PASO_DEL_INSUMO: Record<PasoDelInsumo, string> = {
+  VISTO_DISENO: 'Visto de Diseño',
+  POR_ATENDER: 'Por atender',
+  EN_COMPRA: 'En compra',
+  EN_CAMINO: 'En camino',
+  EN_ALMACEN: 'En almacén',
+  ENTREGADO: 'Entregado',
+}
+
+/** A qué paso del insumo corresponde cada etapa de `avance_de_requerimientos`. */
+const PASO_DE_LA_ETAPA: Record<string, PasoDelInsumo> = {
+  POR_REVISAR: 'POR_ATENDER',
+  POR_COMPRAR: 'EN_COMPRA',
+  OC_POR_APROBAR: 'EN_COMPRA',
+  PENDIENTE_RECOJO: 'EN_CAMINO',
+  EN_RECOJO: 'EN_CAMINO',
+  RECOGIDO: 'EN_CAMINO',
+  POR_REPONER: 'EN_CAMINO',
+  POR_VALIDAR: 'EN_ALMACEN',
+  OBSERVADO: 'EN_ALMACEN',
+  EN_KARDEX: 'EN_ALMACEN',
+  EN_STOCK: 'EN_ALMACEN',
+  LISTO_EN_ALMACEN: 'EN_ALMACEN',
+  ENTREGADO: 'ENTREGADO',
+}
+
+/** El visto de Diseño todavía no se da: el insumo espera ahí. */
+const VISTO_QUE_FRENA = ['SIN_SUSTENTO', 'POR_AUTORIZAR', 'RECHAZADO']
+
+/** Lo que dice el visto de Diseño debajo del insumo. */
+export const VISTO_DEL_INSUMO: Record<string, { etiqueta: string; tono: Tono }> = {
+  SIN_SUSTENTO: { etiqueta: 'Se pasa del metrado: falta el sustento de quien registró el RQ', tono: 'aviso' },
+  POR_AUTORIZAR: { etiqueta: 'Se pasa del metrado: Diseño revisa el sustento', tono: 'aviso' },
+  RECHAZADO: { etiqueta: 'Diseño no autorizó lo que se pasa del metrado', tono: 'peligro' },
+  AUTORIZADO: { etiqueta: 'Diseño autorizó lo que se pasa del metrado', tono: 'exito' },
+}
+
+/** En qué va el visto de Diseño del insumo, como lo lee `pasoDelInsumo`; vacío si no espera a Diseño. */
+export const vistoDelMetrado = (estado: string | null | undefined) => (estado && estado in VISTO_DEL_INSUMO ? estado : null)
+
+/** Mientras se compra o viene en camino, se dice cuándo llega. */
+export const ESPERA_LA_COMPRA: readonly PasoDelInsumo[] = ['EN_COMPRA', 'EN_CAMINO']
+
+/**
+ * Cuándo llega lo que se compra, dicho igual en «RQ por unidad» y en el RQA. Si
+ * la fecha ya pasó, no se promete; si Gerencia no aprobó la compra, llegar
+ * depende de que la apruebe. `quienCompra` nombra a quien puso la fecha cuando
+ * quien lee es otro (el supervisor lee la de Logística); `null` si es quien lee.
+ */
+export function cuandoLlega({ llega, atrasada, porAprobar, quienCompra }: { llega: string; atrasada: boolean; porAprobar: boolean; quienCompra: string | null }): string {
+  if (porAprobar && atrasada)
+    return quienCompra ? `${quienCompra} lo esperaba el ${fecha(llega)}` : `Se esperaba el ${fecha(llega)}; la compra sigue por aprobar`
+  if (porAprobar) return `Si Gerencia aprueba la compra, llega aprox. el ${fecha(llega)}`
+  return atrasada ? `Se esperaba el ${fecha(llega)}` : `Llega aprox. el ${fecha(llega)}`
+}
+
+/** El visto de Diseño que el supervisor tiene que mover: escribir el sustento o corregirlo. */
+export const VISTO_QUE_PIDE_SUSTENTO = ['SIN_SUSTENTO', 'RECHAZADO']
+
+/**
+ * En qué paso va el insumo y cuáles le tocan. `null` si no se sabe (el RQ
+ * anulado no tiene etapa).
+ *
+ * - El visto de Diseño es un paso si Diseño lo autorizó, o mientras frena la
+ *   revisión de Almacén (`frenado`). Si el metrado cambió después de revisado,
+ *   el insumo sigue su camino sin ese paso, pero no sale del almacén hasta el
+ *   visto (`frenaLaSalida`).
+ * - La compra y el camino no le tocan si Almacén ya lo tenía entero.
+ * - Entregado es por insumo: el que ya salió entero va entregado aunque otro
+ *   del mismo RQ siga en compra (`entregado`, de `entregado_de_requerimientos`).
+ * - El RQ entregado con faltante deja en `faltante` lo que no salió de ese
+ *   insumo: su paso «Entregado» no termina en verde.
+ */
+export function pasoDelInsumo(
+  l: { etapa: string | null; cantidad: number; en_stock: number | null; entregado: number | null; sin_salida?: number | null },
+  visto: string | null,
+): {
+  pasos: PasoDelInsumo[]
+  actual: PasoDelInsumo
+  terminado: boolean
+  frenado: boolean
+  frenaLaSalida: boolean
+  faltante: number | null
+} | null {
+  const segun = l.etapa ? PASO_DE_LA_ETAPA[l.etapa] : undefined
+  if (!segun) return null
+  const sinVisto = visto !== null && VISTO_QUE_FRENA.includes(visto)
+  const salioEntero = l.entregado !== null && l.cantidad > 0 && l.entregado >= l.cantidad
+  // Sin el visto, Almacén no lo revisa (migración 20261120400000): espera ahí.
+  const frenado = sinVisto && segun === 'POR_ATENDER'
+  // Si el metrado cambió después de la revisión, sigue su camino (se compra,
+  // llega), pero no sale del almacén hasta el visto (migración 20261120410000).
+  const frenaLaSalida = sinVisto && !frenado && segun !== 'ENTREGADO' && !salioEntero
+  const conVisto = visto === 'AUTORIZADO' || frenado
+  const deStock = l.etapa === 'EN_STOCK' || (l.en_stock !== null && l.en_stock >= l.cantidad)
+  const actual: PasoDelInsumo = frenado ? 'VISTO_DISENO' : salioEntero ? 'ENTREGADO' : segun
+  // El RQ se entregó con faltante y de este insumo no salió todo: no se pinta
+  // como entregado entero (`sin_salida_al_entregar`, lo que no salió del kardex).
+  const faltante = segun === 'ENTREGADO' && !salioEntero && l.sin_salida != null && l.sin_salida > 0 ? l.sin_salida : null
+  const pasos = PASOS_DEL_INSUMO.filter((p) => (p !== 'VISTO_DISENO' || conVisto) && ((p !== 'EN_COMPRA' && p !== 'EN_CAMINO') || !deStock))
+  return { pasos, actual, terminado: actual === 'ENTREGADO' && faltante === null, frenado, frenaLaSalida, faltante }
 }
 
 /** Las dos etapas del recojo que Gerencia quiere distinguir de un vistazo. */

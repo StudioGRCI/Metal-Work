@@ -7,6 +7,7 @@ import { AreaTexto, Campo, Seleccion } from '@/components/ui/campos'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import type { RevisionPendiente } from '@/lib/datos/vehiculos'
 import { useEnvio } from '@/lib/envio'
+import { nombreMoneda } from '@/lib/dominio/caja'
 import { fechaHora, moneda, parteDe, porcentaje, type CodigoMoneda } from '@/lib/format'
 
 import { responderRevisionSalida } from '../vehiculos/acciones-ficha'
@@ -21,6 +22,20 @@ export type CobroDelCodigo = {
   cotizaciones: number
   /** El código tiene cotizaciones en monedas distintas: lo de arriba es solo de la primera moneda. */
   monedasDistintas: boolean
+  /**
+   * Lo facturado y cobrado en la otra moneda que la cotización (20261126960000): no se suma a lo
+   * de arriba ni se compara con el total. Null si todas las facturas van en la moneda de la cotización.
+   */
+  otraMoneda: { facturado: number; cobrado: number } | null
+}
+
+/** Lo que falta cobrar de las facturas registradas del código, por moneda: lo ve quien no lee las cotizaciones. */
+export type PorCobrarDelCodigo = {
+  saldo: Record<CodigoMoneda, number>
+  /** Las facturas registradas del código, sin las anuladas. */
+  facturas: number
+  /** Cuántas de ellas tienen saldo por cobrar. */
+  conSaldo: number
 }
 
 /**
@@ -33,12 +48,15 @@ export function RevisionesDeSalida({
   revisiones,
   paraTi,
   cobros,
+  porCobrarDeFacturas,
   abreVehiculos,
 }: {
   revisiones: RevisionPendiente[]
   paraTi: boolean
-  /** Por código interno: lo facturado y lo cobrado de su cotización. */
-  cobros: Record<string, CobroDelCodigo>
+  /** Por código interno: lo facturado y lo cobrado de su cotización. Null para quien no lee las cotizaciones aprobadas. */
+  cobros: Record<string, CobroDelCodigo> | null
+  /** Para quien no lee las cotizaciones: lo que falta cobrar de las facturas de cada código con saldo. */
+  porCobrarDeFacturas: Record<string, PorCobrarDelCodigo>
   /** Si quien mira puede abrir la ficha del vehículo; si no, el enlace terminaba en «No tienes acceso». */
   abreVehiculos: boolean
 }) {
@@ -54,16 +72,39 @@ export function RevisionesDeSalida({
       />
       <TarjetaCuerpo className="space-y-3">
         {revisiones.map((v) => (
-          <RevisionPorResponder key={v.id} revision={v} cobro={v.codigo_interno ? cobros[v.codigo_interno] : undefined} abreVehiculos={abreVehiculos} />
+          <RevisionPorResponder
+            key={v.id}
+            revision={v}
+            cobro={v.codigo_interno && cobros ? cobros[v.codigo_interno] : undefined}
+            veCobros={cobros !== null}
+            porCobrar={v.codigo_interno ? porCobrarDeFacturas[v.codigo_interno] : undefined}
+            abreVehiculos={abreVehiculos}
+          />
         ))}
       </TarjetaCuerpo>
     </Tarjeta>
   )
 }
 
-function RevisionPorResponder({ revision: v, cobro, abreVehiculos }: { revision: RevisionPendiente; cobro?: CobroDelCodigo; abreVehiculos: boolean }) {
+function RevisionPorResponder({
+  revision: v,
+  cobro,
+  veCobros,
+  porCobrar: deFacturas,
+  abreVehiculos,
+}: {
+  revision: RevisionPendiente
+  cobro?: CobroDelCodigo
+  /** Si quien mira lee lo cobrado de los códigos; si no, no se le dice que el código no tiene cotización. */
+  veCobros: boolean
+  porCobrar?: PorCobrarDelCodigo
+  abreVehiculos: boolean
+}) {
   const { alEnviar, enviando, error, resultado } = useEnvio(responderRevisionSalida, undefined, { documento: v.id })
+  // Con facturas en la otra moneda, lo que falta es solo de la moneda de la cotización, y así se dice.
   const porCobrar = cobro?.total === null || cobro === undefined ? null : Math.max(0, cobro.total - cobro.cobrado)
+  const otra = cobro?.otraMoneda ?? null
+  const mOtra: CodigoMoneda = cobro?.moneda === 'USD' ? 'PEN' : 'USD'
   return (
     <article className="rounded-[var(--radius-base)] border border-borde p-4" data-revision={v.id}>
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -98,9 +139,21 @@ function RevisionPorResponder({ revision: v, cobro, abreVehiculos }: { revision:
         <p className="mt-1 tabular text-xs text-texto-suave" data-cobro-del-codigo>
           {cobro.total === null ? (
             'La cotización del código no tiene total registrado.'
-          ) : cobro.facturado === 0 ? (
+          ) : cobro.facturado === 0 && !otra ? (
             <>
               Cotización de <span className="text-texto">{moneda(cobro.total, cobro.moneda)}</span>: Contabilidad todavía no la factura y no hay nada cobrado.
+            </>
+          ) : cobro.facturado === 0 && otra ? (
+            // Facturada solo en la otra moneda: decir «no la factura» era falso, y la tarjeta decide si el vehículo sale.
+            <>
+              {cobro.cotizaciones > 1 ? `Las ${cobro.cotizaciones} cotizaciones, que suman` : 'Cotización de'}{' '}
+              <span className="text-texto">{moneda(cobro.total, cobro.moneda)}</span>
+              {cobro.monedasDistintas && ' sin las de otra moneda'}, {cobro.cotizaciones > 1 ? 'facturadas' : 'facturada'} en{' '}
+              <span data-otra-moneda>
+                {nombreMoneda(mOtra)}: <span className="font-medium text-texto">{moneda(otra.facturado, mOtra)}</span> · cobrado{' '}
+                <span className="font-medium text-texto">{moneda(otra.cobrado, mOtra)}</span>
+              </span>
+              . Para ver si está cancelada, cuéntalo con el tipo de cambio.
             </>
           ) : (
             <>
@@ -113,15 +166,47 @@ function RevisionPorResponder({ revision: v, cobro, abreVehiculos }: { revision:
                 <>
                   {' '}
                   · falta <span className="text-aviso">{moneda(porCobrar, cobro.moneda)}</span>
+                  {otra && ` sin contar lo de ${nombreMoneda(mOtra)}`}
                 </>
+              )}
+              {otra && (
+                <span data-otra-moneda>
+                  {' '}
+                  · y en {nombreMoneda(mOtra)}: facturado <span className="font-medium text-texto">{moneda(otra.facturado, mOtra)}</span> · cobrado{' '}
+                  <span className="font-medium text-texto">{moneda(otra.cobrado, mOtra)}</span>. Para ver si está cancelada, cuéntalo con el tipo de cambio.
+                </span>
               )}
             </>
           )}
         </p>
       )}
-      {!cobro && v.codigo_interno && (
+      {!cobro && veCobros && v.codigo_interno && (
         <p className="mt-1 text-xs text-texto-suave" data-cobro-del-codigo>
           Este código no tiene cotización aprobada: no hay cobro que revisar aquí.
+        </p>
+      )}
+      {/* Sin leer la cotización no se sabe cuánto falta facturar, pero sí lo que falta cobrar de lo facturado: con la tarjeta muda se liberaba a ciegas. */}
+      {!veCobros && v.codigo_interno && (
+        <p className="mt-1 tabular text-xs text-texto-suave" data-por-cobrar-de-facturas>
+          {!deFacturas || deFacturas.facturas === 0 ? (
+            // Sin facturas no hay nada cobrado: decir «no tienen saldo» se leía como cobrado.
+            'Este código no tiene facturas registradas: pregúntale a Tesorería si falta facturar.'
+          ) : deFacturas.conSaldo > 0 ? (
+            <>
+              Por cobrar en {deFacturas.conSaldo === 1 ? '1 factura' : `${deFacturas.conSaldo} facturas`}:{' '}
+              {(['PEN', 'USD'] as const)
+                .filter((m) => deFacturas.saldo[m] > 0)
+                .map((m, i) => (
+                  <span key={m}>
+                    {i > 0 && ' y '}
+                    <span className="whitespace-nowrap font-medium text-aviso">{moneda(deFacturas.saldo[m], m)}</span>
+                  </span>
+                ))}
+              . Lo que falta facturar de la cotización lo ve Tesorería.
+            </>
+          ) : (
+            `${deFacturas.facturas === 1 ? 'Su factura registrada ya está cobrada' : `Sus ${deFacturas.facturas} facturas registradas ya están cobradas`}. Lo que falta facturar de la cotización lo ve Tesorería.`
+          )}
         </p>
       )}
       <p className="mt-1 text-xs text-texto-suave">

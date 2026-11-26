@@ -2,9 +2,13 @@
  * El recorrido de un documento numerado: por dónde pasó, quién hizo cada paso y
  * cuándo, quién lo tiene ahora y hace cuántos días (migración 20261125130000).
  * La base da las claves (`recorrido_de_requerimientos`,
- * `recorrido_de_cotizaciones`, `recorrido_de_reportes_diarios`); las frases viven aquí. Un documento nuevo suma
- * su función con la misma forma y su mapa de pasos en este archivo.
+ * `recorrido_de_cotizaciones`, `recorrido_de_informes_diseno`, `recorrido_de_planillas`,
+ * `recorrido_de_reportes_diarios`); las frases viven aquí. Un documento nuevo suma su
+ * función con la misma forma y su mapa de pasos en este archivo.
  */
+
+// Sin imports de valores: `recorrido.test.mjs` lo carga con `node --test`, que no
+// resuelve el alias `@/` ni las rutas sin extensión.
 
 /** HECHO: alguien lo hizo. AHORA: alguien lo tiene. PENDIENTE: todavía no le toca a nadie. */
 export type SituacionDelPaso = 'HECHO' | 'AHORA' | 'PENDIENTE'
@@ -21,7 +25,10 @@ export type PasoDelRecorrido = {
   puesto: string | null
   /** Cuándo se hizo; de AHORA, desde cuándo espera. */
   en: string | null
-  /** Solo de AHORA: días que lleva esperando, por fecha de Lima. */
+  /**
+   * De AHORA: días que lleva esperando. De lo hecho, solo en la cotización (Plan
+   * 9.1): días desde el paso hecho anterior. Siempre por fecha de Lima.
+   */
   dias: number | null
   /** Solo de AHORA: qué se espera. */
   espera: string | null
@@ -36,12 +43,46 @@ export type PasoDescrito = PasoDelRecorrido & {
   nota: string | null
   /** Lo tienen dos a la vez («Gerencia y Recursos Humanos»): «lo tienen», no «lo tiene». */
   plural?: boolean
+  /**
+   * Una anotación al margen del circuito (el motivo del atraso, la fecha
+   * corregida): no dice en qué terminó el documento, así que el resumen de un
+   * recorrido cerrado no la usa (DKS, 2026-11-26).
+   */
+  alMargen?: boolean
+  /**
+   * Un final que corta el circuito (la OC o la OS anulada o rechazada): la
+   * marca lleva una X roja en vez del visto (DKS, 2026-11-26). Solo lo ponen
+   * la OC y la OS: la cotización, el RQ y la avería siguen como estaban.
+   */
+  corta?: boolean
+  /**
+   * El paso que dice en qué terminó (Completa, Volvió conforme, Anulada,
+   * Rechazada): el resumen del recorrido cerrado lo prefiere al último hecho,
+   * porque la validación de Almacén llega después de que la OC quedó completa.
+   */
+  cierra?: boolean
+}
+
+/**
+ * En qué terminó un recorrido cerrado: el paso que cierra (la OC completa, aunque
+ * Almacén valide después); si no hay, el último hecho que no sea una anotación al
+ * margen (el motivo del atraso); y si todo es al margen, el último hecho.
+ */
+export function enQueTermino(pasos: readonly PasoDescrito[]): PasoDescrito | undefined {
+  const hechos = pasos.filter((p) => p.situacion === 'HECHO')
+  return hechos.filter((p) => p.cierra).at(-1) ?? hechos.filter((p) => !p.alMargen).at(-1) ?? hechos.at(-1)
 }
 
 /** «desde hoy», «hace 1 día», «hace 3 días». Los días los cuenta la base, por fecha de Lima. */
 export function haceDias(dias: number): string {
   if (dias <= 0) return 'desde hoy'
   return dias === 1 ? 'hace 1 día' : `hace ${dias} días`
+}
+
+/** Lo que tardó un paso hecho: «el mismo día», «al día siguiente», «a los 3 días». */
+export function tardo(dias: number): string {
+  if (dias <= 0) return 'el mismo día'
+  return dias === 1 ? 'al día siguiente' : `a los ${dias} días`
 }
 
 /** «Insumo 2», «Insumos 1 y 2», «Insumos 1, 2 y 4», a partir de «1,2,4». */
@@ -66,6 +107,12 @@ type Frases = {
   falta: string
   /** La nota del paso hecho, a partir de su detalle. */
   nota?: (detalle: string) => string | null
+  /** Una anotación que no avanza el documento (ver `PasoDescrito.alMargen`). */
+  alMargen?: boolean
+  /** Un final que corta el circuito (ver `PasoDescrito.corta`). */
+  corta?: boolean
+  /** El paso que dice en qué terminó (ver `PasoDescrito.cierra`). */
+  cierra?: boolean
 }
 
 const PASOS_DEL_REQUERIMIENTO: Record<string, Frases> = {
@@ -109,27 +156,116 @@ const ESPERAS_DEL_REQUERIMIENTO: Record<string, (oc: string | null) => string> =
   COMPRA_CORTA: (oc) => `La ${oc ?? 'orden de compra'} compró menos: pide el resto en un RQ nuevo.`,
   // Ya no le falta llegar nada, aunque su orden de compra siga abierta: lo dice igual la insignia de la tarjeta.
   YA_LLEGO_TODO: () => 'Ya llegó todo: falta marcarlo listo para recoger.',
+  // Ya salió del kardex todo lo pedido (20261126170000): solo falta cerrarlo.
+  POR_ENTREGAR: () => 'Ya salió todo del kardex: falta marcarlo entregado.',
   RECOJO_DEL_AREA: () => 'Lo recoge en Almacén.',
 }
 
+// Con las palabras que usa Ventas con su cliente (Plan 9.1): enviada, devuelta
+// con observación, aprobada, con OT. El título dice lo mismo que la insignia y
+// la campana («Rechazada»), y la nota, lo que eso quiere decir para Ventas.
 const PASOS_DE_LA_COTIZACION: Record<string, Frases> = {
-  SUBIDA: { hecho: 'Subida', falta: 'Subida' },
+  SUBIDA: { hecho: 'Enviada a Gerencia', falta: 'Envío a Gerencia' },
   REVISION: {
     hecho: (d) => (d === 'RECHAZADA' ? 'Rechazada' : d === 'APROBADA' ? 'Aprobada' : 'Revisada'),
     falta: 'Revisión de Gerencia',
+    // Nadie la libera a mano desde la migración 20261027200000: aprobada, ya la
+    // ven Contabilidad y Tesorería. Anulada después, ya no (`cotizacion_fue_aprobada`),
+    // y la nota se quita en `describirRecorridoDeLaCotizacion`.
+    nota: (d) =>
+      d === 'APROBADA' ? 'Liberada: ya la ven Contabilidad y Tesorería' : d === 'RECHAZADA' ? 'Devuelta a Ventas con observación' : null,
   },
   CORRECCION: { hecho: 'Corrección subida', falta: 'Corrección', nota: (version) => `Pasó a la ${version}` },
   // El número de la OT llega solo a quien lee las órdenes.
-  CODIGO_Y_OT: { hecho: 'Código interno y OT cargados', falta: 'Código interno y OT', nota: (ot) => ot },
-  FACTURA: { hecho: 'Facturada', falta: 'Factura' },
+  CODIGO_Y_OT: { hecho: 'Con código interno y OT', falta: 'Código interno y OT', nota: (ot) => ot },
+  // En parte, solo a quien lee las facturas (migración 20261126470000): «Facturada» con la mitad sin facturar confundía.
+  FACTURA: { hecho: (d) => (d === 'EN_PARTE' ? 'Facturada en parte' : 'Facturada'), falta: 'Factura' },
+  // Facturada en parte: la factura de lo que falta del total (migración 20261126470000). Solo espera, nunca se dice hecha.
+  FACTURA_RESTO: { hecho: 'Facturado lo que faltaba', falta: 'Factura de lo que falta' },
+  // El cobro lo ve quien lee los cobros; a Ventas la base no se lo da.
+  COBRO: { hecho: 'Cobrada', falta: 'Cobro' },
   ANULACION: { hecho: 'Anulada', falta: 'Anulación' },
 }
 
 const ESPERAS_DE_LA_COTIZACION: Record<string, (detalle: string | null) => string> = {
   REVISION: () => 'La aprueba o la rechaza.',
   CORRECCION: () => 'Sube la corrección con el mismo número.',
-  CODIGO_Y_OT: () => 'Le da el código interno de la unidad y sube la OT.',
+  // Con varias unidades el detalle dice cuántas OT lleva de cuántas («1/3»).
+  CODIGO_Y_OT: (d) => {
+    const [lleva, de] = (d ?? '').split('/').map(Number)
+    if (!de) return 'Le da el código interno de la unidad y sube la OT.'
+    const faltan = de - lleva
+    return lleva
+      ? `Lleva ${lleva} de ${de} OT: ${faltan === 1 ? 'falta la de 1 unidad, con su código interno' : `faltan las de ${faltan} unidades, cada una con su código interno`}.`
+      : `Le da a cada una de las ${de} unidades su código interno y sube su OT.`
+  },
   FACTURA: () => 'Registra su factura.',
+  FACTURA_RESTO: () => 'Registra la factura de lo que falta del total.',
+  COBRO: (detalle) => (detalle === 'EN_PARTE' ? 'Cobra lo que falta: ya cobró una parte.' : 'Cobra sus facturas.'),
+}
+
+/** «1 hora», «26.5 horas», como `horas` de averias.ts (aquí sin importarla: el test corre sin el alias). */
+function horasParado(valor: number): string {
+  const texto = Number.isInteger(valor) ? String(valor) : valor.toFixed(1)
+  return `${texto} ${valor === 1 ? 'hora' : 'horas'}`
+}
+
+const PASOS_DEL_INFORME_DISENO: Record<string, Frases> = {
+  REGISTRO: { hecho: 'Borrador empezado', falta: 'Borrador' },
+  ENVIO: { hecho: 'Enviado a Diseño', falta: 'Envío a Diseño' },
+  // El motivo va entero: es lo que el colaborador tiene que corregir.
+  DEVOLUCION: { hecho: 'Devuelto para corregir', falta: 'Devolución', nota: (motivo) => `Motivo: ${motivo}` },
+  CORRECCION: { hecho: 'Corregido', falta: 'Corrección' },
+  APROBACION: { hecho: 'Aprobado por Diseño', falta: 'Aprobación' },
+  // Del circuito anterior, cuando el informe pasaba a Administración (migración 20261001213000).
+  RECEPCION: { hecho: 'Recibido por Administración', falta: 'Recepción de Administración' },
+  REVISION: { hecho: 'Revisado por Diseño', falta: 'Revisión de Diseño' },
+}
+
+const ESPERAS_DEL_INFORME_DISENO: Record<string, () => string> = {
+  ENVIO: () => 'Completa la semana y envía el informe a Diseño.',
+  CORRECCION: () => 'Corrige lo que Diseño observó y vuelve a enviarlo.',
+  REVISION: () => 'Lo aprueba o lo devuelve con su motivo.',
+}
+
+const PASOS_DE_LA_AVERIA: Record<string, Frases> = {
+  REPORTE: {
+    hecho: (d) => (d === 'PARADO' ? 'Reportada: el equipo quedó parado' : 'Reportada'),
+    falta: 'Reporte',
+  },
+  ATENCION: { hecho: 'Mantenimiento anotó su diagnóstico', falta: 'Diagnóstico de Mantenimiento' },
+  CIERRE: {
+    hecho: 'Mantenimiento la cerró',
+    falta: 'Cierre: el equipo vuelve a operativo',
+    // Las horas que estuvo parado y el trabajo hecho («26.5|Se cambió…»): si no
+    // quedó bien, la ficha ya no muestra el primer trabajo, y quien la vuelve a
+    // atender lo lee aquí.
+    nota: (d) => {
+      const [h, ...resto] = d.split('|')
+      const trabajo = resto.join('|').trim()
+      const parado = h && Number.isFinite(Number(h)) ? `Parado: ${horasParado(Number(h))}` : null
+      return [parado, trabajo || null].filter(Boolean).join('. ') || null
+    },
+  },
+  // Lo que dijo quien la reportó: la ficha muestra solo la última vez.
+  REAPERTURA: { hecho: 'No quedó bien: volvió a Mantenimiento', falta: 'Reapertura', nota: (t) => (t ? `«${t}»` : null) },
+  CONFIRMACION: {
+    // Si quien la reportó ya no tenía cuenta, la confirmó otra persona (DKS, 2026-11-26): el puesto dice quién.
+    hecho: (d) => (d === 'EN_LUGAR' ? 'Confirmó que quedó bien, en lugar de quien la reportó' : 'Quien la reportó confirmó que quedó bien'),
+    // Sin decir quién: si quien la reportó ya no tiene cuenta, confirma otra persona.
+    falta: 'Confirmar que quedó bien',
+    nota: (d) => (d === 'EN_LUGAR' ? 'Quien la reportó ya no tenía cuenta activa.' : null),
+  },
+  ANULACION: { hecho: 'Anulada por Mantenimiento', falta: 'Anulación' },
+}
+
+const ESPERAS_DE_LA_AVERIA: Record<string, (detalle: string | null) => string> = {
+  ATENCION: () => 'La revisa y anota qué tiene.',
+  CIERRE: () => 'La arregla y la cierra con el trabajo hecho y las horas parado.',
+  CONFIRMACION: (d) =>
+    d === 'SIN_CUENTA'
+      ? 'Quien la reportó ya no tiene cuenta activa: prueba el equipo y dice si quedó bien.'
+      : 'Prueba el equipo y dice si quedó bien.',
 }
 
 const PASOS_DEL_REPORTE: Record<string, Frases> = {
@@ -165,20 +301,203 @@ function describir(
       const llano = p.paso.replaceAll('_', ' ').toLowerCase()
       if (p.situacion === 'HECHO') {
         const titulo = f ? (typeof f.hecho === 'function' ? f.hecho(p.detalle) : f.hecho) : llano
-        return { ...p, titulo, nota: p.detalle && f?.nota ? f.nota(p.detalle) : null }
+        return { ...p, titulo, nota: p.detalle && f?.nota ? f.nota(p.detalle) : null, ...(f?.alMargen ? { alMargen: true } : {}), ...(f?.corta ? { corta: true } : {}), ...(f?.cierra ? { cierra: true } : {}) }
       }
       const nota = p.situacion === 'AHORA' && p.espera ? (esperas[p.espera]?.(p.detalle) ?? null) : null
       return { ...p, titulo: f?.falta ?? llano, nota }
     })
 }
 
+/**
+ * Lo que Logística anotó de una compra atrasada (Plan 4.2): el motivo llega como
+ * «PROVEEDOR|nota» y la fecha corregida como «2026-11-21>2026-11-28|PROVEEDOR|nota».
+ */
+export type Seguimiento = { motivo: string; nota: string | null; anterior: string | null; nueva: string | null }
+
+export function partirSeguimiento(paso: string, detalle: string | null): Seguimiento | null {
+  if (!detalle) return null
+  let resto = detalle
+  let anterior: string | null = null
+  let nueva: string | null = null
+  if (paso === 'FECHA_CORREGIDA') {
+    const i = resto.indexOf('|')
+    const fechas = i < 0 ? resto : resto.slice(0, i)
+    resto = i < 0 ? '' : resto.slice(i + 1)
+    const [a, n] = fechas.split('>')
+    anterior = a || null
+    nueva = n || null
+  }
+  const j = resto.indexOf('|')
+  const motivo = j < 0 ? resto : resto.slice(0, j)
+  const nota = j < 0 ? '' : resto.slice(j + 1)
+  return { motivo, nota: nota.trim() || null, anterior, nueva }
+}
+
+/** Lo último que Logística anotó del atraso, con quién y cuándo: el paso y lo que dice. */
+export function ultimoSeguimiento(pasos: readonly PasoDelRecorrido[] | undefined) {
+  const ultimo = [...(pasos ?? [])]
+    .filter((p) => p.situacion === 'HECHO' && (p.paso === 'MOTIVO_ATRASO' || p.paso === 'FECHA_CORREGIDA'))
+    .sort((a, b) => a.orden - b.orden)
+    .at(-1)
+  const lo = ultimo && partirSeguimiento(ultimo.paso, ultimo.detalle)
+  return ultimo && lo ? { paso: ultimo, ...lo } : null
+}
+
+/** Si Logística corrigió la fecha prometida, la que valía antes de la última corrección. */
+export function correccionDeLaFecha(pasos: readonly PasoDelRecorrido[] | null | undefined): { antes: string | null } | null {
+  const ultima = [...(pasos ?? [])]
+    .filter((p) => p.situacion === 'HECHO' && p.paso === 'FECHA_CORREGIDA')
+    .sort((a, b) => a.orden - b.orden)
+    .at(-1)
+  if (!ultima) return null
+  return { antes: partirSeguimiento(ultima.paso, ultima.detalle)?.anterior ?? null }
+}
+
+/**
+ * Por qué se atrasó una compra, de la lista corta que decidió el plan 4.2
+ * (migración 20261126462000). Con «Otro», la nota es obligatoria.
+ */
+export const MOTIVOS_DE_ATRASO = ['PROVEEDOR', 'PAGO', 'TRANSPORTE', 'APROBACION', 'OTRO'] as const
+export type MotivoDeAtraso = (typeof MOTIVOS_DE_ATRASO)[number]
+
+export const MOTIVO_DE_ATRASO: Record<MotivoDeAtraso, string> = {
+  PROVEEDOR: 'Proveedor',
+  PAGO: 'Pago',
+  TRANSPORTE: 'Transporte',
+  APROBACION: 'Aprobación',
+  OTRO: 'Otro',
+}
+
+/** El motivo en palabras; una clave que la pantalla no conoce, en llano. */
+export function motivoDeAtraso(clave: string): string {
+  return MOTIVO_DE_ATRASO[clave as MotivoDeAtraso] ?? clave.replaceAll('_', ' ').toLowerCase()
+}
+
+/** Una fecha `YYYY-MM-DD` como DD/MM/AAAA, reordenada como texto, igual que `fecha()` de `format.ts`. */
+function fecha(valor: string): string {
+  const partes = /^(\d{4})-(\d{2})-(\d{2})$/.exec(valor.trim())
+  return partes ? `${partes[3]}/${partes[2]}/${partes[1]}` : valor
+}
+
+function notaDelSeguimiento(paso: string) {
+  return (detalle: string) => {
+    const s = partirSeguimiento(paso, detalle)
+    if (!s) return null
+    const fechas = s.nueva ? (s.anterior ? `Del ${fecha(s.anterior)} al ${fecha(s.nueva)}` : `Al ${fecha(s.nueva)}`) : null
+    return [fechas, motivoDeAtraso(s.motivo), s.nota].filter(Boolean).join(' · ')
+  }
+}
+
+const SEGUIMIENTO: Record<string, Frases> = {
+  MOTIVO_ATRASO: { hecho: 'Anotó el motivo del atraso', falta: 'Motivo del atraso', nota: notaDelSeguimiento('MOTIVO_ATRASO'), alMargen: true },
+  FECHA_CORREGIDA: { hecho: 'Corrigió la fecha prometida', falta: 'Fecha prometida', nota: notaDelSeguimiento('FECHA_CORREGIDA'), alMargen: true },
+}
+
+const PASOS_DE_LA_ORDEN_DE_COMPRA: Record<string, Frases> = {
+  EMISION: { hecho: 'Emitida', falta: 'Emisión' },
+  APROBACION: { hecho: 'Gerencia la aprobó', falta: 'Aprobación de Gerencia' },
+  RECHAZO: { hecho: 'Gerencia la rechazó', falta: 'Aprobación de Gerencia', corta: true, cierra: true },
+  MANDADA_A_RECOJO: { hecho: 'Mandada a recojo', falta: 'Mandarla a recojo' },
+  PROGRAMACION: { hecho: 'Recojo programado con el conductor', falta: 'Programar el recojo' },
+  GUIA: { hecho: 'Contabilidad cargó la guía de remisión', falta: 'Guía de remisión' },
+  SALIDA: { hecho: 'El conductor salió a recogerla', falta: 'Salida a recogerla' },
+  NO_SE_PUDO_RECOGER: { hecho: 'El conductor no la pudo recoger', falta: 'Recojo donde el proveedor', nota: (motivo) => motivo },
+  RECOGIDA: { hecho: 'Recogida donde el proveedor', falta: 'Recojo donde el proveedor' },
+  DEJADA: { hecho: 'Dejada en el almacén', falta: 'Llegada al almacén' },
+  VALIDACION: {
+    hecho: (d) => (d === 'OBSERVADO' ? 'Almacén observó el ingreso' : 'Almacén validó el ingreso'),
+    falta: 'Validación de Almacén',
+  },
+  DEVOLUCION: { hecho: 'Almacén devolvió parte al proveedor', falta: 'Devolución al proveedor' },
+  COMPLETA: { hecho: 'Completa: llegó todo lo pedido', falta: 'Completa', cierra: true },
+  ANULACION: { hecho: 'Anulada', falta: 'Anulación', corta: true, cierra: true },
+  ...SEGUIMIENTO,
+}
+
+const ESPERAS_DE_LA_ORDEN_DE_COMPRA: Record<string, () => string> = {
+  APROBACION: () => 'La aprueba o la rechaza.',
+  MANDAR_A_RECOJO: () => 'Falta mandarla a recojo.',
+  PROGRAMAR: () => 'Falta programar el recojo con el conductor.',
+  GUIA: () => 'Carga la guía de remisión para el recojo.',
+  SALIR: () => 'Falta salir a recogerla.',
+  RECOGER: () => 'Salió a recogerla.',
+  DEJAR: () => 'La lleva al almacén.',
+  VALIDAR: () => 'Valida lo que llegó.',
+  REPONER: () => 'Repone lo que Almacén le devolvió.',
+  OBSERVADO: () => 'Almacén observó el ingreso: trae lo que falta.',
+  FALTA_LLEGAR: () => 'Llegó en parte: trae lo que falta.',
+}
+
+const PASOS_DE_LA_ORDEN_DE_SERVICIO: Record<string, Frases> = {
+  EMISION: { hecho: 'Emitida', falta: 'Emisión' },
+  APROBACION: { hecho: 'Gerencia la aprobó', falta: 'Aprobación de Gerencia' },
+  RECHAZO: { hecho: 'Gerencia la rechazó', falta: 'Aprobación de Gerencia', corta: true, cierra: true },
+  INICIO: { hecho: 'Iniciada', falta: 'Inicio del trabajo' },
+  EJECUCION: { hecho: 'En ejecución', falta: 'Trabajo del proveedor' },
+  CONFORMIDAD: { hecho: 'Volvió conforme', falta: 'Conformidad', cierra: true },
+  ANULACION: { hecho: 'Anulada', falta: 'Anulación', corta: true, cierra: true },
+  ...SEGUIMIENTO,
+}
+
+const ESPERAS_DE_LA_ORDEN_DE_SERVICIO: Record<string, () => string> = {
+  APROBACION: () => 'La aprueba o la rechaza.',
+  INICIAR: () => 'Falta marcar que el trabajo empezó.',
+  EJECUTAR: () => 'Hace el trabajo; cuando vuelva, Logística da la conformidad.',
+}
+
+/** El recorrido de una orden de compra, en palabras. */
+export const describirRecorridoDeLaOrdenDeCompra = (pasos: readonly PasoDelRecorrido[]) =>
+  describir(pasos, PASOS_DE_LA_ORDEN_DE_COMPRA, ESPERAS_DE_LA_ORDEN_DE_COMPRA)
+
+/** El recorrido de una orden de servicio, en palabras. */
+export const describirRecorridoDeLaOrdenDeServicio = (pasos: readonly PasoDelRecorrido[]) =>
+  describir(pasos, PASOS_DE_LA_ORDEN_DE_SERVICIO, ESPERAS_DE_LA_ORDEN_DE_SERVICIO)
+
 /** El recorrido de un RQ, en palabras. */
 export const describirRecorridoDelRequerimiento = (pasos: readonly PasoDelRecorrido[]) =>
   describir(pasos, PASOS_DEL_REQUERIMIENTO, ESPERAS_DEL_REQUERIMIENTO)
 
 /** El recorrido de una cotización, en palabras. */
-export const describirRecorridoDeLaCotizacion = (pasos: readonly PasoDelRecorrido[]) =>
-  describir(pasos, PASOS_DE_LA_COTIZACION, ESPERAS_DE_LA_COTIZACION)
+export function describirRecorridoDeLaCotizacion(pasos: readonly PasoDelRecorrido[]): PasoDescrito[] {
+  const descritos = describir(pasos, PASOS_DE_LA_COTIZACION, ESPERAS_DE_LA_COTIZACION)
+  const anulada = pasos.some((p) => p.paso === 'ANULACION' && p.situacion === 'HECHO')
+  return anulada
+    ? descritos.map((p) => (p.paso === 'REVISION' && p.detalle === 'APROBADA' ? { ...p, nota: null } : p))
+    : descritos
+}
+
+/** El recorrido de un informe semanal de Diseño, en palabras. */
+export const describirRecorridoDelInformeDiseno = (pasos: readonly PasoDelRecorrido[]) =>
+  describir(pasos, PASOS_DEL_INFORME_DISENO, ESPERAS_DEL_INFORME_DISENO)
+
+/** «1 persona», «12 personas». */
+const personas = (n: string) => (Number(n) === 1 ? '1 persona' : `${n} personas`)
+
+// La planilla del mes (migración 20261126610000): no es un documento numerado,
+// pero RR. HH. la sigue igual, paso a paso, hasta cerrarla.
+const PASOS_DE_LA_PLANILLA: Record<string, Frases> = {
+  CREADA: { hecho: 'Creada', falta: 'Creación' },
+  IMPORTACION: { hecho: 'Excel importado', falta: 'Excel', nota: (n) => `Entraron ${personas(n)}` },
+  A_MANO: { hecho: 'Agregadas a mano', falta: 'Agregadas a mano', nota: (n) => `${personas(n)} fuera del Excel. La hora es la de la última que se agregó.` },
+  QUITADAS: { hecho: 'Quitadas de la planilla', falta: 'Quitadas', nota: (n) => `${personas(n)}. La hora es la de la última que se quitó.` },
+  CIERRE: { hecho: 'Cerrada', falta: 'Cierre' },
+}
+
+const ESPERAS_DE_LA_PLANILLA: Record<string, (detalle: string | null) => string> = {
+  IMPORTAR: () => 'Importa el Excel del mes o agrega a la primera persona.',
+  CERRAR: () => 'Revisa lo que falta y la cierra.',
+}
+
+/** El recorrido de una planilla del mes, en palabras. */
+export const describirRecorridoDeLaPlanilla = (pasos: readonly PasoDelRecorrido[]) =>
+  describir(pasos, PASOS_DE_LA_PLANILLA, ESPERAS_DE_LA_PLANILLA)
+
+/** El recorrido de un reporte de avería, en palabras. */
+export const describirRecorridoDeLaAveria = (pasos: readonly PasoDelRecorrido[]) =>
+  describir(pasos, PASOS_DE_LA_AVERIA, ESPERAS_DE_LA_AVERIA).map((p) =>
+    // Sin la cuenta de quien la reportó, la confirma otra persona: el título no la nombra.
+    p.situacion === 'AHORA' && p.paso === 'CONFIRMACION' && p.detalle === 'SIN_CUENTA' ? { ...p, titulo: 'Confirmación: si quedó bien' } : p,
+  )
 
 /**
  * El recorrido de un reporte diario, en palabras. Recién subido lo tienen

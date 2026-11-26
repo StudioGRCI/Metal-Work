@@ -170,12 +170,20 @@ begin
                        'pero no la suelta que subió otra persona');
   reset role;
 
-  foreach v_clave in array array['contabilidad', 'gerente'] loop
+  foreach v_clave in array array['contabilidad'] loop
     perform pg_temp.como(v_clave);
     set local role authenticated;
     perform test.afirmar((select count(*) from storage.objects where bucket_id = 'apertura-caja') = 0, v_clave || ' no ve las capturas');
     reset role;
   end loop;
+  -- Gerencia consulta la caja (20261126310000): ve la captura de la cuenta, no la suelta.
+  perform pg_temp.como('gerente');
+  set local role authenticated;
+  perform test.afirmar((select count(*) from storage.objects where bucket_id = 'apertura-caja' and name = current_setting('prueba.cap_banco')) = 1,
+                       'gerente ve la captura de la cuenta');
+  perform test.afirmar((select count(*) from storage.objects where bucket_id = 'apertura-caja' and name = current_setting('prueba.cap_otra_cuenta')) = 0,
+                       'pero no la suelta que subió otra persona');
+  reset role;
 end $$;
 
 -- ============================================ 4. Corregir y cambiar la captura

@@ -1,5 +1,6 @@
 import { Download, X } from 'lucide-react'
 import Link from 'next/link'
+import { Fragment } from 'react'
 
 import { SeparadoPara } from '@/components/almacen/separado-para'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
@@ -10,22 +11,25 @@ import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cargarAtencionMateriales } from '@/lib/datos/atencion-materiales'
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
+import { CONTEOS_POR_PAGINA, conteosFisicos, type ConteoFisico } from '@/lib/datos/conteos'
 import { ingresosPorValidar } from '@/lib/datos/ingresos-por-validar'
 import { cargarKardex, devolucionesPorReponer, FILAS_POR_PAGINA, filtrosDeKardex, ingresosParaDevolver, lineasDeRequerimientoParaSalida, materialesDelKardex, minimosDeStock, requerimientosConSalidaCargada, salidasPorCerrar, unidadesParaSalida } from '@/lib/datos/kardex'
 import { separadoEnAlmacen, stockEnAlmacen } from '@/lib/datos/stock-almacen'
 import { ALMACENES, MOVIMIENTO_KARDEX, ORDEN_ALMACENES, ORIGEN_KARDEX, almacenEnFrase, exigeFormato, topeDeCantidad } from '@/lib/dominio/almacen'
 import { normalizarCodigo, vehiculosDeLaPlaca } from '@/lib/dominio/codigos-internos'
-import { cantidad, fechaHora } from '@/lib/format'
+import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { seccionesDeOrden } from '@/lib/dominio/acceso-orden'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 import { cn } from '@/lib/utils'
 
-import { ConteoFisico } from './conteo'
+import { ConteoFisico as RegistrarConteo } from './conteo'
+import { ConteosFisicos } from './conteos-fisicos'
 import { ConteoInicial } from './conteo-inicial'
 import { DevolverAlProveedor, EsperanReposicion } from './devolucion-proveedor'
 import { FiltroMaterial } from './filtro-material'
@@ -66,7 +70,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
   const abreOt = seccionesDeOrden(perfil).includes('materiales')
   const db = await createClient()
 
-  const [kardex, materiales, unidades, catalogo, entregas, minimos, unidadesMedida, porValidar, porCerrar, lineasRq, codigos, stock, paraDevolver, porReponer] = await Promise.all([
+  const [kardex, materiales, unidades, catalogo, entregas, minimos, unidadesMedida, { entregas: porValidar, sinLeer: porValidarSinLeer }, porCerrar, lineasRq, codigos, stock, paraDevolver, porReponer, conteos] = await Promise.all([
     cargarKardex(filtros),
     materialesDelKardex(),
     puedeSalida ? unidadesParaSalida() : Promise.resolve([]),
@@ -104,6 +108,12 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
     // Lo que llegó de una compra y se puede devolver al proveedor, y lo devuelto que espera reposición.
     puedeIngreso ? ingresosParaDevolver() : Promise.resolve([]),
     devolucionesPorReponer(),
+    // Los últimos conteos físicos, con su diferencia, quién contó y cuándo (plan 2,
+    // entrega 2.3); elegido un material, los suyos. Sin ellos el kardex sigue y lo dice.
+    conteosFisicos({ material: filtros.material }).catch((e: unknown): ConteoFisico[] | null => {
+      console.error('Kardex: no se pudieron leer los conteos físicos.', e instanceof Error ? e.message : e)
+      return null
+    }),
   ])
   if (entregas.error) throw new Error('No se pudieron cargar las entregas que se pueden devolver.')
   if (unidadesMedida.error) throw new Error('No se pudieron cargar las unidades de medida.')
@@ -181,7 +191,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
           conteo inicial, que se hace una vez, va al final (iba segundo y
           empujaba «Registrar ingreso» al cuarto lugar). */}
       {(puedeSalida || puedeIngreso) && (
-        <div className="-mt-3 mb-4 flex flex-wrap items-start gap-2">
+        <div className="-mt-3 mb-5 flex flex-wrap items-start gap-2">
           {puedeSalida && (
             <NuevaSalida
               materiales={materiales.map((m) => {
@@ -222,7 +232,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
           )}
           {puedeIngreso && <DevolverAlProveedor ingresos={paraDevolver} />}
           {puedeIngreso && catalogo && (
-            <ConteoFisico materiales={catalogo.catalogoAlmacen.map((m) => ({
+            <RegistrarConteo materiales={catalogo.catalogoAlmacen.map((m) => ({
               ...m, saldo: saldoPorMaterial.get(m.id) ?? 0,
             }))} />
           )}
@@ -238,20 +248,25 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
           tablero y los filtros iban arriba: en el teléfono lo pendiente empezaba
           a 1 230 px, tres pantallas más abajo (revisión de diseño del 2026-11-25). */}
       {!elegido && (porValidar.length > 0 || puedeIngreso) && (
-        <Tarjeta id="por-validar" className="mb-4">
+        <Tarjeta id="por-validar" className="mb-5">
           <TarjetaCabecera
             titulo={porValidar.length === 0 ? 'Ingresos por validar' : `Ingresos por validar · ${porValidar.length === 1 ? '1 compra' : `${porValidar.length} compras`}`}
             ayuda="Lo que el conductor de Logística dejó en almacén. Revisa lo que llegó y valídalo: entra al kardex sin volver a registrarlo."
             acciones={lineasPorValidar > 0 ? <Insignia tono="aviso">{lineasPorValidar === 1 ? '1 material' : `${lineasPorValidar} materiales`}</Insignia> : undefined}
           />
           <TarjetaCuerpo>
+            {porValidarSinLeer.length > 0 && (
+              <p role="status" className="mb-3 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-por-validar-sin-leer>
+                {porValidarSinLeer.join(' ')} La bandeja sigue sin eso. Vuelve a cargar la pantalla en un momento.
+              </p>
+            )}
             <BandejaPorValidar entregas={porValidar} puedeValidar={puedeIngreso} abreOt={abreOt} />
           </TarjetaCuerpo>
         </Tarjeta>
       )}
 
       {!elegido && (porReponer.length > 0 || puedeIngreso) && (
-        <Tarjeta id="por-reponer" className="mb-4">
+        <Tarjeta id="por-reponer" className="mb-5">
           <TarjetaCabecera
             titulo={porReponer.length === 0 ? 'Esperan reposición' : `Esperan reposición · ${porReponer.length === 1 ? '1 devolución' : `${porReponer.length} devoluciones`}`}
             ayuda="Lo devuelto al proveedor que dijo que lo repone. Cuando llegue, recíbelo aquí; si ya no viene, lo que falta vuelve a la lista de Logística."
@@ -267,7 +282,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
       )}
 
       {!elegido && (porCerrar.length > 0 || puedeSalida) && (
-        <Tarjeta id="por-cerrar" className="mb-4">
+        <Tarjeta id="por-cerrar" className="mb-5">
           {/* El título y el cuerpo cuentan lo mismo: lo del almacén elegido (decía «2 salidas» y abajo «ninguna»). */}
           <TarjetaCabecera
             titulo={porCerrarDelAlmacen.length === 0 ? 'Salidas por cerrar' : `Salidas por cerrar · ${porCerrarDelAlmacen.length === 1 ? '1 salida' : `${porCerrarDelAlmacen.length} salidas`}`}
@@ -281,7 +296,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
       )}
 
       {!elegido && bajoMinimo.length > 0 && (
-        <Tarjeta className="mb-4">
+        <Tarjeta className="mb-5">
           <TarjetaCabecera
             titulo={bajoMinimo.length === 1 ? '1 material bajo su stock mínimo' : `${bajoMinimo.length} materiales bajo su stock mínimo`}
             ayuda="Almacén y Logística recibieron el aviso al cruzar la línea. Elige uno para ver su ficha."
@@ -303,10 +318,26 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
         </Tarjeta>
       )}
 
+      {/* Los conteos ya hechos se consultan, no esperan a nadie: plegados, para que
+          en el teléfono no empujen el tablero y los filtros (plan 2, entrega 2.3). */}
+      {!elegido && (conteos === null || conteos.length > 0 || puedeIngreso) && (
+        <SeccionDesplegable id="conteos" className="mb-5 scroll-mt-20" titulo={filtros.material ? 'Conteos físicos del material elegido' : 'Conteos físicos'} descripcion={resumenDeConteos(conteos, filtros.almacen)}>
+          <p className="mb-3 text-xs text-texto-suave">
+            Lo que contó Almacén, lo que decía el sistema y la diferencia, que quedó como ajuste en el kardex; quién contó, cuándo y por
+            qué. Elige un material para ver los suyos.
+          </p>
+          {conteos === null ? (
+            <p role="status" className="text-sm text-aviso">No se pudieron leer los conteos físicos. Vuelve a cargar la pantalla en un momento.</p>
+          ) : (
+            <ConteosFisicos conteos={conteos} conMaterial />
+          )}
+        </SeccionDesplegable>
+      )}
+
       {/* Donde empieza lo que se consulta: `IrALaConsulta` baja hasta aquí al filtrar. */}
       <div id="consulta" className="scroll-mt-20">
       {!elegido && (
-        <section aria-label="Los cuatro almacenes" className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <section aria-label="Los cuatro almacenes" className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
           {tablero.map((t) => {
             const activo = filtros.almacen === t.almacen
             return (
@@ -351,7 +382,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
         </section>
       )}
 
-      <Tarjeta className="mb-4">
+      <Tarjeta className="mb-5">
         <TarjetaCuerpo>
           {/* Con `key`, el formulario se rehace cuando cambian los filtros: sus
               campos no son controlados y «Limpiar» dejaba lo escrito sin «Ver». */}
@@ -432,6 +463,19 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
               {minimoElegido === null ? 'Sin stock mínimo: no avisa cuando baja.' : `Stock mínimo: ${cantidad(minimoElegido)} ${elegido.unidad ?? ''}.`}
             </p>
           )}
+          {/* Los conteos de este material, si tiene (plan 2, entrega 2.3). */}
+          {(conteos === null || conteos.length > 0) && (
+            <SeccionDesplegable id="conteos" className="mb-4 scroll-mt-20" titulo="Conteos físicos de este material" descripcion={resumenDeConteos(conteos, undefined)}>
+              <p className="mb-3 text-xs text-texto-suave">
+                Lo que contó Almacén, lo que decía el sistema y la diferencia que quedó como ajuste; quién contó, cuándo y por qué.
+              </p>
+              {conteos === null ? (
+                <p role="status" className="text-sm text-aviso">No se pudieron leer los conteos físicos. Vuelve a cargar la pantalla en un momento.</p>
+              ) : (
+                <ConteosFisicos conteos={conteos} conMaterial={false} />
+              )}
+            </SeccionDesplegable>
+          )}
         </>
       )}
 
@@ -457,7 +501,10 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
               <TH>Fecha</TH>
               {!elegido && <TH className="hidden sm:table-cell">Material</TH>}
               <TH className="hidden sm:table-cell">Movimiento</TH>
-              <TH className="hidden md:table-cell">Documento o motivo</TH>
+              {/* Desde 1280 px: a 1024 (una laptop con el zoom de Windows) la tabla
+                  medía 841 px en 718 y se deslizaba de costado. Hasta ahí, el
+                  documento y quién lo registró bajan a la celda del movimiento. */}
+              <TH className="hidden xl:table-cell">Documento o motivo</TH>
               <TH className="hidden sm:table-cell">Código interno</TH>
               <TH className="px-2 text-right sm:px-3">Entrada</TH>
               <TH className="px-2 text-right sm:px-3">Salida</TH>
@@ -472,7 +519,7 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                 <TD className="text-xs text-texto-suave">Saldo anterior</TD>
                 {!elegido && <TD className="hidden sm:table-cell" />}
                 <TD className="hidden sm:table-cell" />
-                <TD className="hidden md:table-cell" />
+                <TD className="hidden xl:table-cell" />
                 <TD className="hidden sm:table-cell" />
                 <TD />
                 <TD />
@@ -528,11 +575,17 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                 <TR key={f.id}>
                   <TD className="text-xs text-texto-suave">
                     {/* En el teléfono, la fecha sobre la hora: en una línea ensanchaba la tabla 14 px (auditoría del 27/10/2026). */}
+                    {/* El espacio entre la fecha y la hora va fuera de las partes que no
+                        se parten: dentro, la fecha con su hora era un solo bloque
+                        de 126 px y a 1024 la tabla se salía de su tarjeta. */}
                     {fechaHora(f.fecha).split(', ').map((parte, i, partes) => (
-                      <span key={i} className="block whitespace-nowrap sm:inline">
-                        {parte}
-                        {i < partes.length - 1 && <span className="hidden sm:inline">, </span>}
-                      </span>
+                      <Fragment key={i}>
+                        <span className="block whitespace-nowrap sm:inline">
+                          {parte}
+                          {i < partes.length - 1 && <span className="hidden sm:inline">,</span>}
+                        </span>
+                        {i < partes.length - 1 && ' '}
+                      </Fragment>
                     ))}
                     <div className="mt-1 min-w-32 space-y-1 text-texto sm:hidden">
                       {!elegido && <div>{material}</div>}
@@ -552,9 +605,19 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
                   <TD className="hidden sm:table-cell">
                     <Insignia tono={def.tono}>{def.etiqueta}</Insignia>
                     <span className="block text-xs text-texto-suave">{origen}</span>
-                    <span className="block text-xs text-texto-suave md:hidden">{f.documento}</span>
+                    <span className="block text-xs text-texto-suave xl:hidden">
+                      {f.documento}
+                      {(f.recibido_por_nombre || f.registrado_por_nombre) && (
+                        <span className="block">
+                          {f.recibido_por_nombre ? `Recibió ${f.recibido_por_nombre}` : null}
+                          {f.recibido_por_nombre && f.registrado_por_nombre ? ' · ' : null}
+                          {f.registrado_por_nombre ? `Registró ${f.registrado_por_nombre}` : null}
+                        </span>
+                      )}
+                      {f.desde_planilla && <span className="block text-acento">Desde planilla · cargado el {fechaHora(f.cargado_en)}</span>}
+                    </span>
                   </TD>
-                  <TD className="hidden max-w-60 md:table-cell">
+                  <TD className="hidden max-w-60 xl:table-cell">
                     {/* El nombre de una OC sin número es largo: entero al pasar el puntero. */}
                     <span className="line-clamp-2 text-sm" title={f.documento ?? undefined}>{f.documento ?? '—'}</span>
                     {(f.recibido_por_nombre || f.registrado_por_nombre) && (
@@ -584,6 +647,21 @@ export default async function PaginaKardex({ searchParams }: PageProps<'/almacen
       <Paginacion ruta="/almacen/kardex" pagina={pagina} paginas={paginas} total={total} porPagina={FILAS_POR_PAGINA} params={params} />
     </>
   )
+}
+
+/** Lo que dice la sección plegada de los conteos: cuántos, el último y de qué almacén. */
+function resumenDeConteos(conteos: ConteoFisico[] | null, almacen: string | undefined) {
+  if (conteos === null) return 'No se pudieron leer.'
+  if (conteos.length === 0) return 'Todavía no hay conteos.'
+  const cuantos = conteos.length === CONTEOS_POR_PAGINA ? `Los últimos ${CONTEOS_POR_PAGINA}` : conteos.length === 1 ? '1 conteo' : `${conteos.length} conteos`
+  const descuadres = conteos.filter((c) => c.diferencia !== 0).length
+  return [
+    cuantos,
+    descuadres === 0 ? 'todos cuadran' : descuadres === 1 ? '1 con diferencia' : `${descuadres} con diferencia`,
+    `el último el ${fecha(conteos[0].en)}`,
+    // Los conteos son de todos los almacenes aunque se haya elegido uno arriba.
+    almacen ? 'de todos los almacenes' : null,
+  ].filter(Boolean).join(' · ')
 }
 
 function Cifra({ etiqueta, valor, acento, alerta }: { etiqueta: string; valor: string; acento?: boolean; alerta?: string }) {

@@ -117,6 +117,9 @@ export function CorregirCotizacion({
   version,
   clienteId,
   carroceriaId,
+  unidades,
+  conOrdenes,
+  unidadMayor = 0,
   clientes,
   carrocerias,
 }: {
@@ -130,12 +133,26 @@ export function CorregirCotizacion({
   version: number
   clienteId: string
   carroceriaId: string
+  /** Cuántas unidades lleva hoy (migración 20261126760000). */
+  unidades: number
+  /** Las OT que ya tiene: la cantidad no baja de ahí. */
+  conOrdenes: number
+  /** La unidad mayor con OT vigente: la cantidad tampoco baja de ahí. */
+  unidadMayor?: number
   clientes: { id: string; razon_social: string }[]
   carrocerias: { id: string; nombre: string }[]
 }) {
   const router = useRouter()
   const [abierto, setAbierto] = useState(false)
   const [archivo, setArchivo] = useState<File | null>(null)
+  const [cantidad, setCantidad] = useState(String(unidades))
+  // Las que dice el archivo corregido: si quedan otras, se avisa en ámbar.
+  const [unidadesLeidas, setUnidadesLeidas] = useState<number | null>(null)
+  // La cantidad no baja de las OT que tiene ni de la unidad mayor con OT (con la
+  // 2 anulada y la 4 vigente, tres OT piden 4): lo mismo que exige la base.
+  const minimo = Math.max(conOrdenes, unidadMayor, 1)
+  // Con el campo vacío no se avisa: todavía se está escribiendo.
+  const unidadesNoCalzan = unidadesLeidas !== null && cantidad.trim() !== '' && Number(cantidad) !== unidadesLeidas
   const [dice, setDice] = useState<string | null>(null)
   const [leyendo, setLeyendo] = useState(false)
   const [total, setTotal] = useState<TotalCotizacion>({ monto: null, moneda: null })
@@ -167,7 +184,7 @@ export function CorregirCotizacion({
   const avisoError = useRef<HTMLParagraphElement>(null)
   useCursorAlRechazo(enviando, error, () => avisoError.current)
   // Lo que la persona escribió a mano: la lectura del archivo no lo pisa.
-  const aMano = useRef(new Set<'monto' | 'moneda' | 'igv'>())
+  const aMano = useRef(new Set<'monto' | 'moneda' | 'igv' | 'unidades'>())
 
   // La X, Escape, el fondo y «Cancelar»: todos cierran igual (`useEnvioDeLaVentana`).
   function cerrar() {
@@ -186,6 +203,8 @@ export function CorregirCotizacion({
     setIncluyeIgv('')
     setCliente(clienteId)
     setCarroceria(carroceriaId)
+    setCantidad(String(unidades))
+    setUnidadesLeidas(null)
     setMotivo('')
     setProgreso('')
     setAbierto(true)
@@ -195,6 +214,7 @@ export function CorregirCotizacion({
     if (!elegido) return
     setDice(null)
     setTotalLeido(null)
+    setUnidadesLeidas(null)
     setError(null)
     const noSirve = await revisarArchivo(elegido, ACEPTA_COTIZACION, MAXIMO_ADJUNTO_MB)
     setArchivo(elegido)
@@ -209,6 +229,9 @@ export function CorregirCotizacion({
       const monedaAMano = aMano.current.has('moneda')
       setTotal((v) => ({ monto: montoAMano ? v.monto : lectura.total.monto, moneda: monedaAMano ? v.moneda : lectura.total.moneda }))
       if (!aMano.current.has('igv')) setIncluyeIgv(lectura.incluyeIgv === null ? '' : lectura.incluyeIgv ? 'si' : 'no')
+      setUnidadesLeidas(lectura.unidades)
+      // Lo leído llena el campo si la persona no lo tocó y cabe: no baja de las OT que ya tiene.
+      if (lectura.unidades !== null && lectura.unidades >= minimo && !aMano.current.has('unidades')) setCantidad(String(lectura.unidades))
     } finally {
       setLeyendo(false)
     }
@@ -287,6 +310,7 @@ export function CorregirCotizacion({
         datos.set('version', String(version))
         datos.set('cliente_id', cliente)
         datos.set('tipo_carroceria_id', carroceria)
+        datos.set('cantidad_unidades', cantidad.trim())
         datos.set('motivo_correccion', motivo.trim())
         datos.set('nombre_archivo', archivo.name.slice(0, 200))
         datos.set('ruta_storage', ruta)
@@ -346,7 +370,7 @@ export function CorregirCotizacion({
         titulo={`Corregir la cotización ${numero}`}
         descripcion={
           aprobada
-            ? 'Reemplaza el PDF o Word y corrige los datos. Conserva el número y el archivo anterior. Vuelve a Por revisar: no se factura hasta que Gerencia apruebe esta versión.'
+            ? `Reemplaza el PDF o Word y corrige los datos. Conserva el número y el archivo anterior. Vuelve a Por revisar: no se factura${unidades > conOrdenes ? ' ni se cargan las OT que faltan' : ''} hasta que Gerencia apruebe esta versión.`
             : 'Reemplaza el PDF o Word y corrige los datos. Conserva el número y el archivo anterior; Gerencia revisará esta versión.'
         }
         ancho="md"
@@ -378,6 +402,44 @@ export function CorregirCotizacion({
                 {carrocerias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
               </Seleccion>
             </Campo>
+            <div className="space-y-1.5">
+              <Campo
+                etiqueta="Unidades"
+                htmlFor="corregir-unidades"
+                ayuda={
+                  conOrdenes === 0
+                    ? 'Una OT por cada unidad.'
+                    : minimo > conOrdenes
+                      ? `Ya tiene ${conOrdenes === 1 ? 'una OT' : `${conOrdenes} OT`} y la de la unidad ${minimo}: no baja de ${minimo}.`
+                      : `Ya tiene ${conOrdenes === 1 ? 'una OT' : `${conOrdenes} OT`}: no baja de ${conOrdenes}.`
+                }
+                requerido
+              >
+                <Entrada
+                  id="corregir-unidades"
+                  type="number"
+                  inputMode="numeric"
+                  min={minimo}
+                  max={50}
+                  step={1}
+                  value={cantidad}
+                  onChange={(e) => {
+                    aMano.current.add('unidades')
+                    setCantidad(e.target.value)
+                  }}
+                  required
+                  className="tabular"
+                />
+              </Campo>
+              {unidadesNoCalzan && (
+                <p role="status" className="text-xs text-pretty text-aviso">
+                  El documento dice {unidadesLeidas === 1 ? '1 unidad' : `${unidadesLeidas} unidades`}
+                  {unidadesLeidas !== null && unidadesLeidas < minimo
+                    ? `, pero ya tiene ${conOrdenes === 1 ? 'una OT' : `${conOrdenes} OT`}: para bajar la cantidad, Administración anula primero la que sobra.`
+                    : ': revisa.'}
+                </p>
+              )}
+            </div>
           </div>
           <Campo etiqueta="Motivo de la corrección" htmlFor={`corregir-motivo-${id}`} requerido>
             <AreaTexto id={`corregir-motivo-${id}`} value={motivo} onChange={e => setMotivo(e.target.value)} rows={2} minLength={5} maxLength={500} required placeholder="Qué dato o documento se corrigió" />
@@ -526,7 +588,7 @@ const TIPOS_UNIDAD = [
 // encabezado (`EstadoDeLaOt`). Sin `guardar`: al salir de Cotización ya no se
 // dice, como el «PDF guardado» que se iba de la orden (Y2 de la trigesimosexta pasada).
 const OT_CARGADA = 'codigo-y-ot:cargada'
-type OtCargada = { id: string; numero: string }
+type OtCargada = { id: string; numero: string; unidad?: string | null }
 
 /**
  * La ida a la tarjeta de la OT que acaba de entrar sale en el acto o no sale.
@@ -601,7 +663,7 @@ export function EstadoDeLaOt() {
   return (
     <div className={cargada ? 'flex flex-wrap items-center gap-x-2 gap-y-1 sm:justify-end' : 'sr-only'}>
       <span role="status" className="text-xs font-medium text-exito">
-        {cargada && `Se cargó el código y la OT de la cotización ${cargada.numero}.`}
+        {cargada && `Se cargó el código y la OT de la ${cargada.unidad ? `${cargada.unidad} de la ` : ''}cotización ${cargada.numero}.`}
       </span>
       {cargada && (
         <>
@@ -644,11 +706,19 @@ export function CargarCodigoYOt({
   cotizacionId,
   numero,
   tipoUnidad,
+  unidad,
 }: {
   cotizacionId: string
   numero: string
   tipoUnidad?: string | null
+  /**
+   * La unidad que se carga y cuántas lleva la cotización (migración
+   * 20261126760000): con más de una, el botón y la ventana dicen cuál es, y
+   * `otras` los códigos que ya tienen las demás, para no repetirlos de memoria.
+   */
+  unidad?: { cual: number; de: number; otras?: { unidad: number; codigo: string }[] }
 }) {
+  const varias = unidad && unidad.de > 1 ? unidad : null
   const router = useRouter()
   const [abierto, setAbierto] = useState(false)
   const [archivo, setArchivo] = useState<File | null>(null)
@@ -678,7 +748,7 @@ export function CargarCodigoYOt({
   const campoNumero = useRef<HTMLInputElement>(null)
   const campoCodigo = useRef<HTMLInputElement>(null)
   const errorNumero = error && /^(Ya hay una OT|El número de la OT)/.test(error) ? error : null
-  const errorCodigo = error && /^(Escribe el código interno|El código interno|PLANTA no es una unidad)/.test(error) ? error : null
+  const errorCodigo = error && /^(Escribe el código interno|El código|PLANTA no es una unidad)/.test(error) ? error : null
   useCursorAlRechazo(enviando, error, () => (errorNumero ? campoNumero.current : errorCodigo ? campoCodigo.current : avisoError.current))
   // Lo que la persona escribió a mano: la lectura del PDF, aunque termine
   // después o sea de otro PDF, no lo pisa.
@@ -845,7 +915,7 @@ export function CargarCodigoYOt({
         const va = vaSolaALaTarjeta(fuera.cerradaMientrasIba(), desde)
         if (va || !pidioOtraPantalla(desde)) ponerIdaQueNoSalio(null)
         if (va) irALaTarjeta(cotizacionId, router, { trasEnviar: true })
-        else setCargada({ id: cotizacionId, numero })
+        else setCargada({ id: cotizacionId, numero, unidad: varias ? `unidad ${varias.cual} de ${varias.de}` : null })
       } catch (e) {
         // Entró otra cuenta a media cadena: no sigue, y el archivo que haya
         // subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`). La
@@ -869,7 +939,7 @@ export function CargarCodigoYOt({
       <span className="inline-flex flex-wrap items-center gap-2">
         <Boton type="button" tamano="sm" onClick={abrir} ocupado={ocupado} aria-describedby={fuera.sigue ? fuera.idDelEstado : undefined}>
           {!ocupado && <Hash aria-hidden className="size-3.5" />}
-          Dar código y cargar la OT
+          {varias ? `Cargar la OT ${varias.cual} de ${varias.de}` : 'Dar código y cargar la OT'}
         </Boton>
         <EstadoDelEnvio id={fuera.idDelEstado} sigue={fuera.sigue} desenlace={fuera.desenlace} registro="La OT" femenino />
       </span>
@@ -877,8 +947,12 @@ export function CargarCodigoYOt({
       <Ventana
         abierta={abierto}
         alCerrar={cerrar}
-        titulo={`Código interno y OT de la ${numero}`}
-        descripcion="Gerencia ya la aprobó. El cliente y la carrocería salen de la cotización; el código y la OT se guardan juntos."
+        titulo={varias ? `Unidad ${varias.cual} de ${varias.de} de la ${numero}` : `Código interno y OT de la ${numero}`}
+        descripcion={
+          varias
+            ? `Gerencia ya la aprobó. Lleva ${varias.de} unidades: cada una con su código interno y su OT. El cliente y la carrocería salen de la cotización; el código y la OT se guardan juntos.`
+            : 'Gerencia ya la aprobó. El cliente y la carrocería salen de la cotización; el código y la OT se guardan juntos.'
+        }
         ancho="panoramico"
       >
         <form onSubmit={enviar} className="space-y-4 lg:grid lg:h-full lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-5 lg:space-y-0">
@@ -889,7 +963,11 @@ export function CargarCodigoYOt({
           <Campo
             etiqueta="Código interno"
             htmlFor="eo-codigo-interno"
-            ayuda="El que tendrá la unidad, como VSC_SR_O4_6_26/30. Si ya existe para este cliente, la OT se suma a esa unidad."
+            ayuda={
+              varias
+                ? 'El de esta unidad, como VSC_SR_O4_6_26/30: cada unidad de la cotización lleva el suyo.'
+                : 'El que tendrá la unidad, como VSC_SR_O4_6_26/30. Si ya existe para este cliente, la OT se suma a esa unidad.'
+            }
             error={errorCodigo ?? undefined}
             requerido
           >
@@ -907,9 +985,22 @@ export function CargarCodigoYOt({
                 if (errorCodigo) setError(null)
                 setCodigo(e.target.value)
               }}
+              // Los códigos que ya tienen las otras unidades también se leen al llegar al campo.
+              aria-describedby={varias?.otras?.length ? `eo-otras-${cotizacionId}` : undefined}
               className="font-mono"
             />
           </Campo>
+          {varias && varias.otras && varias.otras.length > 0 && (
+            <p id={`eo-otras-${cotizacionId}`} className="text-xs text-texto-suave">
+              Ya tienen código:{' '}
+              {varias.otras.map((o, i) => (
+                <span key={o.unidad}>
+                  {i > 0 && ' · '}
+                  unidad {o.unidad} <span className="font-mono text-texto">{o.codigo}</span>
+                </span>
+              ))}
+            </p>
+          )}
 
           <Campo etiqueta="PDF de la OT" htmlFor={`aprobar-pdf-${cotizacionId}`} requerido>
             <ElegirArchivo
@@ -1009,14 +1100,12 @@ export function CargarCodigoYOt({
           <Campo
             etiqueta="Fecha de entrega al cliente"
             htmlFor="eo-fecha"
-            ayuda="El día prometido al cliente para entregarle la unidad, según la OT"
-            requerido
+            ayuda="El día prometido al cliente, según la OT. Si todavía no está, cárgala sin fecha: queda pendiente en Órdenes de trabajo"
           >
             <Entrada
               id="eo-fecha"
               name="fecha_entrega"
               type="date"
-              required
               value={fechaEntrega}
               onChange={(e) => {
                 aMano.current.add('fecha')

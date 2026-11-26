@@ -2,6 +2,7 @@
 
 import { z } from 'zod'
 
+import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { CLAVES_DEL_ENVIO, MAXIMO_PENDIENTES, type ClaveDelEnvio, type Falta, type LoQueEntro } from '@/lib/dominio/envios'
 import { cantidad, fecha, moneda, type CodigoMoneda } from '@/lib/format'
 import { obtenerSesion } from '@/lib/sesion'
@@ -330,6 +331,33 @@ async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo:
           : dicho('El uso de las horas reservadas', 'Los usos de las horas reservadas', 'otro', detalle),
       }
     }
+    case 'reclamo_garantia': {
+      const { data } = await supabase.from('garantia_reclamos').select('numero, registrado_por').eq('id', id).maybeSingle()
+      return data && { por: data.registrado_por, lo: dicho('El reclamo', 'Los reclamos', 'otro', data.numero) }
+    }
+    case 'reporte_averia': {
+      const { data } = await supabase.from('averias').select('numero, registrado_por').eq('id', id).maybeSingle()
+      return data && { por: data.registrado_por, lo: dicho('El reporte', 'Los reportes', 'otro', data.numero) }
+    }
+    case 'motivo_atraso':
+    case 'fecha_prometida': {
+      const { data } = await supabase
+        .from('seguimiento_de_compras')
+        .select('tipo, fecha_nueva, registrado_por, ordenes_compra_materiales(numero, referencia), ordenes_servicio(numero)')
+        .eq('id', id)
+        .maybeSingle()
+      if (!data) return null
+      const de = data.ordenes_compra_materiales
+        ? nombreDeOc(data.ordenes_compra_materiales)
+        : (data.ordenes_servicio?.numero ?? null)
+      return {
+        por: data.registrado_por,
+        lo:
+          data.tipo === 'FECHA_ESPERADA'
+            ? dicho('La fecha corregida', 'Las fechas corregidas', 'otra', [de, data.fecha_nueva ? `al ${fecha(data.fecha_nueva)}` : null].filter(Boolean).join(' ') || null)
+            : dicho('El motivo del atraso', 'Los motivos del atraso', 'otro', de),
+      }
+    }
     case 'cuenta_caja': {
       const { data } = await supabase.from('cajas').select('nombre, creado_por').eq('id', id).maybeSingle()
       return data && { por: data.creado_por, lo: dicho('La cuenta', 'Las cuentas', 'otra', data.nombre) }
@@ -337,6 +365,41 @@ async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo:
     case 'reporte_ssoma': {
       const { data } = await supabase.from('ssoma_reportes').select('numero, registrado_por').eq('id', id).maybeSingle()
       return data && { por: data.registrado_por, lo: dicho('El reporte', 'Los reportes', 'otro', data.numero) }
+    }
+    case 'inspeccion_calidad': {
+      const { data } = await supabase.from('calidad_inspecciones').select('codigo_interno, registrado_por').eq('id', id).maybeSingle()
+      return data && { por: data.registrado_por, lo: dicho('La inspección', 'Las inspecciones', 'otra', data.codigo_interno) }
+    }
+    case 'paso_calidad': {
+      const { data } = await supabase
+        .from('calidad_inspeccion_pasos')
+        .select('tipo, registrado_por, calidad_inspecciones(codigo_interno)')
+        .eq('id', id)
+        .maybeSingle()
+      const que = data?.tipo === 'CORREGIDA' ? 'La corrección' : data?.tipo === 'LEVANTADA' ? 'El levantamiento' : 'La nueva observación'
+      return (
+        data && {
+          por: data.registrado_por,
+          lo: dicho(que, 'Los pasos de calidad', data.tipo === 'LEVANTADA' ? 'otro' : 'otra', data.calidad_inspecciones?.codigo_interno ?? null),
+        }
+      )
+    }
+    case 'accion_ssoma': {
+      const { data } = await supabase.from('ssoma_acciones').select('descripcion, creado_por').eq('id', id).maybeSingle()
+      return data && { por: data.creado_por, lo: dicho('La acción', 'Las acciones', 'otra', data.descripcion) }
+    }
+    case 'cierre_accion_ssoma': {
+      const { data } = await supabase.from('ssoma_accion_eventos').select('hecho_por, tipo').eq('id', id).maybeSingle()
+      return data?.tipo === 'CERRADA' ? { por: data.hecho_por, lo: dicho('El cierre', 'Los cierres', 'otro', null) } : null
+    }
+    case 'charla_ssoma': {
+      const { data } = await supabase.from('ssoma_charlas').select('tipo, tema, creado_por').eq('id', id).maybeSingle()
+      return (
+        data && {
+          por: data.creado_por,
+          lo: data.tipo === 'INDUCCION' ? dicho('La inducción', 'Las inducciones', 'otra', data.tema) : dicho('La charla', 'Las charlas', 'otra', data.tema),
+        }
+      )
     }
     case 'transferencia_caja': {
       const { data } = await supabase

@@ -29,6 +29,7 @@
  * de Tesorería y Gerencia.
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE.
  */
+import { randomUUID } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -485,6 +486,12 @@ const movimiento = async (origen, documento, campo) =>
   const delCierre = { tabla: 'pagos_adquisicion', columna: 'adquisicion_id' }
   await hasta(() => movimiento('PAGO_ADQUISICION', ids.adqCierre, delCierre), (r) => r.length > 0)
   // Tesorería cierra ayer en la cuenta en soles: con su sesión, como en el cierre de Caja diaria.
+  // El banco se cierra con la captura del día (migración 20261126550000), subida antes por Tesorería.
+  const captura = `${ids.pen}/${randomUUID()}.png`
+  await consulta(
+    `insert into storage.objects (bucket_id, name, owner_id, metadata) values ('cierre-caja', $1, $2, '{"mimetype":"image/png","size":100}'::jsonb)`,
+    [captura, teso.id],
+  )
   await base.query('begin')
   try {
     await consulta('select test.como_usuario($1)', [teso.id])
@@ -493,7 +500,7 @@ const movimiento = async (origen, documento, campo) =>
       `select coalesce(saldo_final, 0)::float as saldo from caja_del_dia($1::date) where caja_id = $2`,
       [ayer, ids.pen],
     )
-    await consulta('select cerrar_dia_caja(gen_random_uuid(), $1, $2::date, $3, null)', [ids.pen, ayer, saldo])
+    await consulta('select cerrar_dia_caja(gen_random_uuid(), $1, $2::date, $3, null, $4)', [ids.pen, ayer, saldo, captura])
     await base.query('commit')
   } catch (e) {
     await base.query('rollback')

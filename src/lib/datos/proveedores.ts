@@ -91,3 +91,46 @@ export async function proveedoresParaCompra(): Promise<ProveedorParaCompra[]> {
   }
   return lista
 }
+
+/** Cómo le fue a cada proveedor (Plan 4.3, migración 20261126463000). Solo cuentas, sin importes. */
+export type CumplimientoDelProveedor = {
+  /** OC aprobadas y OS aprobadas no anuladas. */
+  compras: number
+  /** Las que ya llegaron (la OC entera en almacén, la OS conforme). */
+  llegaron: number
+  /** De las que llegaron, las que tenían fecha prometida y no se atrasaron por causa nuestra: las que se miden. */
+  medidas: number
+  /** De las medidas, las que llegaron a más tardar la fecha prometida al emitirlas. */
+  a_tiempo: number
+  /** OC de las que Almacén le devolvió algo. */
+  devueltas: number
+  /** Las que pasaron la fecha prometida al emitirlas y no llegaron (o llegaron a medias), por el proveedor. */
+  atrasadas: number
+  /** Las que llegaron sin fecha prometida: no se pueden medir. */
+  sin_fecha: number
+  /** Las que se atrasaron y su último motivo anotado (también el enmendado después de llegar) es el pago, el transporte o la aprobación (con fecha corregida, solo hasta esa fecha): no cuentan contra él. */
+  nuestras: number
+}
+
+/** El cumplimiento de esos proveedores. Lo lee quien ve el padrón; a los demás la base les dice que no. */
+export async function cumplimientoDeProveedores(ids: string[]): Promise<Map<string, CumplimientoDelProveedor>> {
+  const porProveedor = new Map<string, CumplimientoDelProveedor>()
+  if (ids.length === 0) return porProveedor
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('cumplimiento_de_proveedores', { p_ids: ids })
+  if (error) throw new Error(`No se pudo leer el cumplimiento de los proveedores: ${error.message}`)
+  for (const f of data ?? []) {
+    if (!f.proveedor) continue
+    porProveedor.set(f.proveedor, {
+      compras: Number(f.compras ?? 0),
+      llegaron: Number(f.llegaron ?? 0),
+      medidas: Number(f.medidas ?? 0),
+      a_tiempo: Number(f.a_tiempo ?? 0),
+      devueltas: Number(f.devueltas ?? 0),
+      atrasadas: Number(f.atrasadas ?? 0),
+      sin_fecha: Number(f.sin_fecha ?? 0),
+      nuestras: Number(f.nuestras ?? 0),
+    })
+  }
+  return porProveedor
+}

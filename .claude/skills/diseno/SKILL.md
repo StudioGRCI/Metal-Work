@@ -34,7 +34,23 @@ En `src/components/ui/`:
   «Reactivar» a otro renglón. Lo de
   desactivar y eliminar es **provisional**: DKS decidió que vayan dentro de
   un menú «⋯» de la fila (decisión 6 del plan de orden y diseño), y ese menú
-  todavía no existe.
+  todavía no existe. Si los botones vienen de un componente con su propia caja
+  (`AccionesCompra`, `AvanceServicio`, `ControlesVehiculo`,
+  `AccionesProveedor`, `AccionesEquipo`), su caja va `contents` para que entren al renglón, y
+  quien lo usa lo envuelve en `AccionesDeFila` (también en el encabezado de
+  una ficha). Lo de una vez que viene dentro de ese componente («Anular» de la
+  OS) se pide en un segundo llamado, al final. En el monitor, si la columna de
+  acciones se come la primera, la primera lleva su ancho (`md:w-1/4` en las
+  OC): sin eso las filas crecían un 21 % (entrega 4, 2026-11-26). El ancho
+  de la columna de acciones se da solo a quien tiene botones
+  (`emite ? 'md:w-80' : ''`): a Gerencia, que consulta, le dejaba 384 px
+  vacíos. Un aviso dentro del renglón (`basis-full`) lleva `order-last` y
+  `md:text-right`: con `contents` caía entre dos botones y partía el renglón.
+  Entre 768 y 1279 px (una laptop de 1366 con el zoom de Windows) la tabla
+  con todas sus columnas se salía de costado y los botones iban uno por
+  renglón: las columnas de consulta («Para», «Comprobante», el contacto)
+  aparecen desde `xl:table-cell` y hasta ahí bajan a la primera celda
+  (`xl:hidden`).
 - `SinDatos` tiene dos tamaños: el grande es para la lista que es el trabajo
   de la pantalla; `compacto` para la bandeja que comparte pantalla con otras
   (lo pendiente del Kardex). No se escribe el vacío a mano con un `<p>`.
@@ -137,6 +153,15 @@ enlace: la tarjeta se cubre con el `::after` del enlace y la «i» queda encima
 debajo de lo pendiente, al filtrar hay que llevar la vista hasta ellos: cada
 cambio de URL devuelve la página arriba y parece que el toque no hizo nada
 (`almacen/kardex/ir-a-la-consulta.tsx`).
+
+El Dashboard sigue el mismo orden: «Te toca» primero, con una fila por
+cuenta de `pendientesGlobales` (las mismas de los globos del menú), en el
+orden del menú del puesto y con el enlace a donde se atiende; después las
+cifras, en filas llenas (`COLUMNAS_DEL_MONITOR`), y al final, en el teléfono,
+«Tus módulos». Hasta el 2026-11-25 lo pendiente era una cifra más entre ocho
+o diez y no llevaba a su lista (decisión 4 del plan de orden y diseño). Una
+cuenta nueva en `pendientesGlobales` sale sola en «Te toca»: su `texto` es lo
+que se lee, así que dice qué espera, no qué hacer.
 
 ## Jerarquía de las pestañas de la OT
 

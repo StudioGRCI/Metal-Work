@@ -287,7 +287,8 @@ comprobar(avisoAdministracion?.titulo === 'Cotización aprobada: falta su códig
 {
   const { pagina, contexto } = await entrar('administracion')
   const tablero = limpio(await pagina.locator('main').textContent())
-  comprobar(/Aprobadas sin código/.test(tablero), 'su dashboard cuenta las aprobadas sin código')
+  // Desde el 2026-11-26 lo cuenta «Te toca» y no una cifra aparte.
+  comprobar(/cotizaci(ón|ones) aprobadas? que esperan? (su )?OT/.test(tablero), 'su dashboard («Te toca») cuenta las aprobadas que esperan OT')
 
   await pagina.goto(`${BASE}${avisoAdministracion?.ruta ?? '/cotizaciones/pdf?estado=APROBADA_SIN_OT'}`, { waitUntil: 'networkidle' })
   const v = pagina.locator('[role="dialog"]')
@@ -302,7 +303,7 @@ comprobar(avisoAdministracion?.titulo === 'Cotización aprobada: falta su códig
   const ventana = limpio(await v.textContent())
   comprobar(ventana.includes(`Código interno y OT de la ${cot.B.numero}`) && ventana.includes('Gerencia ya la aprobó'), 'abre «Código interno y OT»')
   // La ayuda corta se lee bajo el campo, sin tocar la «i».
-  const ayudaFecha = v.getByText('El día prometido al cliente para entregarle la unidad, según la OT')
+  const ayudaFecha = v.getByText('El día prometido al cliente, según la OT')
   comprobar(ventana.includes('Fecha de entrega al cliente') && (await ayudaFecha.isVisible()),
     'la fecha dice que es la de entrega al cliente, con su ayuda a la vista')
   await v.locator('input[name="codigo_interno"]').fill(X1)

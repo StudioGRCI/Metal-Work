@@ -17,7 +17,7 @@
  *      la orden de servicio conforme con su voucher. En el teléfono, sus
  *      cuatro pestañas.
  *   3. Contabilidad ya no ofrece anular la factura cobrada; Gerencia ve en la
- *      cotización la factura y su estado, y no tiene la OT en su menú.
+ *      cotización la factura y su estado, y Códigos internos en su menú.
  *   4. Supervisión General ya no ve la cotización; Diseño tampoco; Logística no
  *      entra a Facturación ni a los pagos de servicio.
  *
@@ -126,8 +126,8 @@ async function esperarVentana(pagina) {
 // El globo de pendientes va pegado al nombre del módulo («Facturación1»): se quita.
 const menu = async (pagina) => (await pagina.locator('nav[aria-label="Menú principal"] a').allTextContents()).map((t) => limpio(t).replace(/\d+\+?$/, ''))
 const franja = async (pagina) => limpio(await pagina.locator('main').textContent())
-// Lo que espera en un módulo ya no se lista en el Dashboard (2026-10-19): se lee
-// del globo del menú, que lleva la cantidad en su etiqueta accesible.
+// Lo que espera en un módulo se lee del globo del menú, que lleva la cantidad en
+// su etiqueta accesible (el Dashboard lo lista en «Te toca», con el mismo número).
 const globo = async (pagina, ruta) => (await pagina.locator(`nav a[href="${ruta}"]`).first().getAttribute('aria-label')) ?? ''
 const ruta = (pagina) => new URL(pagina.url()).pathname
 
@@ -501,14 +501,19 @@ console.log(`     sembrado: ${COT} con la OT del código ${CODIGO}, ${COT_SIN} s
 {
   const { pagina, contexto } = await entrar(CUENTAS.gerencia)
   const items = await menu(pagina)
-  comprobar(!items.includes('Órdenes de trabajo') && items.includes('Códigos internos'), 'Gerencia sigue cada trabajo en Códigos internos, sin la OT en su menú')
+  // Sigue cada trabajo en Códigos internos; la OT está en su menú desde el #190 y,
+  // desde el #222, en «Por aprobar», para que su globo cuente las que esperan su aprobación.
+  comprobar(items.includes('Códigos internos') && items.includes('Órdenes de trabajo'), 'Gerencia sigue cada trabajo en Códigos internos, y aprueba la OT desde «Por aprobar»')
   await ir(pagina, `${BASE}/cotizaciones/pdf`)
   const fila = limpio(await pagina.locator('li', { hasText: COT }).first().textContent())
   comprobar(fila.includes(`Factura ${FACTURA}`) && fila.includes('cobro a cuenta'), 'en la cotización, Gerencia ve la factura y en qué va su cobro')
   // Gerencia ve todo por código: lo vendido junto a lo gastado, y la factura con su cobro.
   await ir(pagina, `${BASE}/codigos-internos/detalle?codigo=${encodeURIComponent(CODIGO)}`)
-  const linea = limpio(await pagina.locator('[data-facturado]').textContent().catch(() => ''))
-  comprobar(linea.includes('Facturado') && linea.includes('cobrado'), `en Códigos internos, Gerencia ve lo facturado y lo cobrado del código («${linea.slice(0, 110)}»)`)
+  // Desde la entrega 12.3, lo facturado y lo cobrado van en el recorrido de la cabecera del código.
+  const facturadoYCobrado = limpio(
+    await pagina.locator('[data-recorrido-del-codigo] [data-paso="facturado"], [data-recorrido-del-codigo] [data-paso="cobrado"]').allTextContents().then((t) => t.join(' ')).catch(() => ''),
+  )
+  comprobar(facturadoYCobrado.includes('Facturado') && facturadoYCobrado.includes('Cobrado'), `en Códigos internos, Gerencia ve lo facturado y lo cobrado del código («${facturadoYCobrado.slice(0, 110)}»)`)
   await pagina.getByRole('link', { name: 'Ver factura y cobro' }).click()
   await pagina.waitForURL((u) => u.searchParams.get('vista') === 'facturacion').catch(() => {})
   await quieta(pagina)

@@ -8,7 +8,7 @@ begin;
 do $$
 declare v text; v_id uuid;
 begin
-  foreach v in array array['tesoreria:TESORERIA', 'tesoreria2:TESORERIA', 'gerente:GERENTE', 'contabilidad:CONTABILIDAD'] loop
+  foreach v in array array['tesoreria:TESORERIA', 'tesoreria2:TESORERIA', 'gerente:GERENTE', 'contabilidad:CONTABILIDAD', 'costos:COSTOS'] loop
     v_id := gen_random_uuid();
     insert into auth.users (id, email) values (v_id, split_part(v, ':', 1) || '.396@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id)
@@ -111,12 +111,19 @@ begin
   foreach v_clave in array array['gerente', 'contabilidad'] loop
     perform pg_temp.como(v_clave);
     set local role authenticated;
-    perform test.afirmar((select count(*) from public.cajas where nombre like '%396') = 0, v_clave || ' no ve las cuentas');
-    perform test.afirmar((select count(*) from public.caja_del_dia(pg_temp.dia('d3')) where nombre like '%396') = 0,
-                         v_clave || ' no ve la caja del día');
-    perform test.afirmar((select count(*) from public.movimientos_caja_del_dia(pg_temp.dia('d3'))) = 0
-                         and (select count(*) from public.cierres_caja_reabiertos(pg_temp.dia('d3'))) = 0,
-                         v_clave || ' no ve sus movimientos ni sus cierres');
+    if v_clave = 'gerente' then
+      -- Gerencia la consulta desde la 20261126310000 (`tesoreria.ver_caja`), sin registrar nada.
+      perform test.afirmar((select count(*) from public.cajas where nombre like '%396') > 0, 'gerente consulta las cuentas');
+      perform test.afirmar((select count(*) from public.caja_del_dia(pg_temp.dia('d3')) where nombre like '%396') > 0,
+                           'gerente consulta la caja del día');
+    else
+      perform test.afirmar((select count(*) from public.cajas where nombre like '%396') = 0, v_clave || ' no ve las cuentas');
+      perform test.afirmar((select count(*) from public.caja_del_dia(pg_temp.dia('d3')) where nombre like '%396') = 0,
+                           v_clave || ' no ve la caja del día');
+      perform test.afirmar((select count(*) from public.movimientos_caja_del_dia(pg_temp.dia('d3'))) = 0
+                           and (select count(*) from public.cierres_caja_reabiertos(pg_temp.dia('d3'))) = 0,
+                           v_clave || ' no ve sus movimientos ni sus cierres');
+    end if;
     perform test.debe_fallar(format('select public.registrar_movimiento_caja(%L, %L, %L, ''EGRESO'', 10, ''ITF'', null, null, null)',
         pg_temp.id('m4'), pg_temp.id('bcp_pen'), pg_temp.dia('d3')), v_clave || ' no registra movimientos', 'tesoreria.caja');
     perform test.debe_fallar(format('select public.guardar_caja(%L, ''Otra 396'', ''EFECTIVO'', null, ''PEN'', 0, %L, true)',
@@ -261,6 +268,21 @@ begin
 end $$;
 
 -- ============================================ 6. El cierre contra el estado de cuenta
+-- Cada día de un banco se cierra con la captura de su estado de cuenta
+-- (migración 20261126550000), que el navegador sube antes al bucket `cierre-caja`,
+-- en la carpeta de la cuenta y con el id del cierre.
+do $$
+declare v text;
+begin
+  foreach v in array array['c1', 'c2', 'otra_cuenta'] loop
+    perform set_config('prueba.capc_' || v,
+      pg_temp.id(case when v = 'otra_cuenta' then 'bcp_usd' else 'bcp_pen' end) || '/'
+      || case when v = 'otra_cuenta' then gen_random_uuid() else pg_temp.id(v) end || '.png', true);
+    insert into storage.objects (bucket_id, name, owner_id, metadata)
+    values ('cierre-caja', current_setting('prueba.capc_' || v), current_setting('prueba.tesoreria'), '{"mimetype":"image/png","size":100}'::jsonb);
+  end loop;
+end $$;
+
 do $$
 declare r record;
 begin
@@ -272,13 +294,21 @@ begin
       pg_temp.id('c1'), pg_temp.id('bcp_pen'), pg_temp.dia('d3')), 'si no cuadra, se dice por qué', 'cuenta en las observaciones');
   perform test.debe_fallar(format('select public.cerrar_dia_caja(%L, %L, %L, 13900, ''no'')',
       pg_temp.id('c1'), pg_temp.id('bcp_pen'), pg_temp.dia('d3')), 'una observación corta pide los 10 caracteres', '10 caracteres');
+  -- Sin captura, o con una que no es de esta cuenta, el banco no se cierra.
+  perform test.debe_fallar(format('select public.cerrar_dia_caja(%L, %L, %L, 13900, ''Comisión del banco que falta registrar'')',
+      pg_temp.id('c1'), pg_temp.id('bcp_pen'), pg_temp.dia('d3')), 'un banco no se cierra sin la captura del día', 'Adjunta la captura del aplicativo');
+  perform test.debe_fallar(format('select public.cerrar_dia_caja(%L, %L, %L, 13900, ''Comisión del banco que falta registrar'', %L)',
+      pg_temp.id('c1'), pg_temp.id('bcp_pen'), pg_temp.dia('d3'), current_setting('prueba.capc_otra_cuenta')),
+    'ni con la captura de otra cuenta', 'Vuelve a adjuntar el archivo');
   perform public.cerrar_dia_caja(pg_temp.id('c1'), pg_temp.id('bcp_pen'), pg_temp.dia('d3'), 13900,
-                                 'Comisión del banco que falta registrar');
+                                 'Comisión del banco que falta registrar', current_setting('prueba.capc_c1'));
+  perform test.afirmar((select captura_ruta from public.cierres_caja where id = pg_temp.id('c1')) = current_setting('prueba.capc_c1'),
+                       'el cierre guarda la captura de su día');
   -- La respuesta se perdió y se vuelve a enviar con el mismo id: el mismo
   -- cierre devuelve el mismo, aunque el día ya esté cerrado; con otro saldo, el
   -- primero quedó y el nuevo no se da por guardado (20261023200000).
   perform test.afirmar(public.cerrar_dia_caja(pg_temp.id('c1'), pg_temp.id('bcp_pen'), pg_temp.dia('d3'), 13900,
-                                              ' Comisión  del banco que falta registrar ') = pg_temp.id('c1'),
+                                              ' Comisión  del banco que falta registrar ', current_setting('prueba.capc_c1')) = pg_temp.id('c1'),
                        'el mismo cierre repetido devuelve el mismo');
   perform test.debe_fallar(format('select public.cerrar_dia_caja(%L, %L, %L, 13950, ''Comisión del banco que falta registrar'')',
       pg_temp.id('c1'), pg_temp.id('bcp_pen'), pg_temp.dia('d3')),
@@ -299,10 +329,14 @@ begin
   -- Lo que faltó va en un día abierto.
   perform public.registrar_movimiento_caja(pg_temp.id('m4'), pg_temp.id('bcp_pen'), pg_temp.dia('d2'), 'EGRESO', 99.85,
                                            'Comisión del 13 que faltó', null, null, null);
-  perform public.cerrar_dia_caja(pg_temp.id('c2'), pg_temp.id('bcp_pen'), pg_temp.dia('d2'), 9850, null);
+  perform test.debe_fallar(format('select public.cerrar_dia_caja(%L, %L, %L, 9850, null, %L)',
+      pg_temp.id('c2'), pg_temp.id('bcp_pen'), pg_temp.dia('d2'), current_setting('prueba.capc_c1')),
+    'la captura de un cierre no sirve para otro', 'Esa captura ya es la de otro cierre');
+  perform public.cerrar_dia_caja(pg_temp.id('c2'), pg_temp.id('bcp_pen'), pg_temp.dia('d2'), 9850, null, current_setting('prueba.capc_c2'));
   perform test.afirmar((select diferencia from public.cierres_caja where id = pg_temp.id('c2')) = 0,
                        'cuadra sin observaciones');
-  -- Un día sin movimientos también se cierra, con su comprobación.
+  -- Un día sin movimientos también se cierra, con su comprobación. La caja chica,
+  -- sin foto del conteo si no la hay.
   perform public.cerrar_dia_caja(pg_temp.id('c3'), pg_temp.id('chica'), pg_temp.dia('d3'), 500, null);
   reset role;
   perform pg_temp.como('tesoreria2');
@@ -421,6 +455,47 @@ begin
       'un cierre reabierto queda como evidencia', 'anulado');
   perform test.debe_fallar(format('delete from public.cajas where id = %L', pg_temp.id('chica')),
       'una cuenta no se borra', 'se desactiva');
+end $$;
+
+
+-- ============================================ La historia de los días cerrados y sus capturas
+-- (migraciones 20261126101000, 20261126540000 y 20261126550000). La ven Tesorería y Gerencia
+-- (`tesoreria.ver_caja`); Costos no, aunque tiene `tesoreria.ver_documentos` (StudioGRCI,
+-- 2026-11-26), ni Contabilidad. Gerencia lee y no sube, cierra ni quita la captura.
+do $$
+declare n int; v_ruta text;
+begin
+  perform pg_temp.como('tesoreria');
+  set local role authenticated;
+  select count(*) into n from public.historia_cierres_caja(pg_temp.dia('d4'), pg_temp.dia('hoy'));
+  perform test.afirmar(n > 0, 'Tesorería ve la historia de los cierres (' || n || ')');
+  select k.captura_ruta into v_ruta from public.cierres_caja k where k.captura_ruta is not null limit 1;
+  perform test.afirmar(v_ruta is not null, 'y un cierre de banco guardó su captura');
+  reset role;
+
+  perform pg_temp.como('gerente');
+  set local role authenticated;
+  perform test.afirmar((select count(*) from public.historia_cierres_caja(pg_temp.dia('d4'), pg_temp.dia('hoy'))) = n,
+    'Gerencia ve la misma historia');
+  perform test.afirmar((select count(*) from storage.objects where bucket_id = 'cierre-caja' and name = v_ruta) = 1,
+    'y abre la captura del cierre');
+  delete from storage.objects where bucket_id = 'cierre-caja' and name = v_ruta;
+  get diagnostics n = row_count;
+  perform test.afirmar(n = 0, 'pero no la quita');
+  perform test.debe_fallar(format('insert into storage.objects (bucket_id, name, owner_id) values (''cierre-caja'', %L, %L)',
+      pg_temp.id('bcp_pen') || '/' || gen_random_uuid() || '.png', current_setting('prueba.gerente')),
+    'ni sube una', 'row-level security');
+  reset role;
+
+  foreach v_ruta in array array['costos', 'contabilidad'] loop
+    perform pg_temp.como(v_ruta);
+    set local role authenticated;
+    perform test.debe_fallar(format('select * from public.historia_cierres_caja(%L, %L)', pg_temp.dia('d4'), pg_temp.dia('hoy')),
+      v_ruta || ' no ve la historia de los cierres', 'No tienes permiso para ver los días cerrados');
+    perform test.afirmar((select count(*) from public.cierres_caja) = 0 and (select count(*) from storage.objects where bucket_id = 'cierre-caja') = 0,
+      v_ruta || ' no lee los cierres ni sus capturas');
+    reset role;
+  end loop;
 end $$;
 
 rollback;

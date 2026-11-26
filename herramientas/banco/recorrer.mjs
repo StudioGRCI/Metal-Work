@@ -67,6 +67,8 @@ const RUTAS = [
   // La cotización pasó a PDF: las pantallas de cotización armada y su tabla
   // ya no existen, y el recorrido se caía buscándolas.
   ['cotizacion-pdf', '/cotizaciones/pdf'],
+  ['por-decidir', '/por-decidir'],
+  ['decisiones-tomadas', '/por-decidir/decisiones'],
   ['avance-taller', '/avance'],
   ['avance-abrir-orden', '/avance/abrir-orden'],
   ordenId && ['avance-unidad', `/avance/${ordenId}`],

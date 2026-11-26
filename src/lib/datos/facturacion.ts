@@ -3,7 +3,7 @@ import 'server-only'
 import { COLUMNAS_DETRACCION, cargarTiposDetraccion, detraccionDeFila, documentosDeServicios, type DocumentoDeServicio } from '@/lib/datos/logistica'
 import { bajarComo } from '@/lib/descarga'
 import type { DetraccionDeServicio, SaldoDeServicio } from '@/lib/dominio/detraccion'
-import { BUCKET_COBROS_VENTA, BUCKET_FACTURAS_VENTA, BUCKET_PAGOS_SERVICIO } from '@/lib/dominio/finanzas'
+import { BUCKET_COBROS_VENTA, BUCKET_FACTURAS_VENTA, BUCKET_PAGOS_SERVICIO, comoVaLaFactura, totalConIgv, type ComoVaLaFactura } from '@/lib/dominio/finanzas'
 import type { CodigoMoneda } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 import type { Database, Tablas, Vistas } from '@/types/database'
@@ -134,6 +134,37 @@ async function enTandas<T>(ids: string[], leer: (tanda: string[]) => Promise<T[]
   return filas
 }
 
+/**
+ * Lo que falta cobrar de las facturas de cada código, por moneda, sin las anuladas: para quien
+ * responde las salidas de vehículos sin leer las cotizaciones aprobadas (Costos). Cuenta todas
+ * las facturas del código, no solo las que la lista de Cuentas por cobrar trae a la vista.
+ */
+export async function saldoDeFacturasPorCodigo(
+  codigos: string[],
+): Promise<Record<string, { saldo: Record<CodigoMoneda, number>; facturas: number; conSaldo: number }>> {
+  const unicos = [...new Set(codigos)]
+  if (unicos.length === 0) return {}
+  const supabase = await createClient()
+  const filas = await enTandas(unicos, async (tanda) => {
+    const r = await supabase.from('v_facturas_venta').select('codigo_interno, moneda, saldo, cancelada')
+      .in('codigo_interno', tanda).is('anulada_en', null)
+    if (r.error) throw new Error(`No se pudieron leer las facturas de los códigos: ${r.error.message}`)
+    return r.data ?? []
+  })
+  const porCodigo: Record<string, { saldo: Record<CodigoMoneda, number>; facturas: number; conSaldo: number }> = {}
+  for (const f of filas) {
+    if (!f.codigo_interno) continue
+    const fila = (porCodigo[f.codigo_interno] ??= { saldo: { PEN: 0, USD: 0 }, facturas: 0, conSaldo: 0 })
+    fila.facturas += 1
+    // Por cobrar es lo mismo que en la lista: no cancelada y con saldo.
+    if (!f.cancelada && Number(f.saldo) > 0.005) {
+      fila.saldo[f.moneda === 'USD' ? 'USD' : 'PEN'] += Number(f.saldo)
+      fila.conSaldo += 1
+    }
+  }
+  return porCodigo
+}
+
 /** Las facturas de un código interno, anuladas incluidas, de la más vieja a la más nueva: Gerencia en Códigos internos. */
 export async function facturasDelCodigo(codigo: string): Promise<FacturaVenta[]> {
   const supabase = await createClient()
@@ -174,7 +205,8 @@ async function conCobros(filas: FilaFactura[]): Promise<FacturaVenta[]> {
 /**
  * Lo que Contabilidad tiene por facturar: cada cotización aprobada con sus
  * facturas. Primero las que tienen código interno y ninguna factura vigente;
- * al final, las que esperan que Administración cargue la OT.
+ * al final, las que esperan que Administración cargue la OT. La pantalla de
+ * Facturación las vuelve a ordenar con los días que llevan esperando (Plan 10.1).
  */
 export async function bandejaDeFacturacion(): Promise<CotizacionParaFacturar[]> {
   const cotizaciones = await cotizacionesAprobadas()
@@ -185,19 +217,97 @@ export async function bandejaDeFacturacion(): Promise<CotizacionParaFacturar[]> 
   return lista.sort((a, b) => turno(a) - turno(b))
 }
 
-/** Lo facturado de un código, en cada moneda: la línea de arriba en Códigos internos. Sin las anuladas. */
-export type FacturadoDelCodigo = { facturas: number; total: Record<CodigoMoneda, number>; cobrado: Record<CodigoMoneda, number>; saldo: Record<CodigoMoneda, number> }
+/**
+ * Lo facturado de un código contra lo vendido, cotización por cotización, con la regla de la bandeja de
+ * Contabilidad (`comoVaLaFactura`). `null`: no se comparó (sin permiso para leer lo vendido, o alguna
+ * cotización sin monto); quien lo muestra lo dice en vez de darlo por hecho.
+ */
+export type FacturadoContraVendido = {
+  /** Con IGV, de las cotizaciones aprobadas del código. */
+  vendido: Record<CodigoMoneda, number>
+  /** Lo que falta facturar de las que van por facturar o en parte, en su moneda. */
+  falta: Record<CodigoMoneda, number>
+  /** En qué va cada cotización. */
+  como: ComoVaLaFactura[]
+  /** Alguna sin confirmar si su monto incluye IGV: lo vendido se toma con IGV, como en la bandeja, y puede faltar el 18 %. */
+  igvSinConfirmar: boolean
+}
 
-export async function facturadoDelCodigo(codigo: string): Promise<FacturadoDelCodigo> {
+/** Desde cuándo espera su factura cada cotización y cuántos días van, por fecha de Lima. */
+export type EsperaDeFacturacion = { desde: string | null; dias: number | null }
+
+/**
+ * Desde que la OT de cada cotización tiene código interno, que es cuando se
+ * puede facturar (DKS, Plan 10), y los días que van contados por la base con
+ * la fecha de Lima (migración 20261126470000). Lo lee quien lee las
+ * cotizaciones aprobadas. Si la base no contesta, lanza: la pantalla sigue sin
+ * los días y lo dice.
+ */
+export async function esperaDeFacturacion(ids: string[]): Promise<Map<string, EsperaDeFacturacion>> {
+  const mapa = new Map<string, EsperaDeFacturacion>()
+  const unicos = [...new Set(ids)]
+  if (unicos.length === 0) return mapa
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('v_facturas_venta')
-    .select('moneda, total, cobrado, saldo')
-    .eq('codigo_interno', codigo)
-    .is('anulada_en', null)
+  // De a 500, el tope de la función.
+  for (let i = 0; i < unicos.length; i += 500) {
+    const { data, error } = await supabase.rpc('facturacion_en_espera', { p_ids: unicos.slice(i, i + 500) })
+    if (error) throw new Error(`No se pudieron contar los días que esperan su factura: ${error.message}`)
+    for (const f of data ?? []) {
+      if (f.cotizacion) mapa.set(f.cotizacion, { desde: f.desde, dias: f.dias == null ? null : Number(f.dias) })
+    }
+  }
+  return mapa
+}
+
+/** Lo facturado de un código, en cada moneda, sin las anuladas, y cómo va contra lo vendido. */
+export type FacturadoDelCodigo = {
+  facturas: number
+  total: Record<CodigoMoneda, number>
+  cobrado: Record<CodigoMoneda, number>
+  saldo: Record<CodigoMoneda, number>
+  contraVendido: FacturadoContraVendido | null
+  /** Por qué no se comparó, si no se comparó. */
+  sinComparar: 'SIN_PERMISO' | 'SIN_MONTO' | 'NO_SE_PUDO' | 'SIN_COTIZACION' | null
+}
+
+/**
+ * `leeLoVendido`: quien tiene la puerta de `codigo_interno_lo_vendido` (`contabilidad.facturar` o
+ * `cotizaciones.ver_aprobadas`). Lo vendido se lee por código en la base, sin el tope de 300 de la bandeja.
+ */
+export async function facturadoDelCodigo(codigo: string, leeLoVendido: boolean): Promise<FacturadoDelCodigo> {
+  const supabase = await createClient()
+  const [{ data, error }, ventas] = await Promise.all([
+    supabase.from('v_facturas_venta').select('moneda, total, cobrado, saldo').eq('codigo_interno', codigo).is('anulada_en', null),
+    leeLoVendido ? supabase.rpc('codigo_interno_lo_vendido', { p_codigo: codigo }) : Promise.resolve(null),
+  ])
   if (error) throw new Error(`No se pudo leer lo facturado del código: ${error.message}`)
   const cero = () => ({ PEN: 0, USD: 0 })
-  const r: FacturadoDelCodigo = { facturas: 0, total: cero(), cobrado: cero(), saldo: cero() }
+  let contraVendido: FacturadoContraVendido | null = null
+  let sinComparar: FacturadoDelCodigo['sinComparar'] = leeLoVendido ? null : 'SIN_PERMISO'
+  // Si lo vendido no se pudo leer, lo facturado igual sale: dice que no se comparó, no tumba la pantalla.
+  if (ventas?.error) sinComparar = 'NO_SE_PUDO'
+  else if (ventas) {
+    const filas = ventas.data ?? []
+    if (filas.some((v) => v.monto_venta === null)) sinComparar = 'SIN_MONTO'
+    else if (filas.length > 0) {
+      contraVendido = { vendido: cero(), falta: cero(), como: [], igvSinConfirmar: filas.some((v) => v.incluye_igv === null) }
+      for (const v of filas) {
+        const m: CodigoMoneda = v.moneda === 'USD' ? 'USD' : 'PEN'
+        const total = totalConIgv(Number(v.monto_venta), v.incluye_igv) ?? 0
+        const como = comoVaLaFactura({
+          monto: Number(v.monto_venta),
+          incluyeIgv: v.incluye_igv,
+          facturas: v.facturas ?? 0,
+          facturadoEnSuMoneda: Number(v.facturado_en_su_moneda),
+          enOtraMoneda: v.en_otra_moneda ?? false,
+        })
+        contraVendido.vendido[m] += total
+        if (como === 'POR_FACTURAR' || como === 'EN_PARTE') contraVendido.falta[m] += Math.round((total - Number(v.facturado_en_su_moneda)) * 100) / 100
+        contraVendido.como.push(como)
+      }
+    } else sinComparar = 'SIN_COTIZACION'
+  }
+  const r: FacturadoDelCodigo = { facturas: 0, total: cero(), cobrado: cero(), saldo: cero(), contraVendido, sinComparar }
   for (const f of data ?? []) {
     const m: CodigoMoneda = f.moneda === 'USD' ? 'USD' : 'PEN'
     r.facturas += 1

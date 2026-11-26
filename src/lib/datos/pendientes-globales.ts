@@ -4,13 +4,15 @@ import { cache } from 'react'
 
 import type { Tono } from '@/components/ui/etiqueta-estado'
 import { codigosDeDiseno, planosDeCodigo } from '@/lib/datos/diseno-codigos'
+import { recorridoDeRequerimientos } from '@/lib/datos/recorrido'
+import { cargarRequerimientos } from '@/lib/datos/requerimientos'
 import { planillaAjusteDesde } from '@/lib/datos/rrhh'
 import { todasLasFilas } from '@/lib/datos/todas-las-filas'
 import { ESTADOS_ACTIVOS_OT } from '@/lib/dominio/estados'
 import { totalConIgv } from '@/lib/dominio/finanzas'
 import { devueltaEntera } from '@/lib/dominio/pago-de-boleta'
 import { estadoDePlanilla } from '@/lib/dominio/planilla-diaria'
-import { ESTADOS_RQ_ABIERTOS, leTocaAtender, quienAtiende, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
+import { ESTADOS_RQ_ABIERTOS, leTocaAtender, loTieneQuienAtiende, quienAtiende, tieneParaRecoger, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
 import { hoyLima } from '@/lib/format'
 import { rutasDeTrabajo } from '@/lib/navegacion'
 import { apruebaSinOrden, puede, type PerfilSesion } from '@/lib/sesion'
@@ -18,9 +20,9 @@ import { createClient } from '@/lib/supabase/server'
 
 /**
  * Lo que espera a quien mira en cada módulo, en todo el sistema: los globos del
- * menú y de la barra del teléfono. Hasta el 2026-10-19 también era la lista
- * «Te toca hoy» del Dashboard; se quitó porque el sistema no le dice a nadie
- * qué hacer, le muestra lo que espera en cada pantalla que puede abrir. Cada
+ * menú y de la barra del teléfono, y «Te toca» arriba del Dashboard, cada
+ * cuenta con el enlace a donde se atiende (decisión 4 del plan de orden y
+ * diseño, 2026-11-25: lo pendiente era una cifra más entre ocho o diez). Cada
  * cuenta se pide solo si el puesto tiene el permiso que la resuelve —a quien no
  * puede aprobar no se le cuentan reportes por aprobar— y cada una es un `count`
  * de cabecera sobre las vistas que ya existen, que el RLS filtra solo. Una
@@ -36,10 +38,17 @@ export type PendientesGlobales = {
   tareas: TareaPendiente[]
   /** Las claves cuya cuenta no se pudo leer: la cifra del Dashboard que las suma no puede decir «nada por ahora». */
   clavesSinComprobar: string[]
+  /** Cuántas cuentas lleva el puesto: sin ninguna, «Te toca» no tiene nada que decir y no sale. */
+  cuentas: number
 }
 
-/** Lo que vale lo que espera, en cada moneda, para las cuentas que son dinero. */
-export type MontoPendiente = { PEN: number; USD: number }
+/**
+ * Lo que vale lo que espera, en cada moneda, para las cuentas que son dinero,
+ * y cómo se dice junto al monto: «sin IGV» (compras), «con IGV» (lo por
+ * facturar), lo que falta saber, o nada (la planilla, que no lleva IGV). Cada
+ * cuenta lo dice: la tarjeta que lo muestra no lo adivina.
+ */
+export type MontoPendiente = { PEN: number; USD: number; rotulo?: string }
 
 export type TareaPendiente = { clave: string; ruta: string; tono: Tono; cantidad: number; texto: string; monto?: MontoPendiente }
 
@@ -54,6 +63,9 @@ const enMonedas = <T,>(filas: T[], moneda: (f: T) => string | null, monto: (f: T
   filas.reduce((m, f) => (moneda(f) === 'USD' ? { ...m, USD: m.USD + monto(f) } : { ...m, PEN: m.PEN + monto(f) }), { PEN: 0, USD: 0 })
 
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`
+
+/** Pendientes que son de la persona y no de su puesto: se cuentan aunque su pantalla no esté en su menú de trabajo. */
+const DE_CUALQUIER_PUESTO = new Set(['ssoma_acciones_vencidas', 'ssoma_acciones_abiertas', 'averias_por_confirmar'])
 
 /**
  * Con `cache`: el layout lo lee para los globos y el Dashboard para su cifra
@@ -168,14 +180,15 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       clave: 'pdf_sin_ot',
       ruta: '/cotizaciones/pdf?estado=APROBADA_SIN_OT',
       tono: 'acento',
-      texto: (n) => plural(n, 'cotización aprobada sin código ni OT', 'cotizaciones aprobadas sin código ni OT'),
+      texto: (n) => plural(n, 'cotización aprobada que espera su OT', 'cotizaciones aprobadas que esperan OT'),
       contar: () =>
         cabeza(
           supabase
             .from('v_cotizaciones_pdf')
             .select('id', { count: 'exact', head: true })
             .eq('estado', 'APROBADA')
-            .is('orden_id', null),
+            // Le falta alguna OT: una por unidad (migración 20261126760000).
+            .gt('ordenes_faltantes', 0),
         ),
     })
   }
@@ -556,18 +569,35 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       texto: (n) => plural(n, 'cotización aprobada por facturar', 'cotizaciones aprobadas por facturar'),
       contar: async () => {
         // La cuenta es la de la base; lo que vale sale de la misma bandeja que
-        // Facturación: las aprobadas con código y sin factura vigente.
+        // Facturación: las que tienen código y no tienen factura vigente o están
+        // facturadas en parte (Plan 10.1), por lo que les falta facturar.
         // Con IGV, como la tarjeta de cada cotización en Facturación (`totalConIgv`).
         const [cuenta, bandeja] = await Promise.all([facturacion(), supabase.rpc('cotizaciones_para_facturar')])
         const cantidad = cuenta.por_facturar ?? 0
         // El monto es un dato más: si la bandeja no se lee, el globo sigue con su cuenta.
         if (bandeja.error) return cantidad
-        const sinFactura = (bandeja.data ?? []).filter((c) => c.codigo_interno && (c.facturas ?? 0) === 0)
-        // La bandeja trae las 300 más nuevas: si no están todas, un monto corto mentiría; va solo la cuenta.
-        if (sinFactura.length !== cantidad) return cantidad
+        const total = (c: { monto_venta: number | null; incluye_igv: boolean | null }) =>
+          totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
+        const falta = (c: { monto_venta: number | null; incluye_igv: boolean | null; facturado: number | null }) =>
+          Math.max(0, (total(c) ?? 0) - Number(c.facturado ?? 0))
+        // Sin factura, o facturada en parte: el monto es lo que falta facturar (Plan 10.1).
+        // Con una factura en otra moneda no se compara, como en la base (20261126470000).
+        const porFacturar = (bandeja.data ?? []).filter(
+          (c) =>
+            c.codigo_interno &&
+            ((c.facturas ?? 0) === 0 || (Number(c.facturado_otra_moneda ?? 0) === 0 && total(c) !== null && falta(c) > 0.005)),
+        )
+        // La bandeja trae las 300 más nuevas, y una factura en otra moneda no se compara:
+        // si no son las mismas que cuenta la base, un monto corto mentiría; va solo la cuenta.
+        if (porFacturar.length !== cantidad) return cantidad
+        // Como lo dice Facturación: «con IGV», o que falta confirmarlo si alguna no lo tiene.
+        const sinConfirmar = porFacturar.some((c) => c.incluye_igv === null)
         return {
           cantidad,
-          monto: enMonedas(sinFactura, (c) => c.moneda, (c) => totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv) ?? 0),
+          monto: {
+            ...enMonedas(porFacturar, (c) => c.moneda, falta),
+            rotulo: sinConfirmar ? 'falta confirmar si incluye IGV' : 'con IGV',
+          },
         }
       },
     })
@@ -670,7 +700,7 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       // En soles al cambio de su fecha, como la pantalla; sin cambio, en su moneda.
       return {
         cantidad: espera.length,
-        monto: enMonedas(espera, (d) => (d.monto_pen === null ? d.moneda : 'PEN'), (d) => Number(d.monto_pen ?? d.monto ?? 0)),
+        monto: { ...enMonedas(espera, (d) => (d.monto_pen === null ? d.moneda : 'PEN'), (d) => Number(d.monto_pen ?? d.monto ?? 0)), rotulo: 'sin IGV' },
       }
     },
   })
@@ -679,13 +709,15 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
   // uno se le cuentan los que esperan el suyo, de cualquier mes. El enlace abre
   // el mes del más antiguo, que es el primero que hay que validar.
   for (const lado of [
-    { permiso: 'reporte_diario.validar_gerencia', columna: 'visto_gerencia_en' },
-    { permiso: 'reporte_diario.validar_rrhh', columna: 'visto_rrhh_en' },
+    // Gerencia va a «Falta Gerencia»: «Por validar» trae también los que ya
+    // tienen su visto y esperan a RR. HH. RR. HH. no tiene filtro propio.
+    { permiso: 'reporte_diario.validar_gerencia', columna: 'visto_gerencia_en', estado: 'falta-gerencia' },
+    { permiso: 'reporte_diario.validar_rrhh', columna: 'visto_rrhh_en', estado: 'por-validar' },
   ] as const) {
     if (!puede(perfil, lado.permiso) || perfil.rol.codigo === 'ADMIN') continue
     tareas.push({
       clave: `reportes_${lado.columna}`,
-      ruta: '/reportes-diarios?estado=por-validar',
+      ruta: `/reportes-diarios?estado=${lado.estado}`,
       tono: 'aviso',
       texto: n => plural(n, 'reporte diario espera tu visto', 'reportes diarios esperan tu visto'),
       contar: async () => {
@@ -699,7 +731,7 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
           .limit(500)
         if (error) throw new Error('No se pudo consultar el pendiente.')
         const primero = data?.[0]?.fecha
-        return { cantidad: data?.length ?? 0, ruta: primero ? `/reportes-diarios?mes=${primero.slice(0, 7)}&estado=por-validar` : undefined }
+        return { cantidad: data?.length ?? 0, ruta: primero ? `/reportes-diarios?mes=${primero.slice(0, 7)}&estado=${lado.estado}` : undefined }
       },
     })
   }
@@ -749,8 +781,23 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       return data ?? []
     })())
   const atiende = quienAtiende(perfil)
-  const rqQueTeTocan = (estado: string) => async () =>
-    (await rqAbiertos()).filter((r) => r.estado === estado && leTocaAtender(r, atiende)).length
+  // Qué espera hoy cada RQ abierto después de la revisión del stock, según su
+  // recorrido: el globo cuenta solo lo que tiene el puesto de quien mira, igual
+  // que «N esperan por ti» en la bandeja (DKS, 2026-11-26). Los por revisar van
+  // en su propia línea y no se piden: el recorrido cuesta por cada RQ. Si no se
+  // puede leer, el error sube y el globo sale con «!» en vez de contar otra cosa.
+  let esperas: Promise<{ tipo: string | null; area_id: string | null; espera: string | undefined }[]> | null = null
+  const queEspera = () =>
+    (esperas ??= (async () => {
+      const despues = (await rqAbiertos()).filter((r) => r.estado !== 'POR_ATENDER')
+      if (despues.length === 0) return []
+      const recorridos = await recorridoDeRequerimientos(despues.map((r) => r.id))
+      return despues.map((r) => ({
+        tipo: r.tipo,
+        area_id: r.area_id,
+        espera: recorridos.get(r.id)?.find((p) => p.situacion === 'AHORA')?.espera ?? undefined,
+      }))
+    })())
   // Los RQ con algún insumo que se pasa del metrado de Diseño sin su visto
   // (migración 20261120400000), y con cuál falta el sustento de quien pidió.
   let frenados: Promise<{ frenados: Set<string>; sinSustento: Set<string> }> | null = null
@@ -809,24 +856,49 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
       return (data ?? []).length
     },
   })
-  if (atiende.compraDe.OPERACION || atiende.compraDe.ADMINISTRACION) tareas.push({
-    clave: 'rq_por_comprar', ruta: '/requerimientos/atencion', tono: 'aviso',
-    texto: n => plural(n, 'requerimiento sin stock por comprar', 'requerimientos sin stock por comprar'),
-    contar: async () =>
-      (await rqAbiertos()).filter((r) => r.estado === 'SIN_STOCK' && atiende.compraDe[tipoDeRequerimiento(r)]).length,
+  // Lo que tiene su puesto después de la revisión del stock: a quien compra, lo
+  // que falta comprar, programar o volver a traer; a Almacén, lo que llegó y
+  // falta validar o dejar listo, y lo que ya salió del kardex y falta marcar
+  // entregado. Lo que espera a Gerencia, al conductor o al área que lo recoge no
+  // cuenta (DKS, 2026-11-26). La revisión va en su propia línea.
+  const almacen = atiende.recibe || atiende.despacha
+  const compra = atiende.compraDe.OPERACION || atiende.compraDe.ADMINISTRACION
+  if (almacen || compra) tareas.push({
+    clave: 'rq_te_esperan', ruta: '/requerimientos/atencion', tono: 'aviso',
+    texto: n =>
+      almacen && compra ? plural(n, 'requerimiento espera por ti', 'requerimientos esperan por ti')
+      : almacen ? plural(n, 'requerimiento por validar, dejar listo o entregar espera por ti', 'requerimientos por validar, dejar listos o entregar esperan por ti')
+      // Programar el recojo es solo de Logística: a la administradora, lo que falta comprar.
+      // El RQ listo de su propia área también es suyo: lo recoge.
+      : atiende.compraDe.OPERACION
+        ? perfil.area_id
+          ? plural(n, 'requerimiento por comprar, programar o recoger espera por ti', 'requerimientos por comprar, programar o recoger esperan por ti')
+          : plural(n, 'requerimiento por comprar o programar espera por ti', 'requerimientos por comprar o programar esperan por ti')
+        : perfil.area_id
+          ? plural(n, 'requerimiento por comprar o recoger espera por ti', 'requerimientos por comprar o recoger esperan por ti')
+          : plural(n, 'requerimiento por comprar espera por ti', 'requerimientos por comprar esperan por ti'),
+    contar: async () => (await queEspera()).filter((r) => loTieneQuienAtiende(r.espera, r, atiende, perfil.area_id ?? null)).length,
   })
-  if (atiende.despacha) tareas.push({
-    clave: 'rq_por_entregar', ruta: '/requerimientos/atencion', tono: 'acento',
-    texto: n => plural(n, 'requerimiento listo por entregar al área', 'requerimientos listos por entregar al área'),
-    contar: rqQueTeTocan('LISTO_EN_ALMACEN'),
+  // Las notas de las entregas que Almacén todavía no responde (plan 2, entrega
+  // 2.2): las cierra quien despacha (`atender_conformidad_salida`), y DKS
+  // decidió que sumen en su globo, no solo en la campana. ADMIN no: la
+  // bandeja no le ofrece «Responder» (`puede_atender` mira el permiso, no
+  // `es_admin()`), y el globo no invita a lo que la pantalla no da.
+  if (atiende.despacha && perfil.rol.codigo !== 'ADMIN') tareas.push({
+    clave: 'notas_por_responder', ruta: '/requerimientos/atencion', tono: 'peligro',
+    texto: n => plural(n, 'nota de entrega por responder', 'notas de entrega por responder'),
+    contar: () => cabeza(supabase.from('conformidad_salidas').select('id', { count: 'exact', head: true }).is('atendido_en', null)),
   })
-  // El supervisor recoge de Almacén lo que su área pidió.
+  // El supervisor recoge de Almacén lo que su área pidió. Cuenta lo mismo que
+  // la lista a la que lleva (`?ver=recoger`): los RQ con algún insumo que ya
+  // se puede recoger, aunque el resto siga en compra, no solo los que están
+  // listos enteros.
   if (puede(perfil, 'reporte_diario.registrar') && perfil.area_id && perfil.rol.codigo !== 'ADMIN') {
     const area = perfil.area_id
     tareas.push({
-      clave: 'rq_por_recoger', ruta: '/requerimientos', tono: 'acento',
-      texto: n => plural(n, 'requerimiento de tu área listo para recoger en almacén', 'requerimientos de tu área listos para recoger en almacén'),
-      contar: async () => (await rqAbiertos()).filter((r) => r.estado === 'LISTO_EN_ALMACEN' && r.area_id === area).length,
+      clave: 'rq_por_recoger', ruta: '/requerimientos?ver=recoger', tono: 'acento',
+      texto: n => plural(n, 'requerimiento de tu área con algo para recoger en almacén', 'requerimientos de tu área con algo para recoger en almacén'),
+      contar: async () => (await cargarRequerimientos({ soloAbiertos: true, area, conEntregado: true, sinFechaCorregida: true })).filter(tieneParaRecoger).length,
     })
   }
 
@@ -1021,6 +1093,116 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
     break
   }
 
+  // Averías (Plan 16.3): a Mantenimiento, las que esperan su atención; a quien
+  // reportó, las que Mantenimiento cerró y esperan que diga si quedaron bien.
+  // Sin esto, el circuito dependía de que la persona viera la campana.
+  if (puede(perfil, 'averias.atender')) tareas.push({
+    clave: 'averias_por_atender', ruta: '/averias', tono: 'peligro',
+    texto: n => plural(n, 'avería por atender', 'averías por atender'),
+    contar: () =>
+      cabeza(supabase.from('averias').select('id', { count: 'exact', head: true }).in('estado', ['REPORTADA', 'EN_ATENCION'])),
+  })
+  // A quién le toca lo dice la base (`puede_confirmar`), con la regla de la
+  // función que confirma: quien la reportó o, si ya no tiene cuenta, el
+  // responsable del área o Mantenimiento (Plan 16.4).
+  tareas.push({
+    clave: 'averias_por_confirmar', ruta: '/averias', tono: 'aviso',
+    texto: n => plural(n, 'avería cerrada espera que digas si quedó bien', 'averías cerradas esperan que digas si quedaron bien'),
+    // Va en el menú de toda pantalla: la base cuenta solo las cerradas
+    // (`averias_por_confirmar`), sin calcular todas las averías visibles.
+    contar: async () => {
+      const { data, error } = await supabase.rpc('averias_por_confirmar')
+      if (error) throw new Error('No se pudo consultar el pendiente.')
+      if (typeof data !== 'number') throw new Error('No se pudo consultar el pendiente.')
+      return data
+    },
+  })
+
+  // Calidad (A.1): al área, lo que Calidad le observó y espera su corrección; a
+  // Calidad, lo que el área dice que corrigió y espera su revisión. Cuál le toca
+  // a quien mira lo dice la base (`puede_corregir`), con la misma regla que la
+  // función que escribe; la cuenta del área no pide permiso, y solo corre si
+  // `/calidad` está en el menú del puesto (abajo).
+  const inspeccionesDeCalidad = async (filtro: 'puede_corregir' | 'por_revisar') => {
+    const consulta = supabase.rpc('calidad_inspecciones_visibles', { p_id: null }).select('id')
+    const { data, error } = await (filtro === 'puede_corregir' ? consulta.eq('puede_corregir', true) : consulta.eq('estado', 'CORREGIDA'))
+    if (error) throw new Error('No se pudo consultar el pendiente.')
+    return (data ?? []).length
+  }
+  if (puede(perfil, 'calidad.inspeccionar')) {
+    tareas.push({
+      clave: 'calidad_por_revisar', ruta: '/calidad', tono: 'aviso',
+      texto: n => plural(n, 'corrección de calidad espera tu revisión', 'correcciones de calidad esperan tu revisión'),
+      contar: () => inspeccionesDeCalidad('por_revisar'),
+    })
+  } else {
+    tareas.push({
+      clave: 'calidad_por_corregir', ruta: '/calidad', tono: 'peligro',
+      texto: n => plural(n, 'observación de calidad por corregir', 'observaciones de calidad por corregir'),
+      contar: () => inspeccionesDeCalidad('puede_corregir'),
+    })
+  }
+  // Garantías (A.2): a Administración, los reclamos que esperan su OT de
+  // garantía (o otra, si la suya se anuló); a Calidad, los que tienen la
+  // garantía terminada y esperan su causa. Cuál le toca a quien mira lo dice la
+  // base (`puede_enlazar`, `puede_causa`), con la misma regla que la función que escribe.
+  for (const de of [
+    { permiso: 'garantias.atender', columna: 'puede_enlazar' as const, clave: 'garantias_por_abrir_ot', uno: 'reclamo de garantía espera su OT', varios: 'reclamos de garantía esperan su OT' },
+    { permiso: 'garantias.causa', columna: 'puede_causa' as const, clave: 'garantias_por_causa', uno: 'reclamo de garantía espera tu causa', varios: 'reclamos de garantía esperan tu causa' },
+  ]) {
+    if (!puede(perfil, de.permiso)) continue
+    tareas.push({
+      clave: de.clave, ruta: '/garantias', tono: 'aviso',
+      texto: n => plural(n, de.uno, de.varios),
+      contar: async () => {
+        const { data, error } = await supabase.rpc('garantias_reclamos_visibles', { p_id: null }).select('id').eq(de.columna, true)
+        if (error) throw new Error('No se pudo consultar el pendiente.')
+        return (data ?? []).length
+      },
+    })
+  }
+  // SSOMA (15.2): las acciones correctivas a cargo de quien mira, que puede ser
+  // cualquier cuenta; la política de `ssoma_acciones` le deja contar las suyas.
+  // Las vencidas aparte y en rojo: son las que la pantalla pone arriba.
+  for (const de of [
+    { clave: 'ssoma_acciones_vencidas', tono: 'peligro' as const, vencidas: true, uno: 'acción correctiva vencida a tu cargo', varios: 'acciones correctivas vencidas a tu cargo' },
+    { clave: 'ssoma_acciones_abiertas', tono: 'aviso' as const, vencidas: false, uno: 'acción correctiva a tu cargo', varios: 'acciones correctivas a tu cargo' },
+  ]) {
+    tareas.push({
+      clave: de.clave, ruta: '/ssoma', tono: de.tono,
+      texto: n => plural(n, de.uno, de.varios),
+      contar: () => {
+        const q = supabase.from('ssoma_acciones').select('id', { count: 'exact', head: true })
+          .eq('responsable_id', perfil.id).eq('estado', 'ABIERTA')
+        return cabeza(de.vencidas ? q.lt('fecha_limite', hoy) : q.gte('fecha_limite', hoy))
+      },
+    })
+  }
+  // SSOMA: los reportes por clasificar y las acciones de otros que pasaron su fecha.
+  if (puede(perfil, 'ssoma.gestionar')) {
+    tareas.push({
+      clave: 'ssoma_por_clasificar', ruta: '/ssoma', tono: 'aviso',
+      texto: n => plural(n, 'reporte de seguridad por clasificar', 'reportes de seguridad por clasificar'),
+      contar: () => cabeza(supabase.from('ssoma_reportes').select('id', { count: 'exact', head: true }).eq('estado', 'REPORTADO')),
+    })
+    // El clasificado sin ninguna acción viva: se quedaría quieto sin que nadie se entere.
+    tareas.push({
+      clave: 'ssoma_sin_accion', ruta: '/ssoma', tono: 'aviso',
+      texto: n => plural(n, 'reporte clasificado sin acción', 'reportes clasificados sin acción'),
+      contar: async () => {
+        const { data, error } = await supabase.rpc('ssoma_por_atender').single()
+        if (error) throw new Error('No se pudo consultar el pendiente.')
+        return data?.sin_accion ?? 0
+      },
+    })
+    tareas.push({
+      clave: 'ssoma_vencidas_de_otros', ruta: '/ssoma?vista=acciones', tono: 'peligro',
+      texto: n => plural(n, 'acción correctiva vencida por seguir', 'acciones correctivas vencidas por seguir'),
+      contar: () => cabeza(supabase.from('ssoma_acciones').select('id', { count: 'exact', head: true })
+        .eq('estado', 'ABIERTA').lt('fecha_limite', hoy).neq('responsable_id', perfil.id)),
+    })
+  }
+
   // Un pendiente se cuenta solo si su pantalla está en el menú del puesto: lo
   // que se resuelve donde el puesto ya no entra no es suyo. Así Supervisión,
   // Almacén y Requerimientos dejaron de ver lo que se resolvía en la OT (desde
@@ -1028,9 +1210,14 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
   // que el puesto solo consulta tampoco es suyo: Gerencia ve todas las áreas
   // desde el 2026-11-25, y sus globos siguen siendo lo que espera su visto.
   const enMenu = rutasDeTrabajo(perfil.permisos, perfil.rol.codigo === 'ADMIN', perfil.rol.codigo)
-  const suyas = tareas.filter((t) => enMenu.has(t.ruta.split(/[?#]/)[0]))
+  // Salvo la acción correctiva a su cargo: SSOMA se la puede encargar a cualquier
+  // cuenta, también a una que solo consulta `/ssoma` (Gerencia), y es suya igual.
+  const suyas = tareas.filter((t) => DE_CUALQUIER_PUESTO.has(t.clave) || enMenu.has(t.ruta.split(/[?#]/)[0]))
 
-  const cuentas = await Promise.all(suyas.map((t) => t.contar().catch(() => null)))
+  const cuentas = await Promise.all(suyas.map((t) => t.contar().catch((e: unknown) => {
+    console.error(`Pendientes: no se pudo contar «${t.clave}».`, e)
+    return null
+  })))
 
   const porRuta: Record<string, number> = {}
   const sinComprobar = new Set<string>()
@@ -1057,5 +1244,5 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
     })
   })
 
-  return { porRuta, sinComprobar: [...sinComprobar], tareas: conAlgo, clavesSinComprobar }
+  return { porRuta, sinComprobar: [...sinComprobar], tareas: conAlgo, clavesSinComprobar, cuentas: suyas.length }
 })

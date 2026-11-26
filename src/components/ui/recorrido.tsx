@@ -1,7 +1,7 @@
-import { Check, ChevronDown, Route } from 'lucide-react'
+import { Check, ChevronDown, Route, X } from 'lucide-react'
 
 import { Insignia } from '@/components/ui/etiqueta-estado'
-import { haceDias, type PasoDescrito } from '@/lib/dominio/recorrido'
+import { enQueTermino, haceDias, tardo, type PasoDescrito } from '@/lib/dominio/recorrido'
 import { fecha, fechaHora } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -9,6 +9,9 @@ import { cn } from '@/lib/utils'
  * El recorrido de un documento numerado, plegado dentro de su tarjeta: los pasos
  * del circuito en orden, quién hizo cada uno y cuándo, quién lo tiene ahora y
  * hace cuántos días, y lo que falta (migración 20261125130000).
+ *
+ * Cada paso hecho dice, si la base lo da, cuánto tardó desde el anterior («a
+ * los 2 días»): hoy lo da la cotización (Plan 9.1).
  *
  * Cerrado ya dice lo que más se pregunta: quién lo tiene y hace cuánto. Los
  * días los cuenta la base por fecha de Lima; aquí no se calcula nada. Todavía
@@ -22,17 +25,26 @@ import { cn } from '@/lib/utils'
  * (`rounded-[var(--radius-base)] border border-borde`). `relleno`, el margen
  * lateral de esa tarjeta. `femenino`, para el documento que lo es: «la tiene
  * Gerencia» de la cotización, «lo tiene Almacén» del requerimiento.
+ * `sinQuienEnElResumen`, donde la fila ya dice quién lo tiene y hace cuánto
+ * (la insignia de días de Atención de requerimiento): cerrado dice solo
+ * «Recorrido», para no repetirlo a 80 px; abierto, igual que siempre.
+ * `titulo`, donde hay más de un documento a la vista y «Recorrido» no dice de
+ * cuál («Recorrido de la cotización 3568-2026» en el código interno).
  */
 export function Recorrido({
   pasos,
   className,
   relleno = 'px-4',
   femenino = false,
+  sinQuienEnElResumen = false,
+  titulo = 'Recorrido',
 }: {
   pasos: readonly PasoDescrito[] | null | undefined
   className?: string
   relleno?: string
   femenino?: boolean
+  sinQuienEnElResumen?: boolean
+  titulo?: string
 }) {
   const lo = femenino ? 'la' : 'lo'
   if (pasos === null) {
@@ -45,8 +57,8 @@ export function Recorrido({
   if (!pasos || pasos.length === 0) return null
 
   const ahora = pasos.find((p) => p.situacion === 'AHORA')
-  const hechos = pasos.filter((p) => p.situacion === 'HECHO')
-  const ultimo = hechos.at(-1)
+  // Cerrado, dice en qué terminó (ver `enQueTermino`).
+  const ultimo = enQueTermino(pasos)
 
   return (
     <details className={cn('group/recorrido overflow-hidden', className)} data-recorrido>
@@ -59,16 +71,18 @@ export function Recorrido({
         <span className="flex items-center gap-1.5 text-sm font-medium text-texto">
           <ChevronDown aria-hidden className="size-4 shrink-0 text-texto-suave transition-transform group-open/recorrido:rotate-180" />
           <Route aria-hidden className="size-4 shrink-0 text-texto-suave" />
-          Recorrido
+          {titulo}
         </span>
         {/* Lo que más se pregunta, sin abrir: quién lo tiene y hace cuánto; si ya nadie, en qué terminó. */}
         {ahora ? (
+          !sinQuienEnElResumen && (
           <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-texto-suave" data-recorrido-ahora>
             <span className="min-w-0 break-words">
               {femenino ? 'La' : 'Lo'} {ahora.plural ? 'tienen' : 'tiene'} <span className="font-medium text-texto">{ahora.puesto ?? 'alguien'}</span>
             </span>
             {ahora.dias !== null && <Insignia>{haceDias(ahora.dias)}</Insignia>}
           </span>
+          )
         ) : (
           ultimo && (
             <span className="min-w-0 text-xs break-words text-texto-suave">
@@ -83,7 +97,7 @@ export function Recorrido({
           <li key={p.orden} className="relative flex gap-3 pb-3 last:pb-0" data-recorrido-paso={p.paso} data-situacion={p.situacion}>
             {/* La línea que une este paso con el siguiente. */}
             {i < pasos.length - 1 && <span aria-hidden className="absolute top-5 bottom-0 left-[9px] w-px bg-borde" />}
-            <Marca situacion={p.situacion} />
+            <Marca situacion={p.situacion} corta={p.corta === true} />
             <div className="min-w-0 flex-1">
               {p.situacion === 'HECHO' && (
                 <>
@@ -91,7 +105,11 @@ export function Recorrido({
                   <p className="text-xs break-words text-texto-suave">
                     {p.puesto || 'Sin cuenta registrada'}
                   </p>
-                  <p className="tabular text-xs text-texto-tenue">{fechaHora(p.en)}</p>
+                  <p className="tabular text-xs text-texto-tenue">
+                    {fechaHora(p.en)}
+                    {/* Cuánto tardó desde el paso anterior, si la base lo da (hoy, la cotización). */}
+                    {p.dias !== null && <span data-recorrido-tardo className="text-texto-suave"> · {tardo(p.dias)}</span>}
+                  </p>
                   {p.nota && <p className="text-xs break-words text-texto-suave">{p.nota}</p>}
                 </>
               )}
@@ -122,8 +140,19 @@ export function Recorrido({
   )
 }
 
-/** El punto de cada paso: hecho, el que espera ahora, o el que todavía no toca. */
-function Marca({ situacion }: { situacion: PasoDescrito['situacion'] }) {
+/**
+ * El punto de cada paso: hecho, el que espera ahora, o el que todavía no toca. Lo usa también el
+ * recorrido del código interno. La anulación y el rechazo hechos van con una X roja: el recorrido
+ * cerrado dice cómo terminó, y con el visto verde «Anulada» se leía como un paso bien hecho.
+ */
+export function Marca({ situacion, corta = false }: { situacion: PasoDescrito['situacion']; corta?: boolean }) {
+  if (situacion === 'HECHO' && corta) {
+    return (
+      <span aria-hidden className="relative z-[1] mt-0.5 grid size-[19px] shrink-0 place-items-center rounded-full bg-peligro-suave text-peligro">
+        <X className="size-3" strokeWidth={3} />
+      </span>
+    )
+  }
   if (situacion === 'HECHO') {
     return (
       <span aria-hidden className="relative z-[1] mt-0.5 grid size-[19px] shrink-0 place-items-center rounded-full bg-exito-suave text-exito">

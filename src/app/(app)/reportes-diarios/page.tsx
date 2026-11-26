@@ -3,12 +3,13 @@ import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
+import { DiasEnEspera } from '@/components/ui/dias-en-espera'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
-import { DiasEnEspera } from '@/components/ui/dias-en-espera'
 import { Progreso } from '@/components/ui/progreso'
 import { Recorrido } from '@/components/ui/recorrido'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { diasEnEspera } from '@/lib/datos/dias-en-espera'
 import { recorridoDeReportesDiarios, type Recorridos } from '@/lib/datos/recorrido'
 import { listarReportesDiarios, reportesObservadosPorCorregir, type ReporteListado, type ReporteObservado } from '@/lib/datos/reportes-diarios'
 import { tareosDelMes } from '@/lib/datos/rrhh'
@@ -83,6 +84,17 @@ export default async function PaginaReportesDiarios({ searchParams }: PageProps<
   const horas = vigentes.reduce((n, r) => n + r.personal.reduce((m, p) => m + p.horas, 0), 0)
   const idsVigentes = new Set(vigentes.map((r) => r.id))
   const costoHoras = tareos.filter((t) => !t.anulado_en && t.reporte && idsVigentes.has(t.reporte.id)).reduce((n, t) => n + t.costo, 0)
+  // Cuánto lleva cada uno esperando el visto de RR. HH. (plan 13, entrega 13.2): desde
+  // que el supervisor lo subió, o lo subió corregido, que es otro reporte. Los días
+  // los cuenta la base con la fecha de Lima; si no contesta, la lista sale sin ellos.
+  const esperanRrhh = reportes.filter(esperaVistoRrhh)
+  const diasRrhh = new Map<string, number | null>()
+  const contados = await diasEnEspera(esperanRrhh.map((r) => r.creado_en)).catch((e: unknown) => {
+    console.error('Reporte diario: no se pudieron contar los días en espera del visto de RR. HH.', e)
+    return null
+  })
+  esperanRrhh.forEach((r, i) => diasRrhh.set(r.id, contados?.[i] ?? null))
+  const sinDias = esperanRrhh.length > 0 && contados === null
   const cuantos = (e: EstadoReporte) => deLaArea.filter((r) => estadoDeReporte(r) === e).length
   const enlaceMes = (m: string) =>
     `/reportes-diarios?mes=${m}${area ? `&area=${encodeURIComponent(area)}` : ''}${filtro ? `&estado=${filtro}` : ''}`
@@ -185,13 +197,20 @@ export default async function PaginaReportesDiarios({ searchParams }: PageProps<
           </TarjetaCuerpo>
         </Tarjeta>
       ) : (
+        <>
+        {sinDias && (
+          <p role="status" className="mb-3 text-sm text-texto-suave">
+            No se pudieron contar los días que llevan esperando el visto de Recursos Humanos. Vuelve a cargar la pantalla en un momento.
+          </p>
+        )}
         <ul className="space-y-3">
           {reportes.map((r) => (
             <li key={r.id}>
-              <FilaReporte reporte={r} conArea={veTodos} recorridos={recorridos} />
+              <FilaReporte reporte={r} conArea={veTodos} recorridos={recorridos} diasRrhh={diasRrhh.get(r.id)} />
             </li>
           ))}
         </ul>
+        </>
       )}
     </>
   )
@@ -244,14 +263,22 @@ function ObservadosPorCorregir({ reportes, recorridos }: { reportes: ReporteObse
   )
 }
 
+/** Por validar y sin el visto de RR. HH.: lo que espera en su bandeja. */
+function esperaVistoRrhh(r: ReporteListado) {
+  return estadoDeReporte(r) === 'POR_VALIDAR' && !r.visto_rrhh_en
+}
+
 function FilaReporte({
   reporte: r,
   conArea,
   recorridos,
+  diasRrhh,
 }: {
   reporte: ReporteListado
   conArea: boolean
   recorridos: Recorridos | null
+  /** Los días que lleva esperando el visto de RR. HH.; `undefined` si no lo espera. */
+  diasRrhh?: number | null
 }) {
   const personas = horasPorPersona(r.personal).size
   const horas = r.personal.reduce((n, p) => n + p.horas, 0)
@@ -275,7 +302,20 @@ function FilaReporte({
           </div>
           <div className="text-right">
             <Insignia tono={ESTADO_REPORTE[estado].tono}>{ESTADO_REPORTE[estado].etiqueta}</Insignia>
-            {falta && <p className="mt-1 text-xs text-texto-suave">{falta}</p>}
+            {/* Lo que falta y desde cuándo, en un solo renglón: quién lo tiene ya lo dice
+                «Falta…»; si faltan los dos, la insignia no nombra a nadie. */}
+            {falta && (
+              <p className="mt-1 flex flex-wrap items-center justify-end gap-2 text-xs text-texto-suave">
+                <span>{falta}</span>
+                {diasRrhh !== undefined && (
+                  <DiasEnEspera
+                    dias={diasRrhh}
+                    desde={r.creado_en}
+                    quien={r.visto_gerencia_en ? 'Recursos Humanos' : null}
+                  />
+                )}
+              </p>
+            )}
           </div>
         </div>
         {estado === 'OBSERVADO' && r.observacion && <p className="mt-1 text-xs text-texto">Observación: {r.observacion}</p>}

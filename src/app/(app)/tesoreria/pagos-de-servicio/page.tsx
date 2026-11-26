@@ -3,6 +3,7 @@ import { FileText, Wrench } from 'lucide-react'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { AvisoDeLaCaja } from '@/components/finanzas/aviso-de-la-caja'
 import { CajaDeLaLinea } from '@/components/finanzas/caja-del-pago'
+import { LoQueFaltaDeLaFila } from '@/components/finanzas/lo-que-falta'
 import { ParaPagar } from '@/components/finanzas/para-pagar'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
@@ -13,6 +14,7 @@ import { AdjuntarDocumentoServicio } from '@/app/(app)/compras/servicios/documen
 import { etiquetaDocumentoServicio } from '@/lib/dominio/adquisiciones'
 import type { CuentaParaPagar } from '@/lib/dominio/caja'
 import { faltaDelServicio, resumenDetraccion } from '@/lib/dominio/detraccion'
+import { faltaDelServicio as queLeFaltaAlServicio } from '@/lib/dominio/lo-que-falta'
 import { resumenPorMoneda } from '@/lib/dominio/finanzas'
 import { ESTADO_SERVICIO } from '@/lib/dominio/logistica'
 import { fecha, hoyLima, moneda, parteDe, porcentaje } from '@/lib/format'
@@ -121,6 +123,10 @@ function Servicio({
   const conDetraccion = saldo.detraccion > 0
   // Pagada entera a cuenta: un pago más no la cancela, se rehace el último.
   const todoPagado = !s.cancelada && pagado && saldo.saldoProveedor <= 0 && saldo.saldoDetraccion <= 0
+  // En dólares, con detracción y sin su monto en soles: no se sabe cuánto va al Banco de la Nación.
+  // La base no la deja cancelar, y un pago a cuenta por el saldo le pagaría al proveedor también la
+  // detracción: no se ofrece pagar hasta que la OS tenga su monto en soles (auditoría del 2026-11-26).
+  const sinTipoDeCambio = Boolean(s.detraccion.afecta) && s.detraccion.total_con_igv_pen === null
   const estado = ESTADO_SERVICIO[s.estado ?? ''] ?? { etiqueta: s.estado ?? '—', tono: 'neutro' as const }
   const detraccion = resumenDetraccion(s.detraccion)
   // La factura y el contrato de la OS, con las cuentas del proveedor: lo que se mira para pagar.
@@ -131,7 +137,7 @@ function Servicio({
   const cuentasDetraccion = s.cuentas.filter((c) => /naci[oó]n/i.test(c.banco))
   const sinCuentaDetraccion = verCuentas ? 'El proveedor no tiene su cuenta del Banco de la Nación en Proveedores: pídesela a Logística.' : null
   return (
-    <article className="rounded-[var(--radius-base)] border border-borde p-3">
+    <article className="rounded-[var(--radius-base)] border border-borde p-3" data-servicio={s.numero ?? undefined}>
       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
         {/* Con un texto largo, el total sigue en su columna de la derecha. */}
         <div className="min-w-0 sm:flex-1">
@@ -158,11 +164,6 @@ function Servicio({
               Detracción {detraccion.detalle}.
               {m !== 'PEN' && saldo.alProveedor > 0 && ` Al proveedor se le pagan ${moneda(saldo.alProveedor, m)}.`}
               {' '}La detracción va a la cuenta del proveedor en el Banco de la Nación.
-            </p>
-          )}
-          {todoPagado && (
-            <p className="text-xs text-aviso">
-              Ya se pagó todo, pero ningún pago la canceló: anula el último pago y regístralo otra vez con «Sí, queda pagada».
             </p>
           )}
         </div>
@@ -206,16 +207,26 @@ function Servicio({
       </div>
 
       <div className="mt-2 space-y-2">
+        {/* Qué le falta y de quién (plan 11.2): la OS ya la aprobó Gerencia, o no saldría aquí. */}
+        <LoQueFaltaDeLaFila
+          mias={paga ? ['Tesorería'] : []}
+          falta={queLeFaltaAlServicio({
+            cancelada: Boolean(s.cancelada),
+            conComprobante: comprobante,
+            conforme: s.estado === 'CONFORME',
+            todoPagado,
+            saldoProveedor: saldo.saldoProveedor,
+            saldoDetraccion: saldo.saldoDetraccion,
+            detraccionSinDefinir: s.detraccion.afecta === null,
+            sinTipoDeCambio,
+            cambioDel: s.detraccion.emitida_en ? fecha(s.detraccion.emitida_en) : null,
+          })}
+        />
         <ParaPagar documentos={documentos} cuentas={s.cancelada ? [] : s.cuentas} monedaDocumento={m} sinCuentas={s.cancelada ? null : sinCuentas} />
-        {!s.cancelada && !comprobante && (
-          <p className="text-xs text-texto-suave">
-            Falta la factura o el recibo del proveedor: la adjunta Logística en la OS{adjunta ? ', o tú aquí' : ''}.
-          </p>
-        )}
         {/* El pago, encima de los pagos anteriores como en Cuentas por pagar y por cobrar. */}
-        {s.id && !s.cancelada && ((paga && !todoPagado) || adjunta) && (
+        {s.id && !s.cancelada && ((paga && !todoPagado && !sinTipoDeCambio) || adjunta) && (
           <div className="flex flex-wrap items-center gap-2">
-            {paga && !todoPagado && (
+            {paga && !todoPagado && !sinTipoDeCambio && (
               <PagarServicio
                 ordenServicioId={s.id}
                 numero={s.numero ?? 'orden de servicio'}

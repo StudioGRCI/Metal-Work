@@ -1,9 +1,11 @@
+import Link from 'next/link'
+
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Paginacion } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
-import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
+import { AccionesDeFila, SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import {
   areasDeEquipo,
@@ -11,6 +13,7 @@ import {
   codigosQueSiguen,
   contarEquipos,
   EQUIPOS_POR_PAGINA,
+  historiaDeEquipos,
   listarEquipos,
 } from '@/lib/datos/equipos'
 import { palabrasDeBusqueda } from '@/lib/dominio/busqueda'
@@ -20,6 +23,7 @@ import { fecha } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
 import { AccionesEquipo, AvisoDelPadron, CategoriasDeEquipo, NuevoEquipo } from './formulario'
+import { LecturaDeEquipos } from './lectura'
 
 export const metadata = { title: 'Equipos' }
 
@@ -42,7 +46,13 @@ export default async function PaginaEquipos({ searchParams }: PageProps<'/equipo
   const pedida = uno(params.categoria)
   const categoria = pedida && FORMA_DE_ID.test(pedida) ? pedida : undefined
 
-  const [categorias, areas, cuenta, siguientes, lista] = await Promise.all([
+  const conFiltro = Boolean(busqueda || (!deBaja && (estado || categoria)))
+  // La lectura de Gerencia (Plan 16.4), arriba del padrón sin filtros: los
+  // parados hoy y los que más fallan. La historia la cuenta la base. Se pide
+  // junto con lo demás, sin esperar a la cuenta.
+  const pideLectura = !deBaja && !conFiltro
+
+  const [categorias, areas, cuenta, siguientes, lista, historia, parados] = await Promise.all([
     categoriasDeEquipo(),
     areasDeEquipo(),
     contarEquipos(),
@@ -54,10 +64,11 @@ export default async function PaginaEquipos({ searchParams }: PageProps<'/equipo
       deBaja,
       pagina: paginaPedida(params.pagina),
     }),
+    pideLectura ? historiaDeEquipos() : null,
+    pideLectura ? listarEquipos({ estado: 'PARADO' }) : null,
   ])
   const { equipos, total, pagina, paginas } = lista
-
-  const conFiltro = Boolean(busqueda || (!deBaja && (estado || categoria)))
+  const conLectura = pideLectura && cuenta.enUso > 0 && historia !== null && historia.size > 0
 
   const resumen = deBaja
     ? `${cuantosEquipos(cuenta.deBaja)} ${cuenta.deBaja === 1 ? 'dado' : 'dados'} de baja`
@@ -89,6 +100,11 @@ export default async function PaginaEquipos({ searchParams }: PageProps<'/equipo
       />
 
       {(gestiona || asigna) && <AvisoDelPadron />}
+      {conLectura && historia && (
+        <LecturaDeEquipos parados={parados?.equipos ?? []} totalParados={parados?.total ?? 0} historia={historia} />
+      )}
+      {/* 20 px entre los filtros y la lista, como entre bloques (la escala de la skill diseno). */}
+      <div className="space-y-5">
       <div className="space-y-3">
         <BuscadorSimple ruta="/equipos" etiqueta="Buscar equipos" marcador="Código, nombre, marca o serie" />
         {(cuenta.deBaja > 0 || deBaja) && (
@@ -134,18 +150,22 @@ export default async function PaginaEquipos({ searchParams }: PageProps<'/equipo
         )}
       </div>
 
-      <Tarjeta className="mt-4 overflow-hidden">
-        <Tabla>
+      {/* En el teléfono cada equipo es una ficha con sus botones en un renglón
+          (la lista común, entrega 4 del plan de orden y diseño): iban de a dos
+          en una rejilla, con «A cargo de» solo en el renglón de abajo. */}
+      <Tarjeta className="overflow-hidden">
+        <Tabla apilada>
           <TablaCabecera>
             <tr>
-              <TH>Equipo</TH>
+              {/* Su ancho: a 1024 el nombre quedaba en 94 px, seis renglones. */}
+              <TH className="md:w-1/4">Equipo</TH>
               {/* En el teléfono, categoría, área, quién lo tiene y el estado bajan
                   a la celda del equipo: así caben sin correr la tabla de lado. */}
               <TH className="hidden md:table-cell">Categoría</TH>
               <TH className="hidden md:table-cell">Área y ubicación</TH>
-              <TH className="hidden lg:table-cell">A cargo de</TH>
-              <TH className="hidden sm:table-cell">{deBaja ? 'Baja' : 'Estado'}</TH>
-              {(gestiona || asigna) && <TH>Acciones</TH>}
+              <TH className="hidden xl:table-cell">A cargo de</TH>
+              <TH className="hidden md:table-cell">{deBaja ? 'Baja' : 'Estado'}</TH>
+              {(gestiona || asigna) && <TH className="md:w-80">Acciones</TH>}
             </tr>
           </TablaCabecera>
           <tbody>
@@ -197,23 +217,28 @@ export default async function PaginaEquipos({ searchParams }: PageProps<'/equipo
                 return (
                   <TR key={e.id}>
                     <TD>
-                      <p className="font-medium text-texto">
-                        <span className="tabular">{e.codigo}</span>
-                        <span className="font-normal text-texto-suave"> · </span>
-                        {e.descripcion}
-                      </p>
+                      {/* El código lleva a su historia: averías, tiempo parado y repetidas. */}
+                      <Link href={`/equipos/${e.id}`} className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0">
+                        <span>
+                          <span className="tabular">{e.codigo}</span>
+                          <span className="font-normal text-texto-suave"> · </span>
+                          {e.descripcion}
+                        </span>
+                      </Link>
                       {(e.marca || series) && <p className="text-xs text-texto-suave">{[e.marca, series].filter(Boolean).join(' · ')}</p>}
                       <p className="text-xs text-texto-suave md:hidden">{[e.categoria?.nombre, donde].filter(Boolean).join(' · ')}</p>
-                      {e.a_cargo_de && <p className="text-xs text-texto-suave lg:hidden">A cargo de {e.a_cargo_de}</p>}
-                      <div className="mt-1.5 sm:hidden">{estadoODeBaja}</div>
+                      {e.a_cargo_de && <p className="text-xs text-texto-suave xl:hidden">A cargo de {e.a_cargo_de}</p>}
+                      <div className="mt-1.5 md:hidden">{estadoODeBaja}</div>
                     </TD>
                     <TD className="hidden text-texto-suave md:table-cell">{e.categoria?.nombre ?? '—'}</TD>
                     <TD className="hidden text-texto-suave md:table-cell">{donde || <span className="text-aviso">Sin área</span>}</TD>
-                    <TD className="hidden text-texto-suave lg:table-cell">{e.a_cargo_de ?? '—'}</TD>
-                    <TD className="hidden sm:table-cell">{estadoODeBaja}</TD>
+                    <TD className="hidden text-texto-suave xl:table-cell">{e.a_cargo_de ?? '—'}</TD>
+                    <TD className="hidden md:table-cell">{estadoODeBaja}</TD>
                     {(gestiona || asigna) && (
                       <TD>
-                        <AccionesEquipo equipo={e} gestiona={gestiona} asigna={asigna} categorias={categorias} areas={areas} />
+                        <AccionesDeFila className="md:justify-start">
+                          <AccionesEquipo equipo={e} gestiona={gestiona} asigna={asigna} categorias={categorias} areas={areas} />
+                        </AccionesDeFila>
                       </TD>
                     )}
                   </TR>
@@ -223,6 +248,7 @@ export default async function PaginaEquipos({ searchParams }: PageProps<'/equipo
           </tbody>
         </Tabla>
       </Tarjeta>
+      </div>
 
       <Paginacion ruta="/equipos" pagina={pagina} paginas={paginas} total={total} porPagina={EQUIPOS_POR_PAGINA} params={params} />
     </>

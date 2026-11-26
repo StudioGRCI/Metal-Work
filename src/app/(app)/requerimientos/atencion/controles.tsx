@@ -55,7 +55,13 @@ const PASO = {
 } satisfies Record<Paso, unknown>
 
 /** Un botón por paso; cada uno abre su ventana con la nota y manda a la base. */
-export function PasoRequerimiento({ id, numero, paso }: { id: string; numero: string; paso: Paso }) {
+export function PasoRequerimiento({ id, numero, paso, variante }: {
+  id: string
+  numero: string
+  paso: Paso
+  /** Con otro primario en la fila («Generar OC»), este va con borde. */
+  variante?: 'contorno'
+}) {
   const [abierta, setAbierta] = useState(false)
   const avisar = useAvisar()
   const { alEnviar, enviando, error } = useEnvio(marcarPasoRequerimiento, (r) => {
@@ -68,7 +74,7 @@ export function PasoRequerimiento({ id, numero, paso }: { id: string; numero: st
   const Icono = d.icono
   return (
     <>
-      <Boton type="button" variante={d.variante} tamano="sm" onClick={() => setAbierta(true)}>
+      <Boton type="button" variante={variante ?? d.variante} tamano="sm" onClick={() => setAbierta(true)}>
         <Icono aria-hidden className="size-4" />
         {d.texto}
       </Boton>

@@ -54,7 +54,7 @@ const FIJAS = [
   '/configuracion', '/contabilidad/facturacion', '/costos/gastos-generales', '/cotizaciones/pdf',
   '/diseno/codigo', '/diseno/etapas', '/diseno/evaluaciones', '/diseno/evaluaciones/nueva',
   '/diseno/informe-semanal', '/diseno/materiales', '/diseno/planos', '/equipos', '/materiales',
-  '/materiales/atencion', '/ordenes', '/ordenes/nueva', '/personal', '/planilla-diaria', '/planos',
+  '/materiales/atencion', '/ordenes', '/ordenes/nueva', '/personal', '/planilla-diaria', '/planos', '/por-decidir', '/por-decidir/decisiones',
   '/proveedores', '/recojos', '/reportes-diarios', '/reportes-diarios/nuevo', '/requerimientos',
   '/requerimientos/atencion', '/requerimientos/gasto-por-codigo', '/rrhh', '/rrhh/asistencia',
   '/rrhh/costeo', '/rrhh/horas-extras', '/rrhh/observaciones', '/rrhh/permisos', '/rrhh/personal',
