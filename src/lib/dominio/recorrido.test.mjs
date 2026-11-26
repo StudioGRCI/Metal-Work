@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { describirRecorridoDeLaCotizacion, describirRecorridoDelRequerimiento, haceDias, insumos } from './recorrido.ts'
+import { describirRecorridoDeLaCotizacion, describirRecorridoDelRequerimiento, haceDias, insumos, tardo } from './recorrido.ts'
 
 const paso = (orden, paso, situacion, mas = {}) => ({
   orden, paso, situacion, puesto: null, en: null, dias: null, espera: null, detalle: null, ...mas,
@@ -11,6 +11,12 @@ test('los días se dicen como se habla', () => {
   assert.equal(haceDias(-1), 'desde hoy')
   assert.equal(haceDias(1), 'hace 1 día')
   assert.equal(haceDias(3), 'hace 3 días')
+})
+
+test('lo que tardó un paso hecho se dice como se habla', () => {
+  assert.equal(tardo(0), 'el mismo día')
+  assert.equal(tardo(1), 'al día siguiente')
+  assert.equal(tardo(4), 'a los 4 días')
 })
 
 test('el recorrido del RQ dice lo hecho, quién lo tiene y lo que falta', () => {
@@ -74,8 +80,10 @@ test('el recorrido de la cotización nombra la OT solo si la base la manda', () 
     paso(6, 'CODIGO_Y_OT', 'HECHO'),
     paso(7, 'FACTURA', 'AHORA', { puesto: 'Contabilidad', dias: 2, espera: 'FACTURA' }),
   ])
-  assert.deepEqual(pasos.map((p) => p.titulo), ['Subida', 'Rechazada', 'Corrección subida', 'Aprobada', 'Código interno y OT cargados', 'Código interno y OT cargados', 'Factura'])
+  assert.deepEqual(pasos.map((p) => p.titulo), ['Enviada a Gerencia', 'Devuelta con observación', 'Corrección enviada', 'Aprobada', 'Con código interno y OT', 'Con código interno y OT', 'Factura'])
+  assert.equal(pasos[1].nota, null)
   assert.equal(pasos[2].nota, 'Pasó a la versión 2')
+  assert.equal(pasos[3].nota, 'Liberada: ya la ven Contabilidad y Tesorería')
   assert.equal(pasos[4].nota, 'OT 9357-2026')
   assert.equal(pasos[5].nota, null)
   assert.equal(pasos[6].nota, 'Registra su factura.')

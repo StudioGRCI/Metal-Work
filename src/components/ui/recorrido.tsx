@@ -1,7 +1,7 @@
 import { Check, ChevronDown, Route } from 'lucide-react'
 
 import { Insignia } from '@/components/ui/etiqueta-estado'
-import { haceDias, type PasoDescrito } from '@/lib/dominio/recorrido'
+import { haceDias, tardo, type PasoDescrito } from '@/lib/dominio/recorrido'
 import { fecha, fechaHora } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -9,6 +9,9 @@ import { cn } from '@/lib/utils'
  * El recorrido de un documento numerado, plegado dentro de su tarjeta: los pasos
  * del circuito en orden, quién hizo cada uno y cuándo, quién lo tiene ahora y
  * hace cuántos días, y lo que falta (migración 20261125130000).
+ *
+ * Cada paso hecho dice, si la base lo da, cuánto tardó desde el anterior («a
+ * los 2 días»): hoy lo da la cotización (Plan 9.1).
  *
  * Cerrado ya dice lo que más se pregunta: quién lo tiene y hace cuánto. Los
  * días los cuenta la base por fecha de Lima; aquí no se calcula nada. Todavía
@@ -91,7 +94,11 @@ export function Recorrido({
                   <p className="text-xs break-words text-texto-suave">
                     {p.puesto || 'Sin cuenta registrada'}
                   </p>
-                  <p className="tabular text-xs text-texto-tenue">{fechaHora(p.en)}</p>
+                  <p className="tabular text-xs text-texto-tenue">
+                    {fechaHora(p.en)}
+                    {/* Cuánto tardó desde el paso anterior, si la base lo da (hoy, la cotización). */}
+                    {p.dias !== null && <span data-recorrido-tardo> · {tardo(p.dias)}</span>}
+                  </p>
                   {p.nota && <p className="text-xs break-words text-texto-suave">{p.nota}</p>}
                 </>
               )}

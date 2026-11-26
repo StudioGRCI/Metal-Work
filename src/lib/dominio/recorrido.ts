@@ -21,7 +21,10 @@ export type PasoDelRecorrido = {
   puesto: string | null
   /** Cuándo se hizo; de AHORA, desde cuándo espera. */
   en: string | null
-  /** Solo de AHORA: días que lleva esperando, por fecha de Lima. */
+  /**
+   * De AHORA: días que lleva esperando. De lo hecho, solo en la cotización (Plan
+   * 9.1): días desde el paso hecho anterior. Siempre por fecha de Lima.
+   */
   dias: number | null
   /** Solo de AHORA: qué se espera. */
   espera: string | null
@@ -40,6 +43,12 @@ export type PasoDescrito = PasoDelRecorrido & {
 export function haceDias(dias: number): string {
   if (dias <= 0) return 'desde hoy'
   return dias === 1 ? 'hace 1 día' : `hace ${dias} días`
+}
+
+/** Lo que tardó un paso hecho: «el mismo día», «al día siguiente», «a los 3 días». */
+export function tardo(dias: number): string {
+  if (dias <= 0) return 'el mismo día'
+  return dias === 1 ? 'al día siguiente' : `a los ${dias} días`
 }
 
 /** «Insumo 2», «Insumos 1 y 2», «Insumos 1, 2 y 4», a partir de «1,2,4». */
@@ -110,15 +119,19 @@ const ESPERAS_DEL_REQUERIMIENTO: Record<string, (oc: string | null) => string> =
   RECOJO_DEL_AREA: () => 'Lo recoge en Almacén.',
 }
 
+// Con las palabras que usa Ventas con su cliente (Plan 9.1): enviada, devuelta
+// con observación, aprobada, con OT.
 const PASOS_DE_LA_COTIZACION: Record<string, Frases> = {
-  SUBIDA: { hecho: 'Subida', falta: 'Subida' },
+  SUBIDA: { hecho: 'Enviada a Gerencia', falta: 'Envío a Gerencia' },
   REVISION: {
-    hecho: (d) => (d === 'RECHAZADA' ? 'Rechazada' : d === 'APROBADA' ? 'Aprobada' : 'Revisada'),
+    hecho: (d) => (d === 'RECHAZADA' ? 'Devuelta con observación' : d === 'APROBADA' ? 'Aprobada' : 'Revisada'),
     falta: 'Revisión de Gerencia',
+    // Nadie la libera a mano desde la migración 20261027200000: aprobada, ya la ven Contabilidad y Tesorería.
+    nota: (d) => (d === 'APROBADA' ? 'Liberada: ya la ven Contabilidad y Tesorería' : null),
   },
-  CORRECCION: { hecho: 'Corrección subida', falta: 'Corrección', nota: (version) => `Pasó a la ${version}` },
+  CORRECCION: { hecho: 'Corrección enviada', falta: 'Corrección', nota: (version) => `Pasó a la ${version}` },
   // El número de la OT llega solo a quien lee las órdenes.
-  CODIGO_Y_OT: { hecho: 'Código interno y OT cargados', falta: 'Código interno y OT', nota: (ot) => ot },
+  CODIGO_Y_OT: { hecho: 'Con código interno y OT', falta: 'Código interno y OT', nota: (ot) => ot },
   FACTURA: { hecho: 'Facturada', falta: 'Factura' },
   ANULACION: { hecho: 'Anulada', falta: 'Anulación' },
 }

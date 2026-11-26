@@ -20,6 +20,7 @@ import { diaLima, fecha as fmtFecha, hora, hoyLima, moneda as formatoMoneda } fr
 import { exigirPermiso, puede, puedeCorregirCotizacion, puedeQuitarCotizacion } from '@/lib/sesion'
 
 import { CargarCodigoYOt, CorregirCotizacion, EstadoDeLaOt, QuitarCotizacion, RevisarCotizacion } from './acciones-cotizacion'
+import { IrALaTarjetaDelAviso } from './ir-a-la-tarjeta-del-aviso'
 import { EstadoDeSubirCotizacion, SubirCotizacion } from './subir-cotizacion'
 
 export const metadata = { title: 'Cotización' }
@@ -292,6 +293,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
         </Tarjeta>
       ) : (
         <ul className="space-y-3">
+          <IrALaTarjetaDelAviso />
           {visibles.map((c) => {
             const estado = ESTADOS[c.estado ?? ''] ?? { etiqueta: c.estado ?? '—', tono: 'neutro' as const }
             const quitable = puedeQuitarCotizacion(perfil, c)
@@ -320,21 +322,8 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                       </span>
                     </div>
 
-                    <p className="text-sm text-texto">
-                      {c.cliente ?? 'Cliente reservado'}
-                      {c.carroceria && <span className="text-texto-suave"> · {c.carroceria}</span>}
-                    </p>
-
-                    <p className="text-sm font-semibold tabular text-texto">
-                      {c.monto_venta !== null && c.monto_venta !== undefined
-                        ? `Total de venta: ${formatoMoneda(c.monto_venta, c.moneda ?? 'PEN')}`
-                        : 'Monto total pendiente de confirmar'}
-                    </p>
-
-                    {c.url ? <EnlaceArchivo url={c.url} mime={c.mime_type} nombre={c.nombre_archivo} descarga={`/cotizaciones/pdf/archivo/${c.id}`} /> : (
-                      <p role="alert" className="text-sm text-aviso">No se pudo abrir el archivo de esta cotización. Recarga la página; si continúa, avisa al administrador.</p>
-                    )}
-
+                    {/* La observación de Gerencia va arriba, antes que el cliente y el monto: es lo
+                        primero que el vendedor tiene que leer para corregirla (Plan 9.1). */}
                     {c.estado === 'RECHAZADA' && c.observacion && (
                       <div className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-peligro-suave px-2.5 py-2 text-sm text-peligro">
                         <MessageSquareWarning aria-hidden className="mt-0.5 size-4 shrink-0" />
@@ -348,6 +337,21 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                           )}
                         </div>
                       </div>
+                    )}
+
+                    <p className="text-sm text-texto">
+                      {c.cliente ?? 'Cliente reservado'}
+                      {c.carroceria && <span className="text-texto-suave"> · {c.carroceria}</span>}
+                    </p>
+
+                    <p className="text-sm font-semibold tabular text-texto">
+                      {c.monto_venta !== null && c.monto_venta !== undefined
+                        ? `Total de venta: ${formatoMoneda(c.monto_venta, c.moneda ?? 'PEN')}`
+                        : 'Monto total pendiente de confirmar'}
+                    </p>
+
+                    {c.url ? <EnlaceArchivo url={c.url} mime={c.mime_type} nombre={c.nombre_archivo} descarga={`/cotizaciones/pdf/archivo/${c.id}`} /> : (
+                      <p role="alert" className="text-sm text-aviso">No se pudo abrir el archivo de esta cotización. Recarga la página; si continúa, avisa al administrador.</p>
                     )}
 
                     {c.estado === 'ANULADA' && (
