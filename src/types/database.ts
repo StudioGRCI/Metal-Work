@@ -18694,6 +18694,18 @@ export type Database = {
         }
         Returns: string
       }
+      trabajo_de_diseno_por_ot: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          orden_id: string | null
+          numero: string | null
+          codigo_interno: string | null
+          tipo_unidad: string | null
+          estado_ot: string | null
+          ultima: string | null
+          actividades: Json | null
+        }[]
+      }
       transitar_informe_diseno: {
         Args: {
           p_informe: string | null
