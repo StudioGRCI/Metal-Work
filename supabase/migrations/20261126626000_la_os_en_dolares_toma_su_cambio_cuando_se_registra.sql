@@ -22,7 +22,8 @@
 -- se calcularon con el valor equivocado se recalculan con el corregido: las que
 -- tienen el monto en soles que da el valor viejo y a las que ese día les toca
 -- el nuevo. Salvo la que ya tiene un pago vigente: lo pagado se hizo con esa
--- cifra, y se arregla anulando el pago. Sin esto, la OS conforme quedaba con
+-- cifra. Para corregirla, Tesorería anula el pago antes de que se corrija el
+-- cambio; anularlo después no la recalcula. Sin esto, la OS conforme quedaba con
 -- una detracción mal calculada para siempre: no se anula ni se corrige.
 --
 -- Dos guardas tenían que dejarlo pasar, y solo a esto:
