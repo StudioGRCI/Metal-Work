@@ -107,7 +107,10 @@ export function SeleccionBuscable({
         // Medida y no fija: con la app instalada en el iPhone, la barra suma
         // el borde de arriba del teléfono y pasa de los 56 px.
         const barra = suelta ? document.querySelector('header')?.getBoundingClientRect().height ?? 0 : 0
-        campo.style.scrollMarginTop = suelta ? `${Math.ceil(barra) + 24}px` : ''
+        // Con una fila de secciones pegada, la página ya reserva barra y fila
+        // (`scroll-padding` en globals.css) y el margen se sumaría a eso.
+        const reservado = suelta && document.querySelector('[data-fila-pegada]')
+        campo.style.scrollMarginTop = !suelta ? '' : reservado ? '8px' : `${Math.ceil(barra) + 24}px`
         campo.scrollIntoView({ block: 'start' })
       }
       const lista = ul.getBoundingClientRect()

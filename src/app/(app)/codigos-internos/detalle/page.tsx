@@ -6,7 +6,7 @@ import { Download, FileText } from 'lucide-react'
 import { LineaDeDiseno } from '@/components/codigo-interno/linea-diseno'
 import { DelDocumento } from '@/components/estructura/del-documento'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
-import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
+import { SeccionesDelDocumento } from '@/components/estructura/secciones-del-documento'
 import { FacturaDeVenta } from '@/components/finanzas/factura-de-venta'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
@@ -173,6 +173,24 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
               </Tarjeta>
             )}
 
+            {/* La fila de secciones común a los documentos, como la de la OT,
+                arriba de las cifras y pegada bajo la barra al deslizar. Bajo las
+                cifras, en el teléfono empezaba a 1 028 px: quien entraba veía seis
+                tarjetas y nada le decía que había nueve secciones (auditoría de
+                diseño de la entrega 2). Cada enlace baja a #seccion-elegida, pasadas
+                las cifras, que valen para todas las secciones. */}
+            <SeccionesDelDocumento
+              etiqueta={`Secciones del código ${codigo}`}
+              activa={vista}
+              pegada
+              className="-mb-1"
+              secciones={vistas.map((v) => ({
+                clave: v.valor,
+                titulo: aTodos && v.valor === 'avance' ? 'Reparto' : v.etiqueta,
+                href: `${enlaceCodigo(codigo, v.valor)}#seccion-elegida`,
+              }))}
+            />
+
             {aTodos ? (
               <CifrasDelReparto filas={reparto} />
             ) : (
@@ -193,23 +211,13 @@ export default async function PaginaCodigoInterno({ searchParams }: PageProps<'/
               </>
             )}
 
-            <PastillaFiltro
-              ruta="/codigos-internos/detalle"
-              clave="vista"
-              params={params}
-              activo={vista === 'avance' ? null : vista}
-              etiqueta="Secciones del código"
-              opciones={vistas.map((v) => ({
-                valor: v.valor === 'avance' ? null : v.valor,
-                etiqueta: aTodos && v.valor === 'avance' ? 'Reparto' : v.etiqueta,
-              }))}
-            />
-
-            {aTodos && vista === 'avance' ? (
-              <RepartoPorMes filas={reparto} c={resumen} />
-            ) : (
-              <Vista vista={vista} codigo={codigo} perfil={perfil} avance={avance} />
-            )}
+            <div id="seccion-elegida" className="space-y-5">
+              {aTodos && vista === 'avance' ? (
+                <RepartoPorMes filas={reparto} c={resumen} />
+              ) : (
+                <Vista vista={vista} codigo={codigo} perfil={perfil} avance={avance} />
+              )}
+            </div>
           </div>
         </DelDocumento>
       )}
