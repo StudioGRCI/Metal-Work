@@ -323,7 +323,7 @@ reportó a `audit_log`, que lee Gerencia y el área no debe ver. Una cuenta sin
 
 ### Clasificar y las acciones correctivas
 
-Entrega 15.2. Migración `20261126150000_ssoma_clasifica_y_acciones_correctivas`,
+Entrega 15.2. Migración `20261126151500_ssoma_clasifica_y_acciones_correctivas`,
 comprobada con los roles reales en la base local (check 475) y con clic real en
 el banco (`herramientas/banco/probar-ssoma-acciones.mjs`). Las acciones no
 llevan número propio: van dentro del reporte `RI-…`, que es el documento

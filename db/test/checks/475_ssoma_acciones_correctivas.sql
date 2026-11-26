@@ -1,4 +1,4 @@
--- SSOMA, entrega 15.2 (migración 20261126150000).
+-- SSOMA, entrega 15.2 (migración 20261126151500).
 --
 -- SSOMA clasifica el reporte (R.M. 050-2013-TR), anota la causa y encarga
 -- acciones correctivas a una cuenta, con fecha límite. El responsable las ve y

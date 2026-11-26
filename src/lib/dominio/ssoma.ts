@@ -46,7 +46,7 @@ export const ESTADO_REPORTE_SSOMA: Record<string, Def> = {
 }
 
 /*
- * Entrega 15.2 (migración 20261126150000): SSOMA clasifica, anota la causa y
+ * Entrega 15.2 (migración 20261126151500): SSOMA clasifica, anota la causa y
  * encarga acciones correctivas a una cuenta, con fecha límite.
  */
 

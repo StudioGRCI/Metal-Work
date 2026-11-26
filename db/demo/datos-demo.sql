@@ -486,7 +486,7 @@ begin
 end;
 $$;
 
--- SSOMA 15.2 (migración 20261126150000): la condición insegura de Almacén ya
+-- SSOMA 15.2 (migración 20261126151500): la condición insegura de Almacén ya
 -- clasificada, con su causa y dos acciones correctivas a cargo de Almacén, una
 -- de ellas vencida, para que la lista las ponga arriba. Las encarga la cuenta
 -- de administrador de la demostración: aquí todavía no están las del banco.

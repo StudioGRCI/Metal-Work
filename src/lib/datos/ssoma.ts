@@ -174,7 +174,7 @@ export async function personalParaReportar(): Promise<PersonaParaReportar[]> {
 }
 
 /*
- * Entrega 15.2 (migración 20261126150000): la clasificación, la causa y las
+ * Entrega 15.2 (migración 20261126151500): la clasificación, la causa y las
  * acciones correctivas. Lo que cada quien ve lo deciden
  * `ssoma_seguimiento_de_reportes`, `ssoma_acciones_visibles` y
  * `ssoma_historia_de_accion`; la clasificación y la causa llegan vacías a quien
