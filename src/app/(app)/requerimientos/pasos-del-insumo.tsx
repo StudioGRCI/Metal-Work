@@ -1,4 +1,4 @@
-import type { SeguimientoDelInsumo } from '@/lib/datos/requerimientos'
+import type { LineaRequerimiento } from '@/lib/datos/requerimientos'
 import { pasoDelInsumo, TITULO_PASO_DEL_INSUMO, type PasoDelInsumo } from '@/lib/dominio/requerimientos'
 import { fecha } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -18,6 +18,7 @@ export function PasosDelInsumo({
   terminado,
   rechazado,
   conFaltante,
+  titulos = TITULO_PASO_DEL_INSUMO,
 }: {
   item: number
   pasos: PasoDelInsumo[]
@@ -25,6 +26,8 @@ export function PasosDelInsumo({
   terminado: boolean
   rechazado: boolean
   conFaltante: boolean
+  /** El nombre de cada paso; el RQ de Administración dice quién revisa y quién compra. */
+  titulos?: Record<PasoDelInsumo, string>
 }) {
   const indice = pasos.indexOf(actual)
   return (
@@ -47,9 +50,9 @@ export function PasosDelInsumo({
                 ahora ? 'font-semibold text-texto' : hecho ? 'text-texto-suave' : 'text-texto-tenue',
               )}
             >
-              {TITULO_PASO_DEL_INSUMO[p]}
+              {titulos[p]}
             </span>
-            <span className="sr-only sm:hidden">{TITULO_PASO_DEL_INSUMO[p]}</span>
+            <span className="sr-only sm:hidden">{titulos[p]}</span>
             <span className="sr-only">{hecho ? ': hecho' : ahora ? (conFaltante ? ': con faltante' : ': ahora') : ': falta'}</span>
           </li>
         )
@@ -59,55 +62,69 @@ export function PasosDelInsumo({
 }
 
 /** Mientras se compra o viene en camino, se dice cuándo llega. */
-const ESPERA_LA_COMPRA: readonly PasoDelInsumo[] = ['EN_COMPRA', 'EN_CAMINO']
+export const ESPERA_LA_COMPRA: readonly PasoDelInsumo[] = ['EN_COMPRA', 'EN_CAMINO']
+
+/**
+ * Cuándo llega lo que se compra, dicho igual en «RQ por unidad» y en el RQA. La
+ * fecha la puso quien compra (Logística o la administradora): si ya pasó, no se
+ * promete; y si Gerencia no aprobó la compra, llegar depende de que la apruebe.
+ */
+export function cuandoLlega({ llega, atrasada, porAprobar, quienCompra }: { llega: string; atrasada: boolean; porAprobar: boolean; quienCompra: string }): string {
+  if (porAprobar) return atrasada ? `${quienCompra} lo esperaba el ${fecha(llega)}` : `Si Gerencia aprueba la compra, llega aprox. el ${fecha(llega)}`
+  return atrasada ? `Se esperaba el ${fecha(llega)}` : `Llega aprox. el ${fecha(llega)}`
+}
+
+/** En el RQ de Administración, los dos primeros pasos dicen quién los hace, como la barra del RQ. */
+const TITULOS_DEL_RQA: Record<PasoDelInsumo, string> = {
+  ...TITULO_PASO_DEL_INSUMO,
+  POR_ATENDER: 'Almacén revisa',
+  EN_COMPRA: 'Administración compra',
+}
 
 /**
  * De principio a fin, cómo va un insumo del requerimiento de Administración
- * (plan 8, entrega 8.3): sus pasos (Almacén lo revisa, va en compra, viene en
- * camino, llegó al almacén, se entregó) y, mientras se compra, la fecha en que
+ * (plan 8, entrega 8.3): Almacén lo revisa, Administración lo compra, viene en
+ * camino, llegó al almacén, se entregó; y, mientras se compra, la fecha en que
  * se espera. Es la misma cuenta que sigue el supervisor en «RQ por unidad»
- * (`pasoDelInsumo` y `seguimiento_de_insumos`, plan 1, entrega 1.2). Quién lo
- * recibió lo dicen las salidas, debajo, y cuánto falta, la barra.
- *
- * `seguimiento` es `null` si la base no lo dio: los pasos salen igual, de la
- * etapa, sin la fecha.
+ * (`pasoDelInsumo`, plan 1, entrega 1.2). La fecha (`fecha_esperada`) y el
+ * visto de Diseño (el metrado) ya vienen con la tarjeta: no hace falta otra
+ * lectura. Quién lo recibió lo dicen las salidas, debajo, y cuánto falta, la barra.
  */
 export function ComoVaElInsumo({
   linea: l,
-  seguimiento: s,
+  visto,
   hoy,
+  quienCompra,
 }: {
-  linea: { item: number; etapa: string | null; cantidad: number; en_stock: number | null; entregado: number | null; sin_salida?: number | null }
-  seguimiento: SeguimientoDelInsumo | null
+  linea: Pick<LineaRequerimiento, 'item' | 'etapa' | 'cantidad' | 'en_stock' | 'entregado' | 'sin_salida' | 'fecha_esperada'>
+  /** El estado del metrado de Diseño de la línea; vacío si no se pasa o no aplica. */
+  visto: string | null
   hoy: string
+  quienCompra: string
 }) {
-  const paso = pasoDelInsumo(l, s?.visto_diseno ?? null)
+  const paso = pasoDelInsumo(l, visto)
   if (!paso) return null
-  const llega = ESPERA_LA_COMPRA.includes(paso.actual) ? (s?.fecha_esperada ?? null) : null
-  const atrasada = llega !== null && llega < hoy
-  const porAprobar = l.etapa === 'OC_POR_APROBAR'
-  const titulo = paso.faltante ? 'Entregado con faltante' : paso.terminado ? 'Entregado' : TITULO_PASO_DEL_INSUMO[paso.actual]
+  const llega = ESPERA_LA_COMPRA.includes(paso.actual) ? l.fecha_esperada : null
+  const titulo = paso.faltante ? 'Entregado con faltante' : paso.terminado ? 'Entregado' : TITULOS_DEL_RQA[paso.actual]
   return (
-    <div className="mt-2 space-y-1" data-como-va-el-insumo={paso.actual}>
-      <PasosDelInsumo item={l.item} {...paso} rechazado={false} conFaltante={paso.faltante !== null} />
-      {/* En el teléfono no se ven los nombres de los pasos: el de ahora va aquí. */}
-      {(llega || titulo) && (
-        <p className="text-xs text-texto-suave">
-          <span className="font-medium text-texto sm:hidden">{titulo}</span>
-          {llega && (
-            <span className={atrasada ? 'text-aviso' : undefined} data-llega={llega}>
-              <span className="sm:hidden"> · </span>
-              {porAprobar
-                ? atrasada
-                  ? `Logística lo esperaba el ${fecha(llega)}`
-                  : `Si Gerencia aprueba la compra, llega aprox. el ${fecha(llega)}`
-                : atrasada
-                  ? `Se esperaba el ${fecha(llega)}`
-                  : `Llega aprox. el ${fecha(llega)}`}
-            </span>
-          )}
-        </p>
-      )}
+    <div className="mt-2 mb-3 space-y-1" data-como-va-el-insumo={paso.actual}>
+      <PasosDelInsumo
+        item={l.item}
+        {...paso}
+        rechazado={visto === 'RECHAZADO' && paso.frenado}
+        conFaltante={paso.faltante !== null}
+        titulos={TITULOS_DEL_RQA}
+      />
+      {/* En el teléfono no se ven los nombres de los pasos: el de ahora va aquí. En el monitor, solo la fecha. */}
+      <p className={cn('text-xs text-texto-suave', !llega && 'sm:hidden')}>
+        <span className="font-medium text-texto sm:hidden">{titulo}</span>
+        {llega && (
+          <span className={llega < hoy ? 'text-aviso' : undefined} data-llega={llega}>
+            <span className="sm:hidden"> · </span>
+            {cuandoLlega({ llega, atrasada: llega < hoy, porAprobar: l.etapa === 'OC_POR_APROBAR', quienCompra })}
+          </span>
+        )}
+      </p>
     </div>
   )
 }

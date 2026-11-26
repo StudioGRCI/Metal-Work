@@ -9,7 +9,7 @@ import { Tarjeta } from '@/components/ui/tarjeta'
 import type { ConformidadDeLosRq, NotaDeConformidad, SalidaDelInsumo } from '@/lib/datos/conformidad'
 import type { CorreccionVista } from '@/lib/datos/correcciones'
 import type { MetradoDelInsumo } from '@/lib/datos/metrado-rq'
-import type { LineaRequerimiento, MaterialParaRequerimiento, RequerimientoListado, SeguimientoDelInsumo } from '@/lib/datos/requerimientos'
+import type { LineaRequerimiento, MaterialParaRequerimiento, RequerimientoListado } from '@/lib/datos/requerimientos'
 import type { CodigoParaElegir } from '@/lib/dominio/codigos-internos'
 import type { PasoDescrito } from '@/lib/dominio/recorrido'
 import { estaVencido, loQueLoAtrasa, plazoDelRq, textoDelPlazo } from '@/lib/dominio/plazo-rq'
@@ -238,7 +238,7 @@ export function TarjetaRequerimiento({
   metrado,
   recorrido,
   conformidad,
-  seguimiento,
+  pasosPorInsumo = false,
 }: {
   rq: RequerimientoListado
   insumosAbiertos: boolean
@@ -255,12 +255,8 @@ export function TarjetaRequerimiento({
   recorrido: PasoDescrito[] | null
   /** Las salidas de cada insumo y sus notas (plan 2, entrega 2.2); `null` si no se pudieron leer. */
   conformidad: ConformidadDeLosRq | null
-  /**
-   * Cómo va cada insumo de principio a fin (plan 8, entrega 8.3): solo en el
-   * RQ de Administración, para quien lo lleva. `undefined` donde no va; `null`
-   * si la base no lo dio (los pasos salen igual, sin la fecha de la compra).
-   */
-  seguimiento?: Map<string, SeguimientoDelInsumo> | null
+  /** Cada insumo con sus pasos de principio a fin (plan 8, entrega 8.3): el RQ de Administración, para quien lo lleva. */
+  pasosPorInsumo?: boolean
 }) {
   // En compra pero con todo ya en almacén, la insignia no dice «En compra»: lo dicen la barra y los pasos.
   // Por atender y frenado por el metrado: la insignia y el primer paso dicen quién lo tiene, no «Almacén revisa».
@@ -338,7 +334,7 @@ export function TarjetaRequerimiento({
 
       {metrado && <FrenoDelMetrado rq={rq} metrado={metrado} sustenta={anula} />}
 
-      <InsumosConPartes rq={rq} abierto={insumosAbiertos} metrado={metrado} conformidad={conformidad} seguimiento={seguimiento} />
+      <InsumosConPartes rq={rq} abierto={insumosAbiertos} metrado={metrado} conformidad={conformidad} pasosPorInsumo={pasosPorInsumo} />
 
       {/* Para consultar: quién hizo cada paso, quién lo tiene ahora y hace cuántos días. */}
       <Recorrido pasos={recorrido} className="border-t border-borde" />
@@ -491,13 +487,13 @@ function InsumosConPartes({
   abierto: abiertoPorDefecto,
   metrado,
   conformidad,
-  seguimiento,
+  pasosPorInsumo,
 }: {
   rq: RequerimientoListado
   abierto: boolean
   metrado: Map<string, MetradoDelInsumo> | null
   conformidad: ConformidadDeLosRq | null
-  seguimiento: Map<string, SeguimientoDelInsumo> | null | undefined
+  pasosPorInsumo: boolean
 }) {
   const hoy = hoyLima()
   const partes = rq.lineas.map((l) => partesDelInsumo(l, rq.estado))
@@ -542,24 +538,23 @@ function InsumosConPartes({
             salidas={conformidad?.salidas.get(l.id) ?? []}
             notas={conformidad?.notas}
             comoVa={
-              seguimiento !== undefined && rq.estado !== 'ANULADO' ? (
-                <ComoVaElInsumo linea={l} seguimiento={seguimiento?.get(`${rq.id}:${l.item}`) ?? null} hoy={hoy} />
+              pasosPorInsumo && rq.estado !== 'ANULADO' ? (
+                <ComoVaElInsumo linea={l} visto={vistoDeDiseno(metrado?.get(l.id))} hoy={hoy} quienCompra={quienCompra(rq)} />
               ) : null
             }
           />
         ))}
       </ul>
-      {seguimiento === null && rq.estado !== 'ANULADO' && (
-        <p className="border-t border-borde px-4 py-2 text-xs text-aviso" data-seguimiento-sin-leer>
-          No se pudo leer cuándo llega cada compra: los pasos salen sin la fecha. Vuelve a cargar la pantalla.
-        </p>
-      )}
       {conformidad === null && partes.some((p) => p && p.entregado > 0) && (
         <p className="border-t border-borde px-4 py-2 text-xs text-aviso">No se pudieron leer las salidas de Almacén ni sus fotos. Vuelve a cargar la pantalla.</p>
       )}
     </details>
   )
 }
+
+/** En qué va el visto de Diseño del insumo, como lo lee `pasoDelInsumo`; vacío si no espera a Diseño. */
+const vistoDeDiseno = (m: MetradoDelInsumo | undefined) =>
+  m && ['SIN_SUSTENTO', 'POR_AUTORIZAR', 'AUTORIZADO', 'RECHAZADO'].includes(m.estado) ? m.estado : null
 
 /** Lo que no salió del kardex al entregar el RQ con faltante; 0 en los demás. */
 const sinSalida = (l: LineaRequerimiento, rq: RequerimientoListado) => (rq.estado === 'ENTREGADO' ? Math.max(l.sin_salida ?? 0, 0) : 0)

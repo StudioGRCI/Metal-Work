@@ -12,7 +12,7 @@ import { recorridoDeRequerimientos } from '@/lib/datos/recorrido'
 import { esperaSuSustento } from '@/lib/dominio/metrado-rq'
 import { esFiltroDePlazo, fechasDelFiltro, FILTROS_DE_PLAZO, type FiltroDePlazo } from '@/lib/dominio/plazo-rq'
 import { describirRecorridoDelRequerimiento } from '@/lib/dominio/recorrido'
-import { cargarRequerimientos, catalogosDelRequerimiento, contarRequerimientosAbiertos, seguimientoDeInsumos } from '@/lib/datos/requerimientos'
+import { cargarRequerimientos, catalogosDelRequerimiento, contarRequerimientosAbiertos } from '@/lib/datos/requerimientos'
 import { tieneParaRecoger, TIPO_REQUERIMIENTO, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
 import { hoyLima } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -95,9 +95,9 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
   const soloRecoger = !soloUno && !plazo && params.ver === 'recoger'
   const recogen = enPlazo ?? (soloRecoger ? requerimientos.filter(tieneParaRecoger) : requerimientos)
   // Cómo va cada insumo del RQ de Administración, de principio a fin (plan 8,
-  // entrega 8.3), para quien lo lleva: `seguimiento_de_insumos` le da sus RQA.
-  const rqa = puede(perfil, 'requerimientos.administracion') ? recogen.filter((r) => r.tipo === 'ADMINISTRACION').map((r) => r.id) : []
-  const [correcciones, metrado, recorridos, conformidad, seguimiento] = await Promise.all([
+  // entrega 8.3), para quien lo lleva.
+  const llevaElRqa = puede(perfil, 'requerimientos.administracion')
+  const [correcciones, metrado, recorridos, conformidad] = await Promise.all([
     correccionesDe('REQUERIMIENTO', recogen.map((r) => r.id)),
     // De todos, no solo de los mostrados: las cifras de arriba y «esperan tu sustento» los cuentan.
     // Sin el metrado, la tarjeta sigue: solo no dice qué insumo se pasa, y arriba se avisa.
@@ -116,13 +116,6 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
       console.error('Requerimientos: no se pudieron leer las salidas.', e)
       return null
     }),
-    // Sin él, los pasos salen igual y la tarjeta dice que falta la fecha de la compra.
-    rqa.length === 0
-      ? Promise.resolve(undefined)
-      : seguimientoDeInsumos(rqa).catch((e: unknown) => {
-          console.error('Requerimientos: no se pudo leer cómo va cada insumo.', e)
-          return null
-        }),
   ])
   // El supervisor pide para su área y nada más: el formulario no le ofrece otra.
   const areaFija = pideSuArea ? catalogos?.areas.find((a) => a.id === perfil.area_id && a.requerimiento === 'OPERACION') : undefined
@@ -304,7 +297,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
               metrado={metrado}
               recorrido={recorridos ? describirRecorridoDelRequerimiento(recorridos.get(r.id) ?? []) : null}
               conformidad={conformidad}
-              seguimiento={rqa.includes(r.id) ? seguimiento : undefined}
+              pasosPorInsumo={llevaElRqa && r.tipo === 'ADMINISTRACION'}
             />
           ))}
         </div>

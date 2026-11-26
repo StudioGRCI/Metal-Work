@@ -2,14 +2,14 @@
  * La administradora sigue cada insumo de su RQA de principio a fin (Plan 8,
  * Administración, entrega 8.3): Almacén lo revisa, va en compra, viene en
  * camino, llegó, se entregó. Es la misma cuenta que sigue el supervisor en «RQ
- * por unidad» (`seguimiento_de_insumos`, plan 1, entrega 1.2), en la tarjeta
- * del RQ en /requerimientos.
+ * por unidad» (`pasoDelInsumo`, plan 1, entrega 1.2), en la tarjeta del RQ en
+ * /requerimientos, con la fecha de la OC y el metrado que la tarjeta ya lee.
  *
  * Arma en el banco, con la cuenta de Administración:
  *   - un RQA con cinco insumos que Almacén revisa con su cuenta: dos que tenía
  *     (de uno ya salió una parte, el otro salió entero) y tres que no; de esos,
  *     uno va en una OC aprobada que llega en cuatro días, otro en una OC por
- *     aprobar que Logística esperaba hace dos días, y otro sin comprar todavía;
+ *     aprobar que la administradora esperaba hace dos días, y otro sin comprar;
  *   - un RQA recién registrado, que nadie revisó;
  *   - un RQA anulado, que no lleva pasos.
  * La OC y la salida se ponen por SQL, que ya lo prueban sus checks.
@@ -20,7 +20,7 @@
  *   3. Lo que Almacén tenía no pasa por la compra.
  *   4. El anulado no lleva pasos; de la compra no sale el proveedor.
  *   5. Almacén y Logística, que ven el RQA pero no lo llevan, no reciben los
- *      pasos; Ventas no entra a la función.
+ *      pasos.
  *
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), BANCO_BASE (mw_demo),
  * BANCO_CHROMIUM, CAPTURAS.
@@ -191,19 +191,21 @@ await comoCuenta('almacen', `select public.rq_revisar_stock($1, $2::jsonb, null)
   ]),
 ])
 // La administradora compra las sillas en una OC aprobada que llega en cuatro
-// días, y el tóner en una que Gerencia no aprueba todavía y que Logística
-// esperaba hace dos días. La cinta sigue por comprar.
+// días, y el tóner en una que Gerencia no aprueba todavía y que ella esperaba
+// hace dos días. La cinta sigue por comprar. La OC del RQ nuevo no lleva
+// `requerimiento_id` (esa columna es del RQ de materiales de antes): va como
+// DIRECTA y la une cada línea, como «Generar OC», y así la lee la administradora.
 const oc = randomUUID()
 const ocPorAprobar = randomUUID()
 await armazon(
-  `insert into public.ordenes_compra_materiales (id, requerimiento_id, proveedor, referencia, aprobacion, aprobado_por, aprobado_en, creado_por, fecha_estimada)
-   values ($1, $2, $3, $4, 'APROBADA', $5, now(), $5, $6::date)`,
-  [oc, ids.compra, proveedor, `REF-${sello}`, administracion.id, llega],
+  `insert into public.ordenes_compra_materiales (id, origen, motivo, proveedor, referencia, aprobacion, aprobado_por, aprobado_en, creado_por, fecha_estimada)
+   values ($1, 'DIRECTA', $6, $2, $3, 'APROBADA', $4, now(), $4, $5::date)`,
+  [oc, proveedor, `REF-${sello}`, administracion.id, llega, `Atiende el requerimiento ${numeros[ids.compra]}`],
 )
 await armazon(
-  `insert into public.ordenes_compra_materiales (id, requerimiento_id, proveedor, referencia, aprobacion, creado_por, fecha_estimada)
-   values ($1, $2, $3, $4, 'POR_APROBAR', $5, $6::date)`,
-  [ocPorAprobar, ids.compra, proveedor, `REF-${sello}-2`, administracion.id, seEsperaba],
+  `insert into public.ordenes_compra_materiales (id, origen, motivo, proveedor, referencia, aprobacion, creado_por, fecha_estimada)
+   values ($1, 'DIRECTA', $6, $2, $3, 'POR_APROBAR', $4, $5::date)`,
+  [ocPorAprobar, proveedor, `REF-${sello}-2`, administracion.id, seEsperaba, `Atiende el requerimiento ${numeros[ids.compra]}`],
 )
 await armazon(
   `update public.requerimiento_lineas
@@ -222,24 +224,6 @@ const salida = (rq, item, material_id, cantidad, quien) =>
   )
 await salida(ids.compra, 3, papel, 4, `Carla Ríos ${sello}`)
 await salida(ids.compra, 4, guantes, 2, `Pedro Salas ${sello}`)
-
-// ------------------------------------------------ la base, con cada cuenta
-const desde = async (puesto) =>
-  comoCuenta(puesto, `select requerimiento_id, item, fecha_esperada::text, recibido_por from public.seguimiento_de_insumos($1)`, [Object.values(ids)])
-const deAdministracion = await desde('administracion')
-const fila = (rq, item) => deAdministracion.find((f) => f.requerimiento_id === rq && f.item === item)
-comprobar(deAdministracion.length === 7, `la base le da a Administración los 7 insumos de sus RQA (${deAdministracion.length})`)
-comprobar(fila(ids.compra, 1)?.fecha_esperada === llega, `las sillas se esperan el ${llega}: ${fila(ids.compra, 1)?.fecha_esperada}`)
-comprobar(fila(ids.compra, 4)?.recibido_por === `Pedro Salas ${sello}`, 'los guantes los recibió Pedro')
-for (const puesto of ['ventas', 'almacen']) {
-  let rechazo = null
-  try {
-    await desde(puesto)
-  } catch (e) {
-    rechazo = String(e.message)
-  }
-  comprobar(rechazo?.includes('No tienes permiso') ?? false, `${puesto} no entra a la función (${rechazo ?? 'entró'})`)
-}
 
 // ------------------------------------------------ la pantalla
 const tarjeta = (pagina, id) => pagina.locator(`[data-rq="${numeros[id]}"]`)
@@ -269,22 +253,25 @@ for (const ancho of [390, 1440]) {
   comprobar((await pasos(1)) === 'POR_ATENDER > EN_COMPRA > EN_CAMINO* > EN_ALMACEN > ENTREGADO', `${ancho}: las sillas, de principio a fin: ${await pasos(1)}`)
   comprobar((await texto(1)).includes(`Llega aprox. el ${ddmm(llega)}`), `${ancho}: dicen cuándo llegan: «${await texto(1)}»`)
   comprobar((await paso(2)) === 'EN_COMPRA', `${ancho}: el tóner va en compra (${await paso(2)})`)
-  comprobar((await texto(2)).includes(`Logística lo esperaba el ${ddmm(seEsperaba)}`) && !(await texto(2)).toLowerCase().includes('llega aprox.'),
-    `${ancho}: la OC por aprobar con la fecha pasada no promete un día que ya pasó: «${await texto(2)}»`)
+  comprobar((await texto(2)).includes(`Administración lo esperaba el ${ddmm(seEsperaba)}`) && !(await texto(2)).toLowerCase().includes('llega aprox.') && !(await texto(2)).includes('Logística'),
+    `${ancho}: la OC por aprobar con la fecha pasada no promete un día que ya pasó, y la fecha es de quien compra: «${await texto(2)}»`)
   comprobar((await paso(3)) === 'EN_ALMACEN', `${ancho}: el papel está en almacén (${await paso(3)})`)
   comprobar((await pasos(3)) === 'POR_ATENDER > EN_ALMACEN* > ENTREGADO', `${ancho}: el papel que tenía Almacén no pasa por la compra: ${await pasos(3)}`)
   comprobar((await paso(4)) === 'ENTREGADO' && (await pasos(4)) === 'POR_ATENDER > EN_ALMACEN > ENTREGADO',
     `${ancho}: los guantes salieron enteros y van entregados aunque otro del RQ siga en compra: ${await pasos(4)}`)
   comprobar(limpio(await insumo(4).innerText()).includes(`Pedro Salas ${sello}`), `${ancho}: y la salida dice quién los recibió`)
-  comprobar((await paso(5)) !== null && (await paso(5)) !== 'EN_CAMINO' && !(await texto(5)).includes('Llega'),
+  comprobar((await paso(5)) === 'EN_COMPRA' && !(await texto(5)).includes('Llega'),
     `${ancho}: la cinta, sin compra, no dice que llega (${await paso(5)}: «${await texto(5)}»)`)
   if (ancho === 390) {
+    comprobar((await leyenda(5)) === 'Administración compra', `390: la cinta sin OC dice quién la compra: «${await leyenda(5)}»`)
     comprobar((await leyenda(1)).startsWith('En camino'), `390: en el teléfono el paso de ahora se dice en palabras: «${await leyenda(1)}»`)
     comprobar((await leyenda(4)) === 'Entregado', `390: y el entregado lo dice: «${await leyenda(4)}»`)
   } else {
     comprobar((await leyenda(1)) === `Llega aprox. el ${ddmm(llega)}`, `1440: en el monitor el nombre va bajo cada paso y la línea dice solo la fecha: «${await leyenda(1)}»`)
+    comprobar(!(await comoVa(3).locator('p').isVisible()), '1440: sin fecha que decir, no queda una línea vacía bajo los pasos')
+    const nombres = limpio(await comoVa(1).locator('ol').innerText())
+    comprobar(nombres.startsWith('Almacén revisa') && nombres.includes('Administración compra'), `1440: los pasos dicen quién revisa y quién compra: «${nombres}»`)
   }
-  comprobar((await tarjeta(pagina, ids.compra).locator('[data-seguimiento-sin-leer]').count()) === 0, `${ancho}: se leyó el seguimiento (sin aviso de error)`)
   const todo = await pagina.locator('main').innerText()
   comprobar(!todo.includes(proveedor), `${ancho}: los pasos no traen el proveedor`)
   await sinDesborde(pagina, `${ancho} ${numeros[ids.compra]}`)
@@ -312,7 +299,6 @@ for (const puesto of ['almacen', 'logistica']) {
   await abrirInsumos(pagina, ids.compra)
   const pasos = await pagina.locator('[data-como-va-el-insumo]').count()
   comprobar(pasos === 0, `${puesto}: ${ve ? 've el RQA' : 'no ve el RQA'} y sin los pasos de Administración (${pasos})`)
-  comprobar((await pagina.locator('[data-seguimiento-sin-leer]').count()) === 0, `${puesto}: sin aviso de error del seguimiento`)
   await contexto.close()
 }
 

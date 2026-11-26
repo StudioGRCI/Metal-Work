@@ -7,6 +7,7 @@ import {
   ETAPA_AVANCE_RQ,
   PASOS_DEL_INSUMO,
   pasoDelInsumo,
+  quienCompra,
   TITULO_PASO_DEL_INSUMO,
   VISTO_DEL_INSUMO,
   VISTO_QUE_PIDE_SUSTENTO,
@@ -15,7 +16,7 @@ import {
 import { cantidad, fecha, hoyLima } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-import { PasosDelInsumo } from '../pasos-del-insumo'
+import { cuandoLlega, ESPERA_LA_COMPRA, PasosDelInsumo } from '../pasos-del-insumo'
 
 const TEXTO: Record<Tono, string> = {
   neutro: 'text-texto-suave',
@@ -25,9 +26,6 @@ const TEXTO: Record<Tono, string> = {
   info: 'text-info',
   acento: 'text-acento',
 }
-
-/** Lo que se espera de la compra mientras no llega al almacén. */
-const ESPERA_COMPRA: readonly PasoDelInsumo[] = ['EN_COMPRA', 'EN_CAMINO']
 
 /**
  * Cómo se cuenta cada paso en el resumen del pliegue: «2 en compra». El visto
@@ -83,7 +81,7 @@ export function InsumosDelRequerimiento({
   const insumos: Insumo[] = rq.lineas.map((l) => {
     const s = seguimiento?.get(`${rq.id}:${l.item}`) ?? null
     const paso = pasoDelInsumo(l, s?.visto_diseno ?? null)
-    const llega = paso !== null && ESPERA_COMPRA.includes(paso.actual) ? (s?.fecha_esperada ?? null) : null
+    const llega = paso !== null && ESPERA_LA_COMPRA.includes(paso.actual) ? (s?.fecha_esperada ?? null) : null
     return { linea: l, seguimiento: s, paso, llega, porAprobar: l.etapa === 'OC_POR_APROBAR' }
   })
   // Lo que espera el sustento, antes de la revisión o ya revisado (no sale sin él).
@@ -177,13 +175,7 @@ export function InsumosDelRequerimiento({
                 {llega && (
                   <span className={atrasada ? 'text-aviso' : undefined} data-llega={llega}>
                     {' · '}
-                    {porAprobar
-                      ? atrasada
-                        ? `Logística lo esperaba el ${fecha(llega)}`
-                        : `Si Gerencia aprueba la compra, llega aprox. el ${fecha(llega)}`
-                      : atrasada
-                        ? `Se esperaba el ${fecha(llega)}`
-                        : `Llega aprox. el ${fecha(llega)}`}
+                    {cuandoLlega({ llega, atrasada, porAprobar, quienCompra: quienCompra(rq) })}
                   </span>
                 )}
               </p>
