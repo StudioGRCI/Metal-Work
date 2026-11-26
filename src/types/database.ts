@@ -14697,9 +14697,11 @@ export type Database = {
         Returns: {
           proveedor: string | null
           compras: number | null
+          llegaron: number | null
           medidas: number | null
           a_tiempo: number | null
           devueltas: number | null
+          atrasadas: number | null
         }[]
       }
       dar_por_terminada_la_garantia: {
