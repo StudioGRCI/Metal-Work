@@ -2,7 +2,7 @@ import { ChevronLeft, ChevronRight, FileImage } from 'lucide-react'
 import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
-import { Boton } from '@/components/ui/boton'
+import { BASE_BOTON, Boton, TAMANOS, VARIANTES } from '@/components/ui/boton'
 import { Entrada } from '@/components/ui/campos'
 import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
@@ -13,6 +13,7 @@ import { historiaDeCierres, type CierreDeLaHistoria } from '@/lib/datos/caja'
 import { enlaceCaptura, monedaDeCuenta } from '@/lib/dominio/caja'
 import { fecha, fechaHora, hoyLima, mesLargo, moneda } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
+import { cn } from '@/lib/utils'
 
 export const metadata = { title: 'Días cerrados de la caja' }
 
@@ -190,10 +191,13 @@ function SelectorDeMes({ mes, hoy }: { mes: string; hoy: string }) {
   const siguiente = otroMes(mes, 1)
   return (
     <form method="get" action={RUTA} className="flex flex-wrap items-center gap-2">
-      {anterior >= PRIMER_MES && (
+      {/* Cada flecha guarda su sitio aunque no vaya, como en el selector de día: el segundo clic no cae en otro mando. */}
+      {anterior >= PRIMER_MES ? (
         <EnlaceBoton href={enlaceMes(anterior, hoy)} variante="contorno" tamano="icono" aria-label="Mes anterior">
           <ChevronLeft aria-hidden className="size-4" />
         </EnlaceBoton>
+      ) : (
+        <Reservado />
       )}
       <label htmlFor="cierres-mes" className="sr-only">
         Mes
@@ -202,11 +206,18 @@ function SelectorDeMes({ mes, hoy }: { mes: string; hoy: string }) {
       <Boton type="submit" variante="secundario" tamano="sm">
         Ver
       </Boton>
-      {siguiente <= hoy.slice(0, 7) && (
+      {siguiente <= hoy.slice(0, 7) ? (
         <EnlaceBoton href={enlaceMes(siguiente, hoy)} variante="contorno" tamano="icono" aria-label="Mes siguiente">
           <ChevronRight aria-hidden className="size-4" />
         </EnlaceBoton>
+      ) : (
+        <Reservado />
       )}
     </form>
   )
+}
+
+/** El sitio de una flecha que no va, del mismo tamaño e invisible. */
+function Reservado() {
+  return <span aria-hidden className={cn(BASE_BOTON, VARIANTES.contorno, TAMANOS.icono, 'invisible')} />
 }
