@@ -14680,21 +14680,6 @@ export type Database = {
         }
         Returns: boolean
       }
-      etapas_abiertas_de_mi_area: {
-        Args: never
-        Returns: {
-          codigo: string | null
-          dias_habiles: number | null
-          fin_plan: string | null
-          id: string | null
-          inicio_plan: string | null
-          inicio_real: string | null
-          nombre: string | null
-          padre_id: string | null
-          semaforo: string | null
-          ultimo_reporte: string | null
-        }[]
-      }
       es_laborable: {
         Args: {
           p_fecha: string | null
@@ -14717,6 +14702,21 @@ export type Database = {
           p_fin_real?: string | null
         }
         Returns: Database["public"]["Enums"]["estado_plazo"]
+      }
+      etapas_abiertas_de_mi_area: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          codigo: string | null
+          nombre: string | null
+          padre_id: string | null
+          inicio_plan: string | null
+          fin_plan: string | null
+          inicio_real: string | null
+          ultimo_reporte: string | null
+          semaforo: string | null
+          dias_habiles: number | null
+        }[]
       }
       etapas_de_siempre_codigo: {
         Args: {

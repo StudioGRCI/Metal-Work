@@ -34,7 +34,25 @@ function sinEmpezar(e: EtapaAbiertaDelArea, hoy: string): string | null {
  * `codigos` es `null` si no se pudieron leer las etapas: se dice, no se pinta
  * vacío (vacío diría que ya está todo reportado).
  */
-export function SinReporteDeHoy({ codigos, piden, hoy }: { codigos: CodigoSinReporte[] | null; piden: number; hoy: string }) {
+export function SinReporteDeHoy({
+  codigos,
+  piden,
+  hoy,
+  sinArea = false,
+}: {
+  codigos: CodigoSinReporte[] | null
+  piden: number
+  hoy: string
+  /** La cuenta no tiene área: la base no le da etapas, y vacío diría que no hay nada. */
+  sinArea?: boolean
+}) {
+  if (sinArea) {
+    return (
+      <p role="status" className="mb-4 text-sm text-aviso" data-sin-reporte="sin-area">
+        Tu cuenta no tiene un área del taller: pide al administrador que te la asigne para ver aquí los códigos que esperan el reporte de hoy.
+      </p>
+    )
+  }
   if (codigos === null) {
     return (
       <p role="status" className="mb-4 text-sm text-aviso" data-sin-reporte="sin-leer">
@@ -71,6 +89,7 @@ export function SinReporteDeHoy({ codigos, piden, hoy }: { codigos: CodigoSinRep
                       className="inline-flex min-h-11 items-center font-mono font-medium break-all text-acento hover:underline sm:min-h-0 sm:pointer-coarse:min-h-11"
                     >
                       {codigo}
+                      <span className="sr-only">: ver sus etapas</span>
                     </Link>
                     <Insignia tono={plazo.tono}>{plazoEnPalabras(peor.semaforo, peor.dias_habiles, { fechaPlan: peor.fin_plan, hoy })}</Insignia>
                   </p>
@@ -86,7 +105,7 @@ export function SinReporteDeHoy({ codigos, piden, hoy }: { codigos: CodigoSinRep
                 </div>
                 <EnlaceBoton href={`/reportes-diarios/nuevo?codigo=${encodeURIComponent(codigo)}`} tamano="sm" variante="secundario">
                   <FilePlus2 aria-hidden className="size-4" />
-                  Subir el reporte
+                  Subir el reporte<span className="sr-only"> de {codigo}</span>
                 </EnlaceBoton>
               </li>
             )

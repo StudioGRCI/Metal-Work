@@ -11,8 +11,7 @@ import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { codigosParaElegir } from '@/lib/datos/codigos-para-elegir'
 import { limitePorVencer } from '@/lib/datos/limite-por-vencer'
 import { esDiaDeTaller } from '@/lib/datos/reportes-diarios'
-import { etapasAbiertasDeMiArea, type EtapaAbiertaDelArea } from '@/lib/datos/tiempos-entrega'
-import { responsablesDeEtapas } from '@/lib/datos/tiempos-entrega'
+import { etapasAbiertasDeMiArea, responsablesDeEtapas, type EtapaAbiertaDelArea } from '@/lib/datos/tiempos-entrega'
 import {
   areasParaEtapas,
   dxfDeCodigo,
@@ -103,7 +102,8 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
   // «Sin reporte de hoy» es del supervisor que reporta su área (Plan 1, 1.3):
   // quien ve todas las áreas no lee los reportes de las otras, y en la búsqueda
   // o en otra pestaña estorbaría. Solo en día de taller.
-  const conBandeja = puede(perfil, 'reporte_diario.registrar') && !cualquierArea && !q && !vista
+  const reportaSuArea = puede(perfil, 'reporte_diario.registrar') && !cualquierArea
+  const conBandeja = reportaSuArea && !q && !vista
   const [limite, responsables, planos, todasLasEtapas, dxf, ots, codigosConocidos, todasLasAreas, hayTaller, abiertasDelArea] = await Promise.all([
     limitePorVencer(),
     responsablesDeEtapas(null),
@@ -124,7 +124,8 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
         })
       : Promise.resolve(false),
     // Las etapas abiertas del área con el semáforo del tablero; `null` si no se pudieron leer.
-    conBandeja
+    // También en la búsqueda: la bandeja lleva a `?q=`, y la tarjeta dice el mismo plazo.
+    reportaSuArea
       ? etapasAbiertasDeMiArea().catch((e: unknown) => {
           console.error('Planos y etapas: no se pudieron leer las etapas por reportar.', e)
           return null
@@ -174,11 +175,15 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
   // lo tienen. Las etapas, su semáforo y el último reporte del área los da la
   // base (`etapas_abiertas_de_mi_area`): ni el atraso ni el reporte se cuentan
   // aquí otra vez. Los códigos ya entregados no entran, como en el tablero.
+  // El código con el costeo cerrado ya no se trabaja: no pide reporte.
+  const cerrados = new Set((codigosConocidos ?? []).filter((c) => c.cerrado).map((c) => c.codigo))
   const pidenHoy = new Map<string, EtapaAbiertaDelArea[]>()
   for (const e of abiertasDelArea ?? []) {
-    if (!pideReporteHoy(e, hoy)) continue
+    if (!pideReporteHoy(e, hoy) || cerrados.has(e.codigo)) continue
     pidenHoy.set(e.codigo, [...(pidenHoy.get(e.codigo) ?? []), e])
   }
+  // El plazo de cada etapa abierta en su tarjeta, el mismo de la bandeja.
+  const semaforos = new Map((abiertasDelArea ?? []).map((e) => [e.id, { semaforo: e.semaforo, dias_habiles: e.dias_habiles }]))
   const sinReporte: CodigoSinReporte[] | null =
     abiertasDelArea === null
       ? null
@@ -205,7 +210,7 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
       />
 
       {conBandeja && hayTaller && (
-        <SinReporteDeHoy codigos={sinReporte} piden={pidenHoy.size} hoy={hoy} />
+        <SinReporteDeHoy codigos={sinReporte} piden={pidenHoy.size} hoy={hoy} sinArea={perfil.area_id === null} />
       )}
 
       <div className="mb-4 space-y-3">
@@ -274,6 +279,7 @@ export default async function PaginaPlanosDelArea({ searchParams }: PageProps<'/
                         hoy={hoy}
                         limite={limite}
                         responsables={responsables}
+                        semaforos={semaforos}
                         acciones={(e, lugar) => (
                           <>
                             <MarcarEtapa etapa={e} hoy={hoy} />

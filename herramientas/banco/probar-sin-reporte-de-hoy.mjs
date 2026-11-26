@@ -243,10 +243,14 @@ for (const ancho of [390, 1440]) {
   const titulo = (await bandeja.locator('h2, h3').first().textContent())?.trim()
   comprobar(/^Sin reporte de hoy \(\d+\)$/.test(titulo ?? ''), `${ancho}: el título cuenta los códigos (${titulo})`)
 
-  // El plazo es el del semáforo de la etapa: el mismo que la tarjeta del código.
+  // El plazo es el del semáforo de la etapa, y la tarjeta del código dice el mismo.
   const vencida = pagina.locator('[data-codigo-sin-reporte="QA-ETAPA-VENCIDA"]')
   const plazo = (await vencida.textContent()) ?? ''
   comprobar(plazo.includes(plazoDe('QA-ETAPA-VENCIDA')), `${ancho}: la vencida dice el plazo del tablero: «${plazoDe('QA-ETAPA-VENCIDA')}»`)
+  for (const c of ['QA-ETAPA-VENCIDA', 'QA-ETAPA-SOLOFIN', 'QA-ETAPA-LUEGO']) {
+    const enLaTarjeta = (await pagina.locator(`[data-etapa="${de(c).etapa}"]`).first().textContent()) ?? ''
+    comprobar(enLaTarjeta.includes(plazoDe(c)), `${ancho}: la tarjeta de ${c} dice el mismo plazo que la bandeja: «${plazoDe(c)}»`)
+  }
   comprobar(plazo.includes(`Etapa: ${de('QA-ETAPA-VENCIDA').etapa}`) && !plazo.includes('sin marcar'), `${ancho}: dice qué etapa está en marcha`)
   comprobar((await vencida.locator('a[href="/planos?q=QA-ETAPA-VENCIDA"]').count()) === 1, `${ancho}: el código lleva a su tarjeta, con las fechas de sus etapas`)
   const solofin = (await pagina.locator('[data-codigo-sin-reporte="QA-ETAPA-SOLOFIN"]').textContent()) ?? ''
