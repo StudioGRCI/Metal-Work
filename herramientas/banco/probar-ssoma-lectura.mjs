@@ -6,8 +6,11 @@
  *      los reportes abiertos y las acciones vencidas, como los da la base con su
  *      cuenta. Cada cifra lleva a su pestaña; «Por área» trae cada área como la
  *      base y, debajo, cuáles son las vencidas. Sin botones que escriban.
- *   2. SSOMA reclasifica el accidente de hoy como incidente (en la base, con su
- *      cuenta): la lectura de Gerencia cambia sola al volver a cargar.
+ *   2. Ventas reporta un accidente en Acabados y la lectura de Gerencia lo cuenta
+ *      sin que nadie lo clasifique; SSOMA lo reclasifica como incidente (en la
+ *      base, con la cuenta de cada una) y la lectura vuelve a lo de antes, con la
+ *      lista diciendo «Incidente · reportado como accidente». Cada corrida crea
+ *      su propio accidente: el recorrido se puede repetir sin rehacer el banco.
  *   3. Gerencia y SSOMA, en el celular: las mismas cifras, sin desplazarse de
  *      costado, con las tres cifras de cada área dentro de su fila.
  *   4. RR. HH., Ventas y Almacén (que tiene una acción vencida a su cargo) no
@@ -140,7 +143,7 @@ async function cifrasComoLaBase(pagina, correo, puesto) {
   const pieDias = p.ultimo
     ? `Último: ${dia(p.ultimo)}${p.area ? ` · ${p.area}` : ''}`
     : p.desde
-      ? `Ninguno desde el primer registro, el ${dia(p.desde)}`
+      ? `Ningún accidente desde el primer registro, el ${dia(p.desde)}`
       : 'Todavía no hay reportes'
   comprobar(dias?.texto.includes(pieDias), `[${puesto}] y su pie dice «${pieDias}»`)
   comprobar(reportes?.valor === String(p.abiertos) && reportes.texto.includes('Reportes abiertos'), `[${puesto}] reportes abiertos: ${reportes?.valor} y ${p.abiertos}`)
@@ -153,7 +156,7 @@ async function cifrasComoLaBase(pagina, correo, puesto) {
     `[${puesto}] acciones vencidas: ${vencidas?.valor} de ${p.abiertas} abiertas (base: ${p.vencidas})`,
   )
   comprobar(
-    dias?.href === '/ssoma?vista=areas' && reportes?.href === '/ssoma' && vencidas?.href === '/ssoma?vista=acciones',
+    dias?.href === '/ssoma?vista=areas' && reportes?.href === '/ssoma' && vencidas?.href === '/ssoma?vista=areas#vencidas',
     `[${puesto}] cada cifra lleva a su pestaña`,
   )
   return p
@@ -184,10 +187,13 @@ async function areasComoLaBase(pagina, correo, puesto, celular = false) {
   )
   if (tranquilas.length > 0) {
     const pie = limpio(await pagina.locator('[data-areas-tranquilas]').innerText().catch(() => ''))
-    const d = tranquilas[0].dias
+    const susDias = await pagina.locator('[data-seguridad-por-area] [data-area-tranquila]').evaluateAll((lis) =>
+      lis.map((l) => (l.textContent ?? '').replace(/\s+/g, ' ').trim()),
+    )
     comprobar(
-      tranquilas.every((a) => a.dias === d) && pie.includes(`Ver las ${tranquilas.length} áreas sin accidentes ni nada abierto`),
-      `[${puesto}] el pliegue cuenta ${tranquilas.length} áreas, todas con los mismos ${d} días`,
+      pie.includes(`Ver las ${tranquilas.length} áreas sin accidentes ni nada abierto`) &&
+        tranquilas.every((a, i) => susDias[i]?.endsWith(a.dias === null ? '—' : `${a.dias} ${a.dias === 1 ? 'día' : 'días'}`)),
+      `[${puesto}] el pliegue cuenta ${tranquilas.length} áreas, cada una con sus días`,
     )
   }
   let iguales = 0
@@ -195,12 +201,12 @@ async function areasComoLaBase(pagina, correo, puesto, celular = false) {
     const f = filas.find((x) => x.area === a.area)
     if (!f) continue
     const ok = celular
-      ? f.visible.includes(a.dias === null ? 'Sin registro todavía' : `${a.dias} ${a.dias === 1 ? 'día' : 'días'} sin accidentes`) &&
+      ? f.visible.includes(a.dias === null ? 'Sin registro de accidentes todavía' : `${a.dias} ${a.dias === 1 ? 'día' : 'días'} sin accidentes`) &&
         f.visible.includes(`${a.abiertos} ${a.abiertos === 1 ? 'reporte abierto' : 'reportes abiertos'}`) &&
         f.visible.includes(`${a.vencidas} ${a.vencidas === 1 ? 'acción vencida' : 'acciones vencidas'}`) &&
-        (a.ultimo ? f.visible.includes(`último el ${dia(a.ultimo)}`) : f.visible.includes('ninguno registrado'))
+        (a.ultimo ? f.visible.includes(`último el ${dia(a.ultimo)}`) : a.dias === null || f.visible.includes('desde el primer registro'))
       : f.celdas[1]?.startsWith(String(a.dias ?? '—')) &&
-        (a.ultimo ? f.celdas[1].includes(`último el ${dia(a.ultimo)}`) : f.celdas[1].includes('ninguno registrado')) &&
+        (a.ultimo ? f.celdas[1].includes(`último el ${dia(a.ultimo)}`) : f.celdas[1].includes(a.dias === null ? 'sin registro todavía' : 'desde el primer registro')) &&
         f.celdas[2]?.startsWith(String(a.abiertos)) &&
         (a.por_clasificar > 0 ? f.celdas[2].includes(`${a.por_clasificar} por clasificar`) : true) &&
         f.celdas[3]?.startsWith(String(a.vencidas)) &&
@@ -216,6 +222,15 @@ async function areasComoLaBase(pagina, correo, puesto, celular = false) {
   comprobar(
     (await pagina.locator('[data-vencidas-por-area] [data-accion-ssoma]:not([data-vencida])').count()) === 0,
     `[${puesto}] y ninguna que no esté vencida`,
+  )
+  const areasDeVencidas = await pagina.locator('[data-vencidas-por-area] [data-accion-ssoma]').evaluateAll((trs) =>
+    trs.map((tr) => (tr.querySelector('td p.tabular')?.textContent ?? '').split(' · ').pop()?.trim()),
+  )
+  const ordenTabla = areas.map((a) => a.area)
+  const posiciones = areasDeVencidas.map((a) => ordenTabla.indexOf(a))
+  comprobar(
+    posiciones.every((x, i) => x >= 0 && (i === 0 || x >= posiciones[i - 1])),
+    `[${puesto}] las vencidas van agrupadas por área, en el orden de la tabla (${areasDeVencidas.join(', ')})`,
   )
   return areas
 }
@@ -249,37 +264,52 @@ let antes
   await contexto.close()
 }
 
-// ------------------------------------------------------------ 2. SSOMA reclasifica el accidente de hoy
+// ------------------------------------------------------------ 2. Un accidente nuevo, y SSOMA lo reclasifica
 {
-  const [acc] = await consulta(
-    `select r.id, r.numero, a.nombre as area from public.ssoma_reportes r join public.areas a on a.id = r.area_id
-      where r.tipo = 'ACCIDENTE' and r.estado = 'REPORTADO' order by r.ocurrido_en desc limit 1`,
+  const [acb] = await consulta(`select id, nombre from public.areas where nombre = 'Acabados' and activo`)
+  const [acc] = await comoCuenta(
+    CUENTAS.ventas,
+    `select r.reporte as id, r.numero_reporte as numero from public.ssoma_reportar(gen_random_uuid(), 'ACCIDENTE', $1, 'Cabina de pintura',
+       'Resbaló con la pintura del piso y se golpeó la rodilla.', now() - interval '10 minutes', false, null, '[]'::jsonb) r`,
+    [acb.id],
+    true,
   )
-  comprobar(!!acc, `la demostración trae un accidente sin clasificar (${acc?.numero}, ${acc?.area})`)
-  if (acc) {
-    await comoCuenta(
-      CUENTAS.ssoma,
-      `select public.ssoma_clasificar($1, 'INCIDENTE', null, null, 'Revisado con el operario: la rebaba no le hizo daño.')`,
-      [acc.id],
-      true,
-    )
-    const { pagina, contexto } = await entrar(CUENTAS.gerencia, MONITOR)
-    await ir(pagina, `${BASE}/ssoma`)
-    const despues = await cifrasComoLaBase(pagina, CUENTAS.gerencia, 'Gerencia, tras la reclasificación')
-    comprobar(
-      despues.ultimo !== antes.ultimo || despues.dias !== antes.dias,
-      `[Gerencia] el accidente que ya no es accidente deja de contar: de ${antes.dias} a ${despues.dias} días`,
-    )
-    comprobar(despues.por_clasificar === antes.por_clasificar - 1, '[Gerencia] y hay uno menos por clasificar')
-    await ir(pagina, `${BASE}/ssoma?vista=areas`)
-    const areas = await areasComoLaBase(pagina, CUENTAS.gerencia, 'Gerencia, tras la reclasificación')
-    const suya = areas.find((a) => a.area === acc.area)
-    comprobar(suya && suya.ultimo === null, `[Gerencia] ${acc.area} ya no tiene accidentes: ${suya?.dias} días desde el primer registro`)
-    // Le queda el reporte abierto: sigue a la vista, ya sin accidente.
-    const fila = limpio(await pagina.locator(`[data-seguridad-por-area] [data-area-ssoma="${acc.area}"]`).innerText().catch(() => ''))
-    comprobar(fila.includes('ninguno registrado'), `[Gerencia] y su fila lo dice: «ninguno registrado»`)
-    await contexto.close()
-  }
+  comprobar(!!acc, `[Ventas] reporta un accidente en Acabados (${acc?.numero})`)
+  const { pagina, contexto } = await entrar(CUENTAS.gerencia, MONITOR)
+  await ir(pagina, `${BASE}/ssoma`)
+  const conAccidente = await cifrasComoLaBase(pagina, CUENTAS.gerencia, 'Gerencia, con el accidente nuevo')
+  comprobar(
+    conAccidente.dias === 0 && conAccidente.area === 'Acabados' && conAccidente.por_clasificar === antes.por_clasificar + 1,
+    `[Gerencia] el accidente sin clasificar ya cuenta: 0 días, en Acabados, uno más por clasificar`,
+  )
+  await comoCuenta(
+    CUENTAS.ssoma,
+    `select public.ssoma_clasificar($1, 'INCIDENTE', null, null, 'Revisado con el operario: no llegó a golpearse.')`,
+    [acc.id],
+    true,
+  )
+  await ir(pagina, `${BASE}/ssoma`)
+  const despues = await cifrasComoLaBase(pagina, CUENTAS.gerencia, 'Gerencia, tras la reclasificación')
+  comprobar(
+    despues.ultimo === antes.ultimo && despues.dias === antes.dias && despues.por_clasificar === antes.por_clasificar,
+    `[Gerencia] reclasificado como incidente, deja de contar: vuelve a ${despues.dias} días (antes ${antes.dias})`,
+  )
+  // En la lista de reportes, lo que SSOMA clasificó manda: ya no sale como «Accidente».
+  const enLista = limpio(await pagina.locator(`[data-reporte-ssoma="${acc.numero}"] td`).first().innerText())
+  comprobar(
+    /Incidente/.test(enLista) && enLista.includes('reportado como accidente') && !/\bAccidente\b/.test(enLista.replace('reportado como accidente', '')),
+    `[Gerencia] en la lista, ${acc.numero} dice «Incidente · reportado como accidente»`,
+  )
+  await ir(pagina, `${BASE}/ssoma?vista=areas`)
+  const areas = await areasComoLaBase(pagina, CUENTAS.gerencia, 'Gerencia, tras la reclasificación')
+  const suya = areas.find((a) => a.area === 'Acabados')
+  // Le queda el reporte abierto: sigue a la vista, con lo que diga su último accidente, si tuvo.
+  const fila = limpio(await pagina.locator(`[data-seguridad-por-area] [data-area-ssoma="Acabados"]`).innerText().catch(() => ''))
+  comprobar(
+    !!suya && suya.abiertos > 0 && fila.includes(suya.ultimo ? `último el ${dia(suya.ultimo)}` : 'desde el primer registro'),
+    `[Gerencia] Acabados sigue a la vista con su reporte abierto y dice «${suya?.ultimo ? `último el ${dia(suya.ultimo)}` : 'desde el primer registro'}»`,
+  )
+  await contexto.close()
 }
 
 // ------------------------------------------------------------ 3. Gerencia y SSOMA, en el celular

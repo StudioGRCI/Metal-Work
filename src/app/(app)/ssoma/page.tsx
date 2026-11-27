@@ -25,7 +25,15 @@ import {
   type SeguridadDeLaPlanta,
   type SeguridadDelArea,
 } from '@/lib/datos/ssoma'
-import { cuandoVence, diasEnEspera, ESTADO_ACCION_SSOMA, ESTADO_REPORTE_SSOMA, rutaDeAccion, TIPO_REPORTE_SSOMA } from '@/lib/dominio/ssoma'
+import {
+  CLASIFICACION_SSOMA,
+  cuandoVence,
+  diasEnEspera,
+  ESTADO_ACCION_SSOMA,
+  ESTADO_REPORTE_SSOMA,
+  rutaDeAccion,
+  TIPO_REPORTE_SSOMA,
+} from '@/lib/dominio/ssoma'
 import { fecha, fechaHora } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { exigirSesion, puede } from '@/lib/sesion'
@@ -94,7 +102,11 @@ export default async function PaginaSsoma({ searchParams }: PageProps<'/ssoma'>)
       .sort((a, b) => esperando(a.r) - esperando(b.r) || a.i - b.i)
       .map(({ r }) => r)
     const anulados = reportes.filter((r) => r.estado === 'ANULADO')
-    const lista = vista === 'anulados' ? anulados : vigentes
+    // Los corregidos (todas sus acciones cerradas) ya no están abiertos: van plegados al pie,
+    // y la pestaña cuenta lo mismo que la cifra «Reportes abiertos» de arriba.
+    const abiertos = vigentes.filter((r) => r.estado !== 'CERRADO')
+    const corregidos = vigentes.filter((r) => r.estado === 'CERRADO')
+    const lista = vista === 'anulados' ? anulados : abiertos
     return (
       <>
         <EncabezadoPagina
@@ -126,13 +138,14 @@ export default async function PaginaSsoma({ searchParams }: PageProps<'/ssoma'>)
                   ? anulados.length
                   : v.valor === 'acciones'
                     ? acciones.length
-                    : vigentes.length,
+                    : abiertos.length,
           }))}
         />
         {vista === 'areas' ? (
           <SeguridadPorArea
             areas={porArea}
             vencidas={acciones.filter((a) => a.estado === 'ABIERTA' && (a.dias_para_vencer ?? 0) < 0)}
+            porReporte={porReporte}
             cuentaId={perfil.id}
           />
         ) : vista === 'acciones' ? (
@@ -141,6 +154,7 @@ export default async function PaginaSsoma({ searchParams }: PageProps<'/ssoma'>)
               acciones={acciones}
               cuentaId={perfil.id}
               conReporte
+              porReporte={porReporte}
               vacio={{
                 titulo: 'Todavía no hay acciones correctivas',
                 descripcion: 'Se encargan desde cada reporte, después de clasificarlo y anotar la causa, y nacen con cada hallazgo de una inspección.',
@@ -160,13 +174,36 @@ export default async function PaginaSsoma({ searchParams }: PageProps<'/ssoma'>)
                       titulo: 'No hay reportes anulados',
                       descripcion: 'Un reporte mal hecho se anula desde su ficha, con su motivo.',
                     }
-                  : {
-                      titulo: 'Todavía no hay reportes',
-                      descripcion:
-                        'Cuando alguien reporte un accidente, un incidente o una condición insegura, aparece aquí y en la campana.',
-                    }
+                  : corregidos.length > 0
+                    ? {
+                        titulo: 'Ningún reporte abierto',
+                        descripcion: 'Todos los reportes vigentes tienen sus acciones cerradas: están en «Ver los corregidos».',
+                      }
+                    : {
+                        titulo: 'Todavía no hay reportes',
+                        descripcion:
+                          'Cuando alguien reporte un accidente, un incidente o una condición insegura, aparece aquí y en la campana.',
+                      }
               }
             />
+            {vista === 'vigentes' && corregidos.length > 0 && (
+              <div className="border-t border-borde px-4">
+                <Pliegue
+                  titulo={corregidos.length === 1 ? 'Ver el corregido' : `Ver los corregidos (${corregidos.length})`}
+                  data-reportes-corregidos={String(corregidos.length)}
+                >
+                  <div className="-mx-4 border-t border-borde">
+                    <TablaDeReportes
+                      reportes={corregidos}
+                      porReporte={porReporte}
+                      conAutor
+                      paraSsoma={gestiona}
+                      vacio={{ titulo: '', descripcion: '' }}
+                    />
+                  </div>
+                </Pliegue>
+              </div>
+            )}
           </Tarjeta>
         )}
         {alTope && (vista === 'vigentes' || vista === 'anulados') && <Tope cortados={cortados} />}
@@ -233,7 +270,7 @@ function CifrasDeSeguridad({ planta: p }: { planta: SeguridadDeLaPlanta }) {
   const sinAccidentes = p.ultimoAccidente
     ? `Último: ${fecha(p.ultimoAccidente)}${p.areaDelUltimo ? ` · ${p.areaDelUltimo}` : ''}`
     : p.registroDesde
-      ? `Ninguno desde el primer registro, el ${fecha(p.registroDesde)}`
+      ? `Ningún accidente desde el primer registro, el ${fecha(p.registroDesde)}`
       : 'Todavía no hay reportes'
   return (
     <section aria-label="Cómo va la seguridad de la planta" className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3" data-cifras-ssoma>
@@ -260,7 +297,8 @@ function CifrasDeSeguridad({ planta: p }: { planta: SeguridadDeLaPlanta }) {
         valor={p.accionesVencidas}
         tono={p.accionesVencidas > 0 ? 'peligro' : 'neutro'}
         pie={`De ${p.accionesAbiertas} ${p.accionesAbiertas === 1 ? 'abierta' : 'abiertas'}`}
-        href="/ssoma?vista=acciones"
+        // Lleva a la lista de las vencidas, no a todas las abiertas.
+        href="/ssoma?vista=areas#vencidas"
       />
     </section>
   )
@@ -272,24 +310,31 @@ function CifrasDeSeguridad({ planta: p }: { planta: SeguridadDeLaPlanta }) {
  */
 function SeguridadPorArea({
   areas,
-  vencidas,
+  vencidas: todas,
+  porReporte,
   cuentaId,
 }: {
   areas: SeguridadDelArea[]
   vencidas: AccionSsoma[]
+  porReporte: Record<string, SeguimientoSsoma>
   cuentaId: string
 }) {
+  // Las vencidas, agrupadas por área en el orden de la tabla; dentro, la más atrasada primero (ya vienen así).
+  const orden = new Map(areas.map((a, i) => [a.area, i]))
+  const vencidas = todas
+    .map((a, i) => ({ a, i }))
+    .sort((x, y) => (orden.get(x.a.area) ?? areas.length) - (orden.get(y.a.area) ?? areas.length) || x.i - y.i)
+    .map(({ a }) => a)
   // Las que nunca tuvieron un accidente ni tienen nada abierto dicen todas lo mismo: van plegadas.
   const conAlgo = areas.filter((a) => a.ultimoAccidente || a.reportesAbiertos > 0 || a.accionesAbiertas > 0)
   const tranquilas = areas.filter((a) => !conAlgo.includes(a))
-  const desde = tranquilas[0]?.diasSinAccidentes ?? null
   return (
     <div className="space-y-5">
       <Tarjeta className="overflow-hidden" data-seguridad-por-area>
         <TarjetaCabecera
           titulo="Por área"
           descripcion="Días sin accidentes, reportes abiertos y acciones vencidas de cada área."
-          ayuda="Accidente es lo que SSOMA clasificó como accidente leve, incapacitante o mortal, y lo que se reportó como accidente y todavía no se clasifica. Los días se cuentan desde el día en que pasó. Si un área nunca tuvo uno, se cuentan desde el primer registro de seguridad del sistema. Un reporte está abierto mientras no se cierren todas sus acciones, y una acción está vencida si su fecha límite ya pasó."
+          ayuda="Accidente es lo que SSOMA clasificó como accidente leve, incapacitante o mortal, y lo que se reportó como accidente y todavía no se clasifica. Los días se cuentan desde el día en que pasó. Si un área nunca tuvo uno, se cuentan desde el día en que entró el primer reporte al sistema, o desde que se creó el área si es más nueva. Un reporte está abierto mientras no se cierren todas sus acciones, y una acción está vencida si su fecha límite ya pasó."
         />
         <Tabla>
           <TablaCabecera>
@@ -321,15 +366,17 @@ function SeguridadPorArea({
               }
               data-areas-tranquilas={String(tranquilas.length)}
             >
-              <p className="tabular pb-2 text-xs text-texto-suave">
-                {desde === null
-                  ? 'Todavía no hay registro de seguridad.'
-                  : `Ningún accidente registrado: ${dias(desde)} desde el primer registro, ninguna con reportes ni acciones abiertas.`}
+              <p className="pb-2 text-xs text-texto-suave">
+                Ningún accidente registrado, ni reportes ni acciones abiertas. Los días, desde el primer registro o desde que se creó el
+                área.
               </p>
               <ul className="grid gap-x-6 gap-y-1 pb-3 text-sm text-texto sm:grid-cols-2 lg:grid-cols-3">
                 {tranquilas.map((a) => (
-                  <li key={a.area_id} data-area-tranquila={a.area}>
-                    {a.area}
+                  <li key={a.area_id} data-area-tranquila={a.area} className="flex items-baseline justify-between gap-3">
+                    <span>{a.area}</span>
+                    <span className="tabular text-xs whitespace-nowrap text-texto-suave">
+                      {a.diasSinAccidentes === null ? '—' : dias(a.diasSinAccidentes)}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -337,15 +384,20 @@ function SeguridadPorArea({
           </div>
         )}
       </Tarjeta>
-      <Tarjeta className="overflow-hidden" data-vencidas-por-area>
+      <Tarjeta id="vencidas" className="scroll-mt-4 overflow-hidden" data-vencidas-por-area>
         <TarjetaCabecera
           titulo="Acciones vencidas"
-          descripcion={vencidas.length > 0 ? `${vencidas.length} ${vencidas.length === 1 ? 'acción' : 'acciones'}, la más atrasada primero` : undefined}
+          descripcion={
+            vencidas.length > 0
+              ? `${vencidas.length} ${vencidas.length === 1 ? 'acción' : 'acciones'}, por área y la más atrasada primero`
+              : undefined
+          }
         />
         <TablaDeAcciones
           acciones={vencidas}
           cuentaId={cuentaId}
           conReporte
+          porReporte={porReporte}
           vacio={{ titulo: 'Ninguna acción vencida', descripcion: 'Todas las acciones abiertas están dentro de su fecha límite.' }}
         />
       </Tarjeta>
@@ -354,7 +406,11 @@ function SeguridadPorArea({
 }
 
 function FilaDeArea({ area: a }: { area: SeguridadDelArea }) {
-  const ultimo = a.ultimoAccidente ? `último el ${fecha(a.ultimoAccidente)}` : 'ninguno registrado'
+  const ultimo = a.ultimoAccidente
+    ? `último el ${fecha(a.ultimoAccidente)}`
+    : a.diasSinAccidentes === null
+      ? 'sin registro todavía'
+      : 'desde el primer registro'
   const reportes = `${a.reportesAbiertos} ${a.reportesAbiertos === 1 ? 'reporte abierto' : 'reportes abiertos'}`
   const vencidas = `${a.accionesVencidas} ${a.accionesVencidas === 1 ? 'acción vencida' : 'acciones vencidas'}`
   return (
@@ -365,9 +421,9 @@ function FilaDeArea({ area: a }: { area: SeguridadDelArea }) {
           {!a.activa && <Insignia tono="neutro">dada de baja</Insignia>}
         </div>
         {/* En el teléfono, las tres cifras van aquí: la tabla no se desliza de costado. */}
-        <div className="mt-1 space-y-0.5 text-xs text-texto-suave sm:hidden">
+        <div className="mt-1 space-y-1 text-xs text-texto-suave sm:hidden">
           <p className="tabular">
-            {a.diasSinAccidentes === null ? 'Sin registro todavía' : `${dias(a.diasSinAccidentes)} sin accidentes`} · {ultimo}
+            {a.diasSinAccidentes === null ? 'Sin registro de accidentes todavía' : `${dias(a.diasSinAccidentes)} sin accidentes · ${ultimo}`}
           </p>
           <p className="tabular">
             {reportes}
@@ -460,7 +516,12 @@ function FilaReporte({
   conAutor: boolean
   paraSsoma: boolean
 }) {
-  const tipo = TIPO_REPORTE_SSOMA[r.tipo]
+  // Lo que SSOMA clasificó manda sobre lo que se reportó: es lo que cuentan las cifras de arriba.
+  // La clasificación solo llega a SSOMA y Gerencia; a los demás, el tipo con que se reportó.
+  const reportado = TIPO_REPORTE_SSOMA[r.tipo]
+  const clasificado = seg.clasificacion ? CLASIFICACION_SSOMA[seg.clasificacion] : undefined
+  const tipo = clasificado ?? reportado
+  const cambio = clasificado && reportado && !clasificado.etiqueta.startsWith(reportado.etiqueta)
   const anulado = r.estado === 'ANULADO'
   const autor = r.reporto ? [r.reporto, r.reporto_puesto].filter(Boolean).join(' · ') : null
   return (
@@ -472,6 +533,7 @@ function FilaReporte({
             {r.numero}
           </Link>
           {tipo ? <Insignia tono={tipo.tono}>{tipo.etiqueta}</Insignia> : r.tipo}
+          {cambio && reportado && <span className="text-xs text-texto-suave">reportado como {reportado.etiqueta.toLowerCase()}</span>}
         </div>
         <p className="mt-1 line-clamp-2 max-w-xl text-sm text-texto">{r.descripcion}</p>
         {r.fotos > 0 && (
@@ -560,11 +622,14 @@ function TablaDeAcciones({
   acciones,
   cuentaId,
   conReporte = false,
+  porReporte,
   vacio,
 }: {
   acciones: AccionSsoma[]
   cuentaId: string
   conReporte?: boolean
+  /** Para SSOMA y Gerencia: la clasificación de cada reporte, que manda sobre el tipo reportado. */
+  porReporte?: Record<string, SeguimientoSsoma>
   vacio: { titulo: string; descripcion: string }
 }) {
   return (
@@ -581,17 +646,35 @@ function TablaDeAcciones({
         {acciones.length === 0 ? (
           <SinDatos titulo={vacio.titulo} descripcion={vacio.descripcion} />
         ) : (
-          acciones.map((a) => <FilaAccion key={a.id} accion={a} mia={a.responsable_id === cuentaId} conReporte={conReporte} />)
+          acciones.map((a) => (
+            <FilaAccion
+              key={a.id}
+              accion={a}
+              mia={a.responsable_id === cuentaId}
+              conReporte={conReporte}
+              clasificacion={porReporte && a.reporte_id ? seguimientoDe(porReporte, a.reporte_id).clasificacion : null}
+            />
+          ))
         )}
       </tbody>
     </Tabla>
   )
 }
 
-function FilaAccion({ accion: a, mia, conReporte }: { accion: AccionSsoma; mia: boolean; conReporte: boolean }) {
+function FilaAccion({
+  accion: a,
+  mia,
+  conReporte,
+  clasificacion,
+}: {
+  accion: AccionSsoma
+  mia: boolean
+  conReporte: boolean
+  clasificacion: string | null
+}) {
   const vence = a.estado === 'ABIERTA' ? cuandoVence(a.dias_para_vencer) : null
   const vencida = a.estado === 'ABIERTA' && (a.dias_para_vencer ?? 0) < 0
-  const tipo = TIPO_REPORTE_SSOMA[a.reporte_tipo]
+  const tipo = (clasificacion ? CLASIFICACION_SSOMA[clasificacion] : undefined) ?? TIPO_REPORTE_SSOMA[a.reporte_tipo]
   // A su reporte o a su inspección: donde se cierra con evidencia.
   const href = rutaDeAccion(a)
   return (

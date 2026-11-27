@@ -25,10 +25,13 @@ select set_config('prueba.rrhh', :'rrhh_id', true);
 select set_config('prueba.hoy', ((now() at time zone 'America/Lima')::date)::text, true);
 
 -- Cinco áreas de prueba: A, B y C con reportes; D dada de baja sin nada; E activa sin nada.
-insert into public.areas (codigo, nombre, orden_secuencia) values
-  ('TQA', 'Área A del check 494', 9941), ('TQB', 'Área B del check 494', 9942),
-  ('TQC', 'Área C del check 494', 9943), ('TQE', 'Área E del check 494', 9945);
-insert into public.areas (codigo, nombre, orden_secuencia, activo) values ('TQD', 'Área D del check 494', 9944, false);
+-- Todas existen desde hace más de un año, salvo F, que se crea hoy.
+insert into public.areas (codigo, nombre, orden_secuencia, creado_en) values
+  ('TQA', 'Área A del check 494', 9941, now() - interval '400 days'), ('TQB', 'Área B del check 494', 9942, now() - interval '400 days'),
+  ('TQC', 'Área C del check 494', 9943, now() - interval '400 days'), ('TQE', 'Área E del check 494', 9945, now() - interval '400 days');
+insert into public.areas (codigo, nombre, orden_secuencia, activo, creado_en) values ('TQD', 'Área D del check 494', 9944, false, now() - interval '400 days');
+insert into public.areas (codigo, nombre, orden_secuencia) values ('TQF', 'Área F del check 494', 9946);
+insert into public.areas (codigo, nombre, orden_secuencia, creado_en) values ('TQG', 'Área G del check 494', 9947, now() - interval '400 days');
 
 -- Lo que lee cada quien: la fila de la planta y la de un área, como texto para comparar.
 create or replace function pg_temp.planta()
@@ -135,6 +138,18 @@ begin
   perform public.ssoma_clasificar(v, 'INCIDENTE', null, null, 'La alarma de retroceso no funcionaba.');
   perform set_config('prueba.a6', gen_random_uuid()::text, true);
   perform public.ssoma_crear_accion(current_setting('prueba.a6')::uuid, v, 'Reparar la alarma de retroceso', v_resp, v_hoy + 2);
+
+  -- E: un hecho con el año mal tecleado (hace 3000 días), que SSOMA anula. No mueve el comienzo del registro.
+  v := gen_random_uuid(); perform set_config('prueba.r7', v::text, true);
+  perform public.ssoma_reportar(v, 'CONDICION_INSEGURA', (select id from public.areas where codigo = 'TQE'), 'Techo de la nave',
+    'Una plancha suelta en el techo que se mueve con el viento.', pg_temp.en_lima(3000), null, null, '[]'::jsonb);
+  perform public.ssoma_anular_reporte(v, 'El año se escribió mal: se vuelve a reportar');
+
+  -- G: un accidente de hace 60 días, ya corregido; después el área se da de baja.
+  v := gen_random_uuid(); perform set_config('prueba.r8', v::text, true);
+  perform public.ssoma_reportar(v, 'ACCIDENTE', (select id from public.areas where codigo = 'TQG'), 'Horno viejo',
+    'Quemadura leve en la mano al abrir la puerta del horno.', pg_temp.en_lima(60), true, null, '[]'::jsonb);
+  perform public.ssoma_clasificar(v, 'ACCIDENTE_LEVE', true, null, 'La manija del horno no tenía protección.');
 end $$;
 reset role;
 
@@ -143,8 +158,12 @@ select set_config('session_replication_role', 'replica', true);
 update public.ssoma_acciones set fecha_limite = current_setting('prueba.hoy')::date - 3 where id = current_setting('prueba.a1')::uuid;
 update public.ssoma_acciones set fecha_limite = current_setting('prueba.hoy')::date - 1 where id = current_setting('prueba.a3')::uuid;
 update public.ssoma_acciones set fecha_limite = current_setting('prueba.hoy')::date - 9 where id = current_setting('prueba.a6')::uuid;
+-- El registro empezó hace 30 días: el primer reporte (el accidente de A) entró entonces, aunque contara un hecho de antes.
+update public.ssoma_reportes set creado_en = now() - interval '30 days' where id = current_setting('prueba.r1')::uuid;
+-- El de G quedó corregido (sus acciones se cerraron con evidencia; aquí se pone el estado a mano).
+update public.ssoma_reportes set estado = 'CERRADO', cerrado_en = now() where id = current_setting('prueba.r8')::uuid;
 select set_config('session_replication_role', 'origin', true);
-update public.areas set activo = false where codigo = 'TQC';
+update public.areas set activo = false where codigo in ('TQC', 'TQG');
 
 -- ============================================================ 3. Lo que lee Gerencia
 select test.como_usuario(:'gerente_id');
@@ -154,8 +173,8 @@ declare
   v_hoy constant date := current_setting('prueba.hoy')::date;
 begin
   -- El último accidente es el de B, de hace siete días en Lima aunque en UTC ya fuera el sexto.
-  perform test.afirmar(pg_temp.planta() = format('%s|Área B del check 494|%s|7|5|1|5|3', v_hoy - 7, v_hoy - 40),
-    'la planta: último accidente el de B, hace 7 días; registro desde el hecho más viejo; 5 reportes abiertos, 1 por clasificar, 5 acciones abiertas y 3 vencidas: ' || coalesce(pg_temp.planta(), '(sin fila)'));
+  perform test.afirmar(pg_temp.planta() = format('%s|Área B del check 494|%s|7|5|1|5|3', v_hoy - 7, v_hoy - 30),
+    'la planta: último accidente el de B, hace 7 días; registro desde que entró el primer reporte (no desde el hecho anulado de hace 3000 días); 5 reportes abiertos, 1 por clasificar, 5 acciones abiertas y 3 vencidas: ' || coalesce(pg_temp.planta(), '(sin fila)'));
   -- A: el reclasificado como incidente y el anulado no cuentan; el de hace 40 días sí.
   perform test.afirmar(pg_temp.area('TQA') = format('t|%s|40|2|0|1|1|%s', v_hoy - 40, v_hoy - 3),
     'A: 40 días sin accidentes (el reclasificado y el anulado no cuentan), 2 reportes abiertos y su acción vencida hace 3 días: ' || coalesce(pg_temp.area('TQA'), '(sin fila)'));
@@ -163,10 +182,13 @@ begin
   perform test.afirmar(pg_temp.area('TQB') = format('t|%s|7|2|1|3|1|%s', v_hoy - 7, v_hoy - 1),
     'B: 7 días, el accidente sin clasificar cuenta; 3 acciones abiertas (la anulada no), 1 vencida (la que vence hoy no): ' || coalesce(pg_temp.area('TQB'), '(sin fila)'));
   -- C: dada de baja, sigue a la vista porque le queda una acción vencida; nunca tuvo accidentes.
-  perform test.afirmar(pg_temp.area('TQC') = format('f||40|1|0|1|1|%s', v_hoy - 9),
+  perform test.afirmar(pg_temp.area('TQC') = format('f||30|1|0|1|1|%s', v_hoy - 9),
     'C: dada de baja, sale porque le queda algo abierto, y sin accidentes cuenta desde el primer registro: ' || coalesce(pg_temp.area('TQC'), '(sin fila)'));
-  perform test.afirmar(pg_temp.area('TQD') is null, 'D: dada de baja sin nada abierto, no sale');
-  perform test.afirmar(pg_temp.area('TQE') = 't||40|0|0|0|0|', 'E: activa sin nada, 40 días desde el primer registro: ' || coalesce(pg_temp.area('TQE'), '(sin fila)'));
+  perform test.afirmar(pg_temp.area('TQD') is null, 'D: dada de baja sin nada abierto ni accidentes, no sale');
+  perform test.afirmar(pg_temp.area('TQG') = format('f|%s|60|0|0|0|0|', v_hoy - 60),
+    'G: dada de baja sin nada abierto, sigue a la vista porque tuvo un accidente: ' || coalesce(pg_temp.area('TQG'), '(sin fila)'));
+  perform test.afirmar(pg_temp.area('TQE') = 't||30|0|0|0|0|', 'E: activa, su único reporte anulado; 30 días desde el primer registro: ' || coalesce(pg_temp.area('TQE'), '(sin fila)'));
+  perform test.afirmar(pg_temp.area('TQF') = 't||0|0|0|0|0|', 'F: creada hoy, cuenta desde hoy y no hereda los días de la planta: ' || coalesce(pg_temp.area('TQF'), '(sin fila)'));
   -- Las cuentas por área suman la planta.
   perform test.afirmar(
     (select format('%s|%s|%s|%s', sum(reportes_abiertos), sum(por_clasificar), sum(acciones_abiertas), sum(acciones_vencidas))
@@ -175,7 +197,7 @@ begin
   -- Las áreas salen en el orden de la empresa.
   perform test.afirmar(
     (select string_agg(a.area, ',' order by o) from public.ssoma_seguridad_por_area() with ordinality as a(area_id, area, activa, ua, d, ra, pc, aa, av, vm, o)
-      where a.area like '%check 494') = 'Área A del check 494,Área B del check 494,Área C del check 494,Área E del check 494',
+      where a.area like '%check 494') = 'Área A del check 494,Área B del check 494,Área C del check 494,Área E del check 494,Área F del check 494,Área G del check 494',
     'las áreas, en el orden de la empresa');
 end $$;
 reset role;
@@ -198,9 +220,9 @@ begin
   perform test.afirmar(pg_temp.area('TQA') like format('t|%s|40|%%', v_hoy - 40), 'vuelto a incidente, A vuelve a 40 días');
   -- El de B, clasificado como incidente, deja de ser el último accidente: queda el de A.
   perform public.ssoma_clasificar(current_setting('prueba.r4')::uuid, 'INCIDENTE', null, null, 'El solvente no llegó a la piel.');
-  perform test.afirmar(pg_temp.planta() = format('%s|Área A del check 494|%s|40|5|0|5|3', v_hoy - 40, v_hoy - 40),
+  perform test.afirmar(pg_temp.planta() = format('%s|Área A del check 494|%s|40|5|0|5|3', v_hoy - 40, v_hoy - 30),
     'sin el de B, el último accidente de la planta es el de A y B deja de tener por clasificar: ' || pg_temp.planta());
-  perform test.afirmar(pg_temp.area('TQB') = format('t||40|2|0|3|1|%s', v_hoy - 1), 'B sin accidentes cuenta desde el primer registro: ' || pg_temp.area('TQB'));
+  perform test.afirmar(pg_temp.area('TQB') = format('t||30|2|0|3|1|%s', v_hoy - 1), 'B sin accidentes cuenta desde el primer registro: ' || pg_temp.area('TQB'));
 end $$;
 reset role;
 

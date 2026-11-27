@@ -13,8 +13,11 @@
 --     accidente leve, incapacitante o mortal (la última clasificación vale), y
 --     mientras no lo clasifique, lo que la gente reportó como accidente. Lo que
 --     SSOMA reclasificó como incidente deja de contar, y un reporte anulado
---     también. Si nunca hubo uno, se cuenta desde el primer reporte que hay en el
---     sistema: antes de eso no hay registro y no se puede decir que no lo hubo.
+--     también. Si nunca hubo uno, se cuenta desde el día en que entró el primer
+--     reporte al sistema (el día del registro, no el del hecho, que SSOMA puede
+--     escribir con cualquier fecha: un año mal tecleado, aunque se anule, inflaría
+--     la cuenta para siempre). Antes de eso no hay registro y no se puede decir que
+--     no lo hubo. Un área creada después cuenta desde el día en que se creó.
 --   * REPORTES ABIERTOS. Los que siguen vivos: por clasificar o clasificados con
 --     acciones todavía abiertas (o sin ninguna encargada). Ni cerrados ni
 --     anulados.
@@ -22,7 +25,9 @@
 --     de un reporte o del hallazgo de una inspección, en el área de la acción
 --     (`ssoma_acciones.area_id`, que se guardó para esto en la 15.2).
 --   * POR ÁREA. Cada área activa, y la que se dio de baja mientras le quede un
---     reporte o una acción abierta: si no, lo pendiente se perdería de vista.
+--     reporte o una acción abierta, o si tuvo un accidente: si no, lo pendiente
+--     se perdería de vista, y el último accidente de la planta podría ser de un
+--     área que la lista no muestra.
 --
 -- Lo leen SSOMA y Gerencia (`puede_ver_reportes_ssoma()`); a los demás, nada.
 -- No devuelve quién reportó ni la causa: solo fechas y cuentas.
@@ -33,9 +38,9 @@
 -- 1. Los accidentes que cuentan ---------------------------------------------------------
 -- Ayudante interno de las dos lecturas: no se abre a la gente.
 create or replace function public.ssoma_accidentes()
-returns table (reporte_id uuid, area_id uuid, fecha date)
+returns table (reporte_id uuid, area_id uuid, fecha date, ocurrido_en timestamptz)
 language sql stable set search_path to 'public' as $$
-  select r.id, r.area_id, (r.ocurrido_en at time zone 'America/Lima')::date
+  select r.id, r.area_id, (r.ocurrido_en at time zone 'America/Lima')::date, r.ocurrido_en
     from public.ssoma_reportes r
     left join lateral (
       select c.clasificacion from public.ssoma_clasificaciones c
@@ -49,13 +54,13 @@ comment on function public.ssoma_accidentes() is
   'Los reportes vigentes que son un accidente: los que SSOMA clasificó como accidente (la última clasificación) y, sin clasificar, los reportados como accidente; con el día en que pasó en Lima. Ayudante de ssoma_seguridad_de_la_planta y ssoma_seguridad_por_area.';
 revoke all on function public.ssoma_accidentes() from public, anon, authenticated;
 
--- Desde cuándo hay registro: el día del primer hecho o del primer reporte.
+-- Desde cuándo hay registro: el día en que entró el primer reporte, que pone la base.
 create or replace function public.ssoma_registro_desde()
 returns date language sql stable set search_path to 'public' as $$
-  select min((least(r.ocurrido_en, r.creado_en) at time zone 'America/Lima')::date) from public.ssoma_reportes r;
+  select min((r.creado_en at time zone 'America/Lima')::date) from public.ssoma_reportes r;
 $$;
 comment on function public.ssoma_registro_desde() is
-  'El primer día del que hay registro de seguridad: el del hecho más antiguo o el del primer reporte, lo que sea antes. Vacío si no hay ningún reporte.';
+  'El primer día del que hay registro de seguridad: el día en que entró el primer reporte (no la fecha del hecho, que se escribe a mano). Vacío si no hay ningún reporte.';
 revoke all on function public.ssoma_registro_desde() from public, anon, authenticated;
 
 -- 2. La planta entera -----------------------------------------------------------------------
@@ -77,7 +82,7 @@ begin
   select a.fecha, ar.nombre into v_fecha, v_area
     from public.ssoma_accidentes() a
     join public.areas ar on ar.id = a.area_id
-   order by a.fecha desc
+   order by a.ocurrido_en desc, a.reporte_id desc
    limit 1;
   return query
   select v_fecha, v_area, v_desde,
@@ -122,7 +127,9 @@ language sql stable security definer set search_path to 'public' rows 30 as $$
      group by x.area_id
   )
   select a.id, a.nombre, a.activo, acc.fecha,
-         case when coalesce(acc.fecha, hoy.desde) is not null then greatest(hoy.d - coalesce(acc.fecha, hoy.desde), 0) end,
+         -- Sin accidentes, desde el primer registro o desde que el área existe, lo que sea después.
+         case when coalesce(acc.fecha, hoy.desde) is not null
+              then greatest(hoy.d - coalesce(acc.fecha, greatest(hoy.desde, (a.creado_en at time zone 'America/Lima')::date)), 0) end,
          coalesce(rep.abiertos, 0), coalesce(rep.por_clasificar, 0),
          coalesce(act.abiertas, 0), coalesce(act.vencidas, 0), act.mas_antigua
     from public.areas a
@@ -131,10 +138,12 @@ language sql stable security definer set search_path to 'public' rows 30 as $$
     left join rep on rep.area_id = a.id
     left join act on act.area_id = a.id
    where public.puede_ver_reportes_ssoma()
-     and (a.activo or rep.area_id is not null or act.area_id is not null)
+     -- La dada de baja sigue mientras le quede algo abierto o si tuvo un accidente: si no, el pie de la
+     -- planta podría nombrar un área que esta lista no muestra.
+     and (a.activo or rep.area_id is not null or act.area_id is not null or acc.area_id is not null)
    order by a.orden_secuencia, a.nombre;
 $$;
 comment on function public.ssoma_seguridad_por_area() is
-  'La lectura de Gerencia por área: el último accidente y los días sin accidentes, los reportes abiertos y por clasificar, y las acciones correctivas abiertas y vencidas (con la fecha límite más vieja que pasó). Cada área activa, y la dada de baja mientras le quede algo abierto. Solo para SSOMA y Gerencia; a los demás, nada.';
+  'La lectura de Gerencia por área: el último accidente y los días sin accidentes (sin ninguno, desde el primer registro o desde que el área existe), los reportes abiertos y por clasificar, y las acciones correctivas abiertas y vencidas (con la fecha límite más vieja que pasó). Cada área activa, y la dada de baja mientras le quede algo abierto o si tuvo un accidente. Solo para SSOMA y Gerencia; a los demás, nada.';
 revoke all on function public.ssoma_seguridad_por_area() from public, anon;
 grant execute on function public.ssoma_seguridad_por_area() to authenticated;
