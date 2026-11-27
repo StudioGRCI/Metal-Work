@@ -38,7 +38,7 @@ type Enganche = { cotizacionId: string; mensaje: string; vez: number; aviso?: bo
 export function EstadoDelEnganche() {
   const [hecho] = useEstadoCompartido<Enganche | null>(ENGANCHADA, null)
   return (
-    <span role="status" className={hecho ? cn('text-xs sm:text-right', hecho.aviso ? 'text-texto' : 'font-medium text-exito') : 'sr-only'}>
+    <span role="status" className={hecho ? cn('text-xs sm:text-right', hecho.aviso ? 'text-aviso' : 'font-medium text-exito') : 'sr-only'}>
       {hecho?.mensaje}
     </span>
   )
