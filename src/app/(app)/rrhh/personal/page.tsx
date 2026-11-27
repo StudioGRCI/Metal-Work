@@ -66,7 +66,8 @@ export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/r
               {ve && <TH className="hidden lg:table-cell">{gestiona ? 'Cuenta' : 'Sueldo y costo'}</TH>}
               <TH>Estado</TH>
               {gestiona && (
-                <TH className="text-right">
+                // Su ancho, para que «Corregir» y «Dar de baja» vayan en un renglón cuando aparece «Cuenta».
+                <TH className="text-right lg:w-64">
                   <span className="sr-only">Acciones</span>
                 </TH>
               )}

@@ -8,6 +8,7 @@ import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { SinDatos } from '@/components/ui/tabla'
 import { ESTADO_ETAPA, definir } from '@/lib/dominio/estados'
 import { programaDeEtapa } from '@/lib/dominio/programa-etapa'
 import { cantidad, fecha, fechaHora, porcentaje, porcentajeCorto } from '@/lib/format'
@@ -55,9 +56,11 @@ export function Etapas({
     return (
       <Tarjeta>
         <TarjetaCuerpo>
-          <p className="py-10 text-center text-sm text-texto-suave">
-            Esta orden todavía no tiene etapas. Diseño debe crearlas para programar el trabajo.
-          </p>
+          <SinDatos
+            enTabla={false}
+            titulo="Esta orden todavía no tiene etapas"
+            descripcion="Diseño debe crearlas para programar el trabajo."
+          />
         </TarjetaCuerpo>
       </Tarjeta>
     )
@@ -261,8 +264,7 @@ function FormularioDefinicion({ ordenId, areas, etapas, conversion, actividadesP
         </p>
       </div>
       {seleccion.length === 0 && <div className="rounded-[var(--radius-base)] border border-dashed border-borde-fuerte bg-superficie px-4 py-6 text-center">
-        <p className="text-sm font-medium text-texto">Aún no hay etapas</p>
-        <p className="mt-1 text-xs text-texto-suave">Agrega la primera para organizar el trabajo de esta orden.</p>
+        <SinDatos compacto titulo="Aún no hay etapas" descripcion="Agrega la primera para organizar el trabajo de esta orden." />
       </div>}
       <div className="space-y-2">
         {seleccion.map((item, indice) => {

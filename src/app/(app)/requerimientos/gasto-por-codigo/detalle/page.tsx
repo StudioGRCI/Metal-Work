@@ -43,8 +43,11 @@ export default async function PaginaGastoDeCodigo({ searchParams }: PageProps<'/
       {!resumen ? (
         <Tarjeta>
           <TarjetaCuerpo>
-            <p className="text-sm font-medium text-texto">Este código no tiene gasto ni requerimientos</p>
-            <p className="text-sm text-texto-suave">Ninguna salida del almacén, orden de compra ni requerimiento lo lleva.</p>
+            <SinDatos
+              compacto
+              titulo="Este código no tiene gasto ni requerimientos"
+              descripcion="Ninguna salida del almacén, orden de compra ni requerimiento lo lleva."
+            />
             {sugeridos.length > 0 && (
               <p className="mt-2 text-sm text-texto">
                 Se parece a{' '}

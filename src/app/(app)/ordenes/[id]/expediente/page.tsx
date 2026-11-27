@@ -391,9 +391,11 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
                 las marca y Supervisión reporta por código.
               </p>
             ) : expediente.etapas.length === 0 ? (
-              <p className="text-sm text-texto-suave">
-                Diseño todavía no definió las etapas de esta orden. Se definen en la pestaña Etapas.
-              </p>
+              <SinDatos
+                compacto
+                titulo="Diseño todavía no definió las etapas de esta orden"
+                descripcion="Se definen en la pestaña Etapas."
+              />
             ) : (
               <>
                 <PlanContraReal etapas={expediente.etapas} hoy={hoy} viva={viva} />

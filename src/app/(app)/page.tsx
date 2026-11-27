@@ -352,12 +352,11 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
             />
             <TarjetaCuerpo className="p-2 sm:p-3">
               {enTaller.ordenes.length === 0 ? (
-                <div className="py-8 text-center">
-                  <p className="text-sm font-medium text-texto">No hay órdenes abiertas</p>
-                  <p className="mt-1 text-xs text-texto-suave">
-                    La OT llega cuando Gerencia aprueba la cotización con su código interno; aparece acá con su avance y su fecha de entrega.
-                  </p>
-                </div>
+                <SinDatos
+                  enTabla={false}
+                  titulo="No hay órdenes abiertas"
+                  descripcion="La OT llega cuando Gerencia aprueba la cotización con su código interno; aparece acá con su avance y su fecha de entrega."
+                />
               ) : (
                 <ul className="divide-y divide-borde">
                   {enTaller.ordenes.map((orden) => {

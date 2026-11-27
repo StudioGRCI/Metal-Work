@@ -8,7 +8,7 @@ import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
-import { TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
+import { TD, TH, TR, Tabla, TablaCabecera, SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { Ventana } from '@/components/ui/ventana'
 import type { CatalogoMateriales, MaterialDeOrden } from '@/lib/datos/materiales-orden'
@@ -105,19 +105,22 @@ export function MaterialesDeOrden({
       {materiales.length === 0 ? (
         <Tarjeta>
           <TarjetaCuerpo>
-            <p className="text-sm font-medium text-texto">La lista todavía está vacía</p>
-            <p className="mt-1 text-sm text-texto-suave">
-              {!ordenViva
-                ? `${motivoInactiva ?? 'La orden no está en curso'}: mientras, la lista no se toca.`
-                : puedeDisenar
-                  ? 'Agrega el primer material con el botón de arriba: qué lleva la unidad y cuánto. El plano es opcional.'
-                : catalogo.planos.length === 0
-                  ? puedeSolicitar ? 'Diseño debe liberar un plano a tu área antes de solicitar materiales.'
-                    : 'Diseño todavía no asigna materiales a esta orden.'
-                : puedeSolicitar
-                  ? 'Puedes proponer el material que necesita tu área, aunque no esté en el catálogo. Diseño lo revisará.'
-                  : 'Todavía no hay materiales vinculados a esta orden.'}
-            </p>
+            <SinDatos
+              compacto
+              titulo="La lista todavía está vacía"
+              descripcion={
+                !ordenViva
+                  ? `${motivoInactiva ?? 'La orden no está en curso'}: mientras, la lista no se toca.`
+                  : puedeDisenar
+                    ? 'Agrega el primer material con el botón de arriba: qué lleva la unidad y cuánto. El plano es opcional.'
+                  : catalogo.planos.length === 0
+                    ? puedeSolicitar ? 'Diseño debe liberar un plano a tu área antes de solicitar materiales.'
+                      : 'Diseño todavía no asigna materiales a esta orden.'
+                  : puedeSolicitar
+                    ? 'Puedes proponer el material que necesita tu área, aunque no esté en el catálogo. Diseño lo revisará.'
+                    : 'Todavía no hay materiales vinculados a esta orden.'
+              }
+            />
           </TarjetaCuerpo>
         </Tarjeta>
       ) : (

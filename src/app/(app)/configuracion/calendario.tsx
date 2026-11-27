@@ -4,6 +4,7 @@ import { CalendarPlus, Hammer } from 'lucide-react'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { SinDatos } from '@/components/ui/tabla'
 import type { Feriado } from '@/lib/datos/configuracion'
 import { useEnvio } from '@/lib/envio'
 import { fecha as formatearFecha } from '@/lib/format'
@@ -157,17 +158,18 @@ export function Feriados({
         )}
 
         {feriados.length === 0 ? (
-          <div className="py-4 text-center">
-            <p className="text-sm text-texto">Este año todavía no tiene feriados cargados.</p>
-            {/* El estado vacío dice cuál es el siguiente paso y dónde está el
-                botón que lo da; sin feriados los plazos en días hábiles salen
-                cortos y nadie se entera hasta que la entrega se pasa. */}
-            <p className="mt-1 text-xs text-texto-suave">
-              {puedeEditar
+          // El estado vacío dice cuál es el siguiente paso y dónde está el
+          // botón que lo da; sin feriados los plazos en días hábiles salen
+          // cortos y nadie se entera hasta que la entrega se pasa.
+          <SinDatos
+            compacto
+            titulo="Este año todavía no tiene feriados cargados"
+            descripcion={
+              puedeEditar
                 ? `Empieza con «Cargar nacionales ${anio}», arriba, y agrega después los de la empresa.`
-                : 'Mientras no los haya, los plazos en días hábiles cuentan como si se trabajara todo el año.'}
-            </p>
-          </div>
+                : 'Mientras no los haya, los plazos en días hábiles cuentan como si se trabajara todo el año.'
+            }
+          />
         ) : (
           <ul className="divide-y divide-borde">
             {feriados.map((f) => (

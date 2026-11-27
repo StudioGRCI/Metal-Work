@@ -87,10 +87,13 @@ En `src/components/ui/`:
 - `SinDatos` tiene dos tamaños: el grande es para la lista que es el trabajo
   de la pantalla; `compacto` para la bandeja que comparte pantalla con otras
   (lo pendiente del Kardex). No se escribe el vacío a mano con un `<p>`: la
-  entrega 7 cambió veintisiete («Todavía no hay planos…», el costo de la OT,
-  Costeo, los avisos); el título sin punto y lo que explica en `descripcion`.
-  Queda a mano la nota de Pagos de oficina junto a su botón: no es una lista
-  vacía, dice por qué el botón no tiene a quién pagar.
+  entrega 7 cambió cincuenta («Todavía no hay planos…», el costo de la OT,
+  Costeo, los avisos, las pestañas de la OT, Carrocerías); el título sin punto
+  y lo que explica en `descripcion`. Quedan a mano a propósito las notas que no
+  son una lista vacía sino el porqué de un botón o de un paso (Pagos de
+  oficina, «Responsables por plano», las facturas que «van abajo») y los
+  vacíos con ícono de Tesorería y Contabilidad (por cobrar, caja diaria, por
+  pagar, pagos de servicio, facturación), que dicen qué falta con su dibujo.
 - `Campo` (etiqueta + ayuda + requerido), `Entrada`, `Seleccion`, `AreaTexto`
 - `ElegirArchivo` para todo archivo que se elige en un formulario, nunca
   `Entrada type="file"`: el botón del navegador sale en su idioma («Choose

@@ -339,11 +339,11 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
           />
           <TarjetaCuerpo className="p-0">
             {ordenes.length === 0 ? (
-              <div className="px-4 py-10 text-center">
-                <p className="text-sm text-texto-suave">
-                  Todavía no se ha abierto ninguna orden para este cliente. La OT llega cuando Gerencia aprueba su cotización con el código interno.
-                </p>
-              </div>
+              <SinDatos
+                enTabla={false}
+                titulo="Todavía no se ha abierto ninguna orden para este cliente"
+                descripcion="La OT llega cuando Gerencia aprueba su cotización con el código interno."
+              />
             ) : (
               <ul className="divide-y divide-[var(--borde)]">
                 {ordenes.map((o) => {

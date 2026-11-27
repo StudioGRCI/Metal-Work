@@ -604,7 +604,9 @@ function Fila({
                 aria-label="Registrar la salida en el kardex"
               >
                 <ArrowUpFromLine aria-hidden className="size-4" />
-                Registrar la salida<span className="md:max-xl:hidden"> en el kardex</span>
+                <span>
+                  Registrar la salida<span className="md:max-xl:hidden"> en el kardex</span>
+                </span>
               </EnlaceBoton>
               {porSacar === null && <PasoRequerimiento id={rq.id} numero={rq.numero} paso="entregado" />}
               {/* Para lo que ya no va a salir: sin esto el RQ quedaba listo para

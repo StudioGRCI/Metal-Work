@@ -10,6 +10,7 @@ import { useEnvio } from '@/lib/envio'
 import { fechaHora, tiempoRelativo } from '@/lib/format'
 import type { EventoTimeline } from '@/lib/datos/ordenes'
 import type { Tono } from '@/components/ui/etiqueta-estado'
+import { SinDatos } from '@/components/ui/tabla'
 
 import { comentarOrden } from '../acciones'
 
@@ -78,14 +79,15 @@ export function Bitacora({
 
       <TarjetaCuerpo>
         {eventos.length === 0 ? (
-          <div className="py-8 text-center">
-            <p className="text-sm font-medium text-texto">Todavía no ha pasado nada con esta orden</p>
-            <p className="mx-auto mt-1 max-w-md text-xs text-texto-suave">
-              {puedeComentar
+          <SinDatos
+            enTabla={false}
+            titulo="Todavía no ha pasado nada con esta orden"
+            descripcion={
+              puedeComentar
                 ? 'Se irá llenando sola con cada cambio de estado, documento y salida de material. Si hay algo que contar antes, anótalo arriba.'
-                : 'Se irá llenando sola con cada cambio de estado, documento y salida de material.'}
-            </p>
-          </div>
+                : 'Se irá llenando sola con cada cambio de estado, documento y salida de material.'
+            }
+          />
         ) : (
           <ol className="space-y-0">
             {eventos.map((evento, i) => {
