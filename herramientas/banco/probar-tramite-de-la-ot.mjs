@@ -1,5 +1,5 @@
 /**
- * El trámite nace de la OT (migración 20261127160000; plan «El puesto de
+ * El trámite nace de la OT (migración 20261127170000; plan «El puesto de
  * Tramitador», entrega 4), mirado con la cuenta de cada puesto (nunca ADMIN):
  *
  *   1. Siembra por SQL: una unidad SIN placa y su OT, que se termina por el

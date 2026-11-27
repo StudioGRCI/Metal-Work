@@ -207,7 +207,7 @@ begin
 end;
 $$;
 comment on function public.ot_abrir_sus_tramites(uuid, date) is
-  'Abre los trámites que la OT de fabricación abre al terminar: el de cada tipo del catálogo con días desde el término (la tarjeta de propiedad; las placas si la unidad no tiene), «Por iniciar», a nombre del sistema y con su fecha límite en días hábiles desde p_termino. No repite lo que ya tiene. Devuelve cuántos abrió. La llaman el disparador de la OT y la revisión diaria. Migración 20261127160000.';
+  'Abre los trámites que la OT de fabricación abre al terminar: el de cada tipo del catálogo con días desde el término (la tarjeta de propiedad; las placas si la unidad no tiene), «Por iniciar», a nombre del sistema y con su fecha límite en días hábiles desde p_termino. No repite lo que ya tiene. Devuelve cuántos abrió. La llaman el disparador de la OT y la revisión diaria. Migración 20261127170000.';
 revoke all on function public.ot_abrir_sus_tramites(uuid, date) from public, anon, authenticated;
 
 create or replace function public.fn_ot_abre_sus_tramites()
@@ -219,7 +219,7 @@ begin
 end;
 $$;
 comment on function public.fn_ot_abre_sus_tramites() is
-  'Al pasar la OT de fabricación a Terminada (o más allá) con su unidad, abre sus trámites (ot_abrir_sus_tramites) con su fecha de término. Migración 20261127160000.';
+  'Al pasar la OT de fabricación a Terminada (o más allá) con su unidad, abre sus trámites (ot_abrir_sus_tramites) con su fecha de término. Migración 20261127170000.';
 revoke all on function public.fn_ot_abre_sus_tramites() from public, anon, authenticated;
 -- Disparador propio, sin tocar los de la OT (skill seguridad › el blindaje).
 -- Sin lista de columnas: el estado puede ponerlo otro disparador.
@@ -361,7 +361,7 @@ begin
 end;
 $$;
 comment on function public.fn_tramite_avisa_al_registrarse() is
-  'Al registrarse un trámite, avisa a quien tiene tramites.gestionar, salvo a quien lo registró, diciendo de dónde viene: lo registró alguien, lo abrió la OT al terminar o es una renovación. Migraciones 20261127004000 y 20261127160000.';
+  'Al registrarse un trámite, avisa a quien tiene tramites.gestionar, salvo a quien lo registró, diciendo de dónde viene: lo registró alguien, lo abrió la OT al terminar o es una renovación. Migraciones 20261127004000 y 20261127170000.';
 revoke all on function public.fn_tramite_avisa_al_registrarse() from public, anon, authenticated;
 
 -- 6. La revisión diaria abre las renovaciones y los trámites de la OT al 100 % ------------------------
@@ -393,7 +393,7 @@ alter table public.tramite_avisos add constraint ck_tramite_aviso_forma check (
   -- el día de aviso que tocaba (vacío si ya había vencido).
   or (tipo = 'RENOVACION' and tramite_id is not null and fecha is not null));
 comment on table public.tramite_avisos is
-  'Cada aviso de vencimiento de un trámite que salió (de qué trámite, de qué tipo, por qué fecha y por cuál de los días de aviso de su tipo, a cuántas cuentas), cada renovación que abrió la revisión (RENOVACION, en el trámite que se renueva) y cada revisión diaria que corrió (REVISION). Lo escribe solo la revisión diaria. POR_RENOVAR y VIGENCIA_VENCIDA son de antes de la entrega 4. Migraciones 20261127004000 y 20261127160000.';
+  'Cada aviso de vencimiento de un trámite que salió (de qué trámite, de qué tipo, por qué fecha y por cuál de los días de aviso de su tipo, a cuántas cuentas), cada renovación que abrió la revisión (RENOVACION, en el trámite que se renueva) y cada revisión diaria que corrió (REVISION). Lo escribe solo la revisión diaria. POR_RENOVAR y VIGENCIA_VENCIDA son de antes de la entrega 4. Migraciones 20261127004000 y 20261127170000.';
 
 create or replace function public.revisar_tramites(p_hoy date default null)
 returns table (tipo text, avisos integer, cuentas integer)

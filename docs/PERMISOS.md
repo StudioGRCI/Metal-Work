@@ -537,7 +537,7 @@ y el cierre con el documento final son la entrega 2 (migración
 vencimiento son la entrega 3 (migración `20261127004000_los_tramites_avisan_solos`,
 check 500 y `herramientas/banco/probar-avisos-de-tramites.mjs`). El enlace con
 la OT, las renovaciones y las cifras de Gerencia son la entrega 4 (migración
-`20261127160000_el_tramite_nace_de_la_ot`, check 501 y
+`20261127170000_el_tramite_nace_de_la_ot`, check 501 y
 `herramientas/banco/probar-tramite-de-la-ot.mjs`), al final de esta sección.
 
 | Qué | Quién | Cómo lo exige la base |

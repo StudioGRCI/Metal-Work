@@ -13,7 +13,7 @@ import { createClient } from '@/lib/supabase/server'
  * uno, con la misma regla que la función que escribe. El expediente (entrega 2,
  * migración 20261127002000) se lee por `tramites_archivos` y
  * `tramites_gestiones`, con la misma regla de quién ve. El origen, la
- * renovación y «por vencer» son de la entrega 4 (migración 20261127160000).
+ * renovación y «por vencer» son de la entrega 4 (migración 20261127170000).
  */
 
 export type Tramite = {

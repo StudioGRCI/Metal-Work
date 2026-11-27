@@ -1,5 +1,5 @@
 -- Los trámites avisan solos (migración 20261127004000; plan «El puesto de
--- Tramitador», entrega 3; la renovación, entrega 4, migración 20261127160000). El trámite nuevo avisa a quien lleva los trámites,
+-- Tramitador», entrega 3; la renovación, entrega 4, migración 20261127170000). El trámite nuevo avisa a quien lleva los trámites,
 -- salvo a quien lo registró. La revisión diaria avisa una vez por cada día de
 -- aviso del tipo por la fecha límite, y lo vencido también a Gerencia; el
 -- concluido que se renueva abre su renovación, y avisa ella. Los trámites los registra el Tramitador con
@@ -213,7 +213,7 @@ do $$ begin
     pg_temp.hoy(), pg_temp.dia('vigencia'));
 end $$;
 reset role;
--- Desde la entrega 4 (migración 20261127160000), al llegar el primer día de
+-- Desde la entrega 4 (migración 20261127170000), al llegar el primer día de
 -- aviso de su tipo el concluido abre su renovación, y la renovación es la que avisa.
 create or replace function pg_temp.renovacion(p_tramite text) returns uuid language sql volatile as $$
   select id from public.tramites where renueva_a = pg_temp.id(p_tramite) order by creado_en limit 1;

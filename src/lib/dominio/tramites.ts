@@ -43,7 +43,7 @@ export const SITUACION_TRAMITE: Record<string, Def> = {
 
 /**
  * De dónde viene el trámite (`tramites.origen`, entrega 4, migración
- * 20261127160000): lo registró alguien, lo abrió la base al terminar la OT, o
+ * 20261127170000): lo registró alguien, lo abrió la base al terminar la OT, o
  * es la renovación de uno concluido.
  */
 export const ORIGEN_TRAMITE: Record<string, { etiqueta: string; descripcion: string }> = {

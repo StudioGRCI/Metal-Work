@@ -1,4 +1,4 @@
--- El trámite nace de la OT (migración 20261127160000; plan «El puesto de
+-- El trámite nace de la OT (migración 20261127170000; plan «El puesto de
 -- Tramitador», entrega 4). Al terminar la OT, la base abre los trámites que el
 -- catálogo pide (la tarjeta siempre; las placas si la unidad no tiene placa),
 -- con su fecha límite en días hábiles; la OT lee en qué van; el Tramitador
