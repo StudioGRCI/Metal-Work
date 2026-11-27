@@ -78,7 +78,7 @@ async function cotizacionesPorRevisar(): Promise<Leido> {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('v_cotizaciones_pdf')
-    .select('id, numero, cliente, carroceria, monto_venta, moneda, version, registrado_por_nombre, creado_en, archivo_subido_en')
+    .select('id, numero, cliente, carroceria, cantidad_unidades, monto_venta, moneda, version, registrado_por_nombre, creado_en, archivo_subido_en')
     .eq('estado', 'POR_REVISAR')
     .order('creado_en')
     .limit(300)
@@ -89,7 +89,13 @@ async function cotizacionesPorRevisar(): Promise<Leido> {
           {
             id: c.id,
             que: `Cotización ${c.numero ?? 'sin número'}${(c.version ?? 1) > 1 ? ` · versión ${c.version}` : ''}`,
-            detalle: [c.cliente, c.carroceria, c.monto_venta === null ? null : moneda(Number(c.monto_venta), divisa(c.moneda))].filter(Boolean).join(' · ') || null,
+            // Con varias unidades, cuántas: el total es de todas (lo que quedó del PR 245).
+            detalle: [
+              c.cliente,
+              c.carroceria,
+              (c.cantidad_unidades ?? 1) > 1 ? `${c.cantidad_unidades} unidades` : null,
+              c.monto_venta === null ? null : moneda(Number(c.monto_venta), divisa(c.moneda)),
+            ].filter(Boolean).join(' · ') || null,
             quien: c.registrado_por_nombre && c.registrado_por_nombre !== 'Ventas' ? `Ventas · ${c.registrado_por_nombre}` : 'Ventas',
             // La corregida espera desde que se subió su versión nueva.
             desde: c.archivo_subido_en ?? c.creado_en,

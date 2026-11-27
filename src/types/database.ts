@@ -15442,6 +15442,7 @@ export type Database = {
           p_tamano_pdf: number | null
           p_marca?: string | null
           p_modelo?: string | null
+          p_unidad?: number | null
         }
         Returns: string
       }
@@ -18950,6 +18951,13 @@ export type Database = {
           p_datos?: Json | null
           p_etapa_id?: string | null
           p_usuario_id?: string | null
+        }
+        Returns: string
+      }
+      ot_sin_codigo_desde: {
+        Args: {
+          p_cotizacion: string | null
+          p_orden: string | null
         }
         Returns: string
       }
@@ -22632,6 +22640,12 @@ export type Database = {
       unidad_que_dejo_la_ot: {
         Args: {
           p_orden: string | null
+          p_cotizacion: string | null
+        }
+        Returns: number
+      }
+      unidades_aprobadas: {
+        Args: {
           p_cotizacion: string | null
         }
         Returns: number

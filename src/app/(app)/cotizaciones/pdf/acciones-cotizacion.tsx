@@ -829,14 +829,26 @@ export function CargarCodigoYOt({
    * `facturadas`, las unidades sin OT que ya tienen una factura propia (su OT se
    * anuló después de facturarla) cuando falta cargar más de una: la factura
    * sigue al número de la unidad, y la OT que lo ocupe se queda con ella
-   * (migración 20261126998000).
+   * (migración 20261126998000). `libres`, las unidades que todavía esperan su
+   * OT: con más de una, Administración elige cuál carga (entrega 3, migración
+   * 20261127010000) y `cual` es la que viene elegida, la primera libre.
    */
-  unidad?: { cual: number; de: number; otras?: { unidad: number; codigo: string }[]; facturadas?: { unidad: number; codigo: string }[] }
+  unidad?: {
+    cual: number
+    de: number
+    libres?: number[]
+    otras?: { unidad: number; codigo: string }[]
+    facturadas?: { unidad: number; codigo: string }[]
+  }
 }) {
   const varias = unidad && unidad.de > 1 ? unidad : null
-  const estaYaFacturada = varias?.facturadas?.find((f) => f.unidad === varias.cual) ?? null
+  const libres = varias?.libres && varias.libres.length > 0 ? varias.libres : varias ? [varias.cual] : []
+  const eligeLaUnidad = libres.length > 1
+  const [elegida, setElegida] = useState(varias?.cual ?? 1)
+  const cual = libres.includes(elegida) ? elegida : (varias?.cual ?? 1)
+  const estaYaFacturada = varias?.facturadas?.find((f) => f.unidad === cual) ?? null
   // Las demás libres que ya tienen factura: se nombran todas, no solo la primera.
-  const otrasYaFacturadas = varias?.facturadas?.filter((f) => f.unidad !== varias.cual) ?? []
+  const otrasYaFacturadas = varias?.facturadas?.filter((f) => f.unidad !== cual && libres.includes(f.unidad)) ?? []
   const hayYaFacturadas = estaYaFacturada !== null || otrasYaFacturadas.length > 0
   const lasOtras = otrasYaFacturadas.map((f, i) => (
     <span key={f.unidad}>
@@ -903,6 +915,7 @@ export function CargarCodigoYOt({
     setFechaEntrega('')
     setDatosLeidos(null)
     setError(null)
+    setElegida(varias?.cual ?? 1)
     setAbierto(true)
   }
 
@@ -1011,6 +1024,7 @@ export function CargarCodigoYOt({
         datos.set('ruta_pdf', ruta)
         datos.set('nombre_pdf', archivo.name.slice(0, 200))
         datos.set('tamano_pdf', String(archivo.size))
+        if (varias) datos.set('unidad', String(cual))
 
         // Si no se guardó, el PDF que ya viajó se quita, para que no quede un
         // archivo que ninguna OT nombra. Sin respuesta se pregunta otra vez con
@@ -1040,7 +1054,7 @@ export function CargarCodigoYOt({
         const va = vaSolaALaTarjeta(fuera.cerradaMientrasIba(), desde)
         if (va || !pidioOtraPantalla(desde)) ponerIdaQueNoSalio(null)
         if (va) irALaTarjeta(cotizacionId, router, { trasEnviar: true })
-        else setCargada({ id: cotizacionId, numero, unidad: varias ? `unidad ${varias.cual} de ${varias.de}` : null })
+        else setCargada({ id: cotizacionId, numero, unidad: varias ? `unidad ${cual} de ${varias.de}` : null })
       } catch (e) {
         // Entró otra cuenta a media cadena: no sigue, y el archivo que haya
         // subido se quita cuando vuelva la tuya (`anotarSinDejarloSuelto`). La
@@ -1064,6 +1078,7 @@ export function CargarCodigoYOt({
       <span className="inline-flex flex-wrap items-center gap-2">
         <Boton type="button" tamano="sm" onClick={abrir} ocupado={ocupado} aria-describedby={fuera.sigue ? fuera.idDelEstado : undefined}>
           {!ocupado && <Hash aria-hidden className="size-3.5" />}
+          {/* La primera libre; en la ventana se elige otra (entrega 3). */}
           {varias ? `Cargar la OT ${varias.cual} de ${varias.de}` : 'Dar código y cargar la OT'}
         </Boton>
         <EstadoDelEnvio id={fuera.idDelEstado} sigue={fuera.sigue} desenlace={fuera.desenlace} registro="La OT" femenino />
@@ -1072,7 +1087,7 @@ export function CargarCodigoYOt({
       <Ventana
         abierta={abierto}
         alCerrar={cerrar}
-        titulo={varias ? `Unidad ${varias.cual} de ${varias.de} de la ${numero}` : `Código interno y OT de la ${numero}`}
+        titulo={varias ? `Unidad ${cual} de ${varias.de} de la ${numero}` : `Código interno y OT de la ${numero}`}
         descripcion={
           varias
             ? `Gerencia ya la aprobó. Lleva ${varias.de} unidades: cada una con su código interno y su OT. El cliente y la carrocería salen de la cotización; el código y la OT se guardan juntos.`
@@ -1094,19 +1109,46 @@ export function CargarCodigoYOt({
             >
               {estaYaFacturada ? (
                 <>
-                  Esta OT va a quedar como la unidad {varias.cual}, que ya tiene factura: se facturó con el código{' '}
-                  <span className="font-mono whitespace-nowrap">{estaYaFacturada.codigo}</span>, de una OT que se anuló. Cárgala ahora solo si es
-                  ese mismo vehículo. Si es otro, carga primero la OT que reemplaza a la anulada: la que entre ahora se queda con esa factura.
+                  La unidad {cual} ya tiene factura: se facturó con el código{' '}
+                  <span className="font-mono whitespace-nowrap">{estaYaFacturada.codigo}</span>, de una OT que se anuló. Elígela solo si
+                  esta OT es de ese mismo vehículo: la OT que entre en la unidad {cual} se queda con esa factura.
                   {otrasYaFacturadas.length > 0 && <> También ya {otrasYaFacturadas.length === 1 ? 'tiene' : 'tienen'} factura {lasOtras}.</>}
                 </>
               ) : (
                 <>
-                  Esta OT va a quedar como la unidad {varias.cual}, sin factura. Ya {otrasYaFacturadas.length === 1 ? 'tiene' : 'tienen'} factura,
-                  de una OT que se anuló, {lasOtras}. Las OT ocupan las unidades libres en orden: la que reemplaza a una anulada se carga cuando
-                  esta ventana diga su unidad.
+                  Ya {otrasYaFacturadas.length === 1 ? 'tiene' : 'tienen'} factura, de una OT que se anuló, {lasOtras}. Si esta OT es de
+                  {otrasYaFacturadas.length === 1 ? ' ese vehículo, elige esa unidad' : ' uno de esos vehículos, elige su unidad'}: la OT se
+                  queda con la factura de la unidad en la que entra.
                 </>
               )}
             </p>
+          )}
+          {varias && eligeLaUnidad && (
+            <Campo
+              etiqueta="Unidad"
+              htmlFor={`eo-unidad-${cotizacionId}`}
+              ayuda={`Faltan ${libres.length} de ${varias.de}. Elige la unidad de este vehículo: la que reemplaza a una OT anulada va en la unidad de esa OT.`}
+              requerido
+            >
+              <Seleccion
+                id={`eo-unidad-${cotizacionId}`}
+                name="unidad_elegida"
+                value={String(cual)}
+                onChange={(e) => setElegida(Number(e.target.value))}
+                aria-describedby={hayYaFacturadas ? `eo-facturada-${cotizacionId}` : undefined}
+                data-elige-la-unidad
+                required
+              >
+                {libres.map((k) => {
+                  const facturada = varias.facturadas?.find((f) => f.unidad === k)
+                  return (
+                    <option key={k} value={k}>
+                      {`Unidad ${k} de ${varias.de}${facturada ? ` · ya facturada (${facturada.codigo})` : ''}`}
+                    </option>
+                  )
+                })}
+              </Seleccion>
+            </Campo>
           )}
           <Campo
             etiqueta="Código interno"

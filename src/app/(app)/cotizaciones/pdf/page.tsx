@@ -366,7 +366,9 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
             // La unidad que pasó a otro comprador tampoco se vuelve a cargar: la base la salta.
             const pasaron = c.unidades_a_otro_comprador
             const tomadas = new Set([...c.ordenes.map((o, i) => o.unidad ?? i + 1), ...pasaron.map((p) => p.unidad)])
-            const siguiente = Array.from({ length: unidades }, (_, i) => i + 1).find((k) => !tomadas.has(k)) ?? c.ordenes.length + 1
+            // Las unidades que esperan su OT: Administración elige cuál carga (entrega 3).
+            const libres = Array.from({ length: unidades }, (_, i) => i + 1).filter((k) => !tomadas.has(k))
+            const siguiente = libres[0] ?? c.ordenes.length + 1
             // La frase, solo si no le queda ninguna OT; si le queda alguna (la cantidad
             // se corrigió después, o se cargó otra antes de 20261126988000), la que
             // pasó va como un renglón más de sus OT.
@@ -623,6 +625,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                             unidad={{
                               cual: siguiente,
                               de: unidades,
+                              libres,
                               otras: c.ordenes.flatMap((o, i) => (o.codigo_interno ? [{ unidad: o.unidad ?? i + 1, codigo: o.codigo_interno }] : [])),
                               facturadas: yaFacturadas?.get(c.id),
                             }}

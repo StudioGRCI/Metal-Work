@@ -44,7 +44,11 @@ begin
       -- La de la 20261126998000, y la de esta.
       ('registrar_factura_venta_de_unidad', array['7c0672cb2a79fd67a0bd774c4d0eb2aa', '99576605a8eb809a3e579dda2db0575a']),
       -- La de la 20261126988000, y la de esta.
-      ('fn_cotizacion_pdf_anular', array['f4b882cbd42c112831e248a41e5ae2cd', '8a5ce7f184bc1932cd67c908c93467bd'])
+      ('fn_cotizacion_pdf_anular', array['f4b882cbd42c112831e248a41e5ae2cd', '8a5ce7f184bc1932cd67c908c93467bd']),
+      -- Las de la 20261126998800 (el costeo) y la 20261126760000, y las de esta.
+      ('margen_ot', array['088e295d4723fba20ca7236eb322de0d', '073c23ee30f1e1cbf6d0b16ac8474b91']),
+      ('codigos_internos_costo_calculado', array['a55f8e1dd0f91f18a64a65bde5104c56', '4b840334dad6a827d75d4e17eb7369fe']),
+      ('ordenes_de_cotizacion', array['e4acea0d52c7122a10ac633c3d25fb96', '25bc7b3a1be2905a2ce341056e00a76b'])
     ) as t(nombre, conocidas)
   loop
     hay := false;
@@ -1155,5 +1159,287 @@ begin
 end;
 $$;
 revoke all on function public.fn_cotizacion_pdf_anular() from public, anon, authenticated;
+
+-- 5. El precio de cada unidad en el costeo ---------------------------------------
+-- Dos menores del PR #245: el reparto redondeaba cada parte (100 entre 3 daba
+-- 33.33 tres veces y se perdía un céntimo), y mientras una corrección esperaba a
+-- Gerencia el costeo ya dividía por la cantidad nueva. Ahora cada unidad recibe
+-- su `parte_de_unidad` (las partes suman el total, como las facturas, 20261126998000)
+-- de la cantidad que Gerencia aprobó por última vez.
+create or replace function public.unidades_aprobadas(p_cotizacion uuid)
+returns integer
+language sql
+stable
+security invoker
+set search_path to 'public'
+as $$
+  select greatest(1, case
+    when c.estado = 'APROBADA' then coalesce(c.cantidad_unidades, 1)
+    else coalesce((select coalesce((b.datos_despues ->> 'cantidad_unidades')::integer, 1)
+                     from public.audit_log b
+                    where b.tabla = 'cotizaciones_pdf' and b.registro_id = c.id
+                      and b.datos_despues ->> 'estado' = 'APROBADA'
+                    order by b.id desc
+                    limit 1),
+                  coalesce(c.cantidad_unidades, 1))
+  end)
+    from public.cotizaciones_pdf c
+   where c.id = p_cotizacion;
+$$;
+
+comment on function public.unidades_aprobadas(uuid) is
+  'Cuántas unidades tenía la cotización la última vez que Gerencia la aprobó (la de hoy si está aprobada). Ayudante interno del costeo (20261127010000).';
+
+revoke all on function public.unidades_aprobadas(uuid) from public, anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.margen_ot(p_orden uuid)
+ RETURNS TABLE(moneda_venta text, precio_venta numeric, incluye_igv boolean, precio_neto numeric, cambio_venta numeric, precio_neto_pen numeric, costo_pen numeric, margen_pen numeric, margen_pct numeric, despachos_sin_precio integer, lineas_sin_cambio integer)
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  -- La tasa del IGV en el Perú desde 2011.
+  c_igv constant numeric := 0.18;
+  v_moneda text;
+  v_precio numeric;
+  v_igv boolean;
+  v_fecha date;
+  v_neto numeric;
+  v_cambio numeric;
+  v_neto_pen numeric;
+  v_costo numeric;
+  v_cerrado numeric;
+  v_sin_precio integer;
+  v_sin_cambio integer;
+begin
+  perform public.exigir_permiso('costos.ver');
+  if not (public.es_admin() or public.tiene_permiso('cotizaciones.ver_pdf_comercial')) then
+    raise exception 'El margen se calcula con el precio de venta, que tu puesto no ve.'
+      using errcode = 'insufficient_privilege';
+  end if;
+  if not public.puede_ver_orden(p_orden) then
+    raise exception 'No tienes acceso a esta OT.' using errcode = 'insufficient_privilege';
+  end if;
+
+  -- El precio de esta unidad: el total de la cotización entre sus unidades.
+  select c.moneda::text, public.parte_de_unidad(c.monto_venta, public.unidades_aprobadas(c.id), coalesce(o.numero_de_unidad, 1)),
+         case when i.version = c.version then i.incluye_igv end,
+         o.fecha_registro::date
+    into v_moneda, v_precio, v_igv, v_fecha
+    from public.ordenes_trabajo o
+    left join public.cotizaciones_pdf c on c.id = o.cotizacion_pdf_id and c.estado <> 'ANULADA'
+    left join public.cotizaciones_pdf_igv i on i.cotizacion_id = c.id
+   where o.id = p_orden;
+
+  select coalesce(sum(s.monto_pen), 0),
+         count(*) filter (where s.fuente = 'MATERIALES_SIN_PRECIO'),
+         count(*) filter (where s.moneda = 'USD' and s.monto_pen is null)
+    into v_costo, v_sin_precio, v_sin_cambio
+    from public.costeo_ot_en_soles(p_orden) s;
+
+  -- Con el costo cerrado, el margen es el de ese costo.
+  select c.costo_pen into v_cerrado from public.ot_cierres_costo c where c.orden_id = p_orden;
+  if found then
+    v_costo := v_cerrado;
+    v_sin_precio := 0;
+    v_sin_cambio := 0;
+  end if;
+
+  v_neto := case when v_igv then round(v_precio / (1 + c_igv), 2)
+                 when v_igv = false then v_precio end;
+  -- Un precio en dólares se pasa con el cambio de COMPRA del día en que se
+  -- registró la OT: es cuando la venta quedó comprometida.
+  v_cambio := case when v_moneda = 'USD' then public.cambio_del_dia(v_fecha, 'COMPRA') end;
+  v_neto_pen := case when v_moneda = 'PEN' then v_neto
+                     when v_moneda = 'USD' then round(v_neto * v_cambio, 2) end;
+
+  return query select
+    v_moneda, v_precio, v_igv, v_neto, v_cambio, v_neto_pen, v_costo,
+    case when v_neto_pen is not null then v_neto_pen - v_costo end,
+    case when v_neto_pen > 0 then round((v_neto_pen - v_costo) / v_neto_pen * 100, 1) end,
+    v_sin_precio, v_sin_cambio;
+end;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.codigos_internos_costo_calculado(p_codigo text)
+ RETURNS TABLE(codigo text, mano_obra numeric, recargo_extras numeric, gastos_mes_pen numeric, gastos_mes_usd numeric, caja_pen numeric, caja_usd numeric, egresos_caja integer, gastos_ot_pen numeric, gastos_ot_usd numeric, merma_pen numeric, merma_usd numeric, costo_pen numeric, usd_sin_cambio numeric, lineas_sin_cambio integer, usd_al_cambio numeric, usd_en_soles numeric, materiales_sin_precio integer, horas_sin_costo numeric, cotizaciones integer, moneda_venta text, precio_venta_pen numeric, precio_venta_usd numeric, venta_sin_igv_confirmado integer, venta_sin_cambio integer, precio_neto_pen numeric, margen_pen numeric, margen_pct numeric, presupuesto_pen numeric, presupuesto_fijado boolean, consumido_pct numeric, semaforo text, entregada_el date, cierre_id uuid, cerrado_en timestamp with time zone, cerrado_por text, costo_cerrado_pen numeric, margen_cerrado_pen numeric, margen_cerrado_pct numeric)
+ LANGUAGE plpgsql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+#variable_conflict use_column
+declare
+  -- La tasa del IGV en el Perú desde 2011, y la utilidad estándar de la hoja RESUMEN.
+  c_igv constant numeric := 0.18;
+  c_utilidad constant numeric := 0.15;
+  v_codigo text := public.normalizar_codigo_interno(p_codigo);
+begin
+  return query
+  with linea as (
+    select k.*,
+           k.fuente in ('MANO_OBRA', 'RECARGO_EXTRAS', 'MATERIALES', 'SERVICIOS', 'SUBCONTRATOS',
+                        'SUBCONTRATOS_POR_PAGAR', 'GASTOS_DEL_MES', 'CAJA', 'GASTOS_OT', 'MERMA') as suma,
+           -- Lo que la línea en dólares pesa en soles; vacío si todavía no se puede pasar. La orden de
+           -- servicio pesa el monto en soles que guarda; lo demás, el cambio del día de su fecha
+           -- (20261126998800).
+           case when k.moneda = 'USD' then public.soles_de_la_linea_del_costeo(k.fuente, k.referencia_id, k.fecha, k.monto) end as en_soles
+      from public.codigo_interno_lineas(v_codigo, true) k
+     where k.codigo is not null
+  ), costo as (
+    select l.codigo,
+           coalesce(sum(l.monto) filter (where l.fuente = 'MANO_OBRA'), 0)::numeric as mano_obra,
+           coalesce(sum(l.monto) filter (where l.fuente = 'RECARGO_EXTRAS'), 0)::numeric as recargo,
+           coalesce(sum(l.monto) filter (where l.fuente = 'GASTOS_DEL_MES' and l.moneda = 'PEN'), 0)::numeric as gastos_pen,
+           coalesce(sum(l.monto) filter (where l.fuente = 'GASTOS_DEL_MES' and l.moneda = 'USD'), 0)::numeric as gastos_usd,
+           coalesce(sum(l.monto) filter (where l.fuente = 'CAJA' and l.moneda = 'PEN'), 0)::numeric as caja_pen,
+           coalesce(sum(l.monto) filter (where l.fuente = 'CAJA' and l.moneda = 'USD'), 0)::numeric as caja_usd,
+           count(*) filter (where l.fuente = 'CAJA')::integer as egresos_caja,
+           coalesce(sum(l.monto) filter (where l.fuente = 'GASTOS_OT' and l.moneda = 'PEN'), 0)::numeric as gastos_ot_pen,
+           coalesce(sum(l.monto) filter (where l.fuente = 'GASTOS_OT' and l.moneda = 'USD'), 0)::numeric as gastos_ot_usd,
+           coalesce(sum(l.monto) filter (where l.fuente = 'MERMA' and l.moneda = 'PEN'), 0)::numeric as merma_pen,
+           coalesce(sum(l.monto) filter (where l.fuente = 'MERMA' and l.moneda = 'USD'), 0)::numeric as merma_usd,
+           coalesce(sum(case when l.moneda = 'PEN' then l.monto else l.en_soles end)
+                      filter (where l.suma and (l.moneda = 'PEN' or l.en_soles is not null)), 0)::numeric as costo_pen,
+           coalesce(sum(l.monto) filter (where l.suma and l.moneda = 'USD' and l.en_soles is null), 0)::numeric as usd_sin_cambio,
+           count(*) filter (where l.suma and l.moneda = 'USD' and l.en_soles is null)::integer as sin_cambio,
+           -- Los dólares que sí pasan a soles, y en cuánto: con eso las partes cuadran con el total.
+           coalesce(sum(l.monto) filter (where l.suma and l.moneda = 'USD' and l.en_soles is not null), 0)::numeric as usd_al_cambio,
+           coalesce(sum(l.en_soles) filter (where l.suma and l.moneda = 'USD' and l.en_soles is not null), 0)::numeric as usd_en_soles,
+           count(*) filter (where l.fuente = 'MATERIALES_SIN_PRECIO')::integer as sin_precio,
+           coalesce(sum(l.horas) filter (where l.fuente = 'MANO_OBRA_SIN_COSTO'), 0)::numeric as horas_sin_costo
+      from linea l
+     group by l.codigo
+  ), cotizacion as (
+    -- La cotización aprobada (o aprobada antes de una corrección) de las OT del
+    -- código: a cada código vigente de la cotización, su parte del total.
+    select x.codigo, c.moneda::text as moneda,
+           public.parte_de_unidad(c.monto_venta::numeric, public.unidades_aprobadas(c.id), x.unidad) as monto,
+           ig.incluye_igv, (coalesce(c.revisado_en, c.creado_en) at time zone 'America/Lima')::date as fecha
+      from public.cotizaciones_pdf c
+      -- El IGV confirmado para esta versión: una corrección sin confirmar no tiene precio.
+      left join public.cotizaciones_pdf_igv ig on ig.cotizacion_id = c.id and ig.version = c.version
+      cross join lateral (
+        select distinct on (e ->> 'codigo_interno') e ->> 'codigo_interno' as codigo, (e ->> 'unidad')::integer as unidad
+          from jsonb_array_elements(public.ordenes_de_cotizacion(c.id)) e
+         where e ->> 'codigo_interno' is not null
+         order by e ->> 'codigo_interno', (e ->> 'unidad')::integer
+      ) x
+     where c.estado::text <> 'ANULADA' and c.monto_venta is not null and public.cotizacion_fue_aprobada(c.id)
+  ), venta_linea as (
+    select v.*,
+           case when v.incluye_igv then round(v.monto / (1 + c_igv), 2) when v.incluye_igv = false then v.monto end as neto,
+           case when v.moneda = 'USD' then public.cambio_del_dia(v.fecha, 'COMPRA') end as cambio
+      from cotizacion v
+     where v.codigo is not null and (v_codigo is null or v.codigo = v_codigo)
+  ), venta as (
+    select v.codigo, count(*)::integer as cotizaciones,
+           string_agg(distinct v.moneda, '+' order by v.moneda) as moneda,
+           coalesce(sum(v.monto) filter (where v.moneda = 'PEN'), 0)::numeric as pen,
+           coalesce(sum(v.monto) filter (where v.moneda = 'USD'), 0)::numeric as usd,
+           count(*) filter (where v.incluye_igv is null)::integer as sin_igv,
+           count(*) filter (where v.moneda = 'USD' and v.cambio is null)::integer as sin_cambio,
+           -- Si falta saber el IGV o el cambio de alguna, el precio no se adivina.
+           case when bool_and(v.neto is not null and (v.moneda = 'PEN' or v.cambio is not null))
+                then sum(case when v.moneda = 'PEN' then v.neto else round(v.neto * v.cambio, 2) end) end as neto_pen
+      from venta_linea v
+     group by v.codigo
+  ), fijado as (
+    -- El presupuesto que Gerencia o Administración fijó a mano en la OT de la
+    -- unidad manda sobre el de la hoja; con varias OT (una garantía), la suma.
+    select public.normalizar_codigo_interno(u.codigo_interno) as codigo, sum(p.monto_pen)::numeric as monto
+      from public.ot_presupuestos p
+      join public.ordenes_trabajo o on o.id = p.orden_id
+      join public.unidades u on u.id = o.unidad_id
+     where p.monto_pen is not null and o.estado::text <> 'ANULADA'
+       and public.normalizar_codigo_interno(u.codigo_interno) is not null
+       and (v_codigo is null or public.normalizar_codigo_interno(u.codigo_interno) = v_codigo)
+     group by 1
+  ), entrega as (
+    -- El acta de entrega más reciente de las OT del código (la registra el taller).
+    -- La garantía y el mantenimiento de la unidad van por el número de su propia
+    -- OT (20261120500000): su acta es la de ese trabajo, no la de la unidad.
+    select public.normalizar_codigo_interno(u.codigo_interno) as codigo, max(e.fecha_entrega) as fecha
+      from public.ot_entregas e
+      join public.ordenes_trabajo o on o.id = e.orden_id
+      join public.unidades u on u.id = o.unidad_id
+     where o.estado::text <> 'ANULADA' and public.normalizar_codigo_interno(u.codigo_interno) is not null
+       and o.tipo_trabajo not in ('GARANTIA', 'MANTENIMIENTO')
+       and (v_codigo is null or public.normalizar_codigo_interno(u.codigo_interno) = v_codigo)
+     group by 1
+  ), cierre as (
+    select z.* from public.codigo_interno_cierres z
+     where z.reabierto_en is null and (v_codigo is null or z.codigo = v_codigo)
+  ), codigos as (
+    select k.codigo from costo k union select v.codigo from venta v union select z.codigo from cierre z
+  )
+  select c.codigo,
+         coalesce(k.mano_obra, 0), coalesce(k.recargo, 0),
+         coalesce(k.gastos_pen, 0), coalesce(k.gastos_usd, 0),
+         coalesce(k.caja_pen, 0), coalesce(k.caja_usd, 0), coalesce(k.egresos_caja, 0),
+         coalesce(k.gastos_ot_pen, 0), coalesce(k.gastos_ot_usd, 0), coalesce(k.merma_pen, 0), coalesce(k.merma_usd, 0),
+         coalesce(k.costo_pen, 0), coalesce(k.usd_sin_cambio, 0), coalesce(k.sin_cambio, 0),
+         coalesce(k.usd_al_cambio, 0), coalesce(k.usd_en_soles, 0),
+         coalesce(k.sin_precio, 0), coalesce(k.horas_sin_costo, 0),
+         coalesce(v.cotizaciones, 0), v.moneda, v.pen, v.usd,
+         coalesce(v.sin_igv, 0), coalesce(v.sin_cambio, 0), v.neto_pen,
+         -- Sin costo todavía el margen saldría 100 %: no hay margen hasta que algo cueste.
+         case when v.neto_pen is not null and k.costo_pen > 0 then v.neto_pen - k.costo_pen end,
+         case when v.neto_pen > 0 and k.costo_pen > 0 then round((v.neto_pen - k.costo_pen) / v.neto_pen * 100, 1) end,
+         p.presupuesto, f.monto is not null,
+         case when p.presupuesto > 0 then round(coalesce(k.costo_pen, 0) / p.presupuesto * 100, 1) end,
+         -- Pasado el presupuesto, excedido; del 90 % en adelante, ajustado.
+         case when p.presupuesto is null then null
+              when coalesce(k.costo_pen, 0) > p.presupuesto then 'EXCEDIDO'
+              when coalesce(k.costo_pen, 0) >= p.presupuesto * 0.9 then 'AJUSTADO'
+              else 'EN_RANGO' end,
+         en.fecha,
+         z.id, z.cerrado_en, public.puesto_de(z.cerrado_por), z.costo_pen, z.margen_pen, z.margen_pct
+    from codigos c
+    left join costo k on k.codigo = c.codigo
+    left join venta v on v.codigo = c.codigo
+    left join cierre z on z.codigo = c.codigo
+    left join fijado f on f.codigo = c.codigo
+    left join entrega en on en.codigo = c.codigo
+    cross join lateral (select coalesce(f.monto, round(v.neto_pen / (1 + c_utilidad), 2)) as presupuesto) p
+   where c.codigo is not null
+   order by 1;
+end;
+$function$;
+
+-- 6. Los códigos de la cotización, solo a quien la puede ver ----------------------
+-- Menor del PR #245: `ordenes_de_cotizacion` daba los códigos internos a quien
+-- tuviera el id de la cotización. Ahora, a quien lee las órdenes, a quien ve el
+-- costeo y a quien ve esa cotización (la misma regla que su política de lectura).
+create or replace function public.ordenes_de_cotizacion(p_cotizacion uuid)
+returns jsonb
+language sql
+stable
+security definer
+set search_path to 'public'
+as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'id', case when v.ve then o.id end,
+           'numero', case when v.ve then o.numero end,
+           'estado', case when v.ve then o.estado::text end,
+           'codigo_interno', case when v.ve_codigo then public.normalizar_codigo_interno(u.codigo_interno) end,
+           'unidad', coalesce(o.numero_de_unidad, 1))
+         order by coalesce(o.numero_de_unidad, 1), o.creado_en), '[]'::jsonb)
+    from public.ordenes_trabajo o
+    left join public.unidades u on u.id = o.unidad_id
+    cross join (
+      select public.es_admin() or public.tiene_permiso('ordenes.ver') as ve,
+             public.es_admin() or public.tiene_permiso('ordenes.ver') or public.tiene_permiso('costos.ver')
+             or public.tiene_permiso('cotizaciones.ver_pdf_comercial')
+             or (public.tiene_permiso('tesoreria.ver_documentos')
+                 and exists (select 1 from public.cotizaciones_pdf_liberaciones_tesoreria l where l.cotizacion_pdf_id = p_cotizacion))
+             or (public.tiene_permiso('cotizaciones.ver_aprobadas') and public.cotizacion_fue_aprobada(p_cotizacion)) as ve_codigo
+    ) v
+   where o.cotizacion_pdf_id = p_cotizacion
+     and o.estado <> 'ANULADA';
+$$;
+
+comment on function public.ordenes_de_cotizacion(uuid) is
+  'Las OT vigentes de la cotización, por su número de unidad; el id, el número y el estado solo para quien ve las órdenes, y el código interno para quien ve las órdenes, el costeo o esa cotización (migraciones 20261126760000 y 20261127010000).';
 
 notify pgrst, 'reload schema';

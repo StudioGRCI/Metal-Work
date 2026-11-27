@@ -366,6 +366,9 @@ const esquemaCodigoYOt = z.object({
   ruta_pdf: z.string().min(1),
   nombre_pdf: z.string().trim().min(1).max(200),
   tamano_pdf: z.coerce.number({ error: 'Falta el tamaño del PDF de la OT: vuelve a elegirlo.' }).int().min(1, 'El PDF de la OT está vacío: elige otro.'),
+  // La unidad que elige Administración en la cotización de varias (entrega 3,
+  // migración 20261127010000). Sin ella, la base toma la primera libre.
+  unidad: z.union([z.literal(''), z.coerce.number().int().min(1, 'Elige de qué unidad es la OT.').max(50, 'Elige de qué unidad es la OT.')]).optional(),
 })
 
 /**
@@ -406,6 +409,7 @@ export async function cargarCodigoYOt(
     p_tamano_pdf: v.tamano_pdf,
     p_marca: v.marca ?? '',
     p_modelo: v.modelo ?? '',
+    p_unidad: typeof v.unidad === 'number' ? v.unidad : undefined,
   })
 
   if (error) {

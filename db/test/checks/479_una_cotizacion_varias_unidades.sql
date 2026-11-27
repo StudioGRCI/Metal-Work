@@ -292,6 +292,33 @@ begin
     'Cada código recibe su parte de la venta, y el de una unidad, el total');
 end $$;
 
+-- 6b. Las partes suman el total, céntimo por céntimo, y mientras una corrección espera a
+-- Gerencia se reparte entre las unidades que Gerencia aprobó (entrega 3, 20261127010000).
+savepoint el_precio_de_cada_unidad;
+do $$
+declare v record;
+begin
+  set local session_replication_role = replica;
+  update public.cotizaciones_pdf set monto_venta = 30000.01 where id = current_setting('prueba.cot3')::uuid;
+  set local session_replication_role = origin;
+  perform test.afirmar(
+    (select sum(c.precio_venta_pen) from public.codigos_internos_costo_calculado(null) c where c.codigo like 'QA-474 _' and c.codigo <> 'QA-474 S')
+      = 30000.01,
+    'las cuatro partes suman el total, sin perder el céntimo del redondeo');
+  -- Ventas sube una corrección a 5 unidades y Gerencia todavía no la aprueba.
+  set local session_replication_role = replica;
+  update public.cotizaciones_pdf set monto_venta = 30000, cantidad_unidades = 5, estado = 'POR_REVISAR'
+   where id = current_setting('prueba.cot3')::uuid;
+  set local session_replication_role = origin;
+  perform test.como_usuario(current_setting('prueba.gerente')::uuid);
+  set local role authenticated;
+  select * into v from public.margen_ot(current_setting('prueba.ot2')::uuid);
+  reset role;
+  perform test.afirmar(v.precio_venta = 7500.00,
+    format('con la corrección sin aprobar, la OT 2 sigue con su parte de las 4 unidades aprobadas (%s)', v.precio_venta));
+end $$;
+rollback to savepoint el_precio_de_cada_unidad;
+
 -- 7. Anulada la OT de la unidad 2, la que se carga es la unidad 2 --------------------
 do $$
 declare v_desc text; v_unidades text;
@@ -365,8 +392,8 @@ begin
   reset role;
   perform test.afirmar(jsonb_array_length(v) = 3
       and not exists (select 1 from jsonb_array_elements(v) o where o->>'id' is not null or o->>'numero' is not null or o->>'estado' is not null)
-      and (select bool_and(o->>'codigo_interno' is not null) from jsonb_array_elements(v) o),
-    format('Sin ordenes.ver se cuentan las OT con su código, sin id, número ni estado (%s)', v));
+      and (select bool_and(o->>'codigo_interno' is null) from jsonb_array_elements(v) o),
+    format('Sin ordenes.ver ni ver la cotización se cuentan las OT, sin código, id, número ni estado (%s)', v));
 end $$;
 
 rollback;
