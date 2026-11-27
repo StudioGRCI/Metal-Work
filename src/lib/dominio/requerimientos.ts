@@ -65,8 +65,43 @@ export type TipoRequerimiento = 'OPERACION' | 'ADMINISTRACION'
  * Administración, como decía la ayuda del campo cuando se escribía a mano.
  */
 export const CODIGOS_FIJOS_DEL_RQ: Record<TipoRequerimiento, { codigo: string; detalle: string }[]> = {
-  OPERACION: [CODIGO_FIJO_PLANTA],
+  // Al registrarlo, lo del área se elige con «Es para» y no en esta lista; al corregirlo, PLANTA lo vuelve gasto operativo.
+  OPERACION: [{ codigo: CODIGO_FIJO_PLANTA.codigo, detalle: 'Gasto operativo del área: no se carga a ninguna OT' }],
   ADMINISTRACION: [CODIGO_FIJO_OFICINA],
+}
+
+/**
+ * Para qué es el RQ de operación: para una unidad (su código o el N.º de su
+ * OT) o para el área misma, las herramientas y los insumos con que trabaja.
+ * El del área es **gasto operativo**: va con el código PLANTA, que no carga a
+ * ninguna OT (no es una unidad y el costeo no lo reparte), y se suma por el
+ * área del RQ (DKS, 2026-11-27: «pedir herramientas para el área… ese costo
+ * iría como gasto operativo»).
+ */
+export type DestinoDelRq = 'UNIDAD' | 'AREA'
+
+export const DESTINO_DEL_RQ: Record<DestinoDelRq, { etiqueta: string; ayuda: string }> = {
+  UNIDAD: {
+    etiqueta: 'Una unidad u OT',
+    ayuda: 'Lo que lleva la unidad: se carga al costo de su código o de su OT.',
+  },
+  AREA: {
+    etiqueta: 'El área: gasto operativo',
+    ayuda: 'Herramientas e insumos para el trabajo del área. No se carga a ninguna OT: cuenta como gasto operativo del área.',
+  },
+}
+
+/** El código con que va el RQ del área: PLANTA, el que no es de una unidad. */
+export const CODIGO_DEL_GASTO_OPERATIVO = CODIGO_FIJO_PLANTA.codigo
+
+/** El RQ es gasto operativo de su área: de operación y con el código PLANTA. */
+export const esGastoOperativo = (rq: { tipo: string | null; codigo_interno: string | null }) =>
+  tipoDeRequerimiento(rq) === 'OPERACION' && (rq.codigo_interno ?? '').trim().toUpperCase() === CODIGO_DEL_GASTO_OPERATIVO
+
+export const GASTO_OPERATIVO: Def = {
+  etiqueta: 'Gasto operativo',
+  tono: 'info',
+  descripcion: 'Es para el área, no para una unidad: no se carga a ninguna OT.',
 }
 
 /** Los que todavía esperan a alguien: lo que la bandeja de atención muestra primero. */

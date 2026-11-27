@@ -16,11 +16,13 @@ import { estaVencido, loQueLoAtrasa, plazoDelRq, textoDelPlazo } from '@/lib/dom
 import { cuentaDelMetrado, ESTADO_METRADO, FRENO_DEL_RQ, frenaElRq, frenoDelRq, listaDeItems, pideSustento, queFaltaDelFreno } from '@/lib/dominio/metrado-rq'
 import {
   COMPRA_CORTA,
+  esGastoOperativo,
   estadoDelRequerimiento,
   ESTADOS_RQ_ABIERTOS,
   ETAPA_AVANCE_RQ,
   ETAPAS_DE_RECOJO,
   FALTA_LO_NO_COMPRADO,
+  GASTO_OPERATIVO,
   laCompraQuedoCorta,
   PASOS_DEL_RQ,
   partesDelInsumo,
@@ -289,6 +291,11 @@ export function TarjetaRequerimiento({
               <Insignia>{rq.estado}</Insignia>
             )}
             {rq.tipo === 'ADMINISTRACION' && <Insignia tono="acento">Administración</Insignia>}
+            {esGastoOperativo(rq) && (
+              <Insignia tono={GASTO_OPERATIVO.tono} title={GASTO_OPERATIVO.descripcion} data-gasto-operativo>
+                {GASTO_OPERATIVO.etiqueta}
+              </Insignia>
+            )}
             {conformidad && tieneNotaAbierta(rq, conformidad) && (
               <Insignia tono="peligro" title="Quien pidió anotó que una salida no llegó o llegó incompleta, y Almacén todavía no responde." data-con-nota-abierta>
                 Nota de entrega abierta

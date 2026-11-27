@@ -19,7 +19,16 @@ import { recorridoDeRequerimientos } from '@/lib/datos/recorrido'
 import { cargarRequerimientos, catalogoParaRequerimiento, type MaterialParaRequerimiento, type RequerimientoListado } from '@/lib/datos/requerimientos'
 import { stockEnAlmacen, type MaterialEnStock } from '@/lib/datos/stock-almacen'
 import { ESTADO_METRADO, FRENO_DEL_RQ, frenaElRq, frenoDelRq, listaDeItems, queFaltaDelFreno } from '@/lib/dominio/metrado-rq'
-import { estadoDelRequerimiento, leTocaAtender, loTieneQuienAtiende, quienAtiende, tipoDeRequerimiento, type CompraDe } from '@/lib/dominio/requerimientos'
+import {
+  esGastoOperativo,
+  estadoDelRequerimiento,
+  GASTO_OPERATIVO,
+  leTocaAtender,
+  loTieneQuienAtiende,
+  quienAtiende,
+  tipoDeRequerimiento,
+  type CompraDe,
+} from '@/lib/dominio/requerimientos'
 import { describirRecorridoDelRequerimiento, type PasoDelRecorrido, type PasoDescrito } from '@/lib/dominio/recorrido'
 import { cantidad, fecha, fechaHora } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
@@ -457,6 +466,11 @@ function Fila({
           {administracion && (
             <Insignia tono="acento" className="ml-2 align-middle">
               Administración
+            </Insignia>
+          )}
+          {esGastoOperativo(rq) && (
+            <Insignia tono={GASTO_OPERATIVO.tono} title={GASTO_OPERATIVO.descripcion} className="ml-2 align-middle" data-gasto-operativo>
+              {GASTO_OPERATIVO.etiqueta}
             </Insignia>
           )}
         </p>

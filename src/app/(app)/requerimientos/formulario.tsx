@@ -13,7 +13,14 @@ import { Ventana } from '@/components/ui/ventana'
 import type { AreaParaRequerimiento, MaterialParaRequerimiento, OpcionCatalogo } from '@/lib/datos/requerimientos'
 import { CODIGO_TODOS_LOS_ACTIVOS } from '@/lib/dominio/codigos-internos'
 import { delGrupo, detalleDelMaterial, gruposDeInsumo } from '@/lib/dominio/grupos-de-insumo'
-import { CODIGOS_FIJOS_DEL_RQ, TIPO_REQUERIMIENTO, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
+import {
+  CODIGO_DEL_GASTO_OPERATIVO,
+  CODIGOS_FIJOS_DEL_RQ,
+  DESTINO_DEL_RQ,
+  TIPO_REQUERIMIENTO,
+  type DestinoDelRq,
+  type TipoRequerimiento,
+} from '@/lib/dominio/requerimientos'
 import { useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { hoyLima } from '@/lib/format'
 
@@ -171,6 +178,9 @@ function FormularioRequerimiento({
   const [areaId, setAreaId] = useState(areaFija?.id ?? '')
   // El de Administración puede ir a un código o a todos los que trabajan.
   const [aTodos, setATodos] = useState(false)
+  // El de operación es para una unidad o para el área misma (gasto operativo, con PLANTA).
+  const [destino, setDestino] = useState<DestinoDelRq>('UNIDAD')
+  const paraElArea = tipo === 'OPERACION' && !codigoFijo && destino === 'AREA'
   // Lo escrito en el código vuelve si pasa a «Todos» y regresa a «Un código».
   const [codigoEscrito, setCodigoEscrito] = useState('')
   const delTipo = areas.filter((a) => a.requerimiento === tipo)
@@ -313,7 +323,20 @@ function FormularioRequerimiento({
             </Seleccion>
           </Campo>
         )}
-        {areaFija && codigoFijo ? null : codigoFijo ? (
+        {tipo === 'OPERACION' && !codigoFijo && (
+          <Campo etiqueta="Es para" htmlFor="rq-destino" requerido ayuda={DESTINO_DEL_RQ[destino].ayuda} ayudaEnIcono={false}>
+            <Seleccion id="rq-destino" value={destino} onChange={(e) => setDestino(e.target.value as DestinoDelRq)} data-destino={destino}>
+              {(Object.keys(DESTINO_DEL_RQ) as DestinoDelRq[]).map((d) => (
+                <option key={d} value={d}>
+                  {DESTINO_DEL_RQ[d].etiqueta}
+                </option>
+              ))}
+            </Seleccion>
+          </Campo>
+        )}
+        {areaFija && codigoFijo ? null : paraElArea ? (
+          <input type="hidden" name="codigo_interno" value={CODIGO_DEL_GASTO_OPERATIVO} />
+        ) : codigoFijo ? (
           <div className="space-y-1.5">
             <input type="hidden" name="codigo_interno" value={codigoFijo} />
             <p className="text-xs font-medium text-texto-suave">Código interno</p>
@@ -332,7 +355,7 @@ function FormularioRequerimiento({
             ayuda={
               tipo === 'ADMINISTRACION'
                 ? 'Elige el de la unidad, si es para una; si es para la oficina, OFICINA. Para mantenimiento o garantía, el N.º de su OT. Busca por el código, la placa o la marca.'
-                : 'Elige el de la unidad; para mantenimiento o garantía, el N.º de su OT («OT 2921-2026»); si no es para una, PLANTA. Busca por el código, la OT, la placa o la marca.'
+                : 'Elige el de la unidad; para mantenimiento o garantía, el N.º de su OT («OT 2921-2026»). Lo que es para el área, con «Es para: el área». Busca por el código, la OT, la placa o la marca.'
             }
           >
             <EntradaCodigoInterno
@@ -342,7 +365,7 @@ function FormularioRequerimiento({
               valor={codigoEscrito}
               onChange={setCodigoEscrito}
               codigos={codigos}
-              fijos={CODIGOS_FIJOS_DEL_RQ[tipo]}
+              fijos={tipo === 'OPERACION' ? [] : CODIGOS_FIJOS_DEL_RQ[tipo]}
             />
           </Campo>
         )}
