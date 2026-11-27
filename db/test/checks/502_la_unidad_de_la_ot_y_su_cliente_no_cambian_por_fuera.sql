@@ -207,10 +207,10 @@ begin
   set local role authenticated;
   perform test.debe_fallar(
     format('update public.unidades set cliente_id = %L where id = %L', current_setting('prueba.cliente_b'), current_setting('prueba.u1')),
-    'Diseño tampoco', 'su cliente cambia solo con «Editar OT / cambiar cliente»');
+    'Diseño tampoco (desde la 20261127200000, el aviso le dice que no es de su puesto)', 'no se cambia desde tu puesto: eso lo ve Ventas');
   perform test.debe_fallar(
     format('update public.unidades set cliente_id = null where id = %L', current_setting('prueba.u1')),
-    'Ni se lo quita', 'su cliente cambia solo con «Editar OT / cambiar cliente»');
+    'Ni se lo quita', 'no se cambia desde tu puesto: eso lo ve Ventas');
   update public.unidades set marca = 'SCANIA' where id = current_setting('prueba.u1')::uuid;
   get diagnostics v = row_count;
   reset role;
