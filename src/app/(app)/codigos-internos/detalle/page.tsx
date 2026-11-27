@@ -1269,7 +1269,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
       <Tarjeta className="overflow-hidden" data-servicios>
         <TarjetaCabecera
           titulo="Órdenes de servicio"
-          ayuda="Los trabajos de terceros para este código —torno, pintura, flete—, sin IGV. La aprobada por Gerencia suma al costo, porque no pasa por el almacén; la que espera su aprobación se muestra y no se suma todavía. Las rechazadas y las anuladas no aparecen. La que está en dólares pasa a soles con el tipo de cambio de la fecha de su factura o, mientras no la tiene, del día en que se emitió; si ese día no tiene cambio registrado, con el último anterior."
+          ayuda="Los trabajos de terceros para este código —torno, pintura, flete—, sin IGV. La aprobada por Gerencia suma al costo, porque no pasa por el almacén; la que espera su aprobación se muestra y no se suma todavía. Las rechazadas y las anuladas no aparecen. La que está en dólares pasa a soles con el tipo de cambio de la fecha de su factura o, mientras no la tiene, del día en que se emitió; si ese día no tiene cambio registrado, con el último de los diez días anteriores, y si no hay ninguno no suma hasta que Contabilidad lo registre."
         />
         <Tabla>
           <TablaCabecera>
@@ -1292,14 +1292,15 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
                     <TR key={l.referencia_id ?? l.documento} data-servicio={l.documento}>
                       <TD className="align-top">
                         {abreServicios ? (
-                          <Link href={`/compras/servicios?codigo=${encodeURIComponent(codigo)}`} className="font-medium text-acento hover:underline">
+                          <Link href={`/compras/servicios?codigo=${encodeURIComponent(codigo)}`} className="font-medium whitespace-nowrap text-acento hover:underline">
                             {l.documento}
                           </Link>
                         ) : (
-                          <p className="font-medium text-texto">{l.documento}</p>
+                          <p className="font-medium whitespace-nowrap text-texto">{l.documento}</p>
                         )}
+                        {/* Con el renglón del cambio debajo hay dos fechas: esta dice cuál es. */}
                         <p className="tabular text-xs text-texto-suave" data-emitida-el={emitidaEl(l)}>
-                          {fecha(emitidaEl(l))}
+                          {cambio ? `Emitida el ${fecha(emitidaEl(l))}` : fecha(emitidaEl(l))}
                         </p>
                         {/* En dólares, con qué cambio pasa a soles: el día del cambio registrado que de
                             verdad se usa (el de su factura, o el último anterior), o que no hay ninguno. */}
@@ -1312,7 +1313,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
                             // La insignia no parte en dos renglones: lleva solo «Sin cambio» y el día va
                             // al lado, o debajo en el teléfono, para que la columna no empuje el importe.
                             <p className="tabular mt-1 flex flex-wrap items-center gap-x-1 text-xs text-texto-suave" data-dia-de-la-linea={l.fecha} data-cambio-registrado-el="">
-                              <Insignia tono="aviso">Sin cambio</Insignia> del {fecha(cambio.dia)}
+                              <Insignia tono="aviso">Sin cambio</Insignia> <span className="whitespace-nowrap">del {fecha(cambio.dia)}</span>
                             </p>
                           ))}
                       </TD>

@@ -613,6 +613,9 @@ export type CambioDelServicioEnElCosteo = {
 export async function cambioDeServiciosDelCodigo(codigo: string): Promise<Map<string, CambioDelServicioEnElCosteo>> {
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('codigo_interno_cambio_de_servicios', { p_codigo: codigo })
+  // Sin la migración 20261126998400 la función no existe: el Costeo abre igual y cada OS sale
+  // con su fecha sola, sin decir con qué cambio va, en vez de caerse la pantalla entera.
+  if (error?.code === 'PGRST202' || error?.code === '42883') return new Map()
   if (error) throw new Error(`No se pudo leer con qué tipo de cambio van las órdenes de servicio del código: ${error.message}`)
   return new Map(
     (data ?? []).flatMap((c) =>

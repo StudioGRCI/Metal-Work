@@ -192,7 +192,7 @@ const ger = await entrar('gerencia', 1440)
   const esperado = Math.round(1000 * tcHoy * 100) / 100
   comprobar(c.dia === hoy && c.texto === `Al cambio del ${dma(regHoy)}`,
     `sin factura, la ${d.numero} va con el cambio de su día de emisión y dice el último registrado hasta él: «Al cambio del ${dma(regHoy)}» (dice «${c.texto}»)`)
-  comprobar(c.emitida === dma(hoy), `y encima, el día en que se emitió (dice «${c.emitida}»)`)
+  comprobar(c.emitida === `Emitida el ${dma(hoy)}`, `y encima, el día en que se emitió, con su rótulo (dice «${c.emitida}»)`)
   comprobar(c.soles === dma(hoy) && c.solesConCambio === 0, `la ${s.numero}, en soles, lleva solo su fecha (dice «${c.soles}»)`)
   comprobar(c.importe.includes('US$') || c.importe.includes('$'), 'la OS en dólares sigue mostrándose en dólares')
   comprobar(c.alCambio === esperado && c.costo === esperado + 500, `el costo la suma con el cambio de ese día: S/ ${esperado} + S/ 500 (dice ${c.costo}, con ${c.alCambio} de dólares al cambio)`)
@@ -230,7 +230,7 @@ comprobar(despues.fecha_cambio === hace3 && Number(despues.monto_pen) === Math.r
 {
   const c = await leerCosteo(ger)
   comprobar(c.dia === hace3 && c.texto === `Al cambio del ${dma(hace3)}`, `con su factura, la ${d.numero} dice «Al cambio del ${dma(hace3)}» (dice «${c.texto}»)`)
-  comprobar(c.emitida === dma(hoy), `y sigue diciendo el día en que se emitió (dice «${c.emitida}»)`)
+  comprobar(c.emitida === `Emitida el ${dma(hoy)}`, `y sigue diciendo el día en que se emitió (dice «${c.emitida}»)`)
   comprobar(c.alCambio === Number(despues.monto_pen), `y pesa en el costo lo mismo que su monto en soles: S/ ${despues.monto_pen} (dice ${c.alCambio})`)
   comprobar(c.costo === Number(despues.monto_pen) + 500, `el costo del código es S/ ${Number(despues.monto_pen) + 500} (dice ${c.costo})`)
   comprobar(c.ayuda.includes('fecha de su factura'), 'la ayuda de la tarjeta dice con qué cambio pasa a soles la OS en dólares')
