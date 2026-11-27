@@ -22091,6 +22091,13 @@ export type Database = {
         }
         Returns: number
       }
+      unidad_que_dejo_la_ot: {
+        Args: {
+          p_orden: string | null
+          p_cotizacion: string | null
+        }
+        Returns: number
+      }
       unidades_del_cliente_con_su_entrega: {
         Args: {
           p_cliente: string | null
