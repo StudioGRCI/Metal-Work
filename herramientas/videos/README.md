@@ -47,11 +47,12 @@ Subtítulos siempre visibles. Fundidos de 0,3 a 0,5 s, sin efectos.
 | Las capturas | Playwright contra el **banco local**, con cuentas de prueba |
 | La mezcla y el MP4 | ffmpeg: voz y música 25 dB por debajo, H.264 + AAC |
 | La revisión de datos y subtítulos | Whisper y OCR (`tesseract`, idioma `spa`) |
+| La revisión del sonido | ffmpeg (`ebur128`), DNSMOS de Microsoft (`speechmos`, licencia MIT) y un segundo Whisper |
 
 ```bash
 cd herramientas/videos
 npm install        # Remotion y playwright-core (usa el Chromium que ya tenga la máquina)
-pip install edge-tts faster-whisper pillow numpy
+pip install edge-tts faster-whisper speechmos librosa pillow numpy
 # y en la máquina: ffmpeg y tesseract-ocr con tesseract-ocr-spa
 ```
 
@@ -162,6 +163,14 @@ propiedades que usa `hacer.mjs` (guion, `linea.json` y `capturas.json`).
   un DNI, un teléfono, un correo que no sea de prueba ni una clave, ni más
   montos que los inventados que declaró la captura. Y las capturas tienen que
   venir del banco local con una cuenta de prueba.
+- **El sonido, medido**: la sonoridad del audio final (entre −17 y −13 LUFS),
+  el pico (−1 dBTP como mucho) y ninguna muestra recortada; la música 25 dB
+  por debajo de la voz; la calidad de la voz con DNSMOS, de Microsoft, que da
+  una nota de 1 a 5 como la de una encuesta de oyentes (la voz sola, 3,5 o
+  más; el audio final con la música, 3,2 o más), y un segundo oído (Whisper
+  `small`) que anota dónde no oye lo mismo que el primero. Las palabras que el
+  primer oído oye con poca seguridad también quedan anotadas, para
+  escucharlas.
 - **Subtítulos**: cada uno se busca en pantalla con OCR en su cuadro de entrada,
   y se compara con el momento en que su primera palabra suena en el video
   final (Whisper da la palabra y el volumen, el instante). El desfase no pasa
@@ -200,16 +209,16 @@ El informe lista todas las lecturas dudosas, juntas por lo que se leyó y por
 qué no se tomó como dato, con cada momento en que salen. Unas y otras se miran
 antes de entregar: nada se da por bueno sin mirarlo.
 
-La revisión se prueba en rojo con cinco videos estropeados a propósito:
+La revisión se prueba en rojo con seis videos estropeados a propósito:
 
 ```bash
-./scripts/probar-en-rojo.sh    # sobre el de la OT de cada unidad, ya hecho; unos 50 minutos
+./scripts/probar-en-rojo.sh    # sobre el de la OT de cada unidad, ya hecho; una hora
 ```
 
 Pinta un segundo un RUC y un monto con moneda; un DNI y un monto sin moneda;
 un monto inventado con una cifra cambiada y otro monto sin moneda;
-corre la voz 0,6 s, y deja muda una frase. Sale con 0 solo si la revisión
-tumba los cinco en el punto que toca. Se corre cada vez que se toca
+corre la voz 0,6 s; deja muda una frase, y sube el audio hasta recortarlo.
+Sale con 0 solo si la revisión tumba los seis en el punto que toca. Se corre cada vez que se toca
 `revisar.py`.
 
 ## Qué es fijo y qué cambia

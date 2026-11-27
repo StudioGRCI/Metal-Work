@@ -7,13 +7,14 @@
 # El video tiene que estar hecho y pasar (`node scripts/hacer.mjs videos/<video>`).
 # Cada caso se arma en una carpeta temporal con una copia del video; el video
 # de verdad no se toca. Tarda unos diez minutos por caso. Sale con 0 solo si la
-# revisión falla en los cinco, y en el punto que toca.
+# revisión falla en los seis, y en el punto que toca.
 #
 #   dato       un RUC y un monto con moneda, pintados un segundo
 #   suelto     un DNI y un monto sin moneda, pintados un segundo
 #   inventado  un monto inventado con una cifra cambiada y un monto sin moneda, pintados un segundo
 #   corrido    la voz corrida 0,6 s respecto de la imagen
 #   cortado    una frase del medio, muda
+#   saturado   el audio subido 15 dB, hasta recortarse
 set -uo pipefail
 cd "$(dirname "$0")/.."
 CARPETA="${1:-videos/como-cargar-la-ot-de-cada-unidad}"
@@ -47,6 +48,7 @@ declare -A ESPERA=(
   [inventado]='cuadro\(s\) con algo que parece un dato real'
   [corrido]='las pistas no arrancan juntas'
   [cortado]='frases que no se oyen como en el guion'
+  [saturado]='pico verdadero'
 )
 # Y en los casos pintados, cada valor tiene que salir como dato en el segundo pintado: uno solo no basta.
 declare -A PINTADO=(
@@ -55,7 +57,7 @@ declare -A PINTADO=(
   [inventado]="${CAMBIADO#US\$ }|7,250\.00"
 )
 bien=0
-for caso in dato suelto inventado corrido cortado; do
+for caso in dato suelto inventado corrido cortado saturado; do
   D="$TRABAJO/$caso/$ID"
   mkdir -p "$D/salida" "$D/capturas" "$D/generado/publico/capturas"
   cp "$CARPETA/guion.json" "$D/"
@@ -70,6 +72,7 @@ for caso in dato suelto inventado corrido cortado; do
     inventado) ffmpeg -y -v error -i "$BUENO" -vf "$(pintar "$CAMBIADO     7,250.00")" -c:a copy "$S" ;;
     corrido) ffmpeg -y -v error -i "$BUENO" -itsoffset 0.6 -i "$BUENO" -map 0:v -map 1:a -c:v copy -c:a aac -b:a 192k "$S" ;;
     cortado) ffmpeg -y -v error -i "$BUENO" -af "volume=enable='between(t,$A,$B)':volume=0" -c:v copy -c:a aac -b:a 192k "$S" ;;
+    saturado) ffmpeg -y -v error -i "$BUENO" -af "volume=15dB" -c:v copy -c:a aac -b:a 192k "$S" ;;
   esac
   python3 scripts/revisar.py "$D" "$F" > "$TRABAJO/$caso.log" 2>&1
   salida=$?

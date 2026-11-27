@@ -19,13 +19,18 @@ comprueba cuatro cosas:
 4. LOS SUBTÍTULOS. Cada subtítulo se busca en pantalla con OCR en el cuadro en
    que debe entrar, y su entrada se compara con el momento en que Whisper oye
    su primera palabra en el video final: el desfase no pasa de 0,3 s.
+5. EL SONIDO, medido: sonoridad, picos y recortes del audio final; la música
+   25 dB por debajo de la voz; la calidad de la voz con DNSMOS (Microsoft, nota
+   de 1 a 5 como la que daría una persona), y un segundo oído (otro modelo de
+   Whisper) que anota dónde no oye lo mismo que el primero.
 
 Escribe `salida/revision-<formato>.md` y termina con código distinto de cero si
 algo falla. Lo que marca como dato real puede ser un error de lectura del OCR:
 guarda el cuadro en `generado/<formato>/revision/` para mirarlo; no se da por
 bueno sin mirarlo.
 
-Necesita: `faster-whisper`, `pillow`, `ffmpeg` y `tesseract` con el idioma `spa`.
+Necesita: `faster-whisper`, `speechmos` (con `librosa`), `pillow`, `ffmpeg` y
+`tesseract` con el idioma `spa`.
 """
 from __future__ import annotations
 
@@ -265,6 +270,69 @@ class Informe:
 
     def nota(self, texto: str):
         self.lineas.append(f'  - {texto}')
+
+
+SONORIDAD_FINAL = (-17.0, -13.0)  # LUFS del audio final: la voz va a -16 y la música suma poco
+PICO_MAXIMO = -1.0  # dBTP: por encima, un teléfono o un parlante puede recortar
+MUSICA_BAJO_LA_VOZ = 25  # dB, como la mezcla de hacer.mjs
+# DNSMOS da notas de 1 a 5 como las de una encuesta de oyentes (P.808). Una voz
+# limpia de Edge TTS saca alrededor de 3,9; la música de fondo baja la nota del
+# video final a 3,5 o 3,6, porque DNSMOS la cuenta como ruido. Los topes dejan
+# margen a eso y tumban una voz rota, robótica, saturada o tapada.
+NOTA_MINIMA_VOZ = 3.5
+NOTA_MINIMA_FINAL = 3.2
+PALABRA_INSEGURA = 0.5
+
+
+def sonoridad(archivo: Path, filtro: str = '') -> tuple[float, float | None]:
+    """La sonoridad integrada (LUFS) y el pico verdadero (dBTP) de un audio, después de `filtro` si se da."""
+    cadena = f'{filtro},ebur128=peak=true' if filtro else 'ebur128=peak=true'
+    r = subprocess.run(['ffmpeg', '-hide_banner', '-nostats', '-i', str(archivo), '-af', cadena, '-f', 'null', '-'], capture_output=True, text=True)
+    i = re.findall(r'I:\s+(-?[\d.]+) LUFS', r.stderr)
+    p = re.findall(r'Peak:\s+(-?[\d.]+|-inf) dBFS', r.stderr)
+    return float(i[-1]), (float(p[-1]) if p and p[-1] != '-inf' else None)
+
+
+def revisar_el_sonido(inf, carpeta: Path, video: Path, generado: Path, audio: np.ndarray, audio16: np.ndarray, oidas: list[dict], duracion: float) -> None:
+    """Lo que se puede medir del sonido sin oírlo. No reemplaza escucharlo."""
+    inf.seccion('5. El sonido, medido')
+    lufs, pico = sonoridad(video)
+    inf.paso(SONORIDAD_FINAL[0] <= lufs <= SONORIDAD_FINAL[1], f'sonoridad del audio final: {lufs:.1f} LUFS (se pide entre {SONORIDAD_FINAL[0]:.0f} y {SONORIDAD_FINAL[1]:.0f})')
+    # Las muestras tal como vienen en el archivo: al pasarlas a mono y a 16 kHz, un pico de 0,7 puede salir de 1.
+    nativas = np.frombuffer(correr('ffmpeg', '-v', 'error', '-i', str(video), '-f', 'f32le', '-', binario=True), dtype=np.float32)
+    recortes = int(np.sum(np.abs(nativas) >= 0.999))
+    inf.paso(pico is not None and pico <= PICO_MAXIMO and recortes == 0, f"pico verdadero {pico:.1f} dBTP (tope {PICO_MAXIMO:.0f}) y {recortes} muestra(s) recortada(s)" if pico is not None else 'no se pudo medir el pico')
+    mezcla = json.loads((generado / 'mezcla.json').read_text())
+    # La voz y la música por separado, con la ganancia que les dio la mezcla: juntas no se pueden separar.
+    voz_lufs, _ = sonoridad(generado / 'voz.wav', f"volume={mezcla['voz_db']}dB")
+    musica_lufs, _ = sonoridad(RAIZ / 'public' / 'musica' / 'base.m4a', f"atrim=0:{duracion:.2f},volume={mezcla['musica_db']}dB")
+    debajo = voz_lufs - musica_lufs
+    inf.paso(abs(debajo - MUSICA_BAJO_LA_VOZ) <= 1, f'la música va {debajo:.1f} dB por debajo de la voz (se piden {MUSICA_BAJO_LA_VOZ}): voz {voz_lufs:.1f} LUFS, música {musica_lufs:.1f} LUFS')
+
+    from speechmos import dnsmos
+    sola = dnsmos.run(np.clip(leer_16k(generado / "voz.wav"), -1, 1), 16000)
+    final = dnsmos.run(np.clip(audio16, -1, 1).astype(np.float32), 16000)
+    nota = lambda r: f"{r['p808_mos']:.2f} (voz {r['sig_mos']:.2f}, fondo {r['bak_mos']:.2f}, total {r['ovrl_mos']:.2f})"  # noqa: E731
+    inf.paso(sola['p808_mos'] >= NOTA_MINIMA_VOZ, f'calidad de la voz sola (DNSMOS, de 1 a 5): {nota(sola)}; se pide {NOTA_MINIMA_VOZ} o más')
+    inf.paso(final['p808_mos'] >= NOTA_MINIMA_FINAL, f'calidad del audio final, con la música (DNSMOS): {nota(final)}; se pide {NOTA_MINIMA_FINAL} o más')
+
+    inseguras = [p for p in oidas if p.get('p', 1) < PALABRA_INSEGURA]
+    if inseguras:
+        inf.nota('palabras que el primer oído oye con poca seguridad, para escucharlas: ' + ', '.join(f"«{p['t']}» en {p['i']:.1f} s" for p in inseguras))
+    from faster_whisper import WhisperModel
+    segundo = WhisperModel(os.environ.get('WHISPER_SEGUNDO', 'small'), device='cpu', compute_type='int8', cpu_threads=os.cpu_count() or 4)
+    segmentos, _ = segundo.transcribe(audio16, language='es', word_timestamps=True, condition_on_previous_text=False)
+    otras = [p.word.strip() for s in segmentos for p in (s.words or [])]
+    a, b = [comparable(p['t']) for p in oidas], [comparable(p) for p in otras]
+    distintas = [(oidas[i1]['i'] if i1 < len(oidas) else duracion, ' '.join(p['t'] for p in oidas[i1:i2]) or '—', ' '.join(otras[j1:j2]) or '—') for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes() if op != 'equal']
+    inf.nota(f"segundo oído (Whisper {os.environ.get('WHISPER_SEGUNDO', 'small')}): no oye lo mismo que el primero en {len(distintas)} lugar(es), para escucharlos")
+    for t, uno, otro in distintas:
+        inf.nota(f'{t:.1f} s · primer oído «{uno}» · segundo «{otro}»')
+
+
+def leer_16k(ruta: Path) -> np.ndarray:
+    crudo = correr('ffmpeg', '-v', 'error', '-i', str(ruta), '-f', 'f32le', '-ac', '1', '-ar', '16000', '-', binario=True)
+    return np.frombuffer(crudo, dtype=np.float32)
 
 
 def revisar(carpeta: Path, formato: str) -> bool:
@@ -535,6 +603,9 @@ def revisar(carpeta: Path, formato: str) -> bool:
     inf.paso(peor[0] <= DESFASE_MAXIMO, f'desfase máximo entre el subtítulo y la voz: {peor[0]:.2f} s («{peor[2][:50]}»); promedio {medio:.2f} s (el tope es {DESFASE_MAXIMO} s)')
     for d in sorted(desfases, reverse=True)[:3]:
         inf.nota(f"{d[1]:+.2f} s · «{d[2]}»")
+
+    # ------------------------------------------------------------- 5. sonido
+    revisar_el_sonido(inf, carpeta, video, generado, audio, audio16, oidas, duracion)
 
     # --------------------------------------------------------------- veredicto
     inf.seccion('Veredicto')

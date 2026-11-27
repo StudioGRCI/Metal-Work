@@ -153,7 +153,7 @@ def oir(audio16k: np.ndarray, pista: str = '') -> list[dict]:
     segmentos, _ = whisper().transcribe(
         audio16k, language='es', word_timestamps=True, initial_prompt=pista or None, condition_on_previous_text=False, vad_filter=False
     )
-    return [{'t': p.word.strip(), 'i': float(p.start), 'f': float(p.end)} for s in segmentos for p in (s.words or [])]
+    return [{'t': p.word.strip(), 'i': float(p.start), 'f': float(p.end), 'p': float(p.probability)} for s in segmentos for p in (s.words or [])]
 
 
 def alinear(escritas: list[str], oidas: list[dict], duracion: float) -> list[dict]:
