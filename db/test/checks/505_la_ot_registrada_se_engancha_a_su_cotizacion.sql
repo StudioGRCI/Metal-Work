@@ -190,8 +190,11 @@ begin
   select string_agg(numero, ',' order by numero) into v
     from public.ots_para_enganchar(array[current_setting('prueba.cot')::uuid])
    where cotizacion_id = current_setting('prueba.cot')::uuid;
-  perform test.afirmar(v = format('50401-%1$s,50406-%1$s', to_char((now() at time zone 'America/Lima')::date, 'YYYY')),
-    'Administración ve para la cotización las dos OT del cliente que entran (ni la que espera el visto de Gerencia, ni la de otra carrocería, ni la de mantenimiento o garantía, ni la del taller por revisar, ni la sin unidad, ni la anulada, ni la del otro cliente, ni la que ya tiene cotización): ' || coalesce(v, 'ninguna'));
+  perform test.afirmar(v = format('50401-%1$s,50402-%1$s,50406-%1$s', to_char((now() at time zone 'America/Lima')::date, 'YYYY')),
+    'Administración ve para la cotización las dos OT del cliente que entran y la que espera el visto de Gerencia, para el aviso (ni la de otra carrocería, ni la de mantenimiento o garantía, ni la del taller por revisar, ni la sin unidad, ni la anulada, ni la del otro cliente, ni la que ya tiene cotización): ' || coalesce(v, 'ninguna'));
+  perform test.afirmar((select estado from public.ots_para_enganchar(array[current_setting('prueba.cot')::uuid])
+                         where orden_id = current_setting('prueba.ot_e2')::uuid) = 'BORRADOR',
+    'La que espera el visto sale con su estado: la pantalla no la ofrece, solo avisa');
   select count(*) into n from public.ots_para_enganchar(array[current_setting('prueba.cot_rev')::uuid]);
   perform test.afirmar(n = 0, 'A la cotización por revisar no se le ofrece ninguna');
   reset role;

@@ -12,6 +12,7 @@ import { yaEntroLaPrimeraVez } from '@/lib/acciones'
 import { definir, ESTADO_OT } from '@/lib/dominio/estados'
 import { useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { useEstadoCompartido } from '@/lib/estado-compartido'
+import { cn } from '@/lib/utils'
 
 import { engancharOtACotizacion } from './acciones'
 
@@ -31,13 +32,13 @@ export type OtRegistrada = {
 // aviso se iría con él; y en el teléfono el encabezado queda fuera de la vista
 // (auditoría de diseño).
 const ENGANCHADA = 'enganchar-ot:hecho'
-type Enganche = { cotizacionId: string; mensaje: string; vez: number }
+type Enganche = { cotizacionId: string; mensaje: string; vez: number; aviso?: boolean }
 
 /** Junto a los estados del encabezado: la OT que se acaba de enganchar. */
 export function EstadoDelEnganche() {
   const [hecho] = useEstadoCompartido<Enganche | null>(ENGANCHADA, null)
   return (
-    <span role="status" className={hecho ? 'text-xs font-medium text-exito sm:text-right' : 'sr-only'}>
+    <span role="status" className={hecho ? cn('text-xs sm:text-right', hecho.aviso ? 'text-texto' : 'font-medium text-exito') : 'sr-only'}>
       {hecho?.mensaje}
     </span>
   )
@@ -69,7 +70,13 @@ export function EngancheEnLaTarjeta({ cotizacionId }: { cotizacionId: string }) 
       role="status"
       tabIndex={-1}
       data-enganche-en-la-tarjeta={aqui ? '' : undefined}
-      className={aqui ? 'rounded-[var(--radius-base)] bg-exito-suave px-3 py-2 text-xs font-medium text-exito' : 'sr-only'}
+      className={
+        !aqui
+          ? 'sr-only'
+          : aqui.aviso
+            ? 'rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-xs text-texto'
+            : 'rounded-[var(--radius-base)] bg-exito-suave px-3 py-2 text-xs font-medium text-exito'
+      }
     >
       {aqui?.mensaje}
     </p>
@@ -83,13 +90,33 @@ export function EngancheEnLaTarjeta({ cotizacionId }: { cotizacionId: string }) 
  */
 export function AvisoDeOtRegistrada({ ots }: { ots: OtRegistrada[] }) {
   if (ots.length === 0) return null
-  const numeros = ots.map((o) => o.numero)
-  const lista = numeros.length === 1 ? numeros[0] : `${numeros.slice(0, -1).join(', ')} y ${numeros[numeros.length - 1]}`
+  const enumerar = (lista: OtRegistrada[]) => {
+    const numeros = lista.map((o) => o.numero)
+    return numeros.length === 1 ? numeros[0] : `${numeros.slice(0, -1).join(', ')} y ${numeros[numeros.length - 1]}`
+  }
+  // La que espera el visto de Gerencia no se engancha todavía, pero se nombra:
+  // si no, se cargaba otra OT del mismo vehículo mientras tanto.
+  const listas = ots.filter((o) => o.estado !== 'BORRADOR')
+  const esperan = ots.filter((o) => o.estado === 'BORRADOR')
   return (
     <p className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-xs text-texto" data-aviso-ot-registrada>
-      {ots.length === 1
-        ? <>El cliente tiene la OT <span className="font-medium whitespace-nowrap">{lista}</span> registrada sin cotización: si es de esta venta, úsala en vez de cargar otra.</>
-        : <>El cliente tiene las OT <span className="font-medium">{lista}</span> registradas sin cotización: si alguna es de esta venta, úsala en vez de cargar otra.</>}
+      {listas.length === 1 && (
+        <>El cliente tiene la OT <span className="font-medium whitespace-nowrap">{enumerar(listas)}</span> registrada sin cotización: si es de esta venta, úsala en vez de cargar otra.</>
+      )}
+      {listas.length > 1 && (
+        <>El cliente tiene las OT <span className="font-medium">{enumerar(listas)}</span> registradas sin cotización: si alguna es de esta venta, úsala en vez de cargar otra.</>
+      )}
+      {listas.length > 0 && esperan.length > 0 && ' '}
+      {esperan.length > 0 && (
+        <>
+          {listas.length > 0 ? 'También ' : 'El cliente tiene '}
+          {esperan.length === 1 ? 'la OT ' : 'las OT '}
+          <span className="font-medium">{enumerar(esperan)}</span>
+          {listas.length > 0 ? '' : esperan.length === 1 ? ' registrada sin cotización' : ' registradas sin cotización'}
+          {esperan.length === 1 ? ', que espera el visto de Gerencia' : ', que esperan el visto de Gerencia'}
+          : si es de esta venta, cuando Gerencia la apruebe úsala en vez de cargar otra.
+        </>
+      )}
     </p>
   )
 }
@@ -133,14 +160,31 @@ export function EngancharOtRegistrada({
   const [elegida, setElegida] = useState(ots[0]?.id ?? '')
   const [unidad, setUnidad] = useState(libres[0] ?? 1)
   const [, setHecho] = useEstadoCompartido<Enganche | null>(ENGANCHADA, null)
+  // Si la pantalla, al ponerse al día, ya no trae este botón (la OT elegida era
+  // la última que se ofrecía) con la ventana abierta y sin un ok, la ventana se
+  // iría callada: lo dice la tarjeta (P2 de funcionamiento).
+  const sigueAbierta = useRef<{ abierta: boolean; numero: string | null; entro: boolean }>({ abierta: false, numero: null, entro: false })
   const { alEnviar, enviando, error, limpiar } = useEnvio(
     engancharOtACotizacion,
     (resultado) => {
+      sigueAbierta.current.entro = true
       setAbierta(false)
       setHecho({ cotizacionId, mensaje: resultado.mensaje ?? 'La OT quedó enganchada a su cotización.', vez: Date.now() })
     },
     { documento: cotizacionId, corrige: true },
   )
+  useEffect(() => {
+    const estado = sigueAbierta.current
+    return () => {
+      if (!estado.abierta || estado.entro) return
+      setHecho({
+        cotizacionId,
+        aviso: true,
+        vez: Date.now(),
+        mensaje: `La OT ${estado.numero ?? ''} ya no se ofrece para esta cotización: puede que haya quedado con el envío anterior. Mira las OT de esta tarjeta antes de volver a intentar.`.replace('OT  ya', 'OT ya'),
+      })
+    }
+  }, [cotizacionId, setHecho])
   const idOt = useId()
   const idFicha = useId()
   const idUnidad = useId()
@@ -170,6 +214,12 @@ export function EngancharOtRegistrada({
     errorMotivo ? campoMotivo.current : errorUnidad ? campoUnidad.current : campoOt.current,
   )
 
+  const numeroElegida = ot?.numero ?? null
+  useEffect(() => {
+    sigueAbierta.current.abierta = abierta
+    sigueAbierta.current.numero = numeroElegida
+  }, [abierta, numeroElegida])
+
   if (!ot) return null
   const estado = definir(ESTADO_OT, ot.estado)
 
@@ -183,6 +233,7 @@ export function EngancharOtRegistrada({
         onClick={() => {
           limpiar()
           setHecho(null)
+          sigueAbierta.current.entro = false
           setAlAbrir({ ots, libres })
           setElegida(ots[0]?.id ?? '')
           setUnidad(libres[0] ?? 1)
@@ -233,6 +284,11 @@ export function EngancharOtRegistrada({
                 </p>
               )}
               {ot.descripcion && <p className="text-xs text-texto-suave">{ot.descripcion}</p>}
+              {!ot.codigo && (
+                <p className="text-xs text-texto" data-sin-codigo>
+                  Su vehículo no tiene código interno: después del enganche, dáselo con «Darle el código a la OT» para que Contabilidad la facture.
+                </p>
+              )}
               {ot.estado !== 'APROBADA' && (
                 <p className="text-xs text-texto" data-ya-empezo>
                   El taller ya la empezó: desde el enganche, las listas muestran el avance de su código interno, como toda OT de una cotización.

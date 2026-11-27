@@ -118,23 +118,25 @@ async function como(quien, sql, valores = []) {
   }
 }
 
-const ruc = (await uno(`select n::text as ruc from generate_series(20990060000::bigint, 20990069999::bigint) n
+// Cada cliente, con un RUC libre. Las secciones 6 y 7 van con otro, para que la
+// OT que registran sea la única que se ofrece.
+async function nuevoCliente(nombre) {
+  const r = (await uno(`select n::text as ruc from generate_series(20990060000::bigint, 20990069999::bigint) n
                          where public.ruc_es_valido(n::text) and not exists (select 1 from public.clientes c where c.numero_documento = n::text) limit 1`)).ruc
-const cliente = `QA TRANSPORTES ENGANCHE ${sello}`
-const clienteId = (await uno(
-  `insert into public.clientes (tipo_documento, numero_documento, razon_social) values ('RUC', $1, $2) returning id`,
-  [ruc, cliente],
-)).id
+  return (await uno(`insert into public.clientes (tipo_documento, numero_documento, razon_social) values ('RUC', $1, $2) returning id`, [r, nombre])).id
+}
+let cliente = `QA TRANSPORTES ENGANCHE ${sello}`
+let clienteId = await nuevoCliente(cliente)
 const carroceria = (await uno(`select id from public.tipos_carroceria where activo order by orden_secuencia, id limit 1`)).id
 const sede = (await uno(`select id from public.sedes where activo order by nombre limit 1`)).id
 
 // Las dos OT que Administración registró sin cotización, cada una con su unidad y su PDF.
 const numeros = (await consulta(`select n from generate_series(9100, 9999) n
                                   where not exists (select 1 from public.ordenes_trabajo o where o.numero = n || '-' || $1)
-                                  order by random() limit 5`, [anio])).map((f) => f.n)
+                                  order by random() limit 8`, [anio])).map((f) => f.n)
 const registradas = []
-async function registrar(i, n) {
-  const codigo = `QA-ENG ${sello}-${i + 1}`
+async function registrar(i, n, { aprobar = true, sinCodigo = false } = {}) {
+  const codigo = sinCodigo ? null : `QA-ENG ${sello}-${i + 1}`
   const unidad = (await uno(`insert into public.unidades (cliente_id, codigo_interno, placa, tipo_vehiculo)
                              values ($1, $2, $3, 'SEMIRREMOLQUE') returning id`, [clienteId, codigo, `E${sello.slice(-4)}${i}`])).id
   const orden = (await uno('select gen_random_uuid() as id')).id
@@ -149,7 +151,7 @@ async function registrar(i, n) {
   await como('administracion', `select public.registrar_orden_sin_cotizacion($1, $2, $3, $4, $5, null, 'FABRICACION', 'NORMAL',
                                   $6, null, null, null, null, null, null, $7, 'orden.pdf', $8)`,
   [orden, String(n), clienteId, unidad, sede, `Furgón isotérmico que el taller empezó antes de la cotización (${i + 1})`, ruta, contenido.length])
-  await como('gerencia', `update public.ordenes_trabajo set estado = 'APROBADA' where id = $1`, [orden])
+  if (aprobar) await como('gerencia', `update public.ordenes_trabajo set estado = 'APROBADA' where id = $1`, [orden])
   registradas.push({ id: orden, numero: `${n}-${anio}`, codigo })
 }
 await registrar(0, numeros[0])
@@ -338,12 +340,18 @@ const textos = async (lista) => (await lista.allTextContents()).map(limpio)
   await cotizar(cot2, 2)
   await registrar(3, numeros[3])
   await registrar(4, numeros[4])
+  await registrar(5, numeros[5], { aprobar: false })
   const { pagina, contexto } = await entrar('administracion')
   await pagina.goto(`${BASE}/cotizaciones/pdf?q=${encodeURIComponent(cot2.numero)}`, { waitUntil: 'networkidle' })
   const t = pagina.locator(`li[id="${cot2.id}"]`)
+  const avisoB = limpio(await t.locator('[data-aviso-ot-registrada]').textContent().catch(() => ''))
+  comprobar(avisoB.includes(registradas[5].numero) && avisoB.includes('espera el visto de Gerencia'),
+    `la tarjeta nombra también la OT que espera el visto de Gerencia («${avisoB}»)`)
   await t.getByRole('button', { name: 'Usar una OT ya registrada' }).click()
   const v = pagina.getByRole('dialog')
   await v.waitFor()
+  const ofrecidas = await v.locator('form select').first().locator('option').evaluateAll((os) => os.map((o) => o.value))
+  comprobar(!ofrecidas.includes(registradas[5].id), 'pero la ventana no la ofrece hasta que Gerencia la apruebe')
   await v.locator('form select').first().selectOption(registradas[3].id)
   await v.locator('select[name="unidad"]').selectOption('1')
   await v.locator('textarea[name="motivo"]').fill('Llegó antes que la cotización (respuesta perdida).')
@@ -381,6 +389,70 @@ const textos = async (lista) => (await lista.allTextContents()).map(limpio)
   const b = await deLaB()
   comprobar(b.length === 1 && b[0].id === registradas[3].id && b[0].numero_de_unidad === 1,
     `la base tiene solo la OT elegida, como la unidad 1 (${JSON.stringify(b)})`)
+  await contexto.close()
+}
+
+// ------- 6. La respuesta se pierde con la última OT que se ofrecía: la tarjeta lo dice
+{
+  cliente = `QA TRANSPORTES ENGANCHE ${sello} DOS`
+  clienteId = await nuevoCliente(cliente)
+  const cot3 = { id: (await uno('select gen_random_uuid() as id')).id, numero: `QA-ENG-${sello}-C` }
+  await cotizar(cot3, 1)
+  await registrar(6, numeros[6])
+  const { pagina, contexto } = await entrar('administracion', TELEFONO)
+  await pagina.goto(`${BASE}/cotizaciones/pdf?q=${encodeURIComponent(cot3.numero)}`, { waitUntil: 'networkidle' })
+  const t = pagina.locator(`li[id="${cot3.id}"]`)
+  await t.getByRole('button', { name: 'Usar una OT ya registrada' }).click()
+  const v = pagina.getByRole('dialog')
+  await v.waitFor()
+  await v.locator('form select').first().selectOption(registradas[6].id)
+  await v.locator('textarea[name="motivo"]').fill('Llegó antes que la cotización (la última que se ofrecía).')
+  let cortar = true
+  await pagina.route('**/cotizaciones/pdf**', async (ruta) => {
+    if (cortar && ruta.request().method() === 'POST') {
+      cortar = false
+      await ruta.fetch().catch(() => {})
+      await ruta.abort('connectionreset')
+      return
+    }
+    await ruta.continue().catch(() => {})
+  })
+  await v.getByRole('button', { name: `Enganchar la OT ${registradas[6].numero}` }).click()
+  const enTarjeta = t.locator('[data-enganche-en-la-tarjeta]')
+  await esperar(async () => !(await v.isVisible()) || (await v.locator('[data-enganche-ya-no]').count()) > 0, 15000)
+  await pagina.waitForTimeout(1500)
+  const dicho = (await v.isVisible())
+    ? limpio(await v.locator('[data-enganche-ya-no]').textContent().catch(() => ''))
+    : limpio(await enTarjeta.textContent().catch(() => ''))
+  comprobar(dicho.includes(`OT ${registradas[6].numero}`) && dicho.includes('ya no se ofrece'),
+    `sin respuesta y sin más OT que ofrecer, la ventana o la tarjeta dicen qué pasó («${dicho}»)`)
+  await pagina.screenshot({ path: join(CAPTURAS, 'enganchar-8-respuesta-perdida-ultima-390.png') })
+  const c3 = await consulta(`select id from public.ordenes_trabajo where cotizacion_pdf_id = $1 and estado <> 'ANULADA'`, [cot3.id])
+  comprobar(c3.length === 1 && c3[0].id === registradas[6].id, `la base tiene la OT una sola vez (${c3.length})`)
+  await contexto.close()
+}
+
+// ------------------- 7. El vehículo sin código interno: no promete la factura
+{
+  const cot4 = { id: (await uno('select gen_random_uuid() as id')).id, numero: `QA-ENG-${sello}-D` }
+  await cotizar(cot4, 1)
+  await registrar(7, numeros[7], { sinCodigo: true })
+  const { pagina, contexto } = await entrar('administracion')
+  await pagina.goto(`${BASE}/cotizaciones/pdf?q=${encodeURIComponent(cot4.numero)}`, { waitUntil: 'networkidle' })
+  const t = pagina.locator(`li[id="${cot4.id}"]`)
+  await t.getByRole('button', { name: 'Usar una OT ya registrada' }).click()
+  const v = pagina.getByRole('dialog')
+  await v.waitFor()
+  await v.locator('form select').first().selectOption(registradas[7].id)
+  comprobar((await v.locator('[data-sin-codigo]').count()) === 1, 'la ficha avisa que su vehículo no tiene código interno')
+  await v.locator('textarea[name="motivo"]').fill('Llegó antes que la cotización (sin código).')
+  await v.getByRole('button', { name: `Enganchar la OT ${registradas[7].numero}` }).click()
+  const enTarjeta = t.locator('[data-enganche-en-la-tarjeta]')
+  await esperar(async () => limpio(await enTarjeta.textContent().catch(() => '')).includes('quedó enganchada'), 15000)
+  const dicho = limpio(await enTarjeta.textContent().catch(() => ''))
+  comprobar(dicho.includes('no tiene código interno') && !dicho.includes('ya la puede facturar'),
+    `sin código, no dice que Contabilidad ya la puede facturar («${dicho}»)`)
+  await pagina.screenshot({ path: join(CAPTURAS, 'enganchar-9-sin-codigo-1440.png') })
   await contexto.close()
 }
 

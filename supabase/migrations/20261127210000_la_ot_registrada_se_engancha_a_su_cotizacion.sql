@@ -178,7 +178,9 @@ revoke all on function public.fn_ot_a_otra_venta_toma_la_unidad_libre() from pub
 -- 2. Qué OT puede enganchar Administración a cada cotización -----------------------
 -- Las del mismo cliente, sin cotización, vivas (no la del taller por revisar), de venta, con unidad, de la
 -- misma carrocería (o sin carrocería) y sin entrega: las mismas reglas que
--- `enganchar_ot_a_su_cotizacion`. Solo a quien carga las OT; a los demás, nada.
+-- `enganchar_ot_a_su_cotizacion`, salvo el visto de Gerencia: la que lo espera
+-- sale con su estado (BORRADOR) y la pantalla no la ofrece, solo avisa de ella.
+-- Solo a quien carga las OT; a los demás, nada.
 -- `version` es la de la OT, para que el enganche no pise un cambio de en medio.
 create or replace function public.ots_para_enganchar(p_cotizaciones uuid[])
 returns table (
@@ -213,9 +215,11 @@ begin
    where c.id = any (p_cotizaciones)
      and c.estado = 'APROBADA'
      and o.estado not in ('ENTREGADA', 'FACTURADA', 'ANULADA')
-     -- Con el visto de Gerencia: la OT que nace de la carga nace aprobada, y la
-     -- que se engancha cuenta igual para la factura.
-     and o.estado <> 'BORRADOR'
+     -- La que espera el visto de Gerencia sale también, pero no se engancha (la
+     -- OT que nace de la carga nace aprobada): la pantalla solo la nombra en el
+     -- aviso, para que no se cargue otra OT del mismo vehículo mientras tanto.
+     -- La del taller por revisar no sale.
+     and not (o.abierta_en_taller and o.estado = 'BORRADOR')
      and o.tipo_trabajo not in ('GARANTIA', 'MANTENIMIENTO')
      and (o.tipo_carroceria_id is null or o.tipo_carroceria_id = c.tipo_carroceria_id)
      and not exists (select 1 from public.ot_entregas e where e.orden_id = o.id)

@@ -687,11 +687,11 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                             }}
                           />
                         )}
-                        {cargaOt && sinCodigo(c) && c.id && (registradas?.get(c.id)?.length ?? 0) > 0 && (
+                        {cargaOt && sinCodigo(c) && c.id && (registradas?.get(c.id) ?? []).some((o) => o.estado !== 'BORRADOR') && (
                           <EngancharOtRegistrada
                             cotizacionId={c.id}
                             numero={c.numero ?? 'cotización'}
-                            ots={registradas?.get(c.id) ?? []}
+                            ots={(registradas?.get(c.id) ?? []).filter((o) => o.estado !== 'BORRADOR')}
                             unidades={unidades}
                             libres={libres}
                             facturadas={yaFacturadas?.get(c.id)}

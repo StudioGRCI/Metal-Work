@@ -529,10 +529,18 @@ export async function engancharOtACotizacion(
 
   const [{ data: ot }, { data: cuenta, error: errorCuenta }] = await Promise.all([
     supabase.from('ordenes_trabajo').select('numero').eq('id', v.orden_id).maybeSingle(),
-    supabase.from('v_cotizaciones_pdf').select('ordenes_faltantes').eq('id', v.cotizacion_id).maybeSingle(),
+    supabase.from('v_cotizaciones_pdf').select('ordenes_faltantes, ordenes').eq('id', v.cotizacion_id).maybeSingle(),
   ])
   const faltan = errorCuenta || !cuenta ? null : (cuenta.ordenes_faltantes ?? 0)
   const cual = ot?.numero ? `La OT ${ot.numero}` : 'La OT'
+  // Sin código interno no se factura: «Contabilidad ya la puede facturar» mentía
+  // con el vehículo sin código (P1 de funcionamiento).
+  const ordenes = Array.isArray(cuenta?.ordenes) ? (cuenta.ordenes as { id: string | null; codigo_interno: string | null }[]) : null
+  const estaSinCodigo = ordenes?.some((o) => o.id === v.orden_id && !o.codigo_interno?.trim()) ?? false
+  const otrasSinCodigo = ordenes?.some((o) => o.id !== v.orden_id && !o.codigo_interno?.trim()) ?? true
+  const sinCodigo = estaSinCodigo
+    ? ` Su vehículo no tiene código interno: dáselo con «Darle el código a la OT ${ot?.numero ?? ''}» para que Contabilidad la facture.`.replace('OT »', 'OT»')
+    : ''
 
   revalidatePath('/cotizaciones/pdf')
   revalidatePath('/ordenes')
@@ -543,10 +551,12 @@ export async function engancharOtACotizacion(
     mensaje: yaQuedo
       ? `${cual} ya había quedado enganchada a esta cotización la primera vez que la enviaste.`
       : faltan === null
-        ? `${cual} quedó enganchada a su cotización.`
+        ? `${cual} quedó enganchada a su cotización.${sinCodigo}`
         : faltan > 0
-          ? `${cual} quedó enganchada a su cotización. ${faltan === 1 ? 'Falta 1 OT' : `Faltan ${faltan} OT`}.`
-          : `${cual} quedó enganchada a su cotización, que ya tiene todas sus OT: Contabilidad ya la puede facturar.`,
+          ? `${cual} quedó enganchada a su cotización. ${faltan === 1 ? 'Falta 1 OT' : `Faltan ${faltan} OT`}.${sinCodigo}`
+          : estaSinCodigo || otrasSinCodigo
+            ? `${cual} quedó enganchada a su cotización, que ya tiene todas sus OT.${sinCodigo}`
+            : `${cual} quedó enganchada a su cotización, que ya tiene todas sus OT: Contabilidad ya la puede facturar.`,
     datos: { numero: ot?.numero ?? null },
   }
 }
