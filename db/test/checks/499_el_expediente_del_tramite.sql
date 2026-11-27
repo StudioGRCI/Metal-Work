@@ -1,4 +1,4 @@
--- El expediente del trámite (migración 20261126998800; plan «El puesto de
+-- El expediente del trámite (migración 20261127002000; plan «El puesto de
 -- Tramitador», entrega 2). Cada paso con su cuenta y `set local role
 -- authenticated`: el Tramitador sube los archivos, anota las gestiones, cierra
 -- el trámite con su documento final y retira lo que subió por error; Gerencia y

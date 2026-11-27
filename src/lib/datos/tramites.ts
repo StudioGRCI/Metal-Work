@@ -11,7 +11,7 @@ import { createClient } from '@/lib/supabase/server'
  * unidad— y trae el tipo, la unidad, el cliente y la OT: quien ve el trámite no
  * siempre lee esas tablas. También dice qué puede hacer quien pregunta en cada
  * uno, con la misma regla que la función que escribe. El expediente (entrega 2,
- * migración 20261126998800) se lee por `tramites_archivos` y
+ * migración 20261127002000) se lee por `tramites_archivos` y
  * `tramites_gestiones`, con la misma regla de quién ve.
  */
 

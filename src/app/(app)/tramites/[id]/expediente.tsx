@@ -21,7 +21,7 @@ import { adjuntarArchivo, anotarGestion, concluirTramite, retirarArchivo } from 
 import { AccionDelTramite, OPCION, RADIO, sinCorte, useAvisoDeLaFicha, type DondeAvisa } from './controles'
 
 /*
- * El expediente del trámite (entrega 2, migración 20261126998800): subir sus
+ * El expediente del trámite (entrega 2, migración 20261127002000): subir sus
  * archivos, cerrarlo con el documento final, anotar sus gestiones y retirar lo
  * que se subió por error. Cada ventana lleva su id fuera del formulario que se
  * rehace al abrir (`useIdDelEnvio`): tras «No llegó la respuesta», cerrar y

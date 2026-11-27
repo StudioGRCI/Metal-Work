@@ -6,7 +6,7 @@ import type { Tono } from '@/components/ui/etiqueta-estado'
  * de propiedad, placas, certificados) y los de la empresa (licencias, SOAT,
  * permisos); Gerencia y Administración los consultan, Ventas solo los de una
  * unidad, y Gerencia aprueba la anulación. Lo que la pantalla y las acciones
- * comparten con la base. La entrega 2 (migración 20261126998800) suma el
+ * comparten con la base. La entrega 2 (migración 20261127002000) suma el
  * expediente: sus archivos, sus gestiones y el cierre con el documento final.
  */
 
@@ -88,7 +88,7 @@ export function nombreDeLaUnidad(u: { placa: string | null; codigo_interno: stri
   return [u.placa ?? 'Sin placa', u.codigo_interno, u.carroceria].filter(Boolean).join(' · ')
 }
 
-/** El bucket privado del expediente (migración 20261126998800): la ruta es `{trámite}/{archivo}`. */
+/** El bucket privado del expediente (migración 20261127002000): la ruta es `{trámite}/{archivo}`. */
 export const BUCKET_TRAMITES = 'tramites'
 
 /** El tope de cada archivo del expediente, como el del bucket. */

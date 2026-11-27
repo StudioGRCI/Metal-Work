@@ -10,7 +10,7 @@ import { createClient } from '@/lib/supabase/server'
  * el momento del toque y no al pintar la ficha: quien lleva los trámites deja
  * la pantalla abierta toda la mañana, y un enlace de hace una hora ya no
  * abriría. Quién lo ve lo deciden la política de `tramite_archivos` y la de su
- * archivo en Storage (migración 20261126998800): quien ve el trámite; los
+ * archivo en Storage (migración 20261127002000): quien ve el trámite; los
  * retirados, solo quien ve todos. Si no se puede, vuelve a la lista con un
  * aviso: «Ver» abre otra pestaña, y responder el error tal cual dejaba ahí un
  * texto suelto sin decir qué pasó ni cómo seguir (como la cotización).

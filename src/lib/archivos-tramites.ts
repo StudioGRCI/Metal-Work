@@ -8,7 +8,7 @@ import { anotarSinDejarloSuelto } from '@/lib/subida-privada'
 /**
  * Subir un archivo al expediente de un trámite —el cargo, un recibo, otro
  * documento o el documento final que lo cierra—, desde el navegador (migración
- * 20261126998800).
+ * 20261127002000).
  *
  * El archivo va directo a Storage —bucket `tramites`, ruta
  * `{trámite}/{archivo}`, que es de donde la política saca de qué trámite es— y

@@ -262,7 +262,7 @@ export async function guardarTipo(_previo: unknown, formulario: FormData): Promi
 }
 
 /*
- * El expediente (entrega 2, migración 20261126998800). El archivo ya subió a
+ * El expediente (entrega 2, migración 20261127002000). El archivo ya subió a
  * Storage desde el navegador (`subirArchivoTramite`): aquí llega solo su ruta.
  */
 

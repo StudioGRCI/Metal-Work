@@ -1,6 +1,6 @@
 /**
  * El expediente del trámite (plan «El puesto de Tramitador», entrega 2,
- * migración 20261126998800), con clic real y la cuenta de cada puesto (nunca
+ * migración 20261127002000), con clic real y la cuenta de cada puesto (nunca
  * ADMIN):
  *
  *   1. El Tramitador, en el monitor: la ficha nace con el expediente vacío.
