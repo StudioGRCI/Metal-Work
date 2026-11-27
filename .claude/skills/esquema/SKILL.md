@@ -80,8 +80,17 @@ npx tsc --noEmit && npx eslint && npx next build
 - Cuentan una historia verosímil del taller (una OT en proceso a medio
   verificar, una pausada con motivo…) porque las capturas de presentación
   salen de aquí.
-- No usan funciones que exigen sesión (`aplicar_plantilla_ficha`): copian a
-  mano con un comentario que explica por qué.
+- Lo que tiene función se carga con ella y con la sesión del puesto que da ese
+  paso (`pg_temp.demo_como`, `pg_temp.demo_puesto` en la sección de compras y
+  almacén): así cada número sale de su serie y la regla se cumple. Copiar a mano
+  queda para lo que no se puede llamar desde SQL (un archivo que tiene que estar
+  en Storage), con un comentario que explica por qué.
+- **Un disparador diferido no corre hasta el `commit`**, y la demostración es
+  una sola transacción. La aprobación de una OC se decide en un disparador
+  diferido: sin `set constraints all immediate`, la OC se recibía y entregaba
+  antes de que Gerencia la viera y quedaba «no requerida» (2026-11-27, la
+  primera vuelta de los datos de compras). La sección que llama funciones con
+  disparadores diferidos abre con esa línea, como hacen los checks.
 
 ## Numeración y datos reales
 

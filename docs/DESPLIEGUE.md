@@ -142,6 +142,11 @@ Carga cinco clientes con su flota, dieciocho materiales con existencia
 valorizada y cinco órdenes en distintos estados. No toca nada de lo que ya
 exista y se puede ejecutar varias veces.
 
+Desde la entrega 1 de los datos de demostración completos trae también
+requerimientos, órdenes de compra y de servicio y un subcontrato, con números
+de las series reales. Un documento numerado no se borra nunca: esta carga va
+solo en una base de prueba, no en la de producción.
+
 Para borrar la demo antes de arrancar en producción, elimina esas órdenes desde
 el panel o pide que se prepare un script de limpieza.
 
