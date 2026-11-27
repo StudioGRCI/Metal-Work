@@ -111,11 +111,6 @@ test('la venta cuya OT pasó a otro comprador lo dice y no espera a nadie (20261
 
   const dos = describirRecorridoDeLaCotizacion([paso(1, 'OTRO_COMPRADOR', 'HECHO', { detalle: '9357-2026, 9358-2026' })])
   assert.equal(dos[0].nota, 'Las OT 9357-2026 y 9358-2026 ya no son de esta venta')
-  // La de varias: lo que espera de Administración cuenta la que pasó.
-  const tres = describirRecorridoDeLaCotizacion([paso(1, 'CODIGO_Y_OT', 'AHORA', { puesto: 'Administración', espera: 'CODIGO_Y_OT', detalle: '1/3/1' })])
-  assert.equal(tres[0].nota, 'De 3 unidades, lleva 1 OT y 1 pasó a otro comprador: falta la de 1 unidad, con su código interno.')
-  const sinOt = describirRecorridoDeLaCotizacion([paso(1, 'CODIGO_Y_OT', 'AHORA', { espera: 'CODIGO_Y_OT', detalle: '0/3/1' })])
-  assert.equal(sinOt[0].nota, 'De 3 unidades, 1 pasó a otro comprador: faltan las de 2 unidades, cada una con su código interno.')
   // Sin el número (quien no lee las órdenes), sin nota.
   assert.equal(describirRecorridoDeLaCotizacion([paso(1, 'OTRO_COMPRADOR', 'HECHO')])[0].nota, null)
 })
@@ -153,16 +148,15 @@ test('el recorrido de la avería dice las horas parado del cierre y que no qued�
   )
 })
 
-test('con varias unidades, Administración la tiene hasta cargar la OT de cada una', () => {
-  const [ninguna, algunas, una, todas] = describirRecorridoDeLaCotizacion([
-    paso(1, 'CODIGO_Y_OT', 'AHORA', { puesto: 'Administración', espera: 'CODIGO_Y_OT', detalle: '0/3' }),
-    paso(2, 'CODIGO_Y_OT', 'AHORA', { puesto: 'Administración', espera: 'CODIGO_Y_OT', detalle: '1/3' }),
-    paso(3, 'CODIGO_Y_OT', 'AHORA', { puesto: 'Administración', espera: 'CODIGO_Y_OT', detalle: '2/3' }),
-    paso(4, 'CODIGO_Y_OT', 'HECHO', { detalle: '3 OT' }),
+test('la espera de la OT ya no lee «lleva/de»; la OT sin código dice qué le falta', () => {
+  // Desde la 20261127010000 la base no manda el detalle «1/3»: cada unidad trae su paso.
+  const [espera, sinCodigo, todas] = describirRecorridoDeLaCotizacion([
+    paso(1, 'CODIGO_Y_OT', 'AHORA', { puesto: 'Administración', espera: 'CODIGO_Y_OT' }),
+    paso(2, 'CODIGO_Y_OT', 'AHORA', { puesto: 'Administración', espera: 'SIN_CODIGO', detalle: 'OT 9357-2026' }),
+    paso(3, 'CODIGO_Y_OT', 'HECHO', { detalle: '3 OT' }),
   ])
-  assert.equal(ninguna.nota, 'Le da a cada una de las 3 unidades su código interno y sube su OT.')
-  assert.equal(algunas.nota, 'Lleva 1 de 3 OT: faltan las de 2 unidades, cada una con su código interno.')
-  assert.equal(una.nota, 'Lleva 2 de 3 OT: falta la de 1 unidad, con su código interno.')
+  assert.equal(espera.nota, 'Le da el código interno de la unidad y sube la OT.')
+  assert.equal(sinCodigo.nota, 'La unidad de la OT 9357-2026 se quedó sin código interno: se lo vuelve a dar con «Editar OT».')
   assert.equal(todas.nota, '3 OT')
 })
 

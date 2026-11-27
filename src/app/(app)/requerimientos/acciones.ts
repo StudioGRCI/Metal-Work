@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 import { cambiosDelFormulario, datosDeCorreccion } from '@/lib/correccion-accion'
 import { normalizarCodigo } from '@/lib/dominio/codigos-internos'
+import { CODIGO_DEL_GASTO_OPERATIVO, MOTIVO_PLANTA_NO_ES_UNIDAD } from '@/lib/dominio/requerimientos'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -87,6 +88,9 @@ export async function emitirRequerimiento(_previo: unknown, formulario: FormData
   if (!tipo.success) return { ok: false, error: 'Elige si el requerimiento es de operación o de Administración.' }
   const delTipo = PERMISO_DEL_TIPO[tipo.data]
   if (!puede(perfil, [...delTipo.permiso])) return { ok: false, error: delTipo.quien }
+  const sinCodigo = tipo.data === 'ADMINISTRACION'
+    ? 'Elige el código interno de la unidad; si es para la oficina, OFICINA.'
+    : 'Elige el código interno de la unidad. Si es para el área, marca «Para el área (gasto operativo)».'
 
   const cabecera = z
     .object({
@@ -95,7 +99,7 @@ export async function emitirRequerimiento(_previo: unknown, formulario: FormData
       codigo_interno: z
         .string()
         .trim()
-        .min(2, 'Elige el código interno de la unidad. Si no es para una unidad, PLANTA u OFICINA.')
+        .min(2, sinCodigo)
         .max(60, 'El código interno pasa de 60 caracteres.')
         // Como lo guarda el costeo (`normalizar_codigo_interno`): «pla_sr_04» escrito a mano es PLA_SR_04.
         .transform(normalizarCodigo),
@@ -122,16 +126,28 @@ export async function emitirRequerimiento(_previo: unknown, formulario: FormData
     .safeParse(lineasDelFormulario(formulario))
   if (!lineas.success) return { ok: false, error: lineas.error.issues[0]?.message ?? 'Revisa los insumos.' }
 
+  // El del área (gasto operativo) va con PLANTA y la base lo marca: lo que sale
+  // del almacén para él va a PLANTA, no a una unidad ni a una OT.
+  const paraElArea = tipo.data === 'OPERACION' && dato(formulario, 'para') === 'AREA'
+  if (paraElArea && cabecera.data.codigo_interno !== CODIGO_DEL_GASTO_OPERATIVO) {
+    return { ok: false, error: 'Lo que es para el área va con PLANTA: vuelve a abrir el formulario.' }
+  }
+  // PLANTA no es una unidad: con «Para una unidad» (o desde una pestaña de
+  // antes de esta opción) se pide con la opción del área, que la base marca.
+  if (!paraElArea && tipo.data === 'OPERACION' && cabecera.data.codigo_interno === CODIGO_DEL_GASTO_OPERATIVO) {
+    return { ok: false, error: MOTIVO_PLANTA_NO_ES_UNIDAD }
+  }
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('emitir_requerimiento', {
+  const comun = {
     p_id: cabecera.data.operacion_id,
-    p_tipo: tipo.data,
     p_area_id: cabecera.data.area_id,
-    p_codigo_interno: cabecera.data.codigo_interno,
     p_justificacion: cabecera.data.justificacion,
     p_fecha_requerida: cabecera.data.fecha_requerida ?? null,
     p_lineas: lineas.data,
-  })
+  }
+  const { data, error } = paraElArea
+    ? await supabase.rpc('emitir_requerimiento_del_area', comun)
+    : await supabase.rpc('emitir_requerimiento', { ...comun, p_tipo: tipo.data, p_codigo_interno: cabecera.data.codigo_interno })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== cabecera.data.operacion_id) return { ok: false, error: 'El requerimiento no quedó registrado. Recarga la pantalla.' }
 
@@ -241,6 +257,14 @@ export async function corregirRequerimiento(_previo: unknown, formulario: FormDa
   if (!cambios.success) return { ok: false, error: cambios.error.issues[0]?.message ?? 'Revisa lo que corriges.' }
 
   const supabase = await createClient()
+  // Lo que era antes: el del área deja de serlo con otro código, y un RQ de
+  // una unidad no pasa a PLANTA (lo del área se pide con su opción).
+  const { data: antes } = await supabase.from('requerimientos').select('tipo, para_el_area').eq('id', id.data).maybeSingle()
+  const codigoNuevo = cambios.data.codigo_interno ? normalizarCodigo(cambios.data.codigo_interno) : null
+  if (antes?.tipo === 'OPERACION' && !antes.para_el_area && codigoNuevo === CODIGO_DEL_GASTO_OPERATIVO) {
+    return { ok: false, error: MOTIVO_PLANTA_NO_ES_UNIDAD }
+  }
+  const dejaDeSerDelArea = Boolean(antes?.para_el_area && codigoNuevo && codigoNuevo !== CODIGO_DEL_GASTO_OPERATIVO)
   const c = correccion.datos
   const { data, error } = await supabase.rpc('corregir_requerimiento', {
     p_correccion: c.correccion_id,
@@ -266,7 +290,8 @@ export async function corregirRequerimiento(_previo: unknown, formulario: FormDa
     supabase.rpc('metrado_de_requerimientos', { p_requerimientos: [id.data] }),
   ])
   const aviso =
-    rq?.estado === 'POR_ATENDER' || rq?.estado === 'LISTO_EN_ALMACEN' ? ' A Almacén le llegó el aviso.' : rq && rq.tipo !== 'ADMINISTRACION' ? ' A Logística le llegó el aviso.' : ''
+    (dejaDeSerDelArea ? ` Ya no es gasto operativo del área: lo que salga para él va a ${rq?.codigo_interno ?? codigoNuevo}.` : '')
+    + (rq?.estado === 'POR_ATENDER' || rq?.estado === 'LISTO_EN_ALMACEN' ? ' A Almacén le llegó el aviso.' : rq && rq.tipo !== 'ADMINISTRACION' ? ' A Logística le llegó el aviso.' : '')
   const sePasan = (metrado ?? []).filter((m) => m.estado === 'SIN_SUSTENTO').map((m) => m.item)
   if (sePasan.length > 0) {
     const cuales = sePasan.length === 1 ? `El insumo ${sePasan[0]} se pasa` : `Los insumos ${sePasan.slice(0, -1).join(', ')} y ${sePasan.at(-1)} se pasan`

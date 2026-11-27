@@ -10841,6 +10841,7 @@ export type Database = {
           motivo_del_faltante: string | null
           con_metrado: boolean
           codigo_desde: string | null
+          para_el_area: boolean
         }
         Insert: {
           id?: string
@@ -10872,6 +10873,7 @@ export type Database = {
           motivo_del_faltante?: string | null
           con_metrado?: boolean
           codigo_desde?: string | null
+          para_el_area?: boolean
         }
         Update: {
           id?: string
@@ -10903,6 +10905,7 @@ export type Database = {
           motivo_del_faltante?: string | null
           con_metrado?: boolean
           codigo_desde?: string | null
+          para_el_area?: boolean
         }
         Relationships: [
           {
@@ -13045,6 +13048,8 @@ export type Database = {
           creado_por: string | null
           creado_en: string
           actualizado_en: string
+          dias_desde_termino_ot: number | null
+          solo_sin_placa: boolean
         }
         Insert: {
           id?: string
@@ -13057,6 +13062,8 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          dias_desde_termino_ot?: number | null
+          solo_sin_placa?: boolean
         }
         Update: {
           id?: string
@@ -13069,6 +13076,8 @@ export type Database = {
           creado_por?: string | null
           creado_en?: string
           actualizado_en?: string
+          dias_desde_termino_ot?: number | null
+          solo_sin_placa?: boolean
         }
         Relationships: [
           {
@@ -13106,13 +13115,15 @@ export type Database = {
           anulacion_rechazo_motivo: string | null
           anulado_por: string | null
           anulado_en: string | null
-          registrado_por: string
+          registrado_por: string | null
           creado_en: string
           actualizado_en: string
           fecha_conclusion: string | null
           vigente_hasta: string | null
           concluido_por: string | null
           concluido_en: string | null
+          origen: string
+          renueva_a: string | null
         }
         Insert: {
           id?: string
@@ -13139,13 +13150,15 @@ export type Database = {
           anulacion_rechazo_motivo?: string | null
           anulado_por?: string | null
           anulado_en?: string | null
-          registrado_por?: string
+          registrado_por?: string | null
           creado_en?: string
           actualizado_en?: string
           fecha_conclusion?: string | null
           vigente_hasta?: string | null
           concluido_por?: string | null
           concluido_en?: string | null
+          origen?: string
+          renueva_a?: string | null
         }
         Update: {
           id?: string
@@ -13172,13 +13185,15 @@ export type Database = {
           anulacion_rechazo_motivo?: string | null
           anulado_por?: string | null
           anulado_en?: string | null
-          registrado_por?: string
+          registrado_por?: string | null
           creado_en?: string
           actualizado_en?: string
           fecha_conclusion?: string | null
           vigente_hasta?: string | null
           concluido_por?: string | null
           concluido_en?: string | null
+          origen?: string
+          renueva_a?: string | null
         }
         Relationships: [
           {
@@ -13228,6 +13243,13 @@ export type Database = {
             columns: ["registrado_por"]
             isOneToOne: false
             referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tramites_renueva_a_fkey"
+            columns: ["renueva_a"]
+            isOneToOne: true
+            referencedRelation: "tramites"
             referencedColumns: ["id"]
           },
           {
@@ -15495,6 +15517,7 @@ export type Database = {
           p_tamano_pdf: number | null
           p_marca?: string | null
           p_modelo?: string | null
+          p_unidad?: number | null
         }
         Returns: string
       }
@@ -17476,6 +17499,16 @@ export type Database = {
         }
         Returns: string
       }
+      emitir_requerimiento_del_area: {
+        Args: {
+          p_id: string | null
+          p_area_id: string | null
+          p_justificacion: string | null
+          p_fecha_requerida: string | null
+          p_lineas: Json | null
+        }
+        Returns: string
+      }
       en_camino_por_material: {
         Args: {
           p_sin?: string | null
@@ -18966,6 +18999,13 @@ export type Database = {
           atrasada: boolean | null
         }[]
       }
+      ot_abrir_sus_tramites: {
+        Args: {
+          p_ot: string | null
+          p_termino: string | null
+        }
+        Returns: number
+      }
       ot_anulada_que_reabre_la_venta: {
         Args: {
           p_cotizacion: string | null
@@ -18977,6 +19017,12 @@ export type Database = {
           p_orden: string | null
         }
         Returns: boolean
+      }
+      ot_lista_para_facturar_desde: {
+        Args: {
+          p_orden: string | null
+        }
+        Returns: string
       }
       ot_recalcular_avance: {
         Args: {
@@ -19003,6 +19049,13 @@ export type Database = {
           p_datos?: Json | null
           p_etapa_id?: string | null
           p_usuario_id?: string | null
+        }
+        Returns: string
+      }
+      ot_sin_codigo_desde: {
+        Args: {
+          p_cotizacion: string | null
+          p_orden: string | null
         }
         Returns: string
       }
@@ -22444,6 +22497,14 @@ export type Database = {
           actividades: Json | null
         }[]
       }
+      tramite_abrir_renovacion: {
+        Args: {
+          p_viejo: string | null
+          p_id: string | null
+          p_por: string | null
+        }
+        Returns: string
+      }
       tramite_archivo_subido: {
         Args: {
           p_tramite: string | null
@@ -22527,6 +22588,24 @@ export type Database = {
         }
         Returns: string
       }
+      tramites_de_la_orden: {
+        Args: {
+          p_orden: string | null
+        }
+        Returns: {
+          id: string | null
+          numero: string | null
+          tipo: string | null
+          origen: string | null
+          estado: string | null
+          situacion: string | null
+          fecha_limite: string | null
+          fecha_conclusion: string | null
+          vencido: boolean | null
+          ve: boolean | null
+          de_la_regla: boolean | null
+        }[]
+      }
       tramites_gestiones: {
         Args: {
           p_tramite: string | null
@@ -22549,6 +22628,8 @@ export type Database = {
           p_dias_aviso: Json | null
           p_activo: boolean | null
           p_alta: boolean | null
+          p_dias_ot?: number | null
+          p_solo_sin_placa?: boolean | null
         }
         Returns: {
           tipo: string | null
@@ -22574,6 +22655,16 @@ export type Database = {
           p_fecha_inicio: string | null
           p_fecha_limite: string | null
           p_nota: string | null
+        }
+        Returns: {
+          tramite: string | null
+          numero_tramite: string | null
+        }[]
+      }
+      tramites_renovar: {
+        Args: {
+          p_id: string | null
+          p_nuevo: string | null
         }
         Returns: {
           tramite: string | null
@@ -22669,6 +22760,14 @@ export type Database = {
           archivos: number | null
           puede_llevar_expediente: boolean | null
           puede_concluir: boolean | null
+          origen: string | null
+          por_vencer: boolean | null
+          renueva_a: string | null
+          renueva_numero: string | null
+          renovado_con: string | null
+          renovado_numero: string | null
+          renovado_estado: string | null
+          puede_renovar: boolean | null
         }[]
       }
       transitar_informe_diseno: {
@@ -22757,6 +22856,12 @@ export type Database = {
           estado: string | null
           fecha_entrega: string | null
         }[]
+      }
+      unidades_en_letra: {
+        Args: {
+          p_n: number | null
+        }
+        Returns: string
       }
       unidades_libres_ya_facturadas: {
         Args: {

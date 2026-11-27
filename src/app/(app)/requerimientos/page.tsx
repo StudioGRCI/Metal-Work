@@ -14,7 +14,8 @@ import { esperaSuSustento } from '@/lib/dominio/metrado-rq'
 import { esFiltroDePlazo, fechasDelFiltro, FILTROS_DE_PLAZO, type FiltroDePlazo } from '@/lib/dominio/plazo-rq'
 import { describirRecorridoDelRequerimiento } from '@/lib/dominio/recorrido'
 import { cargarRequerimientos, catalogosDelRequerimiento, contarRequerimientosAbiertos } from '@/lib/datos/requerimientos'
-import { tieneParaRecoger, TIPO_REQUERIMIENTO, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
+import { normalizarCodigo } from '@/lib/dominio/codigos-internos'
+import { CODIGO_DEL_GASTO_OPERATIVO, tieneParaRecoger, TIPO_REQUERIMIENTO, type TipoRequerimiento } from '@/lib/dominio/requerimientos'
 import { hoyLima } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 import { esUuid } from '@/lib/utils'
@@ -61,6 +62,11 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
   const soloUno = typeof params.rq === 'string' && esUuid(params.rq) ? params.rq : undefined
   // `?codigo=` muestra los RQ de un código interno: el que se presiona en cada fila.
   const codigo = typeof params.codigo === 'string' && params.codigo.trim().length >= 2 ? params.codigo.trim().slice(0, 60) : undefined
+  // Con PLANTA, `?gasto=area` deja el gasto operativo del área y `?gasto=antes`
+  // los de PLANTA de antes de esa opción: la tarjeta de «RQ por unidad» los separa.
+  const gasto = codigo && normalizarCodigo(codigo) === CODIGO_DEL_GASTO_OPERATIVO && (params.gasto === 'area' || params.gasto === 'antes')
+    ? params.gasto
+    : undefined
   // El supervisor de área ve primero los RQ de su área, como en su dashboard;
   // `?area=todas` muestra los de todas. Los de Administración no son de ningún taller.
   // Mantenimiento, lo mismo, sin «Todas las áreas»: las demás no son lo suyo.
@@ -73,7 +79,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
   // tu sustento»: son otra pregunta, y sus cifras no contarían lo que se ve.
   const plazo = !soloUno && esFiltroDePlazo(params.plazo) ? params.plazo : null
   const hoy = hoyLima()
-  const filtrosDeLista = { tipo: supervisaArea || vista === 'todos' ? undefined : vista, area: deSuArea, codigo } as const
+  const filtrosDeLista = { tipo: supervisaArea || vista === 'todos' ? undefined : vista, area: deSuArea, codigo, paraElArea: gasto ? gasto === 'area' : undefined } as const
   const [requerimientos, catalogos, enPlazo, cuentasDePlazo] = await Promise.all([
     cargarRequerimientos(soloUno ? { id: soloUno, conEntregado: true } : { ...filtrosDeLista, conEntregado: true }),
     emite ? catalogosDelRequerimiento() : Promise.resolve(null),
@@ -140,6 +146,7 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
   if (pedida) filtros.set('tipo', pedida)
   if (supervisaArea && !deSuArea) filtros.set('area', 'todas')
   if (codigo) filtros.set('codigo', codigo)
+  if (gasto) filtros.set('gasto', gasto)
   const sinRecoger = `/requerimientos${filtros.size > 0 ? `?${filtros}` : ''}`
   filtros.set('ver', 'sustentar')
   const conSustentar = `/requerimientos?${filtros}`
@@ -212,7 +219,13 @@ export default async function PaginaRequerimientos({ searchParams }: PageProps<'
 
       {!soloUno && codigo && (
         <p className="text-sm text-texto-suave">
-          Solo los del código interno <span className="font-mono text-texto">{codigo}</span>.{' '}
+          {gasto === 'area' ? (
+            <>Solo el gasto operativo del área (<span className="font-mono text-texto">{codigo}</span>).{' '}</>
+          ) : gasto === 'antes' ? (
+            <>Solo los pedidos con <span className="font-mono text-texto">{codigo}</span> antes del 27/11: no son gasto operativo.{' '}</>
+          ) : (
+            <>Solo los del código interno <span className="font-mono text-texto">{codigo}</span>.{' '}</>
+          )}
           <Link href={conPlazo(verTodos)} className="font-medium text-acento hover:underline">
             Ver todos
           </Link>

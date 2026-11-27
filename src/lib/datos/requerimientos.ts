@@ -82,6 +82,8 @@ export type RequerimientoListado = {
   /** Quien lo registró: el supervisor (`rq_exigir_del_area`) y el colaborador de Diseño corrigen y anulan solo los suyos. */
   creado_por: string | null
   codigo_interno: string
+  /** Es para el área (gasto operativo): va con PLANTA y lo que sale para él va a PLANTA (migración 20261127180000). */
+  para_el_area: boolean
   justificacion: string
   fecha_requerida: string | null
   estado: string
@@ -119,7 +121,7 @@ export type OpcionCatalogo = { id: string; codigo: string; nombre: string }
 export type AreaParaRequerimiento = OpcionCatalogo & { requerimiento: string }
 
 const SELECT_RQ =
-  'id, numero, tipo, area_id, creado_por, codigo_interno, justificacion, fecha_requerida, estado, motivo_anulacion, nota_almacen, nota_logistica, nota_entrega, faltante_al_entregar, motivo_del_faltante, revision_stock_en, en_atencion_en, listo_en_almacen_en, entregado_en, creado_en, area:areas(nombre), lineas:requerimiento_lineas(id, item, descripcion, cantidad, cantidad_en_stock, sin_salida_al_entregar, material_id, material_nuevo, recompra_de, material:materiales(codigo, descripcion, unidad_pendiente), unidad:unidades_medida(codigo), categoria:categorias_material(nombre), orden_compra:ordenes_compra_materiales(id, numero, referencia, aprobacion, fecha_estimada))'
+  'id, numero, tipo, area_id, creado_por, codigo_interno, para_el_area, justificacion, fecha_requerida, estado, motivo_anulacion, nota_almacen, nota_logistica, nota_entrega, faltante_al_entregar, motivo_del_faltante, revision_stock_en, en_atencion_en, listo_en_almacen_en, entregado_en, creado_en, area:areas(nombre), lineas:requerimiento_lineas(id, item, descripcion, cantidad, cantidad_en_stock, sin_salida_al_entregar, material_id, material_nuevo, recompra_de, material:materiales(codigo, descripcion, unidad_pendiente), unidad:unidades_medida(codigo), categoria:categorias_material(nombre), orden_compra:ordenes_compra_materiales(id, numero, referencia, aprobacion, fecha_estimada))'
 
 /**
  * Cuántos RQ en camino (por entregar) se necesitan entre esas fechas, con los
@@ -130,6 +132,8 @@ export async function contarRequerimientosAbiertos(opciones: {
   tipo?: 'OPERACION' | 'ADMINISTRACION'
   area?: string
   codigo?: string
+  /** Con PLANTA: true, solo el gasto operativo del área; false, solo los de antes de esa opción. */
+  paraElArea?: boolean
   necesitadoDesde: string | null
   necesitadoHasta: string
 }): Promise<number> {
@@ -138,6 +142,7 @@ export async function contarRequerimientosAbiertos(opciones: {
   if (opciones.tipo) consulta = consulta.eq('tipo', opciones.tipo)
   if (opciones.area) consulta = consulta.eq('area_id', opciones.area)
   if (opciones.codigo) consulta = consulta.eq('codigo_interno', opciones.codigo)
+  if (opciones.paraElArea !== undefined) consulta = consulta.eq('para_el_area', opciones.paraElArea)
   if (opciones.necesitadoDesde) consulta = consulta.gte('fecha_requerida', opciones.necesitadoDesde)
   const { count, error } = await consulta.lte('fecha_requerida', opciones.necesitadoHasta)
   if (error) throw new Error(`No se pudieron contar los requerimientos por su fecha: ${error.message}`)
@@ -162,6 +167,8 @@ export async function cargarRequerimientos(
     ids?: string[]
     area?: string
     codigo?: string
+    /** Con PLANTA: true, solo el gasto operativo del área; false, solo los de antes de esa opción. */
+    paraElArea?: boolean
     conEntregado?: boolean
     /** Para contar, sin la fecha esperada: no lee si Logística la corrigió. */
     sinFechaCorregida?: boolean
@@ -178,6 +185,7 @@ export async function cargarRequerimientos(
   if (opciones.ids) consulta = consulta.in('id', opciones.ids)
   if (opciones.area) consulta = consulta.eq('area_id', opciones.area)
   if (opciones.codigo) consulta = consulta.eq('codigo_interno', opciones.codigo)
+  if (opciones.paraElArea !== undefined) consulta = consulta.eq('para_el_area', opciones.paraElArea)
   if (opciones.necesitadoDesde) consulta = consulta.gte('fecha_requerida', opciones.necesitadoDesde)
   if (opciones.necesitadoHasta) consulta = consulta.lte('fecha_requerida', opciones.necesitadoHasta)
   // Por fecha, el más vencido primero: es lo que se mira con «Vencido sin entregar».
@@ -229,6 +237,7 @@ export async function cargarRequerimientos(
       area: r.area?.nombre ?? '—',
       creado_por: r.creado_por,
       codigo_interno: r.codigo_interno,
+      para_el_area: r.para_el_area,
       justificacion: r.justificacion,
       fecha_requerida: r.fecha_requerida,
       estado: r.estado,

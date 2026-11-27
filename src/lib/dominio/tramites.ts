@@ -41,6 +41,21 @@ export const SITUACION_TRAMITE: Record<string, Def> = {
   ANULADO: { etiqueta: 'Anulado', tono: 'neutro', descripcion: 'Quedó sin efecto, con su motivo y el visto de Gerencia.' },
 }
 
+/**
+ * De dónde viene el trámite (`tramites.origen`, entrega 4, migración
+ * 20261127170000): lo registró alguien, lo abrió la base al terminar la OT, o
+ * es la renovación de uno concluido.
+ */
+export const ORIGEN_TRAMITE: Record<string, { etiqueta: string; descripcion: string }> = {
+  MANUAL: { etiqueta: 'Registrado', descripcion: 'Lo registró quien lleva los trámites.' },
+  OT: { etiqueta: 'Abierto por la OT', descripcion: 'Lo abrió el sistema al terminar la unidad de la OT, con su fecha límite.' },
+  RENOVACION: { etiqueta: 'Renovación', descripcion: 'Renueva el documento de un trámite concluido.' },
+}
+
+/** Los días hábiles desde el término de la OT que admite un tipo, como `ck_tramite_tipo_ot`. */
+export const MINIMO_DIAS_DESDE_TERMINO_OT = 1
+export const MAXIMO_DIAS_DESDE_TERMINO_OT = 60
+
 /** Cuántas unidades trae la lista para elegir como mucho: el tope de filas de la API. La ventana lo dice si se llega. */
 export const MAXIMO_UNIDADES_PARA_ELEGIR = 1000
 
@@ -75,12 +90,15 @@ export function diasDeAvisoEnTexto(dias: number[]): string {
  * «Venció hace 3 días», «Vence hoy», «Vence en 5 días». `null` sin fecha límite
  * o con el trámite anulado.
  */
-export function plazoDelTramite(dias: number | null): { texto: string; tono: Tono } | null {
+export function plazoDelTramite(dias: number | null, porVencer?: boolean): { texto: string; tono: Tono } | null {
   if (dias === null) return null
   if (dias < 0) return { texto: `Venció hace ${-dias} ${dias === -1 ? 'día' : 'días'}`, tono: 'peligro' }
   if (dias === 0) return { texto: 'Vence hoy', tono: 'peligro' }
-  if (dias === 1) return { texto: 'Vence mañana', tono: 'aviso' }
-  return { texto: `Vence en ${dias} días`, tono: dias <= 7 ? 'aviso' : 'neutro' }
+  // Con `por_vencer` de la base, el ámbar es el mismo de la vista «Por vencer»:
+  // los días de aviso de su tipo (30 en un SOAT, 5 en la tarjeta), no un tope fijo.
+  const enAviso = porVencer ?? dias <= 7
+  if (dias === 1) return { texto: 'Vence mañana', tono: porVencer === false ? 'neutro' : 'aviso' }
+  return { texto: `Vence en ${dias} días`, tono: enAviso ? 'aviso' : 'neutro' }
 }
 
 /** «ABC-123 · M-0045 · Furgón». */

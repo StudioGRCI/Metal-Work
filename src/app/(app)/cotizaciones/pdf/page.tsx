@@ -6,6 +6,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { AvisoTope } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { AvisoEnfocado } from '@/components/ui/aviso-enfocado'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Recorrido } from '@/components/ui/recorrido'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
@@ -115,6 +116,20 @@ function faltaSuOt(c: { estado: string | null; ordenes_faltantes: number | null 
   return c.estado === 'APROBADA' && (c.ordenes_faltantes ?? 0) > 0
 }
 
+// Una OT vigente cuya unidad se quedó sin código interno: no se factura, y
+// Administración se lo vuelve a dar con «Editar OT», no cargando otra OT.
+function otSinCodigo(c: { ordenes: { codigo_interno: string | null }[] }) {
+  return c.ordenes.some((o) => !o.codigo_interno)
+}
+
+// Lo que Administración tiene pendiente en la aprobada: alguna OT por cargar o
+// alguna OT a la que devolverle el código; va arriba para Administración. El
+// filtro «esperan OT» sigue siendo el de las OT por cargar (la misma cuenta del
+// menú), y la OT sin código no cuenta como «Con código y OT» (entrega 3).
+function esperaAdministracion(c: { estado: string | null; ordenes: { codigo_interno: string | null }[]; ordenes_faltantes: number | null }) {
+  return faltaSuOt(c) || (c.estado === 'APROBADA' && otSinCodigo(c))
+}
+
 // La OT que fue su venta y pasó a otro comprador con «Editar OT»: esa unidad
 // ya no lleva OT y la base no deja cargarle otra (migración 20261126988000,
 // DKS 2026-11-26: «Cerrarla: no lleva otra OT»). La de varias unidades la pinta
@@ -128,7 +143,7 @@ function pasoAOtroComprador(salieron: (string | null)[] | null) {
 }
 
 function enFiltro(
-  c: { estado: string | null; ordenes: unknown[]; ordenes_faltantes: number | null; revisado_en: string | null },
+  c: { estado: string | null; ordenes: { codigo_interno: string | null }[]; ordenes_faltantes: number | null; revisado_en: string | null },
   filtro: FiltroEstado | null,
   mes: string,
 ) {
@@ -143,7 +158,7 @@ function enFiltro(
       return c.estado === 'RECHAZADA'
     case 'CON_OT':
       // Con todas sus OT: la que está a medio cargar sigue en las que esperan.
-      return c.ordenes.length > 0 && (c.ordenes_faltantes ?? 0) === 0
+      return c.ordenes.length > 0 && (c.ordenes_faltantes ?? 0) === 0 && !otSinCodigo(c)
     case 'ANULADA':
       return c.estado === 'ANULADA'
     default:
@@ -162,6 +177,8 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
   const veCodigos = puede(perfil, 'codigos_internos.ver')
   // Gerencia Comercial (2026-11-25) sigue la cotización hasta su OT: la abre desde aquí.
   const veOt = puede(perfil, 'ordenes.ver')
+  // Quien le devuelve el código a la OT que se quedó sin él, con «Editar OT».
+  const editaOt = puede(perfil, 'ordenes.editar')
 
   const [todas, catalogos] = await Promise.all([
     listarCotizacionesPdf(),
@@ -209,7 +226,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
     puedeSubir && c.estado === 'APROBADA' && c.reabierta_por_ot_anulada !== null && c.registrado_por === perfil.id
   const meToca = (c: (typeof cotizaciones)[number]) =>
     (revisa && c.estado === 'POR_REVISAR') ||
-    (cargaOt && sinCodigo(c)) ||
+    (cargaOt && esperaAdministracion(c)) ||
     (puedeCorregirCotizacion(perfil, c) && !c.facturada) ||
     cancelaComoAutor(c) ||
     cancelaPorQuienSeFue(c)
@@ -362,11 +379,15 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
             const unidades = c.cantidad_unidades ?? 1
             const varias = unidades > 1
             const faltan = c.ordenes_faltantes ?? 0
+            // Las OT que se quedaron sin código: no se carga otra, se les devuelve con «Editar OT».
+            const otsSinCodigo = c.estado === 'APROBADA' ? c.ordenes.filter((o) => !o.codigo_interno) : []
             // La unidad que sigue: la primera sin OT vigente (si se anuló la 2, la 2).
             // La unidad que pasó a otro comprador tampoco se vuelve a cargar: la base la salta.
             const pasaron = c.unidades_a_otro_comprador
             const tomadas = new Set([...c.ordenes.map((o, i) => o.unidad ?? i + 1), ...pasaron.map((p) => p.unidad)])
-            const siguiente = Array.from({ length: unidades }, (_, i) => i + 1).find((k) => !tomadas.has(k)) ?? c.ordenes.length + 1
+            // Las unidades que esperan su OT: Administración elige cuál carga (entrega 3).
+            const libres = Array.from({ length: unidades }, (_, i) => i + 1).filter((k) => !tomadas.has(k))
+            const siguiente = libres[0] ?? c.ordenes.length + 1
             // La frase, solo si no le queda ninguna OT; si le queda alguna (la cantidad
             // se corrigió después, o se cargó otra antes de 20261126988000), la que
             // pasó va como un renglón más de sus OT.
@@ -540,6 +561,19 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                         </span>
                       </p>
                     )}
+                    {!editaOt && otsSinCodigo.length > 0 && (
+                      <p data-ot-sin-codigo className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-aviso-suave px-2.5 py-1.5 text-xs text-aviso">
+                        <Hourglass aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+                        <span>
+                          <span className="font-medium">
+                            {otsSinCodigo.length === 1 ? 'La OT' : 'Las OT'}
+                            {otsSinCodigo.some((o) => o.numero) ? ` ${otsSinCodigo.flatMap((o) => (o.numero ? [o.numero] : [])).join(', ')}` : ''}
+                            {otsSinCodigo.length === 1 ? ' se quedó' : ' se quedaron'} sin código interno: Administración se lo vuelve a dar con «Editar OT».
+                          </span>{' '}
+                          Sin código no se factura.
+                        </span>
+                      </p>
+                    )}
 
                     {filasDeOt.length > 0 && (
                       <ul className="space-y-1" aria-label={varias ? `OT de las ${unidades} unidades` : undefined}>
@@ -572,7 +606,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                                   <span className="font-mono font-medium break-all text-texto">{o.codigo_interno}</span>
                                 )
                               ) : (
-                                <span className="text-texto-suave">Sin código interno</span>
+                                <Insignia tono="aviso">Sin código interno</Insignia>
                               )}
                               {o.numero &&
                                 (veOt && o.id ? (
@@ -610,7 +644,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                       femenino
                     />
 
-                    {(revisa && c.estado === 'POR_REVISAR' || cargaOt && sinCodigo(c) || corrige || quitable || cancela) && (
+                    {(revisa && c.estado === 'POR_REVISAR' || cargaOt && sinCodigo(c) || (editaOt && otsSinCodigo.some((o) => o.id)) || corrige || quitable || cancela) && (
                       <div className="flex flex-wrap items-center gap-2">
                         {revisa && c.estado === 'POR_REVISAR' && c.id && (
                           <RevisarCotizacion id={c.id} conOrden={c.ordenes.length > 0} />
@@ -623,11 +657,20 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                             unidad={{
                               cual: siguiente,
                               de: unidades,
+                              libres,
                               otras: c.ordenes.flatMap((o, i) => (o.codigo_interno ? [{ unidad: o.unidad ?? i + 1, codigo: o.codigo_interno }] : [])),
                               facturadas: yaFacturadas?.get(c.id),
                             }}
                           />
                         )}
+                        {editaOt &&
+                          otsSinCodigo.flatMap((o) =>
+                            o.id ? [
+                              <EnlaceBoton key={`codigo-${o.id}`} href={`/ordenes/${o.id}?editar=codigo`} variante="contorno" tamano="sm" data-darle-el-codigo>
+                                {`Darle el código a la OT${o.numero ? ` ${o.numero}` : ''}`}
+                              </EnlaceBoton>,
+                            ] : [],
+                          )}
                         {corrige && c.id && (
                           <CorregirCotizacion id={c.id} numero={c.numero ?? ''} observacion={c.observacion}
                             rechazada={c.estado === 'RECHAZADA'} aprobada={c.estado === 'APROBADA'}
