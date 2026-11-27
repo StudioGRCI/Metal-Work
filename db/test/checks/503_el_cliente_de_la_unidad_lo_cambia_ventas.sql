@@ -2,14 +2,18 @@
 -- lo dejó abierto la 20261127183500 y StudioGRCI pidió cerrarlo en otro PR):
 --   1. Diseño (`diseno.unidades`) no cambia ni quita el cliente de una unidad
 --      sin OT por la API, y el aviso le dice que no es de su puesto.
---   2. Diseño sigue corrigiendo los datos del vehículo, también mandando el
---      mismo cliente que ya tenía (lo que manda la ficha de la unidad).
+--   2. Diseño sigue corrigiendo los datos del vehículo, también si reenvía por
+--      la API la fila con el mismo cliente que ya tenía (la ficha de la unidad,
+--      desde el PR 298, no manda el cliente al corregir).
 --   3. Ventas (`clientes.editar`) y el administrador sí cambian el cliente de
 --      la unidad sin OT, como siempre.
 --   4. Un camino del sistema (`security definer`) que le pone el cliente a la
 --      unidad lo hace aunque quien lo llama no tenga `clientes.editar`:
 --      Administración con «Poner cliente» (la cadena completa está en el 502).
 --   5. Sin sesión sigue entrando.
+--   6. El disparador deja pasar a toda función `security definer` (corre como su
+--      dueño): las que hoy escriben en `unidades` exigen su propio permiso. Si
+--      aparece otra, este check falla para que alguien la mire antes de unir.
 -- Cada paso con la cuenta del puesto y `set local role authenticated`. Termina
 -- en rollback.
 \set ON_ERROR_STOP on
@@ -59,8 +63,9 @@ begin
   values (current_setting('prueba.u_libre')::uuid, current_setting('prueba.cliente_a')::uuid, 'QA5-503', 'CAMION', 'VOLVO', 'FH');
   reset role;
 
-  -- La OT del taller sin cliente, como la abre el taller (armazón sin sesión).
-  perform set_config('request.jwt.claim.sub', '', true);
+  -- La OT del taller sin cliente, como la abre el taller (armazón con ADMIN,
+  -- skill esquema › Trampas).
+  perform test.como_usuario(current_setting('prueba.admin')::uuid);
   insert into public.unidades (id, placa, tipo_vehiculo) values (current_setting('prueba.u_taller')::uuid, 'QA6-503', 'CAMION');
   insert into public.ordenes_trabajo (id, numero, sede_id, descripcion, abierta_en_taller, unidad_id) values
     (current_setting('prueba.taller')::uuid, '50399-2026', current_setting('prueba.sede')::uuid, 'OT del taller sin cliente 503', true,
@@ -94,7 +99,7 @@ begin
      where id = current_setting('prueba.u_libre')::uuid;
     get diagnostics v = row_count;
     perform test.afirmar(v = 1, quien || ' sigue corrigiendo los datos del vehículo: ' || v || ' fila');
-    -- Lo que manda la ficha al corregir: el mismo cliente que ya tenía.
+    -- Quien reenvía la fila por la API con el mismo cliente que ya tenía.
     update public.unidades set cliente_id = current_setting('prueba.cliente_a')::uuid, color = 'BLANCO'
      where id = current_setting('prueba.u_libre')::uuid;
     get diagnostics v = row_count;
@@ -155,10 +160,20 @@ begin
   perform test.afirmar(
     exists (select 1 from pg_trigger t where t.tgrelid = 'public.unidades'::regclass
              and t.tgname = 'trg_unidad_cliente_lo_cambia_ventas' and t.tgenabled = 'O')
-    and 'trg_unidad_cliente_lo_cambia_ventas' < 'trg_unidad_con_ot_conserva_su_cliente'
     and not has_function_privilege('authenticated', 'public.fn_unidad_cliente_lo_cambia_ventas()', 'execute')
     and not has_function_privilege('anon', 'public.fn_unidad_cliente_lo_cambia_ventas()', 'execute'),
-    'El disparador está, corre antes que el de la unidad con OT y nadie llama su función');
+    'El disparador está y nadie llama su función (que corre antes que el de la unidad con OT lo prueba el aviso de los pasos 1 y del 502)');
+
+  -- 6. Las funciones del sistema que escriben en `unidades`, conocidas una por una.
+  perform test.afirmar(
+    array(select p.proname::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public' and p.prosrc ~* 'update\s+(public\.)?unidades' order by 1)
+    = array['aprobar_cotizacion_con_ot', 'cargar_codigo_y_ot_de_cotizacion', 'editar_ot_con_historial_base',
+            'editar_resumen_ot_administracion', 'emitir_orden_de_cotizacion', 'poner_cliente_a_orden']
+    and not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public' and p.prosrc ~* 'update\s+(public\.)?unidades' and not p.prosecdef),
+    'Las funciones que escriben en unidades son las seis conocidas, todas security definer: una nueva que cambie '
+    || 'el cliente pasa por encima del disparador y tiene que exigir su permiso (agregarla aquí después de revisarla)');
 end $$;
 
 rollback;
