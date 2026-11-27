@@ -16157,6 +16157,8 @@ export type Database = {
           ot_del_taller: boolean | null
           ot_entregada_el: string | null
           ordenes: number | null
+          cotizacion_unidad: number | null
+          cotizacion_unidades: number | null
         }[]
       }
       codigo_interno_reparto_a_todos: {
@@ -19705,6 +19707,8 @@ export type Database = {
           dias: number | null
           espera: string | null
           detalle: string | null
+          unidad: number | null
+          unidades: number | null
         }[]
       }
       recorrido_de_informes_diseno: {
@@ -22619,6 +22623,13 @@ export type Database = {
         Args: {
           p_cotizacion: string | null
           p_codigo: string | null
+        }
+        Returns: number
+      }
+      unidad_que_dejo_la_ot: {
+        Args: {
+          p_orden: string | null
+          p_cotizacion: string | null
         }
         Returns: number
       }

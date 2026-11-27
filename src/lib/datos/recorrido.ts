@@ -22,6 +22,9 @@ type Fila = {
   dias: number | null
   espera: string | null
   detalle: string | null
+  // Solo `recorrido_de_cotizaciones` (migración 20261126998900).
+  unidad?: number | null
+  unidades?: number | null
 }
 
 const SITUACIONES: readonly SituacionDelPaso[] = ['HECHO', 'AHORA', 'PENDIENTE']
@@ -75,6 +78,8 @@ async function leer(
         dias: f.dias == null ? null : Number(f.dias),
         espera: f.espera,
         detalle: f.detalle,
+        unidad: f.unidad == null ? null : Number(f.unidad),
+        unidades: f.unidades == null ? null : Number(f.unidades),
       })
       porDocumento.set(f.documento, pasos)
     }
