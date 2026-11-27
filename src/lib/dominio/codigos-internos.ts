@@ -122,7 +122,7 @@ export function faltanteDelCosto(f: { sinPrecio: number; horasSinCosto: number; 
 
 export function dolaresAlCambio(c: { usd_al_cambio: number; usd_en_soles: number }) {
   if (c.usd_al_cambio <= 0) return null
-  return `Lo que está en dólares (${moneda(c.usd_al_cambio, 'USD')}) suma ${moneda(c.usd_en_soles)} al cambio de Contabilidad del día de cada línea: con eso, las partes en soles dan el costo hasta hoy.`
+  return `Lo que está en dólares (${moneda(c.usd_al_cambio, 'USD')}) suma ${moneda(c.usd_en_soles)}: cada orden de servicio con el monto en soles que guarda, y lo demás al cambio de Contabilidad del día de cada línea. Con eso, las partes en soles dan el costo hasta hoy.`
 }
 
 const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`
