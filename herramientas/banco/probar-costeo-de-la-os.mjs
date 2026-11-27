@@ -19,9 +19,8 @@
  *      registrado: la fila dice «Sin cambio del (ese día)» y el costo no la suma.
  *   7. La detracción de la primera OS queda depositada (se siembra: el banco no
  *      tiene cajas) y Contabilidad corrige el cambio del día de su factura: la
- *      OS no se mueve y el costo tampoco; la fila dice «Cambio fijo: detracción
- *      depositada u orden pagada» y debajo de sus dólares, los mismos soles que
- *      guarda la OS. Bajo «Total aprobado», lo que los servicios pesan en el costo.
+ *      OS no se mueve y el costo tampoco; la fila dice «Cambio fijo» y debajo
+ *      de sus dólares, los mismos soles que guarda la OS. Bajo «Total aprobado», lo que los servicios pesan en el costo.
  *
  * Cada corrida usa un código y unas OS propias: se puede repetir. Solo en el
  * banco. Variables: BANCO_CLAVE, BASE (http://localhost:3111), BANCO_BASE
@@ -318,21 +317,24 @@ comprobar(despues.fecha_cambio === hace3 && Number(despues.monto_pen) === Math.r
   const corregido = Math.round(1000 * (await cambioDe(hace3)) * 100) / 100
   comprobar(Number(fijaOs.monto_pen) === Number(despues.monto_pen) && corregido !== Number(despues.monto_pen),
     `Contabilidad corrige el cambio del ${dma(hace3)}: la OS fija sigue en S/ ${fijaOs.monto_pen} (con el corregido serían S/ ${corregido})`)
-  for (const ancho of [1440, 390]) {
-    const p = await entrar('gerencia', ancho)
-    const c = await leerCosteo(p)
-    comprobar(c.alCambio === Number(despues.monto_pen) && c.costo === Number(despues.monto_pen) + 500,
-      `a ${ancho}, el costo sigue pesando lo que guarda la OS: S/ ${despues.monto_pen} + S/ 500, no S/ ${corregido} (dice ${c.costo})`)
-    comprobar(c.texto === 'Cambio fijo: detracción depositada u orden pagada' && c.pesa === Number(despues.monto_pen),
-      `la fila dice «Cambio fijo: detracción depositada u orden pagada» y los S/ ${despues.monto_pen} que pesa (dice «${c.texto}» y ${c.pesa})`)
-    comprobar(c.enElCosto === c.costo, `y bajo «Total aprobado» siguen los mismos S/ ${c.costo} (dice ${c.enElCosto})`)
-    comprobar(!(await desborda(p)), `sin salirse de la pantalla a ${ancho}`)
-    await captura(p, `costeo-os-fija-${ancho}`)
-    await p.context().close()
+  try {
+    for (const ancho of [1440, 390]) {
+      const p = await entrar('gerencia', ancho)
+      const c = await leerCosteo(p)
+      comprobar(c.alCambio === Number(despues.monto_pen) && c.costo === Number(despues.monto_pen) + 500,
+        `a ${ancho}, el costo sigue pesando lo que guarda la OS: S/ ${despues.monto_pen} + S/ 500, no S/ ${corregido} (dice ${c.costo})`)
+      comprobar(c.texto === 'Cambio fijo' && c.pesa === Number(despues.monto_pen),
+        `la fila dice «Cambio fijo» y los S/ ${despues.monto_pen} que pesa (dice «${c.texto}» y ${c.pesa})`)
+      comprobar(c.enElCosto === c.costo, `y bajo «Total aprobado» siguen los mismos S/ ${c.costo} (dice ${c.enElCosto})`)
+      comprobar(!(await desborda(p)), `sin salirse de la pantalla a ${ancho}`)
+      await captura(p, `costeo-os-fija-${ancho}`)
+      await p.context().close()
+    }
+  } finally {
+    // El cambio de ese día es del banco, no de esta corrida: se devuelve como estaba aunque algo
+    // falle antes, para que otra corrida (o quien mire el banco a la vez) no herede la corrección.
+    await como('contabilidad', `update public.tipos_de_cambio set venta = venta - 0.05, compra = compra - 0.05 where fecha = $1::date`, [hace3])
   }
-  // El cambio de ese día es del banco, no de esta corrida: se devuelve como estaba, para que
-  // otra corrida (o quien mire el banco a la vez) no herede la corrección.
-  await como('contabilidad', `update public.tipos_de_cambio set venta = venta - 0.05, compra = compra - 0.05 where fecha = $1::date`, [hace3])
   comprobar(Math.abs((await cambioDe(hace3)) - tc3) < 0.0001, `el cambio del ${dma(hace3)} vuelve a ${tc3}`)
 }
 

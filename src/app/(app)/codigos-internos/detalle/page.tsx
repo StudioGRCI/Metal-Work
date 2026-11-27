@@ -357,7 +357,7 @@ function ComoVa({
               : costo.pen === 0
                 ? 'Todavía nada costeado'
                 : [
-                    c.usd_al_cambio > 0 ? `En soles, con ${moneda(c.usd_al_cambio, 'USD')} pasados a soles` : 'Todo en soles',
+                    c.usd_al_cambio > 0 ? `Con ${moneda(c.usd_al_cambio, 'USD')} pasados a soles` : 'Todo en soles',
                     // Lo gastado contra lo que se podía gastar, en sus dos unidades.
                     verPrecio && presupuesto !== null && c.venta?.consumido_pct !== null && c.venta?.consumido_pct !== undefined
                       ? `${porcentaje(c.venta.consumido_pct)} del presupuesto de ${moneda(presupuesto)}: ${c.venta.semaforo === 'EXCEDIDO' ? 'se pasó en' : 'quedan'} ${moneda(Math.abs(presupuesto - costo.pen))}`
@@ -1148,6 +1148,9 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
   // Lo que los servicios aprobados pesan en el costo: los soles de cada OS (la que está en dólares,
   // con el monto en soles que guarda) y, aparte, los dólares de las que todavía no lo tienen. Null
   // sin dólares, o si de alguna en dólares no se leyó su cambio: no se da una suma a medias.
+  // Repite la regla de `soles_de_la_linea_del_costeo` (migración 20261126998800): suma la aprobada
+  // por su `monto_pen` y deja fuera la que no lo tiene. Si la base cambia qué OS cuenta, esto también;
+  // lo vigila probar-costeo-de-la-os.mjs, que compara este renglón con el costo de la base.
   const enDolares = aprobados.filter((l) => l.moneda === 'USD')
   const enElCosto =
     enDolares.length === 0 || enDolares.some((l) => !cambioDe(l))
@@ -1331,7 +1334,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
                             </p>
                           ) : cambio.origen ? (
                             <p className="text-xs text-texto-suave" data-dia-de-la-linea={l.fecha} data-cambio-registrado-el="" data-origen-del-cambio={cambio.origen}>
-                              {cambio.origen.startsWith('DEPOSITADA') || cambio.origen === 'FIJA_SIN_FACTURA' ? 'Cambio fijo: detracción depositada u orden pagada' : 'Al cambio que guarda la orden'}
+                              {cambio.origen.startsWith('DEPOSITADA') || cambio.origen === 'FIJA_SIN_FACTURA' ? 'Cambio fijo' : 'Al cambio que guarda la orden'}
                             </p>
                           ) : null)}
                       </TD>
@@ -1350,7 +1353,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
                         {/* Lo que pesa en el costo: el monto en soles de la OS, el de Compras y Tesorería. */}
                         {cambio && cambio.monto_pen !== null && (
                           <p className="text-xs text-texto-suave" data-soles-de-la-os={cambio.monto_pen}>
-                            <span className="sr-only">En el costo: </span>
+                            <span className="sr-only">{aprobada ? 'En el costo: ' : 'En soles: '}</span>
                             {moneda(cambio.monto_pen)}
                           </p>
                         )}
@@ -1364,17 +1367,9 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
                 <TR className="font-semibold">
                   <TD colSpan={2}>
                     Total aprobado
-                    {/* Con dólares, el total va en dos monedas y cada fila dice sus soles: aquí, la
-                        suma de lo que pesan, que es la parte de los servicios en el costo. */}
-                    {enElCosto && (
-                      <p className="text-xs font-normal text-texto-suave" data-servicios-en-el-costo={enElCosto.soles} data-servicios-sin-cambio={enElCosto.sinCambio}>
-                        En el costo: <span className="tabular whitespace-nowrap">{moneda(enElCosto.soles)}</span>
-                        {enElCosto.sinCambio > 0 && (
-                          <>
-                            {' '}
-                            · <span className="tabular whitespace-nowrap">{moneda(enElCosto.sinCambio, 'USD')}</span> sin cambio, no suman
-                          </>
-                        )}
+                    {enElCosto && enElCosto.sinCambio > 0 && (
+                      <p className="text-xs font-normal text-texto-suave">
+                        <span className="tabular whitespace-nowrap">{moneda(enElCosto.sinCambio, 'USD')}</span> sin cambio, no suman
                       </p>
                     )}
                   </TD>
@@ -1382,6 +1377,13 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
                   <TD className="tabular text-right whitespace-nowrap">
                     {moneda(suma(aprobados, 'PEN'))}
                     {suma(aprobados, 'USD') > 0 && <p>+ {moneda(suma(aprobados, 'USD'), 'USD')}</p>}
+                    {/* Con dólares, el total va en dos monedas y cada fila dice sus soles debajo: aquí,
+                        igual, la suma de lo que pesan, que es la parte de los servicios en el costo. */}
+                    {enElCosto && (
+                      <p className="text-xs font-normal text-texto-suave" data-servicios-en-el-costo={enElCosto.soles} data-servicios-sin-cambio={enElCosto.sinCambio}>
+                        En el costo: {moneda(enElCosto.soles)}
+                      </p>
+                    )}
                   </TD>
                 </TR>
               </>
