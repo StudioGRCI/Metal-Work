@@ -1,6 +1,7 @@
 /**
  * El costeo del código interno pasa la OS en dólares a soles con el cambio de
- * su factura (migración 20261126998400).
+ * su factura (migración 20261126998400) y pesa el monto en soles que guarda la
+ * OS (20261126998800).
  *
  * Con clic real y la cuenta de cada puesto, nunca ADMIN:
  *
@@ -16,6 +17,10 @@
  *   5. Administración lee lo mismo; un supervisor no entra.
  *   6. Otra OS en dólares recibe una factura de hace 45 días, sin cambio
  *      registrado: la fila dice «Sin cambio del (ese día)» y el costo no la suma.
+ *   7. La detracción de la primera OS queda depositada (se siembra: el banco no
+ *      tiene cajas) y Contabilidad corrige el cambio del día de su factura: la
+ *      OS no se mueve y el costo tampoco; la fila dice «Cambio fijo» y debajo
+ *      de sus dólares, los mismos soles que guarda la OS. Bajo «Total aprobado», lo que los servicios pesan en el costo.
  *
  * Cada corrida usa un código y unas OS propias: se puede repetir. Solo en el
  * banco. Variables: BANCO_CLAVE, BASE (http://localhost:3111), BANCO_BASE
@@ -176,12 +181,18 @@ async function leerCosteo(pagina, os = d) {
     dia: await fila.locator('[data-dia-de-la-linea]').getAttribute('data-dia-de-la-linea').catch(() => null),
     texto: limpio(await fila.locator('[data-dia-de-la-linea]').textContent().catch(() => '')),
     emitida: limpio(await fila.locator('[data-emitida-el]').textContent().catch(() => '')),
+    // Lo que la fila dice que pesa en soles (null si no lo dice), y cuántas veces lo dice la de soles.
+    pesa: await fila.locator('[data-soles-de-la-os]').count() ? Number(await fila.locator('[data-soles-de-la-os]').getAttribute('data-soles-de-la-os')) : null,
+    solesPesa: await filaSoles.locator('[data-soles-de-la-os]').count(),
     importe: limpio(await fila.innerText().catch(() => '')),
     soles: limpio(await filaSoles.locator('[data-emitida-el]').textContent().catch(() => '')),
     solesConCambio: await filaSoles.locator('[data-dia-de-la-linea]').count(),
     costo: Number(await pagina.locator('[data-costo]').first().getAttribute('data-costo').catch(() => NaN)),
     alCambio: Number(await pagina.locator('[data-dolares-al-cambio]').first().getAttribute('data-dolares-al-cambio').catch(() => NaN)),
     ayuda: await pagina.locator('[data-servicios]').first().innerHTML().catch(() => ''),
+    // Bajo «Total aprobado»: lo que los servicios pesan en el costo, y los dólares que no suman.
+    enElCosto: Number(await pagina.locator('[data-servicios-en-el-costo]').first().getAttribute('data-servicios-en-el-costo').catch(() => NaN)),
+    sinCambio: Number(await pagina.locator('[data-servicios-en-el-costo]').first().getAttribute('data-servicios-sin-cambio').catch(() => NaN)),
   }
 }
 
@@ -193,7 +204,8 @@ const ger = await entrar('gerencia', 1440)
   comprobar(c.dia === hoy && c.texto === `Al cambio del ${dma(regHoy)}`,
     `sin factura, la ${d.numero} va con el cambio de su día de emisión y dice el último registrado hasta él: «Al cambio del ${dma(regHoy)}» (dice «${c.texto}»)`)
   comprobar(c.emitida === `Emitida el ${dma(hoy)}`, `y encima, el día en que se emitió, con su rótulo (dice «${c.emitida}»)`)
-  comprobar(c.soles === dma(hoy) && c.solesConCambio === 0, `la ${s.numero}, en soles, lleva solo su fecha (dice «${c.soles}»)`)
+  comprobar(c.soles === dma(hoy) && c.solesConCambio === 0 && c.solesPesa === 0, `la ${s.numero}, en soles, lleva solo su fecha (dice «${c.soles}»)`)
+  comprobar(c.pesa === Number(d.monto_pen), `bajo sus dólares dice lo que pesa: los S/ ${d.monto_pen} que guarda la OS (dice ${c.pesa})`)
   comprobar(c.importe.includes('US$') || c.importe.includes('$'), 'la OS en dólares sigue mostrándose en dólares')
   comprobar(c.alCambio === esperado && c.costo === esperado + 500, `el costo la suma con el cambio de ese día: S/ ${esperado} + S/ 500 (dice ${c.costo}, con ${c.alCambio} de dólares al cambio)`)
   comprobar(!(await desborda(ger)), 'el costeo no se sale de la pantalla a 1440')
@@ -231,8 +243,10 @@ comprobar(despues.fecha_cambio === hace3 && Number(despues.monto_pen) === Math.r
   const c = await leerCosteo(ger)
   comprobar(c.dia === hace3 && c.texto === `Al cambio del ${dma(hace3)}`, `con su factura, la ${d.numero} dice «Al cambio del ${dma(hace3)}» (dice «${c.texto}»)`)
   comprobar(c.emitida === `Emitida el ${dma(hoy)}`, `y sigue diciendo el día en que se emitió (dice «${c.emitida}»)`)
-  comprobar(c.alCambio === Number(despues.monto_pen), `y pesa en el costo lo mismo que su monto en soles: S/ ${despues.monto_pen} (dice ${c.alCambio})`)
+  comprobar(c.alCambio === Number(despues.monto_pen) && c.pesa === Number(despues.monto_pen),
+    `y pesa en el costo lo mismo que su monto en soles, y la fila lo dice: S/ ${despues.monto_pen} (el costo dice ${c.alCambio} y la fila ${c.pesa})`)
   comprobar(c.costo === Number(despues.monto_pen) + 500, `el costo del código es S/ ${Number(despues.monto_pen) + 500} (dice ${c.costo})`)
+  comprobar(c.enElCosto === c.costo && c.sinCambio === 0, `y bajo «Total aprobado» la tarjeta dice lo mismo que pesa en el costo (dice ${c.enElCosto})`)
   comprobar(c.ayuda.includes('fecha de su factura'), 'la ayuda de la tarjeta dice con qué cambio pasa a soles la OS en dólares')
   await captura(ger, 'costeo-con-la-factura-1440')
   await ger.context().close()
@@ -271,14 +285,57 @@ comprobar(despues.fecha_cambio === hace3 && Number(despues.monto_pen) === Math.r
     for (const ancho of [1440, 390]) {
       const p = await entrar('gerencia', ancho)
       const c = await leerCosteo(p, n)
-      comprobar(c.texto === `Sin cambio del ${dma(hace45)}` && os.monto_pen === null,
+      comprobar(c.texto === `Sin cambio del ${dma(hace45)}` && os.monto_pen === null && c.pesa === null,
         `a ${ancho}, la ${n.numero} dice «Sin cambio del ${dma(hace45)}» y no afirma ningún cambio (dice «${c.texto}»)`)
       comprobar(c.costo === Number(despues.monto_pen) + 500, `y el costo no la suma: sigue en S/ ${Number(despues.monto_pen) + 500} (dice ${c.costo})`)
+      comprobar(/no suma/.test(c.importe) && c.enElCosto === c.costo && c.sinCambio === 200,
+        `la fila dice «no suma» y bajo «Total aprobado»: S/ ${c.costo} en el costo y US$ 200 sin cambio (dice ${c.enElCosto} y ${c.sinCambio})`)
       comprobar(!(await desborda(p)), `sin salirse de la pantalla a ${ancho}`)
       await captura(p, `costeo-sin-cambio-${ancho}`)
       await p.context().close()
     }
   }
+}
+
+// 7. La OS fija y el cambio corregido después: el costo sigue con el monto que guarda la OS ----
+{
+  // El banco no tiene cajas y registrar_pago_servicio exige una: el depósito se siembra.
+  await base.query('begin')
+  await base.query(`set local session_replication_role = replica`)
+  await base.query(
+    `insert into public.pagos_orden_servicio (orden_servicio_id, fecha_pago, moneda, monto, cancela, destino, archivo_ruta, archivo_mime, archivo_tamano, registrado_por)
+     select s.id, current_date, 'PEN', s.detraccion_monto, false, 'DETRACCION', 'prueba/' || $2 || '/detraccion.pdf', 'application/pdf', 1000,
+            (select id from public.usuarios where correo = 'tesoreria.local@metalwork.test')
+       from public.ordenes_servicio s where s.id = $1 and s.detraccion_monto > 0`,
+    [d.id, SELLO],
+  )
+  await base.query('commit')
+  const [{ fija }] = await q(`select public.servicio_con_el_cambio_fijo($1) as fija`, [d.id])
+  comprobar(fija === true, `la ${d.numero} tiene su detracción depositada y queda fija`)
+  await como('contabilidad', `update public.tipos_de_cambio set venta = venta + 0.05, compra = compra + 0.05 where fecha = $1::date`, [hace3])
+  const [fijaOs] = await q(`select monto_pen from public.ordenes_servicio where id = $1`, [d.id])
+  const corregido = Math.round(1000 * (await cambioDe(hace3)) * 100) / 100
+  comprobar(Number(fijaOs.monto_pen) === Number(despues.monto_pen) && corregido !== Number(despues.monto_pen),
+    `Contabilidad corrige el cambio del ${dma(hace3)}: la OS fija sigue en S/ ${fijaOs.monto_pen} (con el corregido serían S/ ${corregido})`)
+  try {
+    for (const ancho of [1440, 390]) {
+      const p = await entrar('gerencia', ancho)
+      const c = await leerCosteo(p)
+      comprobar(c.alCambio === Number(despues.monto_pen) && c.costo === Number(despues.monto_pen) + 500,
+        `a ${ancho}, el costo sigue pesando lo que guarda la OS: S/ ${despues.monto_pen} + S/ 500, no S/ ${corregido} (dice ${c.costo})`)
+      comprobar(c.texto === 'Cambio fijo' && c.pesa === Number(despues.monto_pen),
+        `la fila dice «Cambio fijo» y los S/ ${despues.monto_pen} que pesa (dice «${c.texto}» y ${c.pesa})`)
+      comprobar(c.enElCosto === c.costo, `y bajo «Total aprobado» siguen los mismos S/ ${c.costo} (dice ${c.enElCosto})`)
+      comprobar(!(await desborda(p)), `sin salirse de la pantalla a ${ancho}`)
+      await captura(p, `costeo-os-fija-${ancho}`)
+      await p.context().close()
+    }
+  } finally {
+    // El cambio de ese día es del banco, no de esta corrida: se devuelve como estaba aunque algo
+    // falle antes, para que otra corrida (o quien mire el banco a la vez) no herede la corrección.
+    await como('contabilidad', `update public.tipos_de_cambio set venta = venta - 0.05, compra = compra - 0.05 where fecha = $1::date`, [hace3])
+  }
+  comprobar(Math.abs((await cambioDe(hace3)) - tc3) < 0.0001, `el cambio del ${dma(hace3)} vuelve a ${tc3}`)
 }
 
 comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores.slice(0, 3).join(' | ')}` : ''}`)

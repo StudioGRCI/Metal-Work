@@ -4,6 +4,7 @@ import { cache } from 'react'
 
 import { codigoDeDiseno, type CodigoDeDiseno } from '@/lib/datos/diseno-codigos'
 import { todasLasFilas } from '@/lib/datos/todas-las-filas'
+import type { OrigenDelCambio } from '@/lib/dominio/detraccion'
 import { createClient } from '@/lib/supabase/server'
 import type { Database } from '@/types/database'
 
@@ -75,7 +76,7 @@ export type CostoCompleto = {
   /** La merma que Diseño evaluó en la OT, sobre los materiales del código. */
   merma_pen: number
   merma_usd: number
-  /** Todo lo que suma, en soles: los dólares al cambio de venta del día de cada línea. */
+  /** Todo lo que suma, en soles: los dólares al cambio de venta del día de cada línea; la OS, con el monto en soles que guarda. */
   costo_pen: number
   /** Los dólares de las líneas sin tipo de cambio cargado: no suman hasta que Contabilidad lo registre. */
   usd_sin_cambio: number
@@ -596,20 +597,24 @@ export const costeoDelCodigo = cache(async (codigo: string): Promise<LineaCosteo
 })
 
 /**
- * Con qué tipo de cambio pasa a soles en el costeo una OS en otra moneda, como lo dice la base
- * (`codigo_interno_cambio_de_servicios`, 20261126998400). La pantalla no lo deduce: el día que
- * le toca sale de su factura, y el cambio que se usa es el último registrado hasta ese día.
+ * Cuánto pesa en soles en el costeo una OS en otra moneda y con qué tipo de cambio, como lo dice
+ * la base (`codigo_interno_cambio_de_servicios`, 20261126998800). El costo suma el monto en soles
+ * que guarda la OS, el mismo que leen Compras y Tesorería; la pantalla no lo deduce ni lo recalcula.
  */
 export type CambioDelServicioEnElCosteo = {
   /** El día que le toca: el de su factura o, sin ella, el día en que se emitió. Es la fecha de su línea. */
   dia: string
-  /** El día del cambio registrado que se usa. Null: no hay ninguno, y la línea no pasa a soles. */
+  /** El monto en soles que guarda la OS, que es lo que suma el costo. Null: todavía no tiene, y no suma. */
+  monto_pen: number | null
+  /** El día del cambio registrado del que sale ese monto. Null: de ninguno de los registrados, o no se leyó. */
   registrado_el: string | null
+  /** De dónde sale su cambio (`cambio_de_los_servicios`). Null: quien mira no puede leerlo. */
+  origen: OrigenDelCambio | null
   /** El día en que se emitió la OS. */
   emitida_el: string | null
 }
 
-/** El cambio de las OS en otra moneda de ese código, por el id de la OS. Las que están en soles no vienen. */
+/** Lo de las OS en otra moneda de ese código, por el id de la OS. Las que están en soles no vienen. */
 export async function cambioDeServiciosDelCodigo(codigo: string): Promise<Map<string, CambioDelServicioEnElCosteo>> {
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('codigo_interno_cambio_de_servicios', { p_codigo: codigo })
@@ -619,7 +624,22 @@ export async function cambioDeServiciosDelCodigo(codigo: string): Promise<Map<st
   if (error) throw new Error(`No se pudo leer con qué tipo de cambio van las órdenes de servicio del código: ${error.message}`)
   return new Map(
     (data ?? []).flatMap((c) =>
-      c.orden_servicio_id && c.dia ? [[c.orden_servicio_id, { dia: c.dia, registrado_el: c.registrado_el, emitida_el: c.emitida_el }] as const] : [],
+      // La función de antes de la 20261126998800 no trae el monto: sin él no se sabe cuánto pesa
+      // la OS, y la fila sale con su fecha sola antes que decir «Sin cambio» de una que sí tiene.
+      c.orden_servicio_id && c.dia && 'monto_pen' in c
+        ? [
+            [
+              c.orden_servicio_id,
+              {
+                dia: c.dia,
+                monto_pen: c.monto_pen === null ? null : Number(c.monto_pen),
+                registrado_el: c.registrado_el,
+                origen: (c.origen ?? null) as OrigenDelCambio | null,
+                emitida_el: c.emitida_el,
+              },
+            ] as const,
+          ]
+        : [],
     ),
   )
 }
