@@ -11697,6 +11697,164 @@ export type Database = {
           }
         ]
       }
+      ssoma_epp_entregas: {
+        Row: {
+          id: string
+          envio_id: string
+          movimiento_id: string
+          material_id: string
+          trabajador_id: string
+          cantidad: number
+          entregado_el: string
+          renovar_el: string
+          creado_por: string
+          sin_renovacion_por: string | null
+          sin_renovacion_en: string | null
+          motivo_sin_renovacion: string | null
+          anulado_por: string | null
+          anulado_en: string | null
+          motivo_anulacion: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          envio_id: string
+          movimiento_id: string
+          material_id: string
+          trabajador_id: string
+          cantidad: number
+          entregado_el: string
+          renovar_el: string
+          creado_por?: string
+          sin_renovacion_por?: string | null
+          sin_renovacion_en?: string | null
+          motivo_sin_renovacion?: string | null
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          envio_id?: string
+          movimiento_id?: string
+          material_id?: string
+          trabajador_id?: string
+          cantidad?: number
+          entregado_el?: string
+          renovar_el?: string
+          creado_por?: string
+          sin_renovacion_por?: string | null
+          sin_renovacion_en?: string | null
+          motivo_sin_renovacion?: string | null
+          anulado_por?: string | null
+          anulado_en?: string | null
+          motivo_anulacion?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ssoma_epp_entregas_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_epp_entregas_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_epp_entregas_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_epp_entregas_movimiento_id_fkey"
+            columns: ["movimiento_id"]
+            isOneToOne: false
+            referencedRelation: "movimientos_materiales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_epp_entregas_sin_renovacion_por_fkey"
+            columns: ["sin_renovacion_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_epp_entregas_trabajador_id_fkey"
+            columns: ["trabajador_id"]
+            isOneToOne: false
+            referencedRelation: "trabajadores"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      ssoma_epp_sin_reparto: {
+        Row: {
+          id: string
+          movimiento_id: string
+          motivo: string
+          creado_por: string
+          deshecho_por: string | null
+          deshecho_en: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          movimiento_id: string
+          motivo: string
+          creado_por?: string
+          deshecho_por?: string | null
+          deshecho_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          movimiento_id?: string
+          motivo?: string
+          creado_por?: string
+          deshecho_por?: string | null
+          deshecho_en?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ssoma_epp_sin_reparto_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_epp_sin_reparto_deshecho_por_fkey"
+            columns: ["deshecho_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ssoma_epp_sin_reparto_movimiento_id_fkey"
+            columns: ["movimiento_id"]
+            isOneToOne: true
+            referencedRelation: "movimientos_materiales"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       ssoma_inspeccion_respuestas: {
         Row: {
           id: string
@@ -12713,6 +12871,124 @@ export type Database = {
           }
         ]
       }
+      tramite_archivos: {
+        Row: {
+          id: string
+          tramite_id: string
+          clase: string
+          descripcion: string | null
+          archivo_ruta: string
+          archivo_nombre: string | null
+          archivo_mime: string
+          archivo_tamano: number
+          subido_por: string
+          retirado_por: string | null
+          retirado_en: string | null
+          retiro_motivo: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id: string
+          tramite_id: string
+          clase: string
+          descripcion?: string | null
+          archivo_ruta: string
+          archivo_nombre?: string | null
+          archivo_mime: string
+          archivo_tamano: number
+          subido_por?: string
+          retirado_por?: string | null
+          retirado_en?: string | null
+          retiro_motivo?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          tramite_id?: string
+          clase?: string
+          descripcion?: string | null
+          archivo_ruta?: string
+          archivo_nombre?: string | null
+          archivo_mime?: string
+          archivo_tamano?: number
+          subido_por?: string
+          retirado_por?: string | null
+          retirado_en?: string | null
+          retiro_motivo?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tramite_archivos_retirado_por_fkey"
+            columns: ["retirado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tramite_archivos_subido_por_fkey"
+            columns: ["subido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tramite_archivos_tramite_id_fkey"
+            columns: ["tramite_id"]
+            isOneToOne: true
+            referencedRelation: "tramites"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      tramite_gestiones: {
+        Row: {
+          id: string
+          tramite_id: string
+          fecha: string
+          detalle: string
+          registrado_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id: string
+          tramite_id: string
+          fecha: string
+          detalle: string
+          registrado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          tramite_id?: string
+          fecha?: string
+          detalle?: string
+          registrado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tramite_gestiones_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tramite_gestiones_tramite_id_fkey"
+            columns: ["tramite_id"]
+            isOneToOne: false
+            referencedRelation: "tramites"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       tramite_tipos: {
         Row: {
           id: string
@@ -12789,6 +13065,10 @@ export type Database = {
           registrado_por: string
           creado_en: string
           actualizado_en: string
+          fecha_conclusion: string | null
+          vigente_hasta: string | null
+          concluido_por: string | null
+          concluido_en: string | null
         }
         Insert: {
           id?: string
@@ -12818,6 +13098,10 @@ export type Database = {
           registrado_por?: string
           creado_en?: string
           actualizado_en?: string
+          fecha_conclusion?: string | null
+          vigente_hasta?: string | null
+          concluido_por?: string | null
+          concluido_en?: string | null
         }
         Update: {
           id?: string
@@ -12847,6 +13131,10 @@ export type Database = {
           registrado_por?: string
           creado_en?: string
           actualizado_en?: string
+          fecha_conclusion?: string | null
+          vigente_hasta?: string | null
+          concluido_por?: string | null
+          concluido_en?: string | null
         }
         Relationships: [
           {
@@ -12875,6 +13163,13 @@ export type Database = {
             columns: ["cliente_id"]
             isOneToOne: false
             referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tramites_concluido_por_fkey"
+            columns: ["concluido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           },
           {
@@ -21106,6 +21401,13 @@ export type Database = {
         }
         Returns: string
       }
+      ssoma_anular_entrega_epp: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       ssoma_anular_inspeccion: {
         Args: {
           p_id: string | null
@@ -21141,6 +21443,12 @@ export type Database = {
           p_id: string | null
         }
         Returns: null
+      }
+      ssoma_cantidad_en_texto: {
+        Args: {
+          p_cantidad: number | null
+        }
+        Returns: string
       }
       ssoma_cerrar_accion: {
         Args: {
@@ -21218,6 +21526,100 @@ export type Database = {
       ssoma_dia: {
         Args: {
           p_dia: string | null
+        }
+        Returns: string
+      }
+      ssoma_epp_dias_de_aviso: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      ssoma_epp_entregas_a_la_vista: {
+        Args: {
+          p_trabajador: string | null
+          p_movimiento: string | null
+          p_por_renovar: boolean | null
+        }
+        Returns: {
+          id: string | null
+          trabajador_id: string | null
+          persona: string | null
+          cargo: string | null
+          area: string | null
+          en_planta: boolean | null
+          movimiento_id: string | null
+          numero_salida: string | null
+          material_id: string | null
+          material: string | null
+          unidad: string | null
+          cantidad: number | null
+          entregado_el: string | null
+          renovar_el: string | null
+          estado: string | null
+          situacion: string | null
+          dias: number | null
+          registro: string | null
+          creado_en: string | null
+          sin_renovacion_en: string | null
+          saco_de_renovar: string | null
+          motivo_sin_renovacion: string | null
+          anulado_en: string | null
+          anulo: string | null
+          motivo_anulacion: string | null
+        }[]
+      }
+      ssoma_epp_estado: {
+        Args: {
+          p_id: string | null
+          p_trabajador: string | null
+          p_material: string | null
+          p_entregado: string | null
+          p_creado: string | null
+          p_anulado: string | null
+          p_sin_renovacion: string | null
+        }
+        Returns: string
+      }
+      ssoma_epp_no_se_renueva: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
+      ssoma_epp_por_atender: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          por_asignar: number | null
+          vencidos: number | null
+          por_renovar: number | null
+        }[]
+      }
+      ssoma_epp_por_persona: {
+        Args: {
+          p_trabajador: string | null
+        }
+        Returns: {
+          id: string | null
+          persona: string | null
+          cargo: string | null
+          area: string | null
+          en_planta: boolean | null
+          vigentes: number | null
+          vencidas: number | null
+          por_vencer: number | null
+          proxima: string | null
+        }[]
+      }
+      ssoma_epp_salida_se_reparte: {
+        Args: {
+          p_movimiento: string | null
+        }
+        Returns: string
+      }
+      ssoma_epp_salida_sin_reparto: {
+        Args: {
+          p_movimiento: string | null
+          p_motivo: string | null
         }
         Returns: string
       }
@@ -21356,6 +21758,16 @@ export type Database = {
           area: string | null
         }[]
       }
+      ssoma_personal_para_epp: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          nombre: string | null
+          cargo: string | null
+          area: string | null
+          en_planta: boolean | null
+        }[]
+      }
       ssoma_por_atender: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -21402,6 +21814,15 @@ export type Database = {
           p_fecha: string | null
           p_asistentes: string[] | null
           p_fotos: Json | null
+        }
+        Returns: string
+      }
+      ssoma_registrar_entregas_epp: {
+        Args: {
+          p_envio: string | null
+          p_movimiento: string | null
+          p_renovar_el: string | null
+          p_personas: Json | null
         }
         Returns: string
       }
@@ -21473,6 +21894,31 @@ export type Database = {
           texto: string | null
           resultado: string | null
           hallazgo: string | null
+        }[]
+      }
+      ssoma_salidas_de_epp: {
+        Args: {
+          p_movimiento: string | null
+        }
+        Returns: {
+          movimiento_id: string | null
+          numero: string | null
+          fecha: string | null
+          material_id: string | null
+          material: string | null
+          unidad: string | null
+          cantidad: number | null
+          devuelto: number | null
+          asignado: number | null
+          por_asignar: number | null
+          asignado_de_mas: number | null
+          recibio: string | null
+          dias_sugeridos: number | null
+          sin_reparto: boolean | null
+          motivo_sin_reparto: string | null
+          dijo_sin_reparto: string | null
+          a_quien: Json | null
+          no_estaban: string[] | null
         }[]
       }
       ssoma_seguimiento_de_reportes: {
@@ -21889,6 +22335,19 @@ export type Database = {
           actividades: Json | null
         }[]
       }
+      tramite_archivo_subido: {
+        Args: {
+          p_tramite: string | null
+          p_ruta: string | null
+        }
+        Returns: string
+      }
+      tramite_ruta_adjunta: {
+        Args: {
+          p_ruta: string | null
+        }
+        Returns: boolean
+      }
       tramites_actualizar: {
         Args: {
           p_id: string | null
@@ -21902,6 +22361,68 @@ export type Database = {
           p_visto: string | null
         }
         Returns: string
+      }
+      tramites_adjuntar_archivo: {
+        Args: {
+          p_id: string | null
+          p_tramite: string | null
+          p_clase: string | null
+          p_descripcion: string | null
+          p_ruta: string | null
+          p_nombre: string | null
+        }
+        Returns: string
+      }
+      tramites_anotar_gestion: {
+        Args: {
+          p_id: string | null
+          p_tramite: string | null
+          p_fecha: string | null
+          p_detalle: string | null
+        }
+        Returns: string
+      }
+      tramites_archivos: {
+        Args: {
+          p_tramite: string | null
+        }
+        Returns: {
+          id: string | null
+          clase: string | null
+          descripcion: string | null
+          nombre: string | null
+          mime: string | null
+          tamano: number | null
+          subido_en: string | null
+          subio: string | null
+          retirado_en: string | null
+          retiro: string | null
+          retiro_motivo: string | null
+          puede_retirar: boolean | null
+        }[]
+      }
+      tramites_concluir: {
+        Args: {
+          p_id: string | null
+          p_tramite: string | null
+          p_ruta: string | null
+          p_nombre: string | null
+          p_fecha: string | null
+          p_vigente_hasta: string | null
+        }
+        Returns: string
+      }
+      tramites_gestiones: {
+        Args: {
+          p_tramite: string | null
+        }
+        Returns: {
+          id: string | null
+          fecha: string | null
+          detalle: string | null
+          anotado_en: string | null
+          anoto: string | null
+        }[]
       }
       tramites_guardar_tipo: {
         Args: {
@@ -21955,6 +22476,13 @@ export type Database = {
           tramite: string | null
           anulado: boolean | null
         }[]
+      }
+      tramites_retirar_archivo: {
+        Args: {
+          p_archivo: string | null
+          p_motivo: string | null
+        }
+        Returns: boolean
       }
       tramites_unidades_para_elegir: {
         Args: Record<PropertyKey, never>
@@ -22019,6 +22547,13 @@ export type Database = {
           puede_actualizar: boolean | null
           puede_pedir_anulacion: boolean | null
           puede_resolver_anulacion: boolean | null
+          fecha_conclusion: string | null
+          vigente_hasta: string | null
+          concluido_en: string | null
+          concluyo: string | null
+          archivos: number | null
+          puede_llevar_expediente: boolean | null
+          puede_concluir: boolean | null
         }[]
       }
       transitar_informe_diseno: {
