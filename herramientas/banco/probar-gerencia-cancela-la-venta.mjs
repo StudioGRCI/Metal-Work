@@ -15,6 +15,14 @@
  *      de la que una pasó a otro comprador dice «1 de 3 unidades pasó a otro
  *      comprador» y sigue mostrando el total de la cotización entera; las demás
  *      no llevan esa nota.
+ *   3. «Que se cierre sola, sin botón» (StudioGRCI, 2026-11-26, ya con la
+ *      facturación por unidad). La unidad que pasó dice «Pasó a otro comprador»
+ *      y no «Falta su OT», no se puede elegir en la ventana de la factura ni
+ *      queda «Toda la cotización». Administración carga la OT que faltaba,
+ *      Contabilidad factura con clic real las dos unidades que quedan y la
+ *      tarjeta de Facturación queda «Facturada», fuera de «Por facturar». Y si
+ *      la que pasó ya tenía un adelanto facturado, la fila y el aviso lo dicen.
+ *      (El «Recorrido» de la tarjeta lo arma otra función de la base.)
  *
  * Capturas en teléfono (390) y monitor (1440). Arma sus datos ficticios
  * (QA-P8G-…) y las cuentas `*.p8g@banco.test` con la clave local. Variables:
@@ -150,6 +158,7 @@ for (const [clave, cliente, unidades, autor] of [
   ['delaquesefue', 'a', 1, 'vendedora'], ['otro2', 'b', 1, 'ventas'],
   ['tres', 'a', 3, 'ventas'], ['otro3', 'b', 1, 'ventas'],
   ['entera', 'a', 2, 'ventas'],
+  ['adelanto', 'a', 2, 'ventas'], ['otro4', 'b', 1, 'ventas'],
 ]) {
   const id = (await uno('select gen_random_uuid() as id')).id
   const numero = `QA-P8G-${sello}-${clave.toUpperCase()}`
@@ -173,7 +182,7 @@ for (const [clave, cliente, unidades, autor] of [
 // 2. Administración carga las OT y pasa tres a otro comprador.
 const libres = (await consulta(`select n from generate_series(8100, 8999) n
                                  where not exists (select 1 from public.ordenes_trabajo o where o.numero = n || '-' || $1)
-                                 order by random() limit 6`, [anio])).map((f) => String(f.n))
+                                 order by random() limit 8`, [anio])).map((f) => String(f.n))
 const ots = {}
 async function cargarOt(clave, cotizacion, numero, codigo) {
   const id = (await uno('select gen_random_uuid() as id')).id
@@ -434,13 +443,43 @@ for (const [ancho, alto] of [[1440, 900], [390, 844]]) {
   await t.waitFor({ timeout: 15000 }).catch(() => {})
   const texto = limpio(await t.textContent().catch(() => ''))
   const frase = limpio(await t.locator('[data-unidades-a-otro-comprador]').first().textContent({ timeout: 3000 }).catch(() => ''))
-  comprobar(frase === '1 de 3 unidades pasó a otro comprador. El total de venta es el de la cotización entera: revisa cuánto corresponde facturar.',
+  comprobar(frase === '1 de 3 unidades pasó a otro comprador. Se facturan las 2 que quedan, cada una por su parte: el total de venta de arriba es el de la cotización entera.',
     `Contabilidad ${ancho}: la de tres unidades avisa que una pasó a otro comprador («${frase}»)`)
   const totalDeVenta = (texto.match(/Total de venta: ?[^\d]*([\d,]+\.\d{2})/) ?? [])[1] ?? ''
   comprobar(totalDeVenta === ESPERADO_TOTAL,
     `Contabilidad ${ancho}: y sigue mostrando el total de la cotización entera (${totalDeVenta}; se esperaba ${ESPERADO_TOTAL})`)
   comprobar(texto.includes('Por facturar') && (await t.getByRole('button', { name: /Registrar factura/ }).count()) === 1,
     `Contabilidad ${ancho}: sigue «Por facturar», con su botón para registrar la factura`)
+  // La unidad que pasó (la 1: su OT conserva el número al pasar) no espera OT ni factura.
+  const filas = await t.locator('li[data-unidad]').evaluateAll((l) => l.map((e) => ({
+    unidad: e.getAttribute('data-unidad'), paso: e.hasAttribute('data-paso-a-otro-comprador'), texto: e.textContent.replace(/\s+/g, ' ').trim(),
+  })))
+  console.log('     unidades:', filas.map((f) => f.texto).join(' | '))
+  comprobar(filas.length === 3 && filas[0].paso && filas[0].texto.includes('Pasó a otro comprador') && filas[0].texto.includes('Ya no se factura en esta cotización')
+    && !filas[0].texto.includes('Falta su OT') && !filas[0].texto.includes('Le toca'),
+  `Contabilidad ${ancho}: la unidad 1, la que pasó, dice «Pasó a otro comprador» y ya no «Falta su OT» ni lo que le toca`)
+  comprobar(!filas[1]?.paso && filas[1]?.texto.includes(`código QA_P8G_${sello}_D`) && filas[1]?.texto.includes('Por facturar') && filas[1]?.texto.includes('Le toca US$ 15,000.00')
+    && !filas[2]?.paso && filas[2]?.texto.includes('Falta su OT') && filas[2]?.texto.includes('Le toca US$ 15,000.00'),
+  `Contabilidad ${ancho}: la 2 espera su factura y la 3, su OT, cada una por US$ 15,000.00`)
+  comprobar(texto.includes('Falta que Administración cargue la OT de una unidad: cada unidad se factura cuando tiene la suya.')
+    && !texto.includes('la OT de 2 unidades') && !texto.includes('por toda la cotización'),
+  `Contabilidad ${ancho}: la nota pide a Administración una OT, no dos, y ya no ofrece la factura por toda la cotización`)
+  {
+    await t.getByRole('button', { name: /Registrar factura/ }).click()
+    const ventana = pagina.getByRole('dialog')
+    await ventana.waitFor({ timeout: 5000 }).catch(() => {})
+    const opciones = await ventana.locator('select[name="unidad"] option').evaluateAll((l) => l.map((o) => ({ texto: o.textContent.trim(), valor: o.value, apagada: o.disabled })))
+    console.log('     opciones:', opciones.map((o) => `${o.texto}${o.apagada ? ' (apagada)' : ''}`).join(' | '))
+    const de = (v) => opciones.find((o) => o.valor === v)
+    comprobar(de('1')?.apagada === true && de('1')?.texto === 'Unidad 1 · pasó a otro comprador'
+      && de('2')?.apagada === false && de('3')?.apagada === true && de('3')?.texto === 'Unidad 3 · falta su OT',
+    `Contabilidad ${ancho}: en la ventana la unidad que pasó no se puede elegir y dice por qué; la que tiene OT sí`)
+    comprobar(de('0')?.apagada === true && de('0')?.texto === 'Toda la cotización · no va: una unidad pasó a otro comprador'
+      && !limpio(await ventana.textContent()).includes('o si es por toda la cotización'),
+    `Contabilidad ${ancho}: «Toda la cotización» queda apagada y dice por qué («${de('0')?.texto ?? ''}»)`)
+    await ventana.getByRole('button', { name: 'Cancelar' }).click()
+    await ventana.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {})
+  }
   // Donde se escribe el monto, el aviso se repite: la ventana tapa la nota de la tarjeta.
   for (const [li, lleva] of [[t, true], [pagina.locator(`li[data-cotizacion="${cot.entera.numero}"]`), false]]) {
     await li.getByRole('button', { name: /Registrar factura/ }).click()
@@ -451,7 +490,7 @@ for (const [ancho, alto] of [[1440, 900], [390, 844]]) {
     // A la vista sin abrir nada: detrás de la «i» del total no lo leía nadie.
     const seVe = dice !== '' && await aviso.isVisible()
     comprobar(lleva
-      ? seVe && dice === `1 de sus 3 unidades pasó a otro comprador y el total de la cotización (US$ ${ESPERADO_TOTAL}) es el de todas: factura solo lo que corresponde.`
+      ? seVe && dice === '1 de sus 3 unidades pasó a otro comprador: se factura cada una de las que quedan, por su parte.'
       : dice === '',
     `Contabilidad ${ancho}: «Registrar factura» ${lleva ? `repite el aviso a la vista («${dice}»)` : 'de la que no perdió unidades no lo lleva'}`)
     if (lleva) await aviso.scrollIntoViewIfNeeded().catch(() => {})
@@ -481,6 +520,152 @@ for (const [ancho, alto] of [[1440, 900], [390, 844]]) {
 {
   const total = await uno(`select f.monto_venta::numeric as monto from public.cotizaciones_pdf f where f.id = $1`, [cot.tres.id])
   comprobar(Number(total.monto) === 45000, `La cotización de tres unidades conserva su monto entero en la base (${total.monto})`)
+}
+
+// ------------------------------- 4. Facturadas las que quedan, se cierra sola
+// La base numera la OT que faltaba saltando la unidad que pasó: es la 3.
+await cargarOt('ot6', 'tres', libres[5], `QA_P8G_${sello}_F`)
+{
+  const n = await uno('select numero_de_unidad from public.ordenes_trabajo where id = $1', [ots.ot6.id])
+  comprobar(Number(n.numero_de_unidad) === 3, `Administración carga la OT que faltaba y la base la cuenta como la unidad 3, no la 1 que pasó (${n.numero_de_unidad})`)
+}
+const PDF_FACTURA = join(CAPTURAS, `factura-p8g-${sello}.pdf`)
+writeFileSync(PDF_FACTURA, pdfConTexto([`FACTURA ELECTRONICA E9${sello.slice(-2)}`, clientes.a.nombre, 'Archivo de prueba del banco local']))
+const serie = `E9${sello.slice(-2)}`
+/** Lo que queda en la ventana tras enviar: vacío si se cerró, o el error que mostró. */
+async function esperarVentana(pagina) {
+  const v = pagina.locator('[role="dialog"]')
+  await Promise.race([v.waitFor({ state: 'hidden', timeout: 30000 }), v.locator('[role="alert"]').waitFor({ timeout: 30000 })]).catch(() => {})
+  return limpio(await v.locator('[role="alert"]').first().textContent({ timeout: 500 }).catch(() => ''))
+}
+{
+  const { pagina, contexto } = await entrar('contabilidad')
+  await pagina.goto(`${BASE}/contabilidad/facturacion`, { waitUntil: 'networkidle' })
+  const t = pagina.locator(`li[data-cotizacion="${cot.tres.numero}"]`)
+  await t.waitFor({ timeout: 15000 }).catch(() => {})
+  const antes = limpio(await t.textContent())
+  comprobar(!antes.includes('Falta que Administración') && (await t.locator('li[data-unidad="3"]').textContent()).includes('Por facturar')
+    && (await t.locator('li[data-unidad="1"]').textContent()).includes('Pasó a otro comprador'),
+  'Con la OT de la 3 cargada ya no se pide ninguna OT: la 1 sigue «Pasó a otro comprador» y la 3 espera su factura')
+
+  // La base tampoco deja facturar la unidad que pasó, por si alguien salta la pantalla.
+  let rechazo = ''
+  try {
+    await como('contabilidad', `select public.registrar_factura_venta_de_unidad(gen_random_uuid(), $1, $2, (now() at time zone 'America/Lima')::date,
+                                  (now() at time zone 'America/Lima')::date, 'USD', 15000, 'Unidad que pasó', 'x/x.pdf', 'x.pdf', 1)`, [cot.tres.id, `${serie}-99`])
+  } catch (e) { rechazo = e.message }
+  comprobar(rechazo.includes('La unidad 1 de la cotización') && Number((await uno('select count(*)::int n from public.facturas_venta where cotizacion_pdf_id = $1', [cot.tres.id])).n) === 0,
+    `La base no deja facturar la unidad que pasó («${rechazo.slice(0, 140)}»)`)
+
+  // «Facturar» de cada unidad que queda, por su parte.
+  for (const [unidad, numero] of [[2, `${serie}-2`], [3, `${serie}-3`]]) {
+    await t.locator(`[data-facturar-unidad="${unidad}"]`).click()
+    const v = pagina.locator('[role="dialog"]')
+    await v.waitFor({ timeout: 5000 }).catch(() => {})
+    comprobar((await v.locator('select[name="unidad"]').inputValue()) === String(unidad)
+      && limpio(await v.textContent()).includes(`A la unidad ${unidad} le tocan US$ 15,000.00`),
+    `«Facturar» de la unidad ${unidad} abre la ventana con esa unidad y lo que le toca`)
+    await v.locator('input[name="numero"]').fill(numero)
+    await v.locator('input[name="total"]').fill('15000')
+    await v.locator('input[name="archivo"]').setInputFiles(PDF_FACTURA)
+    await v.locator('button[type="submit"]').click()
+    const dijo = await esperarVentana(pagina)
+    comprobar(dijo === '', `la factura ${numero} de la unidad ${unidad} se registra${dijo ? ` (dijo: ${dijo})` : ''}`)
+    await t.locator(`article[data-factura="${numero}"]`).waitFor({ timeout: 30000 }).catch(() => {})
+  }
+  const enBase = await consulta(
+    `select p.numero_de_unidad, p.monto::numeric as monto from public.facturas_venta_unidades p join public.facturas_venta f on f.id = p.factura_id
+      where f.cotizacion_pdf_id = $1 and f.anulada_en is null order by 1`, [cot.tres.id])
+  comprobar(enBase.length === 2 && enBase.every((f) => Number(f.monto) === 15000) && enBase.map((f) => Number(f.numero_de_unidad)).join() === '2,3',
+    `En la base quedan dos facturas, la de la unidad 2 y la de la 3, por 15 000 cada una (${enBase.map((f) => `${f.numero_de_unidad}:${f.monto}`).join(' | ')})`)
+
+  for (const [ancho, alto] of [[1440, 900], [390, 844]]) {
+    const s = ancho === 1440 ? { pagina, contexto: null } : await entrar('contabilidad', { width: ancho, height: alto })
+    await s.pagina.goto(`${BASE}/contabilidad/facturacion`, { waitUntil: 'networkidle' })
+    const c = s.pagina.locator(`li[data-cotizacion="${cot.tres.numero}"]`)
+    await c.waitFor({ timeout: 15000 }).catch(() => {})
+    const dice = limpio(await c.textContent())
+    const insignia = limpio(await c.locator('p').first().textContent())
+    comprobar(insignia.includes('Facturada') && !insignia.includes('en parte') && !insignia.includes('Por facturar') && !insignia.includes('Falta la OT'),
+      `Contabilidad ${ancho}: facturadas las dos que quedan, la cotización dice «Facturada» («${insignia}»)`)
+    comprobar(dice.includes('Facturado: US$ 30,000.00 · 100 % de lo que se factura aquí') && !/falta\s+US\$/.test(dice) && !dice.includes('Falta que Administración'),
+      `Contabilidad ${ancho}: lo facturado es el 100 % de lo que se factura aquí, dicho así, y no le falta nada`)
+    const aviso = c.locator('[data-unidades-a-otro-comprador]')
+    const avisoDice = limpio(await aviso.textContent().catch(() => ''))
+    comprobar(avisoDice === '1 de 3 unidades pasó a otro comprador. Se facturaron las 2 que quedaron, cada una por su parte: el total de venta de arriba es el de la cotización entera.'
+      && !((await aviso.getAttribute('class')) ?? '').includes('bg-aviso-suave'),
+    `Contabilidad ${ancho}: el aviso ya no pide nada: lo dice en pasado y sin ámbar («${avisoDice}»)`)
+    comprobar((await c.locator('[data-facturar-unidad]').count()) === 0 && (await c.locator('li[data-unidad="1"]').textContent()).includes('Pasó a otro comprador')
+      && (await c.locator('[data-unidades-a-otro-comprador]').count()) === 1,
+    `Contabilidad ${ancho}: ninguna unidad ofrece «Facturar» y la 1 sigue diciendo que pasó a otro comprador`)
+    const enEspera = await s.pagina.locator(`#por-facturar [data-por-facturar^="QA_P8G_${sello}_D"], #por-facturar [data-por-facturar^="QA_P8G_${sello}_F"]`).count()
+    comprobar(enEspera === 0, `Contabilidad ${ancho}: ninguna de sus unidades figura en «Por facturar»`)
+    if (ancho === 390) {
+      const desliza = await s.pagina.evaluate(() => document.documentElement.scrollWidth)
+      comprobar(desliza <= 390, `390: la tarjeta cerrada no se desliza de costado (${desliza} px)`)
+    }
+    await c.evaluate((e) => e.scrollIntoView({ block: 'start' })).catch(() => {})
+    await s.pagina.evaluate(() => window.scrollBy(0, -80))
+    await s.pagina.screenshot({ path: join(CAPTURAS, `unidad-que-paso-${ancho}-facturada.png`) })
+    if (s.contexto) await s.contexto.close()
+  }
+  const pendientes = await como('contabilidad', 'select por_facturar from public.facturacion_pendientes()')
+  const deEsta = await como('contabilidad', `select count(*)::int n from public.facturacion_por_unidad(array[$1::uuid]) u
+                                             where u.codigo_interno is not null and u.facturado < u.parte - 0.005`, [cot.tres.id])
+  comprobar(Number(deEsta[0].n) === 0, `Y para la base ninguna unidad con OT de esa cotización espera factura (el globo de Facturación cuenta ${pendientes[0].por_facturar} de otras)`)
+  await contexto.close()
+}
+
+// --------------------- 5. La unidad que pasó ya tenía algo facturado (un adelanto)
+// Las dos unidades con su OT, una factura por toda la cotización, y después la unidad 1 pasa a otro comprador.
+await cargarOt('ot7', 'adelanto', libres[6], `QA_P8G_${sello}_G`)
+await cargarOt('ot8', 'adelanto', libres[7], `QA_P8G_${sello}_H`)
+{
+  const { pagina, contexto } = await entrar('contabilidad')
+  await pagina.goto(`${BASE}/contabilidad/facturacion`, { waitUntil: 'networkidle' })
+  const t = pagina.locator(`li[data-cotizacion="${cot.adelanto.numero}"]`)
+  await t.waitFor({ timeout: 15000 }).catch(() => {})
+  await t.getByRole('button', { name: /Registrar factura/ }).click()
+  const v = pagina.locator('[role="dialog"]')
+  await v.waitFor({ timeout: 5000 }).catch(() => {})
+  await v.locator('select[name="unidad"]').selectOption('0')
+  await v.locator('input[name="numero"]').fill(`${serie}-10`)
+  await v.locator('input[name="total"]').fill('9000')
+  await v.locator('input[name="archivo"]').setInputFiles(PDF_FACTURA)
+  await v.locator('button[type="submit"]').click()
+  const dijo = await esperarVentana(pagina)
+  comprobar(dijo === '', `Contabilidad registra un adelanto por toda la cotización de dos unidades${dijo ? ` (dijo: ${dijo})` : ''}`)
+  await t.locator(`article[data-factura="${serie}-10"]`).waitFor({ timeout: 30000 }).catch(() => {})
+
+  await pasar(ots.ot7, cot.otro4)
+  for (const [ancho, alto] of [[1440, 900], [390, 844]]) {
+    const s = ancho === 1440 ? { pagina, contexto: null } : await entrar('contabilidad', { width: ancho, height: alto })
+    await s.pagina.goto(`${BASE}/contabilidad/facturacion`, { waitUntil: 'networkidle' })
+    const c = s.pagina.locator(`li[data-cotizacion="${cot.adelanto.numero}"]`)
+    await c.waitFor({ timeout: 15000 }).catch(() => {})
+    const fila = limpio(await c.locator('li[data-unidad="1"]').textContent().catch(() => ''))
+    comprobar(fila.includes('Pasó a otro comprador') && fila.includes('Facturado antes de pasar: US$ 4,500.00') && !fila.includes('falta') && !fila.includes('Le toca'),
+      `Contabilidad ${ancho}: la unidad que pasó con un adelanto dice lo que tenía facturado, sin «falta» ni lo que le tocaba («${fila}»)`)
+    const aviso = c.locator('[data-unidades-a-otro-comprador]')
+    const dice = limpio(await aviso.textContent().catch(() => ''))
+    comprobar(dice.includes('1 de 2 unidades pasó a otro comprador. Se factura la que queda, por su parte')
+      && dice.includes('La unidad 1 ya tenía algo facturado en esta cotización cuando pasó: revisa qué corresponde hacer con esa factura.')
+      && ((await aviso.getAttribute('class')) ?? '').includes('bg-aviso-suave'),
+    `Contabilidad ${ancho}: y el aviso dice que esa factura queda por revisar («${dice}»)`)
+    const cabecera = limpio(await c.textContent())
+    // De los 22 500 de la unidad 2, 4 500 ya van: el 20 %, y faltan 18 000. Los 18 000 de la 1 ya no se cuentan.
+    comprobar(cabecera.includes('Facturado: US$ 9,000.00 · 33 % de lo que se factura aquí') && /falta\s+US\$ 18,000\.00/.test(cabecera),
+      `Contabilidad ${ancho}: arriba, lo que falta es solo lo de la unidad que queda (US$ 18,000.00)`)
+    if (ancho === 390) {
+      const desliza = await s.pagina.evaluate(() => document.documentElement.scrollWidth)
+      comprobar(desliza <= 390, `390: esa tarjeta no se desliza de costado (${desliza} px)`)
+    }
+    await c.evaluate((e) => e.scrollIntoView({ block: 'start' })).catch(() => {})
+    await s.pagina.evaluate(() => window.scrollBy(0, -80))
+    await s.pagina.screenshot({ path: join(CAPTURAS, `unidad-que-paso-${ancho}-con-adelanto.png`) })
+    if (s.contexto) await s.contexto.close()
+  }
+  await contexto.close()
 }
 
 await navegador.close()
