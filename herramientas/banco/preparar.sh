@@ -173,7 +173,8 @@ end $$;
 SQL
 
 # Los datos de demostración anotan en Storage la foto de cada salida del kardex
-# y el PDF de cada factura, pero el archivo no viaja en el SQL. En el banco se
+# y el PDF de cada factura, documento de OS y contrato de subcontrato, pero el
+# archivo no viaja en el SQL. En el banco se
 # les pone uno de muestra, para que «Ver la foto» y «Ver el PDF» abran algo.
 # Sin ImageMagick (`convert`), o si su política no deja escribir PDF (la de
 # serie en Ubuntu), se saltan: la fila sigue y el archivo no se ve.

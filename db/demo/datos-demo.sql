@@ -958,6 +958,11 @@ declare
   v_disc    uuid;
   v_mig     uuid;
   v_guan    uuid;
+  -- Las dos de hoy que Gerencia aprobó y Logística todavía no programa.
+  v_ang     uuid;
+  v_led     uuid;
+  -- Los avisos que deja esta carga, para tocar solo esos al ponerles su hora.
+  v_avisos  uuid[];
   -- Las directas que siguen el resto de los pasos de la compra.
   v_esm     uuid;
   v_hard    uuid;
@@ -1236,13 +1241,23 @@ begin
     'Guantes de soldador para el cambio de mes del personal', jsonb_build_array(
       jsonb_build_object('material_id', pg_temp.demo_mat('EP-PM-GU-CU-00002'), 'cantidad', 24, 'precio', 18.90)),
     current_date + 5, 'CONTADO', 0, 'PEN', true, 'PLANTA');
+  -- Dos de hoy, que Gerencia aprueba y Logística todavía no pone en la lista
+  -- del conductor: lo que espera en «Por programar».
+  v_ang := public.emitir_compra_directa(gen_random_uuid(), v_aceros, 'COT-AP-2302',
+    'Ángulos para el stock de bastidores', jsonb_build_array(
+      jsonb_build_object('material_id', pg_temp.demo_mat('ANG-2X2'), 'cantidad', 40, 'precio', 58)),
+    current_date + 3, 'CREDITO', 30, 'PEN', true, 'PLANTA');
+  v_led := public.emitir_compra_directa(gen_random_uuid(), v_ferre, 'COT-SJ-146',
+    'Faros LED de repuesto para el stock de luces', jsonb_build_array(
+      jsonb_build_object('material_id', pg_temp.demo_mat('LUZ-LED'), 'cantidad', 16, 'precio', 42)),
+    current_date + 2, 'CONTADO', 0, 'PEN', true, 'PLANTA');
 
   -- Gerencia aprueba casi todas, rechaza dos con su motivo y deja en su bandeja
   -- la del pistón y la de los guantes. Después anula dos que ya había
   -- aprobado, antes de que el conductor las recoja.
   perform pg_temp.demo_como(v_ger);
   foreach v_id in array array[v_pint, v_desb, v_pl4, v_hard, v_plan, v_ele, v_anu[1], v_disc, v_per,
-                              v_anu[2], v_esm, v_thi, v_mig, v_base] loop
+                              v_anu[2], v_esm, v_thi, v_mig, v_base, v_ang, v_led] loop
     perform public.aprobar_compra(v_id);
   end loop;
   perform public.rechazar_compra(v_rech[1],
@@ -1255,7 +1270,7 @@ begin
     'Se duplicó con las mangueras del RQ del volteo, que se compran aparte');
 
   -- Logística anexa la factura de las que llegan, y a cada una le pone su peso
-  -- y su lugar en la lista del conductor.
+  -- y su lugar en la lista del conductor (menos las dos de hoy).
   perform pg_temp.demo_factura(v_pint, v_log, 'F002-004518');
   perform pg_temp.demo_factura(v_pl4, v_log, 'F001-008842');
   perform pg_temp.demo_factura(v_ele, v_log, 'F001-011254');
@@ -1333,7 +1348,7 @@ begin
        (v_os[9],  v_arenado, v_ot3, v_mtz, v_cod3, 'Arenado de las puertas traseras del furgón', 'COT-ACH-099', 4, 900, 'CONTADO', 0, '025', null),
        (v_os[10], v_torno,   v_ot1, v_prd, v_cod1, 'Fresado de las placas de apoyo de la tolva', 'COT-TSR-334', 3, 2950, 'CREDITO', 15, '025', null),
        (v_os[11], v_torno,   v_ot3, v_mtz, v_cod3, 'Doblado de las planchas del techo del furgón', 'COT-TSR-336', 2, 950, 'CREDITO', 15, '025', null),
-       (v_os[12], v_torno,   v_ot3, v_mtz, v_cod3, 'Corte de las planchas del piso del furgón', 'COT-TSR-339', 1, 1480, 'CREDITO', 15, '025', null))
+       (v_os[12], v_torno,   v_ot3, v_mtz, v_cod3, 'Corte de las planchas del piso del furgón', 'COT-TSR-339', 0, 1480, 'CREDITO', 15, '025', null))
        as v(id, prov, ot, area, cod, descripcion, ref, dias, monto, condicion, plazo, detraccion, motivo);
   perform pg_temp.demo_como(v_ger);
   foreach v_id in array v_os[1:9] loop
@@ -1389,7 +1404,7 @@ begin
        (v_sc[2], v_sub,  v_cod3, 'Instalación de la alarma de retroceso del furgón', 450, 10, 3, 'MTZ'),
        (v_sc[3], v_sub2, v_cod3, 'Pintado de los logos del cliente en el furgón', 600, 8, 4, 'MTZ'),
        (v_sc[4], v_sub2, v_cod1, 'Armado del tolvín de la tolva', 950, 6, 4, 'PRD'),
-       (v_sc[5], v_sub,  v_cod3, 'Instalación del sistema eléctrico y luces del furgón', 2400, 2, 10, 'MTZ'),
+       (v_sc[5], v_sub,  v_cod3, 'Instalación del sistema eléctrico y luces del furgón', 2400, 2, 9, 'MTZ'),
        (v_sc[6], v_sub,  v_cod1, 'Cableado de las luces de la tolva', 1100, 1, 6, 'PRD'))
        as v(id, persona, cod, descripcion, monto, dias, plazo, area);
   -- El contrato firmado de cada encargo que sigue en pie.
@@ -1436,34 +1451,38 @@ begin
       from public.requerimiento_lineas l join public.requerimientos q on q.id = l.requerimiento_id
      where l.orden_compra_id is not null group by 1
     union all
-    select v.id, now() - make_interval(days => v.dias)
-      from (values (v_desb, 7), (v_pl4, 7), (v_hard, 6), (v_ele, 6), (v_anu[1], 6), (v_disc, 5), (v_per, 5),
-                   (v_anu[2], 5), (v_esm, 4), (v_thi, 4), (v_rech[1], 4), (v_mig, 3), (v_base, 3),
-                   (v_rech[2], 2), (v_guan, 1)) as v(id, dias)
+    select v.id, now() - v.hace
+      from (values (v_desb, interval '7 days'), (v_pl4, '7 days'), (v_hard, '6 days'), (v_ele, '6 days'),
+                   (v_anu[1], '6 days'), (v_disc, '5 days'), (v_per, '5 days'), (v_anu[2], '5 days'),
+                   (v_esm, '4 days'), (v_thi, '4 days'), (v_rech[1], '4 days'), (v_mig, '3 days'),
+                   (v_base, '3 days'), (v_rech[2], '2 days'), (v_guan, '300 minutes'), (v_ang, '240 minutes'),
+                   (v_led, '200 minutes')) as v(id, hace)
   )
   update public.ordenes_compra_materiales c
      set creado_en = f.creado,
          aprobacion_pedida_en = case when c.aprobacion_pedida_en is not null then f.creado end,
-         aprobado_en  = case when c.aprobado_en is not null then f.creado + interval '1 day' end,
+         -- La de hoy se aprueba a la media hora; las de antes, al día siguiente.
+         aprobado_en  = case when c.aprobado_en is not null then f.creado + case when f.creado > now() - interval '1 day'
+                               then interval '30 minutes' else interval '1 day' end end,
          rechazado_en = case when c.rechazado_en is not null then f.creado + interval '1 day' end,
          anulada_en   = case when c.anulada_en is not null then f.creado + interval '2 days' end
     from f
    where c.id = f.id;
   update public.ordenes_servicio s
-     set creado_en       = now() - make_interval(days => v.dias),
+     set creado_en       = now() - make_interval(days => v.dias) - interval '200 minutes',
          aprobado_en     = case when s.aprobado_en is not null then now() - make_interval(days => v.dias - 1) end,
          rechazado_en    = case when s.rechazado_en is not null then now() - make_interval(days => v.dias - 1) end,
          iniciado_en     = case when s.iniciado_en is not null then now() - make_interval(days => v.dias - 2) end,
          conformidad_en  = case when s.conformidad_en is not null then now() - make_interval(days => v.dias - 6) end,
          anulado_en      = case when s.anulado_en is not null then now() - make_interval(days => v.dias - 2) end
-    from (select v_os[i] as id, (array[13, 11, 9, 8, 7, 7, 5, 4, 4, 3, 2, 1])[i] as dias
+    from (select v_os[i] as id, (array[13, 11, 9, 8, 7, 7, 5, 4, 4, 3, 2, 0])[i] as dias
             from generate_subscripts(v_os, 1) i) v
    where s.id = v.id;
   update public.subcontratos s
      set creado_en   = now() - make_interval(days => v.dias),
          terminado_en = case when s.terminado_en is not null then now() - make_interval(days => v.dias - v.plazo) end,
          anulado_en   = case when s.anulado_en is not null then now() - make_interval(days => v.dias - 2) end
-    from (values (v_sc[1], 12, 5), (v_sc[2], 10, 3), (v_sc[3], 8, 4), (v_sc[4], 6, 4), (v_sc[5], 2, 10),
+    from (values (v_sc[1], 12, 5), (v_sc[2], 10, 3), (v_sc[3], 8, 4), (v_sc[4], 6, 4), (v_sc[5], 2, 9),
                  (v_sc[6], 1, 6)) as v(id, dias, plazo)
    where s.id = v.id;
   -- La compra sale a la lista del conductor cuando Gerencia la aprueba
@@ -1519,6 +1538,7 @@ begin
     from public.subcontratos s
    where s.id = c.subcontrato_id and c.creado_en = now();
 
+  v_avisos := array(select id from public.notificaciones where creado_en = now());
   -- Cada aviso lleva la hora del paso que anuncia, y lo que ya se atendió o es
   -- de días atrás va leído: la campana de Gerencia no muestra como pendiente
   -- una compra que ya aprobó.
@@ -1564,7 +1584,7 @@ begin
    where n.origen_tabla = 'documentos_orden_servicio' and n.origen_id = d.id and n.creado_en = now();
   update public.notificaciones n
      set leida_en = n.creado_en + interval '1 hour'
-   where n.leida_en is null
+   where n.leida_en is null and n.id = any (v_avisos)
      and n.origen_tabla in ('ordenes_compra_materiales', 'ordenes_servicio', 'requerimientos', 'subcontratos')
      and (n.creado_en < now() - interval '1 day'
           or (n.titulo like 'Compra por aprobar%' and exists (select 1 from public.ordenes_compra_materiales c
@@ -1574,11 +1594,22 @@ begin
           or (n.titulo like 'Requerimiento por revisar%' and exists (select 1 from public.requerimientos q
                 where q.id = n.origen_id and q.estado <> 'POR_ATENDER'))
           or (n.titulo like 'Recojo programado%' and exists (select 1 from public.ordenes_compra_materiales c
-                where c.id = n.origen_id and c.recojo in ('RECOGIDO', 'DEJADO')))
+                where c.id = n.origen_id and c.recojo in ('EN_RECOJO', 'RECOGIDO', 'DEJADO')))
+          or (n.titulo like 'Listo en almacén%' and exists (select 1 from public.requerimientos q
+                where q.id = n.origen_id and q.estado = 'ENTREGADO'))
           or (n.titulo like 'Ingreso por validar%' and not exists (select 1 from public.ingresos_pendientes_almacen i
                 where i.orden_compra_id = n.origen_id and i.estado = 'PENDIENTE')));
   perform set_config('session_replication_role', 'origin', true);
 
+  -- Un aviso que se quedó con la hora de la carga es un título que el bloque de
+  -- arriba ya no reconoce (cambió su texto): se le busca su paso.
+  if exists (select 1 from public.notificaciones n
+              where n.id = any (v_avisos) and n.creado_en = now()
+                and n.origen_tabla in ('ordenes_compra_materiales', 'ordenes_servicio', 'requerimientos',
+                                       'subcontratos', 'documentos_orden_servicio')
+                and n.origen_id is distinct from v_rq[11]) then
+    raise exception 'La demostración deja avisos con la hora de la carga: revisa los títulos que reconoce el bloque de fechas.';
+  end if;
   if exists (select 1 from public.v_kardex_almacen where saldo < 0) then
     raise exception 'La demostración deja un saldo negativo en el kardex: revisa el orden de los movimientos.';
   end if;

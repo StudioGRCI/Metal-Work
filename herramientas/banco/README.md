@@ -82,8 +82,9 @@ tiene acceso en producción, con la clave de `BANCO_CLAVE`: `gerencia`,
 auditores. La supervisión es una por área: la de la demostración pasa a llamarse
 `sup.prd.local` y conserva su historia.
 
-Los datos de demostración anotan en Storage la foto de cada salida del kardex
-y el PDF de cada factura de compra. `preparar.sh` les pone un archivo de muestra
+Los datos de demostración anotan en Storage la foto de cada salida del kardex,
+el PDF de cada factura de compra, los documentos de las órdenes de servicio y
+los contratos de los subcontratos. `preparar.sh` les pone un archivo de muestra
 («Foto de muestra», «Documento de muestra», con ImageMagick) en
 `BANCO_ARCHIVOS`, para que «Ver la foto» y «Ver el PDF» abran algo.
 
