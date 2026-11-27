@@ -17,7 +17,9 @@
  *   5. Administración y Ventas ven en Cotización la de origen con la unidad 2 y
  *      la 3 que pasaron, cada una con su OT, y la de destino con su OT en la
  *      unidad 1 y la que llegó en la 2; Administración puede cargar la 3.
- *   6. La OT que se carga después en la de destino es la unidad 3.
+ *   6. Contabilidad, en Facturación, ve la unidad 2 de la de destino con el
+ *      código y la OT que llegaron.
+ *   7. La OT que se carga después en la de destino es la unidad 3.
  *
  * Capturas en teléfono (390) y monitor (1440). Arma sus datos ficticios
  * (QA-P8U-…) y las cuentas `*.p8u@banco.test` con la clave local. Variables:
@@ -88,6 +90,7 @@ const CUENTAS = {
   ventas: ['VENDEDOR', 'GCO'],
   gerencia: ['GERENTE', 'GGE'],
   administracion: ['ADMINISTRACION', 'ADM'],
+  contabilidad: ['CONTABILIDAD', 'CON'],
 }
 const ids = {}
 for (const [clave, [rol, area]] of Object.entries(CUENTAS)) {
@@ -252,6 +255,8 @@ const filasDeUnidad = (t) => t.locator('ul[aria-label^="OT de las"] > li').evalu
   const e1 = await pasarConClic(pagina, ots.a2, cot.una, 'unidad-libre-1440-1-la-unidad-2-pasa.png')
   const d1 = await dondeEsta(ots.a2)
   const dejo = await uno(`select numero_de_unidad from public.ot_ventas_anteriores where orden_id = $1 and cotizacion_pdf_id = $2`, [ots.a2.id, cot.tres.id])
+  const desc = (await uno(`select descripcion from public.ordenes_trabajo where id = $1`, [ots.a2.id])).descripcion
+  comprobar(desc.endsWith(`cotización ${cot.una.numero}`), `1440: la descripción de la OT dice su cotización nueva, sin «unidad 2 de 3» («${desc}»)`)
   comprobar(e1 === '' && d1.cot === cot.una.id && d1.unidad === 1 && dejo?.numero_de_unidad === 2,
     `1440: Administración pasa la OT ${ots.a2.numero} (unidad 2 de 3) a ${cot.una.numero}, de 1 unidad; allí es la unidad 1 y la venta anterior guarda la 2${e1 ? ` (dijo: ${e1})` : ''}`)
 
@@ -309,7 +314,26 @@ for (const [quien, ancho, alto] of [['administracion', 1440, 900], ['administrac
   await contexto.close()
 }
 
-// 6. La OT que falta en la de destino es la unidad 3, no la 2 que llegó.
+// ----------------------------------------- 6. Contabilidad, en Facturación
+for (const [ancho, alto] of [[1440, 900], [390, 844]]) {
+  const { pagina, contexto } = await entrar('contabilidad', { width: ancho, height: alto })
+  await pagina.goto(`${BASE}/contabilidad/facturacion#${cot.otra.id}`, { waitUntil: 'networkidle' })
+  const tarjeta = pagina.locator(`li[id="${cot.otra.id}"]`)
+  await tarjeta.waitFor({ timeout: 15000 }).catch(() => {})
+  const u2 = limpio(await tarjeta.locator('li[data-unidad="2"]').textContent({ timeout: 5000 }).catch(() => ''))
+  comprobar(u2.includes(`código ${ots.a3.codigo}`) && u2.includes(`OT ${ots.a3.numero}`),
+    `contabilidad ${ancho}: en ${cot.otra.numero}, la unidad 2 se factura con el código y la OT que llegaron («${u2}»)`)
+  await tarjeta.evaluate((e) => e.scrollIntoView({ block: 'start' })).catch(() => {})
+  await pagina.evaluate(() => window.scrollBy(0, -80))
+  await pagina.screenshot({ path: join(CAPTURAS, `unidad-libre-contabilidad-${ancho}-4-facturacion-del-destino.png`) })
+  if (ancho === 390) {
+    const desliza = await pagina.evaluate(() => document.documentElement.scrollWidth)
+    comprobar(desliza <= 390, `390: Facturación no se desliza de costado (${desliza} px)`)
+  }
+  await contexto.close()
+}
+
+// 7. La OT que falta en la de destino es la unidad 3, no la 2 que llegó.
 await cargarOt('c3', 'otra', libres[4], `QA_P8U_${sello}_C3`)
 comprobar((await dondeEsta(ots.c3)).unidad === 3, `La OT que Administración carga después en ${cot.otra.numero} es la unidad 3`)
 

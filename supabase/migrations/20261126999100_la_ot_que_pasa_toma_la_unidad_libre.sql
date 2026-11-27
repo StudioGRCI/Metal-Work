@@ -27,8 +27,14 @@
 --   · La cotización nueva ya no rechaza la OT por tener otra: la rechaza solo si
 --     no le queda ninguna unidad libre, con el mensaje de siempre
 --     (`fn_ot_cabe_en_su_cotizacion`).
---   · Fuera de «Editar OT», el número de unidad sigue sin poder cambiarse a mano
---     (`fn_ot_unidad_no_cambia`).
+--   · De las unidades libres, primero la que no tiene una factura propia (de un
+--     vehículo cuya OT se anuló): así la OT que llega no se queda con la factura
+--     de otro. La descripción que puso la carga («cotización … · unidad 2 de
+--     3») se pone al día, y el historial de la OT dice el cambio de unidad.
+--   · Una OT pasa a otra cotización solo con «Editar OT»: un UPDATE directo
+--     de la columna, que cualquier permiso de editar la OT dejaba hacer, la
+--     colgaba de otro cliente sin venta anterior ni historial. El número de
+--     unidad sigue sin poder cambiarse a mano (`fn_ot_unidad_no_cambia`).
 --
 -- Las ventas anteriores que ya existen se anotan con la unidad que tiene hoy su
 -- OT: hasta esta migración el número no cambiaba al pasar, así que es la que
@@ -37,10 +43,11 @@
 -- `unidades_que_salieron_de_la_cotizacion` es la de la 20261126988000 y
 -- `editar_ot_con_historial_base`, la de la 20260927234131 (renombrada en la
 -- 20260929100001); las dos se compararon con producción el 2026-11-27 y se
--- reemplazan solo si siguen siendo esas. `unidad_que_dejo_la_ot` la crea la
--- migración del recorrido por unidad (20261126998900, hilo «Facturar por
--- unidad cotizada»), que va antes que esta; aquí se reemplaza su cuerpo para
--- que lea la unidad guardada, con la misma firma.
+-- reemplazan solo si siguen siendo esas. `unidad_que_dejo_la_ot` la crea
+-- también la migración del recorrido por unidad (20261126998900, hilo
+-- «Facturar por unidad cotizada»), solo si no existe: aquí se reemplaza su
+-- cuerpo para que lea la unidad guardada, con la misma firma, si es la de esa
+-- migración o la de esta; corran en el orden que corran, queda esta.
 --
 -- Nada se borra. Sin DROP: el conector de producción no deja pasar ninguno.
 -- =============================================================================
@@ -54,7 +61,7 @@ begin
   for f in
     select * from (values
       ('public.editar_ot_con_historial_base(uuid,timestamptz,jsonb,text)',
-       array['da2e3b8668ad4ffdbf7fedae9cf12f10', '9c327cd5c96b3c637e0b60f98ae35e65']),
+       array['da2e3b8668ad4ffdbf7fedae9cf12f10', '426129684db2388abfa49ed2491c7267']),
       ('public.unidades_que_salieron_de_la_cotizacion(uuid)',
        array['0bf4296cc324582738e00d94eccfd2d5', '530ad26c7cdfd872698485ce883a9589'])
     ) as t(firma, conocidas)
@@ -67,6 +74,19 @@ begin
       raise exception 'La función % no es la que conoce el repositorio (se cambió a mano): no se reemplaza. Avisa antes de seguir.', f.firma;
     end if;
   end loop;
+end $$;
+
+-- El ayudante del recorrido, si ya está, tiene que ser el de la 20261126998900
+-- o el de esta.
+do $$
+declare
+  huella text;
+begin
+  select md5(replace(p.prosrc, E'\r', '')) into huella
+    from pg_proc p where p.oid = to_regprocedure('public.unidad_que_dejo_la_ot(uuid,uuid)');
+  if huella is not null and not (huella = any (array['8e744f3b6a89dcb80bf3e112ffb9b95d', '67ad69a7a03060724ae3efd6428b5c80'])) then
+    raise exception 'La función public.unidad_que_dejo_la_ot(uuid,uuid) no es la que conoce el repositorio (se cambió a mano): no se reemplaza. Avisa antes de seguir.';
+  end if;
 end $$;
 
 -- 1. La venta anterior guarda qué unidad era --------------------------------------
@@ -150,6 +170,25 @@ revoke all on function public.unidad_que_dejo_la_ot(uuid, uuid) from public, ano
 -- misma cotización se ponen en fila. Si no queda ninguna libre, deja la unidad
 -- sin número y el disparador de la cotización dice por qué no cabe; sin eso,
 -- la OT de la unidad 2 decía «no tiene unidad 2» en vez de «ya tiene su OT».
+--
+-- Una OT con cotización pasa a otra solo con «Editar OT», que en la misma
+-- transacción anota la venta de antes con la unidad que deja y lo marca en
+-- `metalwork.traspaso_de_ot`. Hasta aquí un UPDATE directo de la columna, con
+-- cualquiera de los permisos que dejan editar la OT, la colgaba de la
+-- cotización de otro cliente sin venta anterior, sin historial y sin cambiar
+-- el cliente (lo vio el auditor de funcionamiento). Colgar de una cotización la
+-- OT que no tenía ninguna sigue como estaba, y también lo que corre sin sesión
+-- (una migración, la conexión directa).
+--
+-- De las unidades libres, primero la que no tiene una factura vigente solo de
+-- ella: esa es de un vehículo cuya OT se anuló, y la OT que llega se quedaría
+-- con su factura (el mismo caso que la carga avisa con
+-- `unidades_libres_ya_facturadas`). Si solo quedan unidades así, toma la
+-- primera, como la carga.
+--
+-- La descripción que puso la carga («… · cotización 3568-2026 · unidad 2 de
+-- 3») se pone al día con la cotización y la unidad nuevas; la que se escribió
+-- a mano no se toca.
 create or replace function public.fn_ot_a_otra_venta_toma_la_unidad_libre()
 returns trigger
 language plpgsql
@@ -158,6 +197,8 @@ set search_path to 'public'
 as $$
 declare
   v_cantidad integer;
+  v_numero   text;
+  v_de_antes text;
   v_ocupadas integer[];
   v_antes    integer;
   v_n        integer;
@@ -167,17 +208,15 @@ begin
      or new.estado = 'ANULADA' then
     return new;
   end if;
-  -- Solo el traspaso de «Editar OT», que en la misma transacción anota la venta
-  -- de antes con la unidad que deja. Colgar la OT de otra cotización por otro
-  -- camino sigue como estaba: conserva su número, y si no cabe, no entra.
-  if not exists (select 1 from public.ot_ventas_anteriores va
-                  where va.orden_id = new.id
-                    and va.cotizacion_pdf_id is not distinct from old.cotizacion_pdf_id
-                    and va.creado_en = now()) then
+  if coalesce(current_setting('metalwork.traspaso_de_ot', true), '') is distinct from new.id::text then
+    if old.cotizacion_pdf_id is not null and public.usuario_actual() is not null then
+      raise exception 'La OT % pasa a la cotización de otro comprador solo con «Editar OT / cambiar cliente»: así queda anotada su venta anterior, con su historial.', old.numero
+        using errcode = 'insufficient_privilege';
+    end if;
     return new;
   end if;
 
-  select c.cantidad_unidades into v_cantidad
+  select c.cantidad_unidades, c.numero into v_cantidad, v_numero
     from public.cotizaciones_pdf c
    where c.id = new.cotizacion_pdf_id
      for update;
@@ -203,12 +242,27 @@ begin
   if v_antes between 1 and v_cantidad and not (v_antes = any (v_ocupadas)) then
     v_n := v_antes;
   else
-    select min(k) into v_n
+    select k into v_n
       from generate_series(1, v_cantidad) k
-     where not (k = any (v_ocupadas));
+     where not (k = any (v_ocupadas))
+     order by exists (select 1
+                        from public.facturas_venta_unidades p
+                        join public.facturas_venta f on f.id = p.factura_id
+                       where f.cotizacion_pdf_id = new.cotizacion_pdf_id and f.anulada_en is null
+                         and p.numero_de_unidad = k
+                         and (select count(*) from public.facturas_venta_unidades x where x.factura_id = f.id) = 1),
+              k
+     limit 1;
   end if;
-
   new.numero_de_unidad := v_n;
+
+  -- La descripción que armó la carga dice de qué cotización y qué unidad era.
+  select c.numero into v_de_antes from public.cotizaciones_pdf c where c.id = old.cotizacion_pdf_id;
+  if v_n is not null and v_de_antes is not null and position('cotización ' || v_de_antes in new.descripcion) > 0 then
+    new.descripcion := regexp_replace(replace(new.descripcion, 'cotización ' || v_de_antes, 'cotización ' || v_numero),
+                                      ' · unidad \d+ de \d+$', '')
+                       || case when v_cantidad > 1 then format(' · unidad %s de %s', v_n, v_cantidad) else '' end;
+  end if;
   return new;
 end;
 $$;
@@ -244,9 +298,11 @@ revoke all on function public.unidades_que_salieron_de_la_cotizacion(uuid) from 
 grant execute on function public.unidades_que_salieron_de_la_cotizacion(uuid) to authenticated;
 
 -- 5. «Editar OT» ya no rechaza la cotización nueva por tener otra OT ----------------
--- La misma función de la 20260927234131, sin «La nueva cotización ya tiene una
--- OT.»: si no le queda unidad libre, lo dice `fn_ot_cabe_en_su_cotizacion`
--- al mover la OT, y todo vuelve atrás.
+-- La misma función de la 20260927234131 con tres cambios: sin «La nueva
+-- cotización ya tiene una OT.» (si no le queda unidad libre, lo dice
+-- `fn_ot_cabe_en_su_cotizacion` al mover la OT, y todo vuelve atrás); marca el
+-- traspaso para el disparador de la sección 3 solo mientras mueve la OT; y el
+-- historial dice también el cambio de unidad («unidad: 2 → 1»).
 CREATE OR REPLACE FUNCTION public.editar_ot_con_historial_base(p_orden uuid, p_version timestamp with time zone, p_datos jsonb, p_motivo text)
  RETURNS uuid
  LANGUAGE plpgsql
@@ -298,7 +354,8 @@ begin
     'fecha_entrega_comprometida',o.fecha_entrega_comprometida,
     'codigo_interno',u.codigo_interno,'marca',u.marca,'modelo',u.modelo,
     'cliente',(select razon_social from public.clientes where id=o.cliente_id),
-    'cliente_id',o.cliente_id,'cotizacion_pdf_id',o.cotizacion_pdf_id);
+    'cliente_id',o.cliente_id,'cotizacion_pdf_id',o.cotizacion_pdf_id,
+    'unidad',coalesce(o.numero_de_unidad,1));
   nuevo_cliente := o.cliente_id;
 
   if nullif(p_datos->>'cotizacion_nueva_id','') is not null then
@@ -341,6 +398,8 @@ begin
   if c.id is not null then
     insert into public.ot_ventas_anteriores(orden_id,cliente_id,cotizacion_pdf_id,datos,creado_por)
     values(o.id,o.cliente_id,o.cotizacion_pdf_id,antes,public.usuario_actual());
+    -- El disparador de la OT reconoce el traspaso por esta marca (20261126999100).
+    perform set_config('metalwork.traspaso_de_ot', o.id::text, true);
   end if;
 
   update public.ordenes_trabajo set
@@ -350,11 +409,13 @@ begin
     cliente_id=nuevo_cliente,
     cotizacion_pdf_id=coalesce(c.id,o.cotizacion_pdf_id)
   where id=o.id;
+  perform set_config('metalwork.traspaso_de_ot', '', true);
 
   select jsonb_build_object('descripcion',ot.descripcion,'prioridad',ot.prioridad,
     'fecha_entrega_comprometida',ot.fecha_entrega_comprometida,
     'codigo_interno',un.codigo_interno,'marca',un.marca,'modelo',un.modelo,
-    'cliente',cl.razon_social,'cliente_id',ot.cliente_id,'cotizacion_pdf_id',ot.cotizacion_pdf_id)
+    'cliente',cl.razon_social,'cliente_id',ot.cliente_id,'cotizacion_pdf_id',ot.cotizacion_pdf_id,
+    'unidad',coalesce(ot.numero_de_unidad,1))
     into despues from public.ordenes_trabajo ot
     left join public.unidades un on un.id=ot.unidad_id
     left join public.clientes cl on cl.id=ot.cliente_id where ot.id=o.id;

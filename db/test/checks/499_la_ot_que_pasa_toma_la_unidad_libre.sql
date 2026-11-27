@@ -284,14 +284,24 @@ begin
   perform test.debe_fallar(
     format('update public.ordenes_trabajo set numero_de_unidad = 3 where id = %L', current_setting('prueba.ot1')),
     'Administración no cambia a mano la unidad de una OT', 'eso no se cambia');
-  -- Colgarla de la cotización de una unidad por la API: conserva su número
-  -- (la 2) y no cabe, como antes de esta migración.
+  -- Colgarla de otra cotización por la API, sin venta anterior ni historial:
+  -- antes entraba con cualquiera de los permisos de editar la OT.
   perform test.debe_fallar(
     format('update public.ordenes_trabajo set cotizacion_pdf_id = %L where id = %L',
            current_setting('prueba.cot_b'), current_setting('prueba.ot2')),
-    'Colgar la OT de otra cotización por fuera de «Editar OT» no toma una unidad libre',
-    'no tiene unidad 2');
+    'Administración no cuelga la OT de otra cotización por fuera de «Editar OT»',
+    'solo con «Editar OT / cambiar cliente»');
   reset role;
+  perform test.como_usuario(current_setting('prueba.gerente')::uuid);
+  set local role authenticated;
+  perform test.debe_fallar(
+    format('update public.ordenes_trabajo set cotizacion_pdf_id = %L where id = %L',
+           current_setting('prueba.cot_b'), current_setting('prueba.ot1')),
+    'Gerencia tampoco', 'solo con «Editar OT / cambiar cliente»');
+  reset role;
+  perform test.afirmar(
+    (select cotizacion_pdf_id from public.ordenes_trabajo where id = current_setting('prueba.ot1')::uuid) = current_setting('prueba.cot_a')::uuid,
+    'Y la OT sigue en su cotización');
 end $$;
 
 -- 8. Contabilidad factura la unidad que llegó por su parte de la cotización nueva --
@@ -307,6 +317,79 @@ begin
     (select f.codigo_interno from public.facturacion_por_unidad(array[current_setting('prueba.cot_a')::uuid]) f where f.numero_de_unidad = 3) is null,
     'En la de antes, la unidad 3 ya no tiene OT');
   reset role;
+end $$;
+
+-- 9. La unidad libre con la factura de otro vehículo se deja para el último -------
+-- En la de tres, la unidad 2 se facturó y Gerencia anuló su OT: esa factura es
+-- de ese vehículo. La OT que llega toma la 3, que no tiene factura, aunque la
+-- 2 esté antes. Y su descripción y su historial dicen la cotización y la
+-- unidad nuevas.
+select set_config('prueba.cot_d', gen_random_uuid()::text, true);
+select set_config('prueba.cot_e', gen_random_uuid()::text, true);
+select set_config('prueba.otd1', gen_random_uuid()::text, true);
+select set_config('prueba.otd2', gen_random_uuid()::text, true);
+select set_config('prueba.ote1', gen_random_uuid()::text, true);
+select set_config('prueba.fd2', gen_random_uuid()::text, true);
+select set_config('prueba.fd2_ruta', current_setting('prueba.fd2') || '/' || gen_random_uuid() || '.pdf', true);
+insert into storage.objects (bucket_id, name, owner_id, metadata)
+values ('facturas-venta', current_setting('prueba.fd2_ruta'), current_setting('prueba.contable'),
+        '{"mimetype": "application/pdf", "size": 900}');
+do $$
+declare
+  v_anio constant text := to_char((now() at time zone 'America/Lima')::date, 'YYYY');
+  v_hoy  constant date := (now() at time zone 'America/Lima')::date;
+  v record;
+begin
+  perform test.como_usuario(current_setting('prueba.ventas')::uuid);
+  set local role authenticated;
+  insert into public.cotizaciones_pdf (id, numero, cliente_id, tipo_carroceria_id, nombre_archivo, ruta_storage,
+                                       mime_type, tamano_bytes, registrado_por, monto_venta, moneda, cantidad_unidades)
+  values (current_setting('prueba.cot_d')::uuid, 'QA-499-D', current_setting('prueba.cliente_c')::uuid, current_setting('prueba.carroceria')::uuid,
+          'cot.pdf', 'cot/' || current_setting('prueba.cot_d') || '/cot.pdf', 'application/pdf', 120, current_setting('prueba.ventas')::uuid, 9000, 'PEN', 3),
+         (current_setting('prueba.cot_e')::uuid, 'QA-499-E', current_setting('prueba.cliente_a')::uuid, current_setting('prueba.carroceria')::uuid,
+          'cot.pdf', 'cot/' || current_setting('prueba.cot_e') || '/cot.pdf', 'application/pdf', 120, current_setting('prueba.ventas')::uuid, 9000, 'PEN', 1);
+  reset role;
+  perform test.como_usuario(current_setting('prueba.gerente')::uuid);
+  set local role authenticated;
+  update public.cotizaciones_pdf set estado = 'APROBADA'
+   where id in (current_setting('prueba.cot_d')::uuid, current_setting('prueba.cot_e')::uuid);
+  reset role;
+
+  perform test.como_usuario(current_setting('prueba.oficina')::uuid);
+  set local role authenticated;
+  perform pg_temp.cargar(current_setting('prueba.cot_d'), current_setting('prueba.otd1'), 'QA-499 D1', '49931');
+  perform pg_temp.cargar(current_setting('prueba.cot_d'), current_setting('prueba.otd2'), 'QA-499 D2', '49932');
+  perform pg_temp.cargar(current_setting('prueba.cot_e'), current_setting('prueba.ote1'), 'QA-499 E1', '49941');
+  reset role;
+
+  perform test.como_usuario(current_setting('prueba.contable')::uuid);
+  set local role authenticated;
+  perform public.registrar_factura_venta_de_unidad(current_setting('prueba.fd2')::uuid, current_setting('prueba.cot_d')::uuid, 'E499-2',
+    v_hoy, v_hoy + 30, 'PEN', 3000, null, current_setting('prueba.fd2_ruta'), 'f.pdf', 2);
+  reset role;
+
+  perform test.como_usuario(current_setting('prueba.gerente')::uuid);
+  set local role authenticated;
+  update public.ordenes_trabajo set estado = 'ANULADA', motivo_anulacion = 'El cliente cambió el vehículo (prueba 499)'
+   where id = current_setting('prueba.otd2')::uuid;
+  reset role;
+
+  perform test.como_usuario(current_setting('prueba.oficina')::uuid);
+  set local role authenticated;
+  perform pg_temp.pasar(current_setting('prueba.ote1'), current_setting('prueba.cot_d'));
+  reset role;
+
+  perform test.afirmar(pg_temp.unidad(current_setting('prueba.ote1')) = 3,
+    'La OT que llega toma la unidad 3, sin factura, y no la 2, que tiene la factura de otro vehículo: es '
+      || pg_temp.unidad(current_setting('prueba.ote1')));
+  select descripcion into v from public.ordenes_trabajo where id = current_setting('prueba.ote1')::uuid;
+  perform test.afirmar(v.descripcion like '%cotización QA-499-D · unidad 3 de 3'
+                       and v.descripcion not like '%QA-499-E%',
+    'Su descripción dice la cotización y la unidad nuevas: ' || v.descripcion);
+  perform test.afirmar(
+    exists (select 1 from public.ot_bitacora e where e.orden_id = current_setting('prueba.ote1')::uuid
+               and e.descripcion like 'Edición de OT.%' and e.descripcion like '%unidad: 1 → 3%'),
+    'Y su historial dice el cambio de unidad');
 end $$;
 
 rollback;
