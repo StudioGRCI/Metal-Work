@@ -37,8 +37,8 @@ En `src/components/ui/`:
   todavía no existe. Desde la entrega 7 (2026-11-27) ningún botón de pantalla
   lleva `contornoPeligro` (anular, quitar, dar de baja, borrar el borrador): el
   rojo queda para el botón que confirma dentro de la ventana. Solo lo conservan
-  las decisiones («Rechazar» de Aprobación, «No autorizar» del metrado) y el
-  envío directo de «Dejarla sin nadie». `probar-orden-barrido-final.mjs` lo
+  las decisiones («Rechazar» de Aprobación y de la OT por revisar, «No
+  autorizar» del metrado) y el envío directo de «Dejarla sin nadie». `probar-orden-barrido-final.mjs` lo
   mira en el menú entero de cada puesto. Si los botones vienen de un componente con su propia caja
   (`AccionesCompra`, `AvanceServicio`, `ControlesVehiculo`,
   `AccionesProveedor`, `AccionesEquipo`), su caja va `contents` para que entren al renglón, y
@@ -87,8 +87,10 @@ En `src/components/ui/`:
 - `SinDatos` tiene dos tamaños: el grande es para la lista que es el trabajo
   de la pantalla; `compacto` para la bandeja que comparte pantalla con otras
   (lo pendiente del Kardex). No se escribe el vacío a mano con un `<p>`: la
-  entrega 7 cambió doce («Todavía no hay planos…», el costo de la OT, Costeo);
-  el título sin punto y lo que explica en `descripcion`.
+  entrega 7 cambió veinticinco («Todavía no hay planos…», el costo de la OT,
+  Costeo, los avisos); el título sin punto y lo que explica en `descripcion`.
+  Queda a mano la nota de Pagos de oficina junto a su botón: no es una lista
+  vacía, dice por qué el botón no tiene a quién pagar.
 - `Campo` (etiqueta + ayuda + requerido), `Entrada`, `Seleccion`, `AreaTexto`
 - `ElegirArchivo` para todo archivo que se elige en un formulario, nunca
   `Entrada type="file"`: el botón del navegador sale en su idioma («Choose

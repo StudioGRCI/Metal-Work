@@ -524,9 +524,7 @@ async function OrdenesDelTaller({ perfil }: { perfil: PerfilSesion }) {
               <TarjetaCabecera titulo="Todas por estado" />
               <TarjetaCuerpo className="space-y-2">
                 {indicadores.porEstado.length === 0 ? (
-                  <p className="py-4 text-center text-sm text-texto-suave">
-                    Todavía no hay ninguna orden registrada.
-                  </p>
+                  <SinDatos compacto titulo="Todavía no hay ninguna orden registrada" />
                 ) : (
                   [...indicadores.porEstado]
                     .sort(

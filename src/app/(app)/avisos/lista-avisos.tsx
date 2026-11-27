@@ -4,6 +4,7 @@ import { Check } from 'lucide-react'
 
 import { useAvisos } from '@/components/estructura/use-avisos'
 import { Boton } from '@/components/ui/boton'
+import { SinDatos } from '@/components/ui/tabla'
 import type { Notificacion } from '@/lib/datos/notificaciones'
 import { fechaHora } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -34,9 +35,7 @@ export function ListaAvisos({ avisos, sinLeer }: { avisos: Notificacion[]; sinLe
       )}
 
       {avisos.length === 0 ? (
-        <p className="px-4 py-10 text-center text-sm text-texto-suave">
-          No hay avisos. Acá llega lo que pasa en tu área.
-        </p>
+        <SinDatos enTabla={false} titulo="No hay avisos" descripcion="Acá llega lo que pasa en tu área." />
       ) : (
         <ul className="divide-y divide-borde">
           {avisos.map((a) => {

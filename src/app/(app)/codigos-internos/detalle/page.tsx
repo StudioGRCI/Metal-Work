@@ -1706,9 +1706,11 @@ async function VistaFacturacion({ codigo, perfil }: { codigo: string; perfil: Pe
         />
         <TarjetaCuerpo>
           {cotizaciones.length === 0 ? (
-            <p className="text-sm text-texto-suave">
-              Ninguna cotización aprobada lleva este código. Una cotización toma el código cuando Administración carga su OT con la unidad que lo lleva.
-            </p>
+            <SinDatos
+              compacto
+              titulo="Ninguna cotización aprobada lleva este código"
+              descripcion="Una cotización toma el código cuando Administración carga su OT con la unidad que lo lleva."
+            />
           ) : (
             <ul className="divide-y divide-borde">
               {cotizaciones.map((c) => {

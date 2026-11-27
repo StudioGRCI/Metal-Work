@@ -134,8 +134,9 @@ const medir = (pagina) =>
       const mezcla = { r: c.r * c.a + f.r * (1 - c.a), g: c.g * c.a + f.g * (1 - c.a), b: c.b * c.a + f.b * (1 - c.a) }
       const [l1, l2] = [lum(mezcla), lum(f)].sort((a, b) => b - a)
       const ratio = (l1 + 0.05) / (l2 + 0.05)
-      const grande = parseFloat(cs.fontSize) >= 18.66 || (parseFloat(cs.fontSize) >= 14 && Number(cs.fontWeight) >= 700)
-      if (ratio < (grande ? 3 : 4.5) - 0.1) bajos.push(`${ratio.toFixed(2)} «${el.textContent.trim().replace(/\s+/g, ' ').slice(0, 30)}»`)
+      // WCAG: grande es desde 24 px, o desde 18.66 px en negrita (18 y 14 puntos).
+      const grande = parseFloat(cs.fontSize) >= 24 || (parseFloat(cs.fontSize) >= 18.66 && Number(cs.fontWeight) >= 700)
+      if (ratio < (grande ? 3 : 4.5)) bajos.push(`${ratio.toFixed(2)} «${el.textContent.trim().replace(/\s+/g, ' ').slice(0, 30)}»`)
     }
     return {
       seSale: document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -194,7 +195,7 @@ try {
       const ths = [...document.querySelectorAll('main thead th')].filter(vis).map((t) => t.textContent.trim())
       const lineas = [...document.querySelectorAll('main [data-ubicacion-en-fila]')]
       const filas = document.querySelectorAll('main tbody > tr').length
-      return { ths, filas, vistas: lineas.filter(vis).length, conTexto: lineas.filter((l) => /\d (unidad|unidades)/.test(l.textContent)).length }
+      return { ths, filas, vistas: lineas.filter(vis).length, conTexto: lineas.filter((l) => /\d\u00a0(unidad|unidades)/.test(l.textContent)).length }
     })
     if (ancho >= 1280) {
       comprobar(r.ths.includes('Ubicación') && r.ths.includes('Órdenes') && r.vistas === 0, `Clientes ${ancho}: ubicación, unidades y órdenes en su columna (${r.ths.join(' | ')})`)

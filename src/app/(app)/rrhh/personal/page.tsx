@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Vistas } from '@/components/estructura/vistas'
 import { Insignia } from '@/components/ui/etiqueta-estado'
-import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
+import { AccionesDeFila, SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { areasParaPersonal, listarTrabajadores, periodosAnteriores, type Trabajador } from '@/lib/datos/rrhh'
 import { HORAS_DEL_MES, TIPO_CUENTA, horaCorta } from '@/lib/dominio/rrhh'
@@ -56,7 +56,8 @@ export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/r
       />
 
       <Tarjeta className="overflow-hidden">
-        <Tabla>
+        {/* En el teléfono cada persona es una ficha: con los botones al lado el nombre quedaba en 115 px y tres renglones. */}
+        <Tabla apilada>
           <TablaCabecera>
             <tr>
               <TH>Persona</TH>
@@ -186,7 +187,7 @@ function FilaTrabajador({
           </p>
         </TD>
       )}
-      <TD className="align-top">
+      <TD className="align-top" data-rotulo="Estado">
         {t.activo ? <Insignia tono="exito">Activo</Insignia> : <Insignia tono="neutro">De baja</Insignia>}
         <p className="mt-1 text-xs text-texto-suave" data-planilla={t.planilla}>
           {t.planilla === 'ADMINISTRATIVA' ? 'Planilla administrativa' : 'Planilla de taller'}
@@ -202,8 +203,10 @@ function FilaTrabajador({
         ))}
       </TD>
       {gestiona && (
-        <TD className="text-right align-top">
-          <ControlesTrabajador trabajador={t} areas={areas} hoy={hoy} />
+        <TD className="align-top">
+          <AccionesDeFila>
+            <ControlesTrabajador trabajador={t} areas={areas} hoy={hoy} />
+          </AccionesDeFila>
         </TD>
       )}
     </TR>

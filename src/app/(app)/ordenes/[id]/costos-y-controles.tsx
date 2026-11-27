@@ -189,7 +189,7 @@ function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar, esAdminis
           <Boton type="submit" cargando={enviando}>Enviar para revisión</Boton>
         </form>
       </Pliegue>}
-      {datos.gastos.length === 0 ? <SinDatos compacto titulo="Todavía no hay gastos registrados en esta OT" /> :
+      {datos.gastos.length === 0 ? <SinDatos compacto titulo="Todavía no hay gastos registrados en esta OT" descripcion={puedeRegistrar ? 'Regístralo con «Registrar gasto de mi área».' : 'Cada área registra el suyo con su comprobante.'} /> :
         <ol className="space-y-3">{datos.gastos.map(g => <li key={g.id} className="rounded-[var(--radius-base)] border border-borde p-3 text-sm">
           <div className="flex flex-wrap justify-between gap-2"><strong>{g.descripcion}</strong><Insignia tono={definir(ESTADO_GASTO_AREA, g.estado).tono}>{definir(ESTADO_GASTO_AREA, g.estado).etiqueta}</Insignia></div>
           <p className="mt-1 text-texto-suave">{g.area?.nombre ?? 'Área'} · {definir(TIPO_GASTO_AREA, g.tipo).etiqueta} · {fecha(g.fecha)} · {moneda(g.monto, g.moneda === 'USD' ? 'USD' : 'PEN')}</p>

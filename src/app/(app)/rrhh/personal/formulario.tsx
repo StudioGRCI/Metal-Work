@@ -69,7 +69,8 @@ export function ControlesTrabajador({ trabajador, areas, hoy }: { trabajador: Tr
   const baja = useEnvio(darDeBajaTrabajador, () => setBajando(false))
   const nombre = `${trabajador.nombres} ${trabajador.apellidos}`
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2">
+    // `contents`: los botones entran al renglón de `AccionesDeFila` de quien lo usa.
+    <div className="contents">
       <Boton
         type="button"
         variante="secundario"

@@ -218,7 +218,7 @@ function MaterialPorComprar({
             {rqs > 1 ? ` de ${rqs} RQ` : ''}
           </span>
         </TD>
-        <TD className="text-right tabular font-semibold text-texto">{total ?? '—'}</TD>
+        <TD className="text-right tabular font-semibold whitespace-nowrap text-texto">{total ?? '—'}</TD>
       </TR>
       {insumos.map((i) => (
         <TR key={i.id}>
@@ -255,7 +255,7 @@ function MaterialPorComprar({
             </span>
           </TD>
           <TD className="hidden tabular text-sm text-texto sm:table-cell">{i.codigo_interno}</TD>
-          <TD className="text-right tabular text-sm text-texto">
+          <TD className="text-right tabular text-sm whitespace-nowrap text-texto">
             {cantidad(i.falta)} {i.unidad}
           </TD>
         </TR>

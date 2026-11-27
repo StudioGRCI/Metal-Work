@@ -307,10 +307,11 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
           />
           <TarjetaCuerpo className="space-y-3">
             {contactos.length === 0 ? (
-              <p className="py-2 text-sm text-texto-suave">
-                Todavía no hay contactos.
-                {registraContactos && ' Agrega a quien recibe la cotización, para que el papel salga con su nombre.'}
-              </p>
+              <SinDatos
+                compacto
+                titulo="Todavía no hay contactos"
+                descripcion={registraContactos ? 'Agrega a quien recibe la cotización, para que el papel salga con su nombre.' : undefined}
+              />
             ) : (
               contactos.map((c) => (
                 <div key={c.id}>

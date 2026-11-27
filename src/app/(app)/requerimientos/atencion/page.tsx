@@ -239,9 +239,8 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
               <TablaCabecera>
                 <tr>
                   <TH>Requerimiento</TH>
-                  {/* Lo que se pide es lo que se lee: a quien compra, entre 768 y 1279 px le quedaba en 129 px. A Almacén lo
-                      limita su botón más ancho («Registrar la salida en el kardex», 229 px), que no se parte. */}
-                  <TH className={compra && !recibe && !despacha ? 'md:min-w-44' : undefined}>Insumos</TH>
+                  {/* Lo que se pide es lo que se lee: entre 768 y 1279 px le quedaba en 129 px. */}
+                  <TH className="md:min-w-44">Insumos</TH>
                   <TH>En qué va</TH>
                   {/* El ancho, solo para quien atiende y desde 1280: a quien consulta le dejaba una
                       columna vacía, y entre 768 y 1279 los 256 px fijos dejaban los insumos en 129 px
@@ -596,9 +595,16 @@ function Fila({
             <>
               {/* Si no se pudo leer lo que falta, «Entregado» va al lado y el
                   primario es él: dos primarios juntos no dicen cuál va primero. */}
-              <EnlaceBoton href={`/almacen/kardex?rq=${rq.id}`} tamano="sm" variante={porSacar === null ? 'secundario' : 'primario'}>
+              {/* Entre 768 y 1279 px el botón dice «Registrar la salida»: entero medía 229 px y dejaba
+                  los insumos en 130. El nombre para el lector sigue entero. */}
+              <EnlaceBoton
+                href={`/almacen/kardex?rq=${rq.id}`}
+                tamano="sm"
+                variante={porSacar === null ? 'secundario' : 'primario'}
+                aria-label="Registrar la salida en el kardex"
+              >
                 <ArrowUpFromLine aria-hidden className="size-4" />
-                Registrar la salida en el kardex
+                Registrar la salida<span className="md:max-xl:hidden"> en el kardex</span>
               </EnlaceBoton>
               {porSacar === null && <PasoRequerimiento id={rq.id} numero={rq.numero} paso="entregado" />}
               {/* Para lo que ya no va a salir: sin esto el RQ quedaba listo para

@@ -619,10 +619,11 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
                 </p>
               )}
               {composicion.monedas.length === 0 ? (
-                <p className="text-sm text-texto-suave">
-                  Todavía no hay costo cargado: aparece cuando Almacén despacha material, se cierra la planilla del mes o
-                  Administración aprueba un gasto del área.
-                </p>
+                <SinDatos
+                  compacto
+                  titulo="Todavía no hay costo cargado"
+                  descripcion="Aparece cuando Almacén despacha material, se cierra la planilla del mes o Administración aprueba un gasto del área."
+                />
               ) : (
                 <div className={composicion.monedas.length > 1 ? 'grid gap-6 lg:grid-cols-2' : undefined}>
                   {composicion.monedas.map((m) => (

@@ -147,12 +147,27 @@ export function AccionesEstado({
   return (
     <div className="flex flex-col items-end gap-2">
       <div className="flex flex-wrap items-center justify-end gap-2">
-        {disponibles.map((t) =>
-          t.motivo || t.confirmar ? (
+        {/* Anular va al final y sin borde (decisión 6 del plan de orden y diseño), también
+            después de «Registrar entrega». «Rechazar» de la OT por revisar no es un anular de
+            una vez sino la otra salida de la decisión de Administración: conserva su borde. */}
+        {[...disponibles.filter((t) => t.estado !== 'ANULADA'), ...(puedeEntregar ? ['entrega' as const] : []), ...disponibles.filter((t) => t.estado === 'ANULADA')].map((t) =>
+          t === 'entrega' ? (
+            <Boton
+              key="entrega"
+              variante="primario"
+              tamano="sm"
+              onClick={() => {
+                setVez((v) => v + 1)
+                setEntregando(true)
+              }}
+            >
+              Registrar entrega
+            </Boton>
+          ) : t.motivo || t.confirmar ? (
             <Boton
               key={t.estado}
               tamano="sm"
-              variante={t.estado === 'ANULADA' ? 'fantasma' : t.estado === 'APROBADA' ? 'primario' : 'secundario'}
+              variante={t.estado === 'ANULADA' ? (porRevisar ? 'contornoPeligro' : 'fantasma') : t.estado === 'APROBADA' ? 'primario' : 'secundario'}
               onClick={() => abrir(t)}
             >
               {t.etiqueta}
@@ -160,19 +175,6 @@ export function AccionesEstado({
           ) : (
             <BotonDirecto key={t.estado} ordenId={orden.id} transicion={t} />
           ),
-        )}
-
-        {puedeEntregar && (
-          <Boton
-            variante="primario"
-            tamano="sm"
-            onClick={() => {
-              setVez((v) => v + 1)
-              setEntregando(true)
-            }}
-          >
-            Registrar entrega
-          </Boton>
         )}
       </div>
 

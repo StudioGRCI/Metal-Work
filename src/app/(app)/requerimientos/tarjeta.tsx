@@ -354,7 +354,9 @@ export function TarjetaRequerimiento({
           {rq.faltante_al_entregar && (
             <div className="space-y-0.5" data-faltante>
               <p className="break-words text-texto">
-                <span className="font-medium text-aviso">No salió del kardex:</span> {rq.faltante_al_entregar}
+                {/* El ámbar como punto y el rótulo en el color del texto: en ámbar, sobre este gris daba 4.43 y no 4.5. */}
+                <Punto tono="aviso" className="mr-1.5 align-middle" />
+                <span className="font-semibold">No salió del kardex:</span> {rq.faltante_al_entregar}
               </p>
               {rq.motivo_del_faltante && (
                 <p className="break-words">
