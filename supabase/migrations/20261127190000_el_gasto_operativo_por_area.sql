@@ -24,7 +24,8 @@
 --
 -- El supervisor ve su área sin la mano de obra, como Requerimientos ve el gasto
 -- por código (`codigos_internos.gasto`): lo que cuesta cada persona lo ven
--- RR. HH. y Gerencia.
+-- Gerencia y Administración. Tampoco ve los subcontratos: los de su área los ve
+-- sin montos ni recibos desde la 20261020180000, y aquí no se le abren.
 --
 -- Solo lectura. Sin DROP. Idempotente.
 -- =============================================================================
@@ -34,7 +35,7 @@ insert into public.permisos (codigo, modulo, descripcion) values
   ('gasto_operativo.ver', 'Costos',
    'Consultar el gasto operativo de todas las áreas, mes por mes: lo que se gastó para trabajar y no se cargó a ninguna unidad (PLANTA), con la mano de obra'),
   ('gasto_operativo.area', 'Costos',
-   'Consultar el gasto operativo de su propia área, mes por mes: lo que salió del almacén para el área, sus OS y sus subcontratos, sin la mano de obra')
+   'Consultar el gasto operativo de su propia área, mes por mes: lo que salió del almacén para el área y sus OS, sin la mano de obra ni los subcontratos')
 on conflict (codigo) do update set modulo = excluded.modulo, descripcion = excluded.descripcion;
 
 -- Gerencia y Administración, todo; quien pide para su área (los supervisores y
@@ -50,8 +51,13 @@ on conflict do nothing;
 create or replace function public.gasto_operativo_lineas_calculado(p_desde date, p_hasta date)
 returns table (fecha date, area_id uuid, fuente text, grupo text, concepto text, detalle text,
                cantidad numeric, unidad text, moneda text, monto numeric, soles numeric, suma boolean,
-               sin_precio integer, documento text, referencia_id uuid)
-language sql stable set search_path to 'public' as $$
+               sin_precio integer, documento text, referencia_id uuid, requerimiento_id uuid)
+language plpgsql stable set search_path to 'public' as $$
+-- plpgsql y no sql: la llaman la pantalla, de mil en mil filas, y el reporte
+-- general (skill datos › Rendimiento).
+#variable_conflict use_column
+begin
+  return query
   with k as (
     select k.*,
            -- Las mismas fuentes que suman al costo en `codigos_internos_costo_calculado`.
@@ -94,9 +100,15 @@ language sql stable set search_path to 'public' as $$
               when k.moneda = 'PEN' then k.monto
               when k.moneda = 'USD' then public.soles_de_la_linea_del_costeo(k.fuente, k.referencia_id, k.fecha, k.monto)
          end,
-         k.suma, k.sin_precio, k.documento, k.referencia_id
-    from k
-$$;
+         k.suma, k.sin_precio, k.documento, k.referencia_id,
+         -- El RQ de lo salido del almacén, para abrirlo desde la pantalla.
+         case when k.fuente in ('MATERIALES', 'MATERIALES_SIN_PRECIO') then
+           (select rl.requerimiento_id from public.movimientos_materiales m
+              join public.requerimiento_lineas rl on rl.id = m.requerimiento_linea_id
+             where m.id = k.referencia_id)
+         end
+    from k;
+end $$;
 
 revoke all on function public.gasto_operativo_lineas_calculado(date, date) from public, anon, authenticated;
 
@@ -104,7 +116,7 @@ revoke all on function public.gasto_operativo_lineas_calculado(date, date) from 
 create or replace function public.gasto_operativo(p_desde date, p_hasta date)
 returns table (fecha date, area_id uuid, area text, fuente text, grupo text, concepto text, detalle text,
                cantidad numeric, unidad text, moneda text, monto numeric, soles numeric, suma boolean,
-               sin_precio integer, documento text, referencia_id uuid)
+               sin_precio integer, documento text, referencia_id uuid, requerimiento_id uuid)
 language plpgsql stable security definer set search_path to 'public' as $$
 #variable_conflict use_column
 declare
@@ -128,10 +140,10 @@ begin
 
   return query
   select g.fecha, g.area_id, coalesce(a.nombre, 'Planta, sin área')::text, g.fuente, g.grupo, g.concepto, g.detalle,
-         g.cantidad, g.unidad, g.moneda, g.monto, g.soles, g.suma, g.sin_precio, g.documento, g.referencia_id
+         g.cantidad, g.unidad, g.moneda, g.monto, g.soles, g.suma, g.sin_precio, g.documento, g.referencia_id, g.requerimiento_id
     from public.gasto_operativo_lineas_calculado(p_desde, p_hasta) g
     left join public.areas a on a.id = g.area_id
-   where v_todo or (g.area_id = v_area and g.grupo <> 'MANO_OBRA')
+   where v_todo or (g.area_id = v_area and g.grupo not in ('MANO_OBRA', 'SUBCONTRATOS'))
    order by g.fecha desc, 3, g.grupo, g.concepto, g.referencia_id;
 end $$;
 
@@ -139,4 +151,4 @@ revoke all on function public.gasto_operativo(date, date) from public, anon;
 grant execute on function public.gasto_operativo(date, date) to authenticated;
 
 comment on function public.gasto_operativo(date, date) is
-  'El gasto operativo (lo cargado a PLANTA) entre dos fechas, línea por línea, con su área. Con gasto_operativo.ver, todas las áreas; con gasto_operativo.area, solo la suya y sin la mano de obra.';
+  'El gasto operativo (lo cargado a PLANTA) entre dos fechas, línea por línea, con su área. Con gasto_operativo.ver, todas las áreas; con gasto_operativo.area, solo la suya y sin la mano de obra ni los subcontratos.';

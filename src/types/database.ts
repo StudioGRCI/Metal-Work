@@ -18095,6 +18095,7 @@ export type Database = {
           sin_precio: number | null
           documento: string | null
           referencia_id: string | null
+          requerimiento_id: string | null
         }[]
       }
       gasto_operativo_lineas_calculado: {
@@ -18118,6 +18119,7 @@ export type Database = {
           sin_precio: number | null
           documento: string | null
           referencia_id: string | null
+          requerimiento_id: string | null
         }[]
       }
       gastos_del_mes_oficina: {

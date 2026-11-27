@@ -7,12 +7,14 @@
 
 /** Los grupos de `gasto_operativo.grupo`, en el orden en que se muestran. */
 export const GRUPOS_GASTO_OPERATIVO = [
-  { clave: 'MATERIALES', etiqueta: 'Herramientas e insumos', corta: 'Almacén' },
-  { clave: 'MANO_OBRA', etiqueta: 'Mano de obra', corta: 'Mano de obra' },
-  { clave: 'SERVICIOS', etiqueta: 'Órdenes de servicio', corta: 'Servicios' },
-  { clave: 'SUBCONTRATOS', etiqueta: 'Subcontratos', corta: 'Subcontratos' },
-  { clave: 'CAJA', etiqueta: 'Caja', corta: 'Caja' },
-  { clave: 'OTROS', etiqueta: 'Otros', corta: 'Otros' },
+  // Sin nombres de área («Almacén», «Servicios»): en la tabla por área se leían
+  // como si un área le pagara a otra (auditoría de diseño, 27/11).
+  { clave: 'MATERIALES', etiqueta: 'Herramientas e insumos' },
+  { clave: 'MANO_OBRA', etiqueta: 'Mano de obra' },
+  { clave: 'SERVICIOS', etiqueta: 'Órdenes de servicio' },
+  { clave: 'SUBCONTRATOS', etiqueta: 'Subcontratos' },
+  { clave: 'CAJA', etiqueta: 'Caja' },
+  { clave: 'OTROS', etiqueta: 'Otros' },
 ] as const
 
 export const etiquetaDelGrupo = (clave: string) => GRUPOS_GASTO_OPERATIVO.find((g) => g.clave === clave)?.etiqueta ?? clave
@@ -20,7 +22,8 @@ export const etiquetaDelGrupo = (clave: string) => GRUPOS_GASTO_OPERATIVO.find((
 /** Cómo se llama en la URL lo que no tiene área. */
 export const SIN_AREA = 'sin-area'
 
-export const MES = /^(\d{4})-(0[1-9]|1[0-2])$/
+/** Un mes `YYYY-MM` desde el 2000: el año 0 lo rechaza Postgres. */
+export const MES = /^(2\d{3})-(0[1-9]|1[0-2])$/
 
 /** El mes de al lado, como `YYYY-MM`, sin pasar por Date ni por husos. */
 export function otroMes(mes: string, delta: number) {

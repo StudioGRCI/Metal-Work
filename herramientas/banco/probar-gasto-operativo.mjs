@@ -64,7 +64,8 @@ async function totalDe(correo, area = null) {
     await base.query('set local role authenticated')
     const [f] = await consulta(
       `select coalesce(sum(soles) filter (where suma), 0)::numeric(14,2)::text as soles, count(*)::int as lineas,
-              count(*) filter (where grupo = 'MANO_OBRA')::int as mano_obra, count(distinct area)::int as areas
+              count(*) filter (where grupo = 'MANO_OBRA')::int as mano_obra,
+              count(*) filter (where grupo = 'SUBCONTRATOS')::int as subcontratos, count(distinct area)::int as areas
          from public.gasto_operativo(date_trunc('month', now() at time zone 'America/Lima')::date,
                                      (date_trunc('month', now() at time zone 'America/Lima') + interval '1 month - 1 day')::date)
         where $1::text is null or area = $1`,
@@ -136,6 +137,11 @@ for (const puesto of ['gerencia', 'administracion']) {
     comprobar(centimos(deMtz) === centimos(mtz.soles), `${quien}: con Maestranza el total es el suyo (${deMtz} = S/ ${mtz.soles})`)
     comprobar((await pagina.locator('[data-lineas-gasto-operativo] tbody tr').count()) === mtz.lineas, `${quien}: y solo sus ${mtz.lineas} líneas`)
     if (ancho === 1440 && puesto === 'gerencia') await pagina.screenshot({ path: join(carpeta, `${puesto}-maestranza-${ancho}.png`), fullPage: true })
+    // El área elegida sigue al cambiar de mes, aunque ese mes no tenga gasto.
+    await Promise.all([pagina.waitForURL(/mes=/), pagina.getByRole('link', { name: 'Mes anterior' }).click()])
+    await pagina.waitForLoadState('networkidle')
+    comprobar(new URL(pagina.url()).searchParams.has('area'), `${quien}: el mes anterior sigue con Maestranza`)
+    comprobar(limpio(await pagina.locator('[data-cifras-gasto-operativo] dt').first().innerText()) === 'Gasto de Maestranza', `${quien}: y lo dice`)
     comprobar(errores.length === 0, `${quien}: sin errores en la consola${errores.length ? `: ${errores[0]}` : ''}`)
     await contexto.close()
   }
@@ -149,6 +155,7 @@ for (const [puesto, area] of [
   const correo = cuenta(puesto)
   const esperado = await totalDe(correo)
   comprobar(esperado.mano_obra === 0, `${puesto}: la base no le da mano de obra`)
+  comprobar(esperado.subcontratos === 0, `${puesto}: ni subcontratos`)
   for (const ancho of [390, 1440]) {
     const { pagina, contexto, errores } = await entrar(correo, ancho)
     const quien = `${puesto} a ${ancho}`
@@ -157,6 +164,7 @@ for (const [puesto, area] of [
     comprobar(centimos(total) === centimos(esperado.soles), `${quien}: su total (${total}) es el de ${area} en la base (S/ ${esperado.soles})`)
     comprobar((await pagina.locator('[data-por-area]').count()) === 0, `${quien}: no ve «Por área»`)
     comprobar((await pagina.locator('[data-grupo="MANO_OBRA"]').count()) === 0, `${quien}: ni la mano de obra`)
+    comprobar((await pagina.locator('[data-linea^="SUBCONTRATOS"]').count()) === 0, `${quien}: ni los subcontratos`)
     comprobar((await pagina.locator('[data-lineas-gasto-operativo] tbody tr').count()) === Math.max(esperado.lineas, 1), `${quien}: sus ${esperado.lineas} líneas`)
     // Pedir otra área por la dirección no cambia nada.
     await pagina.goto(`${BASE}/gasto-operativo?area=sin-area`, { waitUntil: 'networkidle' })

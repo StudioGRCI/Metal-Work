@@ -27,10 +27,12 @@ export type LineaGastoOperativo = {
   suma: boolean
   documento: string | null
   referencia_id: string | null
+  /** El RQ de lo salido del almacén, para abrirlo. */
+  requerimiento_id: string | null
 }
 
 /** El orden en que la base las da; con él se leen de mil en mil sin saltar ni repetir. */
-const ORDEN = ['fecha.desc', 'area', 'grupo', 'concepto', 'referencia_id', 'fuente', 'documento', 'detalle', 'area_id', 'cantidad', 'unidad', 'moneda', 'monto', 'soles', 'suma', 'sin_precio']
+const ORDEN = ['fecha.desc', 'area', 'grupo', 'concepto', 'referencia_id', 'fuente', 'documento', 'detalle', 'area_id', 'cantidad', 'unidad', 'moneda', 'monto', 'soles', 'suma', 'sin_precio', 'requerimiento_id']
 
 /** Las líneas entre dos fechas (`YYYY-MM-DD`, las dos incluidas), de la más nueva a la más vieja. */
 export async function gastoOperativo(desde: string, hasta: string): Promise<LineaGastoOperativo[]> {
@@ -53,5 +55,14 @@ export async function gastoOperativo(desde: string, hasta: string): Promise<Line
     suma: Boolean(f.suma),
     documento: f.documento,
     referencia_id: f.referencia_id,
+    requerimiento_id: f.requerimiento_id,
   }))
+}
+
+/** El nombre de un área, para decirlo aunque ese mes no tenga gasto. Null si no existe. */
+export async function nombreDelArea(id: string): Promise<string | null> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.from('areas').select('nombre').eq('id', id).maybeSingle()
+  if (error) throw new Error(`No se pudo leer el área: ${error.message}`)
+  return data?.nombre ?? null
 }

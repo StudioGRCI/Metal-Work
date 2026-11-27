@@ -9,12 +9,14 @@
 --   c. una OS aprobada de Maestranza con PLANTA: S/ 100, de Maestranza;
 --   d. una OS de Maestranza todavía por aprobar: S/ 40, se muestra y no suma;
 --   e. las horas de un reporte de Producción con PLANTA: S/ 50 de mano de obra, de Producción;
---   f. una compra con PLANTA: no es gasto todavía (cuenta cuando sale) y no aparece.
+--   f. una compra con PLANTA: no es gasto todavía (cuenta cuando sale) y no aparece;
+--   g. el recibo de un subcontrato de Producción con PLANTA: S/ 300, de Producción.
 --
--- 1. Gerencia y Administración ven las cinco líneas; lo que suma da S/ 180, lo
+-- 1. Gerencia y Administración ven las seis líneas; lo que suma da S/ 480, lo
 --    mismo que el costo de PLANTA en `codigos_internos_costo_calculado`.
--- 2. El supervisor de Producción ve solo lo de Producción y sin la mano de
---    obra: S/ 20. El de Maestranza, solo sus OS: S/ 100 que suman.
+-- 2. El supervisor de Producción ve solo lo de Producción, sin la mano de obra
+--    ni el subcontrato (los ve sin montos desde la 20261020180000): S/ 20. El de
+--    Maestranza, solo sus OS: S/ 100 que suman.
 -- 3. Sin área, o sin permiso, no ve nada y se le dice por qué.
 -- 4. El periodo filtra por fecha, y uno al revés se rechaza.
 -- 5. El cálculo no lo llama nadie directo, y cada permiso lo tiene algún rol.
@@ -104,7 +106,7 @@ set local session_replication_role = replica;
 do $$
 declare v_prov uuid := gen_random_uuid(); v_trab uuid := gen_random_uuid(); v_rep uuid := gen_random_uuid();
         v_lin uuid := gen_random_uuid(); v_hoy date := (now() at time zone 'America/Lima')::date;
-        v_ger uuid := current_setting('prueba.gerente')::uuid;
+        v_ger uuid := current_setting('prueba.gerente')::uuid; v_sct uuid := gen_random_uuid(); v_sc uuid := gen_random_uuid();
 begin
   insert into public.proveedores (id, numero_documento, razon_social) values (v_prov, '20999950401', 'SERVICIOS DEL CHECK 504 S.A.C.');
   insert into public.ordenes_servicio (numero, proveedor_id, proveedor, area_id, descripcion, moneda, monto, monto_pen,
@@ -123,6 +125,13 @@ begin
   insert into public.tareos (trabajador_id, fecha, codigo_interno, horas, costo_hora, costo, registrado_por, reporte_linea_id)
   values (v_trab, v_hoy, 'PLANTA', 5, 10, 50, v_ger, v_lin);
 
+  insert into public.subcontratistas (id, ruc, nombre) values (v_sct, '10999950405', 'SOLDADOR DEL CHECK 504');
+  insert into public.subcontratos (id, numero, subcontratista_id, codigo_interno, descripcion, moneda, monto, area_id, creado_por)
+  values (v_sc, 'SC-CHK504', v_sct, 'PLANTA', 'Reparar la mesa de armado de Producción', 'PEN', 300, current_setting('prueba.prd')::uuid, v_ger);
+  insert into public.recibos_honorarios (subcontrato_id, subcontratista_id, numero, fecha_emision, moneda, monto_bruto,
+                                         archivo_ruta, archivo_mime, archivo_tamano, registrado_por)
+  values (v_sc, v_sct, 'E001-504', v_hoy, 'PEN', 300, 'chk504/recibo.pdf', 'application/pdf', 100, v_ger);
+
   insert into public.ordenes_compra_materiales (numero, referencia, proveedor, codigo_interno, moneda, origen, motivo, creado_por)
   values ('OC-CHK504', 'OC del check 504', 'SERVICIOS DEL CHECK 504 S.A.C.', 'PLANTA', 'PEN', 'DIRECTA', 'Compra directa del check 504', v_ger);
 end $$;
@@ -138,11 +147,14 @@ select pg_temp.como('gerente');
 set local role authenticated;
 create temp table de_gerencia on commit drop as select * from public.gasto_operativo(null, null);
 reset role;
-select test.afirmar((select count(*) from de_gerencia) = (select lineas from antes) + 5,
-  'Gerencia ve las cinco líneas nuevas del gasto operativo: dos salidas, dos OS y las horas (la compra no)');
+select test.afirmar((select count(*) from de_gerencia) = (select lineas from antes) + 6,
+  'Gerencia ve las seis líneas nuevas del gasto operativo: dos salidas, dos OS, las horas y el recibo (la compra no)');
 select test.afirmar(
-  (select coalesce(sum(soles) filter (where suma), 0) from de_gerencia) = (select soles from antes) + 180,
-  'lo que suma para Gerencia es S/ 180: 20 + 10 + 100 + 50, sin la OS por aprobar');
+  (select coalesce(sum(soles) filter (where suma), 0) from de_gerencia) = (select soles from antes) + 480,
+  'lo que suma para Gerencia es S/ 480: 20 + 10 + 100 + 50 + 300, sin la OS por aprobar');
+select test.afirmar(
+  (select count(*) = 1 from de_gerencia where grupo = 'SUBCONTRATOS' and area = 'Producción' and suma and soles = 300),
+  'el recibo del subcontrato de Producción con PLANTA es de Producción, S/ 300');
 select test.afirmar(
   (select coalesce(sum(soles) filter (where suma), 0) from de_gerencia)
   = (select coalesce(sum(costo_pen), 0) from public.codigos_internos_costo_calculado('PLANTA')),
@@ -180,7 +192,7 @@ reset role;
 select test.afirmar((select count(*) = 1 from de_produccion),
   'el supervisor de Producción ve una sola línea: lo salido para su RQ del área');
 select test.afirmar((select bool_and(area = 'Producción' and grupo = 'MATERIALES' and soles = 20) from de_produccion),
-  'y es de Producción, S/ 20, sin la mano de obra de su área');
+  'y es de Producción, S/ 20, sin la mano de obra ni el subcontrato de su área');
 
 select pg_temp.como('sup_mtz');
 set local role authenticated;
@@ -207,8 +219,8 @@ select test.afirmar(
   'desde mañana no hay gasto operativo');
 select test.afirmar(
   (select count(*) from public.gasto_operativo(date_trunc('month', now() at time zone 'America/Lima')::date,
-                                               (now() at time zone 'America/Lima')::date)) >= 5,
-  'el mes en curso trae las cinco líneas');
+                                               (now() at time zone 'America/Lima')::date)) >= 6,
+  'el mes en curso trae las seis líneas');
 select test.debe_fallar($q$select * from public.gasto_operativo('2026-11-30', '2026-11-01')$q$,
   'un periodo al revés se rechaza', 'termina antes de empezar');
 

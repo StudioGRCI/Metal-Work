@@ -21,6 +21,7 @@ import {
   CreditCard,
   DraftingCompass,
   Drill,
+  Factory,
   FileArchive,
   FileCheck2,
   FilePenLine,
@@ -648,7 +649,8 @@ export const NAVEGACION = [
       {
         titulo: 'Gasto operativo',
         ruta: '/gasto-operativo',
-        icono: Wallet,
+        // No `Wallet`: es el de «Gastos del mes», que va justo arriba.
+        icono: Factory,
         permiso: ['gasto_operativo.ver', 'gasto_operativo.area'],
         descripcion: 'Lo que cada área gastó para trabajar, mes por mes, sin cargarlo a ninguna carrocería',
         disponible: true,
