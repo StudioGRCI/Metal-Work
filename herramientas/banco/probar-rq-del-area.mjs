@@ -4,20 +4,25 @@
  * piden herramientas e insumos para el área, y ese costo va como gasto
  * operativo, no a una OT.
  *
- *   1. El supervisor de Producción abre «Nuevo requerimiento»: «Es para» sale
- *      con «Una unidad u OT» y «El área: gasto operativo». Con la unidad pide
- *      el código interno; con el área no lo pide.
- *   2. Registra el del área con una herramienta: en la base queda de
- *      operación, de Producción y con el código PLANTA, que no carga a
- *      ninguna OT. Su tarjeta dice «Gasto operativo».
- *   3. Almacén lo recibe en Atención de requerimiento con la misma insignia.
+ *   1. El supervisor de Producción abre «Nuevo requerimiento»: «Es para»
+ *      muestra las dos opciones a la vista, «Para una unidad» y «Para
+ *      Producción (gasto operativo)». Con la unidad pide el código interno;
+ *      con el área no lo pide.
+ *   2. Registra el del área con un insumo del catálogo que hay en el almacén:
+ *      en la base queda de operación, de Producción, con PLANTA, marcado
+ *      `para_el_area` y a su nombre. Su tarjeta dice «Gasto operativo».
+ *   3. Almacén lo recibe en Atención con la misma insignia y registra la
+ *      salida desde el enlace: la ventana dice que va a PLANTA como gasto
+ *      operativo, no ofrece elegir vehículo ni código, y en la base la salida
+ *      queda con PLANTA, sin unidad ni OT.
  *   4. Gerencia lo consulta con la insignia y sin «Nuevo requerimiento».
  *
- * Capturas a 390 y 1440 del formulario y la tarjeta en CAPTURAS/rq-del-area.
+ * Capturas a 390 y 1440 en CAPTURAS/rq-del-area.
  *
- * Variables: BANCO_CLAVE, BASE (http://localhost:3111), BANCO_BASE, CAPTURAS.
+ * Variables: BANCO_CLAVE, BASE (http://localhost:3111), BANCO_BASE, CAPTURAS,
+ * BANCO_CHROMIUM.
  */
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import pg from 'pg'
@@ -25,7 +30,7 @@ import { chromium } from 'playwright-core'
 
 const BASE = process.env.BASE ?? 'http://localhost:3111'
 const CLAVE = process.env.BANCO_CLAVE
-const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
+const NAVEGADOR = process.env.BANCO_CHROMIUM ?? '/opt/pw-browsers/chromium'
 const CAPTURAS = process.env.CAPTURAS ?? '/tmp/banco-capturas'
 const cuenta = (puesto) => `${puesto}.local@metalwork.test`
 const CUENTAS = { produccion: cuenta('sup.prd'), almacen: cuenta('almacen'), gerencia: cuenta('gerencia') }
@@ -35,6 +40,8 @@ if (!CLAVE) {
 }
 const carpeta = join(CAPTURAS, 'rq-del-area')
 mkdirSync(carpeta, { recursive: true })
+const foto = join(carpeta, 'foto-salida.jpg')
+writeFileSync(foto, Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=', 'base64'))
 
 const base = new pg.Client({
   host: process.env.PGHOST ?? '/tmp',
@@ -56,6 +63,24 @@ async function ir(pagina, url) {
   await pagina.goto(url, { waitUntil: 'load' })
   await quieta(pagina)
 }
+/** Una captura que no sale es una falla, no un silencio. */
+async function capturar(objetivo, nombre) {
+  try {
+    await objetivo.screenshot({ path: join(carpeta, nombre) })
+  } catch (e) {
+    comprobar(false, `captura ${nombre}: ${e.message.split('\n')[0]}`)
+  }
+}
+
+// Un insumo del catálogo con existencia: el que el área pediría y Almacén tiene.
+const [insumo] = await consulta(
+  `select v.material_id::text as id, v.codigo, v.descripcion, v.disponible::float as disponible
+     from public.v_existencias_materiales v join public.materiales m on m.id = v.material_id
+    where m.activo and not m.unidad_pendiente and v.disponible >= 2 and v.codigo not like 'AUD-%' and v.codigo not like 'CHK%'
+    order by v.disponible desc, v.descripcion limit 1`,
+)
+if (!insumo) throw new Error('No hay en el banco un insumo con existencia para la salida.')
+const [supervisor] = await consulta(`select id::text from public.usuarios where correo = $1`, [CUENTAS.produccion])
 
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
 
@@ -78,8 +103,8 @@ async function entrar(correo, ancho = 1440) {
 }
 
 const sello = Date.now().toString().slice(-6)
-const herramienta = `Amoladora angular 4 1/2 del banco ${sello}`
 let numero = ''
+let rqId = ''
 
 // ------------------------------------------------ 1 y 2. El supervisor de Producción
 for (const ancho of [390, 1440]) {
@@ -87,63 +112,108 @@ for (const ancho of [390, 1440]) {
   await ir(pagina, `${BASE}/requerimientos`)
   await pagina.getByRole('button', { name: 'Nuevo requerimiento', exact: true }).click()
   const ventana = pagina.locator('[role="dialog"]')
-  const destino = ventana.locator('#rq-destino')
-  await destino.waitFor({ timeout: 15000 })
-  const opciones = (await destino.locator('option').allInnerTexts()).map((t) => t.trim())
-  comprobar(opciones.join(' | ') === 'Una unidad u OT | El área: gasto operativo', `«Es para» ofrece la unidad y el área (${ancho}): ${opciones.join(' | ')}`)
-  comprobar((await ventana.locator('#rq-codigo').count()) === 1, `con «Una unidad u OT» pide el código interno (${ancho})`)
-  await destino.selectOption('AREA')
-  comprobar((await ventana.locator('#rq-codigo').count()) === 0, `con «El área» ya no pide el código (${ancho})`)
+  const radios = ventana.locator('input[name="rq-destino"]')
+  await radios.first().waitFor({ timeout: 15000 })
+  const textos = []
+  for (let i = 0; i < (await radios.count()); i++) {
+    textos.push(limpio(await radios.nth(i).locator('xpath=..').locator('span.font-medium').innerText()))
+  }
+  comprobar(textos.join(' | ') === 'Para una unidad | Para Producción (gasto operativo)',
+    `«Es para» muestra las dos opciones (${ancho}): ${textos.join(' | ')}`)
+  comprobar(await ventana.locator('input[name="rq-destino"][value="UNIDAD"]').isChecked(), `sale marcada «Para una unidad» (${ancho})`)
+  comprobar((await ventana.locator('#rq-codigo').count()) === 1, `con la unidad pide el código interno (${ancho})`)
+  await ventana.locator('input[name="rq-destino"][value="AREA"]').check()
+  comprobar((await ventana.locator('#rq-codigo').count()) === 0, `con el área ya no pide el código (${ancho})`)
   comprobar(limpio(await ventana.innerText()).includes('No se carga a ninguna OT'), `la ayuda dice que no se carga a ninguna OT (${ancho})`)
-  await pagina.screenshot({ path: join(carpeta, `formulario-produccion-${ancho}.png`), fullPage: false })
+  await capturar(pagina, `formulario-produccion-${ancho}.png`)
 
   if (ancho === 1440) {
-    await ventana.locator('#rq-justificacion').fill('Herramienta para el área de Producción: la amoladora del banco se quemó.')
-    await ventana.getByRole('button', { name: 'Pedirlo como material nuevo' }).last().click()
-    await ventana.locator('[id^="rq-desc-"]').first().fill(herramienta)
-    await ventana.locator('[id^="rq-cant-"]').first().fill('1')
-    await ventana.locator('[id^="rq-cat-"]').first().selectOption({ index: 1 })
-    const und = ventana.locator('select[id^="rq-und-"]').first()
-    if ((await und.count()) === 1 && !(await und.inputValue())) await und.selectOption({ index: 1 })
-    await ventana.getByRole('button', { name: 'Registrar y mandar a Almacén' }).click()
-    const aviso = pagina.locator('[role="status"]').filter({ hasText: /RQ-\d{4}-\d{4}/ }).first()
-    await aviso.waitFor({ timeout: 20000 }).catch(() => {})
-    const texto = limpio(await aviso.innerText().catch(() => ''))
+    await ventana.locator('#rq-justificacion').fill(`Para el área de Producción: los del banco se gastaron (${sello}).`)
+    await ventana.locator('[id^="rq-mat-"]').first().click()
+    await pagina.keyboard.type(insumo.codigo)
+    await pagina.getByRole('option').filter({ hasText: insumo.codigo }).first().click()
+    await ventana.locator('[id^="rq-cant-"]').first().fill('2')
+    const enviar = ventana.getByRole('button', { name: 'Registrar y mandar a Almacén' })
+    await enviar.click()
+    // Un segundo toque mientras envía no debe registrar otro.
+    await enviar.click({ timeout: 800 }).catch(() => {})
+    await ventana.waitFor({ state: 'detached', timeout: 20000 })
+    const aviso = pagina.locator('p[role="status"]', { hasText: /RQ-\d{4}-\d{4}/ }).first()
+    await aviso.waitFor({ timeout: 20000 })
+    const texto = limpio(await aviso.innerText())
     numero = (texto.match(/RQ-\d{4}-\d{4}/) ?? [''])[0]
     comprobar(Boolean(numero), `registrado: «${texto}»`)
 
-    const [fila] = await consulta(
-      `select r.tipo, r.codigo_interno, a.nombre as area from public.requerimientos r join public.areas a on a.id = r.area_id where r.numero = $1`,
-      [numero],
+    const filas = await consulta(
+      `select r.id::text, r.tipo, r.codigo_interno, r.para_el_area, r.creado_por::text, a.nombre as area,
+              (select count(*)::int from public.requerimiento_lineas l where l.requerimiento_id = r.id) as lineas
+         from public.requerimientos r join public.areas a on a.id = r.area_id
+        where r.justificacion like $1`,
+      [`%(${sello}).`],
     )
-    comprobar(fila?.tipo === 'OPERACION' && fila?.codigo_interno === 'PLANTA' && fila?.area === 'Producción',
-      `en la base: de operación, de Producción y con PLANTA (${JSON.stringify(fila)})`)
-    await ir(pagina, `${BASE}/requerimientos?rq=${encodeURIComponent(numero)}`)
+    const [fila] = filas
+    rqId = fila?.id ?? ''
+    comprobar(filas.length === 1, `entró una sola vez aunque se tocó dos veces (${filas.length})`)
+    comprobar(fila?.tipo === 'OPERACION' && fila?.codigo_interno === 'PLANTA' && fila?.area === 'Producción' && fila?.para_el_area === true
+      && fila?.creado_por === supervisor?.id && fila?.lineas === 1,
+      `en la base: de operación, de Producción, con PLANTA, marcado y a nombre del supervisor (${JSON.stringify(fila)})`)
   }
   comprobar(errores.length === 0, `sin errores de consola como Producción (${ancho}) ${errores.join(' | ')}`)
   await contexto.close()
 }
+if (!rqId) throw new Error('No se registró el RQ del área: lo demás no tiene qué mirar.')
 
 // La tarjeta, con la cuenta de Producción, a 390 y 1440.
 for (const ancho of [390, 1440]) {
   const { pagina, contexto } = await entrar(CUENTAS.produccion, ancho)
   await ir(pagina, `${BASE}/requerimientos`)
   const tarjeta = pagina.locator(`[data-rq="${numero}"]`)
-  await tarjeta.waitFor({ timeout: 15000 }).catch(() => {})
+  await tarjeta.waitFor({ timeout: 15000 })
   comprobar((await tarjeta.locator('[data-gasto-operativo]').count()) === 1, `su tarjeta dice «Gasto operativo» (${ancho})`)
-  await tarjeta.screenshot({ path: join(carpeta, `tarjeta-produccion-${ancho}.png`) }).catch(() => {})
+  await capturar(tarjeta, `tarjeta-produccion-${ancho}.png`)
   await contexto.close()
 }
 
-// ------------------------------------------------ 3. Almacén
-{
-  const { pagina, contexto, errores } = await entrar(CUENTAS.almacen)
-  await ir(pagina, `${BASE}/requerimientos/atencion`)
-  const fila = pagina.locator('tbody tr', { hasText: numero }).first()
-  await fila.waitFor({ timeout: 15000 }).catch(() => {})
-  comprobar((await fila.locator('[data-gasto-operativo]').count()) === 1, `en Atención, el ${numero} dice «Gasto operativo»`)
-  await fila.screenshot({ path: join(carpeta, 'atencion-almacen-1440.png') }).catch(() => {})
-  comprobar(errores.length === 0, `sin errores de consola como Almacén ${errores.join(' | ')}`)
+// ------------------------------------------------ 3. Almacén lo atiende y lo saca
+for (const ancho of [390, 1440]) {
+  const { pagina, contexto, errores } = await entrar(CUENTAS.almacen, ancho)
+  if (ancho === 1440) {
+    await ir(pagina, `${BASE}/requerimientos/atencion`)
+    const fila = pagina.locator('[data-rq], tbody tr', { hasText: numero }).first()
+    await fila.waitFor({ timeout: 15000 })
+    comprobar((await fila.locator('[data-gasto-operativo]').count()) === 1, `en Atención, el ${numero} dice «Gasto operativo»`)
+    await capturar(fila, 'atencion-almacen-1440.png')
+  }
+
+  await ir(pagina, `${BASE}/almacen/kardex?rq=${rqId}`)
+  const ventana = pagina.locator('[role="dialog"]')
+  await ventana.waitFor({ timeout: 60000 })
+  const dice = ventana.locator('[data-salida-gasto-operativo]')
+  await dice.waitFor({ timeout: 15000 })
+  comprobar(limpio(await dice.innerText()).startsWith('Va a PLANTA: es gasto operativo de Producción'),
+    `la salida dice que va a PLANTA como gasto operativo (${ancho}): «${limpio(await dice.innerText())}»`)
+  comprobar((await ventana.getByText('¿A qué unidad va?').count()) === 0 && (await ventana.locator('#sal-codigo').count()) === 0,
+    `y no ofrece elegir vehículo ni código (${ancho})`)
+  await capturar(ventana, `salida-almacen-${ancho}.png`)
+
+  if (ancho === 1440) {
+    await ventana.locator('#sal-motivo').fill(`Vale del banco ${sello}, para el área`)
+    await ventana.locator('#sal-recibe').fill('Supervisor de Producción')
+    await ventana.locator('#sal-foto').setInputFiles(foto)
+    await ventana.getByRole('button', { name: 'Confirmar salida' }).click()
+    await Promise.race([ventana.waitFor({ state: 'hidden', timeout: 60000 }), ventana.locator('[role="alert"]').first().waitFor({ timeout: 60000 })])
+    const alerta = limpio((await ventana.locator('[role="alert"]').allTextContents().catch(() => [])).join(' '))
+    const salidas = await consulta(
+      `select m.codigo_interno, m.orden_id, m.unidad_id, m.cantidad::float as cantidad
+         from public.movimientos_materiales m join public.requerimiento_lineas l on l.id = m.requerimiento_linea_id
+        where l.requerimiento_id = $1 and m.tipo = 'SALIDA'`,
+      [rqId],
+    )
+    const [s] = salidas
+    comprobar(!alerta && salidas.length === 1 && s.codigo_interno === 'PLANTA' && s.orden_id === null && s.unidad_id === null && s.cantidad === 2,
+      `la salida queda en PLANTA, sin unidad ni OT: ${JSON.stringify(salidas)} ${alerta}`)
+  }
+  comprobar(errores.length === 0, `sin errores de consola como Almacén (${ancho}) ${errores.join(' | ')}`)
   await contexto.close()
 }
 
@@ -152,7 +222,7 @@ for (const ancho of [390, 1440]) {
   const { pagina, contexto, errores } = await entrar(CUENTAS.gerencia)
   await ir(pagina, `${BASE}/requerimientos?tipo=todos`)
   const tarjeta = pagina.locator(`[data-rq="${numero}"]`)
-  await tarjeta.waitFor({ timeout: 15000 }).catch(() => {})
+  await tarjeta.waitFor({ timeout: 15000 })
   comprobar((await tarjeta.locator('[data-gasto-operativo]').count()) === 1, 'Gerencia lo ve con «Gasto operativo»')
   comprobar((await pagina.getByRole('button', { name: 'Nuevo requerimiento', exact: true }).count()) === 0, 'Gerencia no registra RQ')
   comprobar(errores.length === 0, `sin errores de consola como Gerencia ${errores.join(' | ')}`)

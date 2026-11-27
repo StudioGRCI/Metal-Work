@@ -18,7 +18,7 @@ import {
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { CODIGO_FIJO_PLANTA, llaveParecido, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { PERMISO_OTS_DE_MANTENIMIENTO } from '@/lib/dominio/mantenimiento'
-import { ESTADOS_RQ_ABIERTOS, estadoDelRequerimiento } from '@/lib/dominio/requerimientos'
+import { esGastoOperativo, ESTADOS_RQ_ABIERTOS, estadoDelRequerimiento, GASTO_OPERATIVO } from '@/lib/dominio/requerimientos'
 import { diaLima, fecha, hoyLima, porcentaje, sumarDias } from '@/lib/format'
 import { exigirPermiso, puede } from '@/lib/sesion'
 
@@ -177,7 +177,7 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
         descripcion={`${areaFija.nombre} · ${enElArea.length} ${enElArea.length === 1 ? 'unidad' : 'unidades'}${
           conRqAbierto > 0 ? `, ${conRqAbierto} con requerimientos en camino` : ''
         }`}
-        ayuda="Cada unidad que tiene trabajo en tu área, con sus etapas y sus requerimientos. Pide el material de una unidad con «Nuevo RQ» en su tarjeta: el código y el área ya van puestos y le llega a Almacén. En cada requerimiento, «Cómo va cada insumo» dice en qué paso va cada uno, cuándo llega lo que se compra y quién lo recibió del almacén. En la tarjeta de cada unidad quedan los dos últimos RQ entregados en los 7 días, con quién recibió cada insumo. Una unidad sale de aquí cuando tu área terminó sus etapas, recibió sus planos y no tiene RQ en camino ni entregados en esos 7 días; la unidad ya entregada al cliente sale apenas no le queda ningún RQ en camino. Debajo están las demás unidades del taller, para pedir aunque Diseño todavía no cargue el trabajo de tu área. Lo que no es de una unidad, pídelo en PLANTA, al final."
+        ayuda="Cada unidad que tiene trabajo en tu área, con sus etapas y sus requerimientos. Pide el material de una unidad con «Nuevo RQ» en su tarjeta: el código y el área ya van puestos y le llega a Almacén. En cada requerimiento, «Cómo va cada insumo» dice en qué paso va cada uno, cuándo llega lo que se compra y quién lo recibió del almacén. En la tarjeta de cada unidad quedan los dos últimos RQ entregados en los 7 días, con quién recibió cada insumo. Una unidad sale de aquí cuando tu área terminó sus etapas, recibió sus planos y no tiene RQ en camino ni entregados en esos 7 días; la unidad ya entregada al cliente sale apenas no le queda ningún RQ en camino. Debajo están las demás unidades del taller, para pedir aunque Diseño todavía no cargue el trabajo de tu área. Lo que tu área usa sin ser de una unidad (herramientas, consumibles), pídelo en «Gasto operativo del área», al final: no se carga a ninguna OT."
         migas={[{ titulo: 'Requerimientos', ruta: '/requerimientos' }, { titulo: 'Por unidad' }]}
         acciones={<BotonPedirParaUnidad codigo={null}>Nuevo RQ con otro código</BotonPedirParaUnidad>}
         estado={<AvisoDeLaUnidad codigo={null} />}
@@ -270,8 +270,12 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
       {!q && (
         <Tarjeta>
           <TarjetaCabecera
-            titulo={<span className="font-mono">{CODIGO_FIJO_PLANTA.codigo}</span>}
-            descripcion="Lo que tu área usa sin ser de una unidad: consumibles, herramientas."
+            titulo={
+              <span className="flex flex-wrap items-baseline gap-x-2">
+                Gasto operativo del área <span className="font-mono text-sm font-normal text-texto-suave">{CODIGO_FIJO_PLANTA.codigo}</span>
+              </span>
+            }
+            descripcion="Herramientas, consumibles y lo que tu área usa sin ser de una unidad: no se carga a ninguna OT."
             acciones={<BotonPedirParaUnidad codigo={CODIGO_FIJO_PLANTA.codigo} />}
           />
           <TarjetaCuerpo className="space-y-3">
@@ -403,6 +407,11 @@ function RequerimientosDeLaUnidad({
                         {r.numero}
                       </Link>
                       {estado && <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>}
+                      {esGastoOperativo(r) && (
+                        <Insignia tono={GASTO_OPERATIVO.tono} title={GASTO_OPERATIVO.descripcion} data-gasto-operativo>
+                          {GASTO_OPERATIVO.etiqueta}
+                        </Insignia>
+                      )}
                       {r.avance && r.estado !== 'ENTREGADO' && <span className="tabular text-xs text-texto-suave">{porcentaje(r.avance.porcentaje)}</span>}
                       {r.estado === 'ENTREGADO' && r.entregado_en && <span className="tabular text-xs text-texto-suave">{fecha(r.entregado_en)}</span>}
                       <span className="min-w-0 basis-full truncate text-xs text-texto-suave sm:basis-auto sm:flex-1">

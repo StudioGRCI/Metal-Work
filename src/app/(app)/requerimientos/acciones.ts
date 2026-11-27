@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
 import { cambiosDelFormulario, datosDeCorreccion } from '@/lib/correccion-accion'
 import { normalizarCodigo } from '@/lib/dominio/codigos-internos'
+import { CODIGO_DEL_GASTO_OPERATIVO } from '@/lib/dominio/requerimientos'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -95,7 +96,7 @@ export async function emitirRequerimiento(_previo: unknown, formulario: FormData
       codigo_interno: z
         .string()
         .trim()
-        .min(2, 'Elige el código interno de la unidad. Si no es para una unidad, PLANTA u OFICINA.')
+        .min(2, 'Elige el código interno de la unidad. Si es para el área, elige «Para el área (gasto operativo)»; si es para la oficina, OFICINA.')
         .max(60, 'El código interno pasa de 60 caracteres.')
         // Como lo guarda el costeo (`normalizar_codigo_interno`): «pla_sr_04» escrito a mano es PLA_SR_04.
         .transform(normalizarCodigo),
@@ -122,16 +123,23 @@ export async function emitirRequerimiento(_previo: unknown, formulario: FormData
     .safeParse(lineasDelFormulario(formulario))
   if (!lineas.success) return { ok: false, error: lineas.error.issues[0]?.message ?? 'Revisa los insumos.' }
 
+  // El del área (gasto operativo) va con PLANTA y la base lo marca: lo que sale
+  // del almacén para él va a PLANTA, no a una unidad ni a una OT.
+  const paraElArea = tipo.data === 'OPERACION' && dato(formulario, 'para') === 'AREA'
+  if (paraElArea && cabecera.data.codigo_interno !== CODIGO_DEL_GASTO_OPERATIVO) {
+    return { ok: false, error: 'Lo que es para el área va con PLANTA: vuelve a abrir el formulario.' }
+  }
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('emitir_requerimiento', {
+  const comun = {
     p_id: cabecera.data.operacion_id,
-    p_tipo: tipo.data,
     p_area_id: cabecera.data.area_id,
-    p_codigo_interno: cabecera.data.codigo_interno,
     p_justificacion: cabecera.data.justificacion,
     p_fecha_requerida: cabecera.data.fecha_requerida ?? null,
     p_lineas: lineas.data,
-  })
+  }
+  const { data, error } = paraElArea
+    ? await supabase.rpc('emitir_requerimiento_del_area', comun)
+    : await supabase.rpc('emitir_requerimiento', { ...comun, p_tipo: tipo.data, p_codigo_interno: cabecera.data.codigo_interno })
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== cabecera.data.operacion_id) return { ok: false, error: 'El requerimiento no quedó registrado. Recarga la pantalla.' }
 

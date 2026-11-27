@@ -106,7 +106,11 @@ export function VentanaDelRequerimiento({
   ...catalogos
 }: Catalogos & { ventana: ReturnType<typeof useVentanaDelRequerimiento>; areaFija?: AreaParaRequerimiento }) {
   const soloAdministracion = catalogos.tipos.length === 1 && catalogos.tipos[0] === 'ADMINISTRACION'
-  const titulo = soloAdministracion ? 'Nuevo requerimiento de Administración' : ventana.codigo ? `Nuevo requerimiento para ${ventana.codigo}` : 'Nuevo requerimiento'
+  const titulo = soloAdministracion
+    ? 'Nuevo requerimiento de Administración'
+    : ventana.codigo === CODIGO_DEL_GASTO_OPERATIVO
+      ? 'Nuevo requerimiento para el área (gasto operativo)'
+      : ventana.codigo ? `Nuevo requerimiento para ${ventana.codigo}` : 'Nuevo requerimiento'
   return (
     <Ventana
       abierta={ventana.abierta}
@@ -148,6 +152,15 @@ type Insumo = {
   categoria_id: string
 }
 
+const OPCION =
+  'flex min-h-11 cursor-pointer items-start gap-3 rounded-[var(--radius-base)] border border-borde px-3 py-2 text-sm text-texto has-[:checked]:border-acento has-[:checked]:bg-acento-suave'
+const RADIO = 'mt-0.5 size-4 shrink-0 accent-[var(--acento)]'
+
+/** Con «Para una unidad» no se escribe PLANTA: lo del área se pide con su opción, y la base lo marca. */
+const VETADO_PARA_UNA_UNIDAD = [
+  { codigos: [CODIGO_DEL_GASTO_OPERATIVO], motivo: 'PLANTA no es una unidad: lo del área se pide marcando «Para el área (gasto operativo)».' },
+] as const
+
 function insumoVacio(): Insumo {
   return { clave: crypto.randomUUID(), grupo: '', soltado: '', material_id: '', nuevo: false, descripcion: '', cantidad: '', unidad_medida_id: '', categoria_id: '' }
 }
@@ -180,7 +193,9 @@ function FormularioRequerimiento({
   const [aTodos, setATodos] = useState(false)
   // El de operación es para una unidad o para el área misma (gasto operativo, con PLANTA).
   const [destino, setDestino] = useState<DestinoDelRq>('UNIDAD')
-  const paraElArea = tipo === 'OPERACION' && !codigoFijo && destino === 'AREA'
+  // Desde «RQ por unidad», la tarjeta PLANTA es la del gasto operativo del área.
+  const areaElegida = areaFija?.nombre ?? areas.find((a) => a.id === areaId)?.nombre ?? null
+  const paraElArea = tipo === 'OPERACION' && (codigoFijo ? codigoFijo.trim().toUpperCase() === CODIGO_DEL_GASTO_OPERATIVO : destino === 'AREA')
   // Lo escrito en el código vuelve si pasa a «Todos» y regresa a «Un código».
   const [codigoEscrito, setCodigoEscrito] = useState('')
   const delTipo = areas.filter((a) => a.requerimiento === tipo)
@@ -231,7 +246,11 @@ function FormularioRequerimiento({
         minLength={10}
         maxLength={1000}
         rows={2}
-        placeholder="Para qué se necesita: por ejemplo, armado del chasis de la plataforma; el stock de planchas se acabó."
+        placeholder={
+          paraElArea
+            ? 'Para qué la necesita el área: por ejemplo, la amoladora de la mesa 2 se quemó.'
+            : 'Para qué se necesita: por ejemplo, armado del chasis de la plataforma; el stock de planchas se acabó.'
+        }
       />
     </Campo>
   )
@@ -251,6 +270,7 @@ function FormularioRequerimiento({
         )}
       />
       {tipos.length === 1 && <input type="hidden" name="tipo" value={tipo} />}
+      {paraElArea && <input type="hidden" name="para" value="AREA" />}
       <div className="grid gap-4 sm:grid-cols-2">
         {tipos.length > 1 && (
           <Campo etiqueta="Requerimiento" htmlFor="rq-tipo" requerido ayuda={TIPO_REQUERIMIENTO[tipo]?.descripcion}>
@@ -324,15 +344,30 @@ function FormularioRequerimiento({
           </Campo>
         )}
         {tipo === 'OPERACION' && !codigoFijo && (
-          <Campo etiqueta="Es para" htmlFor="rq-destino" requerido ayuda={DESTINO_DEL_RQ[destino].ayuda} ayudaEnIcono={false}>
-            <Seleccion id="rq-destino" value={destino} onChange={(e) => setDestino(e.target.value as DestinoDelRq)} data-destino={destino}>
+          // Las dos a la vista: en una lista cerrada, la del área no se descubría.
+          <fieldset className="space-y-2 sm:col-span-2" data-destino={destino}>
+            <legend className="mb-2 text-xs font-medium text-texto-suave">
+              Es para<span className="ml-0.5 text-peligro">*</span>
+            </legend>
+            <div className="grid gap-2 sm:grid-cols-2">
               {(Object.keys(DESTINO_DEL_RQ) as DestinoDelRq[]).map((d) => (
-                <option key={d} value={d}>
-                  {DESTINO_DEL_RQ[d].etiqueta}
-                </option>
+                <label key={d} className={OPCION}>
+                  <input
+                    type="radio"
+                    name="rq-destino"
+                    value={d}
+                    checked={destino === d}
+                    onChange={() => setDestino(d)}
+                    className={RADIO}
+                  />
+                  <span>
+                    <span className="font-medium">{d === 'AREA' && areaElegida ? `Para ${areaElegida} (gasto operativo)` : DESTINO_DEL_RQ[d].etiqueta}</span>
+                    <span className="block text-xs text-texto-suave">{DESTINO_DEL_RQ[d].ayuda}</span>
+                  </span>
+                </label>
               ))}
-            </Seleccion>
-          </Campo>
+            </div>
+          </fieldset>
         )}
         {areaFija && codigoFijo ? null : paraElArea ? (
           <input type="hidden" name="codigo_interno" value={CODIGO_DEL_GASTO_OPERATIVO} />
@@ -355,7 +390,7 @@ function FormularioRequerimiento({
             ayuda={
               tipo === 'ADMINISTRACION'
                 ? 'Elige el de la unidad, si es para una; si es para la oficina, OFICINA. Para mantenimiento o garantía, el N.º de su OT. Busca por el código, la placa o la marca.'
-                : 'Elige el de la unidad; para mantenimiento o garantía, el N.º de su OT («OT 2921-2026»). Lo que es para el área, con «Es para: el área». Busca por el código, la OT, la placa o la marca.'
+                : 'Elige el de la unidad; para mantenimiento o garantía, el N.º de su OT («OT 2921-2026»). Lo que es para el área, marcando «Para el área (gasto operativo)». Busca por el código, la OT, la placa o la marca.'
             }
           >
             <EntradaCodigoInterno
@@ -366,6 +401,7 @@ function FormularioRequerimiento({
               onChange={setCodigoEscrito}
               codigos={codigos}
               fijos={tipo === 'OPERACION' ? [] : CODIGOS_FIJOS_DEL_RQ[tipo]}
+              vetados={tipo === 'OPERACION' ? VETADO_PARA_UNA_UNIDAD : undefined}
             />
           </Campo>
         )}

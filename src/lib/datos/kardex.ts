@@ -237,6 +237,8 @@ export type LineaRqParaSalida = {
   material_id: string | null
   /** El que entró al kardex de su compra, que puede ser otra marca: la salida lo propone primero. */
   material_comprado: string | null
+  /** El RQ es para el área (gasto operativo): sale a PLANTA, sin vehículo ni OT (migración 20261127160000). */
+  para_el_area: boolean
 }
 
 /** Lo que piden los requerimientos vivos y todavía no se entregó, por número e ítem. */
@@ -249,13 +251,21 @@ export async function lineasDeRequerimientoParaSalida(): Promise<LineaRqParaSali
     .order('item')
     .limit(500)
   if (error) throw new Error(`No se pudieron cargar los requerimientos por atender: ${error.message}`)
+  // Cuáles son del área: su salida va a PLANTA y la base no acepta otra.
+  const ids = [...new Set((data ?? []).flatMap((l) => (l.requerimiento_id ? [l.requerimiento_id] : [])))]
+  const delArea = new Set<string>()
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data: marcados, error: sinMarca } = await db.from('requerimientos').select('id').eq('para_el_area', true).in('id', ids.slice(i, i + 100))
+    if (sinMarca) throw new Error(`No se pudo leer qué requerimientos son del área: ${sinMarca.message}`)
+    for (const r of marcados ?? []) delArea.add(r.id)
+  }
   return (data ?? []).flatMap((l) => l.linea_id && l.requerimiento_id && l.numero ? [{
     linea_id: l.linea_id, requerimiento_id: l.requerimiento_id, numero: l.numero,
     codigo_interno: l.codigo_interno ?? 'PLANTA', area: l.area ?? '', item: l.item ?? 0,
     descripcion: l.descripcion ?? '', cantidad: Number(l.cantidad ?? 0), unidad: l.unidad ?? '',
     categoria: l.categoria ?? '', almacen: esAlmacen(l.almacen) ? l.almacen : null,
     entregado: Number(l.entregado ?? 0), pendiente: Number(l.pendiente ?? 0), material_id: l.material_id,
-    material_comprado: l.material_comprado,
+    material_comprado: l.material_comprado, para_el_area: delArea.has(l.requerimiento_id),
   }] : [])
 }
 

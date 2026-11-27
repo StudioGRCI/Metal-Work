@@ -65,43 +65,42 @@ export type TipoRequerimiento = 'OPERACION' | 'ADMINISTRACION'
  * Administración, como decía la ayuda del campo cuando se escribía a mano.
  */
 export const CODIGOS_FIJOS_DEL_RQ: Record<TipoRequerimiento, { codigo: string; detalle: string }[]> = {
-  // Al registrarlo, lo del área se elige con «Es para» y no en esta lista; al corregirlo, PLANTA lo vuelve gasto operativo.
-  OPERACION: [{ codigo: CODIGO_FIJO_PLANTA.codigo, detalle: 'Gasto operativo del área: no se carga a ninguna OT' }],
+  OPERACION: [CODIGO_FIJO_PLANTA],
   ADMINISTRACION: [CODIGO_FIJO_OFICINA],
 }
 
 /**
  * Para qué es el RQ de operación: para una unidad (su código o el N.º de su
  * OT) o para el área misma, las herramientas y los insumos con que trabaja.
- * El del área es **gasto operativo**: va con el código PLANTA, que no carga a
- * ninguna OT (no es una unidad y el costeo no lo reparte), y se suma por el
- * área del RQ (DKS, 2026-11-27: «pedir herramientas para el área… ese costo
- * iría como gasto operativo»).
+ * El del área es **gasto operativo** (DKS, 2026-11-27: «pedir herramientas
+ * para el área… ese costo iría como gasto operativo»): va con PLANTA, la base
+ * lo marca (`para_el_area`, migración 20261127160000) y lo que sale del
+ * almacén para él va a PLANTA, nunca a una unidad ni a una OT. Cuánto gasta
+ * cada área se sumará en la entrega 2 del plan.
  */
 export type DestinoDelRq = 'UNIDAD' | 'AREA'
 
 export const DESTINO_DEL_RQ: Record<DestinoDelRq, { etiqueta: string; ayuda: string }> = {
   UNIDAD: {
-    etiqueta: 'Una unidad u OT',
+    etiqueta: 'Para una unidad',
     ayuda: 'Lo que lleva la unidad: se carga al costo de su código o de su OT.',
   },
   AREA: {
-    etiqueta: 'El área: gasto operativo',
-    ayuda: 'Herramientas e insumos para el trabajo del área. No se carga a ninguna OT: cuenta como gasto operativo del área.',
+    etiqueta: 'Para el área (gasto operativo)',
+    ayuda: 'Herramientas e insumos con que trabaja el área. No se carga a ninguna OT: Almacén lo entrega a PLANTA y cuenta como gasto operativo del área.',
   },
 }
 
 /** El código con que va el RQ del área: PLANTA, el que no es de una unidad. */
 export const CODIGO_DEL_GASTO_OPERATIVO = CODIGO_FIJO_PLANTA.codigo
 
-/** El RQ es gasto operativo de su área: de operación y con el código PLANTA. */
-export const esGastoOperativo = (rq: { tipo: string | null; codigo_interno: string | null }) =>
-  tipoDeRequerimiento(rq) === 'OPERACION' && (rq.codigo_interno ?? '').trim().toUpperCase() === CODIGO_DEL_GASTO_OPERATIVO
+/** El RQ es gasto operativo de su área: lo dice la base, no el código (un RQ de PLANTA de antes puede haber salido a una unidad). */
+export const esGastoOperativo = (rq: { para_el_area?: boolean | null }) => rq.para_el_area === true
 
 export const GASTO_OPERATIVO: Def = {
   etiqueta: 'Gasto operativo',
   tono: 'info',
-  descripcion: 'Es para el área, no para una unidad: no se carga a ninguna OT.',
+  descripcion: 'Es para el área, no para una unidad: sale a PLANTA y no se carga a ninguna OT.',
 }
 
 /** Los que todavía esperan a alguien: lo que la bandeja de atención muestra primero. */

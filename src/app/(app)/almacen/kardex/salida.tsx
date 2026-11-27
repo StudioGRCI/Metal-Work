@@ -54,6 +54,8 @@ export type LineaRqParaElegir = {
   material_id: string | null
   /** El que entró de su compra, si ya llegó; puede ser otra marca que el pedido. */
   material_comprado: string | null
+  /** El RQ es para el área (gasto operativo): sale a PLANTA y la base no acepta otro destino. */
+  para_el_area?: boolean
 }
 export type UnidadParaElegir = { id: string; nombre: string; vehiculo: string | null; ordenes: string | null; codigo_interno: string | null; placa: string | null }
 
@@ -312,8 +314,10 @@ export function NuevaSalida({ materiales, unidades, codigos, lineasRq = [], rqCo
   // Con un requerimiento elegido se ofrecen solo los materiales de su almacén y
   // lo que llegó de su compra.
   const conSaldo = materiales.filter((m) => m.disponible > 0 && sirvePara(m, linea))
-  // El RQ ya dice a qué unidad va; solo «PLANTA» deja elegir el destino.
-  const destinoDelRq = linea && normalizarCodigo(linea.codigo_interno) !== CODIGO_FIJO_PLANTA.codigo ? linea.codigo_interno : null
+  // El RQ ya dice a qué unidad va; solo «PLANTA» deja elegir el destino. El RQ
+  // del área (gasto operativo) también es de PLANTA, pero sale siempre a PLANTA.
+  const delArea = Boolean(linea?.para_el_area)
+  const destinoDelRq = linea && (delArea || normalizarCodigo(linea.codigo_interno) !== CODIGO_FIJO_PLANTA.codigo) ? linea.codigo_interno : null
   const regla = elegido?.almacen ? ALMACENES[elegido.almacen] : null
   // Un accesorio sale solo para una unidad, o al código de su RQ (aquí, PLANTA):
   // la lista no ofrece los demás que no son una unidad, que también llegan en
@@ -542,7 +546,8 @@ export function NuevaSalida({ materiales, unidades, codigos, lineasRq = [], rqCo
       >
         <form key={id} onSubmit={alEnviar} className="space-y-5">
           <input type="hidden" name="operacion_id" value={id} />
-          <input type="hidden" name="destino" value={destino} />
+          <input type="hidden" name="destino" value={delArea ? 'CODIGO' : destino} />
+          {delArea && <input type="hidden" name="codigo_unidad" value={CODIGO_FIJO_PLANTA.codigo} />}
           {/* El foco va al aviso: el botón quedó desactivado al enviar y el
               formulario se rehízo, y en el teléfono el aviso quedaba arriba,
               fuera de la vista. */}
@@ -655,7 +660,12 @@ export function NuevaSalida({ materiales, unidades, codigos, lineasRq = [], rqCo
 
           {destinoDelRq ? (
             <p className="rounded-[var(--radius-base)] border border-borde px-3 py-2 text-sm">
-              {normalizarCodigo(destinoDelRq) === CODIGO_TODOS_LOS_ACTIVOS ? (
+              {delArea ? (
+                <span data-salida-gasto-operativo>
+                  <span className="text-texto-suave">Va a </span><span className="font-medium">PLANTA</span>
+                  <span className="text-texto-suave">: es gasto operativo de {linea?.area || 'su área'}, como dice el requerimiento {linea?.numero}. No se carga a ninguna unidad ni OT.</span>
+                </span>
+              ) : normalizarCodigo(destinoDelRq) === CODIGO_TODOS_LOS_ACTIVOS ? (
                 <>
                   <span className="text-texto-suave">Va a </span><span className="font-medium">todos los códigos activos</span>
                   <span className="text-texto-suave">, como dice el requerimiento {linea?.numero}: se reparte en partes iguales entre los que trabajaron este mes.</span>

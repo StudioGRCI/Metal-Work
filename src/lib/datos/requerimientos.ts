@@ -82,6 +82,8 @@ export type RequerimientoListado = {
   /** Quien lo registró: el supervisor (`rq_exigir_del_area`) y el colaborador de Diseño corrigen y anulan solo los suyos. */
   creado_por: string | null
   codigo_interno: string
+  /** Es para el área (gasto operativo): va con PLANTA y lo que sale para él va a PLANTA (migración 20261127160000). */
+  para_el_area: boolean
   justificacion: string
   fecha_requerida: string | null
   estado: string
@@ -119,7 +121,7 @@ export type OpcionCatalogo = { id: string; codigo: string; nombre: string }
 export type AreaParaRequerimiento = OpcionCatalogo & { requerimiento: string }
 
 const SELECT_RQ =
-  'id, numero, tipo, area_id, creado_por, codigo_interno, justificacion, fecha_requerida, estado, motivo_anulacion, nota_almacen, nota_logistica, nota_entrega, faltante_al_entregar, motivo_del_faltante, revision_stock_en, en_atencion_en, listo_en_almacen_en, entregado_en, creado_en, area:areas(nombre), lineas:requerimiento_lineas(id, item, descripcion, cantidad, cantidad_en_stock, sin_salida_al_entregar, material_id, material_nuevo, recompra_de, material:materiales(codigo, descripcion, unidad_pendiente), unidad:unidades_medida(codigo), categoria:categorias_material(nombre), orden_compra:ordenes_compra_materiales(id, numero, referencia, aprobacion, fecha_estimada))'
+  'id, numero, tipo, area_id, creado_por, codigo_interno, para_el_area, justificacion, fecha_requerida, estado, motivo_anulacion, nota_almacen, nota_logistica, nota_entrega, faltante_al_entregar, motivo_del_faltante, revision_stock_en, en_atencion_en, listo_en_almacen_en, entregado_en, creado_en, area:areas(nombre), lineas:requerimiento_lineas(id, item, descripcion, cantidad, cantidad_en_stock, sin_salida_al_entregar, material_id, material_nuevo, recompra_de, material:materiales(codigo, descripcion, unidad_pendiente), unidad:unidades_medida(codigo), categoria:categorias_material(nombre), orden_compra:ordenes_compra_materiales(id, numero, referencia, aprobacion, fecha_estimada))'
 
 /**
  * Cuántos RQ en camino (por entregar) se necesitan entre esas fechas, con los
@@ -229,6 +231,7 @@ export async function cargarRequerimientos(
       area: r.area?.nombre ?? '—',
       creado_por: r.creado_por,
       codigo_interno: r.codigo_interno,
+      para_el_area: r.para_el_area,
       justificacion: r.justificacion,
       fecha_requerida: r.fecha_requerida,
       estado: r.estado,
