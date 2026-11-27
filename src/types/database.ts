@@ -197,6 +197,8 @@ export type Database = {
           jefe_id: string | null
           requerimiento: string | null
           es_oficina: boolean
+          llevada_por_id: string | null
+          jefe_heredado: boolean
         }
         Insert: {
           id?: string
@@ -210,6 +212,8 @@ export type Database = {
           jefe_id?: string | null
           requerimiento?: string | null
           es_oficina?: boolean
+          llevada_por_id?: string | null
+          jefe_heredado?: boolean
         }
         Update: {
           id?: string
@@ -223,6 +227,8 @@ export type Database = {
           jefe_id?: string | null
           requerimiento?: string | null
           es_oficina?: boolean
+          llevada_por_id?: string | null
+          jefe_heredado?: boolean
         }
         Relationships: [
           {
@@ -230,6 +236,13 @@ export type Database = {
             columns: ["jefe_id"]
             isOneToOne: false
             referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "areas_llevada_por_id_fkey"
+            columns: ["llevada_por_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
             referencedColumns: ["id"]
           }
         ]
