@@ -656,14 +656,15 @@ async function manejarArchivos(req, res, url) {
       entrega = (await visibles(sesion, cubeta, [nombre])).has(nombre)
     }
     if (!entrega) return responder(res, 400, NO_ENCONTRADO)
+    // El tipo que se anotó al subir, como lo guarda Supabase: con
+    // octet-stream el navegador bajaba la foto o el PDF en vez de abrirlo.
+    // Va fuera del `try`: un fallo de la base no es «el archivo no existe».
+    const { rows: anotado } = await grupo.query(
+      "select metadata->>'mimetype' as tipo from storage.objects where bucket_id = $1 and name = $2",
+      [cubeta, nombre],
+    )
     try {
       const contenido = await readFile(join(ARCHIVOS, camino))
-      // El tipo que se anotó al subir, como lo guarda Supabase: con
-      // octet-stream el navegador bajaba la foto o el PDF en vez de abrirlo.
-      const { rows: anotado } = await grupo.query(
-        "select metadata->>'mimetype' as tipo from storage.objects where bucket_id = $1 and name = $2",
-        [cubeta, nombre],
-      )
       // Con `download` (createSignedUrl(…, { download })), como Supabase: se
       // baja con ese nombre, o con el del archivo si viene vacío.
       const bajar = url.searchParams.get('download')

@@ -130,24 +130,22 @@ Ya puedes entrar al sistema con ese correo y contraseña.
 
 ---
 
-## 5. Cargar datos de ejemplo (opcional)
+## 5. Cargar datos de ejemplo (opcional, solo en una base de prueba)
 
-Para recorrer el sistema antes de meter información real:
+Para recorrer el sistema en una base de prueba, aparte de la de la empresa:
 
 ```bash
-psql "$DATABASE_URL" -f db/demo/datos-demo.sql
+PGOPTIONS='-c demo.base_de_prueba=si' psql "$URL_DE_LA_BASE_DE_PRUEBA" -f db/demo/datos-demo.sql
 ```
 
 Carga cinco clientes con su flota, dieciocho materiales con existencia
-valorizada y cinco órdenes en distintos estados. No toca nada de lo que ya
-exista y se puede ejecutar varias veces.
+valorizada y cinco órdenes en distintos estados, y un circuito de compras y
+almacén: requerimientos, órdenes de compra y de servicio y subcontratos en cada
+estado. No toca nada de lo que ya exista y se puede ejecutar varias veces.
 
-Trae también requerimientos, órdenes de compra y de servicio y subcontratos,
-con números de las series reales. Un documento numerado no se borra nunca, así
-que esta carga va solo en una base de prueba, no en la de producción.
-
-No hay que borrar la demo antes de arrancar: la base de producción se prepara
-aparte, sin ella.
+Sus documentos toman números de las series reales, y un documento numerado no
+se borra nunca: por eso el archivo se detiene si no lleva la marca
+`demo.base_de_prueba`. La base de producción se prepara aparte, sin la demo.
 
 ---
 

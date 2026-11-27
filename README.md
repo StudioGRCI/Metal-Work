@@ -107,11 +107,14 @@ insert into public.sedes (codigo, nombre) values ('PRIN', 'Planta principal');
 
 ### Datos de demostración
 
-Para recorrer el sistema antes de cargar la información real:
+Para recorrer el sistema en una base de prueba, nunca en la de la empresa:
 
 ```bash
-psql "$DATABASE_URL" -f db/demo/datos-demo.sql
+PGOPTIONS='-c demo.base_de_prueba=si' psql "$URL_DE_LA_BASE_DE_PRUEBA" -f db/demo/datos-demo.sql
 ```
+
+Sin esa marca el archivo se detiene antes de cargar nada. El banco local
+(`herramientas/banco/preparar.sh`) la pone solo.
 
 Carga un taller de ejemplo: cinco clientes con sus unidades, dieciocho
 materiales con existencia valorizada y cinco órdenes de trabajo en distintos
@@ -120,15 +123,16 @@ por falta de material, una urgente programada, una ya entregada con su acta de
 conformidad y una en borrador—. El script es idempotente y no toca nada de lo
 que ya exista.
 
-Trae además un circuito de compras y almacén: cinco proveedores, trece
-requerimientos (de dos a tres en cada estado, de «por revisar» a «entregado»,
-uno con faltante), seis órdenes de compra en los pasos de la compra (esperando
-a Gerencia, en la lista del conductor, por validar en el kardex, recibida en
-partes y entera), el kardex con su saldo inicial, stock mínimo y un conteo, dos
-órdenes de servicio y dos subcontratos. Se cargan con las funciones reales y la
-sesión de cada puesto, así que **sus números salen de las series de verdad**
-(RQ, OC, OS) y, como todo documento numerado, no se borran: la demostración va
-en una base de prueba, nunca en la que va a producción.
+Trae además un circuito de compras y almacén, con dos o tres documentos en cada
+estado: seis proveedores; quince requerimientos, de «por revisar» a «entregado»
+(uno con faltante) y anulados; dieciocho órdenes de compra en cada paso, de la
+aprobación de Gerencia (aprobadas, rechazadas, anuladas) al recojo del conductor
+y la validación en el kardex; doce órdenes de servicio, de por aprobar a
+conformes; seis subcontratos vigentes, terminados y anulados; y el kardex con
+su saldo inicial, stock mínimo y un conteo. Se cargan con las funciones reales
+y la sesión de cada puesto, así que **sus números salen de las series de
+verdad** (OT, RQ, OC, OS) y, como todo documento numerado, no se borran: por eso
+la marca de base de prueba.
 
 ### Desarrollo
 

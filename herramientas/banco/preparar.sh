@@ -74,7 +74,9 @@ select (select id from _cuenta), 'Gerencia', 'Metal Work', :'correo', 'Gerencia'
 SQL
 
 echo "→ datos de demostración"
-ejecutar "$RAIZ/db/demo/datos-demo.sql"
+# El archivo se detiene si no se le dice que la base es de prueba: sus números
+# salen de las series reales y no se borran.
+PGOPTIONS="${PGOPTIONS:-} -c demo.base_de_prueba=si" ejecutar "$RAIZ/db/demo/datos-demo.sql"
 
 # Una cuenta `*.local@metalwork.test` por cada puesto que tiene acceso en
 # producción, con la clave local. Son las que usan los `probar-*.mjs` y los
@@ -153,6 +155,20 @@ begin
        where email like '%.local@metalwork.test' and encrypted_password <> '') < 21 then
     raise exception 'Faltan cuentas locales por puesto.';
   end if;
+
+  -- Los avisos que dejó la demostración (la compra por aprobar, lo que observó
+  -- Almacén) le llegaron a la ficha de la demostración de cada puesto, que en
+  -- el banco nadie abre: se le copian a la cuenta local del mismo puesto y
+  -- área, una sola vez.
+  insert into public.notificaciones (usuario_id, titulo, cuerpo, ruta, origen_tabla, origen_id, leida_en, creado_en)
+  select l.id, n.titulo, n.cuerpo, n.ruta, n.origen_tabla, n.origen_id, n.leida_en, n.creado_en
+    from public.notificaciones n
+    join public.usuarios d on d.id = n.usuario_id and d.correo like '%@metalworkperusac.com'
+    join public.usuarios l on l.correo like '%.local@metalwork.test' and l.activo
+                          and l.rol_id = d.rol_id and l.area_id is not distinct from d.area_id
+   where not exists (select 1 from public.notificaciones x
+                      where x.usuario_id = l.id and x.titulo = n.titulo and x.creado_en = n.creado_en
+                        and x.origen_id is not distinct from n.origen_id);
 end $$;
 SQL
 
@@ -163,25 +179,27 @@ SQL
 # serie en Ubuntu), se saltan: la fila sigue y el archivo no se ve.
 ARCHIVOS="${BANCO_ARCHIVOS:-/tmp/banco-archivos}"
 MUESTRAS="$(mktemp -d)"
-if command -v convert >/dev/null 2>&1 \
-   && convert -size 1200x900 xc:'#d9dde3' -gravity center -pointsize 64 -fill '#3b4350' \
-        -annotate 0 'Foto de muestra\nbanco local' "$MUESTRAS/muestra.jpg" 2>/dev/null \
-   && convert -size 1240x1754 xc:white -gravity north -pointsize 48 -fill '#3b4350' \
-        -annotate +0+200 'Documento de muestra\nbanco local' "$MUESTRAS/muestra.pdf" 2>/dev/null; then
-  echo "→ fotos y PDF de muestra"
-  psql -Atd "$BASE" -c "select bucket_id || '/' || name, metadata->>'mimetype' from storage.objects" |
-    while IFS='|' read -r camino tipo; do
-      destino="$ARCHIVOS/$camino"
-      [ -e "$destino" ] && continue
-      mkdir -p "$(dirname "$destino")"
-      case "$tipo" in
-        application/pdf) cp "$MUESTRAS/muestra.pdf" "$destino" ;;
-        image/*) cp "$MUESTRAS/muestra.jpg" "$destino" ;;
-      esac
-    done
-else
-  echo "→ sin ImageMagick que escriba JPG y PDF: las fotos y los PDF de la demostración no tendrán archivo"
+if command -v convert >/dev/null 2>&1; then
+  convert -size 1200x900 xc:'#d9dde3' -gravity center -pointsize 64 -fill '#3b4350' \
+    -annotate 0 'Foto de muestra\nbanco local' "$MUESTRAS/muestra.jpg" 2>/dev/null || true
+  convert -size 1240x1754 xc:white -gravity north -pointsize 48 -fill '#3b4350' \
+    -annotate +0+200 'Documento de muestra\nbanco local' "$MUESTRAS/muestra.pdf" 2>/dev/null || true
 fi
+[ -s "$MUESTRAS/muestra.jpg" ] || echo "→ sin ImageMagick que escriba JPG: las fotos de la demostración no tendrán archivo"
+[ -s "$MUESTRAS/muestra.pdf" ] || echo "→ sin ImageMagick que escriba PDF: los PDF de la demostración no tendrán archivo"
+echo "→ fotos y PDF de muestra"
+psql -Atd "$BASE" -c "select bucket_id || '/' || name, metadata->>'mimetype' from storage.objects" |
+  while IFS='|' read -r camino tipo; do
+    case "$tipo" in
+      application/pdf) muestra="$MUESTRAS/muestra.pdf" ;;
+      image/*) muestra="$MUESTRAS/muestra.jpg" ;;
+      *) continue ;;
+    esac
+    destino="$ARCHIVOS/$camino"
+    [ -e "$destino" ] || [ ! -s "$muestra" ] && continue
+    mkdir -p "$(dirname "$destino")"
+    cp "$muestra" "$destino"
+  done
 rm -rf "$MUESTRAS"
 
 psql -Atd "$BASE" -c "

@@ -91,6 +91,15 @@ npx tsc --noEmit && npx eslint && npx next build
   antes de que Gerencia la viera y quedaba «no requerida» (2026-11-27, la
   primera vuelta de los datos de compras). La sección que llama funciones con
   disparadores diferidos abre con esa línea, como hacen los checks.
+- **La demostración gasta números reales, así que se carga solo a propósito.**
+  El archivo se detiene sin `PGOPTIONS='-c demo.base_de_prueba=si'`, que pone
+  `herramientas/banco/preparar.sh`. Un párrafo que dice «solo en una base de
+  prueba» no detiene a nadie: lo vio el auditor el 2026-11-27, con la guía de
+  despliegue indicando correrla en la base nueva.
+- `demo_como` pone la sesión del puesto pero la carga sigue como `postgres`:
+  lo que se inserta a mano (proveedores, la factura, Storage) no pasa por la
+  política. Se comprobó a mano que cada puesto tiene el permiso; si se cambia
+  una política de esas tablas, mirar también aquí.
 
 ## Numeración y datos reales
 

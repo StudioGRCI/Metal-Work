@@ -5,11 +5,24 @@
 -- y órdenes de trabajo en distintos estados, para poder recorrer el sistema
 -- antes de cargar la información real.
 --
---   psql "$DATABASE_URL" -f db/demo/datos-demo.sql
+--   PGOPTIONS='-c demo.base_de_prueba=si' psql "$URL_DE_LA_BASE_DE_PRUEBA" -f db/demo/datos-demo.sql
 --
 -- Requisitos previos: la empresa, una sede y al menos un usuario administrador
 -- creados (ver el README). No borra nada: solo agrega lo que falte.
+--
+-- Solo en una base de prueba. Las OT, los RQ, las OC y las OS toman números de
+-- las series reales, y un documento numerado no se borra nunca: cargados en la
+-- base de la empresa, dejarían huecos que nadie podría explicar. Por eso el
+-- archivo se detiene si no se le dice a propósito que la base es de prueba.
 -- =============================================================================
+
+\set ON_ERROR_STOP on
+do $$
+begin
+  if coalesce(current_setting('demo.base_de_prueba', true), '') <> 'si' then
+    raise exception 'Los datos de demostración van solo en una base de prueba: toman números de las series reales y no se borran. Si esta es una base de prueba, cárgalos con PGOPTIONS=''-c demo.base_de_prueba=si''.';
+  end if;
+end $$;
 
 -- Desde la migración 20260928130000 Diseño define las etapas de cada OT, con su
 -- peso, y Administración les pone inicio y fin, antes de que el taller empiece.
@@ -783,13 +796,19 @@ $$;
 -- ------------------------------------------------- compras y almacén
 -- Un circuito de requerimientos para que Atención, Por comprar, las órdenes de
 -- compra y de servicio, Aprobación, Gestión de compras, Recojos, el kardex,
--- Reposición, Control de compras, Proveedores y Subcontratos salgan llenos: de
--- dos a tres RQ en cada estado (por revisar, por comprar, en compra, listo y
--- entregado, uno de ellos con faltante), seis OC en los pasos de la compra, dos
--- OS y dos subcontratos. Todo con las funciones reales y la sesión del puesto
+-- Reposición, Control de compras, Proveedores y Subcontratos salgan llenos, con
+-- dos o tres documentos en cada estado: RQ por revisar, por comprar, en compra,
+-- listos, entregados (uno con faltante) y anulados; OC por aprobar, rechazadas,
+-- anuladas, por recoger, en recojo, recogidas y dejadas en almacén (por
+-- validar, recibidas en parte y enteras); OS por aprobar, rechazadas,
+-- aprobadas, en ejecución, conformes y anuladas; subcontratos vigentes,
+-- terminados y anulados. Todo con las funciones reales y la sesión del puesto
 -- que da cada paso, así que cada número sale de su serie y cada regla se cumple.
 -- Lo que va a Contabilidad y Tesorería (la factura registrada, el pago) es de la
 -- sección de plata y personal.
+-- Los números salen de las series reales y un documento numerado no se borra
+-- nunca: esta sección corre solo donde se pide a propósito, con
+-- `PGOPTIONS='-c demo.base_de_prueba=si'` (lo pone `herramientas/banco/preparar.sh`).
 -- Centinela: los requerimientos, que solo llena esta sección.
 create or replace function pg_temp.demo_como(p_usuario uuid) returns void language plpgsql as $f$
 begin
@@ -912,16 +931,33 @@ declare
   v_pintu   uuid;
   v_hidra   uuid;
   v_arenado uuid;
+  v_torno   uuid;
   v_sub     uuid;
+  v_sub2    uuid;
   -- Los RQ en el orden en que se emiten, que es el de su número y su fecha.
   v_rq      uuid[] := array(select gen_random_uuid() from generate_series(1, 11));
   v_rqa     uuid[] := array[gen_random_uuid(), gen_random_uuid()];
+  -- Los dos que su supervisor anula.
+  v_rqn     uuid[] := array[gen_random_uuid(), gen_random_uuid()];
   v_pint    uuid;
   v_plan    uuid;
   v_disc    uuid;
   v_mig     uuid;
   v_guan    uuid;
-  v_os      uuid;
+  -- Las directas que siguen el resto de los pasos de la compra.
+  v_esm     uuid;
+  v_hard    uuid;
+  v_desb    uuid;
+  v_per     uuid;
+  v_thi     uuid;
+  v_ele     uuid;
+  v_pl4     uuid;
+  v_base    uuid;
+  v_rech    uuid[] := array[gen_random_uuid(), gen_random_uuid()];
+  v_anu     uuid[] := array[gen_random_uuid(), gen_random_uuid()];
+  -- Las doce OS en el orden en que se emiten.
+  v_os      uuid[] := array(select gen_random_uuid() from generate_series(1, 12));
+  v_sc      uuid[] := array(select gen_random_uuid() from generate_series(1, 6));
   v_id      uuid;
 begin
   if exists (select 1 from public.requerimientos) then
@@ -948,7 +984,9 @@ begin
   -- El código interno de cada unidad que tiene OT: es la llave con la que el
   -- RQ, la compra y la salida le cargan el costo. En la empresa se lo da
   -- Administración al cargar la OT desde la cotización aprobada; las OT de la
-  -- demostración nacen sin cotización, así que se escribe aquí.
+  -- demostración nacen sin cotización, así que se escribe aquí. Va en las cuatro
+  -- unidades con OT, aunque esta sección cargue documentos solo a dos: así
+  -- ninguna OT de la demostración queda sin la llave del costo.
   update public.unidades u
      set codigo_interno = v.codigo
     from (values ('V2G-841', 'VOL_TA_O4_1_26/18'), ('C4L-118', 'VOL_MC_O4_2_26/15'),
@@ -976,13 +1014,16 @@ begin
     (pg_temp.demo_ruc('2099100004'), 'HIDRÁULICA ANDINA S.A.C.', 'Hidráulica Andina', 'Pistones, bombas y mangueras',
      'Renzo Villar', '(01) 000-0104', 'ventas@hidraulicaandina.example', 'Av. Los Ingenieros 310, Ate', 'CREDITO', 30, v_log),
     (pg_temp.demo_ruc('2099100005'), 'ARENADOS Y PINTURA INDUSTRIAL CHAVÍN S.A.C.', 'Arenados Chavín', 'Servicio de arenado y pintado',
-     'Edwin Rojas', '(01) 000-0105', 'servicios@arenadoschavin.example', 'Calle Los Hornos 220, Lurín', 'CONTADO', 0, v_log)
+     'Edwin Rojas', '(01) 000-0105', 'servicios@arenadoschavin.example', 'Calle Los Hornos 220, Lurín', 'CONTADO', 0, v_log),
+    (pg_temp.demo_ruc('2099100006'), 'MAESTRANZA Y TORNO SANTA ROSA S.A.C.', 'Torno Santa Rosa', 'Torno, fresado, doblado y corte',
+     'Wilmer Cáceres', '(01) 000-0107', 'taller@tornosantarosa.example', 'Av. Separadora Industrial 1820, Ate', 'CREDITO', 15, v_log)
   on conflict do nothing;
   select id into v_aceros  from public.proveedores where razon_social = 'ACEROS DEL PACÍFICO S.A.C.';
   select id into v_ferre   from public.proveedores where razon_social = 'FERRETERÍA INDUSTRIAL SAN JORGE E.I.R.L.';
   select id into v_pintu   from public.proveedores where razon_social = 'PINTURAS Y RECUBRIMIENTOS DEL NORTE S.A.';
   select id into v_hidra   from public.proveedores where razon_social = 'HIDRÁULICA ANDINA S.A.C.';
   select id into v_arenado from public.proveedores where razon_social = 'ARENADOS Y PINTURA INDUSTRIAL CHAVÍN S.A.C.';
+  select id into v_torno   from public.proveedores where razon_social = 'MAESTRANZA Y TORNO SANTA ROSA S.A.C.';
 
   -- ------------------------------------------- lo que Almacén ya tenía
   -- El saldo con que arranca el kardex, un ingreso general por material, y el
@@ -997,8 +1038,9 @@ begin
                   ('ALA-MIG', 20), ('PER-58', 30)) as v(codigo, minimo);
 
   -- ------------------------------------------------- los requerimientos
-  -- Once RQ de las supervisiones y dos de Administración, emitidos del más
-  -- antiguo al más nuevo. Lo que pasa con cada uno:
+  -- Trece RQ de las supervisiones y dos de Administración, emitidos del más
+  -- antiguo al más nuevo. Lo que pasa con cada uno (los anulados no cuentan en
+  -- esta lista: van después del 4 y del 9):
   --   1, 4    entregados (la pintura se compró; el electrodo había)
   --   3       entregado con faltante: de veinte pernos había doce
   --   2, 5    en compra: la OC del pistón espera a Gerencia; la de planchas,
@@ -1006,6 +1048,8 @@ begin
   --   6, 7    por comprar, y el RQA 1
   --   8, 9    listos en almacén
   --   10, 11  por revisar, y el RQA 2
+  --   los dos anulados por su supervisor: uno se pidió dos veces, el otro lo
+  --           trae el cliente
   perform pg_temp.demo_como(v_sup_prd);
   perform public.emitir_requerimiento(v_rq[1], 'OPERACION', v_prd, v_cod1,
     'Base anticorrosiva y thinner para el fondeado de la tolva', null,
@@ -1021,6 +1065,11 @@ begin
   perform public.emitir_requerimiento(v_rq[4], 'OPERACION', v_prd, v_cod3,
     'Electrodo para el armado de los parantes del furgón', null,
     jsonb_build_array(pg_temp.demo_linea('ELE-7018', 10)));
+  perform public.emitir_requerimiento(v_rqn[1], 'OPERACION', v_prd, v_cod3,
+    'Esmalte para el acabado de las puertas del furgón', null,
+    jsonb_build_array(pg_temp.demo_linea('PIN-ESM', 4)));
+  perform public.anular_requerimiento(v_rqn[1],
+    'Se pidió dos veces: el esmalte de las puertas va con el del acabado del furgón');
   perform pg_temp.demo_como(v_sup_mtz);
   perform public.emitir_requerimiento(v_rq[5], 'OPERACION', v_mtz, v_cod1,
     'Planchas de 6 mm para el piso de la tolva', null,
@@ -1043,6 +1092,15 @@ begin
   perform public.emitir_requerimiento(v_rq[9], 'OPERACION', v_prd, v_cod3,
     'Discos para el corte de los perfiles del techo del furgón', null,
     jsonb_build_array(pg_temp.demo_linea('DIS-CORTE', 8)));
+  perform pg_temp.demo_como(v_sup_mtz);
+  perform public.emitir_requerimiento(v_rqn[2], 'OPERACION', v_mtz, v_cod1,
+    'Plancha antidesgaste para el piso de la tolva', null,
+    jsonb_build_array(pg_temp.demo_linea('PL-HRD-8', 6)));
+  perform pg_temp.demo_como(v_alm);
+  perform public.rq_marcar_sin_stock(v_rqn[2], 'No se tiene Hardox de 8 mm');
+  perform pg_temp.demo_como(v_sup_mtz);
+  perform public.anular_requerimiento(v_rqn[2],
+    'El cliente trae su propia plancha antidesgaste para el piso de la tolva');
   perform pg_temp.demo_como(v_adm);
   perform public.emitir_requerimiento(v_rqa[2], 'ADMINISTRACION', v_area_adm, 'PLANTA',
     'Útiles para el archivo de las órdenes de trabajo del año', null,
@@ -1072,77 +1130,150 @@ begin
   -- ------------------------------------------------ órdenes de compra
   -- Toda OC de Logística pasa por el visto de Gerencia y, aprobada, sale sola a
   -- la lista del conductor (`fn_compra_recojo`): él la recoge, la deja en
-  -- almacén y Almacén valida lo que llegó. Se emiten en el orden de su fecha.
+  -- almacén y Almacén valida lo que llegó. Se emiten en el orden de su fecha,
+  -- cada una con la fecha que prometió el proveedor (tres ya vencidas, para que
+  -- Control de compras muestre atrasos).
   perform pg_temp.demo_como(v_log);
   -- RQ 1: llega entera y sale al área.
   v_pint := public.emitir_compra_del_requerimiento(gen_random_uuid(), v_rq[1], null, v_pintu, 'PROF-2207',
     jsonb_build_array(
       jsonb_build_object('material_id', pg_temp.demo_mat('PIN-BASE'), 'cantidad', 8, 'precio', 96),
       jsonb_build_object('material_id', pg_temp.demo_mat('THI-ACR'), 'cantidad', 6, 'precio', 38)),
-    null, 'CREDITO', 15, 'PEN', true);
+    current_date, 'CREDITO', 15, 'PEN', true);
   -- RQ 2: espera la aprobación de Gerencia.
   perform public.emitir_compra_del_requerimiento(gen_random_uuid(), v_rq[2], null, v_hidra, 'COT-HA-0412',
     jsonb_build_array(
       jsonb_build_object('material_id', pg_temp.demo_mat('PIS-HID-5'), 'cantidad', 1, 'precio', 6850),
       jsonb_build_object('material_id', pg_temp.demo_mat('BOM-HID'), 'cantidad', 1, 'precio', 2380)),
-    null, 'CREDITO', 30, 'PEN', true);
-  -- RQ 5: aprobada, en la lista del conductor.
+    current_date + 10, 'CREDITO', 30, 'PEN', true);
+  -- Las directas, sin RQ, para el stock de planta.
+  v_desb := public.emitir_compra_directa(gen_random_uuid(), v_ferre, 'COT-SJ-104',
+    'Reposición del stock mínimo de discos de desbaste', jsonb_build_array(
+      jsonb_build_object('material_id', pg_temp.demo_mat('DIS-DESB'), 'cantidad', 50, 'precio', 8.90)),
+    current_date - 2, 'CONTADO', 0, 'PEN', true, 'PLANTA');
+  v_pl4 := public.emitir_compra_directa(gen_random_uuid(), v_aceros, 'COT-AP-2281',
+    'Planchas de 4 mm para el stock de forros', jsonb_build_array(
+      jsonb_build_object('material_id', pg_temp.demo_mat('PL-A36-4'), 'cantidad', 200, 'precio', 4.55)),
+    current_date - 1, 'CREDITO', 30, 'PEN', true, 'PLANTA');
+  v_hard := public.emitir_compra_directa(gen_random_uuid(), v_aceros, 'COT-AP-2285',
+    'Plancha antidesgaste para los pisos de las tolvas del mes', jsonb_build_array(
+      jsonb_build_object('material_id', pg_temp.demo_mat('PL-HRD-8'), 'cantidad', 12, 'precio', 610)),
+    current_date, 'CREDITO', 30, 'PEN', true, 'PLANTA');
+  -- RQ 5: aprobada, en la lista del conductor y con la fecha ya vencida.
   v_plan := public.emitir_compra_del_requerimiento(gen_random_uuid(), v_rq[5], null, v_aceros, 'COT-AP-2290',
     jsonb_build_array(jsonb_build_object('material_id', pg_temp.demo_mat('PL-A36-6'), 'cantidad', 180, 'precio', 4.75)),
-    null, 'CREDITO', 30, 'PEN', true);
-  -- Tres directas, sin RQ. Discos: de cien llegaron sesenta.
+    current_date - 1, 'CREDITO', 30, 'PEN', true);
+  v_ele := public.emitir_compra_directa(gen_random_uuid(), v_ferre, 'COT-SJ-109',
+    'Reposición del stock mínimo de electrodo 7018', jsonb_build_array(
+      jsonb_build_object('material_id', pg_temp.demo_mat('ELE-7018'), 'cantidad', 40, 'precio', 18.20)),
+    current_date, 'CONTADO', 0, 'PEN', true, 'PLANTA');
+  v_anu[1] := public.emitir_compra_directa(v_anu[1], v_aceros, 'COT-AP-2287',
+    'Tubos para el stock de bastidores', jsonb_build_array(
+      jsonb_build_object('material_id', pg_temp.demo_mat('TUB-100x50'), 'cantidad', 30, 'precio', 92)),
+    current_date + 3, 'CREDITO', 30, 'PEN', true, 'PLANTA');
+  -- Discos: de cien llegaron sesenta.
   v_disc := public.emitir_compra_directa(gen_random_uuid(), v_ferre, 'COT-SJ-118',
     'Reposición del stock mínimo de discos de corte', jsonb_build_array(
       jsonb_build_object('material_id', pg_temp.demo_mat('DIS-CORTE'), 'cantidad', 100, 'precio', 6.50)),
-    null, 'CONTADO', 0, 'PEN', true, 'PLANTA');
+    current_date - 1, 'CONTADO', 0, 'PEN', true, 'PLANTA');
+  v_per := public.emitir_compra_directa(gen_random_uuid(), v_ferre, 'COT-SJ-121',
+    'Reposición del stock mínimo de pernos de 5/8"', jsonb_build_array(
+      jsonb_build_object('material_id', pg_temp.demo_mat('PER-58'), 'cantidad', 60, 'precio', 3.05)),
+    current_date, 'CONTADO', 0, 'PEN', true, 'PLANTA');
+  v_anu[2] := public.emitir_compra_directa(v_anu[2], v_hidra, 'COT-HA-0418',
+    'Mangueras hidráulicas de repuesto para los volteos', jsonb_build_array(
+      jsonb_build_object('material_id', pg_temp.demo_mat('MAN-HID'), 'cantidad', 20, 'precio', 48)),
+    current_date + 4, 'CREDITO', 30, 'PEN', true, 'PLANTA');
+  v_esm := public.emitir_compra_directa(gen_random_uuid(), v_pintu, 'PROF-2231',
+    'Esmalte de acabado para el stock de pintura', jsonb_build_array(
+      jsonb_build_object('material_id', pg_temp.demo_mat('PIN-ESM'), 'cantidad', 12, 'precio', 118)),
+    current_date + 2, 'CREDITO', 15, 'PEN', true, 'PLANTA');
+  v_thi := public.emitir_compra_directa(gen_random_uuid(), v_pintu, 'PROF-2234',
+    'Thinner para la limpieza de las pistolas de pintura', jsonb_build_array(
+      jsonb_build_object('material_id', pg_temp.demo_mat('THI-ACR'), 'cantidad', 20, 'precio', 36)),
+    current_date + 1, 'CREDITO', 15, 'PEN', true, 'PLANTA');
+  v_rech[1] := public.emitir_compra_directa(v_rech[1], v_aceros, 'COT-AP-2296',
+    'Plancha antidesgaste de reserva para el próximo trimestre', jsonb_build_array(
+      jsonb_build_object('material_id', pg_temp.demo_mat('PL-HRD-8'), 'cantidad', 30, 'precio', 690)),
+    current_date + 7, 'CREDITO', 30, 'PEN', true, 'PLANTA');
   -- Alambre MIG: el conductor la dejó y Almacén todavía no la valida.
   v_mig := public.emitir_compra_directa(gen_random_uuid(), v_ferre, 'COT-SJ-131',
     'Alambre para la soldadora MIG del área de producción', jsonb_build_array(
       jsonb_build_object('material_id', pg_temp.demo_mat('ALA-MIG'), 'cantidad', 25, 'precio', 14.20)),
-    null, 'CONTADO', 0, 'PEN', true, 'PLANTA');
+    current_date, 'CONTADO', 0, 'PEN', true, 'PLANTA');
+  v_base := public.emitir_compra_directa(gen_random_uuid(), v_pintu, 'PROF-2240',
+    'Base anticorrosiva para el stock de pintura', jsonb_build_array(
+      jsonb_build_object('material_id', pg_temp.demo_mat('PIN-BASE'), 'cantidad', 10, 'precio', 95)),
+    current_date, 'CREDITO', 15, 'PEN', true, 'PLANTA');
+  v_rech[2] := public.emitir_compra_directa(v_rech[2], v_hidra, 'COT-HA-0425',
+    'Bomba hidráulica de repuesto para el almacén', jsonb_build_array(
+      jsonb_build_object('material_id', pg_temp.demo_mat('BOM-HID'), 'cantidad', 1, 'precio', 2650)),
+    current_date + 5, 'CREDITO', 30, 'PEN', true, 'PLANTA');
   -- Guantes: espera la aprobación de Gerencia.
   v_guan := public.emitir_compra_directa(gen_random_uuid(), v_ferre, 'COT-SJ-140',
     'Guantes de soldador para el cambio de mes del personal', jsonb_build_array(
       jsonb_build_object('material_id', pg_temp.demo_mat('EP-PM-GU-CU-00002'), 'cantidad', 24, 'precio', 18.90)),
-    null, 'CONTADO', 0, 'PEN', true, 'PLANTA');
+    current_date + 5, 'CONTADO', 0, 'PEN', true, 'PLANTA');
 
-  -- Gerencia aprueba todas menos la del pistón y la de los guantes, que quedan
-  -- en su bandeja de Aprobación.
+  -- Gerencia aprueba casi todas, rechaza dos con su motivo y deja en su bandeja
+  -- la del pistón y la de los guantes. Después anula dos que ya había
+  -- aprobado, antes de que el conductor las recoja.
   perform pg_temp.demo_como(v_ger);
-  foreach v_id in array array[v_pint, v_plan, v_disc, v_mig] loop
+  foreach v_id in array array[v_pint, v_desb, v_pl4, v_hard, v_plan, v_ele, v_anu[1], v_disc, v_per,
+                              v_anu[2], v_esm, v_thi, v_mig, v_base] loop
     perform public.aprobar_compra(v_id);
   end loop;
+  perform public.rechazar_compra(v_rech[1],
+    'Todavía hay Hardox del mes: se vuelve a pedir cuando baje del mínimo');
+  perform public.rechazar_compra(v_rech[2],
+    'No se compra una bomba de repuesto: la del volteo se cambia cuando falle');
+  perform public.anular_orden_compra(v_anu[1],
+    'El proveedor no tiene el tubo hasta fin de mes: se compra con el RQ del bastidor');
+  perform public.anular_orden_compra(v_anu[2],
+    'Se duplicó con las mangueras del RQ del volteo, que se compran aparte');
 
   -- Logística anexa la factura de las que llegan, y a cada una le pone su peso
   -- y su lugar en la lista del conductor.
   perform pg_temp.demo_factura(v_pint, v_log, 'F002-004518');
+  perform pg_temp.demo_factura(v_pl4, v_log, 'F001-008842');
+  perform pg_temp.demo_factura(v_ele, v_log, 'F001-011254');
   perform pg_temp.demo_factura(v_disc, v_log, 'F001-011273');
   perform pg_temp.demo_factura(v_mig, v_log, 'F001-011390');
+  perform pg_temp.demo_factura(v_base, v_log, 'F002-004602');
   perform pg_temp.demo_como(v_log);
-  perform public.programar_recojo(v_pint, 62);
-  perform public.programar_recojo(v_disc, 35);
-  perform public.programar_recojo(v_mig, 25);
-  perform public.programar_recojo(v_plan, 180);
+  perform public.programar_recojo(v.id, v.peso)
+     from (values (v_pint, 62), (v_pl4, 450), (v_ele, 20), (v_disc, 35), (v_mig, 25), (v_base, 40),
+                  (v_per, 8), (v_thi, 70), (v_hard, 760), (v_desb, 18), (v_plan, 180), (v_esm, 50))
+          as v(id, peso);
 
-  -- El conductor recoge tres y las deja en almacén.
+  -- El conductor: seis dejadas en almacén, dos recogidas que todavía lleva en
+  -- el camión y dos en camino a recogerlas. La de planchas y la de esmalte
+  -- siguen por recoger.
   perform pg_temp.demo_como(v_cond);
-  foreach v_id in array array[v_pint, v_disc, v_mig] loop
+  foreach v_id in array array[v_pint, v_pl4, v_ele, v_disc, v_mig, v_base, v_per, v_thi, v_hard, v_desb] loop
     perform public.marcar_compra_en_recojo(v_id);
-    perform public.marcar_compra_recogida(v_id);
-    perform public.marcar_compra_dejada_almacen(v_id);
+    if v_id not in (v_hard, v_desb) then
+      perform public.marcar_compra_recogida(v_id);
+    end if;
+    if v_id not in (v_hard, v_desb, v_per, v_thi) then
+      perform public.marcar_compra_dejada_almacen(v_id);
+    end if;
   end loop;
 
-  -- Almacén valida la de pintura entera y la de discos con sesenta de cien.
+  -- Almacén valida enteras la de pintura y la de electrodo, y en parte la de
+  -- discos (sesenta de cien) y la de planchas (ciento cincuenta de doscientas).
+  -- La de alambre MIG y la de base siguen por validar.
   perform pg_temp.demo_como(v_alm);
-  perform public.validar_ingresos_compra(v_pint,
-    (select jsonb_agg(jsonb_build_object('id', i.id, 'movimiento_id', gen_random_uuid(), 'cantidad', i.cantidad))
-       from public.ingresos_pendientes_almacen i where i.orden_compra_id = v_pint and i.estado = 'PENDIENTE'),
-    'GR 0003-001245');
-  perform public.validar_ingresos_compra(v_disc,
-    (select jsonb_agg(jsonb_build_object('id', i.id, 'movimiento_id', gen_random_uuid(), 'cantidad', 60,
-              'observacion', 'Llegaron 60 discos; el proveedor manda los 40 que faltan la próxima semana'))
-       from public.ingresos_pendientes_almacen i where i.orden_compra_id = v_disc and i.estado = 'PENDIENTE'),
-    'GR 0001-000877');
+  perform public.validar_ingresos_compra(v.id,
+    (select jsonb_agg(jsonb_build_object('id', i.id, 'movimiento_id', gen_random_uuid(),
+              'cantidad', coalesce(v.llego, i.cantidad), 'observacion', v.nota))
+       from public.ingresos_pendientes_almacen i where i.orden_compra_id = v.id and i.estado = 'PENDIENTE'),
+    v.guia)
+     from (values (v_pint, null::numeric, null::text, 'GR 0003-001245'),
+                  (v_ele, null, null, 'GR 0001-000869'),
+                  (v_disc, 60, 'Llegaron 60 discos; el proveedor manda los 40 que faltan la próxima semana', 'GR 0001-000877'),
+                  (v_pl4, 150, 'Llegaron 150 planchas; las 50 restantes salen en el próximo despacho', 'GR 0002-003318'))
+          as v(id, llego, nota, guia);
   perform public.rq_marcar_listo_en_almacen(v_rq[1], 'Llegó la base y el thinner');
 
   -- Las entregas, con su salida del kardex: el RQ 1 y el 4 enteros, el 3 con
@@ -1161,48 +1292,98 @@ begin
     'Conteo mensual del estante C: faltan dos discos');
 
   -- ------------------------------------------------ órdenes de servicio
-  -- El arenado de la tolva, que Gerencia ya aprobó, y el doblado del furgón,
-  -- que espera su visto.
+  -- Doce servicios del arenador y del torno para las dos OT, emitidos del más
+  -- antiguo al más nuevo: dos conformes, dos en ejecución, dos aprobados por
+  -- empezar, dos rechazados, dos anulados y dos que esperan a Gerencia.
   perform pg_temp.demo_como(v_log);
-  v_os := public.emitir_orden_servicio(gen_random_uuid(), v_arenado, v_ot1, v_prd, v_cod1,
-    'Arenado comercial y fondeado de la tolva', 'COT-ACH-093', current_date - 2, current_date + 4,
-    'PEN', 3200, 'CONTADO', 0, '025', null);
-  perform public.emitir_orden_servicio(gen_random_uuid(), v_arenado, v_ot3, v_mtz, v_cod3,
-    'Doblado de las planchas del techo del furgón', 'COT-ACH-101', current_date + 1, current_date + 3,
-    'PEN', 950, 'CONTADO', 0, '025', null);
+  perform public.emitir_orden_servicio(v.id, v.prov, v.ot, v.area, v.cod, v.descripcion, v.ref,
+            current_date - v.dias + 2, current_date - v.dias + 6, 'PEN', v.monto,
+            v.condicion, v.plazo, v.detraccion, v.motivo)
+     from (values
+       (v_os[1],  v_torno,   v_ot1, v_prd, v_cod1, 'Corte de las cartelas y planchas de refuerzo de la tolva', 'COT-TSR-311', 13, 1850, 'CREDITO', 15, '025', null::text),
+       (v_os[2],  v_torno,   v_ot1, v_prd, v_cod1, 'Mecanizado de las bocinas y pines de la compuerta de la tolva', 'COT-TSR-318', 11, 1320, 'CREDITO', 15, '025', null),
+       (v_os[3],  v_arenado, v_ot1, v_prd, v_cod1, 'Arenado comercial y fondeado de la tolva', 'COT-ACH-093', 9, 3200, 'CONTADO', 0, '025', null),
+       (v_os[4],  v_arenado, v_ot3, v_mtz, v_cod3, 'Arenado del chasis del furgón antes del montaje', 'COT-ACH-096', 8, 4100, 'CONTADO', 0, '025', null),
+       (v_os[5],  v_arenado, v_ot3, v_mtz, v_cod3, 'Pintado al horno de los guardafangos del furgón', 'COT-ACH-098', 7, 2600, 'CONTADO', 0, '025', null),
+       (v_os[6],  v_torno,   v_ot1, v_prd, v_cod1, 'Doblado de los perfiles laterales de la tolva', 'COT-TSR-322', 7, 780, 'CREDITO', 15, '025', null),
+       (v_os[7],  v_torno,   v_ot1, v_prd, v_cod1, 'Rolado de los tubos del parachoques de la tolva', 'COT-TSR-327', 5, 1150, 'CREDITO', 15, '025', null),
+       (v_os[8],  v_torno,   v_ot3, v_mtz, v_cod3, 'Torneado de los bujes de las bisagras del furgón', 'COT-TSR-330', 4, 640, 'CREDITO', 15, 'NO_SUJETA', 'El servicio no llega a S/ 700, el mínimo de la detracción'),
+       (v_os[9],  v_arenado, v_ot3, v_mtz, v_cod3, 'Arenado de las puertas traseras del furgón', 'COT-ACH-099', 4, 900, 'CONTADO', 0, '025', null),
+       (v_os[10], v_torno,   v_ot1, v_prd, v_cod1, 'Fresado de las placas de apoyo de la tolva', 'COT-TSR-334', 3, 2950, 'CREDITO', 15, '025', null),
+       (v_os[11], v_arenado, v_ot3, v_mtz, v_cod3, 'Doblado de las planchas del techo del furgón', 'COT-ACH-101', 2, 950, 'CONTADO', 0, '025', null),
+       (v_os[12], v_torno,   v_ot3, v_mtz, v_cod3, 'Corte de las planchas del piso del furgón', 'COT-TSR-339', 1, 1480, 'CREDITO', 15, '025', null))
+       as v(id, prov, ot, area, cod, descripcion, ref, dias, monto, condicion, plazo, detraccion, motivo);
   perform pg_temp.demo_como(v_ger);
-  perform public.aprobar_orden_servicio(v_os);
+  foreach v_id in array v_os[1:9] loop
+    if v_id <> v_os[4] then
+      perform public.aprobar_orden_servicio(v_id);
+    end if;
+  end loop;
+  perform public.rechazar_orden_servicio(v_os[4],
+    'El chasis se arena en el taller, con el equipo propio');
+  perform public.rechazar_orden_servicio(v_os[10],
+    'Cotiza con otro proveedor: el precio dobla el de la última placa');
+  -- Logística los inicia, da la conformidad de los terminados y anula los que
+  -- ya no van.
+  perform pg_temp.demo_como(v_log);
+  foreach v_id in array array[v_os[1], v_os[2], v_os[3], v_os[5]] loop
+    perform public.avanzar_orden_servicio(v_id, 'EN_EJECUCION', null);
+  end loop;
+  perform public.avanzar_orden_servicio(v_os[1], 'CONFORME', 'Cartelas recibidas completas y a medida');
+  perform public.avanzar_orden_servicio(v_os[2], 'CONFORME', null);
+  perform public.avanzar_orden_servicio(v_os[6], 'ANULADA',
+    'El taller dobló los perfiles con la plegadora nueva: ya no hace falta el servicio');
+  perform public.avanzar_orden_servicio(v_os[9], 'ANULADA',
+    'Las puertas se arenan con el chasis, en el taller');
 
   -- ------------------------------------------------------ subcontratos
-  -- Una persona natural con recibo por honorarios, con dos encargos.
+  -- Dos personas naturales con recibo por honorarios: dos encargos vigentes,
+  -- dos terminados y dos anulados, del más antiguo al más nuevo. Los de la tolva
+  -- son de Producción y los del furgón de Maestranza, como sus RQ: cada
+  -- supervisión ve los suyos.
   perform pg_temp.demo_como(v_adm);
   v_sub := gen_random_uuid();
+  v_sub2 := gen_random_uuid();
   perform public.guardar_subcontratista(v_sub, pg_temp.demo_ruc('1099999990'), 'RICARDO HUAMÁN QUISPE',
     '(01) 000-0106', 'BCP', '0000000000000', '00000000000000000000', true);
-  perform public.registrar_subcontrato(gen_random_uuid(), v_sub, v_cod3,
-    'Instalación del sistema eléctrico y luces del furgón', 'PEN', 2400, current_date, current_date + 10, 'PRD');
-  perform public.registrar_subcontrato(gen_random_uuid(), v_sub, v_cod1,
-    'Cableado de las luces de la tolva', 'PEN', 1100, current_date + 3, current_date + 6, 'PRD');
+  perform public.guardar_subcontratista(v_sub2, pg_temp.demo_ruc('1099999989'), 'JULIO MAMANI TICONA',
+    '(01) 000-0108', 'BBVA', '0000000000000000', '00000000000000000000', true);
+  perform public.registrar_subcontrato(v.id, v.persona, v.cod, v.descripcion, 'PEN', v.monto,
+            current_date - v.dias, current_date - v.dias + v.plazo, v.area)
+     from (values
+       (v_sc[1], v_sub2, v_cod1, 'Soldadura de las cartelas de refuerzo de la tolva', 1800, 12, 5, 'PRD'),
+       (v_sc[2], v_sub,  v_cod3, 'Instalación de la alarma de retroceso del furgón', 450, 10, 3, 'MTZ'),
+       (v_sc[3], v_sub2, v_cod3, 'Pintado de los logos del cliente en el furgón', 600, 8, 4, 'MTZ'),
+       (v_sc[4], v_sub2, v_cod1, 'Armado del tolvín de la tolva', 950, 6, 4, 'PRD'),
+       (v_sc[5], v_sub,  v_cod3, 'Instalación del sistema eléctrico y luces del furgón', 2400, 2, 10, 'MTZ'),
+       (v_sc[6], v_sub,  v_cod1, 'Cableado de las luces de la tolva', 1100, 1, 6, 'PRD'))
+       as v(id, persona, cod, descripcion, monto, dias, plazo, area);
+  perform public.cambiar_estado_subcontrato(v_sc[1], 'TERMINADO');
+  perform public.cambiar_estado_subcontrato(v_sc[2], 'TERMINADO');
+  perform public.anular_subcontrato(v_sc[3], 'El cliente pidió los logos en vinil: ya no se pintan');
+  perform public.anular_subcontrato(v_sc[4], 'El tolvín lo armó el personal del área de producción');
 
   -- Solo en la demostración: los documentos no nacieron todos hoy. Se corre
   -- hacia atrás cuándo se emitió cada RQ, cuándo lo revisó Almacén (un día
   -- después) y cuándo lo tomó Logística (dos días después, el día de su OC),
   -- para que Atención y Control de compras muestren días de espera; la fecha de
-  -- la OC sigue a la de su RQ, y las directas van por la suya. Con
-  -- `session_replication_role = replica` no corren los disparadores, ni el que
-  -- congela un RQ entregado (`fn_rq_guardia`): por eso va al final y solo toca
-  -- fechas. Lo de hoy (la entrega, el recojo) queda como está.
+  -- la OC sigue a la de su RQ, y las directas van por la suya; las OS y los
+  -- subcontratos, por la suya. Con `session_replication_role = replica` no
+  -- corren los disparadores, ni el que congela un RQ entregado
+  -- (`fn_rq_guardia`): por eso va al final y solo toca fechas.
   perform set_config('session_replication_role', 'replica', true);
   with d(id, dias) as (
     select v_rq[i], (array[14, 11, 10, 9, 8, 6, 5, 4, 3, 1, 0])[i] from generate_subscripts(v_rq, 1) i
-    union all values (v_rqa[1], 6), (v_rqa[2], 2)
+    union all values (v_rqa[1], 6), (v_rqa[2], 2), (v_rqn[1], 9), (v_rqn[2], 3)
   )
   update public.requerimientos q
      set creado_en           = now() - make_interval(days => d.dias),
          revision_stock_en   = case when q.revision_stock_en is not null then now() - make_interval(days => d.dias - 1) end,
          en_atencion_en      = case when q.en_atencion_en is not null then now() - make_interval(days => d.dias - 2) end,
          listo_en_almacen_en = case when q.listo_en_almacen_en is not null and q.en_atencion_en is null
-                                    then now() - make_interval(days => d.dias - 1) else q.listo_en_almacen_en end
+                                    then now() - make_interval(days => d.dias - 1) else q.listo_en_almacen_en end,
+         anulado_en          = case when q.anulado_en is not null
+                                    then now() - make_interval(days => d.dias - 1) end
     from d
    where q.id = d.id;
   update public.requerimiento_lineas l
@@ -1214,25 +1395,72 @@ begin
     select l.orden_compra_id, min(q.en_atencion_en)
       from public.requerimiento_lineas l join public.requerimientos q on q.id = l.requerimiento_id
      where l.orden_compra_id is not null group by 1
-    union all values (v_disc, now() - interval '5 days'), (v_mig, now() - interval '3 days'),
-                     (v_guan, now() - interval '1 day')
+    union all
+    select v.id, now() - make_interval(days => v.dias)
+      from (values (v_desb, 7), (v_pl4, 7), (v_hard, 6), (v_ele, 6), (v_anu[1], 6), (v_disc, 5), (v_per, 5),
+                   (v_anu[2], 5), (v_esm, 4), (v_thi, 4), (v_rech[1], 4), (v_mig, 3), (v_base, 3),
+                   (v_rech[2], 2), (v_guan, 1)) as v(id, dias)
   )
   update public.ordenes_compra_materiales c
      set creado_en = f.creado,
          aprobacion_pedida_en = case when c.aprobacion_pedida_en is not null then f.creado end,
-         aprobado_en = case when c.aprobado_en is not null then least(now(), f.creado + interval '1 day') end
+         aprobado_en  = case when c.aprobado_en is not null then f.creado + interval '1 day' end,
+         rechazado_en = case when c.rechazado_en is not null then f.creado + interval '1 day' end,
+         anulada_en   = case when c.anulada_en is not null then f.creado + interval '2 days' end
     from f
    where c.id = f.id;
-  -- El kardex ordena por la hora del movimiento, y en una sola carga todos
-  -- tendrían la misma: la salida podía salir antes que su ingreso y dejar el
-  -- saldo en negativo. Se ponen en el orden en que pasaron: el inventario
-  -- inicial hace dos semanas, y hoy lo que llegó, lo que salió y el conteo.
+  update public.ordenes_servicio s
+     set creado_en       = now() - make_interval(days => v.dias),
+         aprobado_en     = case when s.aprobado_en is not null then now() - make_interval(days => v.dias - 1) end,
+         rechazado_en    = case when s.rechazado_en is not null then now() - make_interval(days => v.dias - 1) end,
+         iniciado_en     = case when s.iniciado_en is not null then now() - make_interval(days => v.dias - 2) end,
+         conformidad_en  = case when s.conformidad_en is not null then now() - make_interval(days => v.dias - 6) end,
+         anulado_en      = case when s.anulado_en is not null then now() - make_interval(days => v.dias - 2) end
+    from (select v_os[i] as id, (array[13, 11, 9, 8, 7, 7, 5, 4, 4, 3, 2, 1])[i] as dias
+            from generate_subscripts(v_os, 1) i) v
+   where s.id = v.id;
+  update public.subcontratos s
+     set creado_en   = now() - make_interval(days => v.dias),
+         terminado_en = case when s.terminado_en is not null then now() - make_interval(days => v.dias - v.plazo) end,
+         anulado_en   = case when s.anulado_en is not null then now() - make_interval(days => v.dias - 2) end
+    from (values (v_sc[1], 12, 5), (v_sc[2], 10, 3), (v_sc[3], 8, 4), (v_sc[4], 6, 4), (v_sc[5], 2, 10),
+                 (v_sc[6], 1, 6)) as v(id, dias, plazo)
+   where s.id = v.id;
+  -- La compra sale a la lista del conductor cuando Gerencia la aprueba
+  -- (`fn_compra_recojo`), así que su pedido de recojo lleva esa fecha. Lo de
+  -- hoy va en el orden en que pasó, en horas: Logística programa los recojos y
+  -- anexa las facturas, el conductor sale, recoge y deja en almacén,
+  -- Almacén valida lo que llegó (el ingreso al kardex), deja listo el RQ 1 y
+  -- entrega, y al final cuenta. En una sola carga todo tendría la misma hora: el
+  -- kardex ordena por ella, y la salida podía salir antes que su ingreso y
+  -- dejar el saldo en negativo. El inventario inicial va dos semanas atrás.
+  update public.programacion_recojo set programado_en = now() - interval '9 hours' where programado_en = now();
+  update public.documentos_compra_material set creado_en = now() - interval '9 hours' where creado_en = now();
+  update public.ordenes_compra_materiales
+     set recojo_pedido_en = case when recojo_pedido_en = now() then coalesce(aprobado_en, now() - interval '9 hours')
+                                 else recojo_pedido_en end,
+         en_recojo_en     = case when en_recojo_en = now() then now() - interval '8 hours' else en_recojo_en end,
+         recogido_en      = case when recogido_en = now() then now() - interval '6 hours' else recogido_en end,
+         dejado_en        = case when dejado_en = now() then now() - interval '5 hours' else dejado_en end,
+         entregado_almacen_en = case when entregado_almacen_en = now() then now() - interval '3 hours'
+                                     else entregado_almacen_en end
+   where now() in (recojo_pedido_en, en_recojo_en, recogido_en, dejado_en, entregado_almacen_en);
+  update public.ingresos_pendientes_almacen
+     set creado_en   = case when creado_en = now() then now() - interval '5 hours' else creado_en end,
+         dejado_en   = case when dejado_en = now() then now() - interval '5 hours' else dejado_en end,
+         validado_en = case when validado_en = now() then now() - interval '3 hours' else validado_en end
+   where now() in (creado_en, dejado_en, validado_en);
   update public.movimientos_materiales m
      set registrado_en = case
            when m.origen = 'INGRESO_GENERAL' then now() - interval '15 days'
            when m.tipo = 'INGRESO' then now() - interval '3 hours'
            else now() - interval '2 hours' end
    where m.registrado_en = now();
+  update public.requerimientos
+     set listo_en_almacen_en = case when listo_en_almacen_en = now() then now() - interval '2 hours 30 minutes'
+                                    else listo_en_almacen_en end,
+         entregado_en        = case when entregado_en = now() then now() - interval '2 hours' else entregado_en end
+   where now() in (listo_en_almacen_en, entregado_en);
   update public.conteos_inventario c set registrado_en = now() - interval '1 hour'
    where c.registrado_en = now();
   perform set_config('session_replication_role', 'origin', true);
