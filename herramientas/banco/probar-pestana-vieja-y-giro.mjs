@@ -2841,7 +2841,8 @@ if (corre('1t-correccion')) {
 let sembradas = 0
 async function aprobadasSinOt(n) {
   const hay = () =>
-    consulta(`select c.id, c.numero from cotizaciones_pdf c where c.estado = 'APROBADA'
+    consulta(`select c.id, c.numero from cotizaciones_pdf c where c.estado = 'APROBADA' and coalesce(c.cantidad_unidades, 1) = 1
+                and not exists (select 1 from ot_ventas_anteriores v where v.cotizacion_pdf_id = c.id)
                 and not exists (select 1 from ordenes_trabajo o where o.cotizacion_pdf_id = c.id) order by c.creado_en desc limit $1`, [n])
   const ya = await hay()
   const [modelo] = await consulta(`select id from cotizaciones_pdf where estado = 'APROBADA' order by creado_en limit 1`)
