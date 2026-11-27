@@ -147,7 +147,9 @@ propiedades que usa `hacer.mjs` (guion, `linea.json` y `capturas.json`).
   oída se tolera y se anota).
 - **Datos reales**: compara todos los cuadros y lee con OCR cada uno en que la
   imagen cambia (y por lo menos uno por segundo), y cada captura a su tamaño
-  completo. Ante la duda, marca: toda serie de 8 u 11 cifras es un DNI o un
+  completo. Cada pantalla se lee de dos maneras, como texto suelto y como un
+  solo bloque: de la primera, tesseract se salta renglones que son solo
+  cifras. Ante la duda, marca: toda serie de 8 u 11 cifras es un DNI o un
   RUC, y toda cifra con dos decimales es un monto. No puede aparecer un RUC,
   un DNI, un teléfono, un correo que no sea de prueba ni una clave, ni más
   montos que los inventados que declaró la captura. Y las capturas tienen que

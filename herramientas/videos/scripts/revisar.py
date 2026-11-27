@@ -85,6 +85,18 @@ def leer_texto(imagen: Path | Image.Image, modo: str = '11') -> str:
     return r.stdout.decode(errors='replace')
 
 
+def leer_pantalla(imagen: Path | Image.Image) -> str:
+    """Una pantalla leída de las dos maneras, una tras otra.
+
+    Como texto suelto (`11`) tesseract entiende mejor una pantalla con
+    columnas, pero se salta renglones que son solo cifras; como un solo bloque
+    (`6`) mezcla las columnas y no se salta ninguno. Para buscar datos se
+    quieren los dos: lo probó un DNI pintado en la cabecera, que como texto
+    suelto no se leía a ningún tamaño.
+    """
+    return leer_texto(imagen, '11') + '\n' + leer_texto(imagen, '6')
+
+
 def _png(imagen: Image.Image) -> bytes:
     import io
 
@@ -316,7 +328,7 @@ def revisar(carpeta: Path, formato: str) -> bool:
 
     capturas = sorted((carpeta / 'capturas' / formato).glob('*.png'))
     with ThreadPoolExecutor(4) as grupo:
-        textos = list(grupo.map(leer_texto, capturas))
+        textos = list(grupo.map(leer_pantalla, capturas))
     en_capturas = [(c.name, h) for c, t in zip(capturas, textos) for h in datos_en(t, inventados)]
     # Lo que las capturas dicen, pegado. En un cuadro chico el OCR se come el guion de «9001-2026»
     # o el espacio de «1. 10 KG» y quedan ocho cifras seguidas o un «1.10», que parecen un DNI o un
@@ -356,7 +368,7 @@ def revisar(carpeta: Path, formato: str) -> bool:
     correr('ffmpeg', '-y', '-v', 'error', '-i', str(video), '-filter_script:v', str(filtro), '-vsync', '0', str(trabajo / 'c-%05d.png'))
     cuadros = sorted(trabajo.glob('c-*.png'))
     with ThreadPoolExecutor(4) as grupo:
-        textos = list(grupo.map(leer_texto, cuadros))
+        textos = list(grupo.map(leer_pantalla, cuadros))
     en_cuadros = []
     dudosos = []
 
@@ -376,7 +388,7 @@ def revisar(carpeta: Path, formato: str) -> bool:
         otras = []
         for veces in (2, 3):
             grande = gris.resize((gris.width * veces, gris.height * veces), Image.LANCZOS)
-            otras.append({mismo_dato(h) for h in datos_en(leer_texto(grande), inventados)})
+            otras.append({mismo_dato(h) for h in datos_en(leer_pantalla(grande), inventados)})
         confirmados = [
             h
             for h in hallados
