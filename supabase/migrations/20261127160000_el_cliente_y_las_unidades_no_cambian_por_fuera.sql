@@ -55,7 +55,7 @@ begin
   for f in
     select * from (values
       ('public.poner_cliente_a_orden(uuid,uuid)',
-       array['c68837ab86745b134b1ff6bd0e690e9e', '1b356406a1b688cb1be5e2fd1cbdcad0']),
+       array['c68837ab86745b134b1ff6bd0e690e9e', '5f6c77aef7d0bb85bfa0c0b0d07c5f0b']),
       ('public.fn_cotizacion_pdf_unidades_alcanzan()',
        array['5af5470104d409b4b5998d6e2a88060f', 'b25b67edc8510a6236f53a28d7b3bad7'])
     ) as t(firma, conocidas)
@@ -154,7 +154,7 @@ begin
        for update;
 
     if v_unidad.cliente_id is not null and v_unidad.cliente_id <> p_cliente then
-      raise exception 'La unidad % es de otro cliente: la orden no puede ser de %.', v_unidad.placa, v_nombre
+      raise exception 'La unidad % es de otro cliente: la orden no puede ser de %.', v_unidad.placa, rtrim(v_nombre, '.')
         using errcode = 'check_violation';
     end if;
 
@@ -182,7 +182,7 @@ begin
   perform set_config('metalwork.cliente_de_ot', '', true);
 
   perform public.ot_registrar_evento(
-    p_orden, 'COMENTARIO', format('Se le puso el cliente: %s.', v_nombre),
+    p_orden, 'COMENTARIO', format('Se le puso el cliente: %s.', rtrim(v_nombre, '.')),
     jsonb_build_object('cliente_id', p_cliente));
 end;
 $$;
