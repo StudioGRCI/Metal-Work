@@ -69,7 +69,7 @@ async function comoCuenta(correo, sql, valores = [], guardar = false) {
 const PLANTA = `select ultimo_accidente::text as ultimo, area_del_ultimo as area, registro_desde::text as desde, dias_sin_accidentes as dias,
                        reportes_abiertos as abiertos, por_clasificar, acciones_abiertas as abiertas, acciones_vencidas as vencidas
                   from public.ssoma_seguridad_de_la_planta()`
-const POR_AREA = `select area, activa, ultimo_accidente::text as ultimo, dias_sin_accidentes as dias, reportes_abiertos as abiertos,
+const POR_AREA = `select area, activa, ultimo_accidente::text as ultimo, dias_sin_accidentes as dias, contado_desde::text as desde, reportes_abiertos as abiertos,
                          por_clasificar, acciones_abiertas as abiertas, acciones_vencidas as vencidas
                     from public.ssoma_seguridad_por_area()`
 
@@ -204,9 +204,9 @@ async function areasComoLaBase(pagina, correo, puesto, celular = false) {
       ? f.visible.includes(a.dias === null ? 'Sin registro de accidentes todavía' : `${a.dias} ${a.dias === 1 ? 'día' : 'días'} sin accidentes`) &&
         f.visible.includes(`${a.abiertos} ${a.abiertos === 1 ? 'reporte abierto' : 'reportes abiertos'}`) &&
         f.visible.includes(`${a.vencidas} ${a.vencidas === 1 ? 'acción vencida' : 'acciones vencidas'}`) &&
-        (a.ultimo ? f.visible.includes(`último el ${dia(a.ultimo)}`) : a.dias === null || f.visible.includes('desde el primer registro'))
+        (a.ultimo ? f.visible.includes(`último el ${dia(a.ultimo)}`) : a.dias === null || f.visible.includes(`ninguno desde el ${dia(a.desde)}`))
       : f.celdas[1]?.startsWith(String(a.dias ?? '—')) &&
-        (a.ultimo ? f.celdas[1].includes(`último el ${dia(a.ultimo)}`) : f.celdas[1].includes(a.dias === null ? 'sin registro todavía' : 'desde el primer registro')) &&
+        (a.ultimo ? f.celdas[1].includes(`último el ${dia(a.ultimo)}`) : f.celdas[1].includes(a.dias === null ? 'sin registro todavía' : `ninguno desde el ${dia(a.desde)}`)) &&
         f.celdas[2]?.startsWith(String(a.abiertos)) &&
         (a.por_clasificar > 0 ? f.celdas[2].includes(`${a.por_clasificar} por clasificar`) : true) &&
         f.celdas[3]?.startsWith(String(a.vencidas)) &&
@@ -306,10 +306,17 @@ let antes
   // Le queda el reporte abierto: sigue a la vista, con lo que diga su último accidente, si tuvo.
   const fila = limpio(await pagina.locator(`[data-seguridad-por-area] [data-area-ssoma="Acabados"]`).innerText().catch(() => ''))
   comprobar(
-    !!suya && suya.abiertos > 0 && fila.includes(suya.ultimo ? `último el ${dia(suya.ultimo)}` : 'desde el primer registro'),
-    `[Gerencia] Acabados sigue a la vista con su reporte abierto y dice «${suya?.ultimo ? `último el ${dia(suya.ultimo)}` : 'desde el primer registro'}»`,
+    !!suya && suya.abiertos > 0 && fila.includes(suya.ultimo ? `último el ${dia(suya.ultimo)}` : `ninguno desde el ${dia(suya.desde)}`),
+    `[Gerencia] Acabados sigue a la vista con su reporte abierto y dice «${suya?.ultimo ? `último el ${dia(suya.ultimo)}` : `ninguno desde el ${dia(suya?.desde)}`}»`,
   )
   await contexto.close()
+  // Lo creado para la prueba se anula con su motivo (un reporte numerado no se borra): las cifras del banco no se corren con cada pasada.
+  await comoCuenta(CUENTAS.ssoma, `select public.ssoma_anular_reporte($1, 'Reporte del recorrido de prueba de la lectura de Gerencia.')`, [acc.id], true)
+  const alFinal = await comoCuenta(CUENTAS.gerencia, PLANTA)
+  comprobar(
+    alFinal[0]?.abiertos === antes.abiertos && alFinal[0]?.dias === antes.dias,
+    `[SSOMA] anulado el reporte de la prueba, las cifras vuelven a las de antes (${alFinal[0]?.abiertos} abiertos)`,
+  )
 }
 
 // ------------------------------------------------------------ 3. Gerencia y SSOMA, en el celular

@@ -25,9 +25,9 @@
 --     de un reporte o del hallazgo de una inspección, en el área de la acción
 --     (`ssoma_acciones.area_id`, que se guardó para esto en la 15.2).
 --   * POR ÁREA. Cada área activa, y la que se dio de baja mientras le quede un
---     reporte o una acción abierta, o si tuvo un accidente: si no, lo pendiente
---     se perdería de vista, y el último accidente de la planta podría ser de un
---     área que la lista no muestra.
+--     reporte o una acción abierta, o si es la del último accidente de la planta:
+--     si no, lo pendiente se perdería de vista, y el pie de la planta nombraría un
+--     área que la lista no muestra. Cada área dice desde qué día cuenta.
 --
 -- Lo leen SSOMA y Gerencia (`puede_ver_reportes_ssoma()`); a los demás, nada.
 -- No devuelve quién reportó ni la causa: solo fechas y cuentas.
@@ -102,12 +102,13 @@ grant execute on function public.ssoma_seguridad_de_la_planta() to authenticated
 -- 3. Por área ---------------------------------------------------------------------------------
 create or replace function public.ssoma_seguridad_por_area()
 returns table (
-  area_id uuid, area text, activa boolean, ultimo_accidente date, dias_sin_accidentes integer,
+  area_id uuid, area text, activa boolean, ultimo_accidente date, dias_sin_accidentes integer, contado_desde date,
   reportes_abiertos integer, por_clasificar integer, acciones_abiertas integer, acciones_vencidas integer,
   vencida_mas_antigua date)
 language sql stable security definer set search_path to 'public' rows 30 as $$
   with hoy as (
-    select public.ssoma_hoy() as d, public.ssoma_registro_desde() as desde
+    select public.ssoma_hoy() as d, public.ssoma_registro_desde() as desde,
+           (select u.area_id from public.ssoma_accidentes() u order by u.ocurrido_en desc, u.reporte_id desc limit 1) as area_del_ultimo
   ), acc as (
     select a.area_id, max(a.fecha) as fecha from public.ssoma_accidentes() a group by a.area_id
   ), rep as (
@@ -127,23 +128,27 @@ language sql stable security definer set search_path to 'public' rows 30 as $$
      group by x.area_id
   )
   select a.id, a.nombre, a.activo, acc.fecha,
-         -- Sin accidentes, desde el primer registro o desde que el área existe, lo que sea después.
-         case when coalesce(acc.fecha, hoy.desde) is not null
-              then greatest(hoy.d - coalesce(acc.fecha, greatest(hoy.desde, (a.creado_en at time zone 'America/Lima')::date)), 0) end,
+         -- `greatest` pasa por alto el vacío: sin registro, sin días.
+         case when x.desde is not null then greatest(hoy.d - x.desde, 0) end, x.desde,
          coalesce(rep.abiertos, 0), coalesce(rep.por_clasificar, 0),
          coalesce(act.abiertas, 0), coalesce(act.vencidas, 0), act.mas_antigua
     from public.areas a
     cross join hoy
     left join acc on acc.area_id = a.id
+    -- Sin accidentes, desde el primer registro o desde que el área existe, lo que sea después.
+    -- Sin ningún reporte no hay registro: ni día ni cuenta.
+    cross join lateral (
+      select case when hoy.desde is not null
+                  then coalesce(acc.fecha, greatest(hoy.desde, (a.creado_en at time zone 'America/Lima')::date)) end as desde) x
     left join rep on rep.area_id = a.id
     left join act on act.area_id = a.id
    where public.puede_ver_reportes_ssoma()
-     -- La dada de baja sigue mientras le quede algo abierto o si tuvo un accidente: si no, el pie de la
-     -- planta podría nombrar un área que esta lista no muestra.
-     and (a.activo or rep.area_id is not null or act.area_id is not null or acc.area_id is not null)
+     -- La dada de baja sigue mientras le quede algo abierto, o si es la del último accidente de la planta:
+     -- si no, el pie de la planta nombraría un área que esta lista no muestra.
+     and (a.activo or rep.area_id is not null or act.area_id is not null or a.id = hoy.area_del_ultimo)
    order by a.orden_secuencia, a.nombre;
 $$;
 comment on function public.ssoma_seguridad_por_area() is
-  'La lectura de Gerencia por área: el último accidente y los días sin accidentes (sin ninguno, desde el primer registro o desde que el área existe), los reportes abiertos y por clasificar, y las acciones correctivas abiertas y vencidas (con la fecha límite más vieja que pasó). Cada área activa, y la dada de baja mientras le quede algo abierto o si tuvo un accidente. Solo para SSOMA y Gerencia; a los demás, nada.';
+  'La lectura de Gerencia por área: el último accidente y los días sin accidentes con el día desde el que se cuentan (sin ninguno, desde el primer registro o desde que el área existe), los reportes abiertos y por clasificar, y las acciones correctivas abiertas y vencidas (con la fecha límite más vieja que pasó). Cada área activa, y la dada de baja mientras le quede algo abierto o si es la del último accidente de la planta. Solo para SSOMA y Gerencia; a los demás, nada.';
 revoke all on function public.ssoma_seguridad_por_area() from public, anon;
 grant execute on function public.ssoma_seguridad_por_area() to authenticated;

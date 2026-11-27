@@ -729,10 +729,12 @@ export async function seguridadDeLaPlanta(): Promise<SeguridadDeLaPlanta | null>
 export type SeguridadDelArea = {
   area_id: string
   area: string
-  /** Un área dada de baja sale solo mientras le quede un reporte o una acción abierta. */
+  /** Un área dada de baja sale solo mientras le quede un reporte o una acción abierta, o si es la del último accidente de la planta. */
   activa: boolean
   ultimoAccidente: string | null
   diasSinAccidentes: number | null
+  /** Desde qué día se cuentan: su último accidente o, sin ninguno, el primer registro o el día en que se creó el área. */
+  contadoDesde: string | null
   reportesAbiertos: number
   porClasificar: number
   accionesAbiertas: number
@@ -755,6 +757,7 @@ export async function seguridadPorArea(): Promise<SeguridadDelArea[]> {
             activa: a.activa !== false,
             ultimoAccidente: a.ultimo_accidente,
             diasSinAccidentes: a.dias_sin_accidentes,
+            contadoDesde: a.contado_desde,
             reportesAbiertos: a.reportes_abiertos ?? 0,
             porClasificar: a.por_clasificar ?? 0,
             accionesAbiertas: a.acciones_abiertas ?? 0,

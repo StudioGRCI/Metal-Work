@@ -145,10 +145,10 @@ begin
     'Una plancha suelta en el techo que se mueve con el viento.', pg_temp.en_lima(3000), null, null, '[]'::jsonb);
   perform public.ssoma_anular_reporte(v, 'El año se escribió mal: se vuelve a reportar');
 
-  -- G: un accidente de hace 60 días, ya corregido; después el área se da de baja.
+  -- G: un accidente de hace 35 días, ya corregido; después el área se da de baja.
   v := gen_random_uuid(); perform set_config('prueba.r8', v::text, true);
   perform public.ssoma_reportar(v, 'ACCIDENTE', (select id from public.areas where codigo = 'TQG'), 'Horno viejo',
-    'Quemadura leve en la mano al abrir la puerta del horno.', pg_temp.en_lima(60), true, null, '[]'::jsonb);
+    'Quemadura leve en la mano al abrir la puerta del horno.', pg_temp.en_lima(35), true, null, '[]'::jsonb);
   perform public.ssoma_clasificar(v, 'ACCIDENTE_LEVE', true, null, 'La manija del horno no tenía protección.');
 end $$;
 reset role;
@@ -185,10 +185,16 @@ begin
   perform test.afirmar(pg_temp.area('TQC') = format('f||30|1|0|1|1|%s', v_hoy - 9),
     'C: dada de baja, sale porque le queda algo abierto, y sin accidentes cuenta desde el primer registro: ' || coalesce(pg_temp.area('TQC'), '(sin fila)'));
   perform test.afirmar(pg_temp.area('TQD') is null, 'D: dada de baja sin nada abierto ni accidentes, no sale');
-  perform test.afirmar(pg_temp.area('TQG') = format('f|%s|60|0|0|0|0|', v_hoy - 60),
-    'G: dada de baja sin nada abierto, sigue a la vista porque tuvo un accidente: ' || coalesce(pg_temp.area('TQG'), '(sin fila)'));
+  perform test.afirmar(pg_temp.area('TQG') is null,
+    'G: dada de baja sin nada abierto, con un accidente que no es el último de la planta, no sale: ' || coalesce(pg_temp.area('TQG'), '(sin fila)'));
   perform test.afirmar(pg_temp.area('TQE') = 't||30|0|0|0|0|', 'E: activa, su único reporte anulado; 30 días desde el primer registro: ' || coalesce(pg_temp.area('TQE'), '(sin fila)'));
   perform test.afirmar(pg_temp.area('TQF') = 't||0|0|0|0|0|', 'F: creada hoy, cuenta desde hoy y no hereda los días de la planta: ' || coalesce(pg_temp.area('TQF'), '(sin fila)'));
+  -- Cada área dice desde qué día cuenta: su último accidente, el primer registro o el día en que se creó.
+  perform test.afirmar(
+    (select string_agg(format('%s=%s', right(a.area, 15), a.contado_desde - v_hoy), ',' order by a.area)
+       from public.ssoma_seguridad_por_area() a where a.area like '%check 494') =
+    'A del check 494=-40,B del check 494=-7,C del check 494=-30,E del check 494=-30,F del check 494=0',
+    'cada área cuenta desde su último accidente, el primer registro o el día en que se creó: ' || coalesce((select string_agg(format('%s=%s', right(a.area, 15), a.contado_desde - v_hoy), ',' order by a.area) from public.ssoma_seguridad_por_area() a where a.area like '%check 494'), '(nada)'));
   -- Las cuentas por área suman la planta.
   perform test.afirmar(
     (select format('%s|%s|%s|%s', sum(reportes_abiertos), sum(por_clasificar), sum(acciones_abiertas), sum(acciones_vencidas))
@@ -196,8 +202,8 @@ begin
     'lo de cada área suma lo de la planta');
   -- Las áreas salen en el orden de la empresa.
   perform test.afirmar(
-    (select string_agg(a.area, ',' order by o) from public.ssoma_seguridad_por_area() with ordinality as a(area_id, area, activa, ua, d, ra, pc, aa, av, vm, o)
-      where a.area like '%check 494') = 'Área A del check 494,Área B del check 494,Área C del check 494,Área E del check 494,Área F del check 494,Área G del check 494',
+    (select string_agg(a.area, ',' order by o) from public.ssoma_seguridad_por_area() with ordinality as a(area_id, area, activa, ua, d, cd, ra, pc, aa, av, vm, o)
+      where a.area like '%check 494') = 'Área A del check 494,Área B del check 494,Área C del check 494,Área E del check 494,Área F del check 494',
     'las áreas, en el orden de la empresa');
 end $$;
 reset role;
@@ -220,8 +226,10 @@ begin
   perform test.afirmar(pg_temp.area('TQA') like format('t|%s|40|%%', v_hoy - 40), 'vuelto a incidente, A vuelve a 40 días');
   -- El de B, clasificado como incidente, deja de ser el último accidente: queda el de A.
   perform public.ssoma_clasificar(current_setting('prueba.r4')::uuid, 'INCIDENTE', null, null, 'El solvente no llegó a la piel.');
-  perform test.afirmar(pg_temp.planta() = format('%s|Área A del check 494|%s|40|5|0|5|3', v_hoy - 40, v_hoy - 30),
-    'sin el de B, el último accidente de la planta es el de A y B deja de tener por clasificar: ' || pg_temp.planta());
+  perform test.afirmar(pg_temp.planta() = format('%s|Área G del check 494|%s|35|5|0|5|3', v_hoy - 35, v_hoy - 30),
+    'sin el de B, el último accidente de la planta es el de G, dada de baja, y B deja de tener por clasificar: ' || pg_temp.planta());
+  perform test.afirmar(pg_temp.area('TQG') = format('f|%s|35|0|0|0|0|', v_hoy - 35),
+    'G, dada de baja, vuelve a la lista porque el pie de la planta la nombra: ' || coalesce(pg_temp.area('TQG'), '(sin fila)'));
   perform test.afirmar(pg_temp.area('TQB') = format('t||30|2|0|3|1|%s', v_hoy - 1), 'B sin accidentes cuenta desde el primer registro: ' || pg_temp.area('TQB'));
 end $$;
 reset role;

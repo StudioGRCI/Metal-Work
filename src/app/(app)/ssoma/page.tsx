@@ -119,7 +119,7 @@ export default async function PaginaSsoma({ searchParams }: PageProps<'/ssoma'>)
         {/* Gerencia o SSOMA también pueden tener una acción a su cargo: no se pierde entre las demás. */}
         {mias.some((a) => a.estado === 'ABIERTA') && (
           <div className="mb-5">
-            <TusAcciones mias={mias} cuentaId={perfil.id} />
+            <TusAcciones mias={mias} cuentaId={perfil.id} porReporte={porReporte} />
           </div>
         )}
         {planta && <CifrasDeSeguridad planta={planta} />}
@@ -177,7 +177,10 @@ export default async function PaginaSsoma({ searchParams }: PageProps<'/ssoma'>)
                   : corregidos.length > 0
                     ? {
                         titulo: 'Ningún reporte abierto',
-                        descripcion: 'Todos los reportes vigentes tienen sus acciones cerradas: están en «Ver los corregidos».',
+                        descripcion:
+                          corregidos.length === 1
+                            ? 'El único reporte vigente tiene sus acciones cerradas: está en «Ver el corregido».'
+                            : 'Todos los reportes vigentes tienen sus acciones cerradas: están en «Ver los corregidos».',
                       }
                     : {
                         titulo: 'Todavía no hay reportes',
@@ -229,7 +232,7 @@ export default async function PaginaSsoma({ searchParams }: PageProps<'/ssoma'>)
         estado={<EstadoDelReporteSsoma />}
       />
       <div className="space-y-5">
-        {mias.length > 0 && <TusAcciones mias={mias} cuentaId={perfil.id} />}
+        {mias.length > 0 && <TusAcciones mias={mias} cuentaId={perfil.id} porReporte={porReporte} />}
         <Tarjeta className="overflow-hidden">
           <TarjetaCabecera titulo="Tus reportes" descripcion={mios.length > 0 ? `${mios.length} ${mios.length === 1 ? 'reporte' : 'reportes'}` : undefined} />
           <TablaDeReportes
@@ -408,9 +411,9 @@ function SeguridadPorArea({
 function FilaDeArea({ area: a }: { area: SeguridadDelArea }) {
   const ultimo = a.ultimoAccidente
     ? `último el ${fecha(a.ultimoAccidente)}`
-    : a.diasSinAccidentes === null
-      ? 'sin registro todavía'
-      : 'desde el primer registro'
+    : a.contadoDesde
+      ? `ninguno desde el ${fecha(a.contadoDesde)}`
+      : 'sin registro todavía'
   const reportes = `${a.reportesAbiertos} ${a.reportesAbiertos === 1 ? 'reporte abierto' : 'reportes abiertos'}`
   const vencidas = `${a.accionesVencidas} ${a.accionesVencidas === 1 ? 'acción vencida' : 'acciones vencidas'}`
   return (
@@ -734,7 +737,15 @@ function EstadoDeAccion({ accion: a }: { accion: AccionSsoma }) {
 }
 
 /** Lo que SSOMA le encargó a quien mira: las abiertas (la vencida arriba) y las cerradas plegadas. */
-function TusAcciones({ mias, cuentaId }: { mias: AccionSsoma[]; cuentaId: string }) {
+function TusAcciones({
+  mias,
+  cuentaId,
+  porReporte,
+}: {
+  mias: AccionSsoma[]
+  cuentaId: string
+  porReporte: Record<string, SeguimientoSsoma>
+}) {
   const miasAbiertas = mias.filter((a) => a.estado === 'ABIERTA')
   const miasVencidas = miasAbiertas.filter((a) => (a.dias_para_vencer ?? 0) < 0)
   const miasCerradas = mias.filter((a) => a.estado === 'CERRADA')
@@ -755,14 +766,14 @@ function TusAcciones({ mias, cuentaId }: { mias: AccionSsoma[]; cuentaId: string
         ayuda="Lo que SSOMA te encargó corregir. Ábrela, haz lo que pide y ciérrala con fotos de lo que hiciste: SSOMA recibe el aviso."
       />
       {miasAbiertas.length > 0 && (
-        <TablaDeAcciones acciones={miasAbiertas} cuentaId={cuentaId} conReporte vacio={{ titulo: '', descripcion: '' }} />
+        <TablaDeAcciones acciones={miasAbiertas} cuentaId={cuentaId} conReporte porReporte={porReporte} vacio={{ titulo: '', descripcion: '' }} />
       )}
       {/* Las cerradas no empujan hacia abajo lo que sí falta: van plegadas. */}
       {miasCerradas.length > 0 && (
         <div className="border-t border-borde px-4">
           <Pliegue titulo={`Ver las cerradas (${miasCerradas.length})`} data-tus-cerradas="">
             <div className="-mx-4 border-t border-borde">
-              <TablaDeAcciones acciones={miasCerradas} cuentaId={cuentaId} conReporte vacio={{ titulo: '', descripcion: '' }} />
+              <TablaDeAcciones acciones={miasCerradas} cuentaId={cuentaId} conReporte porReporte={porReporte} vacio={{ titulo: '', descripcion: '' }} />
             </div>
           </Pliegue>
         </div>

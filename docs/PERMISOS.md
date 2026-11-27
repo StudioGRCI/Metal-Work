@@ -441,7 +441,7 @@ arriba de las pestañas y la pestaña «Por área».
 | Qué | Quién | Cómo lo hace cumplir la base |
 | --- | --- | --- |
 | Ver los días sin accidentes de la planta (con el último accidente y su área), los reportes abiertos y por clasificar, y las acciones abiertas y vencidas | SSOMA y Gerencia (`ssoma.ver` o `ssoma.gestionar`, en consulta) | `ssoma_seguridad_de_la_planta` (`security definer`, `puede_ver_reportes_ssoma()`); a los demás no les da ninguna fila |
-| Ver lo mismo por área, cada área activa y la dada de baja mientras le quede algo abierto o si tuvo un accidente, con la fecha límite más vieja de las vencidas; y debajo, cuáles son las vencidas, agrupadas por área | SSOMA y Gerencia | `ssoma_seguridad_por_area`, con la misma puerta; las vencidas, de `ssoma_acciones_a_la_vista` (alcance `TODOS`) |
+| Ver lo mismo por área, cada área activa y la dada de baja mientras le quede algo abierto o si es la del último accidente de la planta, con el día desde el que cuenta y la fecha límite más vieja de las vencidas; y debajo, cuáles son las vencidas, agrupadas por área | SSOMA y Gerencia | `ssoma_seguridad_por_area`, con la misma puerta; las vencidas, de `ssoma_acciones_a_la_vista` (alcance `TODOS`) |
 
 Accidente es el reporte vigente que SSOMA clasificó como accidente leve,
 incapacitante o mortal (vale la última clasificación) o, mientras no lo

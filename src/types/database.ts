@@ -21285,6 +21285,7 @@ export type Database = {
           reporte_id: string | null
           area_id: string | null
           fecha: string | null
+          ocurrido_en: string | null
         }[]
       }
       ssoma_accion_de_hallazgo: {
@@ -21970,6 +21971,7 @@ export type Database = {
           activa: boolean | null
           ultimo_accidente: string | null
           dias_sin_accidentes: number | null
+          contado_desde: string | null
           reportes_abiertos: number | null
           por_clasificar: number | null
           acciones_abiertas: number | null
