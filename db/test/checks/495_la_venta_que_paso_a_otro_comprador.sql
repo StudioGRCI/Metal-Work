@@ -215,7 +215,7 @@ begin
   perform test.debe_fallar(
     format('update public.ordenes_trabajo set cotizacion_pdf_id = %L, numero_de_unidad = 1 where id = %L',
            current_setting('prueba.cot1'), current_setting('prueba.ot3')),
-    'Ninguna OT se cuelga de la venta que pasó a otro comprador (desde la 20261126999100, ni de ninguna otra por fuera de «Editar OT»)',
+    'Ninguna OT se cuelga de la venta que pasó a otro comprador (desde la 20261127003000, ni de ninguna otra por fuera de «Editar OT»)',
     'solo con «Editar OT / cambiar cliente»');
   reset role;
 

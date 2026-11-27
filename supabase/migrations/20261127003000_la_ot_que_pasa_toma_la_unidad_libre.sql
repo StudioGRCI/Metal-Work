@@ -102,7 +102,7 @@ begin
 end $$;
 
 comment on column public.ot_ventas_anteriores.numero_de_unidad is
-  'La unidad que era la OT en esta cotización cuando pasó a otro comprador: en la cotización nueva toma la unidad libre (migración 20261126999100).';
+  'La unidad que era la OT en esta cotización cuando pasó a otro comprador: en la cotización nueva toma la unidad libre (migración 20261127003000).';
 
 -- La pone la base con la unidad que la OT tiene en ese momento: la venta
 -- anterior se anota antes de mover la OT. No se confía en lo que traiga el insert.
@@ -159,7 +159,7 @@ as $$
 $$;
 
 comment on function public.unidad_que_dejo_la_ot(uuid, uuid) is
-  'Qué unidad era la OT en esa cotización cuando salió de ella: la guardada con su venta anterior (ot_ventas_anteriores.numero_de_unidad), o la de la OT en filas sin número (migraciones 20261126998900 y 20261126999100).';
+  'Qué unidad era la OT en esa cotización cuando salió de ella: la guardada con su venta anterior (ot_ventas_anteriores.numero_de_unidad), o la de la OT en filas sin número (migraciones 20261126998900 y 20261127003000).';
 
 revoke all on function public.unidad_que_dejo_la_ot(uuid, uuid) from public, anon, authenticated;
 
@@ -176,9 +176,12 @@ revoke all on function public.unidad_que_dejo_la_ot(uuid, uuid) from public, ano
 -- `metalwork.traspaso_de_ot`. Hasta aquí un UPDATE directo de la columna, con
 -- cualquiera de los permisos que dejan editar la OT, la colgaba de la
 -- cotización de otro cliente sin venta anterior, sin historial y sin cambiar
--- el cliente (lo vio el auditor de funcionamiento). Colgar de una cotización la
--- OT que no tenía ninguna sigue como estaba, y también lo que corre sin sesión
--- (una migración, la conexión directa).
+-- el cliente (lo vio el auditor de funcionamiento). Con sesión, todo cambio de
+-- la cotización de una OT pide esa marca: también quitársela (después se le
+-- ponía otra), colgar la que no tenía (tomaba una unidad que había salido) y
+-- cambiarla en el mismo UPDATE que la anula. Ninguna función ni pantalla lo
+-- hacía fuera de «Editar OT». Lo que corre sin sesión (una migración, la
+-- conexión directa) sigue como estaba.
 --
 -- De las unidades libres, primero la que no tiene una factura vigente solo de
 -- ella: esa es de un vehículo cuya OT se anuló, y la OT que llega se quedaría
@@ -199,20 +202,25 @@ declare
   v_cantidad integer;
   v_numero   text;
   v_de_antes text;
+  v_base     text;
   v_ocupadas integer[];
   v_antes    integer;
   v_n        integer;
 begin
-  if new.cotizacion_pdf_id is null
-     or new.cotizacion_pdf_id is not distinct from old.cotizacion_pdf_id
-     or new.estado = 'ANULADA' then
+  if new.cotizacion_pdf_id is not distinct from old.cotizacion_pdf_id then
     return new;
   end if;
+  -- La marca se mira antes que todo lo demás: quitarle la cotización y ponerle
+  -- otra en dos pasos, o anularla y cambiarla en el mismo, también la movían
+  -- sin venta anterior (lo vieron los dos auditores en la segunda vuelta).
   if coalesce(current_setting('metalwork.traspaso_de_ot', true), '') is distinct from new.id::text then
-    if old.cotizacion_pdf_id is not null and public.usuario_actual() is not null then
-      raise exception 'La OT % pasa a la cotización de otro comprador solo con «Editar OT / cambiar cliente»: así queda anotada su venta anterior, con su historial.', old.numero
+    if public.usuario_actual() is not null then
+      raise exception 'La OT % cambia de cotización solo con «Editar OT / cambiar cliente»: así queda anotada su venta anterior, con su historial.', old.numero
         using errcode = 'insufficient_privilege';
     end if;
+    return new;
+  end if;
+  if new.cotizacion_pdf_id is null or new.estado = 'ANULADA' then
     return new;
   end if;
 
@@ -257,10 +265,14 @@ begin
   new.numero_de_unidad := v_n;
 
   -- La descripción que armó la carga dice de qué cotización y qué unidad era.
+  -- Solo si termina como la deja la carga: «… cotización X» o «… cotización X ·
+  -- unidad n de m». Lo escrito a mano que nombra la cotización en otra parte
+  -- no se toca, ni lo que sigue después de la unidad.
   select c.numero into v_de_antes from public.cotizaciones_pdf c where c.id = old.cotizacion_pdf_id;
-  if v_n is not null and v_de_antes is not null and position('cotización ' || v_de_antes in new.descripcion) > 0 then
-    new.descripcion := regexp_replace(replace(new.descripcion, 'cotización ' || v_de_antes, 'cotización ' || v_numero),
-                                      ' · unidad \d+ de \d+$', '')
+  v_base := regexp_replace(coalesce(new.descripcion, ''), ' · unidad \d+ de \d+$', '');
+  if v_n is not null and v_de_antes is not null
+     and right(v_base, length('cotización ' || v_de_antes)) = 'cotización ' || v_de_antes then
+    new.descripcion := left(v_base, length(v_base) - length(v_de_antes)) || v_numero
                        || case when v_cantidad > 1 then format(' · unidad %s de %s', v_n, v_cantidad) else '' end;
   end if;
   return new;
@@ -292,7 +304,7 @@ as $$
 $$;
 
 comment on function public.unidades_que_salieron_de_la_cotizacion(uuid) is
-  'Cada unidad de la cotización cuya OT pasó a otro comprador: [{unidad, numero}], la unidad que la OT dejó aquí (ot_ventas_anteriores.numero_de_unidad) y el número de la OT solo para quien lee o carga las órdenes (migraciones 20261126988000 y 20261126999100).';
+  'Cada unidad de la cotización cuya OT pasó a otro comprador: [{unidad, numero}], la unidad que la OT dejó aquí (ot_ventas_anteriores.numero_de_unidad) y el número de la OT solo para quien lee o carga las órdenes (migraciones 20261126988000 y 20261127003000).';
 
 revoke all on function public.unidades_que_salieron_de_la_cotizacion(uuid) from public, anon;
 grant execute on function public.unidades_que_salieron_de_la_cotizacion(uuid) to authenticated;
@@ -398,7 +410,7 @@ begin
   if c.id is not null then
     insert into public.ot_ventas_anteriores(orden_id,cliente_id,cotizacion_pdf_id,datos,creado_por)
     values(o.id,o.cliente_id,o.cotizacion_pdf_id,antes,public.usuario_actual());
-    -- El disparador de la OT reconoce el traspaso por esta marca (20261126999100).
+    -- El disparador de la OT reconoce el traspaso por esta marca (20261127003000).
     perform set_config('metalwork.traspaso_de_ot', o.id::text, true);
   end if;
 

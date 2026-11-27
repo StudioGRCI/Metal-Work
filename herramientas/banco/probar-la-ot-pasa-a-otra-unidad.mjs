@@ -1,6 +1,6 @@
 /**
  * Recorre con clic real la OT de la unidad 2 o la 3 que pasa a otro comprador
- * (migración 20261126999100; StudioGRCI, 2026-11-27: «Sí, en un PR aparte»),
+ * (migración 20261127003000; StudioGRCI, 2026-11-27: «Sí, en un PR aparte»),
  * con la cuenta de cada puesto (nunca ADMIN). Hasta esa migración la base
  * rechazaba la OT de la unidad 2 hacia una cotización de 1 unidad («no tiene
  * unidad 2») y cualquier OT hacia una que ya tenía una OT.

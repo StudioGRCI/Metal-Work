@@ -1,5 +1,5 @@
 -- La OT que pasa a otro comprador toma la unidad libre de su nueva cotización
--- (migración 20261126999100; StudioGRCI, 2026-11-27: «Sí, en un PR aparte»).
+-- (migración 20261127003000; StudioGRCI, 2026-11-27: «Sí, en un PR aparte»).
 -- Hasta aquí la OT conservaba su número de unidad al pasar, y la base rechazaba:
 --   * la OT de la unidad 2 o la 3 hacia una cotización de 1 unidad («no tiene
 --     unidad 2»),
@@ -298,10 +298,46 @@ begin
     format('update public.ordenes_trabajo set cotizacion_pdf_id = %L where id = %L',
            current_setting('prueba.cot_b'), current_setting('prueba.ot1')),
     'Gerencia tampoco', 'solo con «Editar OT / cambiar cliente»');
+  -- En dos pasos: primero sin cotización, después otra. El primer paso dejaba
+  -- la venta esperando otra OT con su vehículo todavía en el taller.
+  perform test.debe_fallar(
+    format('update public.ordenes_trabajo set cotizacion_pdf_id = null where id = %L', current_setting('prueba.ot1')),
+    'Gerencia no le quita la cotización a la OT', 'solo con «Editar OT / cambiar cliente»');
+  -- Anularla y cambiarla en el mismo UPDATE la colgaba, anulada, de otra venta.
+  perform test.debe_fallar(
+    format('update public.ordenes_trabajo set estado = ''ANULADA'', motivo_anulacion = ''Prueba 499, anular y mover'', cotizacion_pdf_id = %L where id = %L',
+           current_setting('prueba.cot_b'), current_setting('prueba.ot1')),
+    'Gerencia no la anula y la cambia de cotización a la vez', 'solo con «Editar OT / cambiar cliente»');
+  reset role;
+  perform test.como_usuario(current_setting('prueba.oficina')::uuid);
+  set local role authenticated;
+  perform test.debe_fallar(
+    format('update public.ordenes_trabajo set cotizacion_pdf_id = null where id = %L', current_setting('prueba.ot2')),
+    'Administración tampoco le quita la cotización', 'solo con «Editar OT / cambiar cliente»');
   reset role;
   perform test.afirmar(
-    (select cotizacion_pdf_id from public.ordenes_trabajo where id = current_setting('prueba.ot1')::uuid) = current_setting('prueba.cot_a')::uuid,
-    'Y la OT sigue en su cotización');
+    (select cotizacion_pdf_id from public.ordenes_trabajo where id = current_setting('prueba.ot1')::uuid) = current_setting('prueba.cot_a')::uuid
+    and (select estado from public.ordenes_trabajo where id = current_setting('prueba.ot1')::uuid) <> 'ANULADA',
+    'Y la OT sigue en su cotización, sin anular');
+
+  -- Una OT sin cotización tampoco se cuelga por la API: tomaba la unidad 1
+  -- aunque esa unidad hubiera salido a otro comprador. Sin sesión (una
+  -- migración) sí se le quita.
+  perform set_config('request.jwt.claim.sub', '', true);
+  perform set_config('request.jwt.claims', '', true);
+  update public.ordenes_trabajo set cotizacion_pdf_id = null where id = current_setting('prueba.ot1')::uuid;
+  perform test.afirmar(
+    (select cotizacion_pdf_id from public.ordenes_trabajo where id = current_setting('prueba.ot1')::uuid) is null,
+    'Sin sesión se le quita la cotización, como antes');
+  perform test.como_usuario(current_setting('prueba.oficina')::uuid);
+  set local role authenticated;
+  perform test.debe_fallar(
+    format('update public.ordenes_trabajo set cotizacion_pdf_id = %L where id = %L',
+           current_setting('prueba.cot_a'), current_setting('prueba.ot1')),
+    'Administración no cuelga por la API una OT que no tenía cotización', 'solo con «Editar OT / cambiar cliente»');
+  reset role;
+  perform set_config('request.jwt.claim.sub', '', true);
+  update public.ordenes_trabajo set cotizacion_pdf_id = current_setting('prueba.cot_a')::uuid where id = current_setting('prueba.ot1')::uuid;
 end $$;
 
 -- 8. Contabilidad factura la unidad que llegó por su parte de la cotización nueva --
@@ -390,6 +426,28 @@ begin
     exists (select 1 from public.ot_bitacora e where e.orden_id = current_setting('prueba.ote1')::uuid
                and e.descripcion like 'Edición de OT.%' and e.descripcion like '%unidad: 1 → 3%'),
     'Y su historial dice el cambio de unidad');
+end $$;
+
+-- 10. La descripción escrita a mano no se reescribe ------------------------------
+-- Solo se pone al día la que termina como la deja la carga. Una que nombra la
+-- cotización en medio del texto queda tal cual.
+do $$
+declare
+  v_texto constant text := 'Según cotización QA-499-D se cambia el piso; ver plano 4';
+begin
+  perform set_config('request.jwt.claim.sub', '', true);
+  update public.ordenes_trabajo set descripcion = v_texto where id = current_setting('prueba.otd1')::uuid;
+  perform test.como_usuario(current_setting('prueba.oficina')::uuid);
+  set local role authenticated;
+  perform pg_temp.pasar(current_setting('prueba.otd1'), current_setting('prueba.cot_b'));
+  reset role;
+  perform test.afirmar(
+    (select cotizacion_pdf_id from public.ordenes_trabajo where id = current_setting('prueba.otd1')::uuid) = current_setting('prueba.cot_b')::uuid,
+    'La OT pasó a la otra cotización');
+  perform test.afirmar(
+    (select descripcion from public.ordenes_trabajo where id = current_setting('prueba.otd1')::uuid) = v_texto,
+    'Y su descripción escrita a mano sigue igual: '
+      || (select descripcion from public.ordenes_trabajo where id = current_setting('prueba.otd1')::uuid));
 end $$;
 
 rollback;
