@@ -33,6 +33,7 @@ l = json.load(open('$CARPETA/generado/$F/linea.json'))
 f = [f for e in l['escenas'] for f in e['frases']][8]
 print(f['inicio'], f['fin'])")
 # El monto inventado mayor, con una cifra cambiada: «135,000.00» → «135,800.00».
+grep -q '"valor"' "$CARPETA/capturas/$F/origen.json" || { echo "$ID no declara montos inventados: el caso «inventado» necesita uno. Probar con otro video."; exit 2; }
 CAMBIADO="$(python3 -c "
 import json
 m = max(json.load(open('$CARPETA/capturas/$F/origen.json'))['montosInventados'], key=lambda m: m['valor'])
@@ -46,6 +47,12 @@ declare -A ESPERA=(
   [inventado]='cuadro\(s\) con algo que parece un dato real'
   [corrido]='las pistas no arrancan juntas'
   [cortado]='frases que no se oyen como en el guion'
+)
+# Y en los casos pintados, cada valor tiene que salir como dato en el segundo pintado: uno solo no basta.
+declare -A PINTADO=(
+  [dato]='20512345678|1,250\.00'
+  [suelto]='45678912|1,250\.00'
+  [inventado]="${CAMBIADO#US\$ }|7,250\.00"
 )
 bien=0
 for caso in dato suelto inventado corrido cortado; do
@@ -66,10 +73,17 @@ for caso in dato suelto inventado corrido cortado; do
   esac
   python3 scripts/revisar.py "$D" "$F" > "$TRABAJO/$caso.log" 2>&1
   salida=$?
-  if [ "$salida" -ne 0 ] && grep -qE "FALLA · .*${ESPERA[$caso]}" "$TRABAJO/$caso.log"; then
+  falta=''
+  if [ -n "${PINTADO[$caso]:-}" ]; then
+    IFS='|' read -ra valores <<< "${PINTADO[$caso]}"
+    for valor in "${valores[@]}"; do
+      grep -qE "^  - 30\.[0-9]+ s:.*${valor}" "$D/salida/revision-$F.md" || falta="$falta $valor"
+    done
+  fi
+  if [ "$salida" -ne 0 ] && grep -qE "FALLA · .*${ESPERA[$caso]}" "$TRABAJO/$caso.log" && [ -z "$falta" ]; then
     echo "ok    · $caso: la revisión no lo deja pasar"
   else
-    echo "FALLA · $caso: la revisión lo deja pasar o falla por otra cosa (salida $salida)"
+    echo "FALLA · $caso: la revisión lo deja pasar o falla por otra cosa (salida $salida)${falta:+; no marca como dato:$falta}"
     bien=1
   fi
   grep -E "FALLA|^  - [0-9.]+ s:" "$D/salida/revision-$F.md" "$TRABAJO/$caso.log" 2>/dev/null | sed 's/^/        /' | head -8

@@ -58,7 +58,9 @@ MONEDA = r'(?:(?<![A-Za-z])S\s?/\.?|(?<![\d/])5\s?/\.?(?!\s*\d{1,2}\s*/)|US\s?\$
 DATOS = [
     ('RUC', re.compile(r'(?<!\d)\d{11}(?!\d)|(?<![\d-])[12]\d \d{3} \d{3} \d{3}(?![\d-])')),
     ('DNI', re.compile(r'(?<!\d)\d{8}(?!\d)|(?<![\d/.,:-])\d{4} \d{4}(?![\d/.,:-])')),
-    ('teléfono', re.compile(r'(?<!\d)(?:\d{7}|\d{9}|\d{10})(?!\d)|(?<![\d-])9\d{2}[ -]\d{3}[ -]\d{3}(?![\d-])|\(0?\d{1,2}\)\s?\d{3}[ -]?\d{4}(?!\d)|(?<![\w-])0?1 \d{3} \d{4}(?!\d)')),
+    ('teléfono', re.compile(r'(?<!\d)(?:\d{7}|\d{9}|\d{10})(?!\d)|(?<![\d-])9\d{2}[ -]\d{3}[ -]\d{3}(?![\d-])|\(0?\d{1,2}\)\s?\d{3}[ -]?\d{4}(?!\d)|(?<![\w-])0?1 \d{3} \d{4}(?!\d)'
+                             # Con guion («452-1200», «01-452-1200»), sin tomar un número de documento leído sin su primera cifra («101-2026», «001-9001»).
+                             r'|(?<![\d-])(?:0?1[ -])?[2-7]\d{2}-(?!20\d\d(?!\d))\d{4}(?![\d-])')),
     ('monto', re.compile(MONEDA + r'\s*\d[\d.,]*|(?<![\d.,])\d[\d,]*\.\d{2}(?![\d])(?!\s?%)|\d[\d.,]*\s?(?:soles|d[oó]lares)\b', re.I)),
     ('correo', re.compile(r'[\w.+-]+@[\w-]+\.[\w.-]+')),
     ('clave', re.compile(r'contrase[ñn]a|password|\bclave\b|\btoken\b|api[ _-]?key', re.I)),
@@ -222,10 +224,11 @@ def por_que_es_dudoso(hallado: tuple[str, str], repite: list[bool], inventados: 
     clase, valor = hallado
     if not any(repite):
         return 'no se repite al leer el cuadro al doble ni al triple'
+    if clase == 'monto' and es_inventado_mal_leido(valor, inventados):
+        # Primero esta: «35,000.00» es 45,000.00 con una cifra cambiada y también el final de 135,000.00.
+        return None if all(repite) else 'monto inventado con una cifra cambiada, que no sale igual en las tres lecturas'
     if clase == 'monto' and es_resto_de_inventado(valor, inventados):
         return 'trozo de un monto inventado'
-    if clase == 'monto' and es_inventado_mal_leido(valor, inventados) and not all(repite):
-        return 'monto inventado con una cifra cambiada, que no sale igual en las tres lecturas'
     if es_texto_pegado(hallado):
         return 'texto de las capturas leído sin su guion o su espacio'
     return None
@@ -466,10 +469,10 @@ def revisar(carpeta: Path, formato: str) -> bool:
     juntas = {}
     for numero, por_que in dudosos:
         for (clase, valor), motivo in por_que:
-            juntas.setdefault((clase, ' '.join(valor.split()), motivo), []).append(numero / fps)
+            juntas.setdefault((clase, ' '.join(valor.split()), motivo), set()).add(numero / fps)
     if juntas:
         inf.nota(f'lecturas dudosas, todas: cada cuadro queda en generado/{formato}/revision/dudoso-<segundo>s.png para mirarlo')
-    for (clase, valor, motivo), momentos in sorted(juntas.items(), key=lambda j: j[1][0]):
+    for (clase, valor, motivo), momentos in sorted(((k, sorted(m)) for k, m in juntas.items()), key=lambda j: j[1][0]):
         inf.nota(f"{clase} «{valor}» · {motivo} · {len(momentos)} cuadro(s): {', '.join(f'{m:.2f} s' for m in momentos)}")
 
     if inventados:
@@ -538,7 +541,7 @@ def revisar(carpeta: Path, formato: str) -> bool:
     if inf.fallas:
         inf.lineas.append(f'**NO se entrega así: {len(inf.fallas)} comprobación(es) fallan.**')
     else:
-        por_mirar = f' Hay {len(dudosos)} lectura(s) dudosa(s) anotada(s) arriba: se miran esos cuadros.' if dudosos else ''
+        por_mirar = f' Hay {len(dudosos)} cuadro(s) con lecturas dudosas, anotadas arriba: se miran esos cuadros.' if dudosos else ''
         inf.lineas.append(f'**Pasa la revisión automática.**{por_mirar} Falta verlo completo, de principio a fin, antes de entregarlo.')
     (carpeta / 'salida' / f'revision-{formato}.md').write_text('\n'.join(inf.lineas) + '\n')
     print(f"  → salida/revision-{formato}.md · {'PASA' if not inf.fallas else 'NO PASA'}")

@@ -3,7 +3,6 @@
  * de Administración (`administracion.local@metalwork.test`) en el banco local.
  *
  *   BANCO_CLAVE='la-del-banco' node herramientas/videos/videos/como-cargar-la-ot-de-cada-unidad/capturar.mjs horizontal
- *   BANCO_CLAVE='la-del-banco' node herramientas/videos/videos/como-cargar-la-ot-de-cada-unidad/capturar.mjs horizontal
  *
  * Antes, el banco recién preparado (`BANCO_CLAVE='…' ./herramientas/banco/preparar.sh`).
  *

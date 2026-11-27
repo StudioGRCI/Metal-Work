@@ -182,7 +182,9 @@ queda como `DATO-…png` en `generado/<formato>/revision/`. Queda como
   final con sus decimales («3,100.00» de «53,100.00»), porque el borde del
   encuadre y la letra chica se comen las primeras cifras. Por eso un
   «5,000.00» pintado junto a un «45,000.00» inventado queda como dudoso, no
-  como dato: se mira. Un monto con moneda distinto («US$ 5,000.00») no es un
+  como dato: se mira. Esto vale solo en los cuadros: en las capturas no se
+  perdona ningún trozo, y todo lo que el video muestra del sistema sale de
+  ellas. Un monto con moneda distinto («US$ 5,000.00») no es un
   trozo;
 - un monto inventado con una sola cifra cambiada («135,900.00» por
   «135,000.00»), que es lo que sale cuando una raya de la otra pantalla cruza
