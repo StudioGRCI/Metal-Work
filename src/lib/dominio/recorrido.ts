@@ -34,6 +34,13 @@ export type PasoDelRecorrido = {
   espera: string | null
   /** Un dato corto del paso: el área, la OC, cómo terminó. */
   detalle: string | null
+  /**
+   * Solo en la cotización de varias unidades (migración 20261126998900): de qué
+   * unidad es el paso (su OT, su factura, su cobro) y cuántas tiene la
+   * cotización. Vacío en los pasos de toda la cotización y en los demás documentos.
+   */
+  unidad?: number | null
+  unidades?: number | null
 }
 
 /** Un paso ya puesto en palabras, como lo pinta `Recorrido`. */
@@ -71,6 +78,89 @@ export type PasoDescrito = PasoDelRecorrido & {
 export function enQueTermino(pasos: readonly PasoDescrito[]): PasoDescrito | undefined {
   const hechos = pasos.filter((p) => p.situacion === 'HECHO')
   return hechos.filter((p) => p.cierra).at(-1) ?? hechos.filter((p) => !p.alMargen).at(-1) ?? hechos.at(-1)
+}
+
+/**
+ * Lo que dice cerrado un recorrido que ya no espera a nadie. Sin unidades, en qué
+ * terminó y cuándo (`enQueTermino`). La cotización de varias unidades termina
+ * unidad por unidad: si todas terminaron igual, eso y la fecha de la última; si
+ * no, cada final con sus unidades («Cobrada: unidades 1 y 2 · Pasó a otro
+ * comprador: unidad 3»), sin fecha, porque el último paso de la lista es el de
+ * la última unidad y no cómo terminó la venta. Si después de las unidades hay un
+ * paso de toda la cotización (la anulación), manda ese.
+ */
+export function comoTermino(pasos: readonly PasoDescrito[]): { texto: string; en: string | null } | null {
+  const tramos = tramosDelRecorrido(pasos)
+  const deUnidad = tramos.filter((t) => t.unidad !== null)
+  const final = tramos.at(-1)
+  if (deUnidad.length === 0 || final?.unidad == null) {
+    const cierre = deUnidad.length > 0 && final ? enQueTermino(final.pasos) : undefined
+    const ultimo = cierre ?? enQueTermino(pasos)
+    return ultimo ? { texto: ultimo.titulo, en: ultimo.en } : null
+  }
+  const finales = new Map<string, { unidades: number[]; en: string | null }>()
+  for (const t of deUnidad) {
+    const ultimo = enQueTermino(t.pasos)
+    if (!ultimo || t.unidad === null) continue
+    const grupo = finales.get(ultimo.titulo) ?? { unidades: [], en: null }
+    grupo.unidades.push(t.unidad)
+    if (ultimo.en && (!grupo.en || ultimo.en > grupo.en)) grupo.en = ultimo.en
+    finales.set(ultimo.titulo, grupo)
+  }
+  if (finales.size === 0) return null
+  if (finales.size === 1) {
+    const [[titulo, grupo]] = [...finales]
+    return { texto: titulo, en: grupo.en }
+  }
+  return {
+    texto: [...finales]
+      .map(([titulo, g]) => `${titulo}: ${g.unidades.length === 1 ? 'unidad' : 'unidades'} ${enumerar(g.unidades.map(String))}`)
+      .join(' · '),
+    en: null,
+  }
+}
+
+/** «Gerencia», «Administración y Tesorería», «Administración, Contabilidad y Tesorería». */
+export function enumerar(nombres: readonly string[]): string {
+  if (nombres.length <= 1) return nombres[0] ?? ''
+  return `${nombres.slice(0, -1).join(', ')} y ${nombres[nombres.length - 1]}`
+}
+
+/** Los pasos de una unidad de la cotización, en el orden en que pasan de un puesto a otro. */
+const CIRCUITO_DE_LA_UNIDAD = ['CODIGO_Y_OT', 'FACTURA', 'FACTURA_RESTO', 'COBRO']
+
+/**
+ * Quién tiene el documento ahora, en una línea: el primer paso que espera, como
+ * siempre. La cotización de varias unidades puede esperar a varios a la vez (una
+ * unidad sin OT, otra sin factura, otra sin cobro): ahí se nombran todos, una vez
+ * cada uno y en el orden del circuito (la OT, la factura, el cobro), no en el de
+ * las unidades, con la espera más larga. `null` si no espera a nadie.
+ */
+export function quienLoTiene(
+  pasos: readonly (Pick<PasoDelRecorrido, 'situacion' | 'puesto' | 'dias' | 'en' | 'unidad'> & { paso?: string; plural?: boolean })[],
+): { quien: string; plural: boolean; dias: number | null; desde: string | null } | null {
+  const ahora = pasos.filter((p) => p.situacion === 'AHORA')
+  if (ahora.length === 0) return null
+  const primero = ahora[0]
+  if (!pasos.some((p) => p.unidad != null)) {
+    return { quien: primero.puesto ?? 'alguien', plural: primero.plural === true, dias: primero.dias, desde: primero.en }
+  }
+  const lugar = (p: { paso?: string }) => {
+    const i = CIRCUITO_DE_LA_UNIDAD.indexOf(p.paso ?? '')
+    return i < 0 ? CIRCUITO_DE_LA_UNIDAD.length : i
+  }
+  // `sort` es estable: dentro del mismo paso queda el orden de las unidades.
+  const enCircuito = [...ahora].sort((a, b) => lugar(a) - lugar(b))
+  const puestos = [...new Set(enCircuito.flatMap((p) => (p.puesto ? [p.puesto] : [])))]
+  // La espera más larga: la que más días lleva; sin días, no se inventa.
+  const conDias = ahora.filter((p) => p.dias !== null)
+  const masVieja = conDias.length > 0 ? conDias.reduce((a, b) => ((b.dias ?? 0) > (a.dias ?? 0) ? b : a)) : null
+  return {
+    quien: puestos.length > 0 ? enumerar(puestos) : 'alguien',
+    plural: puestos.length > 1 || ahora.some((p) => p.plural === true),
+    dias: masVieja?.dias ?? null,
+    desde: (masVieja ?? primero).en,
+  }
 }
 
 /** «desde hoy», «hace 1 día», «hace 3 días». Los días los cuenta la base, por fecha de Lima. */
@@ -200,8 +290,11 @@ const PASOS_DE_LA_COTIZACION: Record<string, Frases> = {
 const ESPERAS_DE_LA_COTIZACION: Record<string, (detalle: string | null) => string> = {
   REVISION: () => 'La aprueba o la rechaza.',
   CORRECCION: () => 'Sube la corrección con el mismo número.',
-  // Con varias unidades el detalle dice cuántas OT lleva de cuántas («1/3»), y
+  // Con varias unidades el detalle decía cuántas OT lleva de cuántas («1/3»), y
   // cuántas pasaron a otro comprador si alguna («1/3/1», migración 20261126988000).
+  // Desde la 20261126998900 la base ya no lo manda: la cotización de varias
+  // unidades aprobada va unidad por unidad y cada una trae este paso sin detalle.
+  // Se conserva para la base que todavía no tiene esa migración; se retira después.
   CODIGO_Y_OT: (d) => {
     const [lleva, de, pasaron = 0] = (d ?? '').split('/').map(Number)
     if (!de) return 'Le da el código interno de la unidad y sube la OT.'
@@ -477,9 +570,44 @@ export const describirRecorridoDelRequerimiento = (pasos: readonly PasoDelRecorr
 export function describirRecorridoDeLaCotizacion(pasos: readonly PasoDelRecorrido[]): PasoDescrito[] {
   const descritos = describir(pasos, PASOS_DE_LA_COTIZACION, ESPERAS_DE_LA_COTIZACION)
   const anulada = pasos.some((p) => p.paso === 'ANULACION' && p.situacion === 'HECHO')
-  return anulada
-    ? descritos.map((p) => (p.paso === 'REVISION' && p.detalle === 'APROBADA' ? { ...p, nota: null } : p))
-    : descritos
+  return descritos.map((p) => {
+    if (anulada && p.paso === 'REVISION' && p.detalle === 'APROBADA') return { ...p, nota: null }
+    // En la de varias unidades cada paso es de su unidad (migración 20261126998900):
+    // lo que falta facturar es lo de esa unidad, no lo del total.
+    if (p.unidad != null && p.situacion === 'AHORA' && p.espera === 'FACTURA_RESTO') {
+      return { ...p, nota: 'Registra la factura de lo que le falta a esta unidad.' }
+    }
+    return p
+  })
+}
+
+/** Un tramo del recorrido: los pasos de toda la cotización, o los de una de sus unidades. */
+export type TramoDelRecorrido<P> = { unidad: number | null; unidades: number | null; pasos: P[] }
+
+/**
+ * El recorrido partido en tramos seguidos, en el orden en que llega: lo de todo
+ * el documento y, en la cotización de varias unidades, cada unidad con lo suyo.
+ * Un documento sin unidades da un solo tramo.
+ */
+export function tramosDelRecorrido<P extends Pick<PasoDelRecorrido, 'unidad' | 'unidades'>>(pasos: readonly P[]): TramoDelRecorrido<P>[] {
+  const tramos: TramoDelRecorrido<P>[] = []
+  for (const p of pasos) {
+    const unidad = p.unidad ?? null
+    const ultimo = tramos.at(-1)
+    if (ultimo && ultimo.unidad === unidad) ultimo.pasos.push(p)
+    else tramos.push({ unidad, unidades: p.unidades ?? null, pasos: [p] })
+  }
+  return tramos
+}
+
+/**
+ * El recorrido de la cotización visto desde una de sus unidades (la OT, la ficha
+ * del código): lo de toda la cotización y lo de esa unidad, sin las demás. Sin
+ * unidad, o en la cotización de una sola, queda entero.
+ */
+export function recorridoDeLaUnidad<P extends Pick<PasoDelRecorrido, 'unidad'>>(pasos: readonly P[], unidad: number | null | undefined): P[] {
+  if (unidad == null) return [...pasos]
+  return pasos.filter((p) => p.unidad == null || p.unidad === unidad)
 }
 
 /** El recorrido de un informe semanal de Diseño, en palabras. */

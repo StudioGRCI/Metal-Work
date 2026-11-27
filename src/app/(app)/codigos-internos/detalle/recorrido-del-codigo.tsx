@@ -111,7 +111,13 @@ export function RecorridoDelCodigo({
       titulo: 'Cotización',
       situacion: cotizacion.estado === 'APROBADA' ? 'HECHO' : 'AHORA',
       valor: cotizacion.numero,
-      pie: [e.etiqueta, cotizacion.fecha && `del ${fecha(cotizacion.fecha)}`, base.cotizaciones > 1 && `y ${base.cotizaciones - 1} más`]
+      pie: [
+        e.etiqueta,
+        cotizacion.fecha && `del ${fecha(cotizacion.fecha)}`,
+        // De la cotización de varias unidades, cuál es este código.
+        cotizacion.unidad && cotizacion.unidades && `unidad ${cotizacion.unidad} de ${cotizacion.unidades}`,
+        base.cotizaciones > 1 && `y ${base.cotizaciones - 1} más`,
+      ]
         .filter(Boolean)
         .join(' · '),
       tono: e.tono === 'peligro' ? 'peligro' : undefined,
