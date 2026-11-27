@@ -282,7 +282,7 @@ export function PedirAnulacion({ id, numero }: { id: string; numero: string }) {
     <AccionDelTramite
       id={id}
       accion={pedirAnulacion}
-      variante="contornoPeligro"
+      variante="fantasma"
       envioPeligroso
       marca="pedir-anulacion"
       boton={

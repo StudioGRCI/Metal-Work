@@ -342,7 +342,7 @@ export function AnularConMotivo({
   const { alEnviar, enviando, error } = useEnvio(tipo === 'subcontrato' ? anularSubcontrato : anularRecibo, () => setAbierta(false))
   return (
     <>
-      <Boton type="button" variante="contornoPeligro" tamano={tipo === 'recibo' ? 'sm' : 'md'} onClick={() => setAbierta(true)} data-anular={tipo}>
+      <Boton type="button" variante="fantasma" tamano={tipo === 'recibo' ? 'sm' : 'md'} onClick={() => setAbierta(true)} data-anular={tipo}>
         <Ban aria-hidden className="size-4" />
         {tipo === 'subcontrato' ? 'Anular' : 'Anular recibo'}
       </Boton>

@@ -554,13 +554,13 @@ export function FormularioReporteDiario({
           )
         })
       }
-      className="space-y-6"
+      className="space-y-5"
     >
       {/* Tras «ya quedó», lo de arriba ya no se envía: queda a la vista y trabado.
           Abierto, una foto elegida después subía y quedaba suelta (decimotercera pasada).
           Mientras se envía, también: lo elegido o quitado entonces no iba con el
           reporte (vigesimoséptima pasada). */}
-      <fieldset disabled={yaEntro || enviando || Boolean(entro)} className="min-w-0 space-y-6">
+      <fieldset disabled={yaEntro || enviando || Boolean(entro)} className="min-w-0 space-y-5">
         <section aria-labelledby="rd-cabecera" className="space-y-4">
           <h2 id="rd-cabecera" className="text-sm font-semibold text-texto">
             El reporte

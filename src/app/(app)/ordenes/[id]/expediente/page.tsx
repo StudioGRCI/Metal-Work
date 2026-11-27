@@ -10,7 +10,7 @@ import { Insignia, type Tono } from '@/components/ui/etiqueta-estado'
 import { Indicador, tramos } from '@/components/ui/indicador'
 import { Progreso } from '@/components/ui/progreso'
 import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
-import { Tabla, TablaCabecera, TD, TH, TR } from '@/components/ui/tabla'
+import { SinDatos, Tabla, TablaCabecera, TD, TH, TR } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cotizacionPdfDeOrden } from '@/lib/datos/cotizaciones-pdf'
 import { costoDeOrdenes, type CostoDeOrden } from '@/lib/datos/costos-ot'
@@ -391,9 +391,11 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
                 las marca y Supervisión reporta por código.
               </p>
             ) : expediente.etapas.length === 0 ? (
-              <p className="text-sm text-texto-suave">
-                Diseño todavía no definió las etapas de esta orden. Se definen en la pestaña Etapas.
-              </p>
+              <SinDatos
+                compacto
+                titulo="Diseño todavía no definió las etapas de esta orden"
+                descripcion="Se definen en la pestaña Etapas."
+              />
             ) : (
               <>
                 <PlanContraReal etapas={expediente.etapas} hoy={hoy} viva={viva} />
@@ -619,10 +621,11 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
                 </p>
               )}
               {composicion.monedas.length === 0 ? (
-                <p className="text-sm text-texto-suave">
-                  Todavía no hay costo cargado: aparece cuando Almacén despacha material, se cierra la planilla del mes o
-                  Administración aprueba un gasto del área.
-                </p>
+                <SinDatos
+                  compacto
+                  titulo="Todavía no hay costo cargado"
+                  descripcion="Aparece cuando Almacén despacha material, se cierra la planilla del mes o Administración aprueba un gasto del área."
+                />
               ) : (
                 <div className={composicion.monedas.length > 1 ? 'grid gap-6 lg:grid-cols-2' : undefined}>
                   {composicion.monedas.map((m) => (
@@ -878,7 +881,7 @@ function Proceso({ expediente, eventos }: { expediente: Expediente; eventos: Eve
   ].sort((a, b) => (a.dia === b.dia ? a.cuando.localeCompare(b.cuando) : a.dia.localeCompare(b.dia)))
 
   if (pasos.length === 0) {
-    return <p className="text-sm text-texto-suave">Todavía no hay nada registrado de esta orden.</p>
+    return <SinDatos compacto titulo="Todavía no hay nada registrado de esta orden" />
   }
 
   const porDia = new Map<string, Paso[]>()

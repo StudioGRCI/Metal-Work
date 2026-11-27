@@ -414,7 +414,9 @@ function RequerimientosDeLaUnidad({
       <h3 className="text-xs font-medium text-texto-suave">{titulo}</h3>
       {nota && <p className="mt-1 text-xs text-texto-suave">{nota}</p>}
       {rqs.length === 0 ? (
-        <p className="mt-1 text-sm text-texto-suave">Ninguno todavía.</p>
+        <div className="mt-1">
+          <SinDatos compacto titulo="Ninguno todavía" />
+        </div>
       ) : (
         <>
           {aVer.length > 0 && (

@@ -9,6 +9,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { Ventana } from '@/components/ui/ventana'
+import { SinDatos } from '@/components/ui/tabla'
 import type { AreaConResponsable, CuentaParaResponsable } from '@/lib/datos/configuracion'
 import { CUENTA_YA_NO_ACTIVA } from '@/lib/dominio/areas'
 import { useCursorAlRechazo, useEnvio } from '@/lib/envio'
@@ -68,7 +69,7 @@ export function ResponsablesDeArea({
       />
       <TarjetaCuerpo>
         {areas.length === 0 ? (
-          <p className="text-sm text-texto-suave">Todavía no hay áreas cargadas: salen del organigrama de la empresa.</p>
+          <SinDatos compacto titulo="Todavía no hay áreas cargadas" descripcion="Salen del organigrama de la empresa." />
         ) : (
           <ul className="divide-y divide-borde">
             {areas.map((a) => (

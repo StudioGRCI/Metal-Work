@@ -7,6 +7,7 @@ import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { EnvioAnterior } from '@/components/ui/envio-anterior'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
+import { SinDatos } from '@/components/ui/tabla'
 import type { DevolucionPorReponer, IngresoParaDevolver } from '@/lib/datos/kardex'
 import { useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { nombreDeOc } from '@/lib/dominio/adquisiciones'
@@ -89,9 +90,11 @@ export function DevolverAlProveedor({ ingresos }: { ingresos: IngresoParaDevolve
       >
         <EnvioAnterior texto={devolucion.anterior} />
         {ingresos.length === 0 ? (
-          <p className="text-sm text-texto-suave">
-            No hay ingresos de compra con material en el almacén. Lo que ya salió al taller vuelve primero como devolución del taller.
-          </p>
+          <SinDatos
+            compacto
+            titulo="No hay ingresos de compra con material en el almacén"
+            descripcion="Lo que ya salió al taller vuelve primero como devolución del taller."
+          />
         ) : (
           <form onSubmit={envio.alEnviar} className="space-y-4">
             <input type="hidden" name="id" value={devolucion.id ?? ''} />

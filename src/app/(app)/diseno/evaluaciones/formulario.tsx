@@ -62,10 +62,10 @@ export function FormularioEvaluacion({ inicial, hoy, cargo, nombres }: {
   }
 
   return (
-    <form onSubmit={envio.alEnviar} className="space-y-6">
+    <form onSubmit={envio.alEnviar} className="space-y-5">
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="nueva" value={inicial ? 'no' : 'si'} />
-      <fieldset disabled={Boolean(entro)} className="min-w-0 space-y-6">
+      <fieldset disabled={Boolean(entro)} className="min-w-0 space-y-5">
 
         <fieldset className="grid gap-3 sm:grid-cols-2">
           <legend className="mb-3 text-sm font-semibold text-texto">Datos de la evaluación</legend>

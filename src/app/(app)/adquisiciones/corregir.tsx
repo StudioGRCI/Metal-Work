@@ -9,6 +9,7 @@ import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
+import { SinDatos } from '@/components/ui/tabla'
 import type { CompraSinFactura, OrdenDeFactura } from '@/lib/datos/adquisiciones'
 import { nombreDeOc } from '@/lib/dominio/adquisiciones'
 import { avisosDelDetector, lecturaUtil, textoDelAviso, type LecturaFactura } from '@/lib/dominio/lectura-factura'
@@ -358,7 +359,7 @@ function Formulario({
             factura. Si la factura cubre solo una parte de una OC, márcala como parcial.
           </p>
           {elegibles.length === 0 ? (
-            <p className="text-sm text-texto-suave">No hay OC del proveedor {proveedor} esperando factura.</p>
+            <SinDatos compacto titulo={`No hay OC del proveedor ${proveedor} esperando factura`} />
           ) : (
             <ul className="grid gap-2 sm:grid-cols-2">
               {elegibles.map((o) => (

@@ -242,7 +242,7 @@ function FormularioEquipo({
         nota={
           equipo && alDarDeBaja ? (
             // Lo destructivo y raro, a un lado de Cancelar y Guardar.
-            <Boton type="button" tamano="sm" variante="contornoPeligro" disabled={enviando} onClick={alDarDeBaja}>
+            <Boton type="button" tamano="sm" variante="fantasma" disabled={enviando} onClick={alDarDeBaja}>
               <Archive aria-hidden className="size-3.5" />
               Dar de baja
             </Boton>

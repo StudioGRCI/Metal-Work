@@ -7,6 +7,7 @@ import { RevisarReporte } from '@/components/avance/revisar-reporte'
 import { FirmaRevision, InsigniaRevision, NotaRevision } from '@/components/avance/revision'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { SinDatos } from '@/components/ui/tabla'
 import { enlacesDeFotos } from '@/lib/datos/avances'
 import { fotosDeReportesFlota, reportesDeFlota } from '@/lib/datos/flota'
 import { fecha as formatearFecha, hora, hoyLima, numero, porcentaje } from '@/lib/format'
@@ -37,11 +38,11 @@ export async function AvanceDeFlota({ flotaId, perfil }: { flotaId: string; perf
     return (
       <Tarjeta>
         <TarjetaCuerpo>
-          <p className="text-sm font-medium text-texto">Todavía no hay reportes</p>
-          <p className="mt-1 text-sm text-texto-suave">
-            Cada día que se trabaje, una línea acá con su foto: cómo empezó, qué se hizo y cómo
-            quedó. Se escribe con «Reportar», arriba.
-          </p>
+          <SinDatos
+            compacto
+            titulo="Todavía no hay reportes"
+            descripcion="Cada día que se trabaje, una línea acá con su foto: cómo empezó, qué se hizo y cómo quedó. Se escribe con «Reportar», arriba."
+          />
         </TarjetaCuerpo>
       </Tarjeta>
     )
