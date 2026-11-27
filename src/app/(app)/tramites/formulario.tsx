@@ -13,9 +13,17 @@ import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Ventana } from '@/components/ui/ventana'
 import type { TipoDeTramite, UnidadParaTramitar } from '@/lib/datos/tramites'
 import { definir, ESTADO_OT } from '@/lib/dominio/estados'
-import { AMBITO_TRAMITE, AMBITOS_TRAMITE, MAXIMO_UNIDADES_PARA_ELEGIR, nombreDeLaUnidad } from '@/lib/dominio/tramites'
+import {
+  AMBITO_TRAMITE,
+  AMBITOS_TRAMITE,
+  MAXIMO_DIAS_DESDE_TERMINO_OT,
+  MAXIMO_UNIDADES_PARA_ELEGIR,
+  MINIMO_DIAS_DESDE_TERMINO_OT,
+  nombreDeLaUnidad,
+} from '@/lib/dominio/tramites'
 import { refrescarSiEsDeLaPestana, useCursorAlRechazo, useEnvio, useIdDelEnvio } from '@/lib/envio'
 import { useEstadoCompartido } from '@/lib/estado-compartido'
+import { cn } from '@/lib/utils'
 
 import { guardarTipo, registrarTramite } from './acciones'
 
@@ -453,14 +461,21 @@ function FormularioTipo({ id, tipo, alCancelar, alTerminar }: {
   const [renueva, setRenueva] = useState(tipo?.se_renueva ?? false)
   const [dias, setDias] = useState(tipo ? tipo.dias_aviso.join(', ') : DIAS_SI_NO)
   const [diasTocados, setDiasTocados] = useState(false)
+  // Al terminar la OT (entrega 4): solo en los de una unidad.
+  const [ambito, setAmbito] = useState(tipo?.ambito ?? 'EMPRESA')
+  const [diasOt, setDiasOt] = useState(tipo?.dias_desde_termino_ot != null ? String(tipo.dias_desde_termino_ot) : '')
   const errorNombre = error && /Ya hay un tipo|nombre del tipo/.test(error) ? error : null
   const errorDias = !errorNombre && error && /días de aviso|avisos antes/.test(error) ? error : null
+  const errorOt = !errorNombre && !errorDias && error && /termina la OT|terminar la OT/.test(error) ? error : null
   useCursorAlRechazo(
     enviando,
     error,
     useCallback(
-      () => document.getElementById(errorNombre ? `tipo-nombre-${id}` : errorDias ? `tipo-dias-${id}` : `tipo-error-${id}`),
-      [errorNombre, errorDias, id],
+      () =>
+        document.getElementById(
+          errorNombre ? `tipo-nombre-${id}` : errorDias ? `tipo-dias-${id}` : errorOt ? `tipo-dias-ot-${id}` : `tipo-error-${id}`,
+        ),
+      [errorNombre, errorDias, errorOt, id],
     ),
   )
   return (
@@ -490,12 +505,20 @@ function FormularioTipo({ id, tipo, alCancelar, alTerminar }: {
             De quién es<span className="ml-0.5 text-peligro">*</span>
           </legend>
           <div className="grid gap-2 sm:grid-cols-2">
-            {AMBITOS_TRAMITE.map((ambito) => (
-              <label key={ambito} className={OPCION}>
-                <input type="radio" name="ambito" value={ambito} required defaultChecked={(tipo?.ambito ?? 'EMPRESA') === ambito} className={RADIO} />
+            {AMBITOS_TRAMITE.map((valor) => (
+              <label key={valor} className={OPCION}>
+                <input
+                  type="radio"
+                  name="ambito"
+                  value={valor}
+                  required
+                  checked={ambito === valor}
+                  onChange={() => setAmbito(valor)}
+                  className={RADIO}
+                />
                 <span>
-                  <span className="font-medium">{AMBITO_TRAMITE[ambito].etiqueta}</span>
-                  <span className="block text-xs text-texto-suave">{AMBITO_TRAMITE[ambito].descripcion}</span>
+                  <span className="font-medium">{AMBITO_TRAMITE[valor].etiqueta}</span>
+                  <span className="block text-xs text-texto-suave">{AMBITO_TRAMITE[valor].descripcion}</span>
                 </span>
               </label>
             ))}
@@ -505,7 +528,7 @@ function FormularioTipo({ id, tipo, alCancelar, alTerminar }: {
           etiqueta="Avisar antes del vencimiento"
           htmlFor={`tipo-dias-${id}`}
           requerido
-          ayuda="Cuántos días antes de la fecha límite (o de la vigencia, en lo que se renueva) avisa el sistema, separados por comas: 30, 15, 7. Hasta cinco avisos, de 0 a 120 días."
+          ayuda="Cuántos días antes de la fecha límite avisa el sistema, separados por comas: 30, 15, 7. En lo que se renueva, el primero abre además la renovación antes de que venza el documento. Hasta cinco avisos, de 0 a 120 días."
           ayudaEnIcono={false}
           error={errorDias ?? undefined}
         >
@@ -542,6 +565,43 @@ function FormularioTipo({ id, tipo, alCancelar, alTerminar }: {
             <span className="block text-xs text-texto-suave">Vence cada cierto tiempo y se vuelve a tramitar: el SOAT, una revisión técnica.</span>
           </span>
         </label>
+        {ambito === 'UNIDAD' && (
+          <div className="space-y-3 rounded-[var(--radius-base)] border border-borde p-3" data-campos-ot>
+            <Campo
+              etiqueta="Se abre al terminar la OT"
+              htmlFor={`tipo-dias-ot-${id}`}
+              ayuda={`Días hábiles desde que la OT de la unidad termina hasta la fecha límite. Con un número, el sistema abre el trámite solo al terminar la OT; vacío, se registra a mano. De ${MINIMO_DIAS_DESDE_TERMINO_OT} a ${MAXIMO_DIAS_DESDE_TERMINO_OT}.`}
+              ayudaEnIcono={false}
+              error={errorOt ?? undefined}
+            >
+              <Entrada
+                id={`tipo-dias-ot-${id}`}
+                name="dias_ot"
+                inputMode="numeric"
+                pattern="[0-9]{1,2}"
+                maxLength={2}
+                autoComplete="off"
+                value={diasOt}
+                onChange={(e) => setDiasOt(e.target.value)}
+                placeholder="Vacío: no se abre solo"
+                className="tabular sm:max-w-56"
+              />
+            </Campo>
+            <label className={cn(CASILLA, diasOt.trim() === '' && 'opacity-60')}>
+              <input
+                type="checkbox"
+                name="solo_sin_placa"
+                defaultChecked={tipo?.solo_sin_placa ?? false}
+                disabled={diasOt.trim() === ''}
+                className="size-5 shrink-0 accent-[var(--acento)] sm:size-4"
+              />
+              <span>
+                Solo si la unidad no tiene placa
+                <span className="block text-xs text-texto-suave">Para las placas: la unidad que ya las tiene no las tramita.</span>
+              </span>
+            </label>
+          </div>
+        )}
         {tipo && (
           <label className={CASILLA}>
             <input type="checkbox" name="activo" defaultChecked={tipo.activo} className="size-5 shrink-0 accent-[var(--acento)] sm:size-4" />
@@ -553,7 +613,7 @@ function FormularioTipo({ id, tipo, alCancelar, alTerminar }: {
         )}
       </fieldset>
       <PieDeVentana
-        error={errorNombre || errorDias ? null : error}
+        error={errorNombre || errorDias || errorOt ? null : error}
         idError={`tipo-error-${id}`}
         enviando={enviando}
         alCancelar={alCancelar}

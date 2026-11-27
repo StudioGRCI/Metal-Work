@@ -1,4 +1,4 @@
-import { Paperclip } from 'lucide-react'
+import { AlarmClock, CalendarClock, CircleCheck, Paperclip } from 'lucide-react'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 
@@ -7,6 +7,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Vistas } from '@/components/estructura/vistas'
 import { AvisoEnfocado } from '@/components/ui/aviso-enfocado'
 import { Insignia } from '@/components/ui/etiqueta-estado'
+import { Indicador } from '@/components/ui/indicador'
 import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
@@ -25,11 +26,12 @@ import {
   AMBITOS_TRAMITE,
   diasDeAvisoEnTexto,
   nombreDeLaUnidad,
+  ORIGEN_TRAMITE,
   PERMISOS_TRAMITES,
   plazoDelTramite,
   SITUACION_TRAMITE,
 } from '@/lib/dominio/tramites'
-import { fecha, hoyLima } from '@/lib/format'
+import { diaLima, fecha, hoyLima, mesLargo } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { cn } from '@/lib/utils'
 
@@ -39,6 +41,9 @@ export const metadata = { title: 'Trámites' }
 
 const VISTAS = [
   { valor: 'en-curso', titulo: 'En curso' },
+  // Lo que Gerencia viene a mirar (entrega 4): lo que entró en sus días de aviso, y lo que pasó su fecha límite.
+  { valor: 'por-vencer', titulo: 'Por vencer' },
+  { valor: 'vencidos', titulo: 'Vencidos' },
   // Los que la entidad observó, aparte: el globo del menú de quien los lleva trae aquí.
   { valor: 'observados', titulo: 'Observados' },
   // Los que ya tienen su documento final (entrega 2): salen de «En curso» y dejan de contar plazo.
@@ -57,7 +62,7 @@ function porPlazo(x: Tramite, y: Tramite) {
 }
 
 /**
- * Los trámites (plan «El puesto de Tramitador», entregas 1 y 2). El Tramitador los
+ * Los trámites (plan «El puesto de Tramitador», entregas 1 a 4). El Tramitador los
  * registra, los lleva y los cierra con su documento final; Gerencia y Administración los consultan, Ventas solo los
  * de una unidad, y Gerencia aprueba la anulación. Qué ve cada quien y qué puede
  * hacer en cada uno lo decide la base (`tramites_visibles`).
@@ -82,6 +87,9 @@ export default async function PaginaTramites({ searchParams }: PageProps<'/trami
   ])
   const grupos: Record<Vista, Tramite[]> = {
     'en-curso': tramites.filter((t) => ['POR_INICIAR', 'EN_TRAMITE', 'OBSERVADO'].includes(t.situacion)).sort(porPlazo),
+    // Como lo cuenta la base: abierto y dentro de los días de aviso de su tipo.
+    'por-vencer': tramites.filter((t) => t.por_vencer && t.situacion !== 'POR_ANULAR').sort(porPlazo),
+    vencidos: tramites.filter((t) => t.vencido && t.situacion !== 'POR_ANULAR').sort(porPlazo),
     observados: tramites.filter((t) => t.situacion === 'OBSERVADO').sort(porPlazo),
     // El que se cerró último, arriba.
     concluidos: tramites.filter((t) => t.situacion === 'CONCLUIDO').sort((x, y) => (y.concluido_en ?? '').localeCompare(x.concluido_en ?? '')),
@@ -92,7 +100,10 @@ export default async function PaginaTramites({ searchParams }: PageProps<'/trami
   // lo concluido es lo que más se busca, y en «En curso» no está.
   const vista: Vista = vistaPedida ?? (busqueda ? VISTAS.find((v) => grupos[v.valor].length > 0)?.valor : undefined) ?? 'en-curso'
   const enOtrasVistas = VISTAS.filter((v) => v.valor !== vista && grupos[v.valor].length > 0).map((v) => `${grupos[v.valor].length} en «${v.titulo}»`)
-  const vencidos = grupos['en-curso'].filter((t) => t.vencido).length
+  const vencidos = grupos.vencidos.length
+  // Lo que se cerró este mes, por el día en Lima en que se cerró.
+  const hoy = hoyLima()
+  const concluidosDelMes = grupos.concluidos.filter((t) => t.concluido_en && diaLima(t.concluido_en).slice(0, 7) === hoy.slice(0, 7)).length
   const porResponder = aprueba ? grupos['por-anular'].length : 0
   const alTope =
     tramites.filter((t) => t.situacion !== 'ANULADO' && t.situacion !== 'CONCLUIDO').length >= MAXIMO_VIVOS ||
@@ -111,7 +122,7 @@ export default async function PaginaTramites({ searchParams }: PageProps<'/trami
       <EncabezadoPagina
         titulo="Trámites"
         descripcion={resumen.length > 0 ? resumen.join(' ') : undefined}
-        ayuda="Los trámites de las unidades de los clientes (tarjeta de propiedad, placas, certificados) y los de la empresa (licencias, SOAT, permisos). Quien lleva los trámites registra cada uno con su número TR y anota en qué va: por iniciar, en trámite u observado por la entidad. En su ficha guarda el expediente (el cargo, los recibos, las gestiones) y lo cierra al subir el documento que entrega la entidad. El sistema le avisa en la campana cuando otro registra uno y al llegar los días de aviso de su tipo antes de la fecha límite (o de la vigencia, en lo que se renueva); lo que pasó su fecha límite, también a Gerencia. Un trámite no se borra: se pide su anulación con el motivo y Gerencia la aprueba."
+        ayuda="Los trámites de las unidades de los clientes (tarjeta de propiedad, placas, certificados) y los de la empresa (licencias, SOAT, permisos). Quien lleva los trámites registra cada uno con su número TR y anota en qué va: por iniciar, en trámite u observado por la entidad. Al terminar una OT, el sistema abre solo su tarjeta de propiedad (y las placas, si la unidad no tiene), con la fecha límite de la regla de la OT. En su ficha guarda el expediente (el cargo, los recibos, las gestiones) y lo cierra al subir el documento que entrega la entidad. Lo que se renueva abre su renovación solo al acercarse el vencimiento de su documento, o antes con «Renovar ahora». El sistema le avisa en la campana cuando se agrega uno y al llegar los días de aviso de su tipo antes de la fecha límite; lo que pasó su fecha límite, también a Gerencia. Un trámite no se borra: se pide su anulación con el motivo y Gerencia la aprueba."
         migas={[{ titulo: 'Trámites' }]}
         acciones={gestiona && enUso.length > 0 && <RegistrarTramite tipos={enUso} unidades={unidades} hoy={hoyLima()} />}
         estado={gestiona ? <EstadoDelTramite /> : undefined}
@@ -124,6 +135,37 @@ export default async function PaginaTramites({ searchParams }: PageProps<'/trami
         </AvisoEnfocado>
       )}
       <div className="space-y-5">
+        {/* Las cifras de todo lo que ve quien mira; con una búsqueda contarían solo lo encontrado. */}
+        {!busqueda && (
+          <section aria-label="Cómo van los trámites" className="grid grid-cols-2 gap-3 sm:grid-cols-3" data-cifras-tramites>
+            <Indicador
+              titulo="Por vencer"
+              icono={CalendarClock}
+              valor={grupos['por-vencer'].length}
+              tono={grupos['por-vencer'].length > 0 ? 'aviso' : 'neutro'}
+              pie="Dentro de los días de aviso de su tipo"
+              href="/tramites?vista=por-vencer"
+            />
+            <Indicador
+              titulo="Vencidos"
+              icono={AlarmClock}
+              valor={vencidos}
+              tono={vencidos > 0 ? 'peligro' : 'neutro'}
+              pie={vencidos > 0 ? 'Pasaron su fecha límite sin concluir' : 'Ninguno pasó su fecha límite'}
+              href="/tramites?vista=vencidos"
+            />
+            <Indicador
+              // En el teléfono va sola a todo lo ancho: dos por fila y la tercera suelta dejaba un hueco.
+              className="col-span-2 sm:col-span-1 [&_.rotulo-indicador]:min-h-0"
+              titulo="Concluidos este mes"
+              icono={CircleCheck}
+              valor={concluidosDelMes}
+              tono={concluidosDelMes > 0 ? 'exito' : 'neutro'}
+              pie={`En ${mesLargo(hoy)}, con su documento final`}
+              href="/tramites?vista=concluidos"
+            />
+          </section>
+        )}
         <div className="space-y-3">
           <BuscadorSimple ruta="/tramites" clave="buscar" etiqueta="Buscar trámites" marcador="TR, tipo, entidad, expediente, placa, código interno, cliente u OT" />
           <Vistas
@@ -157,6 +199,10 @@ export default async function PaginaTramites({ searchParams }: PageProps<'/trami
                           ? 'Cuando se registre un trámite, aparece aquí.'
                           : 'Aquí salen los trámites de las unidades de los clientes: la tarjeta de propiedad, las placas, los certificados. Cuando se registre uno, aparece aquí.',
                     }
+                  : vista === 'por-vencer'
+                    ? { titulo: 'Nada por vencer', descripcion: 'Aquí sale el trámite en curso cuando entra en los días de aviso de su tipo antes de su fecha límite.' }
+                  : vista === 'vencidos'
+                    ? { titulo: 'Ningún trámite vencido', descripcion: 'Aquí sale el trámite en curso que pasó su fecha límite sin concluir. También le llega el aviso a Gerencia.' }
                   : vista === 'observados'
                     ? { titulo: 'Ningún trámite observado', descripcion: 'Cuando una entidad observa un trámite, quien lo lleva lo marca «Observado» con lo que pide subsanar, y sale aquí.' }
                   : vista === 'concluidos'
@@ -221,6 +267,11 @@ function FilaTramite({ tramite: t }: { tramite: Tramite }) {
           </Link>
           {t.puede_resolver_anulacion && <Insignia tono="acento">Te toca</Insignia>}
           <span className="text-xs text-texto-suave">{t.tipo}</span>
+          {t.origen !== 'MANUAL' && ORIGEN_TRAMITE[t.origen] && (
+            <span className="text-xs text-texto-suave" data-origen={t.origen}>
+              · {ORIGEN_TRAMITE[t.origen].etiqueta}
+            </span>
+          )}
         </div>
         <p className="mt-1 line-clamp-2 max-w-xl text-sm text-texto">{t.asunto}</p>
         <p className="mt-1 text-sm font-medium text-texto md:hidden">{deQuienEs(t)}</p>
@@ -303,7 +354,7 @@ function Catalogo({ tipos, gestiona }: { tipos: TipoDeTramite[]; gestiona: boole
     <SeccionDesplegable
       id="tipos-de-tramite"
       titulo={`Tipos de trámite · ${tipos.filter((t) => t.activo).length}`}
-      descripcion="Qué trámites se llevan, ante qué entidad y con cuántos días de anticipación se avisa su vencimiento."
+      descripcion="Qué trámites se llevan, ante qué entidad, con cuántos días de anticipación se avisa su vencimiento y cuáles se abren solos al terminar la OT."
       className="scroll-mt-24"
     >
       <div className="space-y-4">
@@ -331,6 +382,13 @@ function Catalogo({ tipos, gestiona }: { tipos: TipoDeTramite[]; gestiona: boole
                       <p className="mt-0.5 text-xs text-texto-suave">
                         {t.entidad} · Aviso: <span className="tabular">{diasDeAvisoEnTexto(t.dias_aviso).toLowerCase()}</span>
                       </p>
+                      {t.dias_desde_termino_ot !== null && (
+                        <p className="mt-0.5 text-xs text-texto-suave" data-abre-la-ot>
+                          Se abre al terminar la OT
+                          {t.solo_sin_placa ? ', si la unidad no tiene placa' : ''}: límite a{' '}
+                          <span className="tabular">{t.dias_desde_termino_ot}</span> {t.dias_desde_termino_ot === 1 ? 'día hábil' : 'días hábiles'}
+                        </p>
+                      )}
                     </div>
                     {gestiona && (
                       <div className="shrink-0">

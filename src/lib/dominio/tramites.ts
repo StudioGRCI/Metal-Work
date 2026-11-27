@@ -41,6 +41,21 @@ export const SITUACION_TRAMITE: Record<string, Def> = {
   ANULADO: { etiqueta: 'Anulado', tono: 'neutro', descripcion: 'Quedó sin efecto, con su motivo y el visto de Gerencia.' },
 }
 
+/**
+ * De dónde viene el trámite (`tramites.origen`, entrega 4, migración
+ * 20261127160000): lo registró alguien, lo abrió la base al terminar la OT, o
+ * es la renovación de uno concluido.
+ */
+export const ORIGEN_TRAMITE: Record<string, { etiqueta: string; descripcion: string }> = {
+  MANUAL: { etiqueta: 'Registrado', descripcion: 'Lo registró quien lleva los trámites.' },
+  OT: { etiqueta: 'Abierto por la OT', descripcion: 'Lo abrió el sistema al terminar la OT, con su fecha límite.' },
+  RENOVACION: { etiqueta: 'Renovación', descripcion: 'Renueva el documento de un trámite concluido.' },
+}
+
+/** Los días hábiles desde el término de la OT que admite un tipo, como `ck_tramite_tipo_ot`. */
+export const MINIMO_DIAS_DESDE_TERMINO_OT = 1
+export const MAXIMO_DIAS_DESDE_TERMINO_OT = 60
+
 /** Cuántas unidades trae la lista para elegir como mucho: el tope de filas de la API. La ventana lo dice si se llega. */
 export const MAXIMO_UNIDADES_PARA_ELEGIR = 1000
 

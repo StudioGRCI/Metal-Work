@@ -4,7 +4,14 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
-import { AMBITOS_TRAMITE, CLASES_QUE_SE_SUBEN, diasDeAvisoDesdeTexto, ESTADOS_QUE_SE_LLEVAN } from '@/lib/dominio/tramites'
+import {
+  AMBITOS_TRAMITE,
+  CLASES_QUE_SE_SUBEN,
+  diasDeAvisoDesdeTexto,
+  ESTADOS_QUE_SE_LLEVAN,
+  MAXIMO_DIAS_DESDE_TERMINO_OT,
+  MINIMO_DIAS_DESDE_TERMINO_OT,
+} from '@/lib/dominio/tramites'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -239,6 +246,18 @@ export async function guardarTipo(_previo: unknown, formulario: FormData): Promi
   const dias = diasDeAvisoDesdeTexto(dato(formulario, 'dias_aviso'))
   if (!dias) return { ok: false, error: 'Los días de aviso van en números de 0 a 120, de uno a cinco, separados por comas: 30, 15, 7.' }
   const d = analisis.data
+  // Al terminar la OT (entrega 4): solo en los de una unidad. Vacío, no se abre solo.
+  const textoOt = d.ambito === 'UNIDAD' ? dato(formulario, 'dias_ot') : ''
+  const diasOt = textoOt === '' ? null : Number(textoOt)
+  if (
+    diasOt !== null &&
+    (!/^\d{1,2}$/.test(textoOt) || diasOt < MINIMO_DIAS_DESDE_TERMINO_OT || diasOt > MAXIMO_DIAS_DESDE_TERMINO_OT)
+  ) {
+    return {
+      ok: false,
+      error: `Los días hábiles desde que termina la OT van de ${MINIMO_DIAS_DESDE_TERMINO_OT} a ${MAXIMO_DIAS_DESDE_TERMINO_OT}, o vacíos si no se abre solo.`,
+    }
+  }
 
   const supabase = await createClient()
   const { data, error } = await supabase
@@ -252,6 +271,9 @@ export async function guardarTipo(_previo: unknown, formulario: FormData): Promi
       p_activo: formulario.get('activo') === 'on',
       // El tipo nuevo lo dice: su alta repetida no corrige a escondidas.
       p_alta: dato(formulario, 'alta') === '1',
+      p_dias_ot: diasOt ?? undefined,
+      // Siempre un sí o un no: vacío es la pantalla de antes, que no toca lo de la OT.
+      p_solo_sin_placa: diasOt !== null && formulario.get('solo_sin_placa') === 'on',
     })
     .maybeSingle()
   if (error) return { ok: false, error: mensajeDeError(error) }
@@ -259,6 +281,30 @@ export async function guardarTipo(_previo: unknown, formulario: FormData): Promi
 
   revalidatePath('/tramites', 'layout')
   return { ok: true, mensaje: data.creado ? `Tipo «${d.nombre}» agregado.` : `Tipo «${d.nombre}» guardado.` }
+}
+
+/**
+ * «Renovar ahora»: el Tramitador abre la renovación de un concluido que se
+ * renueva, sin esperar a que la abra la revisión diaria. Mismo permiso que
+ * `tramites_renovar`. El verde dice el número TR de la renovación.
+ */
+export async function renovarTramite(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'tramites.gestionar')) return { ok: false, error: 'No tienes permiso para llevar los trámites.' }
+
+  const analisis = z
+    .object({ id: z.guid(), nuevo: z.guid() })
+    .safeParse({ id: dato(formulario, 'id'), nuevo: dato(formulario, 'nuevo') })
+  if (!analisis.success) return { ok: false, error: 'Vuelve a abrir la ventana para renovar el trámite.' }
+  const d = analisis.data
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('tramites_renovar', { p_id: d.id, p_nuevo: d.nuevo }).maybeSingle()
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data?.tramite !== d.nuevo || !data.numero_tramite) return { ok: false, error: 'La renovación no se abrió. Recarga la pantalla.' }
+
+  revalidatePath('/tramites', 'layout')
+  return { ok: true, mensaje: `Renovación ${data.numero_tramite} abierta: está en «En curso», por iniciar.` }
 }
 
 /*

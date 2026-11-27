@@ -27,6 +27,7 @@ import { actividadesDeOrden, areasDelTaller, despachosParaReporte } from '@/lib/
 import { adjuntosDeOrden, ordenTienePdf } from '@/lib/datos/adjuntos'
 import { cotizacionPdfDeOrden } from '@/lib/datos/cotizaciones-pdf'
 import { recorridoDeCotizaciones } from '@/lib/datos/recorrido'
+import { tramitesDeLaOrden } from '@/lib/datos/tramites'
 import { describirRecorridoDeLaCotizacion, recorridoDeLaUnidad } from '@/lib/dominio/recorrido'
 import { Recorrido } from '@/components/ui/recorrido'
 import { materialesParaPantalla } from '@/lib/datos/materiales-orden'
@@ -68,7 +69,7 @@ import { CostosYControles, ControlDeSalida, type CostoDelCodigoEnOt } from './co
 import { Etapas } from './etapas'
 import { FichaTaller } from './ficha-taller'
 import { VistaEtapas } from '../../codigos-internos/detalle/vistas-diseno'
-import { FechasClave, SalidaDeUnidad } from './salida-y-plazos'
+import { FechasClave, SalidaDeUnidad, TramitesDeLaOt } from './salida-y-plazos'
 import { queMeToca } from './te-toca'
 import { esUuid } from '@/lib/utils'
 
@@ -169,9 +170,18 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
     puede(perfil, ['cotizaciones.ver_pdf_comercial', 'cotizaciones.ver_aprobadas', 'tesoreria.ver_documentos'])
       ? { id: orden.cotizacion_pdf_id, numero: cotizacionPdf?.numero ?? null }
       : null
-  const [salida, fechasClave, recorridoDeLaCotizacion] = await Promise.all([
+  const [salida, fechasClave, tramitesDeLaOt, recorridoDeLaCotizacion] = await Promise.all([
     verSalida ? estadoDeSalida(id) : Promise.resolve(null),
     vista === 'resumen' && !orden.plan_etapas_manual ? fechasClaveDeOrden(id) : Promise.resolve(null),
+    // Los trámites que abrió al terminar (entrega 4 del Tramitador). Si no se
+    // leen, las fechas clave salen igual, sin decir si se cumplieron.
+    // Todas las OT: las nuevas no tienen «Fechas clave» y van en su propia tarjeta.
+    vista === 'resumen'
+      ? tramitesDeLaOrden(id).catch((e: unknown) => {
+          console.error('OT: no se pudieron leer sus trámites.', e)
+          return null
+        })
+      : Promise.resolve(null),
     cotizacionDelRecorrido
       ? recorridoDeCotizaciones([cotizacionDelRecorrido.id])
           .then((r) => recorridoDeLaUnidad(describirRecorridoDeLaCotizacion(r.get(cotizacionDelRecorrido.id) ?? []), orden.numero_de_unidad ?? 1))
@@ -373,11 +383,14 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
                   }
                 />
               </ArchivosDeOrden>
-              {fechasClave && (
+              {fechasClave ? (
                 <FechasClave
                   fechas={fechasClave}
+                  tramites={tramitesDeLaOt}
                   disenoCumplida={pendientes.planos > 0 && pendientes.planosEntregados >= pendientes.planos}
                 />
+              ) : (
+                tramitesDeLaOt && tramitesDeLaOt.length > 0 && <TramitesDeLaOt tramites={tramitesDeLaOt} />
               )}
               {/* Sin pasos no hay tarjeta: Costos pasa el filtro por
                   `tesoreria.ver_documentos` y la base no le muestra ninguno. */}

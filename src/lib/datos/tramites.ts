@@ -12,7 +12,8 @@ import { createClient } from '@/lib/supabase/server'
  * siempre lee esas tablas. También dice qué puede hacer quien pregunta en cada
  * uno, con la misma regla que la función que escribe. El expediente (entrega 2,
  * migración 20261127002000) se lee por `tramites_archivos` y
- * `tramites_gestiones`, con la misma regla de quién ve.
+ * `tramites_gestiones`, con la misma regla de quién ve. El origen, la
+ * renovación y «por vencer» son de la entrega 4 (migración 20261127160000).
  */
 
 export type Tramite = {
@@ -43,7 +44,8 @@ export type Tramite = {
   cliente: string | null
   orden_id: string | null
   orden_numero: string | null
-  registro: string
+  /** Quién lo registró; vacío en el que abrió la base (`origen`). */
+  registro: string | null
   registro_puesto: string | null
   anulacion_pedida_en: string | null
   anulacion_pidio: string | null
@@ -68,6 +70,19 @@ export type Tramite = {
   puede_llevar_expediente: boolean
   /** Cerrarlo con su documento final: ya se presentó y no espera el visto de Gerencia. */
   puede_concluir: boolean
+  /** `ORIGEN_TRAMITE`: lo registró alguien, lo abrió la OT al terminar o es una renovación. */
+  origen: string
+  /** Abierto y dentro de los días de aviso de su tipo: lo que Gerencia cuenta como «por vencer». */
+  por_vencer: boolean
+  /** En una renovación, el trámite cuyo documento renueva. */
+  renueva_a: string | null
+  renueva_numero: string | null
+  /** Su renovación: la que está en pie o, si se anularon, la última. */
+  renovado_con: string | null
+  renovado_numero: string | null
+  renovado_estado: string | null
+  /** «Renovar ahora»: concluido, se renueva y no tiene una renovación en pie. */
+  puede_renovar: boolean
 }
 
 type Fila = { [K in keyof Tramite]: Tramite[K] | null }
@@ -100,7 +115,7 @@ function aTramite(f: Fila): Tramite | null {
     cliente: f.cliente,
     orden_id: f.orden_id,
     orden_numero: f.orden_numero,
-    registro: f.registro ?? '',
+    registro: f.registro,
     registro_puesto: f.registro_puesto,
     anulacion_pedida_en: f.anulacion_pedida_en,
     anulacion_pidio: f.anulacion_pidio,
@@ -120,6 +135,14 @@ function aTramite(f: Fila): Tramite | null {
     archivos: f.archivos ?? 0,
     puede_llevar_expediente: f.puede_llevar_expediente === true,
     puede_concluir: f.puede_concluir === true,
+    origen: f.origen ?? 'MANUAL',
+    por_vencer: f.por_vencer === true,
+    renueva_a: f.renueva_a,
+    renueva_numero: f.renueva_numero,
+    renovado_con: f.renovado_con,
+    renovado_numero: f.renovado_numero,
+    renovado_estado: f.renovado_estado,
+    puede_renovar: f.puede_renovar === true,
   }
 }
 
@@ -133,7 +156,7 @@ export const MAXIMO_CONCLUIDOS = 200
 export const MAXIMO_ANULADOS = 200
 
 const SELECT =
-  'id, numero, estado, situacion, creado_en, actualizado_en, tipo_id, tipo, se_renueva, ambito, entidad, asunto, expediente, fecha_inicio, fecha_limite, dias_para_limite, vencido, nota, unidad_id, placa, codigo_interno, carroceria, cliente, orden_id, orden_numero, registro, registro_puesto, anulacion_pedida_en, anulacion_pidio, motivo_anulacion, anulacion_rechazada_en, anulacion_rechazo, anulacion_rechazo_motivo, anulado_en, anulo, puede_actualizar, puede_pedir_anulacion, puede_resolver_anulacion, fecha_conclusion, vigente_hasta, concluido_en, concluyo, archivos, puede_llevar_expediente, puede_concluir'
+  'id, numero, estado, situacion, creado_en, actualizado_en, tipo_id, tipo, se_renueva, ambito, entidad, asunto, expediente, fecha_inicio, fecha_limite, dias_para_limite, vencido, nota, unidad_id, placa, codigo_interno, carroceria, cliente, orden_id, orden_numero, registro, registro_puesto, anulacion_pedida_en, anulacion_pidio, motivo_anulacion, anulacion_rechazada_en, anulacion_rechazo, anulacion_rechazo_motivo, anulado_en, anulo, puede_actualizar, puede_pedir_anulacion, puede_resolver_anulacion, fecha_conclusion, vigente_hasta, concluido_en, concluyo, archivos, puede_llevar_expediente, puede_concluir, origen, por_vencer, renueva_a, renueva_numero, renovado_con, renovado_numero, renovado_estado, puede_renovar'
 
 /**
  * Los trámites que ve quien pregunta, del más reciente al más viejo: todos los
@@ -248,6 +271,10 @@ export type TipoDeTramite = {
   se_renueva: boolean
   dias_aviso: number[]
   activo: boolean
+  /** Si se abre solo al terminar la OT de la unidad, a cuántos días hábiles del término. */
+  dias_desde_termino_ot: number | null
+  /** Con lo anterior: solo si la unidad todavía no tiene placa. */
+  solo_sin_placa: boolean
 }
 
 /**
@@ -258,7 +285,7 @@ export async function tiposDeTramite(): Promise<TipoDeTramite[]> {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('tramite_tipos')
-    .select('id, nombre, entidad, ambito, se_renueva, dias_aviso, activo')
+    .select('id, nombre, entidad, ambito, se_renueva, dias_aviso, activo, dias_desde_termino_ot, solo_sin_placa')
     .order('ambito', { ascending: false })
     .order('nombre')
   if (error) throw new Error(`No se pudo leer el catálogo de tipos de trámite: ${error.message}`)
@@ -303,6 +330,52 @@ export async function unidadesParaTramitar(): Promise<UnidadParaTramitar[]> {
             marca: u.marca,
             cliente: u.cliente,
             ordenes: aOrdenes(u.ordenes),
+          },
+        ]
+      : [],
+  )
+}
+
+export type TramiteDeLaOrden = {
+  id: string
+  numero: string
+  tipo: string
+  /** `ORIGEN_TRAMITE`: OT si lo abrió la OT al terminar. */
+  origen: string
+  estado: string
+  situacion: string
+  fecha_limite: string | null
+  fecha_conclusion: string | null
+  vencido: boolean
+  /** Si quien mira puede abrir su ficha. */
+  ve: boolean
+}
+
+/**
+ * Los trámites sin anular de una OT, para quien ve la OT (`tramites_de_la_orden`):
+ * en qué van, no su expediente. Si no se pueden leer, la OT se muestra igual,
+ * sin ellos: la consulta se cae con el error, y quien llama decide.
+ */
+export async function tramitesDeLaOrden(ordenId: string): Promise<TramiteDeLaOrden[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .rpc('tramites_de_la_orden', { p_orden: ordenId })
+    .select('id, numero, tipo, origen, estado, situacion, fecha_limite, fecha_conclusion, vencido, ve')
+  if (error) throw new Error(`No se pudieron leer los trámites de la OT: ${error.message}`)
+  return (data ?? []).flatMap((t) =>
+    t.id && t.numero && t.estado
+      ? [
+          {
+            id: t.id,
+            numero: t.numero,
+            tipo: t.tipo ?? '',
+            origen: t.origen ?? 'MANUAL',
+            estado: t.estado,
+            situacion: t.situacion ?? t.estado,
+            fecha_limite: t.fecha_limite,
+            fecha_conclusion: t.fecha_conclusion,
+            vencido: t.vencido === true,
+            ve: t.ve === true,
           },
         ]
       : [],

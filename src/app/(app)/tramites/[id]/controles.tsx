@@ -1,6 +1,6 @@
 'use client'
 
-import { Ban, Check, PencilLine, X } from 'lucide-react'
+import { Ban, Check, PencilLine, RefreshCw, X } from 'lucide-react'
 import { useCallback, useState, type ReactNode } from 'react'
 
 import { Boton, type Tamano, type Variante } from '@/components/ui/boton'
@@ -15,7 +15,7 @@ import { fecha } from '@/lib/format'
 import { useEstadoCompartido } from '@/lib/estado-compartido'
 import { cn } from '@/lib/utils'
 
-import { actualizarTramite, pedirAnulacion, resolverAnulacion } from '../acciones'
+import { actualizarTramite, pedirAnulacion, renovarTramite, resolverAnulacion } from '../acciones'
 
 /**
  * Lo que dijo la última acción del trámite, fuera de la ventana y junto al
@@ -277,6 +277,41 @@ function CamposDelTramite({ tramite: t, hoy }: { tramite: Tramite; hoy: string }
 }
 
 /** Quien lleva el trámite pide anularlo, con su motivo; lo aprueba Gerencia. */
+/**
+ * «Renovar ahora» (entrega 4): abre la renovación de un concluido que se
+ * renueva sin esperar a la revisión diaria. El id de la renovación vive fuera
+ * de la ventana: tras «No llegó la respuesta», volver a abrirla manda el mismo
+ * y la base no abre dos.
+ */
+export function RenovarTramite({ id, numero, vigenteHasta }: { id: string; numero: string; vigenteHasta: string | null }) {
+  const [nuevo] = useState(() => crypto.randomUUID())
+  return (
+    <AccionDelTramite
+      id={id}
+      accion={renovarTramite}
+      marca="renovar"
+      boton={
+        <>
+          <RefreshCw aria-hidden className="size-4" />
+          Renovar ahora
+        </>
+      }
+      titulo={`Renovar el trámite ${sinCorte(numero)}`}
+      descripcion="Se abre otro trámite del mismo tipo, «Por iniciar», enlazado a este y con fecha límite el día en que vence su documento. Si no lo abres, lo abre el sistema solo al llegar el primer día de aviso de su tipo."
+      enviar="Abrir la renovación"
+    >
+      {() => (
+        <>
+          <input type="hidden" name="nuevo" value={nuevo} />
+          <p className="text-sm text-texto">
+            {vigenteHasta ? `Su documento vale hasta el ${fecha(vigenteHasta)}.` : 'Su documento ya no tiene fecha de vigencia.'}
+          </p>
+        </>
+      )}
+    </AccionDelTramite>
+  )
+}
+
 export function PedirAnulacion({ id, numero }: { id: string; numero: string }) {
   return (
     <AccionDelTramite

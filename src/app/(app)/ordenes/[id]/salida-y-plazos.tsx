@@ -1,6 +1,7 @@
 'use client'
 
 import { Check, DoorOpen, Landmark } from 'lucide-react'
+import Link from 'next/link'
 
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada } from '@/components/ui/campos'
@@ -11,6 +12,8 @@ import { cn } from '@/lib/utils'
 
 import { confirmarSalida, liberarTesoreria, registrarSalidaFisica } from '../acciones'
 import type { estadoDeSalida } from '@/lib/datos/ordenes'
+import type { TramiteDeLaOrden } from '@/lib/datos/tramites'
+import { SITUACION_TRAMITE } from '@/lib/dominio/tramites'
 
 type Liberacion = {
   liberado_en: string
@@ -224,6 +227,7 @@ export function SalidaDeUnidad({
 export function FechasClave({
   fechas,
   disenoCumplida,
+  tramites,
 }: {
   fechas: {
     limite_os_produccion: string | null
@@ -236,9 +240,16 @@ export function FechasClave({
   }
   /** Diseño entregó todos los planos de la hoja de cumplimiento. */
   disenoCumplida: boolean
+  /** Los trámites sin anular de la OT (`tramites_de_la_orden`); `null` si no se pudieron leer. */
+  tramites: TramiteDeLaOrden[] | null
 }) {
+  // La tarjeta y las placas: los trámites que la OT abrió al terminar (entrega 4
+  // del Tramitador). Se cumple cuando todos están concluidos; si alguno se
+  // concluyó pasada su fecha límite, se cumplió con atraso.
+  const { deLaRegla, cumplida: tarjetaCumplida, conAtraso: tarjetaConAtraso, limite: limiteDeLaTarjeta } = estadoDeLaTarjeta(tramites ?? [])
   // `semaforo` en falso: el sistema no sabe si esa regla se cumplió —la OS de
-  // acabados y la tarjeta se tramitan fuera— y pintarla en rojo era mentir.
+  // acabados se tramita fuera, y la tarjeta antes de que la OT termine— y
+  // pintarla en rojo era mentir.
   const filas = [
     {
       titulo: 'OS de producción',
@@ -271,9 +282,11 @@ export function FechasClave({
     {
       titulo: 'Tarjeta de propiedad y placas',
       regla: '15 días hábiles desde el término',
-      limite: fechas.limite_tarjeta_placas,
-      cumplida: false,
-      semaforo: false,
+      // Con sus trámites abiertos, la fecha es la de ellos: la calcula la base al terminar.
+      limite: limiteDeLaTarjeta ?? fechas.limite_tarjeta_placas,
+      cumplida: tarjetaCumplida,
+      conAtraso: tarjetaConAtraso,
+      semaforo: deLaRegla.length > 0,
     },
   ]
 
@@ -285,11 +298,12 @@ export function FechasClave({
     <Tarjeta>
       <TarjetaCabecera
         titulo="Fechas clave"
-        ayuda="Las reglas de plazo que la empresa tiene escritas, calculadas en días de taller. La OS de acabados y la tarjeta se tramitan fuera: acá solo va su fecha límite."
+        ayuda="Las reglas de plazo que la empresa tiene escritas, calculadas en días de taller. La OS de acabados se tramita fuera: acá solo va su fecha límite. La tarjeta de propiedad y las placas las lleva el Tramitador: al terminar la OT se abren solas, y acá se ve si se cumplieron."
       />
       <TarjetaCuerpo className="space-y-0">
         {filas.map((f) => {
           const vencida = f.semaforo && !f.cumplida && f.limite !== null && f.limite < hoy
+          const conAtraso = 'conAtraso' in f && f.conAtraso
           return (
             <div
               key={f.titulo}
@@ -302,15 +316,100 @@ export function FechasClave({
               <span
                 className={cn(
                   'tabular whitespace-nowrap',
-                  f.cumplida ? 'text-exito' : vencida ? 'font-medium text-peligro' : 'text-texto-suave',
+                  conAtraso ? 'text-aviso' : f.cumplida ? 'text-exito' : vencida ? 'font-medium text-peligro' : 'text-texto-suave',
                 )}
                 suppressHydrationWarning
               >
-                {f.cumplida ? 'Cumplida' : f.limite ? formatearFecha(f.limite) : 'Por programar'}
+                {conAtraso ? 'Cumplida con atraso' : f.cumplida ? 'Cumplida' : f.limite ? formatearFecha(f.limite) : 'Por programar'}
               </span>
             </div>
           )
         })}
+        {tramites && tramites.length > 0 && (
+          <div className="pt-3">
+            <ListaDeTramitesDeLaOt tramites={tramites} />
+          </div>
+        )}
+      </TarjetaCuerpo>
+    </Tarjeta>
+  )
+}
+
+/** La tarjeta y las placas de la OT: cumplidas cuando todos sus trámites concluyeron, con atraso si alguno pasó su límite. */
+function estadoDeLaTarjeta(tramites: TramiteDeLaOrden[]) {
+  const deLaRegla = tramites.filter((t) => t.origen === 'OT')
+  const cumplida = deLaRegla.length > 0 && deLaRegla.every((t) => t.estado === 'CONCLUIDO')
+  return {
+    deLaRegla,
+    cumplida,
+    conAtraso: cumplida && deLaRegla.some((t) => t.fecha_conclusion !== null && t.fecha_limite !== null && t.fecha_conclusion > t.fecha_limite),
+    limite: deLaRegla.reduce<string | null>((max, t) => (t.fecha_limite && (!max || t.fecha_limite > max) ? t.fecha_limite : max), null),
+  }
+}
+
+function ListaDeTramitesDeLaOt({ tramites, conRotulo = true }: { tramites: TramiteDeLaOrden[]; conRotulo?: boolean }) {
+  return (
+    <div data-tramites-de-la-ot>
+      {conRotulo && <p className="text-xs font-medium text-texto-suave">Trámites de la OT</p>}
+      <ul className={cn('divide-y divide-borde', conRotulo && 'mt-1')}>
+        {tramites.map((t) => (
+          <li key={t.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2 text-sm" data-tramite={t.numero}>
+            <span className="min-w-0">
+              {t.ve ? (
+                <Link href={`/tramites/${t.id}`} className="tabular inline-flex min-h-11 items-center font-semibold text-acento hover:underline sm:min-h-0">
+                  {t.numero}
+                </Link>
+              ) : (
+                <span className="tabular font-semibold text-texto">{t.numero}</span>
+              )}
+              <span className="text-texto"> · {t.tipo}</span>
+            </span>
+            <span
+              className={cn('tabular text-xs whitespace-nowrap', t.estado === 'CONCLUIDO' ? 'text-exito' : t.vencido ? 'font-medium text-peligro' : 'text-texto-suave')}
+            >
+              {t.estado === 'CONCLUIDO'
+                ? `Concluido el ${formatearFecha(t.fecha_conclusion)}`
+                : [SITUACION_TRAMITE[t.situacion]?.etiqueta ?? t.situacion, t.fecha_limite ? `${t.vencido ? 'venció' : 'vence'} el ${formatearFecha(t.fecha_limite)}` : null]
+                    .filter(Boolean)
+                    .join(' · ')}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+/**
+ * Los trámites de la OT cuando no hay «Fechas clave» (las OT con plan de
+ * etapas de Diseño, que son todas las nuevas): la tarjeta y las placas que
+ * abrió al terminar, si se cumplieron, y cada trámite con su plazo.
+ */
+export function TramitesDeLaOt({ tramites }: { tramites: TramiteDeLaOrden[] }) {
+  const { deLaRegla, cumplida, conAtraso, limite } = estadoDeLaTarjeta(tramites)
+  const vencida = deLaRegla.length > 0 && !cumplida && limite !== null && limite < hoyLima()
+  return (
+    <Tarjeta>
+      <TarjetaCabecera
+        titulo="Trámites de la OT"
+        ayuda="Los lleva el Tramitador. Al terminar la OT se abren solos la tarjeta de propiedad y, si la unidad no tiene placa, las placas, con 15 días hábiles desde el término; se cumplen cuando todos concluyen."
+      />
+      <TarjetaCuerpo className="space-y-3">
+        {deLaRegla.length > 0 && (
+          <p className="flex items-center justify-between gap-3 border-b border-borde pb-3 text-sm" data-cumplimiento-tarjeta>
+            <span>
+              <span className="text-texto">Tarjeta de propiedad y placas</span>
+              <span className="block text-xs text-texto-tenue">15 días hábiles desde el término</span>
+            </span>
+            <span
+              className={cn('tabular whitespace-nowrap', conAtraso ? 'text-aviso' : cumplida ? 'text-exito' : vencida ? 'font-medium text-peligro' : 'text-texto-suave')}
+              suppressHydrationWarning
+            >
+              {conAtraso ? 'Cumplida con atraso' : cumplida ? 'Cumplida' : limite ? `${vencida ? 'Venció el' : 'Vence el'} ${formatearFecha(limite)}` : 'Por programar'}
+            </span>
+          </p>
+        )}
+        <ListaDeTramitesDeLaOt tramites={tramites} conRotulo={false} />
       </TarjetaCuerpo>
     </Tarjeta>
   )

@@ -536,7 +536,9 @@ y el cierre con el documento final son la entrega 2 (migración
 `herramientas/banco/probar-expediente.mjs`). Los avisos de alta y de
 vencimiento son la entrega 3 (migración `20261127004000_los_tramites_avisan_solos`,
 check 500 y `herramientas/banco/probar-avisos-de-tramites.mjs`). El enlace con
-el plazo de la OT y las renovaciones (entrega 4) todavía no están.
+la OT, las renovaciones y las cifras de Gerencia son la entrega 4 (migración
+`20261127160000_el_tramite_nace_de_la_ot`, check 501 y
+`herramientas/banco/probar-tramite-de-la-ot.mjs`), al final de esta sección.
 
 | Qué | Quién | Cómo lo exige la base |
 | --- | --- | --- |
@@ -558,9 +560,9 @@ Los avisos (entrega 3), en la campana, sin permiso nuevo:
 | Aviso | A quién | Cómo lo hace la base |
 | --- | --- | --- |
 | «Trámite nuevo: TR-…», con el tipo, la placa y el cliente (o «de la empresa»), quién lo registró y su fecha límite | `tramites.gestionar`: los Tramitadores, salvo quien lo registró | `trg_tramite_avisa_al_registrarse`, después de cada alta, por `avisar_a_permiso` |
-| «Por vencer: TR-… · vence en N días» al llegar cada uno de los días de aviso de su tipo antes de la fecha límite (30, 15 y 7 en lo que se renueva; 5 en tarjeta y placas); «Por renovar: …» con la vigencia del documento final, en lo concluido que se renueva | `tramites.gestionar`: los Tramitadores | `revisar_tramites()`, que corre pg_cron (`revisar-tramites`) cada día a las 7:00 de Lima y solo en día laborable (`es_laborable`): lo que cayó en domingo o feriado sale el siguiente laborable, una vez por umbral, con el umbral más cercano que todavía no se mandó. No avisa lo anulado, lo que espera el visto de su anulación ni lo de un lote de prueba. Sin ningún Tramitador activo ese día el aviso no se anota: sale en la primera revisión en que haya uno |
+| «Por vencer: TR-… · vence en N días» al llegar cada uno de los días de aviso de su tipo antes de la fecha límite (30, 15 y 7 en lo que se renueva; 5 en tarjeta y placas) | `tramites.gestionar`: los Tramitadores | `revisar_tramites()`, que corre pg_cron (`revisar-tramites`) cada día a las 7:00 de Lima. Desde la entrega 4, lo concluido que se renueva ya no avisa «Por renovar»: al llegar el primer día de aviso la revisión abre su renovación (ver abajo) |
 | «Venció el trámite TR-…» (fecha límite pasada, sin concluir) | Los Tramitadores y `tramites.aprobar_anulacion`: Gerencia | La misma revisión, una sola vez por fecha. Si el Tramitador corrige la fecha límite, la nueva vuelve a avisar |
-| «Venció TR-…: hay que renovarlo» (vigencia pasada) | Los Tramitadores; Gerencia no, hasta la entrega 4 | La misma revisión, una sola vez. El documento que se carga ya vencido no avisa |
+| «Renovación abierta: TR-…» (la abrió la revisión al acercarse el vencimiento, o un Tramitador con «Renovar ahora») | `tramites.gestionar`: los Tramitadores, salvo quien la abrió | `trg_tramite_avisa_al_registrarse`, con la vigencia del documento que renueva. La renovación avisa después «Por vencer» y «Venció» como cualquier trámite, también a Gerencia |
 
 Lo que ya se mandó queda en `tramite_avisos` (trámite, tipo, fecha, umbral,
 a cuántas cuentas, y una fila por día revisado), que solo la revisión escribe
@@ -568,12 +570,8 @@ y que leen quienes ven todos los trámites (`ver_tramite_avisos`, con
 `tramites_ve_todos()`). `revisar_tramites` no la ejecuta ninguna cuenta: la
 llama el sistema. Los días son corridos, no laborables.
 
-Límite conocido hasta la entrega 4: la revisión todavía no sabe qué trámite
-renueva a cuál. Si un SOAT se renueva con un trámite nuevo, el concluido viejo
-sigue avisando por su vigencia al Tramitador; por eso la vigencia vencida no
-va todavía a Gerencia. La entrega 4 enlaza la renovación y saca al viejo de la
-revisión. Si los días de aviso del tipo cambian a medio camino, no sale un día
-de aviso mayor que uno ya mandado para la misma fecha.
+Si los días de aviso del tipo cambian a medio camino, no sale un día de aviso
+mayor que uno ya mandado para la misma fecha.
 
 Los globos: a Gerencia le cuenta las anulaciones que esperan su visto; al
 Tramitador, los trámites que pasaron su fecha límite y los que la entidad
@@ -581,6 +579,16 @@ observó (`pendientes-globales.ts`, con `puede_resolver_anulacion` y
 `puede_actualizar` de la base). Las anulaciones que esperan a Gerencia salen
 también en «Por decidir» (`por-decidir.ts`, grupo «Trámites por anular», con
 `tramites.aprobar_anulacion`); todavía no en «Decisiones tomadas».
+
+La OT, las renovaciones y la lectura de Gerencia (entrega 4), sin permiso nuevo:
+
+| Qué | Quién | Cómo lo exige la base |
+| --- | --- | --- |
+| Al terminar la OT de una unidad (pasa a terminada, entregada o facturada desde otro estado), abrir sus trámites: la tarjeta de propiedad siempre y las placas solo si la unidad no tiene placa (decisión de StudioGRCI, 2026-11-27: «Tarjeta siempre, placas sin placa»), «Por iniciar», con fecha límite a 15 días hábiles del término | El sistema: lo hace la base, a nombre de nadie (`registrado_por` vacío, origen «OT») | `trg_ot_abre_sus_tramites` (`fn_ot_abre_sus_tramites`, `security definer`, revocada a todos). Un disparador propio: no redefine los de la OT. Mira el catálogo (`dias_desde_termino_ot` y `solo_sin_placa` del tipo, que el Tramitador cambia en «Editar»); no abre un tipo que la OT ya tiene vivo, ni lo vuelve a abrir si la OT termina otra vez (`uq_tramites_de_la_ot`). El número se toma solo cuando el trámite va a nacer: la serie TR no deja huecos. Avisa a los Tramitadores como un alta |
+| Renovar ahora: abrir la renovación de un concluido que se renueva, del mismo tipo, enlazada al anterior y con fecha límite el día que vence su documento | `tramites.gestionar`: Tramitador | `tramites_renovar`, el mismo permiso que `renovarTramite`. Solo concluido, que se renueva, sin anulación pendiente y sin otra renovación viva (`uq_tramites_renovacion_viva`). El reenvío con el mismo id devuelve la misma. De dónde viene el trámite y lo que renueva no se corrigen (`trg_tramite_origen_fijo`) |
+| La misma renovación, sola, al llegar el primer día de aviso de su tipo | El sistema | `revisar_tramites()`: abre la renovación (`tramite_abrir_renovacion`, interna) y saca al concluido viejo de la revisión. Si la renovación se anula, no abre otra sola: la abre el Tramitador a mano |
+| Ver en la OT sus trámites y si la tarjeta y las placas se cumplieron (cumplida, con atraso o hasta cuándo) | Quien ve la OT | `tramites_de_la_orden` (`security definer`), con `puede_ver_orden`. El enlace a la ficha, solo a quien ve los trámites de las unidades (`ve`); Calidad y los demás ven el número y el plazo sin enlace. En la OT con plan de etapas de Diseño (todas las nuevas) va en su tarjeta «Trámites de la OT»; en las históricas, dentro de «Fechas clave» |
+| Las cifras de la lista: por vencer, vencidos y concluidos este mes, cada una lleva a su vista | Quien ve los trámites: Tramitador, Gerencia, Administración; Ventas y Gerencia Comercial, los de las unidades | `tramites_visibles` da `por_vencer` (abierto y dentro de los días de aviso de su tipo), `vencido` y las renovaciones (`renueva_a`, `renovado_con`, `puede_renovar`) |
 
 ## Responsables de área
 
