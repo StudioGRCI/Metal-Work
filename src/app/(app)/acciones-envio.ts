@@ -337,7 +337,8 @@ async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo:
     }
     case 'tramite': {
       const { data } = await supabase.from('tramites').select('numero, registrado_por').eq('id', id).maybeSingle()
-      return data && { por: data.registrado_por, lo: dicho('El trámite', 'Los trámites', 'otro', data.numero) }
+      // El que abrió el sistema (entrega 4) no salió de ningún formulario: no es un envío de nadie.
+      return data?.registrado_por ? { por: data.registrado_por, lo: dicho('El trámite', 'Los trámites', 'otro', data.numero) } : null
     }
     case 'archivo_tramite': {
       const { data } = await supabase.from('tramite_archivos').select('archivo_nombre, clase, subido_por').eq('id', id).maybeSingle()

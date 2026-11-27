@@ -1,8 +1,8 @@
 -- Los trámites avisan solos (migración 20261127004000; plan «El puesto de
--- Tramitador», entrega 3). El trámite nuevo avisa a quien lleva los trámites,
+-- Tramitador», entrega 3; la renovación, entrega 4, migración 20261127170000). El trámite nuevo avisa a quien lleva los trámites,
 -- salvo a quien lo registró. La revisión diaria avisa una vez por cada día de
--- aviso del tipo (por la fecha límite y por la vigencia de lo que se renueva),
--- y lo vencido también a Gerencia. Los trámites los registra el Tramitador con
+-- aviso del tipo por la fecha límite, y lo vencido también a Gerencia; el
+-- concluido que se renueva abre su renovación, y avisa ella. Los trámites los registra el Tramitador con
 -- su cuenta y `set local role authenticated`; la revisión la corre el sistema,
 -- como pg_cron. Termina en rollback.
 \set ON_ERROR_STOP on
@@ -213,22 +213,43 @@ do $$ begin
     pg_temp.hoy(), pg_temp.dia('vigencia'));
 end $$;
 reset role;
-select test.afirmar(pg_temp.revisar(pg_temp.dia('v1'), 'POR_RENOVAR') = 1
-                    and pg_temp.dias_anotados('soat', 'POR_RENOVAR') = '{30}',
-  'el SOAT concluido avisa a los 30 días de su vigencia');
-select test.afirmar(pg_temp.revisar(pg_temp.dia('v2'), 'POR_RENOVAR') = 1
-                    and pg_temp.dias_anotados('soat', 'POR_RENOVAR') = '{7,30}',
-  'si la revisión no corrió a los 15, a los 7 da solo el de 7');
+-- Desde la entrega 4 (migración 20261127170000), al llegar el primer día de
+-- aviso de su tipo el concluido abre su renovación, y la renovación es la que avisa.
+create or replace function pg_temp.renovacion(p_tramite text) returns uuid language sql volatile as $$
+  select id from public.tramites where renueva_a = pg_temp.id(p_tramite) order by creado_en limit 1;
+$$;
+-- La revisión la corre pg_cron, sin la sesión de ningún Tramitador.
+select test.como_usuario(:'admin_id');
+select test.afirmar(pg_temp.revisar(pg_temp.dia('v1'), 'RENOVACION') = 1
+                    and pg_temp.dias_anotados('soat', 'RENOVACION') = '{30}',
+  'a los 30 días de su vigencia el SOAT concluido abre su renovación');
+select set_config('prueba.renovacion', pg_temp.renovacion('soat')::text, true);
 select test.afirmar(
-  (select titulo like 'Por renovar: TR-%' and cuerpo like '%. El documento vale hasta el ' || to_char(pg_temp.dia('vigencia'), 'DD/MM/YYYY') || '.'
-     from public.notificaciones where usuario_id = pg_temp.id('tra') and origen_id = pg_temp.id('soat') and titulo like 'Por renovar%'
-     order by creado_en desc limit 1)
-  and pg_temp.avisos('ger', 'soat', 'Por renovar') = 0,
-  'dice hasta cuándo vale, y no le llega a Gerencia');
-select test.afirmar(pg_temp.revisar(pg_temp.dia('v3'), 'VIGENCIA_VENCIDA') = 1
-                    and pg_temp.avisos('tra', 'soat', 'Venció TR-') = 1 and pg_temp.avisos('ger', 'soat', 'Venció TR-') = 0
-                    and pg_temp.revisar(pg_temp.dia('v3'), 'VIGENCIA_VENCIDA') = 0,
-  'vencida la vigencia avisa una vez a los Tramitadores; a Gerencia no hasta la entrega 4 (no sabe aún si ya se renovó)');
+  (select origen = 'RENOVACION' and estado = 'POR_INICIAR' and fecha_limite = pg_temp.dia('vigencia') and registrado_por is null
+          and tipo_id = pg_temp.id('tipo_soat') and ambito = 'EMPRESA' and asunto like 'Renovación de TR-%: SOAT de la camioneta de reparto'
+     from public.tramites where id = pg_temp.id('renovacion')),
+  'la renovación es otro TR del mismo tipo, «Por iniciar», con fecha límite el día en que vence el documento');
+select test.afirmar(pg_temp.avisos('tra', 'renovacion', 'Renovación abierta: TR-') = 1
+                    and pg_temp.avisos('trb', 'renovacion', 'Renovación abierta: TR-') = 1
+                    and pg_temp.avisos('ger', 'renovacion', 'Renovación') = 0
+                    and (select cuerpo like 'SOAT · de la empresa: Renovación de TR-%: SOAT de la camioneta de reparto. El documento del TR-% vale hasta el '
+                                           || to_char(pg_temp.dia('vigencia'), 'DD/MM/YYYY') || '. La abrió el sistema al acercarse el vencimiento.'
+                           from public.notificaciones where usuario_id = pg_temp.id('tra') and origen_id = pg_temp.id('renovacion')),
+  'su apertura avisa a los dos Tramitadores, dice qué renueva y hasta cuándo vale, y no le llega a Gerencia');
+select test.afirmar(pg_temp.dias_anotados('renovacion', 'POR_VENCER') = '{30}' and pg_temp.avisos('tra', 'renovacion', 'Por vencer') = 0,
+  'el aviso de apertura cuenta como el de 30 días: la renovación no lo repite');
+select test.afirmar(pg_temp.revisar(pg_temp.dia('v1'), 'RENOVACION') = 0 and pg_temp.revisar(pg_temp.dia('v2'), 'RENOVACION') = 0
+                    and (select count(*) from public.tramites where renueva_a = pg_temp.id('soat')) = 1,
+  'no abre otra renovación');
+select test.afirmar(pg_temp.dias_anotados('renovacion', 'POR_VENCER') = '{7,30}'
+                    and pg_temp.avisos('tra', 'renovacion', 'Por vencer: TR-') = 1
+                    and pg_temp.avisos('tra', 'soat', 'Por') = 0,
+  'si la revisión no corrió a los 15, a los 7 la renovación da solo el de 7, y el viejo calla');
+select test.afirmar(pg_temp.revisar(pg_temp.dia('v3'), 'VENCIDO') >= 1
+                    and pg_temp.avisos('tra', 'renovacion', 'Venció el trámite TR-') = 1
+                    and pg_temp.avisos('ger', 'renovacion', 'Venció el trámite TR-') = 1
+                    and pg_temp.avisos('tra', 'soat', 'Venció') = 0 and pg_temp.avisos('ger', 'soat', 'Venció') = 0,
+  'vencida sin renovar, la renovación avisa a los Tramitadores y a Gerencia; el viejo no');
 select test.afirmar(pg_temp.revisar(pg_temp.dia('v3'), 'POR_VENCER') = 0
                     and pg_temp.avisos('tra', 'soat', 'Por vencer') = 0,
   'el concluido ya no avisa por su fecha límite');
@@ -272,10 +293,11 @@ do $$ begin
     pg_temp.hoy() - 380, pg_temp.hoy() - 15);
 end $$;
 reset role;
-select pg_temp.revisar(pg_temp.laborable(pg_temp.hoy()), 'VIGENCIA_VENCIDA');
+select pg_temp.revisar(pg_temp.laborable(pg_temp.hoy()), 'RENOVACION');
 select test.afirmar((select count(*) from public.tramite_avisos where tramite_id = pg_temp.id('historico')) = 0
+                    and (select count(*) from public.tramites where renueva_a = pg_temp.id('historico')) = 0
                     and pg_temp.avisos('tra', 'historico', 'Venció') = 0,
-  'el documento de antes que se carga ya vencido no avisa «hay que renovarlo»');
+  'el documento de antes que se carga ya vencido no abre renovación ni avisa');
 
 -- 4c. Los días del tipo cambian a medio camino --------------------------------------
 select test.como_usuario(:'admin_id');

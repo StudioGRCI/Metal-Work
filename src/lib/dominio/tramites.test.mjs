@@ -34,6 +34,11 @@ test('el plazo: vencido y hoy en rojo, la semana en ámbar, lo demás neutro', (
   assert.deepEqual(plazoDelTramite(1), { texto: 'Vence mañana', tono: 'aviso' })
   assert.deepEqual(plazoDelTramite(7), { texto: 'Vence en 7 días', tono: 'aviso' })
   assert.deepEqual(plazoDelTramite(8), { texto: 'Vence en 8 días', tono: 'neutro' })
+  // Con lo que dice la base (los días de aviso de su tipo), no el tope de 7.
+  assert.deepEqual(plazoDelTramite(20, true), { texto: 'Vence en 20 días', tono: 'aviso' })
+  assert.deepEqual(plazoDelTramite(6, false), { texto: 'Vence en 6 días', tono: 'neutro' })
+  assert.deepEqual(plazoDelTramite(1, false), { texto: 'Vence mañana', tono: 'neutro' })
+  assert.deepEqual(plazoDelTramite(0, false), { texto: 'Vence hoy', tono: 'peligro' })
 })
 
 test('la unidad se nombra por su placa, su código y su carrocería', () => {
