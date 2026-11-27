@@ -108,6 +108,15 @@ export function RevisarCotizacion({ id, conOrden }: { id: string; conOrden: bool
  * avisa. No se impide —el vendedor puede haber corregido justo el número—,
  * pero equivocarse de Word en la carpeta es lo más fácil que hay.
  */
+/** Lo que ya ocupa sus unidades, dicho para la ayuda: «Ya tiene una OT y una unidad que pasó a otro comprador». */
+function loQueYaTiene(conOrdenes: number, pasaron: number): string {
+  const ot = conOrdenes === 1 ? 'una OT' : `${conOrdenes} OT`
+  const paso = pasaron === 1 ? 'una unidad que pasó a otro comprador' : `${pasaron} unidades que pasaron a otro comprador`
+  if (pasaron === 0) return `Ya tiene ${ot}`
+  if (conOrdenes === 0) return `Tiene ${paso}`
+  return `Ya tiene ${ot} y ${paso}`
+}
+
 export function CorregirCotizacion({
   id,
   numero,
@@ -140,7 +149,7 @@ export function CorregirCotizacion({
   conOrdenes: number
   /** Las unidades cuya OT pasó a otro comprador (20261126988000): ya no llevan OT. */
   pasaron?: number
-  /** La unidad mayor con OT vigente: la cantidad tampoco baja de ahí. */
+  /** La unidad mayor con OT vigente o que pasó a otro comprador: la cantidad tampoco baja de ahí. */
   unidadMayor?: number
   clientes: { id: string; razon_social: string }[]
   carrocerias: { id: string; nombre: string }[]
@@ -151,9 +160,14 @@ export function CorregirCotizacion({
   const [cantidad, setCantidad] = useState(String(unidades))
   // Las que dice el archivo corregido: si quedan otras, se avisa en ámbar.
   const [unidadesLeidas, setUnidadesLeidas] = useState<number | null>(null)
-  // La cantidad no baja de las OT que tiene ni de la unidad mayor con OT (con la
-  // 2 anulada y la 4 vigente, tres OT piden 4): lo mismo que exige la base.
-  const minimo = Math.max(conOrdenes, unidadMayor, 1)
+  // La cantidad no baja de las OT que tiene, más las unidades que pasaron a otro
+  // comprador, ni de la unidad mayor de unas y otras (con la 2 anulada y la 4
+  // vigente, tres OT piden 4): lo mismo que exige la base (20261127160000).
+  const tomadas = conOrdenes + pasaron
+  const minimo = Math.max(tomadas, unidadMayor, 1)
+  // La venta que ya tiene su OT, o la tuvo y pasó a otro comprador, no cambia
+  // de cliente con una corrección: la base lo rechaza (20261127160000).
+  const clienteFijo = tomadas > 0
   // Con el campo vacío no se avisa: todavía se está escribiendo.
   const unidadesNoCalzan = unidadesLeidas !== null && cantidad.trim() !== '' && Number(cantidad) !== unidadesLeidas
   const [dice, setDice] = useState<string | null>(null)
@@ -393,8 +407,26 @@ export function CorregirCotizacion({
           {/* Uno debajo del otro: lado a lado, en esta ventana la razón social
               se cortaba («TRANSPORTES SAN RO…») y no se sabía qué cliente era. */}
           <div className="grid gap-3">
-            <Campo etiqueta="Cliente" htmlFor={`corregir-cliente-${id}`} requerido>
-              <Seleccion id={`corregir-cliente-${id}`} value={cliente} onChange={e => setCliente(e.target.value)} required>
+            <Campo
+              etiqueta="Cliente"
+              htmlFor={`corregir-cliente-${id}`}
+              requerido
+              ayuda={
+                clienteFijo
+                  ? conOrdenes > 0
+                    ? 'Ya tiene su OT: el cliente no cambia. Si la venta es de otro cliente, va con su propia cotización y Administración le pasa la OT.'
+                    : 'Su OT pasó a otro comprador: la venta queda con este cliente.'
+                  : undefined
+              }
+              ayudaEnIcono={false}
+            >
+              <Seleccion
+                id={`corregir-cliente-${id}`}
+                value={cliente}
+                onChange={e => setCliente(e.target.value)}
+                disabled={clienteFijo}
+                required
+              >
                 <option value="" disabled>Elige el cliente</option>
                 {clientes.map(c => <option key={c.id} value={c.id}>{c.razon_social}</option>)}
               </Seleccion>
@@ -410,12 +442,12 @@ export function CorregirCotizacion({
                 etiqueta="Unidades"
                 htmlFor="corregir-unidades"
                 ayuda={
-                  conOrdenes === 0
+                  tomadas === 0
                     ? 'Una OT por cada unidad.'
-                    : minimo > conOrdenes
-                      ? `Ya tiene ${conOrdenes === 1 ? 'una OT' : `${conOrdenes} OT`} y la de la unidad ${minimo}: no baja de ${minimo}.`
-                      : `Ya tiene ${conOrdenes === 1 ? 'una OT' : `${conOrdenes} OT`}: no baja de ${conOrdenes}.`
+                    : `${loQueYaTiene(conOrdenes, pasaron)}${minimo > tomadas ? `, y una es la unidad ${minimo}` : ''}: no baja de ${minimo}.`
                 }
+                // El tope es una regla que frena: a la vista, no detrás de la «i».
+                ayudaEnIcono={tomadas > 0 ? false : undefined}
                 requerido
               >
                 <Entrada
@@ -438,7 +470,9 @@ export function CorregirCotizacion({
                 <p role="status" className="text-xs text-pretty text-aviso">
                   El documento dice {unidadesLeidas === 1 ? '1 unidad' : `${unidadesLeidas} unidades`}
                   {unidadesLeidas !== null && unidadesLeidas < minimo
-                    ? `, pero ya tiene ${conOrdenes === 1 ? 'una OT' : `${conOrdenes} OT`}: para bajar la cantidad, Administración anula primero la que sobra.`
+                    ? pasaron > 0
+                      ? `, pero ${loQueYaTiene(conOrdenes, pasaron).toLowerCase()}: no baja de ${minimo}.`
+                      : `, pero ya tiene ${conOrdenes === 1 ? 'una OT' : `${conOrdenes} OT`}: para bajar la cantidad, Administración anula primero la que sobra.`
                     : ': revisa.'}
                 </p>
               )}
