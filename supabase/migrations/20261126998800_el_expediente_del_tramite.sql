@@ -455,7 +455,7 @@ begin
       if v_a.archivo_ruta = p_ruta then return p_id; end if;
       -- Se perdió la respuesta y se volvió a pulsar: el navegador subió otra
       -- copia a otra ruta. La primera ya está; la copia se quita sola.
-      raise exception 'Ese archivo ya quedó en el expediente la primera vez que lo enviaste: lo que cambiaste después no se guardó. Recarga la pantalla para ver cómo quedó.'
+      raise exception 'Ese archivo ya quedó en el expediente la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó.'
         using errcode = 'check_violation';
     end if;
     raise exception 'Vuelve a abrir la ventana para subir el archivo.' using errcode = 'check_violation';
@@ -516,7 +516,7 @@ begin
   if found then
     if v_a.tramite_id = p_tramite and v_a.subido_por = v_yo and v_a.clase = 'DOCUMENTO_FINAL' then
       if v_a.archivo_ruta = p_ruta then return p_id; end if;
-      raise exception 'El documento final ya quedó en el expediente la primera vez que lo enviaste: lo que cambiaste después no se guardó. Recarga la pantalla para ver cómo quedó el trámite.'
+      raise exception 'El documento final ya quedó en el expediente la primera vez que lo enviaste: recarga la pantalla para ver cómo quedó el trámite.'
         using errcode = 'check_violation';
     end if;
     raise exception 'Vuelve a abrir la ventana para cerrar el trámite.' using errcode = 'check_violation';
@@ -598,8 +598,11 @@ begin
   select * into v_a from public.tramite_archivos where id = p_archivo for update;
   if v_a.retirado_en is not null then
     -- El mismo envío repetido (se perdió la respuesta) entra, y dice lo mismo
-    -- que la primera vez: el documento final retirado reabrió su trámite.
-    if v_a.retirado_por = v_yo and v_a.retiro_motivo = v_motivo then return v_a.clase = 'DOCUMENTO_FINAL'; end if;
+    -- que la primera vez: el documento final retirado reabrió su trámite. Si
+    -- después se cerró con otro, ya no está reabierto y no se dice.
+    if v_a.retirado_por = v_yo and v_a.retiro_motivo = v_motivo then
+      return v_a.clase = 'DOCUMENTO_FINAL' and v_t.estado <> 'CONCLUIDO';
+    end if;
     raise exception 'Ese archivo ya estaba retirado. Recarga la pantalla.' using errcode = 'check_violation';
   end if;
   if v_t.estado = 'ANULADO' then

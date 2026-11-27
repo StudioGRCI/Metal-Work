@@ -364,6 +364,9 @@ begin
                        and (select count(*) filter (where retirado_en is null) = 1 and count(*) = 2
                               from public.tramite_archivos where tramite_id = pg_temp.id('tarjeta') and clase = 'DOCUMENTO_FINAL'),
     'y se cierra otra vez con el documento correcto: uno en pie, el otro retirado');
+  perform test.afirmar(not public.tramites_retirar_archivo(pg_temp.id('final'), 'Se subió la tarjeta de otra unidad.')
+                       and (select estado = 'CONCLUIDO' from public.tramites where id = pg_temp.id('tarjeta')),
+    'el retiro repetido desde una pestaña vieja, ya cerrado con el otro, no dice que lo reabrió ni lo reabre');
 
   -- El SOAT: al reabrirlo se va también su vigencia.
   perform public.tramites_retirar_archivo(pg_temp.id('final_soat'), 'La póliza es de otra camioneta.');

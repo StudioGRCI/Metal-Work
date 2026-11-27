@@ -116,7 +116,8 @@ export default async function PaginaTramites({ searchParams }: PageProps<'/trami
         acciones={gestiona && enUso.length > 0 && <RegistrarTramite tipos={enUso} unidades={unidades} hoy={hoyLima()} />}
         estado={gestiona ? <EstadoDelTramite /> : undefined}
       />
-      {params.archivo === 'fallo' && (
+      {/* Solo al llegar: el buscador conserva los demás parámetros y el aviso seguía mientras se buscaba. */}
+      {params.archivo === 'fallo' && !busqueda && (
         <AvisoEnfocado rol="alert" className="mb-4">
           Ese archivo no está disponible: pudo retirarse del expediente, o no te corresponde verlo. Si debería abrirse, recarga la ficha del trámite y vuelve a
           tocar «Ver».
