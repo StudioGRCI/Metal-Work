@@ -339,6 +339,22 @@ async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo:
       const { data } = await supabase.from('tramites').select('numero, registrado_por').eq('id', id).maybeSingle()
       return data && { por: data.registrado_por, lo: dicho('El trámite', 'Los trámites', 'otro', data.numero) }
     }
+    case 'archivo_tramite': {
+      const { data } = await supabase.from('tramite_archivos').select('archivo_nombre, clase, subido_por').eq('id', id).maybeSingle()
+      return (
+        data && {
+          por: data.subido_por,
+          lo:
+            data.clase === 'DOCUMENTO_FINAL'
+              ? dicho('El documento final', 'Los documentos finales', 'otro', data.archivo_nombre)
+              : dicho('El archivo', 'Los archivos', 'otro', data.archivo_nombre),
+        }
+      )
+    }
+    case 'gestion_tramite': {
+      const { data } = await supabase.from('tramite_gestiones').select('fecha, registrado_por').eq('id', id).maybeSingle()
+      return data && { por: data.registrado_por, lo: dicho('La gestión', 'Las gestiones', 'otra', `del ${fecha(data.fecha)}`) }
+    }
     case 'reporte_averia': {
       const { data } = await supabase.from('averias').select('numero, registrado_por').eq('id', id).maybeSingle()
       return data && { por: data.registrado_por, lo: dicho('El reporte', 'Los reportes', 'otro', data.numero) }

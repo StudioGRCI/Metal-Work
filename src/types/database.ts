@@ -12868,6 +12868,124 @@ export type Database = {
           }
         ]
       }
+      tramite_archivos: {
+        Row: {
+          id: string
+          tramite_id: string
+          clase: string
+          descripcion: string | null
+          archivo_ruta: string
+          archivo_nombre: string | null
+          archivo_mime: string
+          archivo_tamano: number
+          subido_por: string
+          retirado_por: string | null
+          retirado_en: string | null
+          retiro_motivo: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id: string
+          tramite_id: string
+          clase: string
+          descripcion?: string | null
+          archivo_ruta: string
+          archivo_nombre?: string | null
+          archivo_mime: string
+          archivo_tamano: number
+          subido_por?: string
+          retirado_por?: string | null
+          retirado_en?: string | null
+          retiro_motivo?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          tramite_id?: string
+          clase?: string
+          descripcion?: string | null
+          archivo_ruta?: string
+          archivo_nombre?: string | null
+          archivo_mime?: string
+          archivo_tamano?: number
+          subido_por?: string
+          retirado_por?: string | null
+          retirado_en?: string | null
+          retiro_motivo?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tramite_archivos_retirado_por_fkey"
+            columns: ["retirado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tramite_archivos_subido_por_fkey"
+            columns: ["subido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tramite_archivos_tramite_id_fkey"
+            columns: ["tramite_id"]
+            isOneToOne: true
+            referencedRelation: "tramites"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      tramite_gestiones: {
+        Row: {
+          id: string
+          tramite_id: string
+          fecha: string
+          detalle: string
+          registrado_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id: string
+          tramite_id: string
+          fecha: string
+          detalle: string
+          registrado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          tramite_id?: string
+          fecha?: string
+          detalle?: string
+          registrado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tramite_gestiones_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tramite_gestiones_tramite_id_fkey"
+            columns: ["tramite_id"]
+            isOneToOne: false
+            referencedRelation: "tramites"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       tramite_tipos: {
         Row: {
           id: string
@@ -12944,6 +13062,10 @@ export type Database = {
           registrado_por: string
           creado_en: string
           actualizado_en: string
+          fecha_conclusion: string | null
+          vigente_hasta: string | null
+          concluido_por: string | null
+          concluido_en: string | null
         }
         Insert: {
           id?: string
@@ -12973,6 +13095,10 @@ export type Database = {
           registrado_por?: string
           creado_en?: string
           actualizado_en?: string
+          fecha_conclusion?: string | null
+          vigente_hasta?: string | null
+          concluido_por?: string | null
+          concluido_en?: string | null
         }
         Update: {
           id?: string
@@ -13002,6 +13128,10 @@ export type Database = {
           registrado_por?: string
           creado_en?: string
           actualizado_en?: string
+          fecha_conclusion?: string | null
+          vigente_hasta?: string | null
+          concluido_por?: string | null
+          concluido_en?: string | null
         }
         Relationships: [
           {
@@ -13030,6 +13160,13 @@ export type Database = {
             columns: ["cliente_id"]
             isOneToOne: false
             referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tramites_concluido_por_fkey"
+            columns: ["concluido_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           },
           {
@@ -22195,6 +22332,19 @@ export type Database = {
           actividades: Json | null
         }[]
       }
+      tramite_archivo_subido: {
+        Args: {
+          p_tramite: string | null
+          p_ruta: string | null
+        }
+        Returns: string
+      }
+      tramite_ruta_adjunta: {
+        Args: {
+          p_ruta: string | null
+        }
+        Returns: boolean
+      }
       tramites_actualizar: {
         Args: {
           p_id: string | null
@@ -22208,6 +22358,68 @@ export type Database = {
           p_visto: string | null
         }
         Returns: string
+      }
+      tramites_adjuntar_archivo: {
+        Args: {
+          p_id: string | null
+          p_tramite: string | null
+          p_clase: string | null
+          p_descripcion: string | null
+          p_ruta: string | null
+          p_nombre: string | null
+        }
+        Returns: string
+      }
+      tramites_anotar_gestion: {
+        Args: {
+          p_id: string | null
+          p_tramite: string | null
+          p_fecha: string | null
+          p_detalle: string | null
+        }
+        Returns: string
+      }
+      tramites_archivos: {
+        Args: {
+          p_tramite: string | null
+        }
+        Returns: {
+          id: string | null
+          clase: string | null
+          descripcion: string | null
+          nombre: string | null
+          mime: string | null
+          tamano: number | null
+          subido_en: string | null
+          subio: string | null
+          retirado_en: string | null
+          retiro: string | null
+          retiro_motivo: string | null
+          puede_retirar: boolean | null
+        }[]
+      }
+      tramites_concluir: {
+        Args: {
+          p_id: string | null
+          p_tramite: string | null
+          p_ruta: string | null
+          p_nombre: string | null
+          p_fecha: string | null
+          p_vigente_hasta: string | null
+        }
+        Returns: string
+      }
+      tramites_gestiones: {
+        Args: {
+          p_tramite: string | null
+        }
+        Returns: {
+          id: string | null
+          fecha: string | null
+          detalle: string | null
+          anotado_en: string | null
+          anoto: string | null
+        }[]
       }
       tramites_guardar_tipo: {
         Args: {
@@ -22261,6 +22473,13 @@ export type Database = {
           tramite: string | null
           anulado: boolean | null
         }[]
+      }
+      tramites_retirar_archivo: {
+        Args: {
+          p_archivo: string | null
+          p_motivo: string | null
+        }
+        Returns: boolean
       }
       tramites_unidades_para_elegir: {
         Args: Record<PropertyKey, never>
@@ -22325,6 +22544,13 @@ export type Database = {
           puede_actualizar: boolean | null
           puede_pedir_anulacion: boolean | null
           puede_resolver_anulacion: boolean | null
+          fecha_conclusion: string | null
+          vigente_hasta: string | null
+          concluido_en: string | null
+          concluyo: string | null
+          archivos: number | null
+          puede_llevar_expediente: boolean | null
+          puede_concluir: boolean | null
         }[]
       }
       transitar_informe_diseno: {
