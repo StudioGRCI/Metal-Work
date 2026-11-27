@@ -50,7 +50,23 @@ En `src/components/ui/`:
   con todas sus columnas se salía de costado y los botones iban uno por
   renglón: las columnas de consulta («Para», «Comprobante», el contacto)
   aparecen desde `xl:table-cell` y hasta ahí bajan a la primera celda
-  (`xl:hidden`).
+  (`xl:hidden`). Si ni así cabe —las siete columnas de las OC y las ocho de
+  las Facturas de Adquisiciones piden más de 1 100 px—, hasta 1279 px va la
+  ficha del teléfono (`xl:hidden`) con cada parte rotulada (`ConRotulo`,
+  de `src/components/ui/con-rotulo.tsx`, dentro de un `<dl className="grid
+  gap-x-4 gap-y-3 sm:grid-cols-2">`), y la tabla aparece desde
+  `xl:block` con lo de consulta bajo la celda vecina hasta
+  `min-[1440px]:table-cell`, o hasta `min-[1700px]:table-cell` si con un
+  dato largo tampoco cabe a 1440 ni a 1536 (las Facturas, con un código
+  interno de 19 letras; entrega 6, 2026-11-26). Una línea de dinero no va
+  entera en `whitespace-nowrap`: cada pieza sí («S/ 12,345.00», «pagado
+  45 %»), y la línea se parte entre ellas. Lo que baja de una columna dice
+  lo mismo que la columna, también cuando no hay nada: «Sin captura del
+  banco» y «Cuadra con el banco», no un hueco (Caja diaria). Y la ficha
+  lleva todo lo de la fila: el total de cada OC iba en su celda y se perdió
+  al pasar a ficha hasta que lo vio el auditor. El ancho se mide en la tarjeta, no en la página
+  (`caja.scrollWidth - caja.clientWidth`), y con los datos más largos que
+  haya: la tabla que cabe justo hoy se sale mañana.
 - **Un aviso que se repite en casi todas las filas deja de avisar** (hallazgo
   4 del plan de orden y diseño; entrega 5, 2026-11-26). «Confirmar unidad» iba
   en ámbar en 572 materiales en producción (298 en el banco local) y los cinco

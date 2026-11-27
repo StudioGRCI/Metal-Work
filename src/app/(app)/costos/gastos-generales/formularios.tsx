@@ -106,7 +106,7 @@ export function AnularGastoGeneral({ id, nombre }: { id: string; nombre: string 
 
   return (
     <>
-      <Boton tamano="sm" variante="contornoPeligro" onClick={() => setAbierta(true)} aria-label={`Anular ${nombre}`}>
+      <Boton tamano="sm" variante="fantasma" onClick={() => setAbierta(true)} aria-label={`Anular ${nombre}`}>
         <Ban aria-hidden className="size-4" />Anular
       </Boton>
       <Ventana abierta={abierta} alCerrar={() => setAbierta(false)} titulo={`Anular ${nombre}`}

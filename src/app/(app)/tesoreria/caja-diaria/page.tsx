@@ -138,9 +138,15 @@ export default async function PaginaCajaDiaria({ searchParams }: PageProps<'/tes
                   <TH className="hidden text-right sm:table-cell">Egresos</TH>
                   <TH className="hidden text-right sm:table-cell">Ingresos</TH>
                   <TH className="text-right">Saldo final</TH>
-                  <TH className="hidden text-right sm:table-cell">Según el banco</TH>
-                  <TH className="hidden text-right sm:table-cell">Diferencia</TH>
-                  <TH className="hidden sm:table-cell">Día</TH>
+                  {/* Lo del banco, la diferencia y el estado del día esperan a 1400 px
+                      (entrega 6 del plan de orden y diseño): con las ocho columnas, a
+                      1024 la cuenta quedaba en 60 px, una palabra por renglón, y cada
+                      fila medía 147 px; y a 1280, con saldos de seis cifras, las seis
+                      columnas de dinero no caben. Hasta ahí van bajo el saldo final y
+                      bajo la cuenta. */}
+                  <TH className="hidden text-right min-[1400px]:table-cell">Según el banco</TH>
+                  <TH className="hidden text-right min-[1400px]:table-cell">Diferencia</TH>
+                  <TH className="hidden min-[1400px]:table-cell">Día</TH>
                 </TR>
               </TablaCabecera>
               <tbody>
@@ -349,30 +355,51 @@ function FilaDeSaldo({ cuenta: c, dia, hoy }: { cuenta: CuentaDelDia; dia: strin
           {detalleDeCuenta(c)}
           {!c.activa && ' · desactivada'}
         </span>
-        <span className="mt-1 block sm:hidden">
+        <span className="mt-1 block min-[1400px]:hidden">
           <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
         </span>
       </TD>
       {empezada ? (
         <>
-          <TD className="tabular hidden text-right sm:table-cell">{moneda(c.saldo_inicial, m)}</TD>
-          <TD className="tabular hidden text-right sm:table-cell">{c.egresos > 0 ? moneda(c.egresos, m) : '—'}</TD>
-          <TD className="tabular hidden text-right sm:table-cell">{c.ingresos > 0 ? moneda(c.ingresos, m) : '—'}</TD>
-          <TD className="tabular text-right whitespace-nowrap">
-            <span className={`font-semibold ${(c.saldo_final ?? 0) < 0 ? 'text-peligro' : ''}`}>{moneda(c.saldo_final, m)}</span>
-            {c.diferencia ? (
-              <span className="block text-xs font-normal text-aviso sm:hidden">Diferencia {moneda(c.diferencia, m)}</span>
-            ) : null}
+          <TD className="tabular hidden text-right whitespace-nowrap sm:table-cell">{moneda(c.saldo_inicial, m)}</TD>
+          <TD className="tabular hidden text-right whitespace-nowrap sm:table-cell">{c.egresos > 0 ? moneda(c.egresos, m) : '—'}</TD>
+          <TD className="tabular hidden text-right whitespace-nowrap sm:table-cell">{c.ingresos > 0 ? moneda(c.ingresos, m) : '—'}</TD>
+          <TD className="tabular text-right">
+            <span className={`font-semibold whitespace-nowrap ${(c.saldo_final ?? 0) < 0 ? 'text-peligro' : ''}`}>{moneda(c.saldo_final, m)}</span>
+            {/* Lo que dice el banco no salía en el teléfono: va aquí hasta que cabe su columna.
+                Solo el monto va entero: la línea de un tirón ensanchaba la columna 53 px a 390
+                y partía el nombre de la cuenta. Dice lo mismo que las dos columnas: el monto o
+                que no hay captura, y la diferencia o que cuadra. */}
+            <span className="block text-xs font-normal text-texto-suave min-[1400px]:hidden" data-segun-el-banco>
+              {c.saldo_banco !== null ? (
+                <>
+                  Según el banco <span className="whitespace-nowrap">{moneda(c.saldo_banco, m)}</span>
+                </>
+              ) : (
+                'Sin captura del banco'
+              )}
+            </span>
+            {c.diferencia !== null && (
+              <span className={`block text-xs font-normal min-[1400px]:hidden ${c.diferencia ? 'text-aviso' : 'text-texto-suave'}`} data-diferencia-en-fila>
+                {c.diferencia ? (
+                  <>
+                    Diferencia <span className="whitespace-nowrap">{moneda(c.diferencia, m)}</span>
+                  </>
+                ) : (
+                  'Cuadra con el banco'
+                )}
+              </span>
+            )}
           </TD>
-          <TD className="tabular hidden text-right sm:table-cell">{c.saldo_banco !== null ? moneda(c.saldo_banco, m) : '—'}</TD>
-          <TD className={`tabular hidden text-right sm:table-cell ${c.diferencia ? 'text-aviso' : ''}`}>{c.diferencia !== null ? moneda(c.diferencia, m) : '—'}</TD>
+          <TD className="tabular hidden text-right whitespace-nowrap min-[1400px]:table-cell">{c.saldo_banco !== null ? moneda(c.saldo_banco, m) : '—'}</TD>
+          <TD className={`tabular hidden text-right whitespace-nowrap min-[1400px]:table-cell ${c.diferencia ? 'text-aviso' : ''}`}>{c.diferencia !== null ? moneda(c.diferencia, m) : '—'}</TD>
         </>
       ) : (
         <TD colSpan={6} className="text-xs text-texto-suave">
           Empieza el {fecha(c.fecha_inicio)}.
         </TD>
       )}
-      <TD className="hidden sm:table-cell">
+      <TD className="hidden min-[1400px]:table-cell">
         <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
       </TD>
     </TR>
@@ -428,16 +455,16 @@ function BloqueDeCuenta({ cuenta: c, dia, hoy, movimientos, reabiertos, abiertas
         </TarjetaCuerpo>
       ) : (
         <Tabla>
-          {/* En el teléfono no caben siete columnas: el código, la operación y quién registró van bajo la descripción, y egreso o ingreso en una sola columna con su signo. */}
+          {/* Hasta 768 px no caben siete columnas (entre 640 y 767 la tabla se salía 16 px): el código, la operación y quién registró van bajo la descripción, y egreso o ingreso en una sola columna con su signo. */}
           <TablaCabecera>
             <TR>
               <TH>Descripción</TH>
-              <TH className="hidden sm:table-cell">Código interno</TH>
-              <TH className="hidden sm:table-cell">N.º operación</TH>
-              <TH className="hidden text-right sm:table-cell">Egreso</TH>
-              <TH className="hidden text-right sm:table-cell">Ingreso</TH>
-              <TH className="text-right sm:hidden">Monto</TH>
-              <TH className="hidden sm:table-cell">Registró</TH>
+              <TH className="hidden md:table-cell">Código interno</TH>
+              <TH className="hidden md:table-cell">N.º operación</TH>
+              <TH className="hidden text-right md:table-cell">Egreso</TH>
+              <TH className="hidden text-right md:table-cell">Ingreso</TH>
+              <TH className="text-right md:hidden">Monto</TH>
+              <TH className="hidden md:table-cell">Registró</TH>
               {/* Solo en un día abierto: cerrado, la columna vacía corría los montos al medio. */}
               {abierta && (
                 // `relative`: sin él, el texto oculto se posiciona contra la página y la ensancha en el teléfono.
@@ -451,7 +478,7 @@ function BloqueDeCuenta({ cuenta: c, dia, hoy, movimientos, reabiertos, abiertas
             {movimientos.map((mov) => (
               <FilaDeMovimiento key={mov.id} movimiento={mov} moneda={m} cuenta={c.nombre} abierta={abierta} lleva={lleva} />
             ))}
-            <tr className="hidden border-t border-borde bg-superficie-2 font-semibold sm:table-row">
+            <tr className="hidden border-t border-borde bg-superficie-2 font-semibold md:table-row">
               <td colSpan={3} className="px-3 py-2 text-right text-xs text-texto-suave uppercase">
                 Total del día
               </td>
@@ -459,7 +486,7 @@ function BloqueDeCuenta({ cuenta: c, dia, hoy, movimientos, reabiertos, abiertas
               <td className="tabular px-3 py-2 text-right">{moneda(c.ingresos, m)}</td>
               <td colSpan={abierta ? 2 : 1} />
             </tr>
-            <tr className="border-t border-borde bg-superficie-2 sm:hidden">
+            <tr className="border-t border-borde bg-superficie-2 md:hidden">
               <td colSpan={abierta ? 3 : 2} className="px-3 py-2 text-xs text-texto-suave">
                 <span className="block font-semibold uppercase">Total del día</span>
                 <span className="tabular">
@@ -553,7 +580,7 @@ function FilaDeMovimiento({ movimiento: mov, moneda: m, cuenta, abierta, lleva }
               !anulado &&
               PANTALLA_DEL_ORIGEN[mov.origen] && (
                 // En su propio renglón: con 44 px para tocarlo, metido en la frase la partía en renglones altos.
-                <span className="flex min-h-11 items-center sm:block sm:min-h-0">
+                <span className="flex min-h-11 items-center md:block md:min-h-0">
                   {lleva ? 'Se anula en:' : 'Viene de:'}&nbsp;
                   <Link
                     href={mov.planilla_id ? `/planilla-diaria/${mov.planilla_id}` : PANTALLA_DEL_ORIGEN[mov.origen].ruta}
@@ -572,20 +599,20 @@ function FilaDeMovimiento({ movimiento: mov, moneda: m, cuenta, abierta, lleva }
             Anulado por {mov.anulado_por ?? '—'}: {mov.motivo_anulacion}
           </span>
         )}
-        {enElTelefono && <span className="tabular block text-xs text-texto-suave sm:hidden">{enElTelefono}</span>}
+        {enElTelefono && <span className="tabular block text-xs text-texto-suave md:hidden">{enElTelefono}</span>}
       </TD>
-      <TD className="tabular hidden text-xs sm:table-cell">{mov.codigo_interno ?? '—'}</TD>
-      <TD className="tabular hidden text-xs sm:table-cell">{mov.operacion ?? '—'}</TD>
-      <TD className={`tabular hidden text-right whitespace-nowrap sm:table-cell ${tachado}`}>{mov.tipo === 'EGRESO' ? moneda(mov.monto, m) : ''}</TD>
-      <TD className={`tabular hidden text-right whitespace-nowrap sm:table-cell ${tachado}`}>{mov.tipo === 'INGRESO' ? moneda(mov.monto, m) : ''}</TD>
-      <TD className="text-right whitespace-nowrap sm:hidden" data-monto-telefono>
+      <TD className="tabular hidden text-xs md:table-cell">{mov.codigo_interno ?? '—'}</TD>
+      <TD className="tabular hidden text-xs md:table-cell">{mov.operacion ?? '—'}</TD>
+      <TD className={`tabular hidden text-right whitespace-nowrap md:table-cell ${tachado}`}>{mov.tipo === 'EGRESO' ? moneda(mov.monto, m) : ''}</TD>
+      <TD className={`tabular hidden text-right whitespace-nowrap md:table-cell ${tachado}`}>{mov.tipo === 'INGRESO' ? moneda(mov.monto, m) : ''}</TD>
+      <TD className="text-right whitespace-nowrap md:hidden" data-monto-telefono>
         <span className={`tabular block ${tachado} ${mov.tipo === 'INGRESO' ? 'text-exito' : ''}`}>
           {mov.tipo === 'EGRESO' ? '−' : '+'}
           {moneda(mov.monto, m)}
         </span>
         <span className="block text-xs text-texto-suave">{mov.tipo === 'EGRESO' ? 'Egreso' : 'Ingreso'}</span>
       </TD>
-      <TD className="hidden text-xs text-texto-suave sm:table-cell">{mov.registrado_por ?? '—'}</TD>
+      <TD className="hidden text-xs text-texto-suave md:table-cell">{mov.registrado_por ?? '—'}</TD>
       {abierta && (
         <TD className="w-12 text-right">
           {anulable && <AnularMovimiento id={mov.id} descripcion={mov.descripcion} cuenta={cuenta} otraCuenta={transferencia ? mov.otra_cuenta : null} />}

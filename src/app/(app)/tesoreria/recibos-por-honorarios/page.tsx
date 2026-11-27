@@ -77,7 +77,7 @@ export default async function PaginaRecibosPorHonorarios({ searchParams }: { sea
         ]}
         params={params}
         activo={ver === 'pagados' ? 'pagados' : null}
-        className="mb-4"
+        className="mb-5"
       />
 
       <Tarjeta className="overflow-hidden">

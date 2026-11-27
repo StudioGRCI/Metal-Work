@@ -321,7 +321,7 @@ export function AnularDevolucion({
     <>
       <Boton
         type="button"
-        variante="contornoPeligro"
+        variante="fantasma"
         tamano="sm"
         onClick={() => setAbierta(true)}
         data-anular-devolucion={devolucionId}
@@ -690,7 +690,7 @@ export function SoltarToma({
     <>
       <Boton
         type="button"
-        variante="contornoPeligro"
+        variante="fantasma"
         tamano="sm"
         onClick={() => setAbierta(true)}
         data-soltar-toma={`${factura}|${oc}`}
