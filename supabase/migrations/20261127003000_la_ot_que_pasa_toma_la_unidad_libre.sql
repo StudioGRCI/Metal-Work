@@ -61,7 +61,7 @@ begin
   for f in
     select * from (values
       ('public.editar_ot_con_historial_base(uuid,timestamptz,jsonb,text)',
-       array['da2e3b8668ad4ffdbf7fedae9cf12f10', '426129684db2388abfa49ed2491c7267']),
+       array['da2e3b8668ad4ffdbf7fedae9cf12f10', '52fdcfe044d26f7ccf378a410a5a2e95']),
       ('public.unidades_que_salieron_de_la_cotizacion(uuid)',
        array['0bf4296cc324582738e00d94eccfd2d5', '530ad26c7cdfd872698485ce883a9589'])
     ) as t(firma, conocidas)
