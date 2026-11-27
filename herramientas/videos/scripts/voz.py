@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """La voz de un video y sus tiempos: del guion a `voz.wav` y `linea.json`.
 
-    python3 scripts/voz.py videos/como-pedir-un-rq [horizontal] [vertical]
+    python3 scripts/voz.py videos/como-pedir-un-rq [horizontal|vertical]
+
+Sin formato, hace el horizontal: es el único que se entrega.
 
 Por cada formato:
 
@@ -461,7 +463,7 @@ def main() -> int:
         print(__doc__)
         return 2
     carpeta = Path(sys.argv[1]).resolve()
-    formatos = sys.argv[2:] or list(FORMATOS)
+    formatos = sys.argv[2:] or ['horizontal']
     bien = True
     for formato in formatos:
         bien = hacer(carpeta, formato) and bien

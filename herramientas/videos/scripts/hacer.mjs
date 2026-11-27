@@ -81,6 +81,12 @@ if (toca('imagen')) {
   if (!marca) throw new Error('No encuentro el logo: public/marca del repositorio.')
   for (const archivo of ['logo-metal-work-claro.png', 'logo-metal-work.png', 'taller.jpg']) cpSync(join(marca, archivo), join(publico, 'marca', archivo))
   for (const formato of formatos) cpSync(join(carpeta, 'capturas', formato), join(publico, 'capturas', formato), { recursive: true })
+  // La imagen y el MP4 anteriores se van antes de armar: si el render falla a medias, `--desde=mezcla`
+  // no puede armar el video con la imagen de unas capturas que ya no son estas.
+  for (const formato of formatos) {
+    rmSync(join(generado, formato, 'imagen.mp4'), { force: true })
+    rmSync(join(salida, `${guion.id}-${formato}.mp4`), { force: true })
+  }
 
   const paquete = await bundle({ entryPoint: join(RAIZ, 'src/index.ts'), publicDir: publico })
   const navegador = process.env.VIDEOS_NAVEGADOR ?? ['/opt/pw-browsers/chromium_headless_shell'].find((r) => existsSync(r)) ?? null

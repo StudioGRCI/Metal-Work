@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """La revisión automática de un video terminado, antes de entregarlo.
 
-    python3 scripts/revisar.py videos/como-pedir-un-rq [horizontal] [vertical]
+    python3 scripts/revisar.py videos/como-pedir-un-rq [horizontal|vertical]
+
+Sin formato, revisa el horizontal: es el único que se entrega.
 
 Mira el MP4 final (`salida/<video>-<formato>.mp4`), no los intermedios, y
 comprueba cuatro cosas:
@@ -56,7 +58,7 @@ MONEDA = r'(?:(?<![A-Za-z])S\s?/\.?|(?<![\d/])5\s?/\.?(?!\s*\d{1,2}\s*/)|US\s?\$
 DATOS = [
     ('RUC', re.compile(r'(?<!\d)\d{11}(?!\d)|(?<![\d-])[12]\d \d{3} \d{3} \d{3}(?![\d-])')),
     ('DNI', re.compile(r'(?<!\d)\d{8}(?!\d)|(?<![\d/.,:-])\d{4} \d{4}(?![\d/.,:-])')),
-    ('teléfono', re.compile(r'(?<!\d)(?:\d{7}|\d{9}|\d{10})(?!\d)|(?<![\d-])9\d{2}[ -]\d{3}[ -]\d{3}(?![\d-])|\(0?\d{1,2}\)\s?\d{3}[ -]?\d{4}(?!\d)')),
+    ('teléfono', re.compile(r'(?<!\d)(?:\d{7}|\d{9}|\d{10})(?!\d)|(?<![\d-])9\d{2}[ -]\d{3}[ -]\d{3}(?![\d-])|\(0?\d{1,2}\)\s?\d{3}[ -]?\d{4}(?!\d)|(?<![\w-])0?1 \d{3} \d{4}(?!\d)')),
     ('monto', re.compile(MONEDA + r'\s*\d[\d.,]*|(?<![\d.,])\d[\d,]*\.\d{2}(?![\d])(?!\s?%)|\d[\d.,]*\s?(?:soles|d[oó]lares)\b', re.I)),
     ('correo', re.compile(r'[\w.+-]+@[\w-]+\.[\w.-]+')),
     ('clave', re.compile(r'contrase[ñn]a|password|\bclave\b|\btoken\b|api[ _-]?key', re.I)),
@@ -177,9 +179,10 @@ def es_resto_de_inventado(escrito: str, inventados: tuple[tuple[str, float], ...
 
     Se compara con el monto como se escribe («135,000.00»). Con la moneda al
     lado tiene que ser la declarada y el comienzo del monto («US$ 13»); sin
-    moneda, un comienzo o un final cortado justo en una coma o en el punto
-    («135», «000.00»). Un monto entero distinto («US$ 5,000.00», «S/ 45.00»)
-    no es un trozo: es otro monto.
+    moneda, un comienzo cortado justo en una coma o en el punto («135»), o
+    cualquier final con sus decimales («3,100.00» de «53,100.00»): el borde
+    del encuadre o la letra chica se comen las primeras cifras. Un monto con
+    moneda distinto («US$ 5,000.00», «S/ 45.00») no es un trozo: es otro monto.
     """
     moneda = moneda_del_monto(escrito)
     leido = re.sub(r'[^\d.,]', '', re.sub(r'^\s*5\s?/', '', escrito)).strip('.,')
@@ -193,7 +196,7 @@ def es_resto_de_inventado(escrito: str, inventados: tuple[tuple[str, float], ...
             continue
         if entero.startswith(leido) and entero[len(leido) : len(leido) + 1] in (',', '.'):
             return True
-        if entero.endswith(leido) and entero[: len(entero) - len(leido)][-1:] in (',', '.'):
+        if entero.endswith(leido) and '.' in leido:
             return True
     return False
 
@@ -206,6 +209,26 @@ def es_inventado_mal_leido(escrito: str, inventados: tuple[tuple[str, float], ..
         if moneda in (None, suya) and len(leidas) == len(suyas) and sum(a != b for a, b in zip(leidas, suyas)) == 1:
             return True
     return False
+
+
+def por_que_es_dudoso(hallado: tuple[str, str], repite: list[bool], inventados: tuple[tuple[str, float], ...], es_texto_pegado) -> str | None:
+    """Por qué una lectura de un cuadro no se toma como dato, o None si es un dato.
+
+    `repite` dice si la misma lectura sale al leer el cuadro al doble y al
+    triple de tamaño. Un monto inventado con una cifra cambiada que sale igual
+    en las tres lecturas es un dato: así se ve un monto pintado de verdad, no
+    una raya de un fundido.
+    """
+    clase, valor = hallado
+    if not any(repite):
+        return 'no se repite al leer el cuadro al doble ni al triple'
+    if clase == 'monto' and es_resto_de_inventado(valor, inventados):
+        return 'trozo de un monto inventado'
+    if clase == 'monto' and es_inventado_mal_leido(valor, inventados) and not all(repite):
+        return 'monto inventado con una cifra cambiada, que no sale igual en las tres lecturas'
+    if es_texto_pegado(hallado):
+        return 'texto de las capturas leído sin su guion o su espacio'
+    return None
 
 
 def mismo_dato(hallado: tuple[str, str]) -> tuple[str, object]:
@@ -368,7 +391,9 @@ def revisar(carpeta: Path, formato: str) -> bool:
         if clase == 'DNI':
             return bool(re.fullmatch(r'\d{8}', valor)) and any(re.search(rf'(?<!\d){valor}(?!\d)', pegado) for pegado in sin_guiones)
         if clase == 'monto' and not moneda_del_monto(valor):
-            return any(re.sub(r'\s+', '', valor) in pegado for pegado in sin_espacios)
+            # Con sus bordes: «5,000.00» no es lo que la captura dice si allí se lee «135,000.00».
+            pegados = re.escape(re.sub(r'\s+', '', valor))
+            return any(re.search(rf'(?<![\d.,]){pegados}(?!\d)', pegado) for pegado in sin_espacios)
         return False
 
     inf.paso(not en_capturas, f'las {len(capturas)} capturas, leídas a su tamaño completo: {sin_datos}' if not en_capturas else f'en las capturas: {en_capturas}')
@@ -414,18 +439,19 @@ def revisar(carpeta: Path, formato: str) -> bool:
         for veces in (2, 3):
             grande = gris.resize((gris.width * veces, gris.height * veces), Image.LANCZOS)
             otras.append({mismo_dato(h) for h in datos_de_pantalla(leer_pantalla(grande), inventados)})
-        confirmados = [
-            h
-            for h in hallados
-            if not (h[0] == 'monto' and (es_resto_de_inventado(h[1], inventados) or es_inventado_mal_leido(h[1], inventados)))
-            and not es_texto_pegado(h)
-            and any(mismo_dato(h) in lectura for lectura in otras)
-        ]
+        confirmados, por_que = [], []
+        for h in hallados:
+            repite = [mismo_dato(h) in lectura for lectura in otras]
+            motivo = por_que_es_dudoso(h, repite, inventados, es_texto_pegado)
+            if motivo:
+                por_que.append((h, motivo))
+            else:
+                confirmados.append(h)
         if confirmados:
             en_cuadros.append((numero, confirmados))
             archivo.rename(trabajo / f'DATO-{numero / fps:07.2f}s.png')
         else:
-            dudosos.append((numero, hallados))
+            dudosos.append((numero, por_que))
             archivo.rename(trabajo / f'dudoso-{numero / fps:07.2f}s.png')
     filtro.unlink()
     inf.paso(
@@ -434,10 +460,17 @@ def revisar(carpeta: Path, formato: str) -> bool:
         if not en_cuadros
         else f'{len(en_cuadros)} cuadro(s) con algo que parece un dato real; mirarlos en generado/{formato}/revision/',
     )
-    for numero, hallados in en_cuadros[:20]:
+    for numero, hallados in en_cuadros:
         inf.nota(f"{numero / fps:.2f} s: {', '.join(f'{n} «{v}»' for n, v in hallados)}")
-    for numero, hallados in dudosos[:20]:
-        inf.nota(f"lectura dudosa en {numero / fps:.2f} s ({', '.join(f'{n} «{v}»' for n, v in hallados)}): trozo de un monto inventado o el mismo con una cifra cambiada, texto de las capturas leído sin su guion o su espacio, o lectura que no se repite al leer el cuadro otra vez al doble y al triple de tamaño; queda en generado/{formato}/revision/ para mirarlo")
+    # Las dudosas, todas, juntas por lo que se leyó y por qué no se tomó como dato: cada una con sus momentos.
+    juntas = {}
+    for numero, por_que in dudosos:
+        for (clase, valor), motivo in por_que:
+            juntas.setdefault((clase, ' '.join(valor.split()), motivo), []).append(numero / fps)
+    if juntas:
+        inf.nota(f'lecturas dudosas, todas: cada cuadro queda en generado/{formato}/revision/dudoso-<segundo>s.png para mirarlo')
+    for (clase, valor, motivo), momentos in sorted(juntas.items(), key=lambda j: j[1][0]):
+        inf.nota(f"{clase} «{valor}» · {motivo} · {len(momentos)} cuadro(s): {', '.join(f'{m:.2f} s' for m in momentos)}")
 
     if inventados:
         dicho = lambda d: f'{d[0]} {d[1]:,.2f}'  # noqa: E731
@@ -517,7 +550,7 @@ def main() -> int:
         print(__doc__)
         return 2
     carpeta = Path(sys.argv[1]).resolve()
-    formatos = sys.argv[2:] or list(FORMATOS)
+    formatos = sys.argv[2:] or ['horizontal']
     bien = True
     for formato in formatos:
         bien = revisar(carpeta, formato) and bien

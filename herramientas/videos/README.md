@@ -178,21 +178,37 @@ queda como `DATO-…png` en `generado/<formato>/revision/`. Queda como
 
 - lo que no se repite en otra lectura;
 - el trozo de un monto inventado: con su moneda, el comienzo («US$ 13»); sin
-  moneda, un comienzo o un final cortado en una coma o en el punto («000.00»).
-  Un monto entero distinto («US$ 5,000.00») no es un trozo;
+  moneda, un comienzo cortado en una coma o en el punto («135»), o cualquier
+  final con sus decimales («3,100.00» de «53,100.00»), porque el borde del
+  encuadre y la letra chica se comen las primeras cifras. Por eso un
+  «5,000.00» pintado junto a un «45,000.00» inventado queda como dudoso, no
+  como dato: se mira. Un monto con moneda distinto («US$ 5,000.00») no es un
+  trozo;
 - un monto inventado con una sola cifra cambiada («135,900.00» por
   «135,000.00»), que es lo que sale cuando una raya de la otra pantalla cruza
-  un cero a medio fundido;
+  un cero a medio fundido, **si no sale igual en las tres lecturas**: si sale
+  igual al tamaño del video, al doble y al triple, es un monto pintado y tumba
+  el video;
 - un número suelto que las capturas muestran con un guion, una barra o un
   espacio que el OCR se comió («9001-2026» leído «90012026», «1. 10 KG» leído
   «1.10»). Ocho cifras partidas por un espacio no entran aquí: se marcan como
   DNI en la propia captura.
 
-Unos y otros se miran antes de entregar: nada se da por bueno sin mirarlo.
+El informe lista todas las lecturas dudosas, juntas por lo que se leyó y por
+qué no se tomó como dato, con cada momento en que salen. Unas y otras se miran
+antes de entregar: nada se da por bueno sin mirarlo.
 
-La revisión se probó en rojo con tres videos estropeados a propósito —un RUC y
-un monto pintados un segundo, la voz corrida 0,6 s y una frase muda— y los
-tres fallan en el punto que toca.
+La revisión se prueba en rojo con cinco videos estropeados a propósito:
+
+```bash
+./scripts/probar-en-rojo.sh    # sobre el de la OT de cada unidad, ya hecho; unos 50 minutos
+```
+
+Pinta un segundo un RUC y un monto con moneda; un DNI y un monto sin moneda;
+un monto inventado con una cifra cambiada y otro monto sin moneda;
+corre la voz 0,6 s, y deja muda una frase. Sale con 0 solo si la revisión
+tumba los cinco en el punto que toca. Se corre cada vez que se toca
+`revisar.py`.
 
 ## Qué es fijo y qué cambia
 
@@ -220,6 +236,6 @@ rehacen con los pasos de arriba. El `.tar.gz` editable sí los lleva.
 ## Licencia de Remotion
 
 Remotion es gratis para personas y para empresas de hasta 3 empleados; una
-empresa más grande necesita su licencia de empresa
-(<https://www.remotion.dev/docs/license>). Hay que revisarlo antes de usar los
-videos de forma regular.
+empresa más grande necesita su licencia de empresa para usar Remotion
+(<https://www.remotion.dev/docs/license>). Hay que revisarlo antes de seguir
+haciendo videos con la plantilla de forma regular.

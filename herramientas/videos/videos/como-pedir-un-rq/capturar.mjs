@@ -3,7 +3,7 @@
  * de Maestranza (`sup.mtz.local@metalwork.test`) en el banco local.
  *
  *   BANCO_CLAVE='la-del-banco' node herramientas/videos/videos/como-pedir-un-rq/capturar.mjs horizontal
- *   BANCO_CLAVE='la-del-banco' node herramientas/videos/videos/como-pedir-un-rq/capturar.mjs vertical
+ *   BANCO_CLAVE='la-del-banco' node herramientas/videos/videos/como-pedir-un-rq/capturar.mjs horizontal
  *
  * Antes, el banco recién preparado y con las unidades de prueba:
  *

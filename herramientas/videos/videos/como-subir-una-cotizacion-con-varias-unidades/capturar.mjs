@@ -3,7 +3,7 @@
  * cuenta de prueba de Ventas (`ventas.local@metalwork.test`) en el banco local.
  *
  *   BANCO_CLAVE='la-del-banco' node herramientas/videos/videos/como-subir-una-cotizacion-con-varias-unidades/capturar.mjs horizontal
- *   BANCO_CLAVE='la-del-banco' node herramientas/videos/videos/como-subir-una-cotizacion-con-varias-unidades/capturar.mjs vertical
+ *   BANCO_CLAVE='la-del-banco' node herramientas/videos/videos/como-subir-una-cotizacion-con-varias-unidades/capturar.mjs horizontal
  *
  * Antes, el banco recién preparado (`BANCO_CLAVE='…' ./herramientas/banco/preparar.sh`).
  *
