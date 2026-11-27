@@ -13,15 +13,20 @@
  *   2. Adquisiciones › Facturas, con Contabilidad: a 1720 las ocho columnas; a
  *      1280, 1366, 1440 y 1536 la fecha va bajo la factura y el código interno bajo
  *      su OC, y la tabla no se sale; por debajo, una ficha por factura con
- *      «OC, RQ y código» y «Pago» rotulados. La fecha que se lee es la de la base.
- *   3. Caja diaria, con Tesorería y Gerencia: nada se sale a 1440, 1280, 1024,
- *      768, 700 y 390; entre 768 y 1399 «Según el banco» va bajo el saldo
- *      final y de 1400 en adelante tiene su columna.
+ *      «OC, RQ y código» (cada OC con su total) y «Pago» rotulados. La fecha
+ *      que se lee es la de la base. También con Tesorería y Gerencia, que consultan.
+ *   3. Caja diaria, con Tesorería (1440, 1366, 1280, 1024, 768, 700 y 390) y
+ *      Gerencia (1440, 1024 y 390), la de hoy y la del último día con el saldo
+ *      del banco capturado: nada se sale; hasta 1399 px lo del banco va bajo el
+ *      saldo final de cada cuenta (su monto o «Sin captura del banco», y la
+ *      diferencia o «Cuadra con el banco»), también en el teléfono; de 1400 en
+ *      adelante tiene sus columnas.
  *   4. Aprobación de compras, con Gerencia: nada se sale a 1440, 1024, 768 y
  *      390 (a 390 se salían dos listas); en el teléfono cada decidida dice
  *      quién y cuándo, y cada insumo su precio unitario; «Anular» va en su
  *      renglón de acciones, sin borde, y abre su ventana con el motivo.
- *   5. Órdenes de servicio, con Contabilidad a 1440: «PDF» y «Detracción» en
+ *   5. Órdenes de servicio, con Contabilidad («PDF» y «Detracción») y con
+ *      Tesorería («PDF» y «Adjuntar documento») a 1440, 1280, 1024 y 768: en
  *      un renglón.
  *   6. La escala de separaciones: 20 px bajo los filtros de Cotización,
  *      Recibos por honorarios y Trabajos, y entre los bloques de Gastos del mes.
@@ -157,6 +162,7 @@ try {
     ['contabilidad', [1440, 1366, 1280, 1024, 768, 390]],
     ['tesoreria', [1280, 1024, 390]],
     ['gerencia', [1024]],
+    ['logistica', [1280, 390]],
   ]
   for (const [puesto, anchos] of VISITAS_OC) {
     for (const ancho of anchos) {
@@ -213,10 +219,16 @@ try {
 
   // ---------------------------------------------------------------- 2. Adquisiciones › Facturas
   console.log('\n2. Adquisiciones › Facturas')
-  for (const ancho of [1720, 1536, 1440, 1366, 1280, 1024, 768, 390]) {
-    const { pagina, contexto, errores } = await entrar('contabilidad', ancho)
+  for (const [puesto, ancho] of [
+    ...[1720, 1536, 1440, 1366, 1280, 1024, 768, 390].map((a) => ['contabilidad', a]),
+    ['tesoreria', 1280],
+    ['tesoreria', 390],
+    ['gerencia', 1366],
+    ['gerencia', 1024],
+  ]) {
+    const { pagina, contexto, errores } = await entrar(puesto, ancho)
     await ir(pagina, '/adquisiciones?vista=facturas')
-    const donde = `Facturas (contabilidad) ${ancho}`
+    const donde = `Facturas (${puesto}) ${ancho}`
     const fichas = await pagina.locator('main li[data-factura-telefono]').count()
     const fichasVistas = await aLaVista(pagina, 'main li[data-factura-telefono]')
     const ths = await cabeceras(pagina)
@@ -242,6 +254,12 @@ try {
           conOc: li.querySelectorAll('a[href*="/compras/"], [data-parte="OC, RQ y código"] li').length > 0,
         })),
       )
+      // El total de cada OC, que la tabla dice en su celda: una factura puede llevar dos OC o una parte de una.
+      const totales = await pagina.locator('main li[data-factura-telefono] [data-parte="OC, RQ y código"] li').evaluateAll((lis) => ({
+        ocs: lis.length,
+        conTotal: lis.filter((li) => /(S\/|US\$)\s?[\d,]+\.\d\d|Sin precio/.test(li.querySelector('[data-total-de-la-oc]')?.textContent ?? '')).length,
+      }))
+      comprobar(totales.ocs > 0 && totales.conTotal === totales.ocs, `${donde}: cada OC de la ficha dice su total (${totales.conTotal} de ${totales.ocs})`)
       comprobar(
         partes.every((p) => p.rotulos.includes('Pago') && (!p.conOc || p.rotulos.includes('OC, RQ y código'))),
         `${donde}: cada ficha rotula «Pago» y, si tiene OC, «OC, RQ y código» (${partes[0]?.rotulos.join(' | ')})`,
@@ -264,23 +282,42 @@ try {
 
   // ---------------------------------------------------------------- 3. Caja diaria
   console.log('\n3. Caja diaria')
+  // El último día con el saldo del banco capturado: hoy no tiene cierres y la línea no diría ningún monto.
+  const conBanco = await uno(
+    `select to_char(fecha, 'YYYY-MM-DD') dia, count(*)::int n from cierres_caja
+      where saldo_banco is not null and anulado_en is null group by fecha order by fecha desc limit 1`,
+  )
+  comprobar(Boolean(conBanco?.dia), `hay un día con el saldo del banco capturado para mirar (${conBanco?.dia ?? 'ninguno'}, ${conBanco?.n ?? 0} cuentas)`)
   for (const [puesto, anchos] of [
-    ['tesoreria', [1440, 1280, 1024, 768, 700, 390]],
-    ['gerencia', [1024, 390]],
+    ['tesoreria', [1440, 1366, 1280, 1024, 768, 700, 390]],
+    ['gerencia', [1440, 1024, 390]],
   ]) {
     for (const ancho of anchos) {
       const { pagina, contexto, errores } = await entrar(puesto, ancho)
-      await ir(pagina, '/tesoreria/caja-diaria')
-      const donde = `Caja diaria (${puesto}) ${ancho}`
-      const ths = await cabeceras(pagina)
-      const todos = await pagina.locator('main [data-segun-el-banco]').count()
-      const vistos = await aLaVista(pagina, 'main [data-segun-el-banco]')
-      if (ancho >= 1400) {
-        comprobar(ths.includes('Según el banco') && vistos === 0, `${donde}: «Según el banco» tiene su columna (${ths.join(' | ')})`)
-      } else if (ancho >= 768) {
-        comprobar(!ths.includes('Según el banco') && vistos === todos, `${donde}: «Según el banco» va bajo el saldo final (${vistos} de ${todos} cuentas con saldo del banco)`)
+      for (const [ruta, cual] of [
+        ['/tesoreria/caja-diaria', 'hoy'],
+        ...(conBanco?.dia ? [[`/tesoreria/caja-diaria?fecha=${conBanco.dia}`, conBanco.dia]] : []),
+      ]) {
+        errores.length = 0
+        await ir(pagina, ruta)
+        const donde = `Caja diaria de ${cual} (${puesto}) ${ancho}`
+        const ths = await cabeceras(pagina)
+        const lineas = await pagina.locator('main [data-segun-el-banco]').evaluateAll((es) =>
+          es.map((e) => ({ texto: e.textContent.replace(/\s+/g, ' ').trim(), visto: e.getBoundingClientRect().height > 0 })),
+        )
+        const conMonto = lineas.filter((l) => /^Según el banco (S\/|US\$)/.test(l.texto))
+        if (ancho >= 1400) {
+          comprobar(ths.includes('Según el banco') && ths.includes('Diferencia') && lineas.every((l) => !l.visto), `${donde}: «Según el banco» y «Diferencia» tienen su columna (${ths.join(' | ')})`)
+        } else {
+          comprobar(!ths.includes('Según el banco') && lineas.length > 0 && lineas.every((l) => l.visto), `${donde}: lo del banco va bajo el saldo final de cada cuenta (${lineas.filter((l) => l.visto).length} de ${lineas.length})`)
+          if (cual !== 'hoy') {
+            comprobar(conMonto.length === conBanco.n, `${donde}: dice el saldo del banco de cada cuenta que lo tiene (${conMonto.length} de ${conBanco.n}); las demás, «Sin captura del banco»`)
+            const diferencias = await aLaVista(pagina, 'main [data-diferencia-en-fila]')
+            comprobar(diferencias === conBanco.n, `${donde}: y su diferencia, o que cuadra (${diferencias} de ${conBanco.n})`)
+          }
+        }
+        await comprobarCaja(pagina, errores, donde)
       }
-      await comprobarCaja(pagina, errores, donde)
       await contexto.close()
     }
   }
@@ -300,7 +337,8 @@ try {
     } else {
       comprobar(quienVisto === 0, `${donde}: quién y cuándo va en su columna, no repetido (${quienVisto})`)
     }
-    if (precio > 0) comprobar(ancho < 640 ? precioVisto === precio : precioVisto === 0, `${donde}: el precio unitario ${ancho < 640 ? 'va bajo el insumo' : 'va en su columna'} (${precioVisto} de ${precio})`)
+    // Sin el `if`: en este banco siempre hay órdenes por aprobar con insumos, y sin la línea la prueba tiene que fallar.
+    comprobar(precio > 0 && (ancho < 640 ? precioVisto === precio : precioVisto === 0), `${donde}: el precio unitario ${ancho < 640 ? 'va bajo el insumo' : 'va en su columna'} (${precioVisto} de ${precio})`)
     const anular = await pagina.locator('main tr[data-anulable]').evaluateAll((trs) =>
       trs.map((tr) => {
         const boton = [...tr.querySelectorAll('button')].find((b) => /^Anular la /.test(b.getAttribute('aria-label') ?? ''))
@@ -328,23 +366,28 @@ try {
     await contexto.close()
   }
 
-  // ---------------------------------------------------------------- 5. Órdenes de servicio, con Contabilidad
+  // ---------------------------------------------------------------- 5. Órdenes de servicio, con Contabilidad y Tesorería
   console.log('\n5. Órdenes de servicio')
-  {
-    const { pagina, contexto, errores } = await entrar('contabilidad', 1440)
-    await ir(pagina, '/compras/servicios')
-    const filas = await pagina.locator('main tbody > tr [data-acciones-fila]').evaluateAll((cajas) =>
-      cajas
-        .map((caja) => {
-          const mandos = [...caja.querySelectorAll('button, a')].filter((m) => m.getBoundingClientRect().width > 0)
-          const centros = mandos.map((m) => m.getBoundingClientRect().top + m.getBoundingClientRect().height / 2).sort((a, b) => a - b)
-          return { mandos: mandos.map((m) => m.textContent.replace(/\s+/g, ' ').trim()), renglones: centros.filter((c, i, l) => i === 0 || c - l[i - 1] > 8).length }
-        })
-        .filter((f) => f.mandos.length >= 2),
-    )
-    comprobar(filas.length > 0 && filas.every((f) => f.renglones === 1), `Órdenes de servicio (contabilidad) 1440: «PDF» y «Detracción» en un renglón (${filas.length} filas; el peor, ${Math.max(0, ...filas.map((f) => f.renglones))})`)
-    await comprobarCaja(pagina, errores, 'Órdenes de servicio (contabilidad) 1440')
-    await contexto.close()
+  for (const [puesto, botones] of [
+    ['contabilidad', '«PDF» y «Detracción»'],
+    ['tesoreria', '«PDF» y «Adjuntar documento»'],
+  ]) {
+    for (const ancho of [1440, 1280, 1024, 768]) {
+      const { pagina, contexto, errores } = await entrar(puesto, ancho)
+      await ir(pagina, '/compras/servicios')
+      const filas = await pagina.locator('main tbody > tr [data-acciones-fila]').evaluateAll((cajas) =>
+        cajas
+          .map((caja) => {
+            const mandos = [...caja.querySelectorAll('button, a')].filter((m) => m.getBoundingClientRect().width > 0)
+            const centros = mandos.map((m) => m.getBoundingClientRect().top + m.getBoundingClientRect().height / 2).sort((a, b) => a - b)
+            return { mandos: mandos.map((m) => m.textContent.replace(/\s+/g, ' ').trim()), renglones: centros.filter((c, i, l) => i === 0 || c - l[i - 1] > 8).length }
+          })
+          .filter((f) => f.mandos.length >= 2),
+      )
+      comprobar(filas.length > 0 && filas.every((f) => f.renglones === 1), `Órdenes de servicio (${puesto}) ${ancho}: ${botones} en un renglón (${filas.length} filas; el peor, ${Math.max(0, ...filas.map((f) => f.renglones))})`)
+      await comprobarCaja(pagina, errores, `Órdenes de servicio (${puesto}) ${ancho}`)
+      await contexto.close()
+    }
   }
 
   // ---------------------------------------------------------------- 6. La escala de separaciones

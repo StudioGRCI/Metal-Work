@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { Paginacion } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
+import { ConRotulo } from '@/components/ui/con-rotulo'
 import { DiasEnEspera } from '@/components/ui/dias-en-espera'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
@@ -45,16 +46,16 @@ import { puede, type PerfilSesion } from '@/lib/sesion'
 import { PasarCompraATesoreria } from '@/app/(app)/tesoreria/formularios'
 
 import { AnularAnexo } from './anular-anexo'
-import { ConRotulo } from './con-rotulo'
 import { ExcelDelMes } from './excel-del-mes'
 import { AnularGuia, CargarGuia } from './guia-remision'
 
 const POR_PAGINA = 50
 const RUTA = '/adquisiciones'
 const enlace = 'font-medium text-acento hover:underline'
-// En el teléfono cada enlace mide 44 px de alto, como las pastillas: son los
-// comprobantes que se abren con el dedo.
-const toque = 'inline-flex min-h-11 items-center sm:min-h-0'
+// Con el dedo cada enlace mide 44 px de alto, como las pastillas: son los
+// comprobantes que se abren tocando. La ficha llega hasta 1279 px, así que
+// una tablet los conserva; con ratón, desde 640 px, vuelven a su alto.
+const toque = 'inline-flex min-h-11 items-center sm:pointer-fine:min-h-0 xl:min-h-0'
 const codigo = (m: string | null) => (m === 'USD' ? 'USD' : 'PEN')
 
 type Params = Record<string, string | string[] | undefined>
@@ -281,7 +282,7 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
                   </div>
                   {/* Dos columnas desde 640 px: lo que dice de dónde sale y en qué va,
                       y debajo los papeles y el pago. */}
-                  <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <dl className="grid gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
                     <ConRotulo rotulo="De dónde sale">
                       <Origen f={f} acceso={acceso} />
                     </ConRotulo>

@@ -168,7 +168,7 @@ export function AnularPago({ pagoId, subcontratoId, numero }: { pagoId: string; 
   })
   return (
     <>
-      <Boton type="button" variante="contornoPeligro" tamano="sm" onClick={() => setAbierta(true)} data-anular-pago={numero}>
+      <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setAbierta(true)} data-anular-pago={numero}>
         <Ban aria-hidden className="size-4" />
         Anular pago
       </Boton>

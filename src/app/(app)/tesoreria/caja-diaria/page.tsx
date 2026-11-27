@@ -364,17 +364,32 @@ function FilaDeSaldo({ cuenta: c, dia, hoy }: { cuenta: CuentaDelDia; dia: strin
           <TD className="tabular hidden text-right whitespace-nowrap sm:table-cell">{moneda(c.saldo_inicial, m)}</TD>
           <TD className="tabular hidden text-right whitespace-nowrap sm:table-cell">{c.egresos > 0 ? moneda(c.egresos, m) : '—'}</TD>
           <TD className="tabular hidden text-right whitespace-nowrap sm:table-cell">{c.ingresos > 0 ? moneda(c.ingresos, m) : '—'}</TD>
-          <TD className="tabular text-right whitespace-nowrap">
-            <span className={`font-semibold ${(c.saldo_final ?? 0) < 0 ? 'text-peligro' : ''}`}>{moneda(c.saldo_final, m)}</span>
-            {/* Lo que dice el banco no salía en el teléfono: va aquí hasta que cabe su columna. */}
-            {c.saldo_banco !== null && (
-              <span className="block text-xs font-normal text-texto-suave min-[1400px]:hidden" data-segun-el-banco>
-                Según el banco {moneda(c.saldo_banco, m)}
+          <TD className="tabular text-right">
+            <span className={`font-semibold whitespace-nowrap ${(c.saldo_final ?? 0) < 0 ? 'text-peligro' : ''}`}>{moneda(c.saldo_final, m)}</span>
+            {/* Lo que dice el banco no salía en el teléfono: va aquí hasta que cabe su columna.
+                Solo el monto va entero: la línea de un tirón ensanchaba la columna 53 px a 390
+                y partía el nombre de la cuenta. Dice lo mismo que las dos columnas: el monto o
+                que no hay captura, y la diferencia o que cuadra. */}
+            <span className="block text-xs font-normal text-texto-suave min-[1400px]:hidden" data-segun-el-banco>
+              {c.saldo_banco !== null ? (
+                <>
+                  Según el banco <span className="whitespace-nowrap">{moneda(c.saldo_banco, m)}</span>
+                </>
+              ) : (
+                'Sin captura del banco'
+              )}
+            </span>
+            {c.diferencia !== null && (
+              <span className={`block text-xs font-normal min-[1400px]:hidden ${c.diferencia ? 'text-aviso' : 'text-texto-suave'}`} data-diferencia-en-fila>
+                {c.diferencia ? (
+                  <>
+                    Diferencia <span className="whitespace-nowrap">{moneda(c.diferencia, m)}</span>
+                  </>
+                ) : (
+                  'Cuadra con el banco'
+                )}
               </span>
             )}
-            {c.diferencia ? (
-              <span className="block text-xs font-normal text-aviso min-[1400px]:hidden">Diferencia {moneda(c.diferencia, m)}</span>
-            ) : null}
           </TD>
           <TD className="tabular hidden text-right whitespace-nowrap min-[1400px]:table-cell">{c.saldo_banco !== null ? moneda(c.saldo_banco, m) : '—'}</TD>
           <TD className={`tabular hidden text-right whitespace-nowrap min-[1400px]:table-cell ${c.diferencia ? 'text-aviso' : ''}`}>{c.diferencia !== null ? moneda(c.diferencia, m) : '—'}</TD>

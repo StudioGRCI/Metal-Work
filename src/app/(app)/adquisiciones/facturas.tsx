@@ -2,6 +2,7 @@ import Link from 'next/link'
 
 import { HistorialDeCorrecciones } from '@/components/correcciones/historial'
 import { Vistas } from '@/components/estructura/vistas'
+import { ConRotulo } from '@/components/ui/con-rotulo'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Pliegue } from '@/components/ui/seccion-desplegable'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
@@ -23,7 +24,6 @@ import { fecha, hoyLima, moneda, parteDe, porcentaje } from '@/lib/format'
 import { puede, type PerfilSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
-import { ConRotulo } from './con-rotulo'
 import { CorregirFactura } from './corregir'
 import { AvisosDelDetector, avisosDeFacturaRegistrada, InsigniaDelDetector } from './detector'
 import { CompletarAdquisicion, FormularioAdquisicion } from './formulario'
@@ -420,9 +420,8 @@ function ComprasEnTelefono({
 }) {
   if (vacio) {
     return (
-      <Tarjeta className="px-4 py-8 text-center xl:hidden">
-        <p className="text-sm font-medium text-texto">{vacio.titulo}</p>
-        <p className="mt-1 text-xs text-texto-suave">{vacio.descripcion}</p>
+      <Tarjeta className="xl:hidden">
+        <SinDatos enTabla={false} titulo={vacio.titulo} descripcion={vacio.descripcion} />
       </Tarjeta>
     )
   }
@@ -457,12 +456,12 @@ function ComprasEnTelefono({
                     nc={nc}
                   />
                   {/* Cada parte con su nombre, como la ficha de las OC; de 640 px en adelante, lado a lado. */}
-                  <dl className="grid gap-x-6 gap-y-2 pt-1 sm:grid-cols-2">
+                  <dl className="grid gap-x-4 gap-y-3 pt-1 sm:grid-cols-2">
                     {ordenes.length > 0 && (
                       <ConRotulo rotulo="OC, RQ y código">
                         <ul className="space-y-0.5 text-xs text-texto-suave">
                           {ordenes.map((o) => (
-                            <OcEnUnaLinea key={o.id} orden={o} acceso={acceso} />
+                            <OcEnUnaLinea key={o.id} orden={o} acceso={acceso} conTotal />
                           ))}
                         </ul>
                       </ConRotulo>
@@ -519,8 +518,8 @@ function ComprasEnTelefono({
   )
 }
 
-/** Una OC en un renglón: su número, de qué RQ salió y para qué código. */
-function OcEnUnaLinea({ orden: o, acceso }: { orden: OcEnTabla; acceso: Acceso }) {
+/** Una OC en un renglón: su número, de qué RQ salió y para qué código; y su total, donde la tabla lo dice en su celda. */
+function OcEnUnaLinea({ orden: o, acceso, conTotal = false }: { orden: OcEnTabla; acceso: Acceso; conTotal?: boolean }) {
   return (
     <li>
       {acceso.oc ? (
@@ -564,6 +563,15 @@ function OcEnUnaLinea({ orden: o, acceso }: { orden: OcEnTabla; acceso: Acceso }
               )}
             </span>
           ))}
+        </>
+      )}
+      {/* El total de la OC, que no es el de la factura: una factura puede llevar dos OC, o una parte de una. */}
+      {conTotal && (
+        <>
+          {' · '}
+          <span className="tabular whitespace-nowrap" data-total-de-la-oc>
+            {o.sin_precio ? 'Sin precio' : moneda(o.total, codigo(o.moneda))}
+          </span>
         </>
       )}
       {/* La de antes de la serie no tiene número: su referencia es la cotización del proveedor. */}
@@ -662,17 +670,6 @@ function GrupoFactura({
             <>
               <TD rowSpan={alto} className="align-top">
                 <DatosDeFactura factura={f} propia={propia} avisos={avisos} correcciones={correcciones} corrige={corrige} nc={nc} />
-                {/* Entre 1280 y 1699 px la fecha no tiene columna: va aquí, con su rótulo. */}
-                <p className="mt-1 text-xs text-texto-suave min-[1700px]:hidden" data-fecha-en-fila>
-                  Del <span className="tabular whitespace-nowrap">{fecha(f.fecha_emision)}</span> ·{' '}
-                  {f.condicion_pago === 'CREDITO' ? (
-                    <>
-                      crédito, vence <span className="tabular whitespace-nowrap">{fecha(f.fecha_vencimiento)}</span>
-                    </>
-                  ) : (
-                    'contado'
-                  )}
-                </p>
               </TD>
               <TD rowSpan={alto} className="hidden align-top whitespace-nowrap min-[1700px]:table-cell">
                 <span className="tabular">{fecha(f.fecha_emision)}</span>
@@ -734,6 +731,18 @@ function DatosDeFactura({
         <>
           <NumeroDeFactura factura={f} />
           <p className="text-xs text-texto-suave">{definir(TIPO_COMPROBANTE, f.tipo).etiqueta}</p>
+          {/* Entre 1280 y 1699 px la fecha no tiene columna: va aquí, pegada al número,
+              y no al fondo de la celda, debajo de los botones. */}
+          <p className="text-xs text-texto-suave min-[1700px]:hidden" data-fecha-en-fila>
+            Del <span className="tabular whitespace-nowrap">{fecha(f.fecha_emision)}</span> ·{' '}
+            {f.condicion_pago === 'CREDITO' ? (
+              <>
+                crédito, vence <span className="tabular whitespace-nowrap">{fecha(f.fecha_vencimiento)}</span>
+              </>
+            ) : (
+              'contado'
+            )}
+          </p>
         </>
       )}
       <p className="mt-1 flex flex-wrap gap-1">
@@ -773,7 +782,7 @@ function DatosDeFactura({
             <li key={n.id} data-nota-credito={n.numero} className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className={n.anulada ? 'text-texto-suave line-through' : 'text-texto'}>
                 {n.url ? (
-                  <a href={n.url} target="_blank" rel="noreferrer" className={`tabular inline-flex min-h-11 items-center xl:min-h-0 ${enlace}`}>
+                  <a href={n.url} target="_blank" rel="noreferrer" className={`tabular inline-flex min-h-11 items-center sm:pointer-fine:min-h-0 xl:min-h-0 ${enlace}`}>
                     Nota {n.numero}
                   </a>
                 ) : (
@@ -988,7 +997,7 @@ function Pago({ factura: f, acceso }: { factura: FacturaEnTabla; acceso: Acceso 
       )}
       {/* Solo la que falta pagar: la pagada ya trae aquí sus vouchers, y allá va plegada. */}
       {acceso.porPagar && f.estado === 'REGISTRADA' && f.saldo !== null && f.saldo > 0 && (
-        <Link href={`/tesoreria/por-pagar#factura-${f.id}`} className={`inline-flex min-h-11 items-center xl:min-h-0 ${enlace}`}>
+        <Link href={`/tesoreria/por-pagar#factura-${f.id}`} className={`inline-flex min-h-11 items-center sm:pointer-fine:min-h-0 xl:min-h-0 ${enlace}`}>
           {acceso.porPagar === 'pagar' ? 'Pagar en Cuentas por pagar' : 'Ver en Cuentas por pagar'}
         </Link>
       )}

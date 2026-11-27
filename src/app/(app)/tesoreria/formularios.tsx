@@ -183,7 +183,7 @@ export function AnularCobro({ cobroId }: { cobroId: string }) {
   })
   return (
     <>
-      <Boton type="button" variante="contornoPeligro" tamano="sm" onClick={() => setAbierta(true)} data-anular-cobro={cobroId}>
+      <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setAbierta(true)} data-anular-cobro={cobroId}>
         <Ban aria-hidden className="size-4" />
         Anular
       </Boton>
@@ -417,7 +417,7 @@ export function AnularPagoServicio({ pagoId }: { pagoId: string }) {
   })
   return (
     <>
-      <Boton type="button" variante="contornoPeligro" tamano="sm" onClick={() => setAbierta(true)} data-anular-pago-servicio={pagoId}>
+      <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setAbierta(true)} data-anular-pago-servicio={pagoId}>
         <Ban aria-hidden className="size-4" />
         Anular
       </Boton>
@@ -569,7 +569,7 @@ export function AnularPagoFactura({ pagoId }: { pagoId: string }) {
   })
   return (
     <>
-      <Boton type="button" variante="contornoPeligro" tamano="sm" onClick={() => setAbierta(true)} data-anular-pago-factura={pagoId}>
+      <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setAbierta(true)} data-anular-pago-factura={pagoId}>
         <Ban aria-hidden className="size-4" />
         Anular
       </Boton>
@@ -777,7 +777,7 @@ export function AnularPagoCompra({
     <>
       <Boton
         type="button"
-        variante="contornoPeligro"
+        variante="fantasma"
         tamano="sm"
         onClick={() => {
           setQuePaso(null)
