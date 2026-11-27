@@ -505,7 +505,7 @@ function FormularioTipo({ id, tipo, alCancelar, alTerminar }: {
           etiqueta="Avisar antes del vencimiento"
           htmlFor={`tipo-dias-${id}`}
           requerido
-          ayuda="Los días de anticipación, separados por comas: 30, 15, 7. Hasta cinco avisos, de 0 a 120 días."
+          ayuda="Cuántos días antes de la fecha límite (o de la vigencia, en lo que se renueva) avisa el sistema, separados por comas: 30, 15, 7. Hasta cinco avisos, de 0 a 120 días."
           ayudaEnIcono={false}
           error={errorDias ?? undefined}
         >

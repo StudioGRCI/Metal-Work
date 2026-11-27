@@ -1,0 +1,108 @@
+{
+  "id": "como-pedir-un-rq",
+  "tarea": "Cómo pedir un RQ",
+  "puesto": "Supervisor de área",
+  "voz": { "nombre": "es-PE-CamilaNeural", "velocidad": "-5%" },
+  "pronunciacion": {},
+  "pista_whisper": "Metal Work. RQ, requerimiento, Almacén, Logística, insumo, catálogo.",
+  "escenas": [
+    {
+      "tipo": "gancho",
+      "titular": "Pide tu material y mira en qué va, **sin llamar a Almacén**",
+      "frases": ["Pide tu material y mira en qué va, sin llamar a Almacén."]
+    },
+    { "tipo": "portada" },
+    {
+      "tipo": "antes-despues",
+      "antes": ["Pedías el material", "Tenías que preguntar en qué iba"],
+      "ahora": { "captura": "08-avance", "resalte": ["etapas", "verde", "ambar"], "puntos": ["Queda registrado con su número", "Ves cómo avanza cada insumo"] },
+      "frases": [
+        { "texto": "Antes, pedías el material y tenías que preguntar para saber en qué iba.", "vertical": "Antes tenías que preguntar en qué iba tu pedido." },
+        { "texto": "Ahora el pedido queda registrado con su número, y tú ves cómo avanza cada insumo.", "vertical": "Ahora lo ves tú mismo." }
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Busca tu unidad y toca «Nuevo RQ»",
+      "tomas": [
+        { "captura": "01-entrada", "resalte": "entrada" },
+        { "captura": "02-unidad", "resalte": "nuevo", "desdeFrase": 1 }
+      ],
+      "frases": [
+        { "texto": "Entra a RQ por unidad.", "vertical": "En RQ, toca Por unidad." },
+        { "texto": "Busca tu unidad y toca Nuevo RQ.", "vertical": "Busca tu unidad y toca Nuevo RQ." },
+        { "texto": "El código ya viene puesto, así el gasto va a la unidad correcta.", "vertical": "" }
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Escribe para qué lo necesitas",
+      "tomas": [{ "captura": "03-justificacion", "resalte": "justificacion" }],
+      "frases": [
+        "Escribe para qué lo necesitas.",
+        { "texto": "Así Almacén y Logística entienden el pedido sin tener que llamarte.", "vertical": "" }
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Elige el insumo y pon la cantidad",
+      "tomas": [
+        { "captura": "04-buscar", "resalte": "lista" },
+        { "captura": "05-cantidad", "resalte": "cantidad", "desdeFrase": 1 }
+      ],
+      "frases": [
+        { "texto": "Elige cada insumo del catálogo de Almacén.", "vertical": "Elige el insumo del catálogo" },
+        { "texto": "Pon la cantidad; la unidad de medida sale sola.", "vertical": "y pon la cantidad." },
+        { "texto": "Como todos usan el mismo nombre, no hay confusiones.", "vertical": "" }
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Toca «Registrar y mandar a Almacén»",
+      "tomas": [
+        { "captura": "06-registrar", "resalte": "registrar" },
+        { "captura": "07-registrado", "resalte": "aviso", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Toca Registrar y mandar a Almacén.",
+        { "texto": "El sistema le pone su número y le avisa a Almacén al instante.", "vertical": "El sistema le pone su número." }
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Mira cómo va cada insumo",
+      "tomas": [
+        { "captura": "08-avance", "resalte": "etapas" },
+        { "captura": "08-avance", "resalte": "verde", "desdeFrase": 1 },
+        { "captura": "08-avance", "resalte": "ambar", "desdeFrase": 2 }
+      ],
+      "frases": [
+        { "texto": "Después, mira cómo va tu pedido.", "vertical": "Y mira cómo va." },
+        { "texto": "Verde: ya lo puedes recoger en Almacén.", "vertical": "Verde: ya lo puedes recoger." },
+        { "texto": "Marrón: falta, y lo compra Logística.", "vertical": "Marrón: lo compra Logística." }
+      ]
+    },
+    {
+      "tipo": "porque",
+      "titulo": "Por qué importa",
+      "puntos": ["No pierdes tiempo preguntando", "El material llega cuando la unidad lo necesita"],
+      "lema": "El sistema te guía. Tú decides.",
+      "frases": [
+        { "texto": "¿Por qué importa? Porque no pierdes tiempo preguntando,", "vertical": "Así no pierdes tiempo preguntando." },
+        { "texto": "y el material llega cuando la unidad lo necesita.", "vertical": "" },
+        { "texto": "El sistema te guía; tú decides qué pedir.", "vertical": "El sistema te guía; tú decides." }
+      ]
+    },
+    {
+      "tipo": "cierre",
+      "titulo": "En resumen",
+      "puntos": ["Pide desde la unidad", "Elige del catálogo", "Revisa el avance"],
+      "frases": [
+        { "texto": "En resumen.", "vertical": "" },
+        { "texto": "Uno: pide desde la unidad.", "vertical": "Pide desde la unidad," },
+        { "texto": "Dos: elige del catálogo.", "vertical": "elige del catálogo" },
+        { "texto": "Tres: revisa el avance sin llamar a nadie.", "vertical": "y revisa el avance." }
+      ]
+    }
+  ]
+}

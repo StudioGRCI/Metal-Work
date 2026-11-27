@@ -44,6 +44,7 @@ db/test/checks/               checks en begin/rollback
 docs/ANALISIS-ONEDRIVE.md     fuente de verdad de formatos, numeración y códigos reales
 docs/PERMISOS.md              qué permiso tiene cada rol, sacado de la base
 herramientas/banco/           PostgREST propio para probar pantallas sin Supabase
+herramientas/videos/          plantilla fija de los videos (Remotion); proyecto aparte, con su README
 .claude/agents/               los tres auditores; cómo se lanzan, en la skill auditar
 docs/SKILLS-DE-TERCEROS.md    origen, licencia y cambios de cada skill de terceros
 ```

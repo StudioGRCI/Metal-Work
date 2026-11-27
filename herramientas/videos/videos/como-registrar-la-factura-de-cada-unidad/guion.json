@@ -1,0 +1,134 @@
+{
+  "id": "como-registrar-la-factura-de-cada-unidad",
+  "tarea": "Cómo registrar la factura de cada unidad",
+  "puesto": "Contabilidad",
+  "voz": { "nombre": "es-PE-CamilaNeural", "velocidad": "-5%" },
+  "pronunciacion": {},
+  "pista_whisper": "Metal Work. Facturación, Contabilidad, factura, Facturar, Por facturar, Facturada, SUNAT, IGV, cotización, unidades, PDF.",
+  "escenas": [
+    {
+      "tipo": "gancho",
+      "titular": "Varias unidades: **una factura por cada una**",
+      "frases": ["Cada unidad de una cotización lleva ahora su propia factura."]
+    },
+    { "tipo": "portada" },
+    {
+      "tipo": "antes-despues",
+      "antes": ["Una factura por toda la cotización", "No se veía qué unidad faltaba"],
+      "ahora": { "captura": "07-facturada", "resalte": "unidades", "puntos": ["Cada factura dice su unidad", "Se ve cuál falta facturar"] },
+      "frases": [
+        "Antes, la factura se registraba por toda la cotización, y no se veía qué unidad faltaba facturar.",
+        "Ahora cada factura dice de qué unidad es, y la pantalla te muestra las que faltan."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Entra a Facturación",
+      "tomas": [
+        { "captura": "01-por-facturar", "resalte": "entrada" },
+        { "captura": "01-por-facturar", "resalte": "tabla", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Entra a Facturación.",
+        "Arriba, en Por facturar, hay una fila por cada unidad que espera su factura."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Toca «Facturar» en la unidad",
+      "tomas": [
+        { "captura": "02-tarjeta", "resalte": "unidades" },
+        { "captura": "02-tarjeta", "resalte": "boton", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Más abajo, la cotización lista sus unidades, con lo que le toca a cada una.",
+        "Toca Facturar en la unidad que vas a facturar."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Revisa de qué unidad es",
+      "tomas": [
+        { "captura": "03-ventana", "resalte": "titulo" },
+        { "captura": "03-ventana", "resalte": "unidad", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Se abre la ventana de la factura.",
+        "La unidad ya viene elegida: revisa que sea la correcta."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Escribe los datos de la factura",
+      "tomas": [
+        { "captura": "04-datos", "resalte": "numero" },
+        { "captura": "04-datos", "resalte": ["fechas", "vence"], "desdeFrase": 1 },
+        { "captura": "04-datos", "resalte": ["total", "toca"], "desdeFrase": 2 }
+      ],
+      "frases": [
+        "Escribe el número de la factura, tal como salió de SUNAT.",
+        "Pon la fecha de emisión y la de vencimiento.",
+        "Escribe el total con IGV.",
+        "La ventana te dice cuánto le toca a esa unidad."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Elige el PDF y registra",
+      "tomas": [
+        { "captura": "05-pdf", "resalte": "pdf" },
+        { "captura": "05-pdf", "resalte": "registrar", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Elige el PDF de la factura, el que descargaste de SUNAT.",
+        "Toca Registrar la factura."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Revisa que quedó facturada",
+      "tomas": [
+        { "captura": "07-facturada", "resalte": "primera" },
+        { "captura": "06-quedan", "resalte": "tabla", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "La unidad queda como Facturada.",
+        "Y en Por facturar siguen las que faltan."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Si la factura es por toda la cotización",
+      "tomas": [
+        { "captura": "08-registrar", "resalte": "boton" },
+        { "captura": "09-toda", "resalte": ["unidad", "reparto"], "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Si una factura es por toda la cotización, como un adelanto, toca Registrar factura.",
+        "Elige Toda la cotización: el sistema la reparte en partes iguales entre sus unidades."
+      ]
+    },
+    {
+      "tipo": "porque",
+      "titulo": "Por qué importa",
+      "puntos": ["Se sabe qué unidad está facturada", "Ninguna se queda sin facturar"],
+      "lema": "El sistema te guía. Tú decides.",
+      "frases": [
+        "¿Por qué importa? Porque cada unidad se entrega y se cobra por separado,",
+        "y así se ve cuál falta facturar.",
+        "El sistema lleva la cuenta; tú registras cada factura."
+      ]
+    },
+    {
+      "tipo": "cierre",
+      "titulo": "En resumen",
+      "puntos": ["Una factura por cada unidad", "Revisa la unidad y el total", "Mira las que faltan"],
+      "frases": [
+        "En resumen.",
+        "Uno: registra cada factura en su unidad.",
+        "Dos: revisa la unidad y el total antes de registrar.",
+        "Tres: mira en Por facturar las que faltan."
+      ]
+    }
+  ]
+}

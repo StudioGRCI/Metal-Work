@@ -429,6 +429,32 @@ como siempre y no ve a quién le tocó; RR. HH. tampoco: su lista la lee SSOMA,
 no al revés. Las dos tablas no llevan `activar_auditoria`, por la misma razón
 que las de arriba.
 
+### La lectura de Gerencia (entrega 15.6)
+
+Migración `20261127150600_ssoma_lectura_por_area`, comprobada con los roles
+reales en la base local (check 494: SSOMA, Gerencia, Ventas con acciones a su
+cargo y RR. HH., nunca ADMIN) y con clic real en el banco
+(`herramientas/banco/probar-ssoma-lectura.mjs`). No crea tablas ni permisos: lee
+lo que ya anotaron las entregas 15.1, 15.2 y 15.4. Va en `/ssoma`: tres cifras
+arriba de las pestañas y la pestaña «Por área».
+
+| Qué | Quién | Cómo lo hace cumplir la base |
+| --- | --- | --- |
+| Ver los días sin accidentes de la planta (con el último accidente y su área), los reportes abiertos y por clasificar, y las acciones abiertas y vencidas | SSOMA y Gerencia (`ssoma.ver` o `ssoma.gestionar`, en consulta) | `ssoma_seguridad_de_la_planta` (`security definer`, `puede_ver_reportes_ssoma()`); a los demás no les da ninguna fila |
+| Ver lo mismo por área, cada área activa y la dada de baja mientras le quede algo abierto o si es la del último accidente de la planta, con el día desde el que cuenta y la fecha límite más vieja de las vencidas; y debajo, cuáles son las vencidas, agrupadas por área | SSOMA y Gerencia | `ssoma_seguridad_por_area`, con la misma puerta; las vencidas, de `ssoma_acciones_a_la_vista` (alcance `TODOS`) |
+
+Accidente es el reporte vigente que SSOMA clasificó como accidente leve,
+incapacitante o mortal (vale la última clasificación) o, mientras no lo
+clasifique, el que se reportó como accidente; los días se cuentan desde el día
+en que pasó, en Lima. Si nunca hubo uno, desde el día en que entró el primer
+reporte al sistema (`ssoma_registro_desde`, con la fecha que pone la base y no la
+del hecho, que se escribe a mano), y un área creada después, desde que se creó.
+Lo que SSOMA reclasificó como incidente y lo anulado no cuentan. Las dos lecturas no devuelven quién reportó, la causa
+ni nada de RR. HH.: solo fechas, nombres de área y cuentas. Sus ayudantes
+(`ssoma_accidentes`, `ssoma_registro_desde`) no los ejecuta `authenticated`. Las
+vencidas no son pendientes de nadie: el responsable las ve en su lista, como
+desde la 15.2.
+
 ## Calidad: la inspección por código interno y etapa
 
 Plan aparte de las demás áreas, entrega A.1. Migración
@@ -507,9 +533,10 @@ de trámite: el número es `TR-0001-2026`. El puesto es del área de
 Administración (ADM). El expediente con sus archivos, las gestiones con fecha
 y el cierre con el documento final son la entrega 2 (migración
 `20261127002000_el_expediente_del_tramite`, check 499 y
-`herramientas/banco/probar-expediente.mjs`). Los avisos de vencimiento y de
-alta (entrega 3) y el enlace con el plazo de la OT y las renovaciones
-(entrega 4) todavía no están.
+`herramientas/banco/probar-expediente.mjs`). Los avisos de alta y de
+vencimiento son la entrega 3 (migración `20261127004000_los_tramites_avisan_solos`,
+check 500 y `herramientas/banco/probar-avisos-de-tramites.mjs`). El enlace con
+el plazo de la OT y las renovaciones (entrega 4) todavía no están.
 
 | Qué | Quién | Cómo lo exige la base |
 | --- | --- | --- |
@@ -525,6 +552,28 @@ alta (entrega 3) y el enlace con el plazo de la OT y las renovaciones
 | Cerrar el trámite con el documento final: su archivo, la fecha del documento y, si el tipo se renueva, hasta cuándo vale | `tramites.gestionar`: Tramitador | `tramites_concluir`, el mismo permiso que `concluirTramite`. No pasa por Gerencia (decisión de StudioGRCI, 2026-11-26: «Solo la anulación»). Solo desde «En trámite» u «Observado»; un trámite tiene un solo documento final en pie (`uq_tramite_documento_final`). La vigencia termina después de la fecha del documento y no pasa de diez años. Concluido deja de contar el plazo y ya no se actualiza (`fn_tramite_guardia`) |
 | Retirar un archivo, con motivo (10 a 500) | `tramites.gestionar`: Tramitador | `tramites_retirar_archivo`, el mismo permiso que `retirarArchivo`. Un archivo no se borra (`fn_tramite_archivo_guardia`): queda retirado, con quién, cuándo y por qué. Retirar el documento final reabre el trámite a «En trámite» (`fn_tramite_archivo_reabre`), y es la única forma de reabrirlo: la guardia no lo deja volver con su documento final en pie |
 | Ver el expediente y las gestiones | Quien ve el trámite | `tramites_archivos`, `tramites_gestiones` y las políticas `ver_tramite_archivos` y `ver_tramite_gestiones`: quien ve el trámite. Los archivos retirados, solo quien ve todos (Tramitador, Gerencia, Administración); Ventas y Gerencia Comercial no. El archivo se abre por `/tramites/archivo/[id]`, que pide un enlace firmado de 5 minutos con la sesión de quien toca: la política `tramites_ver_archivo` de Storage lo da solo si una fila que esa cuenta ve lo nombra. Sus copias en `audit_log`, con `tramites_con_su_permiso` |
+
+Los avisos (entrega 3), en la campana, sin permiso nuevo:
+
+| Aviso | A quién | Cómo lo hace la base |
+| --- | --- | --- |
+| «Trámite nuevo: TR-…», con el tipo, la placa y el cliente (o «de la empresa»), quién lo registró y su fecha límite | `tramites.gestionar`: los Tramitadores, salvo quien lo registró | `trg_tramite_avisa_al_registrarse`, después de cada alta, por `avisar_a_permiso` |
+| «Por vencer: TR-… · vence en N días» al llegar cada uno de los días de aviso de su tipo antes de la fecha límite (30, 15 y 7 en lo que se renueva; 5 en tarjeta y placas); «Por renovar: …» con la vigencia del documento final, en lo concluido que se renueva | `tramites.gestionar`: los Tramitadores | `revisar_tramites()`, que corre pg_cron (`revisar-tramites`) cada día a las 7:00 de Lima y solo en día laborable (`es_laborable`): lo que cayó en domingo o feriado sale el siguiente laborable, una vez por umbral, con el umbral más cercano que todavía no se mandó. No avisa lo anulado, lo que espera el visto de su anulación ni lo de un lote de prueba. Sin ningún Tramitador activo ese día el aviso no se anota: sale en la primera revisión en que haya uno |
+| «Venció el trámite TR-…» (fecha límite pasada, sin concluir) | Los Tramitadores y `tramites.aprobar_anulacion`: Gerencia | La misma revisión, una sola vez por fecha. Si el Tramitador corrige la fecha límite, la nueva vuelve a avisar |
+| «Venció TR-…: hay que renovarlo» (vigencia pasada) | Los Tramitadores; Gerencia no, hasta la entrega 4 | La misma revisión, una sola vez. El documento que se carga ya vencido no avisa |
+
+Lo que ya se mandó queda en `tramite_avisos` (trámite, tipo, fecha, umbral,
+a cuántas cuentas, y una fila por día revisado), que solo la revisión escribe
+y que leen quienes ven todos los trámites (`ver_tramite_avisos`, con
+`tramites_ve_todos()`). `revisar_tramites` no la ejecuta ninguna cuenta: la
+llama el sistema. Los días son corridos, no laborables.
+
+Límite conocido hasta la entrega 4: la revisión todavía no sabe qué trámite
+renueva a cuál. Si un SOAT se renueva con un trámite nuevo, el concluido viejo
+sigue avisando por su vigencia al Tramitador; por eso la vigencia vencida no
+va todavía a Gerencia. La entrega 4 enlaza la renovación y saca al viejo de la
+revisión. Si los días de aviso del tipo cambian a medio camino, no sale un día
+de aviso mayor que uno ya mandado para la misma fecha.
 
 Los globos: a Gerencia le cuenta las anulaciones que esperan su visto; al
 Tramitador, los trámites que pasaron su fecha límite y los que la entidad
