@@ -165,8 +165,12 @@ export async function guardarUnidad(
 
   const supabase = await createClient()
   const fila = {
-    // Diseño corrige el vehículo, no de quién es: el cliente lo cambia Ventas.
-    ...(!editando || puede(perfil, 'clientes.editar') ? { cliente_id: v.cliente_id } : {}),
+    // Al corregir, la ficha no cambia de quién es la unidad: no tiene selector
+    // de cliente y manda el que tenía al abrirse. Si la unidad pasó con su OT a
+    // otro comprador mientras estaba abierta, devolver ese cliente la
+    // regresaba callada al de antes, y desde la 20261127183500 la base lo
+    // rechaza hablando de «Editar OT». El cliente va solo en el alta.
+    ...(!editando ? { cliente_id: v.cliente_id } : {}),
     placa: nulo(v.placa),
     tipo_vehiculo: v.tipo_vehiculo,
     marca: v.marca,

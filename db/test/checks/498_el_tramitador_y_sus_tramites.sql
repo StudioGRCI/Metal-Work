@@ -235,8 +235,14 @@ begin
 end $$;
 reset role;
 
--- El cliente queda congelado: la unidad cambia de dueño y el trámite no.
+-- El cliente queda congelado: la unidad cambia de dueño y el trámite no. Desde
+-- la 20261127183500 la unidad con OT cambia de cliente, con sesión, solo con
+-- «Editar OT / cambiar cliente»: el cambio de dueño se monta sin sesión, como
+-- una corrección de la base, y la sesión vuelve después.
+select set_config('prueba.sesion_antes', coalesce(current_setting('request.jwt.claim.sub', true), ''), true);
+select set_config('request.jwt.claim.sub', '', true);
 update public.unidades set cliente_id = :'cliente_b' where id = :'unidad_a';
+select set_config('request.jwt.claim.sub', current_setting('prueba.sesion_antes'), true);
 select test.debe_fallar(format('delete from public.tramites where id = %L', current_setting('prueba.tr1')),
   'nadie lo borra, tampoco por debajo', 'no se borra');
 select test.debe_fallar(format('update public.tramites set unidad_id = %L where id = %L', current_setting('prueba.unidad_b'), current_setting('prueba.tr1')),
