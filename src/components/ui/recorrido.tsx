@@ -33,7 +33,7 @@ import { cn } from '@/lib/utils'
  *
  * La cotización de varias unidades trae, después de lo de toda la cotización,
  * un tramo por unidad con su OT, su factura y su cobro (migración
- * 20261126998800): cada tramo va bajo su rótulo «Unidad 2 de 3». Cerrado nombra
+ * 20261126998900): cada tramo va bajo su rótulo «Unidad 2 de 3». Cerrado nombra
  * a todos los que la tienen («La tienen Administración y Tesorería») con la
  * espera más larga. Sin unidades se pinta igual que siempre.
  */

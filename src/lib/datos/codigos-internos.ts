@@ -765,7 +765,7 @@ export async function documentosDelCodigo(codigo: string): Promise<DocumentoDelC
  * la garantía que llega después de entregar no pasa por «la OT» del código, ni la
  * cotización de una OT anulada por «la cotización». La entrega es el acta de esa OT.
  * De la cotización de varias unidades, qué unidad es este código («2 de 3»,
- * migración 20261126998800); en la de una, `unidad` va en nulo.
+ * migración 20261126998900); en la de una, `unidad` va en nulo.
  */
 export type RecorridoDelCodigoBase = {
   cotizacion: { id: string; numero: string; estado: string; fecha: string | null; unidad: number | null; unidades: number | null } | null

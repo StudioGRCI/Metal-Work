@@ -92,7 +92,7 @@ begin
 end $$;
 
 -- El recorrido de la cotización como lo lee Ventas: el código y la OT, y la factura.
--- En la de varias unidades cada paso es de su unidad («2·», migración 20261126998800).
+-- En la de varias unidades cada paso es de su unidad («2·», migración 20261126998900).
 create function pg_temp.camino(p_cot text) returns text
 language plpgsql as $$
 declare v text;

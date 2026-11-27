@@ -90,7 +90,7 @@ begin
 end $$;
 
 -- El recorrido de la cotización como lo lee Ventas. En la de varias unidades
--- cada paso es de su unidad («2·», migración 20261126998800).
+-- cada paso es de su unidad («2·», migración 20261126998900).
 create function pg_temp.camino(p_cot text) returns text
 language plpgsql as $$
 declare v text;
@@ -315,7 +315,7 @@ begin
 end $$;
 
 -- 5c. Facturadas las dos unidades que quedan, la venta espera solo su cobro -----------
--- (20261126998800) La unidad que pasó no espera a nadie; cada una de las otras dos,
+-- (20261126998900) La unidad que pasó no espera a nadie; cada una de las otras dos,
 -- con su factura, pasa de Contabilidad a Tesorería. Se deshace al terminar: las
 -- secciones que siguen cuentan con la de tres todavía sin facturas.
 savepoint las_dos_facturadas;

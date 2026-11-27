@@ -22,7 +22,7 @@ type Fila = {
   dias: number | null
   espera: string | null
   detalle: string | null
-  // Solo `recorrido_de_cotizaciones` (migración 20261126998800).
+  // Solo `recorrido_de_cotizaciones` (migración 20261126998900).
   unidad?: number | null
   unidades?: number | null
 }

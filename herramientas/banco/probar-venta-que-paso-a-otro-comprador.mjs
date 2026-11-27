@@ -336,7 +336,7 @@ for (const [ancho, alto] of [[1440, 900], [390, 844]]) {
   const pTres = await pasos(tres)
   comprobar(pTres.includes('OTRO_COMPRADOR:HECHO') && pTres.includes('CODIGO_Y_OT:AHORA'),
     `${ancho}: su recorrido dice que una pasó y espera la OT que falta (${pTres.join(', ')})`)
-  // Desde la 20261126998800 el recorrido va unidad por unidad: la 1 pasó, la 2
+  // Desde la 20261126998900 el recorrido va unidad por unidad: la 1 pasó, la 2
   // tiene su OT y espera su factura, y solo la 3 espera su OT.
   const porUnidad = await tres.locator('[data-recorrido-unidad]').evaluateAll((l) =>
     l.map((u) => `${u.getAttribute('data-recorrido-unidad')}: ${[...u.querySelectorAll('[data-recorrido-paso]')]

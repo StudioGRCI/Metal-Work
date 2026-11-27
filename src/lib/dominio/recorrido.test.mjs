@@ -243,7 +243,7 @@ test('la OC completa dice «Completa» aunque Almacén validó después y se ano
   assert.equal(enQueTermino(rq)?.paso, 'PASO_NUEVO')
 })
 
-// La cotización de varias unidades: su OT, su factura y su cobro, unidad por unidad (migración 20261126998800).
+// La cotización de varias unidades: su OT, su factura y su cobro, unidad por unidad (migración 20261126998900).
 const deTresUnidades = () => describirRecorridoDeLaCotizacion([
   paso(1, 'SUBIDA', 'HECHO', { puesto: 'Ventas' }),
   paso(2, 'REVISION', 'HECHO', { puesto: 'Gerencia', detalle: 'APROBADA' }),

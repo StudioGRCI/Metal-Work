@@ -162,7 +162,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   // cotización (`recorrido_de_cotizaciones` lo vuelve a mirar). Sin él, la
   // tarjeta lo dice en su lugar (`null`); sin cotización, no hay tarjeta. De la
   // cotización de varias unidades, lo de toda la cotización y lo de la unidad
-  // de esta OT, sin las otras (migración 20261126998800).
+  // de esta OT, sin las otras (migración 20261126998900).
   const cotizacionDelRecorrido =
     vista === 'resumen' &&
     orden.cotizacion_pdf_id &&

@@ -35,7 +35,7 @@ export type PasoDelRecorrido = {
   /** Un dato corto del paso: el área, la OC, cómo terminó. */
   detalle: string | null
   /**
-   * Solo en la cotización de varias unidades (migración 20261126998800): de qué
+   * Solo en la cotización de varias unidades (migración 20261126998900): de qué
    * unidad es el paso (su OT, su factura, su cobro) y cuántas tiene la
    * cotización. Vacío en los pasos de toda la cotización y en los demás documentos.
    */
@@ -292,7 +292,7 @@ const ESPERAS_DE_LA_COTIZACION: Record<string, (detalle: string | null) => strin
   CORRECCION: () => 'Sube la corrección con el mismo número.',
   // Con varias unidades el detalle decía cuántas OT lleva de cuántas («1/3»), y
   // cuántas pasaron a otro comprador si alguna («1/3/1», migración 20261126988000).
-  // Desde la 20261126998800 la base ya no lo manda: la cotización de varias
+  // Desde la 20261126998900 la base ya no lo manda: la cotización de varias
   // unidades aprobada va unidad por unidad y cada una trae este paso sin detalle.
   // Se conserva para la base que todavía no tiene esa migración; se retira después.
   CODIGO_Y_OT: (d) => {
@@ -572,7 +572,7 @@ export function describirRecorridoDeLaCotizacion(pasos: readonly PasoDelRecorrid
   const anulada = pasos.some((p) => p.paso === 'ANULACION' && p.situacion === 'HECHO')
   return descritos.map((p) => {
     if (anulada && p.paso === 'REVISION' && p.detalle === 'APROBADA') return { ...p, nota: null }
-    // En la de varias unidades cada paso es de su unidad (migración 20261126998800):
+    // En la de varias unidades cada paso es de su unidad (migración 20261126998900):
     // lo que falta facturar es lo de esa unidad, no lo del total.
     if (p.unidad != null && p.situacion === 'AHORA' && p.espera === 'FACTURA_RESTO') {
       return { ...p, nota: 'Registra la factura de lo que le falta a esta unidad.' }

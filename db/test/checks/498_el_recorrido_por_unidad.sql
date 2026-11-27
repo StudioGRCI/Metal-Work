@@ -1,4 +1,4 @@
--- El recorrido de la cotización, unidad por unidad (migración 20261126998800).
+-- El recorrido de la cotización, unidad por unidad (migración 20261126998900).
 --
 -- Una cotización de tres camabajas tiene tres OT, y cada factura dice de qué
 -- unidad es. El recorrido la contaba como una sola cosa. Ahora:
@@ -363,6 +363,33 @@ select test.afirmar(pg_temp.camino('tesoreria', 'cot3', 1) =
   'y la unidad 1 queda cobrada otra vez (' || pg_temp.camino('tesoreria', 'cot3', 1) || ')');
 select test.afirmar(pg_temp.camino('tesoreria', 'cot3', -1) = 'nada',
   'ningún paso de OT, factura o cobro queda suelto fuera de su unidad');
+
+-- 8c. Administración vuelve a cargar la OT de la unidad 3 ayer: ese paso tardó un día,
+-- desde que se anuló la anterior hace dos, no ocho desde la aprobación de hace nueve.
+savepoint otra_ot_de_la_unidad_3;
+select set_config('prueba.ot3b', gen_random_uuid()::text, true);
+select pg_temp.como('administracion');
+set local role authenticated;
+select pg_temp.cargar('cot3', 'ot3b', 'qa-498 u3b', '49804');
+reset role;
+do $$
+begin
+  set local session_replication_role = replica;
+  update public.ordenes_trabajo set creado_en = now() - interval '1 day' where id = pg_temp.id('ot3b');
+  set local session_replication_role = origin;
+end $$;
+select pg_temp.como('contabilidad');
+set local role authenticated;
+do $$
+declare v record;
+begin
+  select r.dias, r.situacion into v from public.recorrido_de_cotizaciones(array[pg_temp.id('cot3')]) r
+   where r.unidad = 3 and r.paso = 'CODIGO_Y_OT';
+  perform test.afirmar(v.situacion = 'HECHO' and v.dias = 1,
+    format('la OT que se volvió a cargar tardó un día desde la anulación de la anterior, no ocho desde la aprobación (%s, %s días)', v.situacion, v.dias));
+end $$;
+reset role;
+rollback to savepoint otra_ot_de_la_unidad_3;
 
 -- ============================================ 7. La cotización de una unidad, como siempre
 select pg_temp.como('administracion');

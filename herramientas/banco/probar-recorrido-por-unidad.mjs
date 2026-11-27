@@ -1,6 +1,6 @@
 /**
  * Recorre con clic real «el recorrido de la cotización, unidad por unidad»
- * (migración 20261126998800), con la cuenta de cada puesto (nunca ADMIN):
+ * (migración 20261126998900), con la cuenta de cada puesto (nunca ADMIN):
  *
  *   1. Ventas, en monitor y en teléfono: la tarjeta de la cotización de tres
  *      unidades (una cobrada, otra con su OT y sin factura, otra sin OT) dice,

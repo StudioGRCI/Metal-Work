@@ -55,7 +55,7 @@ begin
   for f in
     select * from (values
       -- La de la 20261126988000, y la de esta migración.
-      ('public.recorrido_de_cotizaciones(uuid[])', array['dd8275d9fb006291102445a6d2e83a84', '237b63688f27733b2194e6f7ba118ac1']),
+      ('public.recorrido_de_cotizaciones(uuid[])', array['dd8275d9fb006291102445a6d2e83a84', 'e5a553a26cd019f52826f33ac472c0fa']),
       -- La de la 20261126640000, y la de esta.
       ('public.codigo_interno_recorrido(text)', array['ddee94a2eaf1d16f79d9314f760230ab', '3560c133732a6ff3ee8b64e044814868'])
     ) as t(firma, conocidas)
@@ -72,6 +72,25 @@ begin
     raise exception 'Falta la tabla facturas_venta_unidades: aplica antes la migración 20261126998000.';
   end if;
 end $$;
+
+-- 0b. Qué unidad dejó en una venta la OT que pasó a otro comprador -------------
+-- Hoy la OT que pasa conserva su número de unidad (20261126988000), así que es
+-- el de la OT. Se lee en un solo lugar a propósito: si la OT llega a tomar otra
+-- unidad en la venta nueva, esta función pasa a leer la que dejó, y el
+-- recorrido sigue diciendo la unidad correcta sin tocarlo.
+create or replace function public.unidad_que_dejo_la_ot(p_orden uuid, p_cotizacion uuid)
+returns integer
+language sql
+stable
+set search_path to 'public'
+as $$
+  select coalesce(o.numero_de_unidad, 1)::integer from public.ordenes_trabajo o where o.id = p_orden;
+$$;
+
+comment on function public.unidad_que_dejo_la_ot(uuid, uuid) is
+  'La unidad que la OT ocupaba en la cotización p_cotizacion antes de pasar a otro comprador. Ayudante interno del recorrido.';
+
+revoke all on function public.unidad_que_dejo_la_ot(uuid, uuid) from public, anon, authenticated;
 
 -- 1. El recorrido de la cotización, con sus unidades ----------------------------
 drop function if exists public.recorrido_de_cotizaciones(uuid[]);
@@ -364,41 +383,44 @@ begin
      where c.por_unidad and o.estado <> 'ANULADA'
      order by o.cotizacion_pdf_id, coalesce(o.numero_de_unidad, 1), o.creado_en desc
   ),
-  -- La unidad cuya OT pasó a otro comprador: la OT conserva su número de unidad
-  -- (20261126988000). Quién la pasó y cuándo salió de esta venta.
+  -- La unidad cuya OT pasó a otro comprador: la que dejó en esta venta
+  -- (`unidad_que_dejo_la_ot`). Quién la pasó y cuándo salió de esta venta.
   u_salio as (
-    select distinct on (c.id, coalesce(t.numero_de_unidad, 1))
-           c.id as cot, coalesce(t.numero_de_unidad, 1)::integer as unidad, t.numero, s.salio_en as en,
+    select distinct on (c.id, k.unidad)
+           c.id as cot, k.unidad, t.numero, s.salio_en as en,
            (select va.creado_por from public.ot_ventas_anteriores va
              where va.orden_id = s.orden_id and va.cotizacion_pdf_id = c.id
              order by va.creado_en desc limit 1) as por
       from cot c
       cross join lateral public.salidas_de_la_cotizacion(c.id, null) s
       join public.ordenes_trabajo t on t.id = s.orden_id
+      cross join lateral (select public.unidad_que_dejo_la_ot(t.id, c.id) as unidad) k
      where c.por_unidad and c.salieron > 0
-       and not exists (select 1 from u_ot o where o.cot = c.id and o.unidad = coalesce(t.numero_de_unidad, 1))
-     order by c.id, coalesce(t.numero_de_unidad, 1), s.salio_en desc
+       and not exists (select 1 from u_ot o where o.cot = c.id and o.unidad = k.unidad)
+     order by c.id, k.unidad, s.salio_en desc
   ),
   -- Cuándo perdió la unidad su última OT: la anulación de una OT suya, aquí o
   -- allá donde había pasado. La OT anulada no acepta más cambios, así que su
   -- `actualizado_en` es la hora en que se anuló (como en
   -- `ot_anulada_que_reabre_la_venta`).
-  u_sin_ot_desde as (
-    select x.cot, x.unidad, max(x.en) as en
+  u_anulaciones as (
+    select x.cot, x.unidad, x.en
       from (
         select o.cotizacion_pdf_id as cot, coalesce(o.numero_de_unidad, 1)::integer as unidad, o.actualizado_en as en
           from public.ordenes_trabajo o
           join cot c on c.id = o.cotizacion_pdf_id
          where c.por_unidad and o.estado = 'ANULADA'
         union all
-        select c.id, coalesce(t.numero_de_unidad, 1)::integer, t.actualizado_en
+        select c.id, public.unidad_que_dejo_la_ot(t.id, c.id), t.actualizado_en
           from cot c
           cross join lateral public.camino_de_las_salidas(c.id, null) s
           join public.ordenes_trabajo t on t.id = s.orden_id
          where c.por_unidad and s.anulada
            and exists (select 1 from public.ot_ventas_anteriores va where va.cotizacion_pdf_id = c.id)
       ) x
-     group by x.cot, x.unidad
+  ),
+  u_sin_ot_desde as (
+    select a.cot, a.unidad, max(a.en) as en from u_anulaciones a group by a.cot, a.unidad
   ),
   -- Cada factura vigente en la unidad que cubre, con su parte. La factura por
   -- toda la cotización sale una vez por unidad.
@@ -538,7 +560,8 @@ begin
   -- Los días de cada paso hecho: cuántas fechas de Lima pasaron desde el paso
   -- hecho anterior (la subida no tiene anterior). Así el vendedor ve cuánto
   -- tardó Gerencia en responder y cuánto tardó la OT, sin hacer la cuenta. En
-  -- cada unidad, desde su paso anterior; el primero, desde la aprobación. La
+  -- cada unidad, desde su paso anterior; el primero, desde la aprobación o desde
+  -- la anulación de la OT que tenía antes. La
   -- anulación de la que va por unidad, desde lo último que se hizo en cualquiera.
   select x.cot, x.n, x.paso, x.situacion, x.puesto, x.en,
          case when x.situacion = 'AHORA' then public.dias_en_espera(x.en)
@@ -561,7 +584,13 @@ begin
                   then (select max(q.en) from pasos q
                          where q.cot = p.cot and q.bloque < 2 and q.situacion = 'HECHO' and q.en <= p.en)
                   else coalesce(lag(p.en) over (partition by p.cot, p.unidad, p.situacion = 'HECHO' order by p.en, p.canon),
-                                case when p.unidad is not null then (select c.revisado_en from cot c where c.id = p.cot) end)
+                                -- El primero de la unidad, desde la aprobación; si antes perdió una
+                                -- OT, desde esa anulación (la OT que se volvió a cargar).
+                                case when p.unidad is not null then
+                                  greatest((select c.revisado_en from cot c where c.id = p.cot),
+                                           (select max(a.en) from u_anulaciones a
+                                             where a.cot = p.cot and a.unidad = p.unidad and a.en <= p.en))
+                                end)
              end as previo,
              p.espera, p.detalle, p.unidad, p.unidades
         from pasos p
@@ -574,7 +603,7 @@ end;
 $$;
 
 comment on function public.recorrido_de_cotizaciones(uuid[]) is
-  'El recorrido de cada cotización que quien llama ya puede ver: lo hecho con el puesto de quien lo hizo y su hora, quién la tiene ahora y hace cuántos días, y lo que falta. La de varias unidades da, además, la OT, la factura y el cobro de cada unidad (unidad, unidades); en la de una, esas dos columnas van vacías. Migraciones 20261125130000 y 20261126998800.';
+  'El recorrido de cada cotización que quien llama ya puede ver: lo hecho con el puesto de quien lo hizo y su hora, quién la tiene ahora y hace cuántos días, y lo que falta. La de varias unidades da, además, la OT, la factura y el cobro de cada unidad (unidad, unidades); en la de una, esas dos columnas van vacías. Migraciones 20261125130000 y 20261126998900.';
 
 revoke all on function public.recorrido_de_cotizaciones(uuid[]) from public, anon;
 grant execute on function public.recorrido_de_cotizaciones(uuid[]) to authenticated;
@@ -657,7 +686,7 @@ end;
 $$;
 
 comment on function public.codigo_interno_recorrido(text) is
-  'La cotización y la OT que cuentan la historia del código, elegidas con la regla del costeo; de la cotización de varias unidades, qué unidad es este código (cotizacion_unidad de cotizacion_unidades). Lo lee quien ve los códigos internos. Migraciones 20261126640000 y 20261126998800.';
+  'La cotización y la OT que cuentan la historia del código, elegidas con la regla del costeo; de la cotización de varias unidades, qué unidad es este código (cotizacion_unidad de cotizacion_unidades). Lo lee quien ve los códigos internos. Migraciones 20261126640000 y 20261126998900.';
 
 revoke all on function public.codigo_interno_recorrido(text) from public, anon;
 grant execute on function public.codigo_interno_recorrido(text) to authenticated;
