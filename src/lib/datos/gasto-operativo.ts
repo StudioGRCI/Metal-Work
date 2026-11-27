@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 /**
  * El gasto operativo (lo cargado a PLANTA) de la migración 20261127190000:
  * `gasto_operativo` exige `gasto_operativo.ver` (todas las áreas) o
- * `gasto_operativo.area` (la suya, sin la mano de obra), y dice de cada línea
+ * `gasto_operativo.area` (la suya, solo herramientas e insumos y OS), y dice de cada línea
  * si suma y cuánto pesa en soles, con la misma regla que el costo de cada código.
  */
 export type LineaGastoOperativo = {

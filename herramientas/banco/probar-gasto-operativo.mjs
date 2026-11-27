@@ -138,7 +138,9 @@ for (const puesto of ['gerencia', 'administracion']) {
     comprobar((await pagina.locator('[data-lineas-gasto-operativo] tbody tr').count()) === mtz.lineas, `${quien}: y solo sus ${mtz.lineas} líneas`)
     if (ancho === 1440 && puesto === 'gerencia') await pagina.screenshot({ path: join(carpeta, `${puesto}-maestranza-${ancho}.png`), fullPage: true })
     // El área elegida sigue al cambiar de mes, aunque ese mes no tenga gasto.
-    await Promise.all([pagina.waitForURL(/mes=/), pagina.getByRole('link', { name: 'Mes anterior' }).click()])
+    const antes = new URL(pagina.url()).searchParams.get('mes')
+    await pagina.getByRole('link', { name: 'Mes anterior' }).click()
+    await pagina.waitForURL((u) => u.searchParams.get('mes') !== antes && u.searchParams.has('mes'))
     await pagina.waitForLoadState('networkidle')
     comprobar(new URL(pagina.url()).searchParams.has('area'), `${quien}: el mes anterior sigue con Maestranza`)
     comprobar(limpio(await pagina.locator('[data-cifras-gasto-operativo] dt').first().innerText()) === 'Gasto de Maestranza', `${quien}: y lo dice`)

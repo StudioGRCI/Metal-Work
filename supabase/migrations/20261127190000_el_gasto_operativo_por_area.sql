@@ -143,7 +143,7 @@ begin
          g.cantidad, g.unidad, g.moneda, g.monto, g.soles, g.suma, g.sin_precio, g.documento, g.referencia_id, g.requerimiento_id
     from public.gasto_operativo_lineas_calculado(p_desde, p_hasta) g
     left join public.areas a on a.id = g.area_id
-   where v_todo or (g.area_id = v_area and g.grupo not in ('MANO_OBRA', 'SUBCONTRATOS'))
+   where v_todo or (g.area_id = v_area and g.grupo in ('MATERIALES', 'SERVICIOS'))
    order by g.fecha desc, 3, g.grupo, g.concepto, g.referencia_id;
 end $$;
 

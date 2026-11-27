@@ -3,6 +3,7 @@ import Link from 'next/link'
 
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
+import { EnlaceBoton } from '@/components/ui/enlace-boton'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { DetalleEnTelefono, SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
@@ -35,7 +36,7 @@ type Enlaces = { rq: boolean; os: boolean }
  * Lo que cada área gastó para trabajar y no se cargó a ninguna carrocería: lo
  * que salió del almacén para sus RQ del área, sus OS, sus subcontratos, la caja
  * y las horas cargadas a PLANTA. Gerencia y Administración ven todas las áreas;
- * cada supervisor, la suya y sin la mano de obra. Solo lectura.
+ * cada supervisor, la suya y solo herramientas e insumos y OS. Solo lectura.
  */
 export default async function PaginaGastoOperativo({ searchParams }: PageProps<'/gasto-operativo'>) {
   const perfil = await exigirPermiso(['gasto_operativo.ver', 'gasto_operativo.area'])
@@ -88,7 +89,7 @@ export default async function PaginaGastoOperativo({ searchParams }: PageProps<'
   const enlaceMes = (otro: string) => `/gasto-operativo?${new URLSearchParams({ mes: otro, ...(area ? { area } : {}) })}`
   const suArea = nombreMio ?? 'tu área'
   const enlaces: Enlaces = {
-    rq: puede(perfil, ['requerimientos.ver', 'requerimientos.administracion']),
+    rq: puede(perfil, ['requerimientos.ver', 'requerimientos.administracion', 'requerimientos.area']),
     os: puede(perfil, ['compras.ver', 'compras.crear']),
   }
 
@@ -105,9 +106,15 @@ export default async function PaginaGastoOperativo({ searchParams }: PageProps<'
 
       <div className="space-y-5">
         <nav aria-label="Mes" className="flex items-center gap-2">
-          <Link href={enlaceMes(otroMes(mes, -1))} aria-label="Mes anterior" className={FLECHA}>
-            <ChevronLeft aria-hidden className="size-4" />
-          </Link>
+          {mes > '2000-01' ? (
+            <Link href={enlaceMes(otroMes(mes, -1))} aria-label="Mes anterior" className={FLECHA}>
+              <ChevronLeft aria-hidden className="size-4" />
+            </Link>
+          ) : (
+            <span aria-hidden className={`${FLECHA} pointer-events-none opacity-40`}>
+              <ChevronLeft className="size-4" />
+            </span>
+          )}
           <span className="min-w-40 text-center text-base font-semibold text-texto first-letter:uppercase">{nombreDelMes}</span>
           {mes < hoy ? (
             <Link href={enlaceMes(otroMes(mes, 1))} aria-label="Mes siguiente" className={FLECHA}>
@@ -146,7 +153,7 @@ export default async function PaginaGastoOperativo({ searchParams }: PageProps<'
           <Tarjeta className="overflow-hidden" data-por-area>
             <TarjetaCabecera
               titulo="Por área"
-              descripcion={`${plural(areas.length, 'área', 'áreas')} con gasto en ${nombreDelMes}.`}
+              descripcion={areas.length ? `${plural(areas.length, 'área', 'áreas')} con gasto en ${nombreDelMes}.` : `Ninguna área tuvo gasto en ${nombreDelMes}.`}
               ayuda="Toca un área para ver solo lo suyo. Lo que todavía no suma (sin precio, por aprobar o en dólares sin el cambio del día) no entra en el total, y se cuenta aparte."
             />
             <div className="border-b border-borde px-4 py-3">
@@ -197,7 +204,7 @@ export default async function PaginaGastoOperativo({ searchParams }: PageProps<'
                               {columnas
                                 .filter((g) => (a.porGrupo.get(g.clave) ?? 0) !== 0)
                                 .map((g) => `${g.etiqueta}: ${moneda(a.porGrupo.get(g.clave))}`)
-                                .join(' · ') || 'Nada que sume todavía'}
+                                .join(' · ') || (a.pendientes > 0 ? '' : 'Nada que sume todavía')}
                             </span>
                           </DetalleEnTelefono>
                         </TD>
@@ -245,9 +252,9 @@ export default async function PaginaGastoOperativo({ searchParams }: PageProps<'
                   }
                   accion={
                     !todas && puede(perfil, 'requerimientos.area') ? (
-                      <Link href="/requerimientos" className="text-sm font-medium text-acento hover:underline">
+                      <EnlaceBoton href="/requerimientos" variante="contorno" tamano="sm">
                         Ir a Requerimientos
-                      </Link>
+                      </EnlaceBoton>
                     ) : undefined
                   }
                 />
@@ -316,7 +323,7 @@ function FilaDeGasto({ linea: l, conArea, enlaces }: { linea: LineaGastoOperativ
             <>
               {' · '}
               {enlace ? (
-                <Link href={enlace} className="text-acento hover:underline">
+                <Link href={enlace} className="-my-3 inline-block py-3 whitespace-nowrap text-acento hover:underline">
                   {l.documento}
                 </Link>
               ) : (
