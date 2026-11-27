@@ -1,0 +1,120 @@
+{
+  "id": "como-subir-una-cotizacion-con-varias-unidades",
+  "tarea": "Cómo subir una cotización con varias unidades",
+  "puesto": "Ventas",
+  "voz": { "nombre": "es-PE-CamilaNeural", "velocidad": "-5%" },
+  "pronunciacion": {},
+  "pista_whisper": "Metal Work. Cotización, Cotizar, Gerencia, Administración, orden de trabajo, unidades.",
+  "escenas": [
+    {
+      "tipo": "gancho",
+      "titular": "Varias unidades, **una sola cotización**",
+      "frases": ["Una cotización con varias unidades ahora se sube una sola vez."]
+    },
+    { "tipo": "portada" },
+    {
+      "tipo": "antes-despues",
+      "antes": ["Una cotización, una sola OT", "Con tres unidades no alcanzaba"],
+      "ahora": { "captura": "09-avance", "resalte": ["unidades", "faltan", "ordenes"], "puntos": ["Se sube una sola vez", "Cada unidad lleva su OT"] },
+      "frases": [
+        { "texto": "Antes, una cotización solo podía tener una orden de trabajo, aunque trajera tres unidades.", "vertical": "Antes, una cotización solo podía tener una orden de trabajo." },
+        { "texto": "Ahora la subes una vez, dices cuántas unidades lleva, y cada unidad tiene su propia orden.", "vertical": "Ahora cada unidad tiene la suya." }
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Toca «Subir cotización»",
+      "tomas": [
+        { "captura": "01-entrada", "resalte": "entrada", "solo": "horizontal" },
+        { "captura": "01-entrada", "resalte": "boton", "desdeFrase": 1 }
+      ],
+      "frases": [
+        { "texto": "Entra a Cotización.", "vertical": "En Cotizar, toca Subir cotización." },
+        { "texto": "Toca Subir cotización.", "vertical": "" }
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Elige el archivo de la cotización",
+      "tomas": [
+        { "captura": "02-leido", "resalte": "archivo" },
+        { "captura": "02-leido", "resalte": "leido", "desdeFrase": 1 }
+      ],
+      "frases": [
+        { "texto": "Elige el archivo de la cotización, en PDF o en Word.", "vertical": "Elige el archivo." },
+        { "texto": "El sistema lo lee y te muestra el número, el cliente y la cantidad.", "vertical": "El sistema lee cuántas unidades trae." }
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Revisa el campo «Unidades»",
+      "tomas": [
+        { "captura": "03-unidades", "resalte": "unidades" },
+        { "captura": "04-aviso", "resalte": "unidades", "desdeFrase": 1 }
+      ],
+      "frases": [
+        { "texto": "Revisa el campo Unidades: sale con la cantidad que dice el documento.", "vertical": "Revisa Unidades: sale del documento." },
+        { "texto": "Si escribes otra, el sistema te avisa, y tú decides cuál es la correcta.", "vertical": "Si pones otra, el sistema te avisa." },
+        { "texto": "Así, después, cada unidad tendrá su propia orden.", "vertical": "" }
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Confirma el total, el cliente y qué se fabrica",
+      "tomas": [
+        { "captura": "05-total", "resalte": ["total", "moneda", "igv"] },
+        { "captura": "06-cliente", "resalte": ["cliente", "carroceria"], "desdeFrase": 1 }
+      ],
+      "frases": [
+        { "texto": "El monto es el total de la venta, por todas las unidades juntas.", "vertical": "El monto es el total de todas las unidades." },
+        { "texto": "Confirma también el cliente y qué se fabrica.", "vertical": "Confirma el cliente y qué se fabrica." }
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Toca «Subir y mandar a Gerencia»",
+      "tomas": [
+        { "captura": "07-subir", "resalte": "mandar" },
+        { "captura": "08-tarjeta", "resalte": ["unidades", "total"], "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Toca Subir y mandar a Gerencia.",
+        { "texto": "Tu tarjeta dice cuántas unidades son y cuánto sale cada una en promedio.", "vertical": "Tu tarjeta dice cuántas unidades son." }
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Mira la OT de cada unidad",
+      "tomas": [
+        { "captura": "09-avance", "resalte": "ordenes" },
+        { "captura": "09-avance", "resalte": "faltan", "desdeFrase": 1 }
+      ],
+      "frases": [
+        { "texto": "Gerencia la aprueba una sola vez, y Administración le carga una orden de trabajo por cada unidad.", "vertical": "Gerencia la aprueba una sola vez." },
+        { "texto": "En tu tarjeta ves cuáles ya tienen su orden y cuántas faltan.", "vertical": "Y en tu tarjeta ves la orden de cada unidad." }
+      ]
+    },
+    {
+      "tipo": "porque",
+      "titulo": "Por qué importa",
+      "puntos": ["Un solo número de cotización", "Cada unidad, con su propia OT"],
+      "lema": "El sistema te guía. Tú decides.",
+      "frases": [
+        { "texto": "¿Por qué importa? Porque la cotización queda una sola vez, con su número,", "vertical": "Así la cotización queda una sola vez." },
+        { "texto": "y cada unidad se sigue por separado, con su propia orden.", "vertical": "" },
+        { "texto": "El sistema propone la cantidad; tú la confirmas.", "vertical": "El sistema propone; tú confirmas." }
+      ]
+    },
+    {
+      "tipo": "cierre",
+      "titulo": "En resumen",
+      "puntos": ["Súbela una sola vez", "Revisa las unidades", "Sigue la OT de cada una"],
+      "frases": [
+        { "texto": "En resumen.", "vertical": "" },
+        { "texto": "Uno: sube la cotización una sola vez.", "vertical": "Súbela una sola vez," },
+        { "texto": "Dos: revisa cuántas unidades lleva.", "vertical": "revisa las unidades" },
+        { "texto": "Tres: sigue la orden de cada unidad en tu tarjeta.", "vertical": "y sigue la orden de cada una." }
+      ]
+    }
+  ]
+}
