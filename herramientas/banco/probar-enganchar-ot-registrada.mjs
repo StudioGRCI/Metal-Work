@@ -131,7 +131,7 @@ const sede = (await uno(`select id from public.sedes where activo order by nombr
 // Las dos OT que Administración registró sin cotización, cada una con su unidad y su PDF.
 const numeros = (await consulta(`select n from generate_series(9100, 9999) n
                                   where not exists (select 1 from public.ordenes_trabajo o where o.numero = n || '-' || $1)
-                                  order by random() limit 3`, [anio])).map((f) => f.n)
+                                  order by random() limit 5`, [anio])).map((f) => f.n)
 const registradas = []
 async function registrar(i, n) {
   const codigo = `QA-ENG ${sello}-${i + 1}`
@@ -155,28 +155,31 @@ async function registrar(i, n) {
 await registrar(0, numeros[0])
 await registrar(1, numeros[1])
 
-// La cotización de tres unidades, aprobada.
-const cot = { id: (await uno('select gen_random_uuid() as id')).id, numero: `QA-ENG-${sello}` }
-{
-  const ruta = `cot/${cot.id}/${cot.id}.pdf`
-  const contenido = pdfConTexto([`COTIZACION ${cot.numero}`, `CLIENTE: ${cliente}`, 'CANTIDAD : 03 UNIDADES'])
+// La cotización de tres unidades, aprobada (y, para la respuesta perdida, otra de dos).
+async function cotizar(c, unidades) {
+  const ruta = `cot/${c.id}/${c.id}.pdf`
+  const contenido = pdfConTexto([`COTIZACION ${c.numero}`, `CLIENTE: ${cliente}`, `CANTIDAD : 0${unidades} UNIDADES`])
   const destino = join(ARCHIVOS, 'cotizaciones-pdf', ruta)
   mkdirSync(dirname(destino), { recursive: true })
   writeFileSync(destino, contenido)
   await como('ventas', `insert into public.cotizaciones_pdf (id, numero, cliente_id, tipo_carroceria_id, nombre_archivo, ruta_storage,
                                                              mime_type, tamano_bytes, registrado_por, monto_venta, moneda, cantidad_unidades)
-                        values ($1, $2, $3, $4, $5, $6, 'application/pdf', $7, $8, 135000, 'USD', 3)`,
-  [cot.id, cot.numero, clienteId, carroceria, `Cotización ${cot.numero}.pdf`, ruta, contenido.length, ids.ventas])
+                        values ($1, $2, $3, $4, $5, $6, 'application/pdf', $7, $8, 135000, 'USD', $9)`,
+  [c.id, c.numero, clienteId, carroceria, `Cotización ${c.numero}.pdf`, ruta, contenido.length, ids.ventas, unidades])
   await consulta(`insert into storage.objects (bucket_id, name, owner, owner_id, metadata)
                   values ('cotizaciones-pdf', $1, $2::uuid, $2::text, jsonb_build_object('mimetype', 'application/pdf', 'size', $3::bigint))`,
   [ruta, ids.ventas, contenido.length])
-  await como('ventas', `select public.confirmar_igv_cotizacion($1, false)`, [cot.id]).catch(() => {})
-  await como('gerencia', `update public.cotizaciones_pdf set estado = 'APROBADA' where id = $1`, [cot.id])
+  await como('ventas', `select public.confirmar_igv_cotizacion($1, false)`, [c.id]).catch(() => {})
+  await como('gerencia', `update public.cotizaciones_pdf set estado = 'APROBADA' where id = $1`, [c.id])
 }
+
+const cot = { id: (await uno('select gen_random_uuid() as id')).id, numero: `QA-ENG-${sello}` }
+await cotizar(cot, 3)
 
 // ------------------------------------------------------------------- navegador
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'], env: { ...process.env, LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8' } })
 const errores = []
+let respuestaCortada = false
 const MONITOR = { width: 1440, height: 900 }
 const TELEFONO = { width: 390, height: 844 }
 
@@ -185,6 +188,8 @@ async function entrar(clave, viewport = MONITOR) {
   const contexto = await navegador.newContext({ viewport, timezoneId: 'America/Lima', deviceScaleFactor: 2 })
   const pagina = await contexto.newPage()
   pagina.on('console', (m) => {
+    // La respuesta que la sección 5 corta a propósito no es un error de la pantalla.
+    if (respuestaCortada && /ERR_CONNECTION_RESET|Failed to fetch/.test(m.text())) return
     if (m.type() === 'error' && !m.text().includes('_next/hmr') && !m.text().includes('WebSocket')) errores.push(`${correo}: ${m.text().slice(0, 300)}`)
   })
   await pagina.goto(`${BASE}/ingresar`, { waitUntil: 'networkidle' })
@@ -325,6 +330,58 @@ const textos = async (lista) => (await lista.allTextContents()).map(limpio)
     comprobar((await t.getByRole('button', { name: 'Usar una OT ya registrada' }).count()) === 0, `${quien} no tiene «Usar una OT ya registrada»`)
     await contexto.close()
   }
+}
+
+// ------------------------- 5. La respuesta se pierde: la ventana no cae sola a otra OT
+{
+  const cot2 = { id: (await uno('select gen_random_uuid() as id')).id, numero: `QA-ENG-${sello}-B` }
+  await cotizar(cot2, 2)
+  await registrar(3, numeros[3])
+  await registrar(4, numeros[4])
+  const { pagina, contexto } = await entrar('administracion')
+  await pagina.goto(`${BASE}/cotizaciones/pdf?q=${encodeURIComponent(cot2.numero)}`, { waitUntil: 'networkidle' })
+  const t = pagina.locator(`li[id="${cot2.id}"]`)
+  await t.getByRole('button', { name: 'Usar una OT ya registrada' }).click()
+  const v = pagina.getByRole('dialog')
+  await v.waitFor()
+  await v.locator('form select').first().selectOption(registradas[3].id)
+  await v.locator('select[name="unidad"]').selectOption('1')
+  await v.locator('textarea[name="motivo"]').fill('Llegó antes que la cotización (respuesta perdida).')
+  // El pedido llega al servidor; la respuesta no vuelve.
+  let cortar = true
+  respuestaCortada = true
+  await pagina.route('**/cotizaciones/pdf**', async (ruta) => {
+    if (cortar && ruta.request().method() === 'POST') {
+      cortar = false
+      await ruta.fetch().catch(() => {})
+      await ruta.abort('connectionreset')
+      return
+    }
+    await ruta.continue().catch(() => {})
+  })
+  await v.getByRole('button', { name: `Enganchar la OT ${registradas[3].numero}` }).click()
+  const deLaB = () => consulta(`select id, numero_de_unidad from public.ordenes_trabajo where cotizacion_pdf_id = $1 and estado <> 'ANULADA'`, [cot2.id])
+  await esperar(async () => (await deLaB()).length === 1, 15000)
+  // Lo que la pantalla haga después (ponerse al día o no), no puede ofrecer otra OT ni otra unidad.
+  await pagina.waitForTimeout(6000)
+  const abierta = await v.isVisible()
+  const yaNo = abierta && (await v.locator('[data-enganche-ya-no]').count()) > 0
+  const elegidaAhora = abierta ? await v.locator('form select').first().inputValue() : null
+  const unidadAhora = abierta && (await v.locator('select[name="unidad"]').count()) ? await v.locator('select[name="unidad"]').inputValue() : null
+  const boton = v.getByRole('button', { name: /^Enganchar la OT/ })
+  const ofrece = abierta && (await boton.count()) > 0 ? limpio(await boton.textContent()) : null
+  comprobar(!abierta || yaNo || (elegidaAhora === registradas[3].id && unidadAhora === '1'),
+    `tras perderse la respuesta, la ventana sigue con la misma OT y la misma unidad, o dice que ya no están (abierta ${abierta}, «ya no» ${yaNo}, botón «${ofrece}»)`)
+  comprobar(!ofrece || ofrece === `Enganchar la OT ${registradas[3].numero}`, `y nunca ofrece enganchar otra OT (${ofrece})`)
+  await pagina.screenshot({ path: join(CAPTURAS, 'enganchar-7-respuesta-perdida-1440.png') })
+  if (ofrece) {
+    await boton.click()
+    await pagina.waitForTimeout(3000)
+  }
+  const b = await deLaB()
+  comprobar(b.length === 1 && b[0].id === registradas[3].id && b[0].numero_de_unidad === 1,
+    `la base tiene solo la OT elegida, como la unidad 1 (${JSON.stringify(b)})`)
+  await contexto.close()
 }
 
 await navegador.close()

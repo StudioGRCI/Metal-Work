@@ -27,12 +27,13 @@
 --   · Queda dicho en la bitácora de la OT («Trazabilidad»), con la cotización,
 --     la unidad, el motivo, quién y cuándo, y Ventas (quien registró la
 --     cotización) recibe el aviso de que su cotización ya tiene su OT.
---   · Entra la OT que está viva y es una venta: no la del taller que espera su
---     revisión, ni la entregada, facturada o anulada, ni la de garantía o
---     mantenimiento, ni la que no tiene unidad (la cotización se factura por
---     unidad y a una OT no se le pone una unidad después: 20261127183500). La
---     que Administración registró y todavía espera el visto de Gerencia entra
---     igual: el enganche no la aprueba, sigue esperando su visto.
+--   · Entra la OT que está viva, aprobada y es una venta: no la que espera el
+--     visto de Gerencia o la revisión del taller (la que nace de la carga nace
+--     aprobada, y la enganchada cuenta igual para la factura), ni la entregada,
+--     facturada o anulada, ni la de garantía o mantenimiento, ni la que no
+--     tiene unidad (la cotización se factura por unidad y a una OT no se le
+--     pone una unidad después: 20261127183500), ni la de un vehículo que ya es
+--     el de otra OT de la cotización.
 --   · La OT de otro cliente sigue yendo por «Editar OT / cambiar cliente», que
 --     anota su venta anterior. La que ya es de una cotización no se mueve aquí.
 --
@@ -212,7 +213,9 @@ begin
    where c.id = any (p_cotizaciones)
      and c.estado = 'APROBADA'
      and o.estado not in ('ENTREGADA', 'FACTURADA', 'ANULADA')
-     and not (o.abierta_en_taller and o.estado = 'BORRADOR')
+     -- Con el visto de Gerencia: la OT que nace de la carga nace aprobada, y la
+     -- que se engancha cuenta igual para la factura.
+     and o.estado <> 'BORRADOR'
      and o.tipo_trabajo not in ('GARANTIA', 'MANTENIMIENTO')
      and (o.tipo_carroceria_id is null or o.tipo_carroceria_id = c.tipo_carroceria_id)
      and not exists (select 1 from public.ot_entregas e where e.orden_id = o.id)
@@ -279,7 +282,7 @@ begin
    where cp.id = p_cotizacion
      for update of cp;
   if c.id is null then
-    raise exception 'No se encontró la cotización.' using errcode = 'foreign_key_violation';
+    raise exception 'No se encontró la cotización.' using errcode = 'no_data_found';
   end if;
   if c.estado = 'POR_REVISAR' then
     raise exception 'La cotización % todavía no está aprobada: su OT se engancha cuando Gerencia la apruebe.', c.numero
@@ -296,7 +299,7 @@ begin
   -- La OT --------------------------------------------------------------------------
   select * into o from public.ordenes_trabajo where id = p_orden for update;
   if o.id is null or not public.puede_ver_orden(p_orden) then
-    raise exception 'No se encontró la OT.' using errcode = 'foreign_key_violation';
+    raise exception 'No se encontró la OT.' using errcode = 'no_data_found';
   end if;
   -- La misma OT otra vez (la respuesta se perdió y se envió de nuevo): ya es de
   -- esta cotización por un enganche de quien la envía. Si es el mismo envío
@@ -343,6 +346,12 @@ begin
   end if;
   if o.abierta_en_taller and o.estado = 'BORRADOR' then
     raise exception 'La OT % del taller todavía espera su revisión: Administración la aprueba primero y después la engancha.', o.numero
+      using errcode = 'check_violation';
+  end if;
+  -- La OT que nace de la carga nace aprobada, y desde el enganche esta cuenta
+  -- igual: la unidad queda con su OT y Contabilidad ya la puede facturar.
+  if o.estado = 'BORRADOR' then
+    raise exception 'La OT % todavía espera el visto de Gerencia: se engancha a su cotización cuando Gerencia la apruebe.', o.numero
       using errcode = 'check_violation';
   end if;
   if o.tipo_trabajo in ('GARANTIA', 'MANTENIMIENTO') then

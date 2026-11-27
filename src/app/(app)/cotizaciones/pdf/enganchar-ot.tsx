@@ -124,6 +124,11 @@ export function EngancharOtRegistrada({
   facturadas?: { unidad: number; codigo: string }[]
 }) {
   const [abierta, setAbierta] = useState(false)
+  // Lo que la ventana ofrecía al abrirse. La pantalla se pone al día con la
+  // ventana abierta (tras un envío sin respuesta), y la OT o la unidad elegidas
+  // pueden dejar de estar: la ventana no cae sola a otra OT ni a otra unidad,
+  // que el segundo toque engancharía para siempre (P0 de funcionamiento).
+  const [alAbrir, setAlAbrir] = useState({ ots, libres })
   const [elegida, setElegida] = useState(ots[0]?.id ?? '')
   const [unidad, setUnidad] = useState(libres[0] ?? 1)
   const [, setHecho] = useEstadoCompartido<Enganche | null>(ENGANCHADA, null)
@@ -144,9 +149,12 @@ export function EngancharOtRegistrada({
   const campoUnidad = useRef<HTMLSelectElement>(null)
   const campoMotivo = useRef<HTMLTextAreaElement>(null)
 
-  const ot = ots.find((o) => o.id === elegida) ?? ots[0]
-  const eligeUnidad = unidades > 1 && libres.length > 1
-  const cual = libres.includes(unidad) ? unidad : (libres[0] ?? 1)
+  const ot = alAbrir.ots.find((o) => o.id === elegida) ?? alAbrir.ots[0]
+  const eligeUnidad = unidades > 1 && alAbrir.libres.length > 1
+  const cual = unidad
+  // Ya no se ofrece: la tomó el envío anterior u otra persona.
+  const otYaNo = abierta && ot && !ots.some((o) => o.id === ot.id)
+  const unidadYaNo = abierta && unidades > 1 && !libres.includes(cual)
   const yaFacturada = facturadas?.find((f) => f.unidad === cual) ?? null
   // El rechazo de un campo va en el campo; lo demás, en el pie. Sin la lista de
   // unidades en la ventana, el de la unidad también va al pie.
@@ -173,6 +181,7 @@ export function EngancharOtRegistrada({
         onClick={() => {
           limpiar()
           setHecho(null)
+          setAlAbrir({ ots, libres })
           setElegida(ots[0]?.id ?? '')
           setUnidad(libres[0] ?? 1)
           setAbierta(true)
@@ -201,7 +210,7 @@ export function EngancharOtRegistrada({
             <Campo etiqueta="OT ya registrada" htmlFor={idOt} requerido error={errorOt ?? undefined}
               ayuda="Las del mismo cliente que no tienen cotización, siguen vivas y son de la misma carrocería o no la dicen.">
               <Seleccion ref={campoOt} id={idOt} value={ot.id} onChange={(e) => setElegida(e.target.value)} aria-describedby={idFicha}>
-                {ots.map((o) => (
+                {alAbrir.ots.map((o) => (
                   <option key={o.id} value={o.id}>
                     {nombreDeOt(o)}
                   </option>
@@ -228,7 +237,7 @@ export function EngancharOtRegistrada({
               <Campo etiqueta="Qué unidad de la cotización es" htmlFor={idUnidad} requerido error={errorUnidad ?? undefined}>
                 <Seleccion ref={campoUnidad} id={idUnidad} name="unidad" value={String(cual)} onChange={(e) => setUnidad(Number(e.target.value))}
                   aria-describedby={yaFacturada ? idFacturada : undefined}>
-                  {libres.map((k) => (
+                  {alAbrir.libres.map((k) => (
                     <option key={k} value={k}>
                       Unidad {k} de {unidades}
                     </option>
@@ -263,11 +272,18 @@ export function EngancharOtRegistrada({
             </Campo>
           </fieldset>
 
+          {(otYaNo || unidadYaNo) && !enviando && (
+            <p role="status" className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-texto" data-enganche-ya-no>
+              {otYaNo
+                ? `La OT ${ot.numero} ya no se ofrece para esta cotización: puede que haya quedado con el envío anterior. Cierra la ventana y mira la tarjeta antes de volver a intentar.`
+                : `La unidad ${cual} ya no está libre: puede que la haya tomado el envío anterior u otra persona. Cierra la ventana y mira la tarjeta antes de volver a intentar.`}
+            </p>
+          )}
           <PieDeVentana
             error={errorGeneral}
             enviando={enviando}
             alCancelar={() => setAbierta(false)}
-            texto={`Enganchar la OT ${ot.numero}`}
+            texto={otYaNo || unidadYaNo ? undefined : `Enganchar la OT ${ot.numero}`}
           />
         </form>
       </Ventana>

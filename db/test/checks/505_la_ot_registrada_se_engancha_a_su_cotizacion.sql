@@ -10,6 +10,7 @@
 --     la carga que sigue toma otra unidad, la bitácora lo dice y Ventas recibe el aviso;
 --   * lo que no entra: otra cotización, otro cliente, otra carrocería, la OT
 --     anulada, la de garantía o mantenimiento, la del taller por revisar, la
+--     que espera el visto de Gerencia, la
 --     unidad ocupada, la cotización llena, la versión vieja, sin motivo;
 --   * el reenvío de la misma dice «la primera vez», y el que cambió la unidad o
 --     el motivo dice en qué unidad quedó y que lo cambiado no se guardó;
@@ -155,7 +156,9 @@ begin
   -- Gerencia aprueba la 1 (la 2 sigue esperando su visto) y anula la 5, con su motivo.
   perform test.como_usuario(current_setting('prueba.gerente')::uuid);
   set local role authenticated;
-  update public.ordenes_trabajo set estado = 'APROBADA' where id = current_setting('prueba.ot_e1')::uuid;
+  -- Las demás también, para que cada rechazo de abajo sea por su motivo y no por el visto.
+  update public.ordenes_trabajo set estado = 'APROBADA'
+   where id in (select current_setting('prueba.ot_' || k)::uuid from unnest(array['e1', 'e3', 'e4', 'e6', 'e8', 'e10', 'x1']) k);
   update public.ordenes_trabajo set estado = 'ANULADA', motivo_anulacion = 'Se registró dos veces (prueba 504)'
    where id = current_setting('prueba.ot_e5')::uuid;
   reset role;
@@ -184,8 +187,8 @@ begin
   select string_agg(numero, ',' order by numero) into v
     from public.ots_para_enganchar(array[current_setting('prueba.cot')::uuid])
    where cotizacion_id = current_setting('prueba.cot')::uuid;
-  perform test.afirmar(v = format('50401-%1$s,50402-%1$s,50406-%1$s', to_char((now() at time zone 'America/Lima')::date, 'YYYY')),
-    'Administración ve para la cotización las tres OT del cliente que entran, también la que espera el visto de Gerencia (ni la de otra carrocería, ni la de mantenimiento o garantía, ni la del taller por revisar, ni la sin unidad, ni la anulada, ni la del otro cliente, ni la que ya tiene cotización): ' || coalesce(v, 'ninguna'));
+  perform test.afirmar(v = format('50401-%1$s,50406-%1$s', to_char((now() at time zone 'America/Lima')::date, 'YYYY')),
+    'Administración ve para la cotización las dos OT del cliente que entran (ni la que espera el visto de Gerencia, ni la de otra carrocería, ni la de mantenimiento o garantía, ni la del taller por revisar, ni la sin unidad, ni la anulada, ni la del otro cliente, ni la que ya tiene cotización): ' || coalesce(v, 'ninguna'));
   select count(*) into n from public.ots_para_enganchar(array[current_setting('prueba.cot_rev')::uuid]);
   perform test.afirmar(n = 0, 'A la cotización por revisar no se le ofrece ninguna');
   reset role;
@@ -233,6 +236,8 @@ begin
     'la de mantenimiento no es una venta', 'no es una venta');
   perform test.debe_fallar(pg_temp.sql_enganchar('e5', current_setting('prueba.cot'), null),
     'la anulada no', 'está anulada');
+  perform test.debe_fallar(pg_temp.sql_enganchar('e2', current_setting('prueba.cot'), null),
+    'la que espera el visto de Gerencia no: la cargada nace aprobada', 'todavía espera el visto de Gerencia');
   perform test.debe_fallar(pg_temp.sql_enganchar('e8', current_setting('prueba.cot'), null),
     'la de garantía no es una venta', 'es de garantía');
   perform test.debe_fallar(pg_temp.sql_enganchar('e9', current_setting('prueba.cot'), null),
@@ -317,23 +322,38 @@ begin
   perform set_config('prueba.ot_e11', gen_random_uuid()::text, true);
   perform set_config('prueba.u_e11', current_setting('prueba.u_e1'), true);
   perform pg_temp.registrar('e11', '50414', 'FABRICACION', null, current_setting('prueba.cliente'));
+  reset role;
+  perform test.como_usuario(current_setting('prueba.gerente')::uuid);
+  set local role authenticated;
+  update public.ordenes_trabajo set estado = 'APROBADA' where id = current_setting('prueba.ot_e11')::uuid;
+  reset role;
+  perform test.como_usuario(current_setting('prueba.oficina')::uuid);
+  set local role authenticated;
   perform test.afirmar(not exists (select 1 from public.ots_para_enganchar(array[current_setting('prueba.cot')::uuid])
                                     where orden_id = current_setting('prueba.ot_e11')::uuid),
     'La OT de un vehículo que ya es el de otra OT de la cotización no se ofrece');
-  perform test.debe_fallar(pg_temp.sql_enganchar('e2', current_setting('prueba.cot'), 2),
+  perform test.debe_fallar(pg_temp.sql_enganchar('e6', current_setting('prueba.cot'), 2),
     'la unidad 2 ya está tomada', 'La unidad 2 de la cotización QA-504-A ya tiene su OT');
   perform test.debe_fallar(pg_temp.sql_enganchar('e7', current_setting('prueba.cot1'), null),
     'la que se cargó desde su cotización no dice «la primera vez»: dice que ya es de ella', 'ya es de la cotización QA-504-B.');
   -- La carga de una OT nueva salta la unidad 2.
   perform set_config('prueba.ot_nueva', gen_random_uuid()::text, true);
   perform pg_temp.cargar(current_setting('prueba.cot'), current_setting('prueba.ot_nueva'), 'QA-504 N1', '50410');
+  reset role;
+  -- Gerencia le da su visto a la 2, y entonces entra.
+  perform test.como_usuario(current_setting('prueba.gerente')::uuid);
+  set local role authenticated;
+  update public.ordenes_trabajo set estado = 'APROBADA' where id = current_setting('prueba.ot_e2')::uuid;
+  reset role;
   -- Y la otra OT ya registrada, sin elegir, va a la que queda: la 3.
+  perform test.como_usuario(current_setting('prueba.oficina')::uuid);
+  set local role authenticated;
   perform pg_temp.enganchar('e2', current_setting('prueba.cot'), null);
   reset role;
   perform test.afirmar((select numero_de_unidad from public.ordenes_trabajo where id = current_setting('prueba.ot_nueva')::uuid) = 1,
     'La carga que sigue toma la unidad 1, no la 2');
-  perform test.afirmar((pg_temp.ot('e2')).numero_de_unidad = 3 and (pg_temp.ot('e2')).estado = 'BORRADOR',
-    format('La segunda, sin elegir, va a la unidad que queda: la 3 (es la %s), y sigue esperando el visto de Gerencia', (pg_temp.ot('e2')).numero_de_unidad));
+  perform test.afirmar((pg_temp.ot('e2')).numero_de_unidad = 3,
+    format('La segunda, ya aprobada y sin elegir, va a la unidad que queda: la 3 (es la %s)', (pg_temp.ot('e2')).numero_de_unidad));
 end $$;
 
 -- 7. Con la cotización llena, ya no se ofrece ni entra -------------------------------
