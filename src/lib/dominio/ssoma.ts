@@ -241,7 +241,7 @@ export function rutaDeAccion(a: { id: string; reporte_id: string | null; inspecc
 }
 
 /*
- * Entrega 15.5 (migración 20261126998500): la entrega de EPP por persona. Almacén
+ * Entrega 15.5 (migración 20261126999100): la entrega de EPP por persona. Almacén
  * registra la salida; SSOMA anota a quién le tocó y hasta cuándo le dura.
  */
 

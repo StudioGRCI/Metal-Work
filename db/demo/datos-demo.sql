@@ -699,7 +699,7 @@ end;
 $$;
 
 -- -----------------------------------------------------------------------------
--- SSOMA 15.5 (migración 20261126998500): salidas del almacén de EPP y a quién
+-- SSOMA 15.5 (migración 20261126999100): salidas del almacén de EPP y a quién
 -- le tocó cada equipo, para que «Por renovar», «Por persona», «Salidas de
 -- Almacén» y la hoja de una persona tengan qué mostrar: cascos vencidos y uno
 -- ya renovado, guantes por vencer, lentes a medio repartir, respiradores sin

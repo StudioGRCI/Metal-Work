@@ -15,6 +15,7 @@ import { refrescarSiEsDeLaPestana, useCursorAlRechazo, useEnvio, useIdDelEnvio }
 import { useEstadoCompartido } from '@/lib/estado-compartido'
 import { cantidad, fecha, sumarDias } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { alCerrarLaVentana } from '@/lib/ventanas-abiertas'
 
 import { anularEntregaEpp, eppNoSeRenueva, eppSalidaSeReparte, eppSalidaSinReparto, registrarEntregasEpp } from '../acciones'
 
@@ -49,11 +50,18 @@ const cantidadQueNoVa = (c: number) => !Number.isFinite(c) || c <= 0 || c > 999 
 /** Los rechazos que dicen que la pantalla quedó vieja: otra cuenta ya anotó, repartió o marcó esa salida. */
 const LA_SALIDA_CAMBIO = /no va por persona|anotada su entrega|ya no queda nada por asignar|y anotaste/
 
-/** Tras uno de esos rechazos, la pantalla se pone al día: la fila seguía ofreciendo lo que ya no se puede. */
+/**
+ * Tras uno de esos rechazos, la pantalla se pone al día: la fila seguía ofreciendo lo que ya no se puede.
+ * Al cerrar la ventana, no antes: si la fila ya no ofrece el botón que la abrió (la salida quedó «no va
+ * por persona» o sin nada por asignar), la ventana se desmontaba con el rechazo adentro sin que nadie lo
+ * leyera, y parecía que había entrado (`ventanas-abiertas.ts`).
+ */
 function usePonerAlDia(error: string | null) {
   const router = useRouter()
   useEffect(() => {
-    if (error && LA_SALIDA_CAMBIO.test(error)) refrescarSiEsDeLaPestana(router)
+    if (!error || !LA_SALIDA_CAMBIO.test(error)) return
+    const ponerAlDia = () => refrescarSiEsDeLaPestana(router)
+    if (!alCerrarLaVentana(ponerAlDia)) ponerAlDia()
   }, [error, router])
 }
 
@@ -517,10 +525,12 @@ export function AnularEntrega({ entrega }: { entrega: DeQuien }) {
     // El aviso nombra la entrega: la fila cambia de sitio, y «entrega anulada» a secas no decía cuál.
     // Si su salida está marcada «no va por persona», lo anulado no vuelve solo a la cola: se dice cómo.
     setEntro(
-      `Entrega anulada: ${entrega.material}, de ${entrega.persona}. ${
-        r.datos?.sinReparto
-          ? 'Su salida está marcada «No va por persona»: para anotárselo a quien lo recibió, toca «Repartir» en «Salidas de Almacén».'
-          : 'Lo que tenía asignado vuelve a quedar por asignar en su salida.'
+      `Entrega anulada: ${entrega.material}, de ${entrega.persona}.${
+        r.datos?.sinReparto === true
+          ? ' Su salida está marcada «No va por persona»: para anotárselo a quien lo recibió, toca «Repartir» en «Salidas de Almacén».'
+          : r.datos?.sinReparto === false
+            ? ' Lo que tenía asignado vuelve a quedar por asignar en su salida.'
+            : ''
       }`,
     )
   })

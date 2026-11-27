@@ -138,10 +138,6 @@ export default async function PaginaEppSsoma({ searchParams }: PageProps<'/ssoma
 }
 
 /** La salida que todavía espera que SSOMA anote a quién le tocó. */
-function esperaReparto(s: SalidaDeEpp) {
-  return s.por_asignar > 0 && !s.sin_reparto
-}
-
 function resumenDePersonas(personas: PersonaConEpp[]) {
   const con = personas.filter((p) => p.vigentes > 0).length
   return `${personas.length} ${personas.length === 1 ? 'persona' : 'personas'} · ${con} con EPP anotado`

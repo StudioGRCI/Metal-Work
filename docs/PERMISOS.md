@@ -403,7 +403,7 @@ antes del despliegue; la aplicación lee `ssoma_acciones_a_la_vista`.
 
 ### Entrega de EPP por persona (entrega 15.5)
 
-Migración `20261126998500_ssoma_epp_por_persona`, comprobada con los roles
+Migración `20261126999100_ssoma_epp_por_persona`, comprobada con los roles
 reales en la base local (check 493: SSOMA, una segunda cuenta de SSOMA,
 Gerencia, Almacén, Ventas, RR. HH. y Supervisor General, nunca ADMIN) y con clic
 real en el banco (`herramientas/banco/probar-ssoma-epp.mjs`). Pantalla

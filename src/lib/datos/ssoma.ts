@@ -715,7 +715,7 @@ export async function puntosDeLaLista(): Promise<PuntoDeLista[]> {
 }
 
 /*
- * Entrega 15.5 (migración 20261126998500): la entrega de EPP por persona. Almacén
+ * Entrega 15.5 (migración 20261126999100): la entrega de EPP por persona. Almacén
  * registra la salida del equipo; SSOMA anota a quién le tocó y hasta cuándo le
  * dura. Lo leen SSOMA y Gerencia; a los demás las funciones les devuelven nada.
  * De RR. HH. llega solo nombre, cargo y área, y de Almacén nunca el precio.

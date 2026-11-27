@@ -1,4 +1,4 @@
--- SSOMA, entrega 15.5 (migración 20261126998500): entrega de EPP por persona,
+-- SSOMA, entrega 15.5 (migración 20261126999100): entrega de EPP por persona,
 -- enlazada a la salida de Almacén sin cambiar el kardex, con fecha de renovación.
 --
 -- Almacén registra la salida del equipo como siempre. SSOMA anota a quién de

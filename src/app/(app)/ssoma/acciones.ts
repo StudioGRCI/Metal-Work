@@ -735,7 +735,7 @@ export async function registrarEntregasEpp(_previo: unknown, formulario: FormDat
 }
 
 /** SSOMA anula una entrega mal anotada, con su motivo; no se borra. Mismo permiso que `ssoma_anular_entrega_epp`. */
-export async function anularEntregaEpp(_previo: unknown, formulario: FormData): Promise<ResultadoAccion<{ sinReparto: boolean }>> {
+export async function anularEntregaEpp(_previo: unknown, formulario: FormData): Promise<ResultadoAccion<{ sinReparto: boolean | null }>> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'ssoma.gestionar')) return { ok: false, error: 'Una entrega de EPP la anula SSOMA.' }
   const analisis = z
@@ -753,18 +753,22 @@ export async function anularEntregaEpp(_previo: unknown, formulario: FormData): 
 
   // Si de esa salida se dijo «no va por persona», lo anulado no vuelve a la cola de SSOMA: queda bajo
   // esa marca hasta «Repartir». El aviso lo dice, en vez de prometer que vuelve a quedar por asignar.
-  const { data: entrega } = await supabase.from('ssoma_epp_entregas').select('movimiento_id').eq('id', analisis.data.id).maybeSingle()
-  const { data: marca } = entrega
-    ? await supabase.from('ssoma_epp_sin_reparto').select('id').eq('movimiento_id', entrega.movimiento_id).is('deshecho_en', null).limit(1)
-    : { data: null }
-  const sinReparto = (marca?.length ?? 0) > 0
+  // Si no se pudo leer, el aviso no promete ni lo uno ni lo otro: la anulación sí entró.
+  const entrega = await supabase.from('ssoma_epp_entregas').select('movimiento_id').eq('id', analisis.data.id).maybeSingle()
+  const marca = entrega.data
+    ? await supabase.from('ssoma_epp_sin_reparto').select('id').eq('movimiento_id', entrega.data.movimiento_id).is('deshecho_en', null).limit(1)
+    : null
+  const sinReparto: boolean | null = entrega.error || !entrega.data || !marca || marca.error ? null : (marca.data?.length ?? 0) > 0
 
   revalidatePath('/ssoma', 'layout')
   return {
     ok: true,
-    mensaje: sinReparto
-      ? 'Entrega anulada. Su salida está marcada «No va por persona».'
-      : 'Entrega anulada: lo que tenía asignado vuelve a quedar por asignar en su salida.',
+    mensaje:
+      sinReparto === null
+        ? 'Entrega anulada.'
+        : sinReparto
+          ? 'Entrega anulada. Su salida está marcada «No va por persona».'
+          : 'Entrega anulada: lo que tenía asignado vuelve a quedar por asignar en su salida.',
     datos: { sinReparto },
   }
 }
