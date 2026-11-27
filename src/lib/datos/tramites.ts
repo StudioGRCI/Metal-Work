@@ -10,7 +10,9 @@ import { createClient } from '@/lib/supabase/server'
  * —el Tramitador, Gerencia y Administración, todos; Ventas, solo los de una
  * unidad— y trae el tipo, la unidad, el cliente y la OT: quien ve el trámite no
  * siempre lee esas tablas. También dice qué puede hacer quien pregunta en cada
- * uno, con la misma regla que la función que escribe.
+ * uno, con la misma regla que la función que escribe. El expediente (entrega 2,
+ * migración 20261126998800) se lee por `tramites_archivos` y
+ * `tramites_gestiones`, con la misma regla de quién ve.
  */
 
 export type Tramite = {
@@ -54,6 +56,18 @@ export type Tramite = {
   puede_actualizar: boolean
   puede_pedir_anulacion: boolean
   puede_resolver_anulacion: boolean
+  /** La fecha del documento final, si está concluido (o lo estaba al anularse). */
+  fecha_conclusion: string | null
+  /** Hasta cuándo vale el documento final de uno que se renueva. */
+  vigente_hasta: string | null
+  concluido_en: string | null
+  concluyo: string | null
+  /** Cuántos archivos en pie tiene su expediente. */
+  archivos: number
+  /** Subir archivos, anotar gestiones y retirar lo subido por error. */
+  puede_llevar_expediente: boolean
+  /** Cerrarlo con su documento final: ya se presentó y no espera el visto de Gerencia. */
+  puede_concluir: boolean
 }
 
 type Fila = { [K in keyof Tramite]: Tramite[K] | null }
@@ -99,17 +113,27 @@ function aTramite(f: Fila): Tramite | null {
     puede_actualizar: f.puede_actualizar === true,
     puede_pedir_anulacion: f.puede_pedir_anulacion === true,
     puede_resolver_anulacion: f.puede_resolver_anulacion === true,
+    fecha_conclusion: f.fecha_conclusion,
+    vigente_hasta: f.vigente_hasta,
+    concluido_en: f.concluido_en,
+    concluyo: f.concluyo,
+    archivos: f.archivos ?? 0,
+    puede_llevar_expediente: f.puede_llevar_expediente === true,
+    puede_concluir: f.puede_concluir === true,
   }
 }
 
-/** Cuántos trámites vivos trae la lista como mucho: el tope de filas de la API. */
+/** Cuántos trámites abiertos trae la lista como mucho: el tope de filas de la API. */
 export const MAXIMO_VIVOS = 1000
 
-/** Cuántos anulados trae la lista como mucho: los más recientes. Los vivos van todos. */
+/** Cuántos concluidos trae la lista como mucho: los más recientes. Los abiertos van todos. */
+export const MAXIMO_CONCLUIDOS = 200
+
+/** Cuántos anulados trae la lista como mucho: los más recientes. */
 export const MAXIMO_ANULADOS = 200
 
 const SELECT =
-  'id, numero, estado, situacion, creado_en, actualizado_en, tipo_id, tipo, se_renueva, ambito, entidad, asunto, expediente, fecha_inicio, fecha_limite, dias_para_limite, vencido, nota, unidad_id, placa, codigo_interno, carroceria, cliente, orden_id, orden_numero, registro, registro_puesto, anulacion_pedida_en, anulacion_pidio, motivo_anulacion, anulacion_rechazada_en, anulacion_rechazo, anulacion_rechazo_motivo, anulado_en, anulo, puede_actualizar, puede_pedir_anulacion, puede_resolver_anulacion'
+  'id, numero, estado, situacion, creado_en, actualizado_en, tipo_id, tipo, se_renueva, ambito, entidad, asunto, expediente, fecha_inicio, fecha_limite, dias_para_limite, vencido, nota, unidad_id, placa, codigo_interno, carroceria, cliente, orden_id, orden_numero, registro, registro_puesto, anulacion_pedida_en, anulacion_pidio, motivo_anulacion, anulacion_rechazada_en, anulacion_rechazo, anulacion_rechazo_motivo, anulado_en, anulo, puede_actualizar, puede_pedir_anulacion, puede_resolver_anulacion, fecha_conclusion, vigente_hasta, concluido_en, concluyo, archivos, puede_llevar_expediente, puede_concluir'
 
 /**
  * Los trámites que ve quien pregunta, del más reciente al más viejo: todos los
@@ -129,15 +153,20 @@ export async function listarTramites(busqueda?: string | null): Promise<Tramite[
     for (const filtro of filtros) c = c.or(filtro)
     return c
   }
-  // Lo vivo se lee entero: con el tope, un trámite viejo sin cerrar salía de la
-  // lista sin que nadie lo terminara. El tope es para lo anulado.
-  const [vivos, anulados] = await Promise.all([
-    consulta().neq('estado', 'ANULADO').order('creado_en', { ascending: false }).range(0, MAXIMO_VIVOS - 1),
-    consulta().eq('estado', 'ANULADO').order('creado_en', { ascending: false }).range(0, MAXIMO_ANULADOS - 1),
+  // Lo abierto se lee entero: con el tope, un trámite viejo sin cerrar salía de
+  // la lista sin que nadie lo terminara. El tope es para lo concluido y lo anulado.
+  const [vivos, concluidos, anulados] = await Promise.all([
+    // Por la situación y no por el estado: el concluido que espera el visto de
+    // Gerencia para anularse es «Por anular», y tiene que salir aunque haya más
+    // concluidos que el tope.
+    consulta().not('situacion', 'in', '(ANULADO,CONCLUIDO)').order('creado_en', { ascending: false }).range(0, MAXIMO_VIVOS - 1),
+    // Los que se cerraron último, que es como los ordena su vista.
+    consulta().eq('situacion', 'CONCLUIDO').order('concluido_en', { ascending: false }).range(0, MAXIMO_CONCLUIDOS - 1),
+    consulta().eq('situacion', 'ANULADO').order('creado_en', { ascending: false }).range(0, MAXIMO_ANULADOS - 1),
   ])
-  const error = vivos.error ?? anulados.error
+  const error = vivos.error ?? concluidos.error ?? anulados.error
   if (error) throw new Error(`No se pudieron leer los trámites: ${error.message}`)
-  return ([...(vivos.data ?? []), ...(anulados.data ?? [])] as Fila[])
+  return ([...(vivos.data ?? []), ...(concluidos.data ?? []), ...(anulados.data ?? [])] as Fila[])
     .flatMap((f) => aTramite(f) ?? [])
     .sort((x, y) => y.creado_en.localeCompare(x.creado_en))
 }
@@ -148,6 +177,67 @@ export async function cargarTramite(id: string): Promise<Tramite | null> {
   const { data, error } = await supabase.rpc('tramites_visibles', { p_id: id }).select(SELECT)
   if (error) throw new Error(`No se pudo leer el trámite: ${error.message}`)
   return ((data ?? []) as Fila[]).flatMap((f) => aTramite(f) ?? [])[0] ?? null
+}
+
+export type ArchivoDelTramite = {
+  id: string
+  /** `CLASE_DE_ARCHIVO`: el cargo, un recibo, otro documento o el documento final. */
+  clase: string
+  descripcion: string | null
+  nombre: string | null
+  mime: string
+  tamano: number
+  subido_en: string
+  subio: string
+  retirado_en: string | null
+  retiro: string | null
+  retiro_motivo: string | null
+  puede_retirar: boolean
+}
+
+/**
+ * Los archivos del expediente de un trámite, del más reciente al más viejo,
+ * como los ve quien pregunta (`tramites_archivos`): los retirados, solo quien
+ * ve todos los trámites.
+ */
+export async function archivosDelTramite(id: string): Promise<ArchivoDelTramite[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .rpc('tramites_archivos', { p_tramite: id })
+    .select('id, clase, descripcion, nombre, mime, tamano, subido_en, subio, retirado_en, retiro, retiro_motivo, puede_retirar')
+  if (error) throw new Error(`No se pudo leer el expediente del trámite: ${error.message}`)
+  return (data ?? []).flatMap((a) =>
+    a.id && a.clase && a.subido_en
+      ? [
+          {
+            id: a.id,
+            clase: a.clase,
+            descripcion: a.descripcion,
+            nombre: a.nombre,
+            mime: a.mime ?? '',
+            tamano: a.tamano ?? 0,
+            subido_en: a.subido_en,
+            subio: a.subio ?? '',
+            retirado_en: a.retirado_en,
+            retiro: a.retiro,
+            retiro_motivo: a.retiro_motivo,
+            puede_retirar: a.puede_retirar === true,
+          },
+        ]
+      : [],
+  )
+}
+
+export type GestionDelTramite = { id: string; fecha: string; detalle: string; anotado_en: string; anoto: string }
+
+/** Las gestiones anotadas de un trámite, de la más reciente a la más vieja (`tramites_gestiones`). */
+export async function gestionesDelTramite(id: string): Promise<GestionDelTramite[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('tramites_gestiones', { p_tramite: id }).select('id, fecha, detalle, anotado_en, anoto')
+  if (error) throw new Error(`No se pudieron leer las gestiones del trámite: ${error.message}`)
+  return (data ?? []).flatMap((g) =>
+    g.id && g.fecha && g.detalle && g.anotado_en ? [{ id: g.id, fecha: g.fecha, detalle: g.detalle, anotado_en: g.anotado_en, anoto: g.anoto ?? '' }] : [],
+  )
 }
 
 export type TipoDeTramite = {
