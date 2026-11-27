@@ -169,11 +169,14 @@ begin
   update public.ordenes_trabajo set tipo_trabajo = 'GARANTIA' where id = current_setting('prueba.ot_e8')::uuid;
   update public.ordenes_trabajo set abierta_en_taller = true where id = current_setting('prueba.ot_e9')::uuid;
   update public.ordenes_trabajo set unidad_id = null where id = current_setting('prueba.ot_e10')::uuid;
+  -- La 1 se registró diez días antes que su cotización, y el taller ya la empezó.
+  update public.ordenes_trabajo set creado_en = now() - interval '10 days', estado = 'EN_PROCESO', avance_porcentaje = 40
+   where id = current_setting('prueba.ot_e1')::uuid;
   perform set_config('session_replication_role', 'origin', true);
 
-  perform test.afirmar((pg_temp.ot('e1')).cotizacion_pdf_id is null and (pg_temp.ot('e1')).estado = 'APROBADA'
+  perform test.afirmar((pg_temp.ot('e1')).cotizacion_pdf_id is null and (pg_temp.ot('e1')).estado = 'EN_PROCESO'
                        and (pg_temp.ot('e2')).estado = 'BORRADOR' and (pg_temp.ot('e5')).estado = 'ANULADA',
-    'La OT registrada sin cotización: la 1 aprobada, la 2 esperando el visto de Gerencia, la 5 anulada');
+    'La OT registrada sin cotización: la 1 en proceso, la 2 esperando el visto de Gerencia, la 5 anulada');
 end $$;
 
 -- 2. La lista: solo a Administración, y solo lo que entra ----------------------------
@@ -273,6 +276,18 @@ begin
   select * into v from public.v_cotizaciones_pdf where id = current_setting('prueba.cot')::uuid;
   perform test.afirmar(v.ordenes_vigentes = 1 and v.ordenes_faltantes = 2,
     format('La cotización, como la lee Administración: 1 OT y faltan 2 (%s y %s)', v.ordenes_vigentes, v.ordenes_faltantes));
+  -- El recorrido la da por cargada hoy, cuando se enganchó, no hace diez días
+  -- cuando se registró (20261127211000).
+  select r.en into v from public.recorrido_de_cotizaciones(array[current_setting('prueba.cot')::uuid]) r
+   where r.paso = 'CODIGO_Y_OT' and r.situacion = 'HECHO' and r.unidad = 2;
+  perform test.afirmar(v.en >= now() - interval '1 hour',
+    format('El recorrido da la unidad 2 por cargada cuando se enganchó, no cuando se registró la OT (%s)', v.en));
+  -- Desde el enganche, las listas muestran el avance de su código interno, como
+  -- toda OT de una cotización: el 40 % de sus etapas pasa al 0 % del código sin
+  -- etapas de Diseño. Es lo que hace hoy con la que nace de la carga; se le dice a DKS.
+  select a.avance, a.del_codigo into v from public.avance_de_ordenes(array[current_setting('prueba.ot_e1')::uuid]) a;
+  perform test.afirmar(v.del_codigo and v.avance = 0,
+    format('La OT en proceso enganchada lleva en las listas el avance de su código (%s %%, del código: %s)', v.avance, v.del_codigo));
   -- Ya no se ofrece, y la otra sí.
   select count(*) into n from public.ots_para_enganchar(array[current_setting('prueba.cot')::uuid]) where orden_id = current_setting('prueba.ot_e1')::uuid;
   perform test.afirmar(n = 0, 'La OT enganchada ya no sale en la lista');
@@ -315,7 +330,7 @@ begin
     'la misma sin elegir unidad también es el mismo envío', 'la primera vez que la enviaste');
   perform test.debe_fallar(pg_temp.sql_enganchar('e1', current_setting('prueba.cot'), 3),
     'reenviada con otra unidad dice en cuál quedó y que lo cambiado no se guardó',
-    'ya había quedado enganchada a la cotización QA-504-A como la unidad 2 de 3 con el primer envío: lo que cambiaste al reenviar no se guardó');
+    'ya había quedado enganchada a la cotización QA-504-A como la unidad 2 de 3 la primera vez que la enviaste: lo que cambiaste al reenviar no se guardó');
   perform test.debe_fallar(pg_temp.sql_enganchar('e1', current_setting('prueba.cot'), 2, 'Otro motivo para la misma (prueba 504)'),
     'reenviada con otro motivo tampoco es el mismo envío', 'lo que cambiaste al reenviar no se guardó');
   -- Otra OT del mismo vehículo que ya es la unidad 2: ni se ofrece.

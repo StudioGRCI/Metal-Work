@@ -321,7 +321,7 @@ begin
         raise exception 'La OT % ya quedó enganchada a la cotización % la primera vez que la enviaste.', o.numero, c.numero
           using errcode = 'unique_violation';
       end if;
-      raise exception '%', format('La OT %s ya había quedado enganchada a la cotización %s%s con el primer envío: lo que cambiaste al reenviar no se guardó.',
+      raise exception '%', format('La OT %s ya había quedado enganchada a la cotización %s%s la primera vez que la enviaste: lo que cambiaste al reenviar no se guardó.',
         o.numero, c.numero,
         case when c.cantidad_unidades > 1 then format(' como la unidad %s de %s', v_antes->>'unidad', c.cantidad_unidades) else '' end)
         using errcode = 'unique_violation';

@@ -14,7 +14,7 @@
  *   4. Ventas y Gerencia ven la tarjeta sin el botón: no enganchan.
  *
  * Lo que no entra (otro cliente, otra carrocería, la cotización llena, la
- * versión vieja, sin permiso) lo prueba el check 504 con el rol real.
+ * versión vieja, sin permiso) lo prueba el check 505 con el rol real.
  *
  * Arma sus propios datos ficticios (QA-ENG-…) y las cuentas `*.eng@banco.test`
  * con la clave local. Variables: BANCO_CLAVE, BASE (http://localhost:3111),

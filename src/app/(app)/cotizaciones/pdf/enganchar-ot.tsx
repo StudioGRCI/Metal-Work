@@ -8,6 +8,7 @@ import { AreaTexto, Campo, Seleccion } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
+import { yaEntroLaPrimeraVez } from '@/lib/acciones'
 import { definir, ESTADO_OT } from '@/lib/dominio/estados'
 import { useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { useEstadoCompartido } from '@/lib/estado-compartido'
@@ -161,7 +162,8 @@ export function EngancharOtRegistrada({
   const errorMotivo = error && error.startsWith('Explica por qué') ? error : null
   const errorUnidad =
     error && eligeUnidad && /^La unidad \d+ de la cotización|elige una de la 1|es de una sola unidad/.test(error) ? error : null
-  const errorOt = error && !errorMotivo && !errorUnidad && error.startsWith('La OT ') ? error : null
+  // Lo que ya había entrado con el primer envío no es de un campo: lo dice el pie, sin rojo.
+  const errorOt = error && !errorMotivo && !errorUnidad && !yaEntroLaPrimeraVez(error) && error.startsWith('La OT ') ? error : null
   const errorGeneral = error && !errorMotivo && !errorUnidad && !errorOt ? error : null
   // El del pie lo lleva `PieDeVentana`; los de campo, aquí.
   useCursorAlRechazo(enviando, errorMotivo || errorUnidad || errorOt, () =>
@@ -231,6 +233,11 @@ export function EngancharOtRegistrada({
                 </p>
               )}
               {ot.descripcion && <p className="text-xs text-texto-suave">{ot.descripcion}</p>}
+              {ot.estado !== 'APROBADA' && (
+                <p className="text-xs text-texto" data-ya-empezo>
+                  El taller ya la empezó: desde el enganche, las listas muestran el avance de su código interno, como toda OT de una cotización.
+                </p>
+              )}
             </div>
 
             {eligeUnidad ? (

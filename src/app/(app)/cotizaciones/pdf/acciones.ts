@@ -520,16 +520,17 @@ export async function engancharOtACotizacion(
   })
   // El mismo envío otra vez (la primera respuesta se perdió): la base dice que
   // ya quedó enganchada por esta persona. Quedó; el motivo es el de la primera vez.
-  const yaQuedo = error?.code === '23505' && error.message.includes('la primera vez que la enviaste')
+  // Si al reenviar cambió la unidad o el motivo, no es el mismo envío: vuelve como
+  // rechazo, y la ventana lo dice sin rojo (`yaEntroLaPrimeraVez`), con «Cerrar».
+  const yaQuedo =
+    error?.code === '23505' && error.message.includes('la primera vez que la enviaste') && !error.message.includes('no se guardó')
   if (error && !yaQuedo) return { ok: false, error: mensajeDeError(error) }
   if (!error && data !== v.orden_id) return { ok: false, error: NO_TOCO_NADA }
 
-  const { data: ot } = await supabase.from('ordenes_trabajo').select('numero').eq('id', v.orden_id).maybeSingle()
-  const { data: cuenta, error: errorCuenta } = await supabase
-    .from('v_cotizaciones_pdf')
-    .select('ordenes_faltantes')
-    .eq('id', v.cotizacion_id)
-    .maybeSingle()
+  const [{ data: ot }, { data: cuenta, error: errorCuenta }] = await Promise.all([
+    supabase.from('ordenes_trabajo').select('numero').eq('id', v.orden_id).maybeSingle(),
+    supabase.from('v_cotizaciones_pdf').select('ordenes_faltantes').eq('id', v.cotizacion_id).maybeSingle(),
+  ])
   const faltan = errorCuenta || !cuenta ? null : (cuenta.ordenes_faltantes ?? 0)
   const cual = ot?.numero ? `La OT ${ot.numero}` : 'La OT'
 
