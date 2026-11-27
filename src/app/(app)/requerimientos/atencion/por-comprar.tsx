@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 
 import { type Emitida, GenerarCompraDeInsumos, type InsumoParaCompra } from '@/app/(app)/compras/ordenes/formulario-directa'
 import { DiasEnEspera } from '@/components/ui/dias-en-espera'
-import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
+import { DetalleEnTelefono, SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
 import type { MaterialParaConteo } from '@/lib/datos/atencion-materiales'
 import type { ProveedorParaCompra } from '@/lib/datos/proveedores'
@@ -132,8 +132,9 @@ function GrupoDeInsumos({
               <span className="sr-only">Marcar</span>
             </TH>
             <TH>Insumo</TH>
-            <TH>Requerimiento</TH>
-            <TH>Código interno</TH>
+            {/* En el teléfono el RQ y el código van bajo el insumo: la tabla medía 467 px en una tarjeta de 356. */}
+            <TH className="hidden sm:table-cell">Requerimiento</TH>
+            <TH className="hidden sm:table-cell">Código interno</TH>
             <TH className="text-right">Falta</TH>
           </tr>
         </TablaCabecera>
@@ -199,7 +200,16 @@ function MaterialPorComprar({
             onChange={(e) => alternar(insumos.map((i) => i.id), e.target.checked)}
           />
         </TD>
-        <TD colSpan={3}>
+        <TD className="sm:hidden">
+          <span className="font-semibold text-texto">{primero.material}</span>
+          {primero.codigo_material && <span className="ml-2 tabular text-xs text-texto-suave">{primero.codigo_material}</span>}
+          {!primero.material_id && <span className="block text-xs text-aviso">Sin material del catálogo: lo eliges en la orden</span>}
+          <span className="block text-xs text-texto-suave">
+            {insumos.length} {insumos.length === 1 ? 'insumo' : 'insumos'}
+            {rqs > 1 ? ` de ${rqs} RQ` : ''}
+          </span>
+        </TD>
+        <TD colSpan={3} className="hidden sm:table-cell">
           <span className="font-semibold text-texto">{primero.material}</span>
           {primero.codigo_material && <span className="ml-2 tabular text-xs text-texto-suave">{primero.codigo_material}</span>}
           {!primero.material_id && <span className="ml-2 text-xs text-aviso">Sin material del catálogo: lo eliges en la orden</span>}
@@ -220,8 +230,21 @@ function MaterialPorComprar({
               onChange={(e) => alternar([i.id], e.target.checked)}
             />
           </TD>
-          <TD className="text-sm text-texto">{i.descripcion}</TD>
-          <TD className="text-sm">
+          <TD className="text-sm text-texto">
+            {i.descripcion}
+            <DetalleEnTelefono className="text-xs text-texto-suave" data-rq-en-telefono>
+              <span className="flex flex-wrap items-center gap-1">
+                <span className="tabular font-medium text-texto">{i.requerimiento}</span>
+                <DiasEnEspera dias={i.dias} desde={i.desde} />
+              </span>
+              <span className="block">
+                {i.area}
+                {i.fecha_requerida && ` · para el ${fecha(i.fecha_requerida)}`}
+              </span>
+              <span className="block tabular">Código {i.codigo_interno}</span>
+            </DetalleEnTelefono>
+          </TD>
+          <TD className="hidden text-sm sm:table-cell">
             <span className="flex flex-wrap items-center gap-1">
               <span className="tabular font-medium text-texto">{i.requerimiento}</span>
               <DiasEnEspera dias={i.dias} desde={i.desde} />
@@ -231,7 +254,7 @@ function MaterialPorComprar({
               {i.fecha_requerida && ` · para el ${fecha(i.fecha_requerida)}`}
             </span>
           </TD>
-          <TD className="tabular text-sm text-texto">{i.codigo_interno}</TD>
+          <TD className="hidden tabular text-sm text-texto sm:table-cell">{i.codigo_interno}</TD>
           <TD className="text-right tabular text-sm text-texto">
             {cantidad(i.falta)} {i.unidad}
           </TD>

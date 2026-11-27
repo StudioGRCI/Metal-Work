@@ -239,10 +239,14 @@ export default async function PaginaAtencion({ searchParams }: PageProps<'/reque
               <TablaCabecera>
                 <tr>
                   <TH>Requerimiento</TH>
-                  <TH>Insumos</TH>
+                  {/* Lo que se pide es lo que se lee: a quien compra, entre 768 y 1279 px le quedaba en 129 px. A Almacén lo
+                      limita su botón más ancho («Registrar la salida en el kardex», 229 px), que no se parte. */}
+                  <TH className={compra && !recibe && !despacha ? 'md:min-w-44' : undefined}>Insumos</TH>
                   <TH>En qué va</TH>
-                  {/* El ancho, solo para quien atiende: a quien consulta le dejaba una columna vacía. */}
-                  <TH className={`text-right md:pl-0 xl:pl-3 ${recibe || despacha || compra ? 'md:w-64 xl:w-96' : ''}`}>
+                  {/* El ancho, solo para quien atiende y desde 1280: a quien consulta le dejaba una
+                      columna vacía, y entre 768 y 1279 los 256 px fijos dejaban los insumos en 129 px
+                      para un solo botón. Ahí la columna toma lo que pide su botón más ancho. */}
+                  <TH className={`text-right md:pl-0 xl:pl-3 ${recibe || despacha ? 'xl:w-96' : compra ? 'xl:w-80' : ''}`}>
                     <span className="sr-only">Acciones</span>
                   </TH>
                 </tr>

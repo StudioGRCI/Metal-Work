@@ -52,7 +52,7 @@ function AccionDelReclamo({
   id: string
   accion: (previo: unknown, datos: FormData) => Promise<ResultadoAccion>
   boton: ReactNode
-  variante?: 'primario' | 'secundario' | 'contornoPeligro'
+  variante?: 'primario' | 'secundario' | 'fantasma'
   titulo: string
   descripcion: string
   enviar: string
@@ -212,7 +212,7 @@ export function AnularReclamo({ id, numero }: { id: string; numero: string }) {
     <AccionDelReclamo
       id={id}
       accion={anularReclamo}
-      variante="contornoPeligro"
+      variante="fantasma"
       envioPeligroso
       marca="anular-reclamo"
       boton={

@@ -2,6 +2,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Boton } from '@/components/ui/boton'
 import { Entrada } from '@/components/ui/campos'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { SinDatos } from '@/components/ui/tabla'
 import {
   areasConResponsable,
   calendarioLaboral,
@@ -138,7 +139,7 @@ export default async function PaginaConfiguracion({
                   Fichas técnicas preescritas
                 </p>
                 {catalogos.fichas.length === 0 ? (
-                  <p className="text-sm text-texto-suave">Todavía no hay fichas.</p>
+                  <SinDatos compacto titulo="Todavía no hay fichas" />
                 ) : (
                   catalogos.fichas.map((f) => (
                     <p key={f.id} className="text-sm text-texto">

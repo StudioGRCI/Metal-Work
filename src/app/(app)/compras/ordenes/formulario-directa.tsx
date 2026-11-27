@@ -437,7 +437,7 @@ function FormularioCompraDirecta({
   useCursorAlRechazo(enviando, error, () => (/ está vací|debe ser un PDF/.test(error ?? '') ? campoFactura.current : null))
 
   return (
-    <form onSubmit={alEnviar} className="space-y-6">
+    <form onSubmit={alEnviar} className="space-y-5">
         <input type="hidden" name="operacion_id" value={id} />
         <div className="grid gap-4 sm:grid-cols-2">
           <SelectorProveedor

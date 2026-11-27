@@ -242,7 +242,7 @@ export function AnularConMotivo({
   })
   return (
     <>
-      <Boton type="button" variante="contornoPeligro" tamano="sm" onClick={() => setAbierta(true)} data-anular={tipo}>
+      <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setAbierta(true)} data-anular={tipo}>
         <Ban aria-hidden className="size-4" />
         {tipo === 'planilla' ? 'Anular planilla' : 'Anular pago'}
       </Boton>

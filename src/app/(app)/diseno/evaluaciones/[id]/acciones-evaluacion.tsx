@@ -110,7 +110,7 @@ function Borrar({ id }: { id: string }) {
   )
   return (
     <>
-      <Boton type="button" variante="contornoPeligro" className="w-full justify-center" onClick={() => { accion.limpiar(); setAbierta(true) }}>
+      <Boton type="button" variante="fantasma" className="w-full justify-center" onClick={() => { accion.limpiar(); setAbierta(true) }}>
         Borrar borrador
       </Boton>
       <Ventana abierta={abierta} alCerrar={() => setAbierta(false)} titulo="¿Borrar este borrador?"

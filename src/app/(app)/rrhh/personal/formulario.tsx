@@ -84,7 +84,7 @@ export function ControlesTrabajador({ trabajador, areas, hoy }: { trabajador: Tr
         Corregir
       </Boton>
       {trabajador.activo ? (
-        <Boton type="button" variante="contornoPeligro" tamano="sm" aria-label={`Dar de baja a ${nombre}`} onClick={() => setBajando(true)}>
+        <Boton type="button" variante="fantasma" tamano="sm" aria-label={`Dar de baja a ${nombre}`} onClick={() => setBajando(true)}>
           <UserRoundX aria-hidden className="size-4" />
           Dar de baja
         </Boton>

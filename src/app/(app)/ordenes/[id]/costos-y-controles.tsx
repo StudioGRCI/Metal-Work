@@ -10,6 +10,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
 import { Pliegue, SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { SinDatos } from '@/components/ui/tabla'
 import { yaEntroLaPrimeraVez } from '@/lib/acciones'
 import type { CostoDeOrden, controlesYSolicitudesDeOrden } from '@/lib/datos/costos-ot'
 import { ESTADO_GASTO_AREA, ESTADO_SOLICITUD_TESORERIA, TIPO_GASTO_AREA, definir } from '@/lib/dominio/estados'
@@ -80,7 +81,7 @@ function RevisionDeSalida({ ordenId, datos, puedeSolicitar, salidaCompleta }: {
         {puedeSolicitar && salidaCompleta && <NuevaSolicitud ordenId={ordenId} />}
         {puedeSolicitar && !salidaCompleta &&
           <p className="text-sm text-texto-suave">Completa la ficha de salida y adjunta el escaneo firmado para solicitar la revisión a Tesorería.</p>}
-        {solicitudes.length === 0 ? <p className="text-sm text-texto-suave">Todavía no hay solicitudes de este paso.</p> :
+        {solicitudes.length === 0 ? <SinDatos compacto titulo="Todavía no hay solicitudes de este paso" /> :
           <ol className="space-y-2">{solicitudes.map(s => <li key={s.id} className="rounded-[var(--radius-base)] border border-borde p-3 text-sm">
             <div className="flex flex-wrap items-center justify-between gap-2"><strong>Revisión para salida</strong><Insignia tono={definir(ESTADO_SOLICITUD_TESORERIA, s.estado).tono}>{definir(ESTADO_SOLICITUD_TESORERIA, s.estado).etiqueta}</Insignia></div>
             <p className="mt-1 whitespace-pre-wrap">{s.concepto}</p>
@@ -105,7 +106,7 @@ function ResumenCosteo({ ordenId, lineas, delCodigo }: { ordenId: string; lineas
   const enlaceDetalle = <Link href={`/ordenes/${ordenId}/expediente#costo`} className="inline-flex min-h-11 items-center text-xs text-acento hover:underline sm:min-h-0">Ver el detalle línea por línea</Link>
   const deLaOt = <>
     {monedas.length === 0
-      ? <p className="text-sm text-texto-suave">Todavía no hay costo: se suma al despachar o sacar material a la unidad, al cerrar la planilla del mes, al aprobar un gasto de área y al cargar los gastos del mes.</p>
+      ? <SinDatos compacto titulo="Todavía no hay costo" descripcion="Se suma al despachar o sacar material a la unidad, al cerrar la planilla del mes, al aprobar un gasto de área y al cargar los gastos del mes." />
       : monedas.map(c => <ComposicionDelCosto key={c.moneda} composicion={c} rotulo={delCodigo ? 'Cargado a esta OT' : undefined} />)}
     {sinPrecio > 0 && <p role="status" className="text-sm text-aviso">
       {sinPrecio === 1 ? 'Un material entregado sigue sin precio' : `${sinPrecio} materiales entregados siguen sin precio`}: el costo está incompleto hasta que Logística los valorice.
@@ -188,7 +189,7 @@ function GastosDeAreas({ ordenId, datos, puedeRegistrar, puedeRevisar, esAdminis
           <Boton type="submit" cargando={enviando}>Enviar para revisión</Boton>
         </form>
       </Pliegue>}
-      {datos.gastos.length === 0 ? <p className="text-sm text-texto-suave">Todavía no hay gastos registrados en esta OT.</p> :
+      {datos.gastos.length === 0 ? <SinDatos compacto titulo="Todavía no hay gastos registrados en esta OT" /> :
         <ol className="space-y-3">{datos.gastos.map(g => <li key={g.id} className="rounded-[var(--radius-base)] border border-borde p-3 text-sm">
           <div className="flex flex-wrap justify-between gap-2"><strong>{g.descripcion}</strong><Insignia tono={definir(ESTADO_GASTO_AREA, g.estado).tono}>{definir(ESTADO_GASTO_AREA, g.estado).etiqueta}</Insignia></div>
           <p className="mt-1 text-texto-suave">{g.area?.nombre ?? 'Área'} · {definir(TIPO_GASTO_AREA, g.tipo).etiqueta} · {fecha(g.fecha)} · {moneda(g.monto, g.moneda === 'USD' ? 'USD' : 'PEN')}</p>

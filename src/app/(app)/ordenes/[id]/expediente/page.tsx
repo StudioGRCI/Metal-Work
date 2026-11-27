@@ -10,7 +10,7 @@ import { Insignia, type Tono } from '@/components/ui/etiqueta-estado'
 import { Indicador, tramos } from '@/components/ui/indicador'
 import { Progreso } from '@/components/ui/progreso'
 import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
-import { Tabla, TablaCabecera, TD, TH, TR } from '@/components/ui/tabla'
+import { SinDatos, Tabla, TablaCabecera, TD, TH, TR } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cotizacionPdfDeOrden } from '@/lib/datos/cotizaciones-pdf'
 import { costoDeOrdenes, type CostoDeOrden } from '@/lib/datos/costos-ot'
@@ -878,7 +878,7 @@ function Proceso({ expediente, eventos }: { expediente: Expediente; eventos: Eve
   ].sort((a, b) => (a.dia === b.dia ? a.cuando.localeCompare(b.cuando) : a.dia.localeCompare(b.dia)))
 
   if (pasos.length === 0) {
-    return <p className="text-sm text-texto-suave">Todavía no hay nada registrado de esta orden.</p>
+    return <SinDatos compacto titulo="Todavía no hay nada registrado de esta orden" />
   }
 
   const porDia = new Map<string, Paso[]>()
