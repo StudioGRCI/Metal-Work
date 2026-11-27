@@ -21,7 +21,7 @@ import { diaLima, fecha as fmtFecha, hora, hoyLima, moneda as formatoMoneda } fr
 import { exigirPermiso, puede, puedeCorregirCotizacion, puedeQuitarCotizacion } from '@/lib/sesion'
 
 import { CancelarVenta, CargarCodigoYOt, CorregirCotizacion, EstadoDeLaOt, QuitarCotizacion, RevisarCotizacion } from './acciones-cotizacion'
-import { EngancharOtRegistrada, EstadoDelEnganche } from './enganchar-ot'
+import { AvisoDeOtRegistrada, EngancharOtRegistrada, EngancheEnLaTarjeta, EstadoDelEnganche } from './enganchar-ot'
 import { IrALaTarjetaDelAviso } from './ir-a-la-tarjeta-del-aviso'
 import { EstadoDeSubirCotizacion, SubirCotizacion } from './subir-cotizacion'
 
@@ -655,6 +655,9 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                       relleno="px-2.5"
                       femenino
                     />
+
+                    {cargaOt && c.id && <EngancheEnLaTarjeta cotizacionId={c.id} />}
+                    {cargaOt && sinCodigo(c) && c.id && <AvisoDeOtRegistrada ots={registradas?.get(c.id) ?? []} />}
 
                     {(revisa && c.estado === 'POR_REVISAR' || cargaOt && sinCodigo(c) || (editaOt && otsSinCodigo.some((o) => o.id)) || corrige || quitable || cancela) && (
                       <div className="flex flex-wrap items-center gap-2">
