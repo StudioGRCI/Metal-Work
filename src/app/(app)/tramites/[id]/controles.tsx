@@ -3,7 +3,7 @@
 import { Ban, Check, PencilLine, X } from 'lucide-react'
 import { useCallback, useState, type ReactNode } from 'react'
 
-import { Boton, type Variante } from '@/components/ui/boton'
+import { Boton, type Tamano, type Variante } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
 import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { Ventana } from '@/components/ui/ventana'
@@ -13,59 +13,97 @@ import { ESTADOS_QUE_SE_LLEVAN, SITUACION_TRAMITE } from '@/lib/dominio/tramites
 import { useCursorAlRechazo, useEnvio } from '@/lib/envio'
 import { fecha } from '@/lib/format'
 import { useEstadoCompartido } from '@/lib/estado-compartido'
+import { cn } from '@/lib/utils'
 
 import { actualizarTramite, pedirAnulacion, resolverAnulacion } from '../acciones'
 
-/** Lo que dijo la última acción del trámite: va en el renglón de estado del encabezado, fuera de la ventana. */
-const CLAVE_AVISO = 'tramites:ficha:aviso'
+/**
+ * Lo que dijo la última acción del trámite, fuera de la ventana y junto al
+ * botón que se tocó: lo del trámite, en el renglón de estado del encabezado; lo
+ * del expediente y lo de las gestiones, en su tarjeta. En el teléfono esas dos
+ * quedan lejos del encabezado y su verde no se veía.
+ */
+export const CLAVE_AVISO = 'tramites:ficha:aviso'
+const CLAVES_DE_AVISO = {
+  ficha: CLAVE_AVISO,
+  expediente: `${CLAVE_AVISO}:expediente`,
+  gestiones: `${CLAVE_AVISO}:gestiones`,
+} as const
+export type DondeAvisa = keyof typeof CLAVES_DE_AVISO
 
-export function AvisoDelTramite() {
-  const [aviso] = useEstadoCompartido<string | null>(CLAVE_AVISO, null)
+/** Decir el aviso en su sitio y callar los otros dos: en la ficha habla solo lo último que se hizo. */
+export function useAvisoDeLaFicha(donde: DondeAvisa) {
+  const [, enFicha] = useEstadoCompartido<string | null>(CLAVES_DE_AVISO.ficha, null)
+  const [, enExpediente] = useEstadoCompartido<string | null>(CLAVES_DE_AVISO.expediente, null)
+  const [, enGestiones] = useEstadoCompartido<string | null>(CLAVES_DE_AVISO.gestiones, null)
+  return useCallback(
+    (mensaje: string | null) => {
+      enFicha(donde === 'ficha' ? mensaje : null)
+      enExpediente(donde === 'expediente' ? mensaje : null)
+      enGestiones(donde === 'gestiones' ? mensaje : null)
+    },
+    [donde, enFicha, enExpediente, enGestiones],
+  )
+}
+
+export function AvisoDelTramite({ donde = 'ficha', className }: { donde?: DondeAvisa; className?: string }) {
+  const [aviso] = useEstadoCompartido<string | null>(CLAVES_DE_AVISO[donde], null)
   // Montada siempre: el verde que nace con su texto no lo oye el lector.
   return (
-    <p role="status" className={aviso ? 'text-sm text-exito' : 'sr-only'}>
+    <p role="status" className={aviso ? cn('text-sm text-exito', className) : 'sr-only'} data-aviso={donde}>
       {aviso}
     </p>
   )
 }
 
-const OPCION =
+/** El número del trámite en un título, sin partirse en el guion: en el teléfono «TR-0001-» quedaba arriba y «2026» abajo. */
+export const sinCorte = (numero: string) => numero.replaceAll('-', '\u2011')
+
+export const OPCION =
   'flex min-h-11 cursor-pointer items-start gap-3 rounded-[var(--radius-base)] border border-borde px-3 py-2 text-sm text-texto has-[:checked]:border-acento has-[:checked]:bg-acento-suave'
-const RADIO = 'mt-0.5 size-4 shrink-0 accent-[var(--acento)]'
+export const RADIO = 'mt-0.5 size-4 shrink-0 accent-[var(--acento)]'
 
 /**
  * Un botón que abre su ventana y envía su formulario, y el verde fuera de ella
  * al salir bien. Corrige lo que la ficha muestra: la ventana se cierra con la
  * ficha ya al día (`corrige`).
  */
-function AccionDelTramite({
+export function AccionDelTramite({
   id,
   accion,
   boton,
   variante = 'secundario',
+  tamano,
+  etiqueta,
   titulo,
   descripcion,
   enviar,
   envioPeligroso = false,
   marca,
   ancho = 'md',
+  avisa = 'ficha',
   children,
 }: {
   id: string
   accion: (previo: unknown, datos: FormData) => Promise<ResultadoAccion>
   boton: ReactNode
   variante?: Variante
+  tamano?: Tamano
+  /** El nombre del botón para el lector, cuando hay uno por fila («Retirar cargo.pdf»). */
+  etiqueta?: string
   titulo: string
   descripcion: string
   enviar: string
   envioPeligroso?: boolean
   marca: string
   ancho?: 'md' | 'lg'
+  /** Dónde se dice el verde: junto al botón que se tocó. */
+  avisa?: DondeAvisa
   children: (estado: { error: string | null; enviando: boolean }) => ReactNode
 }) {
   const [abierta, setAbierta] = useState(false)
   const [vez, setVez] = useState(0)
-  const [, setAviso] = useEstadoCompartido<string | null>(CLAVE_AVISO, null)
+  const setAviso = useAvisoDeLaFicha(avisa)
   const { alEnviar, enviando, error, limpiar } = useEnvio(
     accion,
     (r) => {
@@ -84,6 +122,8 @@ function AccionDelTramite({
       <Boton
         type="button"
         variante={variante}
+        tamano={tamano}
+        aria-label={etiqueta}
         data-accion={marca}
         onClick={() => {
           limpiar()
@@ -130,7 +170,7 @@ export function ActualizarTramite({ tramite: t, hoy }: { tramite: Tramite; hoy: 
           Actualizar
         </>
       }
-      titulo={`Actualizar el trámite ${t.numero}`}
+      titulo={`Actualizar el trámite ${sinCorte(t.numero)}`}
       descripcion="En qué va, su expediente y sus fechas. El tipo, la unidad y la OT no se cambian: si están mal, se pide su anulación y se registra de nuevo."
       enviar="Guardar"
     >
@@ -251,7 +291,7 @@ export function PedirAnulacion({ id, numero }: { id: string; numero: string }) {
           Pedir anulación
         </>
       }
-      titulo={`Pedir la anulación del trámite ${numero}`}
+      titulo={`Pedir la anulación del trámite ${sinCorte(numero)}`}
       descripcion="Para un trámite repetido, registrado por error o que ya no se hará. No se borra: Gerencia aprueba la anulación y queda con su motivo. Mientras espera ese visto, el trámite no se cambia."
       enviar="Pedir la anulación"
     >
@@ -300,7 +340,7 @@ export function AprobarAnulacion({
           Aprobar la anulación
         </>
       }
-      titulo={`Anular el trámite ${numero}`}
+      titulo={`Anular el trámite ${sinCorte(numero)}`}
       descripcion="Queda anulado, con su motivo, quién lo pidió y tu visto. No se puede deshacer: un trámite anulado queda congelado como evidencia."
       enviar="Anular el trámite"
     >
@@ -331,7 +371,7 @@ export function NoAprobarAnulacion({ id, numero, pedido }: { id: string; numero:
           No aprobar
         </>
       }
-      titulo={`No anular el trámite ${numero}`}
+      titulo={`No anular el trámite ${sinCorte(numero)}`}
       descripcion="El trámite sigue como estaba y quien lo lleva puede continuarlo. Le llega tu motivo."
       enviar="No aprobar la anulación"
     >

@@ -401,6 +401,34 @@ arriba. El área inspeccionada no ve la inspección: ve la acción quien la tien
 a cargo. `ssoma_acciones_visibles` (15.2) se queda para las pestañas abiertas
 antes del despliegue; la aplicación lee `ssoma_acciones_a_la_vista`.
 
+### Entrega de EPP por persona (entrega 15.5)
+
+Migración `20261126999100_ssoma_epp_por_persona`, comprobada con los roles
+reales en la base local (check 493: SSOMA, una segunda cuenta de SSOMA,
+Gerencia, Almacén, Ventas, RR. HH. y Supervisor General, nunca ADMIN) y con clic
+real en el banco (`herramientas/banco/probar-ssoma-epp.mjs`). Pantalla
+`/ssoma/epp`, en el menú de SSOMA y en el grupo «SSOMA y Calidad» de Gerencia.
+La entrega no lleva número propio: se nombra por el número de la salida de
+Almacén (`SA-…`). **El kardex no cambia**: las dos tablas solo apuntan a
+`movimientos_materiales`, y ninguna función de esta entrega escribe en ella ni
+en `materiales`.
+
+| Qué | Quién | Cómo lo hace cumplir la base |
+| --- | --- | --- |
+| Anotar a quién le tocó el equipo de una salida del almacén de EPP: las personas de la lista de RR. HH., cuánto a cada una y hasta cuándo dura (después del día de la salida y hasta cinco años) | `ssoma.gestionar`: SSOMA | `ssoma_registrar_entregas_epp`; la acción exige el mismo permiso (`registrarEntregasEpp`). Solo de una salida de EPP, solo a quien estaba en la planta ese día, una vez por persona y salida, y sin pasar de lo que salió y no volvió a Almacén. Las guarda todas o ninguna. El mismo pedido repetido devuelve lo mismo (`useIdDelEnvio('epp_ssoma')`). No se edita |
+| Leer la lista del personal para marcar: nombre, cargo y área (los activos y quien se fue en los últimos 180 días) | `ssoma.gestionar`: SSOMA | `ssoma_personal_para_epp`. Nunca el DNI, las cuentas ni los costos. Cada salida le dice, solo a quien anota, quién de esa lista no estaba en la planta ese día (`no_estaban`): la ventana no los ofrece |
+| Sacar una entrega vigente de «Por renovar» con motivo (5 a 300): ese equipo ya no se le repone | `ssoma.gestionar`: SSOMA | `ssoma_epp_no_se_renueva`; la acción exige el mismo permiso (`eppNoSeRenueva`). El mismo pedido repetido entra; otro motivo u otra cuenta se rechaza diciendo el que quedó. Lo ya renovado no se saca |
+| Anular una entrega mal anotada con motivo (10 a 500): lo asignado vuelve a quedar por asignar en su salida | `ssoma.gestionar`: SSOMA | `ssoma_anular_entrega_epp`; la acción exige el mismo permiso (`anularEntregaEpp`). Nadie la borra ni la cambia, tampoco el administrador (`fn_ssoma_epp_entrega_guardia`, que sella quién y cuándo) |
+| Decir que lo que queda de una salida no va por persona, con motivo (5 a 300), y deshacerlo con «Repartir» | `ssoma.gestionar`: SSOMA | `ssoma_epp_salida_sin_reparto` y `ssoma_epp_salida_se_reparte`; las acciones exigen el mismo permiso (`eppSalidaSinReparto`, `eppSalidaSeReparte`). La marca no se borra: se deshace, con quién y cuándo (`fn_ssoma_epp_sin_reparto_guardia`). Con la marca puesta no se anota a nadie de esa salida |
+| Ver lo que hay por renovar (vencido o a 15 días de vencer, de quien sigue en la planta), el EPP de cada persona, su hoja con el historial y las salidas del almacén de EPP de los últimos 60 días (y hasta 180 las que tienen algo por asignar) con a quién le tocó cada una | SSOMA y Gerencia (`ssoma.ver`, en consulta, sin botones) | `ssoma_epp_entregas_a_la_vista`, `ssoma_epp_por_persona`, `ssoma_salidas_de_epp`; políticas de las dos tablas por `puede_ver_reportes_ssoma()`. De la salida se lee número, fecha, equipo, cantidad y quién recibió; nunca el precio |
+| Ver entre sus pendientes las salidas de EPP que esperan reparto y el equipo vencido | `ssoma.gestionar`: SSOMA | `ssoma_epp_por_atender` cuenta lo mismo que la pantalla, sin armar las listas; a quien no ve SSOMA le da ceros. De ahí salen también las cifras del encabezado de `/ssoma/epp`, que Gerencia lee. Gerencia no los lleva entre sus pendientes: consulta |
+
+El estado de una entrega no se guarda, se calcula: vigente, renovada (después
+se le anotó otro igual), sin renovación o anulada. Almacén registra la salida
+como siempre y no ve a quién le tocó; RR. HH. tampoco: su lista la lee SSOMA,
+no al revés. Las dos tablas no llevan `activar_auditoria`, por la misma razón
+que las de arriba.
+
 ## Calidad: la inspección por código interno y etapa
 
 Plan aparte de las demás áreas, entrega A.1. Migración
@@ -476,20 +504,27 @@ Migraciones `20261126997000_el_tramite_tiene_numero`,
 la base local (check 498) y con clic real en el banco
 (`herramientas/banco/probar-tramites.mjs`). La empresa no tiene formato propio
 de trámite: el número es `TR-0001-2026`. El puesto es del área de
-Administración (ADM). El expediente con sus archivos y el cierre con el
-documento final (entrega 2), los avisos de vencimiento y de alta (entrega 3) y
-el enlace con el plazo de la OT y las renovaciones (entrega 4) todavía no
-están.
+Administración (ADM). El expediente con sus archivos, las gestiones con fecha
+y el cierre con el documento final son la entrega 2 (migración
+`20261127002000_el_expediente_del_tramite`, check 499 y
+`herramientas/banco/probar-expediente.mjs`). Los avisos de vencimiento y de
+alta (entrega 3) y el enlace con el plazo de la OT y las renovaciones
+(entrega 4) todavía no están.
 
 | Qué | Quién | Cómo lo exige la base |
 | --- | --- | --- |
 | Registrar un trámite: su tipo, la unidad y su OT si es de una unidad (el cliente queda congelado), qué se tramita (5 a 300), la entidad, el expediente, cuándo se presentó y su fecha límite | `tramites.gestionar`: Tramitador | `tramites_registrar` (`security definer`) exige el permiso, el mismo que la acción `registrarTramite`. Un reenvío idéntico devuelve el mismo trámite; con otra cosa, dice que ya quedó. Sin fecha de presentación nace «Por iniciar»; con ella, «En trámite». Elige la unidad con `tramites_unidades_para_elegir`, que pide el mismo permiso |
-| Llevarlo: por iniciar, en trámite u observado por la entidad (con su nota), su expediente y sus fechas | `tramites.gestionar`: Tramitador | `tramites_actualizar`, el mismo permiso que `actualizarTramite`. El cambio lleva la hora con que la ficha mostraba el trámite (`p_visto`): si cambió después en otra pestaña o en el teléfono, no lo pisa y pide recargar. No toca el tipo, la unidad ni la OT. No vale sobre uno anulado ni sobre uno que espera el visto de Gerencia |
+| Llevarlo: por iniciar, en trámite u observado por la entidad (con su nota), su expediente y sus fechas | `tramites.gestionar`: Tramitador | `tramites_actualizar`, el mismo permiso que `actualizarTramite`. El cambio lleva la hora con que la ficha mostraba el trámite (`p_visto`): si cambió después en otra pestaña o en el teléfono, no lo pisa y pide recargar. No toca el tipo, la unidad ni la OT. No vale sobre uno anulado, sobre uno que espera el visto de Gerencia ni, desde la `20261127002000`, sobre uno concluido: ese se cambia solo retirando su documento final |
 | Mantener el catálogo de tipos: nombre, entidad, de una unidad o de la empresa, si se renueva, los días de aviso (1 a 5, de 0 a 120) y si sigue en uso | `tramites.gestionar`: Tramitador | `tramites_guardar_tipo`, el mismo permiso que `guardarTipo`. Un tipo no se borra (`fn_tramite_tipo_guardia`): se desactiva. Con trámites, no cambia de unidad a empresa. El alta (`p_alta`) repetida con lo mismo devuelve el tipo que ya quedó; con otra cosa, dice que ya está y manda a «Editar». El trámite guarda el nombre de su tipo y si se renueva como eran al registrarlo (`tipo_nombre`, `se_renueva`): renombrar el tipo no cambia los trámites ya hechos |
 | Pedir la anulación, con motivo (10 a 500) | `tramites.gestionar`: Tramitador | `tramites_pedir_anulacion`, el mismo permiso que `pedirAnulacion`. Le llega a quien aprueba; si ninguna cuenta activa puede aprobar, lo dice en vez de dejar el pedido esperando |
 | Aprobar la anulación, o no (con motivo, 10 a 500) | `tramites.aprobar_anulacion`: Gerencia | `tramites_resolver_anulacion`, el mismo permiso que `resolverAnulacion`. La respuesta lleva la hora del pedido que la ficha mostraba (`p_pedido`): si se volvió a pedir con otro motivo, la base no responde por ese y pide recargar. Le llega a quien lo pidió. Anulado queda congelado; nadie lo borra, tampoco el administrador (`fn_tramite_guardia`) |
 | Ver todos, de las unidades y de la empresa | `tramites.gestionar`, `tramites.ver` o `tramites.aprobar_anulacion`: Tramitador, Gerencia y Administración | `tramites_visibles` y la política `ver_tramites` (`tramites_ve_todos()`: quien aprueba la anulación lee lo que aprueba, aunque no tuviera `tramites.ver`); la tabla no se escribe directo. Su copia en `audit_log` se lee con lo mismo (política restrictiva `tramites_con_su_permiso`) |
 | Ver solo los de una unidad | `tramites.ver_de_unidades`: Agente de Ventas y Gerencia Comercial | La misma función y la misma política, con `ambito = 'UNIDAD'`. No leen el catálogo de tipos de la empresa ni la auditoría de los trámites |
+| Subir un archivo al expediente: cargo, recibo u otro documento (este dice qué es, 3 a 200). PDF o foto, hasta 20 MB | `tramites.gestionar`: Tramitador | `tramites_adjuntar_archivo`, el mismo permiso que `adjuntarArchivo`. El navegador sube al bucket privado `tramites`, a la carpeta del trámite, y la política `tramites_subir` pide el mismo permiso; la función revisa en Storage que el archivo sea de quien lo anota, su tipo y su tamaño real. El mismo envío repetido devuelve el mismo archivo. No vale sobre uno anulado ni sobre uno que espera el visto de Gerencia; sobre uno concluido sí (el cargo de entrega al cliente) |
+| Anotar una gestión con su fecha (no futura ni de hace más de cinco años) y su detalle (5 a 500) | `tramites.gestionar`: Tramitador | `tramites_anotar_gestion`, el mismo permiso que `anotarGestion`. Una gestión no se corrige ni se borra (`fn_tramite_gestion_guardia`): se anota otra |
+| Cerrar el trámite con el documento final: su archivo, la fecha del documento y, si el tipo se renueva, hasta cuándo vale | `tramites.gestionar`: Tramitador | `tramites_concluir`, el mismo permiso que `concluirTramite`. No pasa por Gerencia (decisión de StudioGRCI, 2026-11-26: «Solo la anulación»). Solo desde «En trámite» u «Observado»; un trámite tiene un solo documento final en pie (`uq_tramite_documento_final`). La vigencia termina después de la fecha del documento y no pasa de diez años. Concluido deja de contar el plazo y ya no se actualiza (`fn_tramite_guardia`) |
+| Retirar un archivo, con motivo (10 a 500) | `tramites.gestionar`: Tramitador | `tramites_retirar_archivo`, el mismo permiso que `retirarArchivo`. Un archivo no se borra (`fn_tramite_archivo_guardia`): queda retirado, con quién, cuándo y por qué. Retirar el documento final reabre el trámite a «En trámite» (`fn_tramite_archivo_reabre`), y es la única forma de reabrirlo: la guardia no lo deja volver con su documento final en pie |
+| Ver el expediente y las gestiones | Quien ve el trámite | `tramites_archivos`, `tramites_gestiones` y las políticas `ver_tramite_archivos` y `ver_tramite_gestiones`: quien ve el trámite. Los archivos retirados, solo quien ve todos (Tramitador, Gerencia, Administración); Ventas y Gerencia Comercial no. El archivo se abre por `/tramites/archivo/[id]`, que pide un enlace firmado de 5 minutos con la sesión de quien toca: la política `tramites_ver_archivo` de Storage lo da solo si una fila que esa cuenta ve lo nombra. Sus copias en `audit_log`, con `tramites_con_su_permiso` |
 
 Los globos: a Gerencia le cuenta las anulaciones que esperan su visto; al
 Tramitador, los trámites que pasaron su fecha límite y los que la entidad
@@ -519,6 +554,45 @@ desde la pantalla.
 La tabla `areas` la lee toda cuenta activa (`ver_areas`), como antes: quién
 responde por un área no es un dato reservado. Lo que no hace nadie más que el
 administrador es cambiarlo.
+
+### Ingeniería responde con la cuenta de Diseño
+
+Migración `20261126998500_ingenieria_responde_con_la_cuenta_de_diseno` (plan de
+las demás áreas, entrega A.4), comprobada con los roles reales en la base local
+(check 498) y con clic real en el banco
+(`herramientas/banco/probar-ingenieria-la-lleva-diseno.mjs`). El organigrama
+tiene Ingeniería (ING) y Diseño (DIS), y en el sistema es un solo puesto,
+«Diseño e ingeniería», con sus cuentas en el área Diseño: no se parte ni se
+crea otra cuenta. Un área puede decir qué otra área la lleva
+(`areas.llevada_por_id`); a Ingeniería la lleva Diseño.
+
+| Qué | Quién | Cómo lo exige la base |
+| --- | --- | --- |
+| Que Ingeniería tenga a quién avisarle sin asignarla aparte | Nadie lo hace a mano: al asignar o cambiar la cuenta de Diseño, la fila de Ingeniería la recibe sola | `trg_area_reparte_su_responsable` la anota en `areas.jefe_id` de las áreas que Diseño lleva y que no tienen una propia, con `areas.jefe_heredado` en verdadero. Corre con el permiso de quien cambió la de Diseño (la política es la misma para las dos filas) y, si alguna no quedó al día, no guarda el cambio. Queda en la auditoría a nombre de esa cuenta. Como va en la fila, la leen sin cambiar todas las funciones que ya leían el responsable: `responsable_del_area`, `calidad_es_del_area`, las de averías y las de garantías |
+| Ponerle a Ingeniería una cuenta propia, o quitársela | `configuracion.editar`: solo el administrador del sistema | La misma política `editar_areas` y la misma acción `asignarResponsableDeArea`. Con una propia deja de seguir a la de Diseño, también si se le elige a mano la misma cuenta que tiene Diseño (la acción manda `jefe_heredado = false`); al quitársela, `trg_area_llevada_por` le anota otra vez la de Diseño. La marca `jefe_heredado` solo es verdadera si la cuenta es la misma del área que la lleva: escrita a mano se acepta solo si es verdad, y no sirve para colar una cuenta dada de baja |
+| Decir qué área lleva a otra | `configuracion.editar`: solo el administrador del sistema, y hoy sin pantalla (lo dejó la migración) | `trg_area_llevada_por`: un área no se lleva a sí misma, la que la lleva existe y está activa, y no hay cadenas (la que lleva a otra no puede ser llevada). Si deja de ser llevada, la cuenta heredada se va con eso; la propia se conserva |
+
+Lo que no cambia: qué ve cada cuenta por su área. Las listas «de tu área»
+(requerimientos, SSOMA) van por `usuarios.area_id`, que para Diseño e ingeniería
+es Diseño.
+
+Lo que sí cambia sin haberlo tocado: todo lo que lee `areas.jefe_id` de
+Ingeniería encuentra ahora la cuenta de Diseño. Además de los avisos de Calidad,
+Averías y Garantías, la inspección de SSOMA (`areasParaInspeccionar`) propone
+esa cuenta como responsable de la acción cuando el área inspeccionada es
+Ingeniería.
+
+Cuentas dadas de baja:
+
+- Si la cuenta **propia** de Ingeniería se da de baja, pasa lo que en cualquier
+  área: nadie responde hasta que el administrador la cambie o la quite, y la
+  pantalla lo marca. No vuelve sola a la de Diseño.
+- Si la que se da de baja es la **de Diseño**, Ingeniería la conserva igual que
+  Diseño: las dos filas lo marcan, a ninguna se le avisa, y cuando la cuenta
+  vuelve de alta responde otra vez por las dos sin tocar nada.
+- Si la cuenta propia de Ingeniería se **borra** de Auth (no es lo normal: las
+  cuentas se dan de baja), la llave la deja en nulo y la fila recibe la de
+  Diseño.
 
 ## El padrón de equipos de la planta
 

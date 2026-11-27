@@ -46,6 +46,8 @@ export const CLAVES_DEL_ENVIO = [
   // SSOMA 15.4: la inspección (con las acciones de sus hallazgos) y el punto de la lista no entran dos veces.
   'inspeccion_ssoma',
   'punto_ssoma',
+  // SSOMA 15.5: la entrega de EPP a varias personas no se anota dos veces tras «No llegó la respuesta».
+  'epp_ssoma',
   // El reporte de avería (Plan 16.2): reabrir tras «No llegó la respuesta» no da otro número AV a la misma falla.
   'reporte_averia',
   // Calidad (A.1): reabrir tras «No llegó la respuesta» no registra dos veces la
@@ -59,6 +61,9 @@ export const CLAVES_DEL_ENVIO = [
   'reclamo_garantia',
   // El trámite (plan «El puesto de Tramitador», entrega 1): reabrir tras «No llegó la respuesta» no da otro número TR al mismo trámite.
   'tramite',
+  // Su expediente (entrega 2): reabrir tras «No llegó la respuesta» no sube dos veces el mismo archivo ni anota dos veces la misma gestión.
+  'archivo_tramite',
+  'gestion_tramite',
 ] as const
 
 export type ClaveDelEnvio = (typeof CLAVES_DEL_ENVIO)[number]

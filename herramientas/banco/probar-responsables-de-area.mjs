@@ -69,7 +69,7 @@ if (!admin || !supervisor || !almacen) {
 }
 
 // Cómo estaban las dos áreas que se tocan, para dejarlas igual al final.
-const ANTES = { CAL: await area('CAL'), MKT: await area('MKT') }
+const ANTES = { CAL: await area('CAL'), SAP: await area('SAP') }
 // La base es compartida (los auditores la usan a la vez): si la prueba se corta
 // a medio camino, deja igual las dos cuentas que da de baja y las dos áreas.
 const ACTIVAS_ANTES = { almacen: almacen.activo, supervisor: supervisor.activo }
@@ -79,7 +79,7 @@ async function dejarComoEstaba() {
     ['la cuenta de Almacén', () => activar(almacen.id, ACTIVAS_ANTES.almacen)],
     ['la cuenta del Supervisor de producción', () => activar(supervisor.id, ACTIVAS_ANTES.supervisor)],
     // Sin pasar por el disparador: lo de antes vuelve tal cual, aunque fuera una cuenta dada de baja.
-    ...[ANTES.CAL, ANTES.MKT].map((a) => [
+    ...[ANTES.CAL, ANTES.SAP].map((a) => [
       `el responsable de ${a.nombre}`,
       async () => {
         await base.query('begin')
@@ -127,7 +127,7 @@ async function cambiarPorLaBase(usuarioId, areaId, jefeId) {
     await base.query('rollback')
   }
 }
-await base.query('update public.areas set jefe_id = null where codigo in ($1, $2)', ['CAL', 'MKT'])
+await base.query('update public.areas set jefe_id = null where codigo in ($1, $2)', ['CAL', 'SAP'])
 
 const navegador = await chromium.launch({ executablePath: NAVEGADOR, args: ['--no-sandbox'] })
 
@@ -248,7 +248,7 @@ async function abrir(pagina, nombre) {
   await ventana.waitFor({ state: 'detached', timeout: 15000 })
 
   // --- la cuenta que se da de baja con la pantalla abierta no entra
-  ventana = await abrir(pagina, 'Marketing')
+  ventana = await abrir(pagina, 'Servicios de apoyo')
   await activar(almacen.id, false)
   await ventana.getByRole('combobox', { name: 'Cuenta responsable' }).selectOption(almacen.id)
   await ventana.getByRole('button', { name: 'Guardar' }).click()
@@ -270,12 +270,12 @@ async function abrir(pagina, nombre) {
     await lista.evaluate((el) => document.activeElement === el),
     'el cursor queda en el campo para elegir otra cuenta',
   )
-  comprobar((await area('MKT')).jefe_id === null, 'en la base, Marketing sigue sin cuenta')
+  comprobar((await area('SAP')).jefe_id === null, 'en la base, Servicios de apoyo sigue sin cuenta')
   await activar(almacen.id, true)
   await ventana.getByRole('button', { name: 'Cancelar' }).click()
   await ventana.waitFor({ state: 'detached', timeout: 15000 })
-  ventana = await abrir(pagina, 'Marketing')
-  comprobar((await ventana.getByRole('alert').count()) === 0, 'vuelta a abrir, la ventana de Marketing no arrastra el rechazo de antes')
+  ventana = await abrir(pagina, 'Servicios de apoyo')
+  comprobar((await ventana.getByRole('alert').count()) === 0, 'vuelta a abrir, la ventana de Servicios de apoyo no arrastra el rechazo de antes')
   await ventana.getByRole('button', { name: 'Cancelar' }).click()
   await ventana.waitFor({ state: 'detached', timeout: 15000 })
 

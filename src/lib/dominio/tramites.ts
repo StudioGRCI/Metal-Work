@@ -6,7 +6,8 @@ import type { Tono } from '@/components/ui/etiqueta-estado'
  * de propiedad, placas, certificados) y los de la empresa (licencias, SOAT,
  * permisos); Gerencia y Administración los consultan, Ventas solo los de una
  * unidad, y Gerencia aprueba la anulación. Lo que la pantalla y las acciones
- * comparten con la base.
+ * comparten con la base. La entrega 2 (migración 20261127002000) suma el
+ * expediente: sus archivos, sus gestiones y el cierre con el documento final.
  */
 
 type Def = { etiqueta: string; tono: Tono; descripcion: string }
@@ -35,6 +36,7 @@ export const SITUACION_TRAMITE: Record<string, Def> = {
   POR_INICIAR: { etiqueta: 'Por iniciar', tono: 'neutro', descripcion: 'Registrado, todavía no se presenta ante la entidad.' },
   EN_TRAMITE: { etiqueta: 'En trámite', tono: 'info', descripcion: 'Presentado: la entidad lo tiene.' },
   OBSERVADO: { etiqueta: 'Observado', tono: 'aviso', descripcion: 'La entidad lo observó: hay algo que subsanar, y la nota dice qué.' },
+  CONCLUIDO: { etiqueta: 'Concluido', tono: 'exito', descripcion: 'La entidad entregó el documento: está en el expediente.' },
   POR_ANULAR: { etiqueta: 'Espera el visto para anularse', tono: 'aviso', descripcion: 'Quien lo lleva pidió anularlo: no se cambia hasta que Gerencia responda.' },
   ANULADO: { etiqueta: 'Anulado', tono: 'neutro', descripcion: 'Quedó sin efecto, con su motivo y el visto de Gerencia.' },
 }
@@ -85,3 +87,28 @@ export function plazoDelTramite(dias: number | null): { texto: string; tono: Ton
 export function nombreDeLaUnidad(u: { placa: string | null; codigo_interno: string | null; carroceria: string | null }): string {
   return [u.placa ?? 'Sin placa', u.codigo_interno, u.carroceria].filter(Boolean).join(' · ')
 }
+
+/** El bucket privado del expediente (migración 20261127002000): la ruta es `{trámite}/{archivo}`. */
+export const BUCKET_TRAMITES = 'tramites'
+
+/** El tope de cada archivo del expediente, como el del bucket. */
+export const MAXIMO_MB_TRAMITES = 20
+
+/** Lo que admite el expediente y con qué extensión se guarda, como `tramite_archivo_subido`. */
+export const TIPOS_ARCHIVO_TRAMITES: Record<string, string> = {
+  'application/pdf': 'pdf',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+}
+
+/** Qué es cada archivo del expediente, como `ck_tramite_archivo_datos`. El documento final es el que cierra el trámite. */
+export const CLASE_DE_ARCHIVO: Record<string, { etiqueta: string; tono: Tono; descripcion: string }> = {
+  CARGO: { etiqueta: 'Cargo', tono: 'info', descripcion: 'El cargo de presentación que sella la entidad.' },
+  RECIBO: { etiqueta: 'Recibo', tono: 'neutro', descripcion: 'El recibo o el voucher de una tasa.' },
+  OTRO: { etiqueta: 'Otro documento', tono: 'neutro', descripcion: 'Una esquela, una carta, lo que haga falta guardar.' },
+  DOCUMENTO_FINAL: { etiqueta: 'Documento final', tono: 'exito', descripcion: 'Lo que entrega la entidad: es el que cierra el trámite.' },
+}
+
+/** Las clases que se suben con «Subir archivo»: el documento final entra al cerrar el trámite. */
+export const CLASES_QUE_SE_SUBEN = ['CARGO', 'RECIBO', 'OTRO'] as const
