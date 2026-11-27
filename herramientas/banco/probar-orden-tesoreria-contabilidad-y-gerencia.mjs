@@ -4,7 +4,7 @@
  * entre 768 y 1439 px, y lo que no cabe en una columna baja a una ficha o a la
  * celda vecina, con su rótulo. No se quita ningún dato ni botón.
  *
- *   1. Adquisiciones › OC y OS, con Contabilidad, Tesorería y Gerencia: de
+ *   1. Adquisiciones › OC y OS, con Contabilidad, Tesorería, Gerencia y Logística: de
  *      1280 px en adelante, la tabla, sin salirse (a 1280 y 1366 «De dónde
  *      sale» va bajo la orden; desde 1440 tiene su columna); por debajo, una ficha
  *      por orden con sus cuatro partes rotuladas («De dónde sale», «En qué
@@ -31,8 +31,12 @@
  *   6. La escala de separaciones: 20 px bajo los filtros de Cotización,
  *      Recibos por honorarios y Trabajos, y entre los bloques de Gastos del mes.
  *   7. Las demás pantallas de la entrega, con la cuenta de su puesto y a 1440,
- *      1024 y 390: nada se sale, ninguna letra de menos de 12 px, ningún botón
- *      con el borde rojo (decisión 6) y sin errores de consola.
+ *      1024 y 390: nada se sale, ninguna letra de menos de 12 px y sin errores
+ *      de consola.
+ *
+ * En todas las pantallas y anchos, además: ningún botón de la pantalla con el
+ * borde rojo (decisión 6; «Rechazar» de Aprobación es una decisión y lo
+ * conserva).
  *
  * Solo consulta: abre una ventana y la cierra, no escribe en la base.
  *
@@ -126,6 +130,13 @@ async function comprobarCaja(pagina, errores, donde) {
   comprobar(t.seSale <= 0, `${donde}: nada se sale por el costado de la página (${t.seSale})`)
   comprobar(t.sobraTabla <= 0, `${donde}: ninguna tabla se sale de su tarjeta (${t.sobraTabla}, ${t.tablas} a la vista)`)
   comprobar(t.chicas === 0, `${donde}: ninguna letra de menos de 12 px (${t.chicas})`)
+  // Decisión 6: anular, quitar y deshacer van al final y sin borde; el rojo queda para la ventana.
+  const rojos = await pagina.locator('main button.border-peligro').evaluateAll((bs) =>
+    bs.filter((b) => b.getBoundingClientRect().width > 0 && !b.closest('dialog, [role="dialog"]')).map((b) => b.textContent.replace(/\s+/g, ' ').trim()),
+  )
+  // «Rechazar» de Aprobación es la decisión de Gerencia, no un anular de una vez: conserva su borde.
+  const deUnaVez = rojos.filter((t) => !/^Rechazar/.test(t))
+  comprobar(deUnaVez.length === 0, `${donde}: ningún botón de la pantalla lleva el borde rojo (${deUnaVez.length}${deUnaVez.length ? `: ${[...new Set(deUnaVez)].join(', ')}` : ''})`)
   comprobar(errores.length === 0, `${donde}: sin errores de consola${errores.length ? ` (${errores[0]})` : ''}`)
   errores.length = 0
 }
@@ -284,8 +295,8 @@ try {
   console.log('\n3. Caja diaria')
   // El último día con el saldo del banco capturado: hoy no tiene cierres y la línea no diría ningún monto.
   const conBanco = await uno(
-    `select to_char(fecha, 'YYYY-MM-DD') dia, count(*)::int n from cierres_caja
-      where saldo_banco is not null and anulado_en is null group by fecha order by fecha desc limit 1`,
+    `select to_char(fecha, 'YYYY-MM-DD') dia, count(*)::int n, count(*) filter (where diferencia <> 0)::int descuadradas
+       from cierres_caja where saldo_banco is not null and anulado_en is null group by fecha order by fecha desc limit 1`,
   )
   comprobar(Boolean(conBanco?.dia), `hay un día con el saldo del banco capturado para mirar (${conBanco?.dia ?? 'ninguno'}, ${conBanco?.n ?? 0} cuentas)`)
   // Y el último con una diferencia que no cuadra: el de arriba puede cuadrar en todas sus cuentas.
@@ -335,7 +346,7 @@ try {
               diferencias.length === delDia.n && descuadres.length + diferencias.filter((t) => t === 'Cuadra con el banco').length === diferencias.length,
               `${donde}: y su diferencia o «Cuadra con el banco» (${diferencias.length} de ${delDia.n}: ${[...new Set(diferencias)].slice(0, 3).join(' · ')})`,
             )
-            if (delDia.descuadradas !== undefined) comprobar(descuadres.length === delDia.descuadradas, `${donde}: la que no cuadra dice cuánto (${descuadres.length} de ${delDia.descuadradas})`)
+            comprobar(descuadres.length === delDia.descuadradas, `${donde}: la que no cuadra dice cuánto (${descuadres.length} de ${delDia.descuadradas})`)
           }
         }
         await comprobarCaja(pagina, errores, donde)
@@ -451,11 +462,6 @@ try {
         await ir(pagina, ruta)
         const titulo = ((await pagina.locator('main h1').first().textContent()) ?? '').trim()
         comprobar(!/No tienes acceso/.test(titulo), `${puesto} entra a ${ruta} («${titulo}»)`)
-        // Decisión 6: anular, quitar y deshacer van al final y sin borde; el rojo queda para la ventana.
-        const rojos = await pagina.locator('main button.border-peligro').evaluateAll((bs) =>
-          bs.filter((b) => b.getBoundingClientRect().width > 0 && !b.closest('dialog, [role="dialog"]')).map((b) => b.textContent.replace(/\s+/g, ' ').trim()),
-        )
-        comprobar(rojos.length === 0, `${ruta} (${puesto}) ${ancho}: ningún botón de la pantalla lleva el borde rojo (${rojos.length}${rojos.length ? `: ${[...new Set(rojos)].join(', ')}` : ''})`)
         await comprobarCaja(pagina, errores, `${ruta} (${puesto}) ${ancho}`)
       }
       await contexto.close()
