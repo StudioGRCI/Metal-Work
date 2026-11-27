@@ -271,7 +271,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
       />
 
       {params.descarga === 'fallo' && (
-        <AvisoEnfocado rol="alert" className="mb-4">
+        <AvisoEnfocado rol="alert" className="mb-5">
           No se pudo bajar la cotización. Vuelve a intentarlo; si se repite, avisa al administrador.
         </AvisoEnfocado>
       )}
@@ -286,7 +286,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
             params={params}
             activo={filtro}
             etiqueta="Filtrar por estado"
-            className={puedeSubir ? 'mt-4 mb-2' : 'mt-4 mb-4'}
+            className={puedeSubir ? 'mt-3 mb-3' : 'mt-3 mb-5'}
           />
           {puedeSubir && (
             <PastillaFiltro
@@ -299,7 +299,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
               params={params}
               activo={soloMias ? 'mias' : null}
               etiqueta="Filtrar por quién la subió"
-              className="mb-4"
+              className="mb-5"
             />
           )}
         </>

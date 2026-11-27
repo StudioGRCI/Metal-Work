@@ -200,7 +200,7 @@ export function AnularNotaCredito({ nota }: { nota: { id: string; numero: string
       {aviso}
       <Boton
         type="button"
-        variante="contornoPeligro"
+        variante="fantasma"
         tamano="sm"
         onClick={() => {
           limpiar()

@@ -339,6 +339,22 @@ async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo:
       const { data } = await supabase.from('tramites').select('numero, registrado_por').eq('id', id).maybeSingle()
       return data && { por: data.registrado_por, lo: dicho('El trámite', 'Los trámites', 'otro', data.numero) }
     }
+    case 'archivo_tramite': {
+      const { data } = await supabase.from('tramite_archivos').select('archivo_nombre, clase, subido_por').eq('id', id).maybeSingle()
+      return (
+        data && {
+          por: data.subido_por,
+          lo:
+            data.clase === 'DOCUMENTO_FINAL'
+              ? dicho('El documento final', 'Los documentos finales', 'otro', data.archivo_nombre)
+              : dicho('El archivo', 'Los archivos', 'otro', data.archivo_nombre),
+        }
+      )
+    }
+    case 'gestion_tramite': {
+      const { data } = await supabase.from('tramite_gestiones').select('fecha, registrado_por').eq('id', id).maybeSingle()
+      return data && { por: data.registrado_por, lo: dicho('La gestión', 'Las gestiones', 'otra', `del ${fecha(data.fecha)}`) }
+    }
     case 'reporte_averia': {
       const { data } = await supabase.from('averias').select('numero, registrado_por').eq('id', id).maybeSingle()
       return data && { por: data.registrado_por, lo: dicho('El reporte', 'Los reportes', 'otro', data.numero) }
@@ -404,6 +420,12 @@ async function queQuedo(supabase: Cliente, clave: ClaveDelEnvio, id: string, yo:
       const { data } = await supabase.from('ssoma_lista_puntos').select('texto, creado_por').eq('id', id).maybeSingle()
       // Los puntos con que nace la lista no tienen autor: nunca son el envío de nadie.
       return data?.creado_por ? { por: data.creado_por, lo: dicho('El punto', 'Los puntos', 'otro', data.texto) } : null
+    }
+    case 'epp_ssoma': {
+      // Una fila por persona con el mismo id de envío: basta una para saber que entró y quién la anotó.
+      const { data } = await supabase.from('ssoma_epp_entregas').select('creado_por').eq('envio_id', id).limit(1)
+      const una = data?.[0]
+      return una ? { por: una.creado_por, lo: dicho('La entrega de EPP', 'Las entregas de EPP', 'otra', null) } : null
     }
     case 'charla_ssoma': {
       const { data } = await supabase.from('ssoma_charlas').select('tipo, tema, creado_por').eq('id', id).maybeSingle()

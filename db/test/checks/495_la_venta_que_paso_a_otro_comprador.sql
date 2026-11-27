@@ -89,7 +89,8 @@ begin
     'El cliente cedió la unidad a otro comprador (prueba 495)');
 end $$;
 
--- El recorrido de la cotización como lo lee Ventas.
+-- El recorrido de la cotización como lo lee Ventas. En la de varias unidades
+-- cada paso es de su unidad («2·», migración 20261126998900).
 create function pg_temp.camino(p_cot text) returns text
 language plpgsql as $$
 declare v text;
@@ -97,7 +98,7 @@ begin
   reset role;
   perform test.como_usuario(current_setting('prueba.ventas')::uuid);
   set local role authenticated;
-  select string_agg(r.paso || ':' || r.situacion || coalesce(':' || r.puesto, '') || coalesce(':' || r.detalle, ''), ' > ' order by r.orden)
+  select string_agg(coalesce(r.unidad || '·', '') || r.paso || ':' || r.situacion || coalesce(':' || r.puesto, '') || coalesce(':' || r.detalle, ''), ' > ' order by r.orden)
     into v
     from public.recorrido_de_cotizaciones(array[p_cot::uuid]) r
    where r.paso in ('OTRO_COMPRADOR', 'CODIGO_Y_OT', 'FACTURA', 'COBRO');
@@ -215,8 +216,8 @@ begin
   perform test.debe_fallar(
     format('update public.ordenes_trabajo set cotizacion_pdf_id = %L, numero_de_unidad = 1 where id = %L',
            current_setting('prueba.cot1'), current_setting('prueba.ot3')),
-    'Ninguna OT se cuelga de la venta que pasó a otro comprador',
-    'fue la venta de la OT 49501-' || v_anio || ', que pasó a otro comprador');
+    'Ninguna OT se cuelga de la venta que pasó a otro comprador (desde la 20261127003000, ni de ninguna otra por fuera de «Editar OT»)',
+    'solo con «Editar OT / cambiar cliente»');
   reset role;
 
   -- Si el traspaso fue un error, la misma OT vuelve con «Editar OT»: es la suya.
@@ -250,9 +251,11 @@ begin
     (select p.trabajo from public.pendientes_de_las_ot() p where p.documento = v_cot::uuid) like '% · falta 1 de 3 OT',
     'Sigue en «Por completar» con la que falta');
   perform test.afirmar(
-    pg_temp.camino(v_cot) = 'OTRO_COMPRADOR:HECHO:Administración:49502-' || to_char((now() at time zone 'America/Lima')::date, 'YYYY')
-                            || ' > CODIGO_Y_OT:AHORA:Administración:1/3/1 > FACTURA:PENDIENTE',
-    'El recorrido dice que una pasó y espera a Administración por la que falta: ' || coalesce(pg_temp.camino(v_cot), 'nada'));
+    pg_temp.camino(v_cot) = '1·OTRO_COMPRADOR:HECHO:Administración:49502-' || to_char((now() at time zone 'America/Lima')::date, 'YYYY')
+                            || ' > 2·CODIGO_Y_OT:HECHO:Administración:OT 49503-' || to_char((now() at time zone 'America/Lima')::date, 'YYYY')
+                            || ' > 2·FACTURA:AHORA:Contabilidad'
+                            || ' > 3·CODIGO_Y_OT:AHORA:Administración > 3·FACTURA:PENDIENTE',
+    'El recorrido dice que la unidad 1 pasó y ya no espera nada, que la 2 espera su factura y la 3 su OT: ' || coalesce(pg_temp.camino(v_cot), 'nada'));
 
   perform pg_temp.cargar(v_cot, current_setting('prueba.ot5'), 'QA-495 E', '49505');
   perform test.afirmar(
@@ -262,8 +265,9 @@ begin
     not exists (select 1 from public.pendientes_de_las_ot() p where p.documento = v_cot::uuid),
     'Con la que faltaba, sale de «Por completar»');
   perform test.afirmar(
-    pg_temp.camino(v_cot) like 'OTRO_COMPRADOR:HECHO%CODIGO_Y_OT:HECHO%FACTURA:AHORA:Contabilidad',
-    'Y espera su factura: ' || coalesce(pg_temp.camino(v_cot), 'nada'));
+    pg_temp.camino(v_cot) like '1·OTRO_COMPRADOR:HECHO% > 2·CODIGO_Y_OT:HECHO% > 2·FACTURA:AHORA:Contabilidad > 3·CODIGO_Y_OT:HECHO% > 3·FACTURA:AHORA:Contabilidad'
+    and pg_temp.camino(v_cot) not like '%1·FACTURA%',
+    'Y las dos que tienen su OT esperan su factura; la que pasó, no: ' || coalesce(pg_temp.camino(v_cot), 'nada'));
   perform test.debe_fallar(
     format('select pg_temp.cargar(%L, %L, %L, %L)', v_cot, current_setting('prueba.ot6'), 'QA-495 F', '49506'),
     'No lleva una cuarta OT',
@@ -309,6 +313,47 @@ begin
     'Y sí las que tienen OT, aunque una de sus unidades haya pasado');
   reset role;
 end $$;
+
+-- 5c. Facturadas las dos unidades que quedan, la venta espera solo su cobro -----------
+-- (20261126998900) La unidad que pasó no espera a nadie; cada una de las otras dos,
+-- con su factura, pasa de Contabilidad a Tesorería. Se deshace al terminar: las
+-- secciones que siguen cuentan con la de tres todavía sin facturas.
+savepoint las_dos_facturadas;
+do $$
+declare
+  v_cot constant uuid := current_setting('prueba.cot3')::uuid;
+  v_factura uuid;
+  v_camino text;
+  o record;
+begin
+  perform set_config('session_replication_role', 'replica', true);
+  for o in select t.numero_de_unidad as unidad, public.codigo_de_la_unidad_de_cotizacion(v_cot, t.numero_de_unidad) as codigo
+             from public.ordenes_trabajo t where t.cotizacion_pdf_id = v_cot and t.estado <> 'ANULADA' loop
+    insert into public.facturas_venta (codigo_interno, cotizacion_pdf_id, cotizacion_numero, cliente, numero, fecha_emision,
+                                       fecha_vencimiento, moneda, total, ruta_storage, nombre_archivo, tamano_bytes, registrado_por)
+    values (o.codigo, v_cot, 'QA-495-3', 'QA PRIMER COMPRADOR 495', 'E001-4953' || o.unidad, current_date, current_date + 30,
+            'PEN', 3000, 'fv/qa-495-3-' || o.unidad || '.pdf', 'f.pdf', 120, current_setting('prueba.contable')::uuid)
+    returning id into v_factura;
+    insert into public.facturas_venta_unidades (factura_id, numero_de_unidad, de_unidades, codigo_interno, monto)
+    values (v_factura, o.unidad, 3, o.codigo, 3000);
+  end loop;
+  perform set_config('session_replication_role', 'origin', true);
+
+  -- Como Contabilidad, que ve los cobros.
+  perform test.como_usuario(current_setting('prueba.contable')::uuid);
+  set local role authenticated;
+  select string_agg(r.unidad || '·' || r.paso || ':' || r.situacion || case when r.situacion = 'AHORA' then ':' || r.puesto else '' end,
+                    ' > ' order by r.orden) into v_camino
+    from public.recorrido_de_cotizaciones(array[v_cot]) r where r.unidad is not null;
+  reset role;
+  perform test.afirmar(
+    v_camino = '1·OTRO_COMPRADOR:HECHO'
+               || ' > 2·CODIGO_Y_OT:HECHO > 2·FACTURA:HECHO > 2·COBRO:AHORA:Tesorería'
+               || ' > 3·CODIGO_Y_OT:HECHO > 3·FACTURA:HECHO > 3·COBRO:AHORA:Tesorería',
+    'Facturadas las dos que quedan, la que pasó no espera a nadie y las otras dos esperan solo su cobro: ' || coalesce(v_camino, 'nada'));
+end $$;
+rollback to savepoint las_dos_facturadas;
+release savepoint las_dos_facturadas;
 
 -- 6. Volver a aprobarla no le pide otra OT a Administración ------------------------
 -- Ventas la corrige (vuelve a «Por revisar») y Gerencia la aprueba otra vez.

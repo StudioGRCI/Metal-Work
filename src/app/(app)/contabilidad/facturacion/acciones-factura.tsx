@@ -333,7 +333,7 @@ export function AnularFactura({ facturaId, numero }: { facturaId: string; numero
   const { alEnviar, enviando, error } = useEnvio(anularFactura, () => setAbierta(false))
   return (
     <>
-      <Boton type="button" variante="contornoPeligro" tamano="sm" onClick={() => setAbierta(true)} data-anular-factura={numero}>
+      <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setAbierta(true)} data-anular-factura={numero}>
         <Ban aria-hidden className="size-4" />
         Anular
       </Boton>

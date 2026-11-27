@@ -88,7 +88,7 @@ export default async function PaginaTrabajos({ searchParams }: PageProps<'/avanc
         params={params}
         activo={estado}
         etiqueta="Filtrar por estado"
-        className="mb-4"
+        className="mb-5"
       />
 
       {trabajos.length === 0 ? (

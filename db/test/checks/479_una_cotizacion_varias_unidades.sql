@@ -92,6 +92,7 @@ begin
 end $$;
 
 -- El recorrido de la cotización como lo lee Ventas: el código y la OT, y la factura.
+-- En la de varias unidades cada paso es de su unidad («2·», migración 20261126998900).
 create function pg_temp.camino(p_cot text) returns text
 language plpgsql as $$
 declare v text;
@@ -99,7 +100,7 @@ begin
   reset role;
   perform test.como_usuario(current_setting('prueba.vendedor')::uuid);
   set local role authenticated;
-  select string_agg(r.paso || ':' || r.situacion || coalesce(':' || r.puesto, '') || coalesce(':' || r.detalle, ''), ' > ' order by r.orden)
+  select string_agg(coalesce(r.unidad || '·', '') || r.paso || ':' || r.situacion || coalesce(':' || r.puesto, '') || coalesce(':' || r.detalle, ''), ' > ' order by r.orden)
     into v
     from public.recorrido_de_cotizaciones(array[p_cot::uuid]) r
    where r.paso in ('CODIGO_Y_OT', 'FACTURA');
@@ -123,8 +124,13 @@ begin
   select * into v from public.v_cotizaciones_pdf where id = v_cot::uuid;
   perform test.afirmar(v.cantidad_unidades = 3 and v.ordenes_vigentes = 1 and v.ordenes_faltantes = 2,
     'Con la primera OT, la cotización de tres espera dos más');
-  perform test.afirmar(pg_temp.camino(v_cot) = 'CODIGO_Y_OT:AHORA:Administración:1/3 > FACTURA:PENDIENTE',
-    'Con 1 de 3 OT el recorrido sigue en Administración, no en Contabilidad: ' || coalesce(pg_temp.camino(v_cot), 'nada'));
+  -- Cada unidad con lo suyo: la que ya tiene su OT espera su factura sin
+  -- esperar a las otras dos, que siguen en Administración.
+  perform test.afirmar(pg_temp.camino(v_cot) =
+      '1·CODIGO_Y_OT:HECHO:Administración:OT 47401-' || v_anio || ' > 1·FACTURA:AHORA:Contabilidad'
+      || ' > 2·CODIGO_Y_OT:AHORA:Administración > 2·FACTURA:PENDIENTE'
+      || ' > 3·CODIGO_Y_OT:AHORA:Administración > 3·FACTURA:PENDIENTE',
+    'Con 1 de 3 OT, la unidad 1 pasa a Contabilidad y las otras dos siguen en Administración: ' || coalesce(pg_temp.camino(v_cot), 'nada'));
   perform test.afirmar(
     (select p.trabajo from public.pendientes_de_las_ot() p where p.documento = v_cot::uuid and p.clase = 'COTIZACION') like '% · faltan 2 de 3 OT',
     'Con 1 de 3 OT sigue en los pendientes de Administración, con cuántas faltan');
@@ -133,8 +139,11 @@ begin
     'Dos unidades de la misma cotización no comparten código', 'cada unidad lleva su propio código');
   perform pg_temp.cargar(v_cot, current_setting('prueba.ot2'), 'QA-474 B', '47402');
   perform pg_temp.cargar(v_cot, current_setting('prueba.ot3'), 'QA-474 C', '47403');
-  perform test.afirmar(pg_temp.camino(v_cot) = 'CODIGO_Y_OT:HECHO:Administración:3 OT > FACTURA:AHORA:Contabilidad',
-    'Con las 3 OT el paso queda hecho y le toca a Contabilidad: ' || coalesce(pg_temp.camino(v_cot), 'nada'));
+  perform test.afirmar(pg_temp.camino(v_cot) =
+      '1·CODIGO_Y_OT:HECHO:Administración:OT 47401-' || v_anio || ' > 1·FACTURA:AHORA:Contabilidad'
+      || ' > 2·CODIGO_Y_OT:HECHO:Administración:OT 47402-' || v_anio || ' > 2·FACTURA:AHORA:Contabilidad'
+      || ' > 3·CODIGO_Y_OT:HECHO:Administración:OT 47403-' || v_anio || ' > 3·FACTURA:AHORA:Contabilidad',
+    'Con las 3 OT, cada unidad tiene la suya y las tres esperan a Contabilidad: ' || coalesce(pg_temp.camino(v_cot), 'nada'));
   perform test.afirmar(
     not exists (select 1 from public.pendientes_de_las_ot() p where p.documento = v_cot::uuid),
     'Con las 3 OT sale de los pendientes de Administración');
@@ -317,6 +326,12 @@ begin
   select current_setting('prueba.ot6')::uuid, '47406-2099', cliente_id, unidad_id, tipo_carroceria_id, sede_id, tipo_trabajo, prioridad,
          'Prueba 474: la misma unidad', fecha_entrega_comprometida, 'APROBADA'
     from public.ordenes_trabajo where id = current_setting('prueba.ot1')::uuid;
+  -- Con sesión, desde la 20261127003000 ni se intenta: la cotización de una OT
+  -- cambia solo con «Editar OT». Sin sesión (una migración) sigue mirando el código.
+  perform test.debe_fallar(format('update public.ordenes_trabajo set cotizacion_pdf_id = %L, numero_de_unidad = 2 where id = %L',
+    current_setting('prueba.cot3'), current_setting('prueba.ot6')),
+    'Con sesión, una OT no se cuelga de la cotización por la API', 'solo con «Editar OT / cambiar cliente»');
+  perform set_config('request.jwt.claim.sub', '', true);
   perform test.debe_fallar(format('update public.ordenes_trabajo set cotizacion_pdf_id = %L, numero_de_unidad = 2 where id = %L',
     current_setting('prueba.cot3'), current_setting('prueba.ot6')),
     'Por fuera de la carga tampoco entra otra OT de una unidad que ya está', 'cada unidad lleva su propio código');

@@ -13,27 +13,32 @@ import { cn } from '@/lib/utils'
  * `quien` es quién lo tiene, si la pantalla lo sabe («Almacén»): va en lo que se
  * lee y en la nota al pasar el puntero, con la hora desde la que espera. Con
  * `verQuien` también se ve («Gerencia · hace 5 días»): en una bandeja donde no
- * todo lo tiene quien mira, el número solo se leía como su propia demora. Sin
+ * todo lo tiene quien mira, el número solo se leía como su propia demora. Con
+ * `plural`, `quien` son varios («Administración y Tesorería», la cotización de
+ * varias unidades): «Lo tienen». Sin
  * días no se pinta nada: que no se haya podido contar no se dice como «desde hoy».
  */
 export function DiasEnEspera({
   dias,
   desde,
   quien,
+  plural = false,
   verQuien = false,
   className,
 }: {
   dias: number | null | undefined
   desde: string | null | undefined
   quien?: string | null
+  plural?: boolean
   verQuien?: boolean
   className?: string
 }) {
   if (dias == null) return null
-  const nota = [quien ? `Lo tiene ${quien}` : 'Espera', desde ? `desde el ${fechaHora(desde)}` : null].filter(Boolean).join(' ')
+  const loTiene = quien ? `Lo ${plural ? 'tienen' : 'tiene'} ${quien}` : 'Espera'
+  const nota = [loTiene, desde ? `desde el ${fechaHora(desde)}` : null].filter(Boolean).join(' ')
   // Lo que se ve, corto; lo que oye el lector, una frase entera.
   const visible = verQuien && quien ? `${quien} · ${haceDias(dias)}` : haceDias(dias)
-  const lector = `${quien ? `Lo tiene ${quien}` : 'Espera'} ${dias <= 0 ? haceDias(dias) : `desde ${haceDias(dias)}`}`
+  const lector = `${loTiene} ${dias <= 0 ? haceDias(dias) : `desde ${haceDias(dias)}`}`
   return (
     <Insignia className={cn('tabular', className)} title={nota} data-dias-en-espera={dias} data-desde={desde ?? undefined}>
       <Clock aria-hidden className="size-3" />

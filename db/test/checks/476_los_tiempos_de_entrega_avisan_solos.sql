@@ -57,11 +57,15 @@ begin
   insert into public.etapa_responsables (etapa_id, trabajador_id, asignado_por)
   values ('47600000-0000-4000-8000-0000000000e2', '47600000-0000-4000-8000-000000000001', current_setting('prueba.recursos_humanos_rrh')::uuid);
 
-  -- El día de la revisión: el laborable de hoy o el siguiente, que no sea lunes
-  -- (el lunes se prueba aparte).
+  -- El día de la revisión: el laborable de hoy o el siguiente que no sea el
+  -- primero laborable de su semana, porque ese día sale el resumen (se prueba
+  -- aparte). No basta con que no sea lunes: con el lunes feriado, el resumen
+  -- sale el martes, y Gerencia recibía uno que la sección 2 no espera.
   perform set_config('prueba.hoy', (
-    select min(d)::text from generate_series(current_date::timestamp, current_date + 14, interval '1 day') d
-     where public.es_laborable(d::date) and extract(isodow from d::date) <> 1), true);
+    select min(d)::date::text from generate_series(current_date::timestamp, current_date + 14, interval '1 day') d
+     where public.es_laborable(d::date)
+       and exists (select 1 from generate_series((d::date - (extract(isodow from d::date)::int - 1))::timestamp, d::date - 1, interval '1 day') a
+                    where public.es_laborable(a::date))), true);
 end $$;
 
 create or replace function pg_temp.como(p_clave text) returns void language plpgsql as $$
@@ -212,24 +216,43 @@ select test.afirmar(
   'otra subetapa que vence después avisa por su nombre, sin repetir el aviso anterior');
 
 -- ============================================ 4. El lunes, el resumen a Gerencia
+-- El lunes va después del último día que ya revisaron las secciones de arriba
+-- (hoy + 2 días hábiles): si cae antes o ese mismo día, esa revisión ya mandó el
+-- resumen y esta no repite. Pasaba un viernes, con el sábado laborable: hoy + 2
+-- es el lunes siguiente y la prueba fallaba sin que la función tuviera nada.
+select set_config('prueba.lunes', (
+  select min(d)::date::text from generate_series(
+           (public.sumar_dias_habiles(current_setting('prueba.hoy')::date, 2) + 1)::timestamp,
+           public.sumar_dias_habiles(current_setting('prueba.hoy')::date, 2) + 21, interval '1 day') d
+   where extract(isodow from d::date) = 1 and public.es_laborable(d::date)), true);
 select test.afirmar(
-  (select r.avisos = 1 from public.revisar_tiempos_de_entrega(
-     (select min(d)::date from generate_series((current_date + 1)::timestamp, current_date + 21, interval '1 day') d
-       where extract(isodow from d::date) = 1 and public.es_laborable(d::date))) r
+  current_setting('prueba.lunes') <> ''
+  and not exists (select 1 from public.tiempos_entrega_avisos a
+                   where a.tipo = 'RESUMEN_SEMANAL' and a.fecha = current_setting('prueba.lunes')::date),
+  'el lunes de la prueba todavía no tiene resumen');
+-- Los resúmenes que ya hubiera (otra semana de arriba) no cuentan para este lunes.
+select set_config('prueba.resumenes_antes', coalesce(
+  (select string_agg(n.id::text, ',') from public.notificaciones n where n.titulo like 'Resumen%'), ''), true);
+select test.afirmar(
+  (select r.avisos = 1 from public.revisar_tiempos_de_entrega(current_setting('prueba.lunes')::date) r
     where r.tipo = 'RESUMEN_SEMANAL'),
   'el lunes sale el resumen');
 select test.afirmar(
   (select count(*) = 1 from public.notificaciones n where n.titulo like 'Resumen%'
+      and n.id::text <> all (string_to_array(current_setting('prueba.resumenes_antes'), ','))
       and n.usuario_id = current_setting('prueba.gerente_gge')::uuid and n.ruta = '/rrhh/tiempos-de-entrega'
       and n.cuerpo like '%sin nadie a cargo%')
   and not exists (select 1 from public.notificaciones n where n.titulo like 'Resumen%'
       and n.usuario_id in (current_setting('prueba.recursos_humanos_rrh')::uuid, current_setting('prueba.supervisor_prd')::uuid)),
   'el resumen le llega a Gerencia, con las etapas sin nadie a cargo, y no a RR. HH. ni al supervisor');
 
--- Si el lunes es feriado, el resumen sale el martes, y el miércoles ya no.
+-- Si el lunes es feriado, el resumen sale el martes, y el miércoles ya no. El
+-- martes y el miércoles tienen que ser laborables: en día no laborable la
+-- revisión no devuelve nada y la prueba fallaba (la semana del 08/12).
 do $$
-declare v_lunes date := (select min(d)::date from generate_series((current_date + 22)::timestamp, current_date + 40, interval '1 day') d
-                          where extract(isodow from d::date) = 1);
+declare v_lunes date := (select min(d)::date from generate_series((current_date + 22)::timestamp, current_date + 70, interval '1 day') d
+                          where extract(isodow from d::date) = 1
+                            and public.es_laborable(d::date + 1) and public.es_laborable(d::date + 2));
 begin
   perform set_config('prueba.lunes_feriado', v_lunes::text, true);
   delete from public.feriados where fecha = v_lunes;

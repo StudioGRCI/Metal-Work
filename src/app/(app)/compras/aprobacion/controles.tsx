@@ -142,7 +142,8 @@ export function AnularCompra({ id, numero }: { id: string; numero: string }) {
   const anulacion = useEnvio(anularCompra, () => setAbierta(false))
   return (
     <>
-      <Boton type="button" variante="contornoPeligro" tamano="sm" onClick={() => setAbierta(true)} aria-label={`Anular la ${numero}`}>
+      {/* Sin borde: va en cada fila de la lista y casi nunca se usa (decisión 6 del plan de orden y diseño). */}
+      <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setAbierta(true)} aria-label={`Anular la ${numero}`}>
         <Ban aria-hidden className="size-4" />
         Anular
       </Boton>

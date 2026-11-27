@@ -99,7 +99,7 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
         )}
       />
 
-      <nav aria-label="Mes" className="mb-4 flex items-center gap-2">
+      <nav aria-label="Mes" className="mb-5 flex items-center gap-2">
         <Link href={`/costos/gastos-generales?mes=${otroMes(mes, -1)}`} aria-label="Mes anterior"
           className="inline-flex size-11 items-center justify-center rounded-[var(--radius-base)] border border-borde text-texto hover:bg-superficie-2 sm:size-9">
           <ChevronLeft aria-hidden className="size-4" />
@@ -112,7 +112,7 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
       </nav>
 
       {(totales.size > 0 || (reparto.length > 0 && oficina.monto > 0)) && (
-        <dl className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <dl className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
           {[...totales.values()].sort((a, b) => a.grupo.localeCompare(b.grupo) || a.moneda.localeCompare(b.moneda)).map((t) => (
             <div key={`${t.grupo}-${t.moneda}`} className="rounded-[var(--radius-base)] border border-borde bg-superficie px-3 py-2">
               <dt className="text-xs text-texto-suave">{GRUPO[t.grupo] ?? t.grupo}</dt>
@@ -129,7 +129,7 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
       )}
 
       {esperan && (
-        <p className="mb-4 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-gastos-esperan>
+        <p className="mb-5 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-texto" data-gastos-esperan>
           Estos gastos todavía no cargan a ninguna unidad: nadie tiene horas en {mesLargo(`${mes}-01`)}. Se reparten solos en cuanto alguien las reporte.
         </p>
       )}
@@ -207,7 +207,7 @@ export default async function PaginaGastosGenerales({ searchParams }: PageProps<
         </Tabla>
       </Tarjeta>
 
-      <Tarjeta className="mt-4 overflow-hidden" data-reparto-del-mes>
+      <Tarjeta className="mt-5 overflow-hidden" data-reparto-del-mes>
         <TarjetaCabecera
           titulo="Cómo se reparte"
           descripcion={reparto.length === 0

@@ -11,6 +11,7 @@ import { SinDatos } from '@/components/ui/tabla'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ESTADO_COTIZACION, ESTADO_DE_LA_UNIDAD, ESTADO_OT, definir } from '@/lib/dominio/estados'
+import { quienLoTiene } from '@/lib/dominio/recorrido'
 import { nombreDeUnidad, tipoDeVehiculo, todaviaSinPlaca } from '@/lib/dominio/unidades'
 import { fecha, puesto } from '@/lib/format'
 import type { UnidadNombrable } from '@/lib/dominio/unidades'
@@ -248,7 +249,8 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
                   <ul className="divide-y divide-[var(--borde)]" data-cotizaciones-del-cliente>
                     {delCliente.cotizaciones.map((c) => {
                       const estado = definir(ESTADO_COTIZACION, c.estado)
-                      const ahora = (c.id && recorridos?.get(c.id)?.find((p) => p.situacion === 'AHORA')) || null
+                      // Con varias unidades la pueden tener varios a la vez: se nombran todos.
+                      const ahora = (c.id && quienLoTiene(recorridos?.get(c.id) ?? [])) || null
                       // La tarjeta de esa cotización; `IrALaTarjetaDelAviso` la trae a la vista y la marca.
                       const enlace = `/cotizaciones/pdf#${c.id}`
                       return (
@@ -275,8 +277,15 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
                               <p className="text-xs text-texto-suave">Subida el {fecha(c.creado_en)}</p>
                             </div>
                             {ahora && (
-                              <span data-cotizacion-ahora>
-                                <DiasEnEspera dias={ahora.dias} desde={ahora.en} quien={ahora.puesto ?? 'alguien'} verQuien />
+                              // Varios puestos no caben en la insignia, que no parte la línea
+                              // (a 360 px se salía de la fila): van como texto y la insignia dice el tiempo.
+                              <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1" data-cotizacion-ahora>
+                                {ahora.plural && (
+                                  <span aria-hidden className="min-w-0 text-xs break-words text-texto-suave">
+                                    {ahora.quien}
+                                  </span>
+                                )}
+                                <DiasEnEspera dias={ahora.dias} desde={ahora.desde} quien={ahora.quien} plural={ahora.plural} verQuien={!ahora.plural} />
                               </span>
                             )}
                           </Link>
