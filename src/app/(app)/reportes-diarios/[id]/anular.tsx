@@ -16,7 +16,7 @@ export function AnularReporte({ id, asunto }: { id: string; asunto: string }) {
   const { alEnviar, enviando, error } = useEnvio(anularReporteDiario, () => setAbierta(false))
   return (
     <>
-      <Boton type="button" variante="contornoPeligro" tamano="sm" onClick={() => setAbierta(true)}>
+      <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setAbierta(true)}>
         <Ban aria-hidden className="size-4" />
         Anular
       </Boton>

@@ -12,6 +12,7 @@ import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Indicador } from '@/components/ui/indicador'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { SinDatos } from '@/components/ui/tabla'
 import {
   areasDePlanos,
   areasParaEtapas,
@@ -285,7 +286,7 @@ async function VistaPlanos({ codigo }: { codigo: string }) {
         <TarjetaCuerpo className="space-y-3">
           {lecturas === null && planos.length > 0 && <NoSeLeyoQuienLeyo />}
           {planos.length === 0 ? (
-            <p className="text-sm text-texto-suave">Todavía no hay planos. Carga el primero con el formulario de arriba.</p>
+            <SinDatos compacto titulo="Todavía no hay planos" descripcion="Carga el primero con el formulario de arriba." />
           ) : (
             <ListaPlanos
               planos={planos}
@@ -442,7 +443,7 @@ async function VistaDxf({ codigo }: { codigo: string }) {
         <TarjetaCuerpo className="space-y-3">
           {lecturas === null && archivos.length > 0 && <NoSeLeyoQuienLeyo />}
           {archivos.length === 0 ? (
-            <p className="text-sm text-texto-suave">Todavía no hay DXF. Carga el primero con el formulario de arriba.</p>
+            <SinDatos compacto titulo="Todavía no hay DXF" descripcion="Carga el primero con el formulario de arriba." />
           ) : (
             <ListaDxf
               archivos={archivos}

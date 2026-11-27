@@ -2,6 +2,7 @@ import { ListaEtapas, resumenEtapas } from '@/components/codigo-interno/etapas'
 import { TablaComparada, TablaListaDiseno, TablaLoPedido } from '@/components/codigo-interno/materiales'
 import { ListaPlanos } from '@/components/codigo-interno/planos'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { SinDatos } from '@/components/ui/tabla'
 import {
   etapasDeCodigo,
   historialDePlano,
@@ -38,7 +39,7 @@ export async function VistaEtapas({ codigo }: { codigo: string }) {
       />
       <TarjetaCuerpo>
         {etapas.length === 0 ? (
-          <p className="text-sm text-texto-suave">Diseño todavía no armó las etapas de este código. Las carga en «Control de etapas».</p>
+          <SinDatos compacto titulo="Diseño todavía no armó las etapas de este código" descripcion="Las carga en «Control de etapas»." />
         ) : (
           <ListaEtapas etapas={etapas} hoy={hoy} limite={limite} responsables={responsables} conPlanosConPeso={planos.some((p) => !p.anulado_en && (p.peso ?? 0) > 0)} />
         )}
@@ -58,7 +59,7 @@ export async function VistaPlanos({ codigo }: { codigo: string }) {
       />
       <TarjetaCuerpo>
         {planos.length === 0 ? (
-          <p className="text-sm text-texto-suave">Diseño todavía no cargó planos para este código.</p>
+          <SinDatos compacto titulo="Diseño todavía no cargó planos para este código" />
         ) : (
           <ListaPlanos planos={planos} historial={historial} />
         )}

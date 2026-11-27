@@ -6,6 +6,7 @@ import { CajaDeLaLinea } from '@/components/finanzas/caja-del-pago'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta } from '@/components/ui/tarjeta'
+import { SinDatos } from '@/components/ui/tabla'
 import { cajaDeLosPagos, cuentasParaPagar, type CajaDelPago } from '@/lib/datos/caja'
 import { recibosParaTesoreria, type ReciboParaPagar } from '@/lib/datos/subcontratos'
 import type { CuentaParaPagar } from '@/lib/dominio/caja'
@@ -82,14 +83,15 @@ export default async function PaginaRecibosPorHonorarios({ searchParams }: { sea
 
       <Tarjeta className="overflow-hidden">
         {lista.length === 0 ? (
-          <div className="px-4 py-10 text-center">
-            <p className="font-medium text-texto">{ver === 'pagados' ? 'Todavía no hay recibos pagados' : 'No hay recibos por pagar'}</p>
-            <p className="mt-1 text-sm text-texto-suave">
-              {ver === 'pagados'
+          <SinDatos
+            enTabla={false}
+            titulo={ver === 'pagados' ? 'Todavía no hay recibos pagados' : 'No hay recibos por pagar'}
+            descripcion={
+              ver === 'pagados'
                 ? 'Cuando registres un pago con su voucher, aparece aquí.'
-                : 'Cuando Administración suba un recibo por honorarios, llega el aviso y aparece aquí.'}
-            </p>
-          </div>
+                : 'Cuando Administración suba un recibo por honorarios, llega el aviso y aparece aquí.'
+            }
+          />
         ) : (
           <ul className="divide-y divide-borde">
             {lista.map((r) => (
