@@ -46,7 +46,7 @@ begin
       -- La de la 20261126998900, y la de esta.
       ('recorrido_de_cotizaciones', array['e5a553a26cd019f52826f33ac472c0fa', 'a1dd1b75b1bcaa1e4a0593b75152253a']),
       -- La de la 20261126998000, y la de esta.
-      ('registrar_factura_venta_de_unidad', array['7c0672cb2a79fd67a0bd774c4d0eb2aa', '7c0c5a2410cbb23f065f5ced38843521']),
+      ('registrar_factura_venta_de_unidad', array['7c0672cb2a79fd67a0bd774c4d0eb2aa', 'fb82ab6aa5c25967d25636dd90dda237']),
       -- La de la 20261126988000, y la de esta.
       ('fn_cotizacion_pdf_anular', array['f4b882cbd42c112831e248a41e5ae2cd', '8a5ce7f184bc1932cd67c908c93467bd']),
       -- Las de la 20261126998800 (el costeo) y la 20261126760000, y las de esta.
@@ -54,7 +54,7 @@ begin
       ('codigos_internos_costo_calculado', array['a55f8e1dd0f91f18a64a65bde5104c56', '504d6ac0621c44abaac2e5327a23f0bc']),
       ('ordenes_de_cotizacion', array['e4acea0d52c7122a10ac633c3d25fb96', '25bc7b3a1be2905a2ce341056e00a76b']),
       -- La de la 20261126998000, y la de esta.
-      ('facturacion_por_unidad', array['681cd724a95d4bf75c7158a2898cd059', '52e26a99e11d6de3893b5f3ddc44539e'])
+      ('facturacion_por_unidad', array['681cd724a95d4bf75c7158a2898cd059', '2799a895d429a8b8c32672c3c819ede0'])
     ) as t(nombre, conocidas)
   loop
     hay := false;
@@ -1077,7 +1077,7 @@ begin
         using errcode = 'check_violation';
     end if;
     if v_con_ot < v_unidades then
-      raise exception 'La cotización % tiene % de sus % OT: la factura de toda la cotización se registra cuando estén todas. Mientras tanto se factura la unidad que ya tiene su OT.',
+      raise exception 'La cotización % tiene % de sus % OT con código interno: la factura de toda la cotización se registra cuando estén todas. Mientras tanto se factura cada unidad que ya lo tiene.',
         v_cot.numero, v_con_ot, v_unidades using errcode = 'check_violation';
     end if;
     v_codigo := v_codigos[1];
@@ -1539,7 +1539,7 @@ begin
         from (select o.id, o.numero::text as numero, o.creado_en,
                      public.normalizar_codigo_interno(u.codigo_interno) as codigo
                 from public.ordenes_trabajo o
-                join public.unidades u on u.id = o.unidad_id
+                left join public.unidades u on u.id = o.unidad_id
                where o.cotizacion_pdf_id = c.id and o.estado <> 'ANULADA'
                  and coalesce(o.numero_de_unidad, 1) = k.unidad) x
        -- La que tiene código antes que la que no, y la más nueva primero.

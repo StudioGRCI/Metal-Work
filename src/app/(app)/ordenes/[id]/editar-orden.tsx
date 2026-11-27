@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion, AreaTexto } from '@/components/ui/campos'
 import { Ventana } from '@/components/ui/ventana'
@@ -14,23 +14,35 @@ export function EditarOrden({ orden, cotizaciones }: {
   cotizaciones: Awaited<ReturnType<typeof cotizacionesParaCambio>>
 }) {
   const [abierta, abrir] = useState(false)
+  // Con `?editar=codigo` (la OT que se quedó sin código, desde Cotización) el
+  // cursor va al código interno, que es lo que se viene a dar.
+  const alCodigo = useRef(false)
   // «Por completar», en la lista de OT, llega con `?editar=1`: se abre sola y se
   // quita `editar` de la dirección. Se lee de la dirección y no de la página: el
   // árbol que Next guarda para «Atrás» y «Adelante» traía el pedido y la volvía a
   // abrir sin que nadie la pidiera. Fuera del efecto (un tic después) porque el
   // doble montaje del modo estricto cancela el primero; el segundo la abre.
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('editar') !== '1') return
+    const pide = new URLSearchParams(window.location.search).get('editar')
+    if (pide !== '1' && pide !== 'codigo') return
     const t = setTimeout(() => {
       const url = new URL(window.location.href)
       url.searchParams.delete('editar')
       // Con `null`, Next se entera (Linking and Navigating › replaceState): si se le
       // pasa su estado, el refresco tras guardar volvía a poner `editar=1`.
       window.history.replaceState(null, '', url)
+      alCodigo.current = pide === 'codigo'
       abrir(true)
     })
     return () => clearTimeout(t)
   }, [])
+  // Después del foco que pone la ventana al abrirse (su efecto corre antes que este).
+  useEffect(() => {
+    if (!abierta || !alCodigo.current) return
+    alCodigo.current = false
+    const campo = document.getElementById('editar-codigo')
+    if (campo instanceof HTMLInputElement && !campo.readOnly) campo.focus()
+  }, [abierta])
   const [nueva, elegir] = useState('')
   const [mensaje, avisar] = useState('')
   // Corrige lo que la OT muestra: se cierra con la OT ya al día (`corrige`).

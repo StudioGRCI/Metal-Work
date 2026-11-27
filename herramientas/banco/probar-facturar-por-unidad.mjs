@@ -649,6 +649,38 @@ const delaSalida = (pagina, que) => pagina.locator('li, article').filter({ hasTe
       await tarjeta.screenshot({ path: join(CAPTURAS, `unidad-${ancho}-ot-sin-codigo.png`) })
       await contexto.close()
     }
+    // En Cotización, Administración le da el código a esa OT con su propio botón (no
+    // «Cargar la OT», que es para la unidad 3) y «Editar OT» abre con el cursor en el código.
+    {
+      const { pagina, contexto } = await entrar(CUENTAS.administracion)
+      await ir(pagina, `${BASE}/cotizaciones/pdf?${new URLSearchParams({ q: tres.numero })}`)
+      const darle = pagina.locator('[data-darle-el-codigo]')
+      comprobar((await darle.count()) === 1 && limpio(await darle.textContent()) === `Darle el código a la OT ${ot1.numero}`,
+        `Administración: «Darle el código a la OT ${ot1.numero}» en la cotización`)
+      const cargar = await pagina.getByRole('button', { name: /^Cargar la OT/ }).allTextContents()
+      comprobar(cargar.length === 1 && cargar[0].includes('3 de 3'), `y «Cargar la OT» solo para la unidad que no tiene («${cargar.join(' | ')}»)`)
+      await darle.click()
+      await pagina.waitForURL(/\/ordenes\//, { timeout: 15000 })
+      await pagina.locator('#editar-codigo').waitFor({ timeout: 15000 })
+      await pagina.waitForFunction(() => document.activeElement?.id === 'editar-codigo', null, { timeout: 5000 }).catch(() => {})
+      comprobar((await pagina.evaluate(() => document.activeElement?.id)) === 'editar-codigo', '«Editar OT» se abre con el cursor en el código interno')
+      comprobar(!pagina.url().includes('editar='), 'y se quita «editar» de la dirección')
+      await contexto.close()
+    }
+    // Gerencia, que no edita la OT, lee por qué no se factura y quién lo resuelve.
+    {
+      const { pagina, contexto } = await entrar(CUENTAS.gerencia, { width: 390, height: 844 })
+      await ir(pagina, `${BASE}/cotizaciones/pdf?${new URLSearchParams({ q: tres.numero })}`)
+      const aviso = limpio(await pagina.locator('[data-ot-sin-codigo]').first().textContent({ timeout: 10000 }).catch(() => ''))
+      comprobar(aviso.includes(`La OT ${ot1.numero} se quedó sin código interno`) && aviso.includes('«Editar OT»'),
+        `Gerencia: la cotización dice que la OT se quedó sin código y quién se lo da («${aviso}»)`)
+      comprobar((await pagina.locator('[data-darle-el-codigo]').count()) === 0, 'y no le ofrece darle el código')
+      comprobar((await desborde(pagina)) <= 0, 'Cotización no se corre de costado en el teléfono')
+      await pagina.addStyleTag({ content: 'nextjs-portal { display: none !important; }' })
+      await pagina.locator('[data-ot-sin-codigo]').first().scrollIntoViewIfNeeded()
+      await pagina.screenshot({ path: join(CAPTURAS, 'unidad-390-cotizacion-ot-sin-codigo.png') })
+      await contexto.close()
+    }
   } finally {
     await consulta(`update public.unidades set codigo_interno = $2 where id = $1`, [ot1.unidad_id, C1])
   }

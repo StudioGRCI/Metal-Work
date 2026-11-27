@@ -80,7 +80,8 @@ function estadoDe(c: CotizacionParaFacturar): Estado {
     const sinCodigo = c.unidades.filter((u) => !pasaron.has(u.numero) && !u.codigo && u.ot).length
     const unidades = (n: number) => (n === 1 ? 'una unidad' : `${n} unidades`)
     if (sinCodigo === sinOt) return { etiqueta: `Falta el código de ${unidades(sinCodigo)}`, tono: 'aviso' }
-    return { etiqueta: `Falta la OT de ${unidades(sinOt - sinCodigo)}`, tono: 'neutro' }
+    if (sinCodigo === 0) return { etiqueta: `Falta la OT de ${unidades(sinOt)}`, tono: 'neutro' }
+    return { etiqueta: `Falta la OT de ${unidades(sinOt - sinCodigo)} y el código de ${sinCodigo === 1 ? 'otra' : `otras ${sinCodigo}`}`, tono: 'neutro' }
   }
   if (como.includes('OTRA_MONEDA')) return { etiqueta: 'Facturada en otra moneda', tono: 'neutro' }
   return { etiqueta: 'Facturada', tono: 'exito' }
@@ -435,7 +436,7 @@ export default async function PaginaFacturacion() {
                         facturado={facturado}
                         unidadesAOtroComprador={c.unidades_a_otro_comprador}
                         unidades={
-                          varias ? c.unidades.map((u) => ({ numero: u.numero, codigo: u.codigo, parte: u.parte, facturado: u.facturado, paso: pasaron.has(u.numero) })) : undefined
+                          varias ? c.unidades.map((u) => ({ numero: u.numero, codigo: u.codigo, ot: u.ot, parte: u.parte, facturado: u.facturado, paso: pasaron.has(u.numero) })) : undefined
                         }
                       />
                     )}

@@ -842,10 +842,18 @@ export function CargarCodigoYOt({
   }
 }) {
   const varias = unidad && unidad.de > 1 ? unidad : null
-  const libres = varias?.libres && varias.libres.length > 0 ? varias.libres : varias ? [varias.cual] : []
-  const eligeLaUnidad = libres.length > 1
+  const libresAlAbrir = varias?.libres && varias.libres.length > 0 ? varias.libres : varias ? [varias.cual] : []
+  const eligeLaUnidad = libresAlAbrir.length > 1
+  // La que la base dijo que ya se tomó (otra persona le cargó su OT, o pasó a otro
+  // comprador) sale de la lista sin esperar a que la página se ponga al día.
+  const [error, setError] = useState<string | null>(null)
+  const [tomadas, setTomadas] = useState<number[]>([])
+  const tomada = Number(error?.match(/^La unidad (\d+) de la cotización .*(?:ya tiene su OT|pasó a otro comprador)/)?.[1] ?? 0)
+  if (tomada > 0 && !tomadas.includes(tomada)) setTomadas([...tomadas, tomada])
+  const quedan = libresAlAbrir.filter((k) => !tomadas.includes(k))
+  const libres = quedan.length > 0 ? quedan : libresAlAbrir
   const [elegida, setElegida] = useState(varias?.cual ?? 1)
-  const cual = libres.includes(elegida) ? elegida : (varias?.cual ?? 1)
+  const cual = libres.includes(elegida) ? elegida : (libres[0] ?? varias?.cual ?? 1)
   const estaYaFacturada = varias?.facturadas?.find((f) => f.unidad === cual) ?? null
   // Las demás libres que ya tienen factura: se nombran todas, no solo la primera.
   const otrasYaFacturadas = varias?.facturadas?.filter((f) => f.unidad !== cual && libres.includes(f.unidad)) ?? []
@@ -870,7 +878,6 @@ export function CargarCodigoYOt({
   const [tipo, setTipo] = useState(tipoUnidad ?? '')
   const [fechaEntrega, setFechaEntrega] = useState('')
   const [datosLeidos, setDatosLeidos] = useState<DatosOrdenPdf | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [enviando, iniciar] = useTransition()
   const enCurso = useRef(false)
   // Cerrada mientras va: el botón que la abre gira y el desenlace se dice a su lado.
@@ -1137,7 +1144,7 @@ export function CargarCodigoYOt({
           )}
           {varias && eligeLaUnidad && (
             <Campo
-              etiqueta={`Unidad · faltan ${libres.length} de ${varias.de}`}
+              etiqueta={`Unidad · faltan ${libres.length} OT de ${varias.de}`}
               htmlFor={`eo-unidad-${cotizacionId}`}
               ayuda="Elige la unidad de este vehículo: la que reemplaza a una OT anulada va en la unidad de esa OT."
               error={errorUnidad ?? undefined}
