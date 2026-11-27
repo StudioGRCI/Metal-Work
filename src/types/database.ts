@@ -7867,6 +7867,7 @@ export type Database = {
           creado_por: string
           creado_en: string
           actualizado_en: string
+          numero_de_unidad: number | null
         }
         Insert: {
           id?: string
@@ -7877,6 +7878,7 @@ export type Database = {
           creado_por: string
           creado_en?: string
           actualizado_en?: string
+          numero_de_unidad?: number | null
         }
         Update: {
           id?: string
@@ -7887,6 +7889,7 @@ export type Database = {
           creado_por?: string
           creado_en?: string
           actualizado_en?: string
+          numero_de_unidad?: number | null
         }
         Relationships: [
           {
@@ -22084,6 +22087,13 @@ export type Database = {
         Args: {
           p_cotizacion: string | null
           p_codigo: string | null
+        }
+        Returns: number
+      }
+      unidad_que_dejo_la_ot: {
+        Args: {
+          p_orden: string | null
+          p_cotizacion: string | null
         }
         Returns: number
       }
