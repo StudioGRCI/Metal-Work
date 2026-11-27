@@ -61,6 +61,9 @@ export const CLAVES_DEL_ENVIO = [
   'reclamo_garantia',
   // El trámite (plan «El puesto de Tramitador», entrega 1): reabrir tras «No llegó la respuesta» no da otro número TR al mismo trámite.
   'tramite',
+  // Su expediente (entrega 2): reabrir tras «No llegó la respuesta» no sube dos veces el mismo archivo ni anota dos veces la misma gestión.
+  'archivo_tramite',
+  'gestion_tramite',
 ] as const
 
 export type ClaveDelEnvio = (typeof CLAVES_DEL_ENVIO)[number]
