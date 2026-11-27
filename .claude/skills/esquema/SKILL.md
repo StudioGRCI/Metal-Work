@@ -84,7 +84,9 @@ npx tsc --noEmit && npx eslint && npx next build
   paso (`pg_temp.demo_como`, `pg_temp.demo_puesto` en la sección de compras y
   almacén): así cada número sale de su serie y la regla se cumple. Copiar a mano
   queda para lo que no se puede llamar desde SQL (un archivo que tiene que estar
-  en Storage), con un comentario que explica por qué.
+  en Storage), con un comentario que explica por qué. La sección vieja del
+  taller (las etapas de las OT) todavía copia a mano lo que hace una función con
+  sesión: se pasa a la función en la entrega 3 del plan de datos de demostración.
 - **Un disparador diferido no corre hasta el `commit`**, y la demostración es
   una sola transacción. La aprobación de una OC se decide en un disparador
   diferido: sin `set constraints all immediate`, la OC se recibía y entregaba
@@ -96,10 +98,11 @@ npx tsc --noEmit && npx eslint && npx next build
   `herramientas/banco/preparar.sh`. Un párrafo que dice «solo en una base de
   prueba» no detiene a nadie: lo vio el auditor el 2026-11-27, con la guía de
   despliegue indicando correrla en la base nueva.
-- `demo_como` pone la sesión del puesto pero la carga sigue como `postgres`:
-  lo que se inserta a mano (proveedores, la factura, Storage) no pasa por la
-  política. Se comprobó a mano que cada puesto tiene el permiso; si se cambia
-  una política de esas tablas, mirar también aquí.
+- `demo_como` pone la sesión del puesto, pero la carga corre como `postgres`,
+  que se salta el RLS. Lo que se inserta a mano (proveedores, la factura, cada
+  archivo en Storage con `pg_temp.demo_archivo`) va entre `set local role
+  authenticated` y `reset role`, para que pase por la política del puesto como
+  desde la pantalla y la carga se detenga si deja de aceptarlo.
 
 ## Numeración y datos reales
 

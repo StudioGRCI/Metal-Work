@@ -831,8 +831,9 @@ create or replace function pg_temp.demo_puesto(p_rol text, p_area text) returns 
 $f$;
 
 -- Un RUC inventado que pasa el dígito verificador. Los de empresa llevan el
--- prefijo 2099, que la SUNAT no ha llegado a asignar; el de persona natural
--- lleva dentro el DNI 99999990, que el RENIEC tampoco (va por los 80 millones).
+-- prefijo 2099, que la SUNAT no ha llegado a asignar; los de persona natural
+-- llevan dentro los DNI 99999990 y 99999989, que el RENIEC tampoco (va por los
+-- 80 millones).
 -- Así no se escribe el número de nadie.
 create or replace function pg_temp.demo_ruc(p_base text) returns text language plpgsql as $f$
 declare d int;
@@ -861,6 +862,21 @@ create or replace function pg_temp.demo_linea_nueva(p_nombre text, p_cantidad nu
     'categoria_id', (select id from public.categorias_material where codigo = 'ALM_CONSUMIBLES_E_INSUMOS'));
 $f$;
 
+-- Un archivo en Storage a nombre de quien lo sube, con el rol de la sesión
+-- (`authenticated`) para que pase por la política de su cubeta como desde la
+-- pantalla: si la política deja de aceptar al puesto, la carga se detiene. El
+-- banco local le pone el archivo de muestra (`herramientas/banco/preparar.sh`).
+create or replace function pg_temp.demo_archivo(p_cubeta text, p_ruta text, p_dueno uuid, p_tipo text)
+returns void language plpgsql as $f$
+begin
+  perform pg_temp.demo_como(p_dueno);
+  set local role authenticated;
+  insert into storage.objects (bucket_id, name, owner_id, metadata)
+  values (p_cubeta, p_ruta, p_dueno::text, jsonb_build_object('mimetype', p_tipo, 'size', 4096));
+  reset role;
+end;
+$f$;
+
 -- La salida del kardex de lo pendiente de un RQ, como Almacén, con su foto.
 -- La foto es una fila de Storage: el banco local le pone la imagen de muestra
 -- (`herramientas/banco/preparar.sh`); fuera del banco no se ve.
@@ -881,10 +897,7 @@ begin
   loop
     v_cant := least(l.pendiente, coalesce(p_hasta, l.pendiente));
     v_id := gen_random_uuid();
-    insert into storage.objects (bucket_id, name, owner_id, metadata)
-    values ('evidencias-almacen', p_alm || '/' || v_id || '.jpg', p_alm::text,
-            '{"mimetype": "image/jpeg", "size": 2048}');
-    perform pg_temp.demo_como(p_alm);
+    perform pg_temp.demo_archivo('evidencias-almacen', p_alm || '/' || v_id || '.jpg', p_alm, 'image/jpeg');
     perform public.registrar_salida_material(v_id, l.material, v_cant, null, null,
       'Entrega del requerimiento', p_recibe, p_alm || '/' || v_id || '.jpg', l.linea_id);
   end loop;
@@ -894,19 +907,20 @@ $f$;
 -- La factura de una compra, como la anexa Logística: el PDF en Storage (el
 -- banco le pone el de muestra) y su fila con el número y la fecha. Va a mano
 -- porque la pantalla sube el archivo antes de anotarlo y desde SQL no hay
--- archivo que subir; los disparadores de la tabla revisan lo mismo.
+-- archivo que subir; los disparadores de la tabla revisan lo mismo, y la fila
+-- entra con el rol de la sesión, por la política de Logística.
 create or replace function pg_temp.demo_factura(p_compra uuid, p_log uuid, p_numero text) returns void language plpgsql as $f$
 declare v_id uuid := gen_random_uuid();
 begin
-  perform pg_temp.demo_como(p_log);
-  insert into storage.objects (bucket_id, name, owner_id, metadata)
-  values ('documentos-compras', 'compra/' || p_compra || '/' || v_id || '.pdf', p_log::text,
-          '{"mimetype": "application/pdf", "size": 4096}');
+  perform pg_temp.demo_archivo('documentos-compras', 'compra/' || p_compra || '/' || v_id || '.pdf', p_log,
+                               'application/pdf');
+  set local role authenticated;
   insert into public.documentos_compra_material
     (id, orden_compra_id, tipo, nombre_archivo, ruta_storage, mime_type, tamano_bytes, subido_por,
      numero_documento, fecha_emision)
   values (v_id, p_compra, 'FACTURA', p_numero || '.pdf', 'compra/' || p_compra || '/' || v_id || '.pdf',
           'application/pdf', 4096, p_log, p_numero, current_date);
+  reset role;
 end;
 $f$;
 
@@ -972,8 +986,7 @@ begin
   v_sup_mtz := pg_temp.demo_puesto('SUPERVISOR', 'MTZ');
   if v_log is null or v_alm is null or v_cond is null or v_sup_prd is null or v_sup_mtz is null
      or v_adm is null or v_ger is null then
-    raise notice 'Compras y almacén: faltan las fichas del personal de la demostración; no se cargan.';
-    return;
+    raise exception 'Compras y almacén: faltan las fichas del personal de la demostración (Gerencia, Logística, Almacén, Administración, el conductor y las supervisiones de Producción y Maestranza).';
   end if;
   -- Si una compra necesita el visto de Gerencia lo decide un disparador
   -- diferido, que sin esto correría recién al terminar la carga: la compra ya
@@ -999,8 +1012,10 @@ begin
 
   -- ------------------------------------------------------- proveedores
   -- Logística los da de alta; razón social en mayúsculas, como en la empresa.
-  -- Teléfonos de la serie 000 y correos .example: no son de nadie.
+  -- Teléfonos de la serie 000 y correos .example: no son de nadie. Entra con el
+  -- rol de la sesión, por la política de Logística.
   perform pg_temp.demo_como(v_log);
+  set local role authenticated;
   insert into public.proveedores
     (numero_documento, razon_social, nombre_comercial, rubro, contacto, telefono, correo, direccion,
      condicion_pago, dias_credito, creado_por)
@@ -1018,12 +1033,19 @@ begin
     (pg_temp.demo_ruc('2099100006'), 'MAESTRANZA Y TORNO SANTA ROSA S.A.C.', 'Torno Santa Rosa', 'Torno, fresado, doblado y corte',
      'Wilmer Cáceres', '(01) 000-0107', 'taller@tornosantarosa.example', 'Av. Separadora Industrial 1820, Ate', 'CREDITO', 15, v_log)
   on conflict do nothing;
+  reset role;
   select id into v_aceros  from public.proveedores where razon_social = 'ACEROS DEL PACÍFICO S.A.C.';
   select id into v_ferre   from public.proveedores where razon_social = 'FERRETERÍA INDUSTRIAL SAN JORGE E.I.R.L.';
   select id into v_pintu   from public.proveedores where razon_social = 'PINTURAS Y RECUBRIMIENTOS DEL NORTE S.A.';
   select id into v_hidra   from public.proveedores where razon_social = 'HIDRÁULICA ANDINA S.A.C.';
   select id into v_arenado from public.proveedores where razon_social = 'ARENADOS Y PINTURA INDUSTRIAL CHAVÍN S.A.C.';
   select id into v_torno   from public.proveedores where razon_social = 'MAESTRANZA Y TORNO SANTA ROSA S.A.C.';
+  -- Su cuenta para el pago, que sale en el PDF de la OC: números en cero.
+  perform public.guardar_cuentas_proveedor(v.id, jsonb_build_array(jsonb_build_object(
+            'banco', v.banco, 'numero_cuenta', '000-' || lpad(v.n::text, 10, '0'),
+            'titular', (select razon_social from public.proveedores where id = v.id), 'moneda', 'PEN')))
+     from (values (v_aceros, 'BCP', 1), (v_ferre, 'BBVA', 2), (v_pintu, 'INTERBANK', 3), (v_hidra, 'BCP', 4),
+                  (v_arenado, 'SCOTIABANK', 5), (v_torno, 'BCP', 6)) as v(id, banco, n);
 
   -- ------------------------------------------- lo que Almacén ya tenía
   -- El saldo con que arranca el kardex, un ingreso general por material, y el
@@ -1310,7 +1332,7 @@ begin
        (v_os[8],  v_torno,   v_ot3, v_mtz, v_cod3, 'Torneado de los bujes de las bisagras del furgón', 'COT-TSR-330', 4, 640, 'CREDITO', 15, 'NO_SUJETA', 'El servicio no llega a S/ 700, el mínimo de la detracción'),
        (v_os[9],  v_arenado, v_ot3, v_mtz, v_cod3, 'Arenado de las puertas traseras del furgón', 'COT-ACH-099', 4, 900, 'CONTADO', 0, '025', null),
        (v_os[10], v_torno,   v_ot1, v_prd, v_cod1, 'Fresado de las placas de apoyo de la tolva', 'COT-TSR-334', 3, 2950, 'CREDITO', 15, '025', null),
-       (v_os[11], v_arenado, v_ot3, v_mtz, v_cod3, 'Doblado de las planchas del techo del furgón', 'COT-ACH-101', 2, 950, 'CONTADO', 0, '025', null),
+       (v_os[11], v_torno,   v_ot3, v_mtz, v_cod3, 'Doblado de las planchas del techo del furgón', 'COT-TSR-336', 2, 950, 'CREDITO', 15, '025', null),
        (v_os[12], v_torno,   v_ot3, v_mtz, v_cod3, 'Corte de las planchas del piso del furgón', 'COT-TSR-339', 1, 1480, 'CREDITO', 15, '025', null))
        as v(id, prov, ot, area, cod, descripcion, ref, dias, monto, condicion, plazo, detraccion, motivo);
   perform pg_temp.demo_como(v_ger);
@@ -1335,6 +1357,18 @@ begin
     'El taller dobló los perfiles con la plegadora nueva: ya no hace falta el servicio');
   perform public.avanzar_orden_servicio(v_os[9], 'ANULADA',
     'Las puertas se arenan con el chasis, en el taller');
+  -- La factura de los dos conformes y el contrato de uno en ejecución: lo que
+  -- Logística adjunta a la OS.
+  foreach v_id in array array[v_os[1], v_os[2], v_os[3]] loop
+    perform pg_temp.demo_archivo('documentos-servicio', v_id || '/' || v_id || '.pdf', v_log, 'application/pdf');
+  end loop;
+  perform pg_temp.demo_como(v_log);
+  perform public.adjuntar_documento_servicio(gen_random_uuid(), v_os[1], 'FACTURA', 'F001-000731',
+    'F001-000731.pdf', v_os[1] || '/' || v_os[1] || '.pdf', current_date - 7);
+  perform public.adjuntar_documento_servicio(gen_random_uuid(), v_os[2], 'FACTURA', 'F001-000744',
+    'F001-000744.pdf', v_os[2] || '/' || v_os[2] || '.pdf', current_date - 5);
+  perform public.adjuntar_documento_servicio(gen_random_uuid(), v_os[3], 'CONTRATO', null,
+    'Contrato del arenado.pdf', v_os[3] || '/' || v_os[3] || '.pdf', null);
 
   -- ------------------------------------------------------ subcontratos
   -- Dos personas naturales con recibo por honorarios: dos encargos vigentes,
@@ -1358,6 +1392,12 @@ begin
        (v_sc[5], v_sub,  v_cod3, 'Instalación del sistema eléctrico y luces del furgón', 2400, 2, 10, 'MTZ'),
        (v_sc[6], v_sub,  v_cod1, 'Cableado de las luces de la tolva', 1100, 1, 6, 'PRD'))
        as v(id, persona, cod, descripcion, monto, dias, plazo, area);
+  -- El contrato firmado de cada encargo que sigue en pie.
+  foreach v_id in array array[v_sc[1], v_sc[2], v_sc[5], v_sc[6]] loop
+    perform pg_temp.demo_archivo('subcontratos', v_id || '/' || v_id || '.pdf', v_adm, 'application/pdf');
+    perform public.adjuntar_contrato_subcontrato(gen_random_uuid(), v_id, v_id || '/' || v_id || '.pdf',
+      'Contrato firmado.pdf');
+  end loop;
   perform public.cambiar_estado_subcontrato(v_sc[1], 'TERMINADO');
   perform public.cambiar_estado_subcontrato(v_sc[2], 'TERMINADO');
   perform public.anular_subcontrato(v_sc[3], 'El cliente pidió los logos en vinil: ya no se pintan');
@@ -1428,41 +1468,115 @@ begin
    where s.id = v.id;
   -- La compra sale a la lista del conductor cuando Gerencia la aprueba
   -- (`fn_compra_recojo`), así que su pedido de recojo lleva esa fecha. Lo de
-  -- hoy va en el orden en que pasó, en horas: Logística programa los recojos y
-  -- anexa las facturas, el conductor sale, recoge y deja en almacén,
-  -- Almacén valida lo que llegó (el ingreso al kardex), deja listo el RQ 1 y
-  -- entrega, y al final cuenta. En una sola carga todo tendría la misma hora: el
-  -- kardex ordena por ella, y la salida podía salir antes que su ingreso y
-  -- dejar el saldo en negativo. El inventario inicial va dos semanas atrás.
-  update public.programacion_recojo set programado_en = now() - interval '9 hours' where programado_en = now();
-  update public.documentos_compra_material set creado_en = now() - interval '9 hours' where creado_en = now();
+  -- hoy va en el orden en que pasó, en minutos (para que no caiga en el día
+  -- anterior si la carga corre de madrugada): Logística programa los recojos y
+  -- anexa las facturas, el conductor sale, recoge y deja en almacén, Almacén
+  -- valida lo que llegó (el ingreso al kardex), deja listo el RQ 1 y entrega,
+  -- y al final cuenta. En una sola carga todo tendría la misma hora: el kardex
+  -- ordena por ella, y la salida podía salir antes que su ingreso y dejar el
+  -- saldo en negativo. El inventario inicial y los proveedores van antes de todo.
+  update public.proveedores set creado_en = now() - interval '20 days' where creado_en = now();
+  update public.proveedor_cuentas set creado_en = now() - interval '20 days' where creado_en = now();
+  update public.programacion_recojo set programado_en = now() - interval '100 minutes' where programado_en = now();
+  update public.documentos_compra_material set creado_en = now() - interval '100 minutes' where creado_en = now();
   update public.ordenes_compra_materiales
-     set recojo_pedido_en = case when recojo_pedido_en = now() then coalesce(aprobado_en, now() - interval '9 hours')
+     set recojo_pedido_en = case when recojo_pedido_en = now() then coalesce(aprobado_en, now() - interval '100 minutes')
                                  else recojo_pedido_en end,
-         en_recojo_en     = case when en_recojo_en = now() then now() - interval '8 hours' else en_recojo_en end,
-         recogido_en      = case when recogido_en = now() then now() - interval '6 hours' else recogido_en end,
-         dejado_en        = case when dejado_en = now() then now() - interval '5 hours' else dejado_en end,
-         entregado_almacen_en = case when entregado_almacen_en = now() then now() - interval '3 hours'
+         en_recojo_en     = case when en_recojo_en = now() then now() - interval '90 minutes' else en_recojo_en end,
+         recogido_en      = case when recogido_en = now() then now() - interval '75 minutes' else recogido_en end,
+         dejado_en        = case when dejado_en = now() then now() - interval '60 minutes' else dejado_en end,
+         entregado_almacen_en = case when entregado_almacen_en = now() then now() - interval '45 minutes'
                                      else entregado_almacen_en end
    where now() in (recojo_pedido_en, en_recojo_en, recogido_en, dejado_en, entregado_almacen_en);
   update public.ingresos_pendientes_almacen
-     set creado_en   = case when creado_en = now() then now() - interval '5 hours' else creado_en end,
-         dejado_en   = case when dejado_en = now() then now() - interval '5 hours' else dejado_en end,
-         validado_en = case when validado_en = now() then now() - interval '3 hours' else validado_en end
+     set creado_en   = case when creado_en = now() then now() - interval '60 minutes' else creado_en end,
+         dejado_en   = case when dejado_en = now() then now() - interval '60 minutes' else dejado_en end,
+         validado_en = case when validado_en = now() then now() - interval '45 minutes' else validado_en end
    where now() in (creado_en, dejado_en, validado_en);
   update public.movimientos_materiales m
      set registrado_en = case
            when m.origen = 'INGRESO_GENERAL' then now() - interval '15 days'
-           when m.tipo = 'INGRESO' then now() - interval '3 hours'
-           else now() - interval '2 hours' end
+           when m.tipo = 'INGRESO' then now() - interval '45 minutes'
+           else now() - interval '30 minutes' end
    where m.registrado_en = now();
   update public.requerimientos
-     set listo_en_almacen_en = case when listo_en_almacen_en = now() then now() - interval '2 hours 30 minutes'
+     set listo_en_almacen_en = case when listo_en_almacen_en = now() then now() - interval '40 minutes'
                                     else listo_en_almacen_en end,
-         entregado_en        = case when entregado_en = now() then now() - interval '2 hours' else entregado_en end
+         entregado_en        = case when entregado_en = now() then now() - interval '25 minutes' else entregado_en end
    where now() in (listo_en_almacen_en, entregado_en);
-  update public.conteos_inventario c set registrado_en = now() - interval '1 hour'
+  update public.requerimiento_lineas l
+     set atendida_en = coalesce(q.entregado_en, q.listo_en_almacen_en, q.en_atencion_en)
+    from public.requerimientos q
+   where q.id = l.requerimiento_id and l.atendida_en = now();
+  update public.conteos_inventario c set registrado_en = now() - interval '15 minutes'
    where c.registrado_en = now();
+  update public.documentos_orden_servicio d
+     set creado_en = coalesce(s.conformidad_en, s.iniciado_en)
+    from public.ordenes_servicio s
+   where s.id = d.orden_servicio_id and d.creado_en = now();
+  update public.subcontrato_contratos c
+     set creado_en = s.creado_en + interval '1 hour'
+    from public.subcontratos s
+   where s.id = c.subcontrato_id and c.creado_en = now();
+
+  -- Cada aviso lleva la hora del paso que anuncia, y lo que ya se atendió o es
+  -- de días atrás va leído: la campana de Gerencia no muestra como pendiente
+  -- una compra que ya aprobó.
+  update public.notificaciones n
+     set creado_en = coalesce(case
+           when n.titulo like 'Compra por aprobar%' then c.aprobacion_pedida_en
+           when n.titulo like 'Compra aprobada%'    then c.aprobado_en
+           when n.titulo like 'Compra rechazada%'   then c.rechazado_en
+           when n.titulo like 'Compra anulada%'     then c.anulada_en
+           when n.titulo like 'Recojo programado%'  then (select max(p.programado_en) from public.programacion_recojo p
+                                                           where p.orden_compra_id = c.id)
+           when n.titulo like 'Ingreso por validar%' then c.dejado_en
+           when n.titulo like 'Almacén observó%'    then c.entregado_almacen_en
+         end, n.creado_en)
+    from public.ordenes_compra_materiales c
+   where n.origen_tabla = 'ordenes_compra_materiales' and n.origen_id = c.id and n.creado_en = now();
+  update public.notificaciones n
+     set creado_en = coalesce(case
+           when n.titulo like 'Servicio por aprobar%' then s.creado_en
+           when n.titulo like 'Servicio aprobado%'    then s.aprobado_en
+           when n.titulo like 'Servicio rechazado%'   then s.rechazado_en
+         end, n.creado_en)
+    from public.ordenes_servicio s
+   where n.origen_tabla = 'ordenes_servicio' and n.origen_id = s.id and n.creado_en = now();
+  update public.notificaciones n
+     set creado_en = coalesce(case
+           when n.titulo like 'Requerimiento por revisar%' then q.creado_en
+           when n.titulo like 'Requerimiento por comprar%' or n.titulo like 'Por comprar%' then q.revision_stock_en
+           when n.titulo like 'Listo en almacén%'      then q.listo_en_almacen_en
+           when n.titulo like 'Requerimiento anulado%' then q.anulado_en
+           when n.titulo like 'En compra%'             then q.en_atencion_en
+           when n.titulo like 'Entregado%'             then q.entregado_en
+         end, n.creado_en)
+    from public.requerimientos q
+   where n.origen_tabla = 'requerimientos' and n.origen_id = q.id and n.creado_en = now();
+  update public.notificaciones n
+     set creado_en = s.creado_en
+    from public.subcontratos s
+   where n.origen_tabla = 'subcontratos' and n.origen_id = s.id and n.creado_en = now();
+  update public.notificaciones n
+     set creado_en = d.creado_en
+    from public.documentos_orden_servicio d
+   where n.origen_tabla = 'documentos_orden_servicio' and n.origen_id = d.id and n.creado_en = now();
+  update public.notificaciones n
+     set leida_en = n.creado_en + interval '1 hour'
+   where n.leida_en is null
+     and n.origen_tabla in ('ordenes_compra_materiales', 'ordenes_servicio', 'requerimientos', 'subcontratos')
+     and (n.creado_en < now() - interval '1 day'
+          or (n.titulo like 'Compra por aprobar%' and exists (select 1 from public.ordenes_compra_materiales c
+                where c.id = n.origen_id and c.aprobacion <> 'POR_APROBAR'))
+          or (n.titulo like 'Servicio por aprobar%' and exists (select 1 from public.ordenes_servicio s
+                where s.id = n.origen_id and s.aprobacion <> 'POR_APROBAR'))
+          or (n.titulo like 'Requerimiento por revisar%' and exists (select 1 from public.requerimientos q
+                where q.id = n.origen_id and q.estado <> 'POR_ATENDER'))
+          or (n.titulo like 'Recojo programado%' and exists (select 1 from public.ordenes_compra_materiales c
+                where c.id = n.origen_id and c.recojo in ('RECOGIDO', 'DEJADO')))
+          or (n.titulo like 'Ingreso por validar%' and not exists (select 1 from public.ingresos_pendientes_almacen i
+                where i.orden_compra_id = n.origen_id and i.estado = 'PENDIENTE')));
   perform set_config('session_replication_role', 'origin', true);
 
   if exists (select 1 from public.v_kardex_almacen where saldo < 0) then
