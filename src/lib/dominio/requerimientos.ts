@@ -74,7 +74,7 @@ export const CODIGOS_FIJOS_DEL_RQ: Record<TipoRequerimiento, { codigo: string; d
  * OT) o para el área misma, las herramientas y los insumos con que trabaja.
  * El del área es **gasto operativo** (DKS, 2026-11-27: «pedir herramientas
  * para el área… ese costo iría como gasto operativo»): va con PLANTA, la base
- * lo marca (`para_el_area`, migración 20261127160000) y lo que sale del
+ * lo marca (`para_el_area`, migración 20261127180000) y lo que sale del
  * almacén para él va a PLANTA, nunca a una unidad ni a una OT. Cuánto gasta
  * cada área se sumará en la entrega 2 del plan.
  */

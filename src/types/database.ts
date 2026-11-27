@@ -22771,6 +22771,12 @@ export type Database = {
           fecha_entrega: string | null
         }[]
       }
+      unidades_en_letra: {
+        Args: {
+          p_n: number | null
+        }
+        Returns: string
+      }
       unidades_libres_ya_facturadas: {
         Args: {
           p_ids: string[] | null

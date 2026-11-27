@@ -82,7 +82,7 @@ export type RequerimientoListado = {
   /** Quien lo registró: el supervisor (`rq_exigir_del_area`) y el colaborador de Diseño corrigen y anulan solo los suyos. */
   creado_por: string | null
   codigo_interno: string
-  /** Es para el área (gasto operativo): va con PLANTA y lo que sale para él va a PLANTA (migración 20261127160000). */
+  /** Es para el área (gasto operativo): va con PLANTA y lo que sale para él va a PLANTA (migración 20261127180000). */
   para_el_area: boolean
   justificacion: string
   fecha_requerida: string | null

@@ -237,7 +237,7 @@ export type LineaRqParaSalida = {
   material_id: string | null
   /** El que entró al kardex de su compra, que puede ser otra marca: la salida lo propone primero. */
   material_comprado: string | null
-  /** El RQ es para el área (gasto operativo): sale a PLANTA, sin vehículo ni OT (migración 20261127160000). */
+  /** El RQ es para el área (gasto operativo): sale a PLANTA, sin vehículo ni OT (migración 20261127180000). */
   para_el_area: boolean
 }
 

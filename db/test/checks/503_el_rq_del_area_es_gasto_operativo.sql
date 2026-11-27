@@ -1,4 +1,4 @@
--- El RQ del área es gasto operativo (migración 20261127160000), con el rol real:
+-- El RQ del área es gasto operativo (migración 20261127180000), con el rol real:
 -- un SUPERVISOR de Producción registra el RQ del área y un ALMACENERO saca lo
 -- suyo, los dos con `set local role authenticated`. Termina en rollback.
 --
@@ -18,9 +18,9 @@ declare v text; v_id uuid;
 begin
   foreach v in array array['ALMACENERO:ALM:almacenero', 'SUPERVISOR:PRD:supervisor'] loop
     v_id := gen_random_uuid();
-    insert into auth.users (id, email) values (v_id, lower(split_part(v, ':', 3)) || '.501@prueba.local');
+    insert into auth.users (id, email) values (v_id, lower(split_part(v, ':', 3)) || '.503@prueba.local');
     insert into public.usuarios (id, nombres, apellidos, correo, rol_id, area_id)
-    select v_id, split_part(v, ':', 1), 'Check 501', lower(split_part(v, ':', 3)) || '.501@prueba.local', r.id,
+    select v_id, split_part(v, ':', 1), 'Check 503', lower(split_part(v, ':', 3)) || '.503@prueba.local', r.id,
            (select id from public.areas where codigo = split_part(v, ':', 2))
       from public.roles r where r.codigo = split_part(v, ':', 1);
     perform set_config('prueba.' || split_part(v, ':', 3), v_id::text, true);
@@ -39,7 +39,7 @@ do $$
 declare v_mat uuid;
 begin
   insert into public.materiales (codigo, descripcion, categoria_id, unidad_medida_id)
-  values ('CHK501-HERR', 'Disco de corte del check 501',
+  values ('CHK503-HERR', 'Disco de corte del check 503',
           (select id from public.categorias_material where almacen = 'CONSUMIBLES' and activo order by codigo limit 1),
           (select id from public.unidades_medida where codigo = 'UND'))
   returning id into v_mat;
@@ -50,10 +50,10 @@ begin
   perform set_config('prueba.mtz', (select id::text from public.areas where codigo = 'MTZ'), true);
   -- Un vehículo con su código, para la salida que intenta ir a él.
   insert into public.clientes (tipo_documento, numero_documento, razon_social)
-  values ('RUC', '20999950101', 'TRANSPORTES DEL CHECK 501 S.A.C.');
+  values ('RUC', '20999950301', 'TRANSPORTES DEL CHECK 503 S.A.C.');
   insert into public.unidades (cliente_id, placa, tipo_vehiculo, marca, modelo)
-  select id, 'C50-501', 'VOLQUETE', 'VOLVO', 'FMX' from public.clientes where numero_documento = '20999950101';
-  perform set_config('prueba.vehiculo', (select id::text from public.unidades where placa = 'C50-501'), true);
+  select id, 'C50-503', 'VOLQUETE', 'VOLVO', 'FMX' from public.clientes where numero_documento = '20999950301';
+  perform set_config('prueba.vehiculo', (select id::text from public.unidades where placa = 'C50-503'), true);
 end $$;
 
 -- 1. El supervisor registra el RQ del área ------------------------------------------
@@ -72,11 +72,11 @@ begin
 
   -- Un RQ de una unidad con su id: el del área no lo marca. Es la misma
   -- persona, así que la primera vez entró (la respuesta se perdió) y se dice así.
-  perform public.emitir_requerimiento(current_setting('prueba.otro')::uuid, 'OPERACION', current_setting('prueba.prd')::uuid, 'UNI-501',
-    'Para la unidad del check 501, se deshace', null, v_lineas);
+  perform public.emitir_requerimiento(current_setting('prueba.otro')::uuid, 'OPERACION', current_setting('prueba.prd')::uuid, 'UNI-503',
+    'Para la unidad del check 503, se deshace', null, v_lineas);
   begin
     perform public.emitir_requerimiento_del_area(current_setting('prueba.otro')::uuid, current_setting('prueba.prd')::uuid,
-      'Para la unidad del check 501, se deshace', null, v_lineas);
+      'Para la unidad del check 503, se deshace', null, v_lineas);
     raise exception 'FALLA: marcó del área un RQ de una unidad';
   exception when others then
     if sqlerrm like 'FALLA:%' then raise; end if;
@@ -110,12 +110,12 @@ select test.afirmar(
 -- 2. Solo con PLANTA, y corregido a otro código deja de serlo --------------------------
 select test.debe_fallar(
   $q$insert into public.requerimientos (id, numero, area_id, codigo_interno, justificacion, creado_por, para_el_area)
-     values (gen_random_uuid(), 'RQ-CHK501', current_setting('prueba.prd')::uuid, 'UNI-501', 'Del área con otro código', current_setting('prueba.supervisor')::uuid, true)$q$,
+     values (gen_random_uuid(), 'RQ-CHK503', current_setting('prueba.prd')::uuid, 'UNI-503', 'Del área con otro código', current_setting('prueba.supervisor')::uuid, true)$q$,
   'un RQ del área con otro código que PLANTA no entra', 'va con PLANTA');
 do $$
 begin
   perform set_config('metalwork.corrigiendo', 'requerimiento', true);
-  update public.requerimientos set codigo_interno = 'UNI-501' where id = current_setting('prueba.rq')::uuid;
+  update public.requerimientos set codigo_interno = 'UNI-503' where id = current_setting('prueba.rq')::uuid;
   if (select para_el_area from public.requerimientos where id = current_setting('prueba.rq')::uuid) then
     raise exception 'FALLA: corregido a una unidad, siguió siendo del área';
   end if;
@@ -139,13 +139,13 @@ end $$;
 
 select pg_temp.como('almacenero');
 set local role authenticated;
-select public.registrar_ingreso_almacen(gen_random_uuid(), current_setting('prueba.mat')::uuid, 10, 'INGRESO_GENERAL', 'ENSAYO 501', 1, 'PEN');
+select public.registrar_ingreso_almacen(gen_random_uuid(), current_setting('prueba.mat')::uuid, 10, 'INGRESO_GENERAL', 'ENSAYO 503', 1, 'PEN');
 do $$
 declare v_uid text := auth.uid()::text; v_id uuid; v_cod text; v_ot uuid; v_uni uuid;
 begin
   begin
     perform public.registrar_salida_material(current_setting('prueba.s_unidad')::uuid, current_setting('prueba.mat')::uuid, 1,
-      null, 'UNI-501', 'Salida del check 501', 'Persona de prueba', v_uid || '/' || current_setting('prueba.s_unidad') || '.jpg',
+      null, 'UNI-503', 'Salida del check 503', 'Persona de prueba', v_uid || '/' || current_setting('prueba.s_unidad') || '.jpg',
       current_setting('prueba.linea')::uuid);
     raise exception 'FALLA: lo del RQ del área salió hacia una unidad';
   exception when others then
@@ -155,7 +155,7 @@ begin
   -- Hacia un vehículo registrado: tampoco (era la fuga que encontró el auditor).
   begin
     perform public.registrar_salida_material(current_setting('prueba.s_vehiculo')::uuid, current_setting('prueba.mat')::uuid, 1,
-      current_setting('prueba.vehiculo')::uuid, null, 'Salida del check 501', 'Persona de prueba',
+      current_setting('prueba.vehiculo')::uuid, null, 'Salida del check 503', 'Persona de prueba',
       v_uid || '/' || current_setting('prueba.s_vehiculo') || '.jpg', current_setting('prueba.linea')::uuid);
     raise exception 'FALLA: lo del RQ del área salió hacia un vehículo';
   exception when others then
@@ -163,7 +163,7 @@ begin
     if sqlerrm not like '%es gasto operativo de Producción%' then raise; end if;
   end;
   v_id := public.registrar_salida_material(current_setting('prueba.s_planta')::uuid, current_setting('prueba.mat')::uuid, 2,
-    null, 'PLANTA', 'Salida del check 501', 'Persona de prueba', v_uid || '/' || current_setting('prueba.s_planta') || '.jpg',
+    null, 'PLANTA', 'Salida del check 503', 'Persona de prueba', v_uid || '/' || current_setting('prueba.s_planta') || '.jpg',
     current_setting('prueba.linea')::uuid);
   select codigo_interno, orden_id, unidad_id into v_cod, v_ot, v_uni from public.movimientos_materiales where id = v_id;
   if v_cod is distinct from 'PLANTA' or v_ot is not null or v_uni is not null then
@@ -175,7 +175,7 @@ reset role;
 
 -- Ya registrada, la salida no pasa a una unidad, la cambie quien la cambie.
 select test.debe_fallar(
-  $q$update public.movimientos_materiales set codigo_interno = 'UNI-501' where id = current_setting('prueba.mov')::uuid$q$,
+  $q$update public.movimientos_materiales set codigo_interno = 'UNI-503' where id = current_setting('prueba.mov')::uuid$q$,
   'la salida del RQ del área no se cambia a otro código', 'es gasto operativo de Producción');
 select test.debe_fallar(
   $q$update public.movimientos_materiales set unidad_id = current_setting('prueba.vehiculo')::uuid where id = current_setting('prueba.mov')::uuid$q$,
@@ -191,5 +191,5 @@ select test.debe_fallar(
   'el almacenero no registra un RQ del área', 'permiso');
 reset role;
 
-select 'OK 501 el RQ del área es gasto operativo' as resultado;
+select 'OK 503 el RQ del área es gasto operativo' as resultado;
 rollback;
