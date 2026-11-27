@@ -28,7 +28,18 @@
 --      lo pone a la OT sin cliente y a su unidad. Los dos marcan su cambio en
 --      `metalwork.cliente_de_unidad`. La unidad sin OT, o cuyas OT se anularon,
 --      se sigue corrigiendo como siempre, y la carga de la OT sigue poniéndole
---      el cliente de la cotización a la unidad que no tenía ninguno.
+--      el cliente de la cotización a la unidad que no tenía ninguno. Cambia una
+--      cosa: si esa unidad sin cliente es la de una OT del taller que todavía
+--      no tiene cliente, la carga ya no se la lleva para otro cliente; primero
+--      se le pone el cliente a esa OT con «Poner cliente» (en producción no hay
+--      ninguna OT sin cliente, 2026-11-27).
+--      La unidad cuya OT ya se entregó o facturó, o que tiene más de una OT, no
+--      cambia de dueño por ningún camino: si el vehículo es ahora de otro
+--      cliente, se registra como unidad de ese cliente (la placa se repite solo
+--      dentro del mismo cliente), y el aviso lo dice así.
+--
+--   «Poner cliente» deja dicho en la bitácora, además del cliente, cuando pasa
+--   la OT a la unidad que el cliente ya tenía con esa placa.
 --
 -- Lo que corre sin sesión (una migración, la conexión directa) sigue como
 -- estaba, como en la 20261127160000.
@@ -57,7 +68,7 @@ begin
       ('public.editar_ot_con_historial_base(uuid,timestamptz,jsonb,text)',
        array['52fdcfe044d26f7ccf378a410a5a2e95', 'bc4759f5e1e54c772e115959160761a8']),
       ('public.poner_cliente_a_orden(uuid,uuid)',
-       array['5f6c77aef7d0bb85bfa0c0b0d07c5f0b', '6f08fd337ca97fc08622e3200cbef394'])
+       array['5f6c77aef7d0bb85bfa0c0b0d07c5f0b', '2ed45cb9be3b7cdaa4da990e99e5b3d2'])
     ) as t(firma, conocidas)
   loop
     select md5(replace(p.prosrc, E'\r', '')) into huella from pg_proc p where p.oid = to_regprocedure(f.firma);
@@ -121,6 +132,8 @@ as $$
 declare
   v_ot       text;
   v_sin      boolean;
+  v_cerrada  boolean;
+  v_varias   boolean;
   v_unidad   text;
 begin
   if new.cliente_id is not distinct from old.cliente_id then
@@ -133,23 +146,33 @@ begin
     return new;  -- una migración o la conexión directa, como hasta aquí
   end if;
 
-  select o.numero, o.cliente_id is null into v_ot, v_sin
+  select o.numero, o.cliente_id is null, o.estado in ('ENTREGADA', 'FACTURADA')
+    into v_ot, v_sin, v_cerrada
     from public.ordenes_trabajo o
    where o.unidad_id = old.id and o.estado <> 'ANULADA'
      and o.cliente_id is distinct from new.cliente_id
-   order by (o.cliente_id is null) desc, o.creado_en desc
+   order by (o.cliente_id is null) desc, (o.estado in ('ENTREGADA', 'FACTURADA')), o.creado_en desc
    limit 1;
   if v_ot is null then
     return new;
   end if;
+  -- «Editar OT» rechaza la unidad que tiene otras OT, también anuladas.
+  select count(*) > 1 into v_varias from public.ordenes_trabajo o where o.unidad_id = old.id;
 
   v_unidad := coalesce(nullif(btrim(old.codigo_interno), ''), nullif(btrim(old.placa), ''), 'sin placa');
   if not (public.es_admin() or public.tiene_permiso('ordenes.ver') or public.tiene_permiso('ordenes.crear')) then
     v_ot := null;
   end if;
-  if v_sin then
-    raise exception 'La unidad % es de una OT% que todavía no tiene cliente: el cliente se le pone con «Poner cliente», en el resumen de esa OT, y la unidad queda del mismo.',
+  if v_sin and not v_cerrada then
+    raise exception 'La unidad % es de una OT% que todavía no tiene cliente: el cliente se le pone con «Poner cliente», en el resumen de esa OT.',
       v_unidad, coalesce(' ' || v_ot, '')
+      using errcode = 'insufficient_privilege';
+  end if;
+  if v_cerrada or v_varias then
+    raise exception 'La unidad % ya tiene %: su cliente no cambia, porque cambiaría el de su historial. Si el vehículo es ahora de otro cliente, regístralo como unidad de ese cliente.',
+      v_unidad,
+      case when v_cerrada then 'su OT' || coalesce(' ' || v_ot, '') || ' entregada'
+           else 'más de una OT' end
       using errcode = 'insufficient_privilege';
   end if;
   raise exception 'La unidad % ya tiene su OT%: su cliente cambia solo con «Editar OT / cambiar cliente», que la pasa con su OT a la cotización aprobada del otro cliente y deja anotada su venta anterior, con su historial.',
@@ -300,7 +323,8 @@ revoke all on function public.editar_ot_con_historial_base(uuid,timestamptz,json
 
 -- 4. «Poner cliente»: la de la 20261127160000, que ahora marca también el cambio --
 -- de la unidad de la OT (cuando el cliente ya tiene esa placa) y el del cliente
--- de la unidad, solo mientras los hace.
+-- de la unidad, solo mientras los hace, y deja dicho en la bitácora el cambio de
+-- unidad.
 create or replace function public.poner_cliente_a_orden(p_orden uuid, p_cliente uuid)
  RETURNS void
  LANGUAGE plpgsql
@@ -312,6 +336,8 @@ declare
   v_unidad  record;
   v_misma   uuid;
   v_nombre  text;
+  v_texto   text;
+  v_datos   jsonb;
 begin
   perform public.exigir_permiso('ordenes.editar');
 
@@ -372,9 +398,14 @@ begin
   update public.ordenes_trabajo set cliente_id = p_cliente where id = p_orden;
   perform set_config('metalwork.cliente_de_ot', '', true);
 
-  perform public.ot_registrar_evento(
-    p_orden, 'COMENTARIO', format('Se le puso el cliente: %s.', rtrim(v_nombre, '.')),
-    jsonb_build_object('cliente_id', p_cliente));
+  v_texto := format('Se le puso el cliente: %s.', rtrim(v_nombre, '.'));
+  v_datos := jsonb_build_object('cliente_id', p_cliente);
+  if v_misma is not null then
+    v_texto := v_texto || format(' La OT pasó a la unidad %s que ese cliente ya tenía registrada.',
+                                 (select u.placa from public.unidades u where u.id = v_misma));
+    v_datos := v_datos || jsonb_build_object('unidad_antes', v_unidad.id, 'unidad_id', v_misma);
+  end if;
+  perform public.ot_registrar_evento(p_orden, 'COMENTARIO', v_texto, v_datos);
 end;
 $function$;
 

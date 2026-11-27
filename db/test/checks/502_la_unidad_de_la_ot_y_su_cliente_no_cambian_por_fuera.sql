@@ -13,7 +13,10 @@
 --      tampoco vuelve.
 --   4. La unidad de la OT que abrió el taller sin cliente recibe el cliente solo
 --      con «Poner cliente», también cuando la OT pasa a la unidad que el cliente
---      ya tenía con esa placa.
+--      ya tenía con esa placa, y la bitácora lo dice.
+--   5. La unidad de una OT entregada, o con más de una OT, no cambia de dueño, y
+--      el aviso dice que se registra como unidad del otro cliente; la carga no
+--      se lleva la unidad de una OT del taller sin cliente.
 -- Cada paso con la cuenta del puesto que lo hace y `set local role
 -- authenticated`. Termina en rollback.
 \set ON_ERROR_STOP on
@@ -42,6 +45,12 @@ select set_config('prueba.carroceria', (select id::text from public.tipos_carroc
 select set_config('prueba.cot_a', gen_random_uuid()::text, true);   -- primer comprador: su OT 1
 select set_config('prueba.cot_b', gen_random_uuid()::text, true);   -- segundo comprador: recibe la OT 1
 select set_config('prueba.cot_c', gen_random_uuid()::text, true);   -- primer comprador: su OT se anula
+select set_config('prueba.cot_d', gen_random_uuid()::text, true);   -- primer comprador: sin OT, para la carga
+select set_config('prueba.ot3', gen_random_uuid()::text, true);
+select set_config('prueba.taller3', gen_random_uuid()::text, true); -- OT del taller sin cliente, unidad con código
+select set_config('prueba.u_taller3', gen_random_uuid()::text, true);
+select set_config('prueba.entregada', gen_random_uuid()::text, true);
+select set_config('prueba.u_entregada', gen_random_uuid()::text, true);
 select set_config('prueba.ot1', gen_random_uuid()::text, true);
 select set_config('prueba.ot2', gen_random_uuid()::text, true);
 select set_config('prueba.taller', gen_random_uuid()::text, true);  -- OT del taller sin cliente, unidad sin cliente
@@ -96,7 +105,8 @@ begin
   for c in select * from (values
       (current_setting('prueba.cot_a'), 'QA-502-A', current_setting('prueba.cliente_a')),
       (current_setting('prueba.cot_b'), 'QA-502-B', current_setting('prueba.cliente_b')),
-      (current_setting('prueba.cot_c'), 'QA-502-C', current_setting('prueba.cliente_a'))) as t(id, numero, cliente)
+      (current_setting('prueba.cot_c'), 'QA-502-C', current_setting('prueba.cliente_a')),
+      (current_setting('prueba.cot_d'), 'QA-502-D', current_setting('prueba.cliente_a'))) as t(id, numero, cliente)
   loop
     insert into public.cotizaciones_pdf (id, numero, cliente_id, tipo_carroceria_id, nombre_archivo, ruta_storage,
                                          mime_type, tamano_bytes, registrado_por, monto_venta, moneda, cantidad_unidades)
@@ -110,7 +120,7 @@ begin
 
   perform test.como_usuario(current_setting('prueba.gerente')::uuid);
   set local role authenticated;
-  update public.cotizaciones_pdf set estado = 'APROBADA' where numero in ('QA-502-A', 'QA-502-B', 'QA-502-C');
+  update public.cotizaciones_pdf set estado = 'APROBADA' where numero in ('QA-502-A', 'QA-502-B', 'QA-502-C', 'QA-502-D');
   reset role;
 
   perform test.como_usuario(current_setting('prueba.oficina')::uuid);
@@ -284,6 +294,10 @@ begin
   perform test.afirmar(pg_temp.unidad_de_ot(current_setting('prueba.taller2')) = current_setting('prueba.u_libre')::uuid
                        and not (select activo from public.unidades where id = current_setting('prueba.u_taller2')::uuid),
     'y pasa la OT a la unidad que el cliente ya tenía con esa placa, desactivando la repetida');
+  perform test.afirmar(exists (select 1 from public.ot_bitacora e
+                                where e.orden_id = current_setting('prueba.taller2')::uuid
+                                  and e.descripcion like '%La OT pasó a la unidad QA5-502 que ese cliente ya tenía registrada.'),
+    'y el cambio de unidad queda dicho en su historial');
   perform test.afirmar((select count(*) from public.ot_bitacora e
                          where e.orden_id in (current_setting('prueba.taller')::uuid, current_setting('prueba.taller2')::uuid)
                            and e.descripcion like 'Se le puso el cliente: QA PRIMER COMPRADOR 502%') = 2,
@@ -293,7 +307,53 @@ begin
     'Las marcas de «Poner cliente» no quedan puestas después');
 end $$;
 
--- 5. Los disparadores no se llaman desde la API -----------------------------------
+-- 5. Los casos que ningún botón resuelve, y la carga ---------------------------
+do $$
+begin
+  set local session_replication_role = replica;
+  -- La unidad de una OT ya entregada; otra OT, anulada, en la unidad que recibió
+  -- la del taller (queda con dos OT); y una OT del taller sin cliente cuya unidad
+  -- sin cliente lleva un código interno.
+  insert into public.unidades (id, cliente_id, placa, tipo_vehiculo) values
+    (current_setting('prueba.u_entregada')::uuid, current_setting('prueba.cliente_a')::uuid, 'QA5-504', 'CAMION');
+  insert into public.unidades (id, codigo_interno, tipo_vehiculo) values
+    (current_setting('prueba.u_taller3')::uuid, 'QA-502 T3', 'CAMION');
+  insert into public.ordenes_trabajo (id, numero, sede_id, descripcion, cliente_id, unidad_id, estado, motivo_anulacion) values
+    (current_setting('prueba.entregada')::uuid, '50297-2026', current_setting('prueba.sede')::uuid, 'OT entregada 502',
+     current_setting('prueba.cliente_a')::uuid, current_setting('prueba.u_entregada')::uuid, 'ENTREGADA', null),
+    (gen_random_uuid(), '50296-2026', current_setting('prueba.sede')::uuid, 'OT anulada 502',
+     current_setting('prueba.cliente_a')::uuid, current_setting('prueba.u_libre')::uuid, 'ANULADA', 'Prueba 502');
+  insert into public.ordenes_trabajo (id, numero, sede_id, descripcion, abierta_en_taller, unidad_id) values
+    (current_setting('prueba.taller3')::uuid, '50295-2026', current_setting('prueba.sede')::uuid, 'OT del taller sin cliente 502 c', true,
+     current_setting('prueba.u_taller3')::uuid);
+  set local session_replication_role = origin;
+
+  perform test.como_usuario(current_setting('prueba.ventas')::uuid);
+  set local role authenticated;
+  perform test.debe_fallar(
+    format('update public.unidades set cliente_id = %L where id = %L', current_setting('prueba.cliente_b'), current_setting('prueba.u_entregada')),
+    'La unidad de la OT entregada no cambia de dueño: se registra como unidad del otro cliente',
+    'ya tiene su OT 50297-2026 entregada: su cliente no cambia');
+  perform test.debe_fallar(
+    format('update public.unidades set cliente_id = %L where id = %L', current_setting('prueba.cliente_b'), current_setting('prueba.u_libre')),
+    'Ni la que tiene más de una OT, que «Editar OT» no pasaría', 'ya tiene más de una OT: su cliente no cambia');
+  reset role;
+
+  -- La carga ya no se lleva para otro cliente la unidad de la OT del taller sin cliente.
+  perform test.como_usuario(current_setting('prueba.oficina')::uuid);
+  set local role authenticated;
+  perform test.debe_fallar(
+    format('select pg_temp.cargar(%L, %L, %L, %L)', current_setting('prueba.cot_d'), current_setting('prueba.ot3'), 'QA-502 T3', '50213'),
+    'La carga pide antes «Poner cliente» a la OT del taller', 'que todavía no tiene cliente: el cliente se le pone con «Poner cliente», en el resumen de esa OT.');
+  -- Con el cliente puesto, la misma carga entra en esa unidad.
+  perform public.poner_cliente_a_orden(current_setting('prueba.taller3')::uuid, current_setting('prueba.cliente_a')::uuid);
+  perform pg_temp.cargar(current_setting('prueba.cot_d'), current_setting('prueba.ot3'), 'QA-502 T3', '50213');
+  reset role;
+  perform test.afirmar(pg_temp.unidad_de_ot(current_setting('prueba.ot3')) = current_setting('prueba.u_taller3')::uuid,
+    'y la OT nueva queda en esa unidad');
+end $$;
+
+-- 6. Los disparadores no se llaman desde la API -----------------------------------
 do $$
 begin
   perform test.afirmar(
