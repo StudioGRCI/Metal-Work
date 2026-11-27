@@ -349,6 +349,8 @@ export type TramiteDeLaOrden = {
   vencido: boolean
   /** Si quien mira puede abrir su ficha. */
   ve: boolean
+  /** Si su tipo es de los que abre la OT (tarjeta y placas), venga de la OT o registrado a mano. */
+  de_la_regla: boolean
 }
 
 /**
@@ -360,7 +362,7 @@ export async function tramitesDeLaOrden(ordenId: string): Promise<TramiteDeLaOrd
   const supabase = await createClient()
   const { data, error } = await supabase
     .rpc('tramites_de_la_orden', { p_orden: ordenId })
-    .select('id, numero, tipo, origen, estado, situacion, fecha_limite, fecha_conclusion, vencido, ve')
+    .select('id, numero, tipo, origen, estado, situacion, fecha_limite, fecha_conclusion, vencido, ve, de_la_regla')
   if (error) throw new Error(`No se pudieron leer los trámites de la OT: ${error.message}`)
   return (data ?? []).flatMap((t) =>
     t.id && t.numero && t.estado
@@ -376,6 +378,7 @@ export async function tramitesDeLaOrden(ordenId: string): Promise<TramiteDeLaOrd
             fecha_conclusion: t.fecha_conclusion,
             vencido: t.vencido === true,
             ve: t.ve === true,
+            de_la_regla: t.de_la_regla === true,
           },
         ]
       : [],

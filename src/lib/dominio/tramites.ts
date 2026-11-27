@@ -48,7 +48,7 @@ export const SITUACION_TRAMITE: Record<string, Def> = {
  */
 export const ORIGEN_TRAMITE: Record<string, { etiqueta: string; descripcion: string }> = {
   MANUAL: { etiqueta: 'Registrado', descripcion: 'Lo registró quien lleva los trámites.' },
-  OT: { etiqueta: 'Abierto por la OT', descripcion: 'Lo abrió el sistema al terminar la OT, con su fecha límite.' },
+  OT: { etiqueta: 'Abierto por la OT', descripcion: 'Lo abrió el sistema al terminar la unidad de la OT, con su fecha límite.' },
   RENOVACION: { etiqueta: 'Renovación', descripcion: 'Renueva el documento de un trámite concluido.' },
 }
 
@@ -90,12 +90,15 @@ export function diasDeAvisoEnTexto(dias: number[]): string {
  * «Venció hace 3 días», «Vence hoy», «Vence en 5 días». `null` sin fecha límite
  * o con el trámite anulado.
  */
-export function plazoDelTramite(dias: number | null): { texto: string; tono: Tono } | null {
+export function plazoDelTramite(dias: number | null, porVencer?: boolean): { texto: string; tono: Tono } | null {
   if (dias === null) return null
   if (dias < 0) return { texto: `Venció hace ${-dias} ${dias === -1 ? 'día' : 'días'}`, tono: 'peligro' }
   if (dias === 0) return { texto: 'Vence hoy', tono: 'peligro' }
-  if (dias === 1) return { texto: 'Vence mañana', tono: 'aviso' }
-  return { texto: `Vence en ${dias} días`, tono: dias <= 7 ? 'aviso' : 'neutro' }
+  // Con `por_vencer` de la base, el ámbar es el mismo de la vista «Por vencer»:
+  // los días de aviso de su tipo (30 en un SOAT, 5 en la tarjeta), no un tope fijo.
+  const enAviso = porVencer ?? dias <= 7
+  if (dias === 1) return { texto: 'Vence mañana', tono: porVencer === false ? 'neutro' : 'aviso' }
+  return { texto: `Vence en ${dias} días`, tono: enAviso ? 'aviso' : 'neutro' }
 }
 
 /** «ABC-123 · M-0045 · Furgón». */

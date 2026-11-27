@@ -154,6 +154,15 @@ select test.afirmar((select count(*) from public.tramites where orden_id = pg_te
                     and (select count(*) from pg_temp.de_la_ot('ot_d', 'tipo_placas')) = 0,
   'un tipo desactivado en el catálogo ya no se abre');
 update public.tramite_tipos set activo = true where id = pg_temp.id('tipo_placas');
+-- Solo la de fabricación (decisión de StudioGRCI, 2026-11-27): una reparación de la unidad sin placa no abre nada.
+insert into public.ordenes_trabajo (cliente_id, unidad_id, sede_id, descripcion, tipo_trabajo, estado)
+select o.cliente_id, o.unidad_id, o.sede_id, 'Check 501 · reparación', 'REPARACION', 'APROBADA'
+  from public.ordenes_trabajo o where o.id = pg_temp.id('ot_b');
+select set_config('prueba.ot_rep', (select id::text from public.ordenes_trabajo where descripcion = 'Check 501 · reparación'), true);
+select pg_temp.terminar(pg_temp.id('ot_rep'));
+select test.afirmar((select estado from public.ordenes_trabajo where id = pg_temp.id('ot_rep')) = 'TERMINADA'
+                    and not exists (select 1 from public.tramites where orden_id = pg_temp.id('ot_rep')),
+  'la OT de reparación termina y no abre trámites: solo la de fabricación');
 -- Que la OT siga su camino no abre otra vez.
 set local session_replication_role = replica;
 update public.ordenes_trabajo set estado = 'CONTROL_CALIDAD' where id = pg_temp.id('ot_a');
@@ -285,6 +294,20 @@ select test.como_usuario(:'admin_id');
 select test.afirmar(
   (select r.avisos from public.revisar_tramites(pg_temp.laborable(pg_temp.hoy() + 180)) r where r.tipo = 'RENOVACION') = 0,
   'con la renovación anulada, la revisión no abre otra');
+-- Pero cuando su documento vence, lo avisa una vez, al Tramitador y a Gerencia: no pasa callado.
+-- (La revisión va en su propia sentencia: lo que escribe no lo ve otra
+-- subconsulta de la misma sentencia.)
+select set_config('prueba.r', (select r.avisos::text from public.revisar_tramites(pg_temp.laborable(pg_temp.hoy() + 205)) r where r.tipo = 'VENCIDO'), true);
+select test.afirmar(
+  current_setting('prueba.r')::integer >= 1
+  and pg_temp.avisos('ger', pg_temp.id('soat'), 'Venció el documento del ' || (select numero from public.tramites where id = pg_temp.id('soat'))) = 1
+  and pg_temp.avisos('tra', pg_temp.id('soat'), 'Venció el documento del ') = 1
+  and (select cuerpo from public.notificaciones where usuario_id = pg_temp.id('tra') and origen_id = pg_temp.id('soat')
+         and titulo like 'Venció el documento del %') like '%Su renovación se anuló: si hace falta, ábrela con «Renovar ahora».',
+  'con la renovación anulada, el vencimiento del documento se avisa al Tramitador y a Gerencia');
+select public.revisar_tramites(pg_temp.laborable(pg_temp.hoy() + 206));
+select test.afirmar(pg_temp.avisos('ger', pg_temp.id('soat'), 'Venció el documento del ') = 1,
+  'una sola vez');
 select test.como_usuario(:'tra_id');
 set local role authenticated;
 do $$ begin
@@ -382,5 +405,89 @@ select test.afirmar(
      join public.pruebas_filas f on f.tabla = 'tramites' and f.fila_id = t.id and f.lote_id = '50100000-0000-4000-8000-00000000a0a2'
     where t.orden_id = pg_temp.id('ot_fuera')) = 2,
   'si la OT de un lote se termina fuera de él, sus trámites van igual al lote de la OT');
+
+-- 4b. La renovación que se registró a mano no se repite ----------------------------------------------
+-- De una unidad: el Tramitador ya registró con «Registrar» el que renueva al
+-- concluido; la revisión no abre otra. (En lo de la empresa no se adivina.)
+reset role;
+select set_config('prueba.tipo_rev', gen_random_uuid()::text, true), set_config('prueba.rev_viejo', gen_random_uuid()::text, true),
+       set_config('prueba.rev_final', gen_random_uuid()::text, true), set_config('prueba.rev_mano', gen_random_uuid()::text, true);
+select test.como_usuario(:'tra_id');
+set local role authenticated;
+do $$ begin
+  perform * from public.tramites_guardar_tipo(pg_temp.id('tipo_rev'), 'Revisión anual de la unidad', 'Municipalidad', 'UNIDAD', true,
+    '[30]'::jsonb, true, true, null, null);
+  perform * from public.tramites_registrar(pg_temp.id('rev_viejo'), pg_temp.id('tipo_rev'), pg_temp.id('unidad_a'), null,
+    'Revisión anual de la unidad A', 'Municipalidad', null, pg_temp.hoy() - 1, null, null);
+  perform public.tramites_concluir(pg_temp.id('rev_final'), pg_temp.id('rev_viejo'), pg_temp.subir('rev_viejo'), 'rev.pdf', pg_temp.hoy(), pg_temp.hoy() + 100);
+  perform * from public.tramites_registrar(pg_temp.id('rev_mano'), pg_temp.id('tipo_rev'), pg_temp.id('unidad_a'), null,
+    'Revisión anual de la unidad A, la del próximo año', 'Municipalidad', null, null, pg_temp.hoy() + 100, null);
+end $$;
+reset role;
+select test.como_usuario(:'admin_id');
+select public.revisar_tramites(pg_temp.laborable(pg_temp.hoy() + 75));
+select test.afirmar(not exists (select 1 from public.tramites where renueva_a = pg_temp.id('rev_viejo')),
+  'si el Tramitador ya registró a mano la siguiente de la misma unidad, la revisión no abre otra renovación');
+
+-- 4c. La OT que llega al 100 % --------------------------------------------------------------------
+-- En producción la OT no pasa de «Aprobada»: el término es el 100 % del avance de
+-- su código interno (decisión de StudioGRCI, 2026-11-27), que ve la revisión
+-- diaria. El avance se finge aquí (check 405 prueba el de verdad): 100 % para el
+-- código de esta unidad, 0 para los demás.
+reset role;
+select test.como_usuario(:'admin_id');
+insert into public.unidades (cliente_id, codigo_interno, placa, tipo_vehiculo)
+values (:'cliente_id', 'CHK501_C_26/72', null, 'CAMION') returning id as unidad_c \gset
+insert into public.ordenes_trabajo (cliente_id, unidad_id, sede_id, descripcion, tipo_trabajo, estado)
+values (:'cliente_id', :'unidad_c', :'sede_id', 'Check 501 · al 100 %', 'FABRICACION', 'APROBADA');
+insert into public.ordenes_trabajo (cliente_id, unidad_id, sede_id, descripcion, tipo_trabajo, estado)
+values (:'cliente_id', :'unidad_c', :'sede_id', 'Check 501 · reparación al 100 %', 'MANTENIMIENTO', 'APROBADA');
+select set_config('prueba.ot_cien', (select id::text from public.ordenes_trabajo where descripcion = 'Check 501 · al 100 %'), true),
+       set_config('prueba.ot_cien_rep', (select id::text from public.ordenes_trabajo where descripcion = 'Check 501 · reparación al 100 %'), true);
+create or replace function public.vehiculo_avance_del_codigo(p_codigo text)
+returns integer language sql stable set search_path to 'public' as $$
+  select case when public.normalizar_codigo_interno(p_codigo) = public.normalizar_codigo_interno('CHK501_C_26/72') then 100 else 0 end;
+$$;
+select set_config('prueba.dia_cien', pg_temp.laborable(pg_temp.hoy() + 1)::text, true);
+select set_config('prueba.r', (select r.avisos::text from public.revisar_tramites(current_setting('prueba.dia_cien')::date) r where r.tipo = 'DE_LA_OT'), true);
+select test.afirmar(
+  current_setting('prueba.r')::integer = 1
+  and (select count(*) from public.tramites where orden_id = pg_temp.id('ot_cien') and origen = 'OT') = 2
+  and (select bool_and(fecha_limite = public.sumar_dias_habiles(current_setting('prueba.dia_cien')::date, 15) and estado = 'POR_INICIAR')
+         from public.tramites where orden_id = pg_temp.id('ot_cien'))
+  and (select estado::text from public.ordenes_trabajo where id = pg_temp.id('ot_cien')) = 'APROBADA',
+  'la OT aprobada cuyo código llega al 100 % abre su tarjeta y sus placas en la revisión, con 15 días hábiles desde ese día');
+select test.afirmar(not exists (select 1 from public.tramites where orden_id = pg_temp.id('ot_cien_rep')),
+  'la de mantenimiento de la misma unidad, no');
+select test.afirmar(
+  pg_temp.avisos('tra', (select id from public.tramites where orden_id = pg_temp.id('ot_cien') order by numero limit 1), 'Trámite nuevo: ') = 1,
+  'y avisa a los Tramitadores');
+select set_config('prueba.r', (select r.avisos::text from public.revisar_tramites(pg_temp.laborable(current_setting('prueba.dia_cien')::date + 1)) r where r.tipo = 'DE_LA_OT'), true);
+select test.afirmar(
+  current_setting('prueba.r')::integer = 0
+  and (select count(*) from public.tramites where orden_id = pg_temp.id('ot_cien')) = 2,
+  'la revisión del día siguiente no abre otros');
+
+-- 5. Lo que dice la OT y lo que ofrece la ficha -------------------------------------------------
+-- La tarjeta registrada a mano con la OT también es de la regla: la OT no se da por cumplida sin ella.
+select test.como_usuario(:'tra_id');
+set local role authenticated;
+select test.afirmar(
+  (select bool_and(de_la_regla) and count(*) = 2 from public.tramites_de_la_orden(pg_temp.id('ot_c'))),
+  'en la OT, la tarjeta registrada a mano y las placas abiertas por la OT cuentan las dos para la regla');
+-- Con el tipo fuera de uso, la ficha no ofrece «Renovar ahora» (la función lo rechazaría).
+select set_config('prueba.soat2', gen_random_uuid()::text, true), set_config('prueba.final_soat2', gen_random_uuid()::text, true);
+do $$ begin
+  perform * from public.tramites_registrar(pg_temp.id('soat2'), pg_temp.id('tipo_soat'), null, null,
+    'SOAT de la segunda camioneta del taller', 'Aseguradora', null, pg_temp.hoy() - 1, null, null);
+  perform public.tramites_concluir(pg_temp.id('final_soat2'), pg_temp.id('soat2'), pg_temp.subir('soat2'), 'soat2.pdf', pg_temp.hoy(), pg_temp.hoy() + 200);
+  perform test.afirmar((select puede_renovar from public.tramites_visibles(pg_temp.id('soat2'))), 'el SOAT concluido ofrece «Renovar ahora»');
+end $$;
+reset role;
+update public.tramite_tipos set activo = false where id = pg_temp.id('tipo_soat');
+set local role authenticated;
+select test.afirmar(not (select puede_renovar from public.tramites_visibles(pg_temp.id('soat2'))),
+  'con su tipo fuera de uso, ya no lo ofrece');
+reset role;
 
 rollback;

@@ -246,7 +246,13 @@ export function FechasClave({
   // La tarjeta y las placas: los trámites que la OT abrió al terminar (entrega 4
   // del Tramitador). Se cumple cuando todos están concluidos; si alguno se
   // concluyó pasada su fecha límite, se cumplió con atraso.
-  const { deLaRegla, cumplida: tarjetaCumplida, conAtraso: tarjetaConAtraso, limite: limiteDeLaTarjeta } = estadoDeLaTarjeta(tramites ?? [])
+  const {
+    visibles: tramitesVisibles,
+    deLaRegla,
+    cumplida: tarjetaCumplida,
+    conAtraso: tarjetaConAtraso,
+    limite: limiteDeLaTarjeta,
+  } = estadoDeLaTarjeta(tramites ?? [])
   // `semaforo` en falso: el sistema no sabe si esa regla se cumplió —la OS de
   // acabados se tramita fuera, y la tarjeta antes de que la OT termine— y
   // pintarla en rojo era mentir.
@@ -298,7 +304,7 @@ export function FechasClave({
     <Tarjeta>
       <TarjetaCabecera
         titulo="Fechas clave"
-        ayuda="Las reglas de plazo que la empresa tiene escritas, calculadas en días de taller. La OS de acabados se tramita fuera: acá solo va su fecha límite. La tarjeta de propiedad y las placas las lleva el Tramitador: al terminar la OT se abren solas, y acá se ve si se cumplieron."
+        ayuda="Las reglas de plazo que la empresa tiene escritas, calculadas en días de taller. La OS de acabados se tramita fuera: acá solo va su fecha límite. La tarjeta de propiedad y las placas las lleva el Tramitador: al terminar la unidad se abren solas, y acá se ve si se cumplieron."
       />
       <TarjetaCuerpo className="space-y-0">
         {filas.map((f) => {
@@ -325,22 +331,40 @@ export function FechasClave({
             </div>
           )
         })}
-        {tramites && tramites.length > 0 && (
-          <div className="pt-3">
-            <ListaDeTramitesDeLaOt tramites={tramites} />
-          </div>
+        {tramites === null ? (
+          <p className="pt-3 text-sm text-aviso" role="status" data-tramites-sin-leer>
+            No se pudieron leer los trámites de la OT: la tarjeta y las placas no dicen si se cumplieron. Recarga la pantalla.
+          </p>
+        ) : (
+          tramitesVisibles.length > 0 && (
+            <div className="pt-3">
+              <ListaDeTramitesDeLaOt tramites={tramitesVisibles} />
+            </div>
+          )
         )}
       </TarjetaCuerpo>
     </Tarjeta>
   )
 }
 
-/** La tarjeta y las placas de la OT: cumplidas cuando todos sus trámites concluyeron, con atraso si alguno pasó su límite. */
+/**
+ * La tarjeta y las placas de la OT: cumplidas cuando todos sus trámites
+ * concluyeron, con atraso si alguno pasó su límite. Cuentan los de los tipos
+ * que abre la OT, también el que se registró a mano con ella.
+ */
 function estadoDeLaTarjeta(tramites: TramiteDeLaOrden[]) {
-  const deLaRegla = tramites.filter((t) => t.origen === 'OT')
-  const cumplida = deLaRegla.length > 0 && deLaRegla.every((t) => t.estado === 'CONCLUIDO')
+  const enPie = tramites.filter((t) => t.estado !== 'ANULADO')
+  const deLaRegla = enPie.filter((t) => t.de_la_regla)
+  // Uno de la regla que se anuló y no se volvió a abrir: la regla no se cumplió.
+  const anuladosSinOtro = tramites.filter(
+    (t) => t.estado === 'ANULADO' && t.de_la_regla && !deLaRegla.some((v) => v.tipo === t.tipo) && !tramites.some((v) => v !== t && v.estado === 'ANULADO' && v.tipo === t.tipo && v.numero > t.numero),
+  )
+  const cumplida = deLaRegla.length > 0 && anuladosSinOtro.length === 0 && deLaRegla.every((t) => t.estado === 'CONCLUIDO')
   return {
+    // Lo que se lista: lo que está en pie y el anulado que dejó su tipo sin trámite.
+    visibles: [...enPie, ...anuladosSinOtro],
     deLaRegla,
+    anuladosSinOtro,
     cumplida,
     conAtraso: cumplida && deLaRegla.some((t) => t.fecha_conclusion !== null && t.fecha_limite !== null && t.fecha_conclusion > t.fecha_limite),
     limite: deLaRegla.reduce<string | null>((max, t) => (t.fecha_limite && (!max || t.fecha_limite > max) ? t.fecha_limite : max), null),
@@ -369,6 +393,8 @@ function ListaDeTramitesDeLaOt({ tramites, conRotulo = true }: { tramites: Trami
             >
               {t.estado === 'CONCLUIDO'
                 ? `Concluido el ${formatearFecha(t.fecha_conclusion)}`
+                : t.estado === 'ANULADO'
+                  ? 'Anulado'
                 : [SITUACION_TRAMITE[t.situacion]?.etiqueta ?? t.situacion, t.fecha_limite ? `${t.vencido ? 'venció' : 'vence'} el ${formatearFecha(t.fecha_limite)}` : null]
                     .filter(Boolean)
                     .join(' · ')}
@@ -385,31 +411,55 @@ function ListaDeTramitesDeLaOt({ tramites, conRotulo = true }: { tramites: Trami
  * etapas de Diseño, que son todas las nuevas): la tarjeta y las placas que
  * abrió al terminar, si se cumplieron, y cada trámite con su plazo.
  */
-export function TramitesDeLaOt({ tramites }: { tramites: TramiteDeLaOrden[] }) {
-  const { deLaRegla, cumplida, conAtraso, limite } = estadoDeLaTarjeta(tramites)
+export function TramitesDeLaOt({ tramites }: { tramites: TramiteDeLaOrden[] | null }) {
+  if (tramites === null) {
+    return (
+      <Tarjeta>
+        <TarjetaCabecera titulo="Trámites de la OT" />
+        <TarjetaCuerpo>
+          <p className="text-sm text-aviso" role="status" data-tramites-sin-leer>
+            No se pudieron leer los trámites de la OT. Recarga la pantalla; si sigue, avisa a quien administra el sistema.
+          </p>
+        </TarjetaCuerpo>
+      </Tarjeta>
+    )
+  }
+  const { visibles, deLaRegla, anuladosSinOtro, cumplida, conAtraso, limite } = estadoDeLaTarjeta(tramites)
   const vencida = deLaRegla.length > 0 && !cumplida && limite !== null && limite < hoyLima()
+  const sinTramitar = anuladosSinOtro.length > 0
   return (
     <Tarjeta>
       <TarjetaCabecera
         titulo="Trámites de la OT"
-        ayuda="Los lleva el Tramitador. Al terminar la OT se abren solos la tarjeta de propiedad y, si la unidad no tiene placa, las placas, con 15 días hábiles desde el término; se cumplen cuando todos concluyen."
+        ayuda="Los lleva el Tramitador. Cuando la unidad llega al 100 % de avance (o la OT se termina) se abren solos la tarjeta de propiedad y, si la unidad no tiene placa, las placas, con la fecha límite que fija su tipo en días hábiles desde el término; se cumplen cuando todos concluyen."
       />
       <TarjetaCuerpo className="space-y-3">
-        {deLaRegla.length > 0 && (
+        {(deLaRegla.length > 0 || sinTramitar) && (
           <p className="flex items-center justify-between gap-3 border-b border-borde pb-3 text-sm" data-cumplimiento-tarjeta>
             <span>
               <span className="text-texto">Tarjeta de propiedad y placas</span>
-              <span className="block text-xs text-texto-tenue">15 días hábiles desde el término</span>
+              <span className="block text-xs text-texto-tenue">Hasta la fecha límite de sus trámites</span>
             </span>
             <span
-              className={cn('tabular whitespace-nowrap', conAtraso ? 'text-aviso' : cumplida ? 'text-exito' : vencida ? 'font-medium text-peligro' : 'text-texto-suave')}
+              className={cn(
+                'tabular whitespace-nowrap',
+                sinTramitar || conAtraso ? 'text-aviso' : cumplida ? 'text-exito' : vencida ? 'font-medium text-peligro' : 'text-texto-suave',
+              )}
               suppressHydrationWarning
             >
-              {conAtraso ? 'Cumplida con atraso' : cumplida ? 'Cumplida' : limite ? `${vencida ? 'Venció el' : 'Vence el'} ${formatearFecha(limite)}` : 'Por programar'}
+              {sinTramitar
+                ? `${anuladosSinOtro.map((t) => t.tipo).join(' y ')}: anulado, sin otro`
+                : conAtraso
+                  ? 'Cumplida con atraso'
+                  : cumplida
+                    ? 'Cumplida'
+                    : limite
+                      ? `${vencida ? 'Venció el' : 'Vence el'} ${formatearFecha(limite)}`
+                      : 'Por programar'}
             </span>
           </p>
         )}
-        <ListaDeTramitesDeLaOt tramites={tramites} conRotulo={false} />
+        <ListaDeTramitesDeLaOt tramites={visibles} conRotulo={false} />
       </TarjetaCuerpo>
     </Tarjeta>
   )

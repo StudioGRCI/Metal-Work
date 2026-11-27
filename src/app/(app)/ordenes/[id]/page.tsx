@@ -173,15 +173,15 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
   const [salida, fechasClave, tramitesDeLaOt, recorridoDeLaCotizacion] = await Promise.all([
     verSalida ? estadoDeSalida(id) : Promise.resolve(null),
     vista === 'resumen' && !orden.plan_etapas_manual ? fechasClaveDeOrden(id) : Promise.resolve(null),
-    // Los trámites que abrió al terminar (entrega 4 del Tramitador). Si no se
-    // leen, las fechas clave salen igual, sin decir si se cumplieron.
-    // Todas las OT: las nuevas no tienen «Fechas clave» y van en su propia tarjeta.
+    // Los trámites que abrió al terminar (entrega 4 del Tramitador), en todas
+    // las OT: las nuevas no tienen «Fechas clave» y van en su propia tarjeta.
+    // Si no se leen, la OT sale igual y lo dice (`null`), en vez de callarlo.
     vista === 'resumen'
       ? tramitesDeLaOrden(id).catch((e: unknown) => {
           console.error('OT: no se pudieron leer sus trámites.', e)
           return null
         })
-      : Promise.resolve(null),
+      : Promise.resolve([]),
     cotizacionDelRecorrido
       ? recorridoDeCotizaciones([cotizacionDelRecorrido.id])
           .then((r) => recorridoDeLaUnidad(describirRecorridoDeLaCotizacion(r.get(cotizacionDelRecorrido.id) ?? []), orden.numero_de_unidad ?? 1))
@@ -390,7 +390,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
                   disenoCumplida={pendientes.planos > 0 && pendientes.planosEntregados >= pendientes.planos}
                 />
               ) : (
-                tramitesDeLaOt && tramitesDeLaOt.length > 0 && <TramitesDeLaOt tramites={tramitesDeLaOt} />
+                (tramitesDeLaOt === null || tramitesDeLaOt.length > 0) && <TramitesDeLaOt tramites={tramitesDeLaOt} />
               )}
               {/* Sin pasos no hay tarjeta: Costos pasa el filtro por
                   `tesoreria.ver_documentos` y la base no le muestra ninguno. */}

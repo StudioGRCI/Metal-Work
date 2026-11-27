@@ -466,7 +466,7 @@ function FormularioTipo({ id, tipo, alCancelar, alTerminar }: {
   const [diasOt, setDiasOt] = useState(tipo?.dias_desde_termino_ot != null ? String(tipo.dias_desde_termino_ot) : '')
   const errorNombre = error && /Ya hay un tipo|nombre del tipo/.test(error) ? error : null
   const errorDias = !errorNombre && error && /días de aviso|avisos antes/.test(error) ? error : null
-  const errorOt = !errorNombre && !errorDias && error && /termina la OT|terminar la OT/.test(error) ? error : null
+  const errorOt = !errorNombre && !errorDias && error && /termina la unidad|terminar la unidad/.test(error) ? error : null
   useCursorAlRechazo(
     enviando,
     error,
@@ -568,9 +568,9 @@ function FormularioTipo({ id, tipo, alCancelar, alTerminar }: {
         {ambito === 'UNIDAD' && (
           <div className="space-y-3 rounded-[var(--radius-base)] border border-borde p-3" data-campos-ot>
             <Campo
-              etiqueta="Se abre al terminar la OT"
+              etiqueta="Días hábiles hasta la fecha límite, al terminar la unidad"
               htmlFor={`tipo-dias-ot-${id}`}
-              ayuda={`Días hábiles desde que la OT de la unidad termina hasta la fecha límite. Con un número, el sistema abre el trámite solo al terminar la OT; vacío, se registra a mano. De ${MINIMO_DIAS_DESDE_TERMINO_OT} a ${MAXIMO_DIAS_DESDE_TERMINO_OT}.`}
+              ayuda={`Días hábiles desde que la unidad de una OT de fabricación llega al 100 % de avance hasta la fecha límite. Con un número, el sistema abre el trámite solo ese día; vacío, se registra a mano. De ${MINIMO_DIAS_DESDE_TERMINO_OT} a ${MAXIMO_DIAS_DESDE_TERMINO_OT}.`}
               ayudaEnIcono={false}
               error={errorOt ?? undefined}
             >

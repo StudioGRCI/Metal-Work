@@ -99,12 +99,45 @@ export default async function PaginaTramites({ searchParams }: PageProps<'/trami
   // Al buscar sin haber elegido vista se abre la primera que tiene resultados:
   // lo concluido es lo que más se busca, y en «En curso» no está.
   const vista: Vista = vistaPedida ?? (busqueda ? VISTAS.find((v) => grupos[v.valor].length > 0)?.valor : undefined) ?? 'en-curso'
-  const enOtrasVistas = VISTAS.filter((v) => v.valor !== vista && grupos[v.valor].length > 0).map((v) => `${grupos[v.valor].length} en «${v.titulo}»`)
+  // «Por vencer», «Vencidos» y «Observados» son parte de «En curso»: contarlos aparte decía dos veces el mismo trámite.
+  const enOtrasVistas = VISTAS.filter((v) => v.valor !== vista && !['por-vencer', 'vencidos', 'observados'].includes(v.valor) && grupos[v.valor].length > 0)
+    .map((v) => `${grupos[v.valor].length} en «${v.titulo}»`)
   const vencidos = grupos.vencidos.length
   // Lo que se cerró este mes, por el día en Lima en que se cerró.
   const hoy = hoyLima()
   const concluidosDelMes = grupos.concluidos.filter((t) => t.concluido_en && diaLima(t.concluido_en).slice(0, 7) === hoy.slice(0, 7)).length
   const porResponder = aprueba ? grupos['por-anular'].length : 0
+  // Las cifras de todo lo que ve quien mira; con una búsqueda contarían solo lo encontrado.
+  const cifras = busqueda ? null : (
+    <section aria-label="Cómo van los trámites" className="grid grid-cols-2 gap-3 sm:grid-cols-3" data-cifras-tramites>
+      <Indicador
+        titulo="Por vencer"
+        icono={CalendarClock}
+        valor={grupos['por-vencer'].length}
+        tono={grupos['por-vencer'].length > 0 ? 'aviso' : 'neutro'}
+        pie="Dentro de los días de aviso de su tipo"
+        href="/tramites?vista=por-vencer"
+      />
+      <Indicador
+        titulo="Vencidos"
+        icono={AlarmClock}
+        valor={vencidos}
+        tono={vencidos > 0 ? 'peligro' : 'neutro'}
+        pie={vencidos > 0 ? 'Pasaron su fecha límite sin concluir' : 'Ninguno pasó su fecha límite'}
+        href="/tramites?vista=vencidos"
+      />
+      <Indicador
+        // En el teléfono va sola a todo lo ancho: dos por fila y la tercera suelta dejaba un hueco.
+        className="col-span-2 sm:col-span-1 [&_.rotulo-indicador]:min-h-0"
+        titulo="Concluidos este mes"
+        icono={CircleCheck}
+        valor={concluidosDelMes}
+        tono={concluidosDelMes > 0 ? 'exito' : 'neutro'}
+        pie={`En ${mesLargo(hoy)}. La lista trae todos, el último arriba`}
+        href="/tramites?vista=concluidos"
+      />
+    </section>
+  )
   const alTope =
     tramites.filter((t) => t.situacion !== 'ANULADO' && t.situacion !== 'CONCLUIDO').length >= MAXIMO_VIVOS ||
     grupos.concluidos.length >= MAXIMO_CONCLUIDOS ||
@@ -135,37 +168,7 @@ export default async function PaginaTramites({ searchParams }: PageProps<'/trami
         </AvisoEnfocado>
       )}
       <div className="space-y-5">
-        {/* Las cifras de todo lo que ve quien mira; con una búsqueda contarían solo lo encontrado. */}
-        {!busqueda && (
-          <section aria-label="Cómo van los trámites" className="grid grid-cols-2 gap-3 sm:grid-cols-3" data-cifras-tramites>
-            <Indicador
-              titulo="Por vencer"
-              icono={CalendarClock}
-              valor={grupos['por-vencer'].length}
-              tono={grupos['por-vencer'].length > 0 ? 'aviso' : 'neutro'}
-              pie="Dentro de los días de aviso de su tipo"
-              href="/tramites?vista=por-vencer"
-            />
-            <Indicador
-              titulo="Vencidos"
-              icono={AlarmClock}
-              valor={vencidos}
-              tono={vencidos > 0 ? 'peligro' : 'neutro'}
-              pie={vencidos > 0 ? 'Pasaron su fecha límite sin concluir' : 'Ninguno pasó su fecha límite'}
-              href="/tramites?vista=vencidos"
-            />
-            <Indicador
-              // En el teléfono va sola a todo lo ancho: dos por fila y la tercera suelta dejaba un hueco.
-              className="col-span-2 sm:col-span-1 [&_.rotulo-indicador]:min-h-0"
-              titulo="Concluidos este mes"
-              icono={CircleCheck}
-              valor={concluidosDelMes}
-              tono={concluidosDelMes > 0 ? 'exito' : 'neutro'}
-              pie={`En ${mesLargo(hoy)}, con su documento final`}
-              href="/tramites?vista=concluidos"
-            />
-          </section>
-        )}
+        {!gestiona && cifras}
         <div className="space-y-3">
           <BuscadorSimple ruta="/tramites" clave="buscar" etiqueta="Buscar trámites" marcador="TR, tipo, entidad, expediente, placa, código interno, cliente u OT" />
           <Vistas
@@ -213,6 +216,8 @@ export default async function PaginaTramites({ searchParams }: PageProps<'/trami
             }
           />
         </Tarjeta>
+        {/* Quien lleva los trámites viene a trabajar la lista: las cifras, después (en el teléfono empujaban la primera fila al fondo). */}
+        {gestiona && cifras}
         {alTope && (
           <p className="text-xs text-texto-suave">
             Se muestran todos los trámites en curso, los {MAXIMO_CONCLUIDOS} concluidos más recientes y los {MAXIMO_ANULADOS} anulados más recientes. Busca para
@@ -266,12 +271,10 @@ function FilaTramite({ tramite: t }: { tramite: Tramite }) {
             {t.numero}
           </Link>
           {t.puede_resolver_anulacion && <Insignia tono="acento">Te toca</Insignia>}
-          <span className="text-xs text-texto-suave">{t.tipo}</span>
-          {t.origen !== 'MANUAL' && ORIGEN_TRAMITE[t.origen] && (
-            <span className="text-xs text-texto-suave" data-origen={t.origen}>
-              · {ORIGEN_TRAMITE[t.origen].etiqueta}
-            </span>
-          )}
+          <span className="text-xs text-texto-suave">
+            {t.tipo}
+            {t.origen !== 'MANUAL' && ORIGEN_TRAMITE[t.origen] && <span data-origen={t.origen}> · {ORIGEN_TRAMITE[t.origen].etiqueta}</span>}
+          </span>
         </div>
         <p className="mt-1 line-clamp-2 max-w-xl text-sm text-texto">{t.asunto}</p>
         <p className="mt-1 text-sm font-medium text-texto md:hidden">{deQuienEs(t)}</p>
@@ -317,7 +320,7 @@ function Plazo({ tramite: t }: { tramite: Tramite }) {
   // cabecera que diga qué es, su fecha límite pasada se leería como un vencimiento.
   const soloConCabecera = t.situacion === 'CONCLUIDO'
   if (!t.fecha_limite) return <p className={cn('text-xs text-texto-suave', soloConCabecera && 'hidden sm:block')}>Sin fecha límite</p>
-  const plazo = plazoDelTramite(t.dias_para_limite)
+  const plazo = plazoDelTramite(t.dias_para_limite, t.por_vencer)
   return (
     <div className={cn('flex-wrap items-center gap-x-2 gap-y-1', soloConCabecera ? 'hidden sm:flex' : 'flex')}>
       <span className="tabular text-sm whitespace-nowrap text-texto">{fecha(t.fecha_limite)}</span>
@@ -354,7 +357,7 @@ function Catalogo({ tipos, gestiona }: { tipos: TipoDeTramite[]; gestiona: boole
     <SeccionDesplegable
       id="tipos-de-tramite"
       titulo={`Tipos de trámite · ${tipos.filter((t) => t.activo).length}`}
-      descripcion="Qué trámites se llevan, ante qué entidad, con cuántos días de anticipación se avisa su vencimiento y cuáles se abren solos al terminar la OT."
+      descripcion="Qué trámites se llevan, ante qué entidad, con cuántos días de anticipación se avisa su vencimiento y cuáles se abren solos al terminar la unidad de una OT de fabricación."
       className="scroll-mt-24"
     >
       <div className="space-y-4">
@@ -384,8 +387,8 @@ function Catalogo({ tipos, gestiona }: { tipos: TipoDeTramite[]; gestiona: boole
                       </p>
                       {t.dias_desde_termino_ot !== null && (
                         <p className="mt-0.5 text-xs text-texto-suave" data-abre-la-ot>
-                          Se abre al terminar la OT
-                          {t.solo_sin_placa ? ', si la unidad no tiene placa' : ''}: límite a{' '}
+                          Se abre al terminar la unidad
+                          {t.solo_sin_placa ? ', si no tiene placa' : ''}: límite a{' '}
                           <span className="tabular">{t.dias_desde_termino_ot}</span> {t.dias_desde_termino_ot === 1 ? 'día hábil' : 'días hábiles'}
                         </p>
                       )}

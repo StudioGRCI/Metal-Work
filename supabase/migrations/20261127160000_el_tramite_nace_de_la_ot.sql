@@ -8,12 +8,16 @@
 --
 --   · La OT. La regla de la empresa («Tarjeta de propiedad y placas: 15 días
 --     hábiles desde el término», docs/ANALISIS-ONEDRIVE.md §5) ya da la fecha
---     límite en la OT. Ahora, al pasar la OT a «Terminada» (o más allá), la
---     base abre sola el trámite de cada tipo del catálogo que lo pida, con esa
+--     límite en la OT. Ahora, al pasar la OT de fabricación a «Terminada» (o
+--     más allá), la base abre sola el trámite de cada tipo del catálogo que lo
+--     pida, con esa
 --     fecha límite, «Por iniciar» y a nombre del sistema. Cuál tipo y con
 --     cuántos días lo dice el catálogo, no esta migración: la tarjeta de
 --     propiedad siempre y las placas solo si la unidad todavía no tiene placa,
 --     las dos a 15 días hábiles. El Tramitador lo ajusta en «Tipos de trámite».
+--     Solo la OT de fabricación: la reparación, el mantenimiento, la garantía
+--     y la repotenciación no cambian la tarjeta, y un trámite numerado que se
+--     abre de más no se borra (la regla sale del plan maestro de fabricación).
 --     La OT lee sus trámites (`tramites_de_la_orden`) y dice si se cumplieron.
 --   · La renovación. El concluido que se renueva (el SOAT, la ITSE) abre solo
 --     su renovación cuando llega el primer día de aviso de su tipo, enlazada al
@@ -33,7 +37,9 @@
 -- 0. Lo que se reemplaza es lo que el repositorio conoce ------------------------------------
 -- Cuatro funciones de las entregas 1 a 3 se llevan enteras. Si en producción
 -- alguna se arregló a mano, reemplazarla pisaría ese arreglo sin aviso: se
--- detiene. Valen la huella de antes y la de esta migración (volver a correrla).
+-- detiene. Valen la huella de antes y la de esta migración (volver a correrla);
+-- en `tramites_visibles` y `revisar_tramites`, también la de un borrador de
+-- esta misma migración que solo llegó a las bases locales.
 do $$
 declare
   v record;
@@ -41,8 +47,8 @@ begin
   for v in
     select f.firma, f.huellas, md5(replace(p.prosrc, E'\r', '')) as huella
       from (values
-        ('public.tramites_visibles(uuid)', array['932ac816a97d83a7edfa0d8cda8cf2b9', '944948107db3f5f6141a41244c98c7d0']),
-        ('public.revisar_tramites(date)', array['e248129f04dfe8ea5e2394058f79fd76', '9f3fc745b123870d1df332bce128dd56']),
+        ('public.tramites_visibles(uuid)', array['932ac816a97d83a7edfa0d8cda8cf2b9', '944948107db3f5f6141a41244c98c7d0', 'd46855750ce7f8e005c26147d20a4dac']),
+        ('public.revisar_tramites(date)', array['e248129f04dfe8ea5e2394058f79fd76', '9f3fc745b123870d1df332bce128dd56', '7fa5a6078c3b7aaffe2cb9a5b0a0dc9e']),
         ('public.fn_tramite_avisa_al_registrarse()', array['277b45dab0880b300b9c8dd67816e1f3', '4ee724521b152ff79bf5c3c9748955e8'])
       ) as f(firma, huellas)
       left join pg_proc p on p.oid = to_regprocedure(f.firma)
@@ -68,6 +74,8 @@ end $$;
 -- nace la columna: volver a correr la migración no pisa lo que el Tramitador
 -- haya ajustado después.
 do $$
+declare
+  v_n integer;
 begin
   if not exists (select 1 from information_schema.columns
                   where table_schema = 'public' and table_name = 'tramite_tipos' and column_name = 'dias_desde_termino_ot') then
@@ -76,8 +84,16 @@ begin
       add column solo_sin_placa boolean not null default false;
     update public.tramite_tipos set dias_desde_termino_ot = 15
      where lower(nombre) = lower('Tarjeta de propiedad') and ambito = 'UNIDAD';
+    get diagnostics v_n = row_count;
+    if v_n <> 1 then
+      raise exception 'El catálogo no tiene un solo tipo «Tarjeta de propiedad» de una unidad (%): no se sabe cuál abre la OT. Avisa antes de seguir.', v_n;
+    end if;
     update public.tramite_tipos set dias_desde_termino_ot = 15, solo_sin_placa = true
      where lower(nombre) = lower('Placas') and ambito = 'UNIDAD';
+    get diagnostics v_n = row_count;
+    if v_n <> 1 then
+      raise exception 'El catálogo no tiene un solo tipo «Placas» de una unidad (%): no se sabe cuál abre la OT. Avisa antes de seguir.', v_n;
+    end if;
   end if;
 end $$;
 comment on column public.tramite_tipos.dias_desde_termino_ot is
@@ -135,50 +151,75 @@ create or replace trigger trg_tramite_origen_fijo
 -- Por cada tipo activo de una unidad con días desde el término (y, si pide
 -- «solo sin placa», con la unidad sin placa), si la OT todavía no tiene un
 -- trámite vivo de ese tipo ni uno que haya abierto la base. La fecha límite,
--- con el término en la hora de Lima. El número se pide solo cuando el trámite
+-- en días hábiles desde el término. El número se pide solo cuando el trámite
 -- va a entrar: no quedan huecos en la serie. Lo de una OT de un lote de prueba
 -- va en el mismo lote, para que la limpieza se lo lleve.
-create or replace function public.fn_ot_abre_sus_tramites()
-returns trigger language plpgsql security definer set search_path to 'public' as $$
+--
+-- Cuándo termina la OT (decisión de StudioGRCI, 2026-11-27): en producción la
+-- OT no pasa de «Aprobada» (el taller avanza por código interno y nadie
+-- activo la inicia ni la termina), así que el término es el día en que su
+-- código llega al 100 % de avance: lo ve la revisión de cada mañana (sección
+-- 6), con el día del último reporte como término. Si alguien termina la OT a
+-- mano antes, se abren en ese momento, con su fecha de término.
+create or replace function public.ot_abrir_sus_tramites(p_ot uuid, p_termino date)
+returns integer language plpgsql security definer set search_path to 'public' as $$
 declare
+  v_ot      public.ordenes_trabajo%rowtype;
   v_unidad  public.unidades%rowtype;
-  v_termino constant date := coalesce((new.fecha_fin_real at time zone 'America/Lima')::date, (now() at time zone 'America/Lima')::date);
   v_lote    uuid;
   v_tipo    record;
   v_id      uuid;
+  v_n       integer := 0;
 begin
-  select * into v_unidad from public.unidades where id = new.unidad_id;
-  if not found then
-    return null;
+  perform pg_advisory_xact_lock(hashtextextended('tramites_de_la_ot:' || p_ot::text, 0));
+  select * into v_ot from public.ordenes_trabajo where id = p_ot;
+  if not found or v_ot.unidad_id is null or v_ot.tipo_trabajo::text <> 'FABRICACION' or v_ot.estado::text = 'ANULADA' then
+    return 0;
   end if;
-  perform pg_advisory_xact_lock(hashtextextended('tramites_de_la_ot:' || new.id::text, 0));
-  select f.lote_id into v_lote from public.pruebas_filas f where f.tabla = 'ordenes_trabajo' and f.fila_id = new.id;
+  select * into v_unidad from public.unidades where id = v_ot.unidad_id;
+  if not found then
+    return 0;
+  end if;
+  select f.lote_id into v_lote from public.pruebas_filas f where f.tabla = 'ordenes_trabajo' and f.fila_id = p_ot;
   for v_tipo in
     select tt.id, tt.nombre, tt.entidad, tt.se_renueva, tt.dias_desde_termino_ot
       from public.tramite_tipos tt
      where tt.activo and tt.ambito = 'UNIDAD' and tt.dias_desde_termino_ot is not null
        and (not tt.solo_sin_placa or nullif(btrim(coalesce(v_unidad.placa::text, '')), '') is null)
        and not exists (select 1 from public.tramites x
-                        where x.orden_id = new.id and x.tipo_id = tt.id and (x.estado <> 'ANULADO' or x.origen = 'OT'))
+                        where x.orden_id = p_ot and x.tipo_id = tt.id and (x.estado <> 'ANULADO' or x.origen = 'OT'))
      order by tt.nombre
   loop
     v_id := gen_random_uuid();
     insert into public.tramites (id, numero, tipo_id, tipo_nombre, se_renueva, ambito, entidad, asunto,
                                  unidad_id, cliente_id, orden_id, fecha_limite, estado, registrado_por, origen)
     values (v_id, public.siguiente_correlativo('TRAMITE', '001', null), v_tipo.id, v_tipo.nombre, v_tipo.se_renueva, 'UNIDAD',
-            v_tipo.entidad, left(v_tipo.nombre || ' por la OT ' || new.numero, 300),
-            new.unidad_id, coalesce(new.cliente_id, v_unidad.cliente_id), new.id,
-            public.sumar_dias_habiles(v_termino, v_tipo.dias_desde_termino_ot), 'POR_INICIAR', null, 'OT');
+            v_tipo.entidad, left(v_tipo.nombre || ' por la OT ' || v_ot.numero, 300),
+            v_ot.unidad_id, coalesce(v_ot.cliente_id, v_unidad.cliente_id), p_ot,
+            public.sumar_dias_habiles(p_termino, v_tipo.dias_desde_termino_ot), 'POR_INICIAR', null, 'OT');
     if v_lote is not null then
       insert into public.pruebas_filas (lote_id, tabla, fila_id) values (v_lote, 'tramites', v_id)
       on conflict (tabla, fila_id) do nothing;
     end if;
+    v_n := v_n + 1;
   end loop;
+  return v_n;
+end;
+$$;
+comment on function public.ot_abrir_sus_tramites(uuid, date) is
+  'Abre los trámites que la OT de fabricación abre al terminar: el de cada tipo del catálogo con días desde el término (la tarjeta de propiedad; las placas si la unidad no tiene), «Por iniciar», a nombre del sistema y con su fecha límite en días hábiles desde p_termino. No repite lo que ya tiene. Devuelve cuántos abrió. La llaman el disparador de la OT y la revisión diaria. Migración 20261127160000.';
+revoke all on function public.ot_abrir_sus_tramites(uuid, date) from public, anon, authenticated;
+
+create or replace function public.fn_ot_abre_sus_tramites()
+returns trigger language plpgsql security definer set search_path to 'public' as $$
+begin
+  perform public.ot_abrir_sus_tramites(new.id,
+    coalesce((new.fecha_fin_real at time zone 'America/Lima')::date, (now() at time zone 'America/Lima')::date));
   return null;
 end;
 $$;
 comment on function public.fn_ot_abre_sus_tramites() is
-  'Al pasar la OT a Terminada (o más allá) con su unidad, abre el trámite de cada tipo del catálogo con días desde el término (la tarjeta de propiedad; las placas si la unidad no tiene), «Por iniciar» y con su fecha límite en días hábiles. Migración 20261127160000.';
+  'Al pasar la OT de fabricación a Terminada (o más allá) con su unidad, abre sus trámites (ot_abrir_sus_tramites) con su fecha de término. Migración 20261127160000.';
 revoke all on function public.fn_ot_abre_sus_tramites() from public, anon, authenticated;
 -- Disparador propio, sin tocar los de la OT (skill seguridad › el blindaje).
 -- Sin lista de columnas: el estado puede ponerlo otro disparador.
@@ -186,6 +227,7 @@ create or replace trigger trg_ot_abre_sus_tramites
   after update on public.ordenes_trabajo
   for each row
   when (new.unidad_id is not null
+        and new.tipo_trabajo::text = 'FABRICACION'
         and new.estado::text in ('TERMINADA', 'ENTREGADA', 'FACTURADA')
         and old.estado::text not in ('TERMINADA', 'ENTREGADA', 'FACTURADA'))
   execute function public.fn_ot_abre_sus_tramites();
@@ -322,14 +364,23 @@ comment on function public.fn_tramite_avisa_al_registrarse() is
   'Al registrarse un trámite, avisa a quien tiene tramites.gestionar, salvo a quien lo registró, diciendo de dónde viene: lo registró alguien, lo abrió la OT al terminar o es una renovación. Migraciones 20261127004000 y 20261127160000.';
 revoke all on function public.fn_tramite_avisa_al_registrarse() from public, anon, authenticated;
 
--- 6. La revisión diaria abre las renovaciones --------------------------------------------------------
+-- 6. La revisión diaria abre las renovaciones y los trámites de la OT al 100 % ------------------------
+-- Cada mañana, antes de los avisos: la OT de fabricación cuya unidad llegó al
+-- 100 % de avance de su código interno y todavía no tiene los trámites que
+-- abre la OT, los abre (sección 3), con el día de su último reporte como
+-- término. Lo de un lote de prueba, no.
 -- Lo que ya se llevaba (la fecha límite) sigue igual. Lo que cambia es el
 -- concluido que se renueva: en vez de avisar por su vigencia, al llegar el
 -- primer día de aviso de su tipo abre su renovación (si su tipo sigue activo),
 -- y desde ahí avisa la renovación por su fecha límite, que es la misma fecha.
 -- El aviso de esa apertura es el del trámite nuevo; queda anotado como el día
 -- de aviso que tocaba, para que la renovación no lo repita al día siguiente.
--- Un concluido con renovación, aunque se haya anulado, ya no abre otra solo.
+-- Un concluido con renovación, aunque se haya anulado, ya no abre otra solo;
+-- tampoco si el Tramitador ya registró a mano otro del mismo tipo y de la
+-- misma unidad después de concluirlo: sería una renovación repetida. Si la
+-- renovación se anuló o el tipo se dejó de usar, al vencer su documento avisa
+-- una vez («Venció el documento…») al Tramitador y a Gerencia, para que el
+-- vencimiento no pase callado.
 alter table public.tramite_avisos drop constraint if exists ck_tramite_aviso_tipo;
 alter table public.tramite_avisos add constraint ck_tramite_aviso_tipo
   check (tipo in ('POR_VENCER', 'VENCIDO', 'POR_RENOVAR', 'VIGENCIA_VENCIDA', 'RENOVACION', 'REVISION'));
@@ -359,6 +410,8 @@ declare
   v_por_vencer integer := 0;  v_c_por_vencer integer := 0;
   v_vencidos integer := 0;    v_c_vencidos integer := 0;
   v_renovados integer := 0;   v_c_renovados integer := 0;
+  v_de_la_ot integer := 0;    v_c_de_la_ot integer := 0;
+  v_ot record;
   v_hay_tramitador boolean;
 begin
   -- Dos corridas a la vez (la de pg_cron y una a mano) no se duplican: la
@@ -371,7 +424,7 @@ begin
 
   -- Solo en día laborable: lo que cae el domingo o el feriado sale el día siguiente.
   if not public.es_laborable(v_hoy) then
-    return query values ('POR_VENCER', 0, 0), ('VENCIDO', 0, 0), ('RENOVACION', 0, 0);
+    return query values ('POR_VENCER', 0, 0), ('VENCIDO', 0, 0), ('RENOVACION', 0, 0), ('DE_LA_OT', 0, 0);
     return;
   end if;
 
@@ -382,24 +435,56 @@ begin
                   where u.activo and rp.permiso_codigo = 'tramites.gestionar')
     into v_hay_tramitador;
   if not v_hay_tramitador then
-    return query values ('POR_VENCER', 0, 0), ('VENCIDO', 0, 0), ('RENOVACION', 0, 0);
+    return query values ('POR_VENCER', 0, 0), ('VENCIDO', 0, 0), ('RENOVACION', 0, 0), ('DE_LA_OT', 0, 0);
     return;
   end if;
 
+  -- La OT que llegó al 100 %: sus trámites.
+  for v_ot in
+    select o.id,
+           least(v_hoy, coalesce((select k.ultimo_reporte
+                                    from public.codigo_interno_avance_calculado(public.normalizar_codigo_interno(u.codigo_interno)) k
+                                   limit 1), v_hoy)) as termino
+      from public.ordenes_trabajo o
+      join public.unidades u on u.id = o.unidad_id
+     where o.tipo_trabajo::text = 'FABRICACION'
+       and o.estado::text not in ('BORRADOR', 'ANULADA')
+       and nullif(btrim(coalesce(u.codigo_interno::text, '')), '') is not null
+       and not exists (select 1 from public.tramites x where x.orden_id = o.id and x.origen = 'OT')
+       and not exists (select 1 from public.pruebas_filas f where f.tabla = 'ordenes_trabajo' and f.fila_id = o.id)
+       and public.vehiculo_avance_del_codigo(u.codigo_interno::text) >= 100
+     order by o.numero
+  loop
+    if public.ot_abrir_sus_tramites(v_ot.id, v_ot.termino) > 0 then
+      v_de_la_ot := v_de_la_ot + 1;
+      v_c_de_la_ot := v_c_de_la_ot + (select count(*)::integer from public.notificaciones n
+                                        join public.tramites t on t.id = n.origen_id
+                                       where n.origen_tabla = 'tramites' and t.orden_id = v_ot.id and t.origen = 'OT');
+    end if;
+  end loop;
+
   for r in
-    select t.id, t.numero, x.que, x.fecha, x.fecha - v_hoy as d, tt.dias_aviso, tt.activo
+    select t.id, t.numero, x.que, x.fecha, x.fecha - v_hoy as d, tt.dias_aviso, tt.activo, x.renovacion_anulada
       from public.tramites t
       join public.tramite_tipos tt on tt.id = t.tipo_id
       cross join lateral (
-        select 'LIMITE'::text as que, t.fecha_limite as fecha
+        select 'LIMITE'::text as que, t.fecha_limite as fecha, false as renovacion_anulada
          where t.estado in ('POR_INICIAR', 'EN_TRAMITE', 'OBSERVADO') and t.fecha_limite is not null
         union all
-        select 'VIGENCIA', t.vigente_hasta
+        select 'VIGENCIA', t.vigente_hasta, exists (select 1 from public.tramites n where n.renueva_a = t.id)
          where t.estado = 'CONCLUIDO' and t.se_renueva and t.vigente_hasta is not null
            -- El documento de antes que se carga ya vencido es historia: no se renueva solo.
            and t.vigente_hasta >= (t.concluido_en at time zone 'America/Lima')::date
-           -- Ya tiene su renovación (aunque se haya anulado): avisa ella.
-           and not exists (select 1 from public.tramites n where n.renueva_a = t.id)
+           -- Ya tiene su renovación en pie (o concluida): avisa ella.
+           and not exists (select 1 from public.tramites n where n.renueva_a = t.id and n.estado <> 'ANULADO')
+           -- O el Tramitador ya registró a mano el que lo renueva: otro del mismo
+           -- tipo y de la misma unidad, después de concluirlo. En lo de la
+           -- empresa no se adivina (dos SOAT de dos camionetas son del mismo
+           -- tipo): ahí se usa «Renovar ahora».
+           and not (t.unidad_id is not null
+                    and exists (select 1 from public.tramites n
+                                 where n.tipo_id = t.tipo_id and n.unidad_id = t.unidad_id
+                                   and n.id <> t.id and n.estado <> 'ANULADO' and n.creado_en >= t.concluido_en))
       ) x
      where not (t.anulacion_pedida_en is not null and t.anulacion_rechazada_en is null)
        -- Lo de un lote de prueba no avisa a nadie ni deja filas que impidan limpiarlo.
@@ -408,10 +493,29 @@ begin
      -- vencido queda a la vista aunque la corrida sea larga.
      order by x.fecha desc, t.numero desc
   loop
+    if r.que = 'VIGENCIA' and (r.renovacion_anulada or not r.activo) then
+      -- No se abre sola: su renovación se anuló o el tipo ya no se usa. Al
+      -- vencer el documento, un aviso, una vez, al Tramitador y a Gerencia.
+      continue when r.d >= 0;
+      insert into public.tramite_avisos (tramite_id, tipo, fecha, dias, dia_revision)
+      values (r.id, 'VIGENCIA_VENCIDA', r.fecha, null, v_hoy)
+      on conflict do nothing;
+      continue when not found;
+      v_titulo := 'Venció el documento del ' || r.numero;
+      v_cuerpo := public.tramite_en_texto(r.id) || '. Valía hasta el ' || to_char(r.fecha, 'DD/MM/YYYY')
+                  || case when r.renovacion_anulada
+                          then '. Su renovación se anuló: si hace falta, ábrela con «Renovar ahora».'
+                          else '. Su tipo ya no se usa: no se abre su renovación.' end;
+      v_cuentas := public.avisar_tramite(r.id, v_titulo, v_cuerpo, true);
+      update public.tramite_avisos set avisados = v_cuentas
+       where tramite_id = r.id and tipo = 'VIGENCIA_VENCIDA' and fecha = r.fecha and dias is null;
+      v_vencidos := v_vencidos + 1; v_c_vencidos := v_c_vencidos + v_cuentas;
+      continue;
+    end if;
     if r.que = 'VIGENCIA' then
       -- Se abre al llegar el primer día de aviso de su tipo, o ya vencido si la
-      -- revisión no lo alcanzó antes. Con el tipo desactivado, no se lleva más.
-      continue when not r.activo or r.d > (select max(a) from unnest(r.dias_aviso) a);
+      -- revisión no lo alcanzó antes.
+      continue when r.d > (select max(a) from unnest(r.dias_aviso) a);
       v_nuevo := public.tramite_abrir_renovacion(r.id, gen_random_uuid(), null);
       continue when v_nuevo is null;
       select count(*)::integer into v_cuentas from public.notificaciones n
@@ -468,11 +572,12 @@ begin
   return query values
     ('POR_VENCER', v_por_vencer, v_c_por_vencer),
     ('VENCIDO', v_vencidos, v_c_vencidos),
-    ('RENOVACION', v_renovados, v_c_renovados);
+    ('RENOVACION', v_renovados, v_c_renovados),
+    ('DE_LA_OT', v_de_la_ot, v_c_de_la_ot);
 end;
 $$;
 comment on function public.revisar_tramites(date) is
-  'La revisión diaria de los trámites (7:00 a. m. de Lima, día laborable): por la fecha límite de los que se llevan avisa al Tramitador al cumplirse cada día de aviso de su tipo, y al pasar la fecha límite avisa una vez al Tramitador y a Gerencia. El concluido que se renueva abre su renovación al llegar el primer día de aviso de su tipo, y desde ahí avisa la renovación. No repite: anota cada aviso, cada renovación y cada corrida en tramite_avisos. La corre pg_cron; cerrada a la gente.';
+  'La revisión diaria de los trámites (7:00 a. m. de Lima, día laborable): por la fecha límite de los que se llevan avisa al Tramitador al cumplirse cada día de aviso de su tipo, y al pasar la fecha límite avisa una vez al Tramitador y a Gerencia. El concluido que se renueva abre su renovación al llegar el primer día de aviso de su tipo, y desde ahí avisa la renovación; si la renovación se anuló o su tipo ya no se usa, avisa una vez, al Tramitador y a Gerencia, cuando vence su documento. La OT de fabricación cuyo código interno llega al 100 % abre sus trámites (ot_abrir_sus_tramites). No repite: anota cada aviso, cada renovación y cada corrida en tramite_avisos. La corre pg_cron; cerrada a la gente.';
 revoke all on function public.revisar_tramites(date) from public, anon, authenticated;
 
 -- 7. El catálogo: el formulario suma los días desde el término de la OT ------------------------------
@@ -657,7 +762,7 @@ begin
            and b.fecha_limite - v_hoy <= (select max(a) from unnest(tt.dias_aviso) a),
          b.renueva_a, vj.numero,
          nv.id, nv.numero, nv.estado,
-         v_gestiona and b.estado = 'CONCLUIDO' and b.se_renueva and not b.espera_visto
+         v_gestiona and b.estado = 'CONCLUIDO' and b.se_renueva and not b.espera_visto and tt.activo
            and (nv.id is null or nv.estado = 'ANULADO')
     from base b
     join public.tramite_tipos tt on tt.id = b.tipo_id
@@ -689,11 +794,17 @@ grant execute on function public.tramites_visibles(uuid) to authenticated;
 
 -- 9. Lo que la OT lee de sus trámites ------------------------------------------------------------------
 -- Quien ve la OT ve en qué van sus trámites (no su expediente): el número, el
--- tipo, el estado, la fecha límite y cuándo se concluyó. Sin los anulados.
--- `ve` dice si puede abrir la ficha del trámite.
-create or replace function public.tramites_de_la_orden(p_orden uuid)
+-- tipo, el estado, la fecha límite y cuándo se concluyó. Los anulados también:
+-- la OT no da por cumplida la regla con su tarjeta anulada (la pantalla los
+-- muestra solo si no hay otro del mismo tipo en pie).
+-- `ve` dice si puede abrir la ficha del trámite; `de_la_regla`, si lo abrió la
+-- OT o su tipo es de los que abre (la tarjeta y las placas), aunque se haya
+-- registrado a mano: con eso la OT dice si la regla se cumplió. Lo que abrió la
+-- OT cuenta siempre, aunque después se cambie el catálogo.
+drop function if exists public.tramites_de_la_orden(uuid);
+create function public.tramites_de_la_orden(p_orden uuid)
 returns table (id uuid, numero text, tipo text, origen text, estado text, situacion text,
-               fecha_limite date, fecha_conclusion date, vencido boolean, ve boolean)
+               fecha_limite date, fecha_conclusion date, vencido boolean, ve boolean, de_la_regla boolean)
 language plpgsql stable security definer set search_path to 'public' rows 5 as $$
 #variable_conflict use_column
 declare
@@ -708,13 +819,15 @@ begin
          case when t.anulacion_pedida_en is not null and t.anulacion_rechazada_en is null then 'POR_ANULAR' else t.estado end,
          t.fecha_limite, t.fecha_conclusion,
          t.estado in ('POR_INICIAR', 'EN_TRAMITE', 'OBSERVADO') and t.fecha_limite is not null and t.fecha_limite < v_hoy,
-         v_ve
+         v_ve,
+         t.origen = 'OT' or tt.dias_desde_termino_ot is not null
     from public.tramites t
-   where t.orden_id = p_orden and t.estado <> 'ANULADO'
+    join public.tramite_tipos tt on tt.id = t.tipo_id
+   where t.orden_id = p_orden
    order by t.creado_en, t.numero;
 end;
 $$;
 comment on function public.tramites_de_la_orden(uuid) is
-  'Los trámites sin anular de una OT (los que abrió al terminar y los que se registraron con ella) para quien ve la OT o los trámites: número, tipo, de dónde viene, estado, fecha límite, cuándo se concluyó, si venció y si quien pregunta puede abrir su ficha.';
+  'Los trámites de una OT, también los anulados (los que abrió al terminar y los que se registraron con ella) para quien ve la OT o los trámites: número, tipo, de dónde viene, estado, fecha límite, cuándo se concluyó, si venció, si quien pregunta puede abrir su ficha y si su tipo es de los que abre la OT.';
 revoke all on function public.tramites_de_la_orden(uuid) from public, anon;
 grant execute on function public.tramites_de_la_orden(uuid) to authenticated;

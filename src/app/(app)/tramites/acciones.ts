@@ -255,7 +255,7 @@ export async function guardarTipo(_previo: unknown, formulario: FormData): Promi
   ) {
     return {
       ok: false,
-      error: `Los días hábiles desde que termina la OT van de ${MINIMO_DIAS_DESDE_TERMINO_OT} a ${MAXIMO_DIAS_DESDE_TERMINO_OT}, o vacíos si no se abre solo.`,
+      error: `Los días hábiles desde que termina la unidad van de ${MINIMO_DIAS_DESDE_TERMINO_OT} a ${MAXIMO_DIAS_DESDE_TERMINO_OT}, o vacíos si no se abre solo.`,
     }
   }
 

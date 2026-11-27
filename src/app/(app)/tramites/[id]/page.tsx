@@ -39,7 +39,7 @@ export default async function PaginaTramite({ params }: PageProps<'/tramites/[id
   // El número de la OT lleva a ella solo si quien mira abre las OT.
   const veOt = puede(perfil, ['ordenes.ver', 'ordenes.listar'])
   const s = SITUACION_TRAMITE[t.situacion]
-  const plazo = plazoDelTramite(t.dias_para_limite)
+  const plazo = plazoDelTramite(t.dias_para_limite, t.por_vencer)
   const deQuien = t.ambito === 'UNIDAD' ? nombreDeLaUnidad(t) : 'De la empresa'
 
   const acciones = (
@@ -285,7 +285,7 @@ export default async function PaginaTramite({ params }: PageProps<'/tramites/[id
                 {t.registro
                   ? [t.registro, t.registro_puesto].filter(Boolean).join(' · ')
                   : t.origen === 'OT'
-                    ? `El sistema, al terminar la OT ${t.orden_numero ?? ''}`.trim()
+                    ? `El sistema, al terminar la unidad de la OT ${t.orden_numero ?? ''}`.trim()
                     : 'El sistema, al acercarse el vencimiento'}
                 <span className="block text-xs text-texto-suave">{fechaHora(t.creado_en)}</span>
               </Dato>
@@ -313,13 +313,15 @@ function QueSigue({ tramite: t }: { tramite: Tramite }) {
       : 'El documento que entregó la entidad está en el expediente.'
     // Lo que se renueva y todavía no tiene renovación: quién la abre y cuándo.
     // Con la renovación anulada no se abre otra sola: lo dice el bloque de la renovación.
-    if (t.se_renueva && !t.renovado_con) {
+    // Solo a quien la puede abrir (su tipo sigue en uso y no tiene otra) y si su
+    // documento todavía vale: la revisión no abre la de uno ya vencido.
+    if (t.puede_renovar && !t.renovado_con && t.vigente_hasta && t.vigente_hasta >= hoyLima()) {
       texto += ' Al llegar el primer día de aviso de su tipo, el sistema abre su renovación.'
     }
   } else if (t.puede_actualizar) {
     texto =
       t.estado === 'POR_INICIAR'
-        ? (t.origen === 'OT' ? 'Lo abrió el sistema al terminar la OT. ' : t.origen === 'RENOVACION' ? 'Es una renovación. ' : '') +
+        ? (t.origen === 'OT' ? 'Lo abrió el sistema al terminar la unidad de la OT. ' : t.origen === 'RENOVACION' ? 'Es una renovación. ' : '') +
           'Te toca: cuando lo presentes ante la entidad, anota la fecha y su número de expediente, y sube el cargo.'
         : t.estado === 'OBSERVADO'
           ? 'Te toca: subsana lo que observó la entidad y vuelve a ponerlo «En trámite».'

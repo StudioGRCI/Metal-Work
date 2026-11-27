@@ -1217,7 +1217,7 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
   })
   if (puede(perfil, 'tramites.gestionar')) {
     tareas.push({
-      clave: 'tramites_vencidos', ruta: '/tramites', tono: 'peligro',
+      clave: 'tramites_vencidos', ruta: '/tramites?vista=vencidos', tono: 'peligro',
       texto: n => plural(n, 'trámite pasó su fecha límite', 'trámites pasaron su fecha límite'),
       contar: () => tramites('vencidos'),
     })

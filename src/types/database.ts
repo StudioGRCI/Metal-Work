@@ -18985,6 +18985,13 @@ export type Database = {
           atrasada: boolean | null
         }[]
       }
+      ot_abrir_sus_tramites: {
+        Args: {
+          p_ot: string | null
+          p_termino: string | null
+        }
+        Returns: number
+      }
       ot_anulada_que_reabre_la_venta: {
         Args: {
           p_cotizacion: string | null
@@ -22569,6 +22576,7 @@ export type Database = {
           fecha_conclusion: string | null
           vencido: boolean | null
           ve: boolean | null
+          de_la_regla: boolean | null
         }[]
       }
       tramites_gestiones: {

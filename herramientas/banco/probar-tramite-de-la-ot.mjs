@@ -8,7 +8,7 @@
  *      Tramitador registra y concluye con su vigencia.
  *   2. El Tramitador ve las cifras (por vencer, vencidos, concluidos este mes)
  *      con las cuentas de la base, la marca «Abierto por la OT» en la lista,
- *      la ficha con «Lo abrió: El sistema, al terminar la OT…», «Renovar
+ *      la ficha con «Lo abrió: El sistema, al terminar la unidad de la OT…», «Renovar
  *      ahora» en el SOAT y su resultado en las dos fichas, y en el catálogo
  *      los días de «Placas» (1440 y 390).
  *   3. Calidad ve en la OT «Trámites de la OT», sin enlace a fichas que no le
@@ -188,7 +188,7 @@ const placas = deLaOt['Placas']
   // El catálogo: «Placas» se abre al terminar la OT si la unidad no tiene placa.
   await pagina.locator('#tipos-de-tramite > summary').click()
   const placasEnCatalogo = pagina.locator('#tipos-de-tramite li[data-tipo="Placas"]')
-  comprobar((await texto(placasEnCatalogo.locator('[data-abre-la-ot]'))).includes('Se abre al terminar la OT, si la unidad no tiene placa: límite a 15 días hábiles'),
+  comprobar((await texto(placasEnCatalogo.locator('[data-abre-la-ot]'))).includes('Se abre al terminar la unidad, si no tiene placa: límite a 15 días hábiles'),
     'el catálogo dice que las placas se abren al terminar la OT, si la unidad no tiene placa, a 15 días hábiles')
   await placasEnCatalogo.getByRole('button', { name: 'Editar el tipo Placas' }).click()
   const ventana = pagina.getByRole('dialog', { name: /Editar el tipo «Placas»/ })
@@ -202,7 +202,7 @@ const placas = deLaOt['Placas']
   await ir(pagina, `/tramites/${tarjeta.id}`)
   const main = pagina.locator('main')
   const t = await texto(main)
-  comprobar(t.includes(`El sistema, al terminar la OT ${otNumero}`), `la ficha dice «Lo abrió: El sistema, al terminar la OT ${otNumero}»`)
+  comprobar(t.includes(`El sistema, al terminar la unidad de la OT ${otNumero}`), `la ficha dice «Lo abrió: El sistema, al terminar la unidad de la OT ${otNumero}»`)
   comprobar((await main.locator('[data-origen="OT"]').count()) > 0, 'y lleva la insignia de su origen')
   await pagina.screenshot({ path: `${CAPTURAS}/tramite-de-la-ot-ficha-tramitador-1440.png`, fullPage: true })
 
