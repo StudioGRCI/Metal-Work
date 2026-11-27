@@ -22,7 +22,7 @@
  * Solo consulta: no abre ventanas ni escribe en la base.
  *
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), BANCO_CHROMIUM,
- * PUESTOS (separados por coma; por omisión los diecinueve del banco),
+ * PUESTOS (separados por coma; por omisión los veintiuno del banco),
  * ANCHOS (1440,1024,390) y OSCURO (390; vacío para no mirarlo).
  */
 import { existsSync } from 'node:fs'
@@ -41,7 +41,7 @@ if (!CLAVE) {
 
 const PUESTOS = (
   process.env.PUESTOS ??
-  'rrhh,administracion,ventas,gerencia.comercial,gerencia,gerencia.produccion,almacen,logistica,requerimientos,diseno,sup.prd,sup.mtz,sup.acb,tesoreria,contabilidad,mantenimiento,porteria,conductor,colaborador'
+  'rrhh,administracion,ventas,gerencia.comercial,gerencia,gerencia.produccion,almacen,logistica,requerimientos,diseno,sup.prd,sup.mtz,sup.acb,tesoreria,contabilidad,mantenimiento,porteria,conductor,colaborador,ssoma,tramitador'
 )
   .split(',')
   .filter(Boolean)
@@ -206,7 +206,7 @@ try {
   }
 
   // ---------------------------------------------------------------- 3. Atención de requerimientos
-  console.log('\n3. Atención de requerimientos con Logística')
+  console.log('\n3. Atención de requerimientos con Logística y Almacén')
   {
     const { pagina, contexto } = await entrar('logistica', 390)
     await ir(pagina, '/requerimientos/atencion?vista=comprar')
@@ -217,15 +217,20 @@ try {
         lineas: lineas.length,
         vistas: lineas.filter(vis).length,
         conCodigo: lineas.filter((l) => /Código \S+/.test(l.textContent)).length,
+        casillasChicas: [...document.querySelectorAll('main table input[type="checkbox"]')].filter(vis).filter((c) => {
+          const r = (c.closest('label') ?? c).getBoundingClientRect()
+          return r.height < 44 || r.width < 44
+        }).length,
         sobra: [...document.querySelectorAll('main table')].filter(vis).map((t) => t.parentElement.scrollWidth - t.parentElement.clientWidth),
       }
     })
     comprobar(r.lineas > 0 && r.vistas === r.lineas && r.conCodigo === r.lineas, `Por comprar a 390: cada insumo dice su RQ y su código debajo (${r.vistas} de ${r.lineas})`)
     comprobar(r.sobra.every((s) => s <= 1), `Por comprar a 390: ninguna tabla se sale (${r.sobra.join(', ')})`)
+    comprobar(r.casillasChicas === 0, `Por comprar a 390: cada casilla se toca en 44 px (${r.casillasChicas} más chicas)`)
     await contexto.close()
   }
-  for (const ancho of [1024, 768]) {
-    const { pagina, contexto } = await entrar('logistica', ancho)
+  for (const [puesto, ancho] of [['logistica', 1024], ['logistica', 768], ['almacen', 1024], ['almacen', 768]]) {
+    const { pagina, contexto } = await entrar(puesto, ancho)
     await ir(pagina, '/requerimientos/atencion')
     const r = await pagina.evaluate(() => {
       const t = [...document.querySelectorAll('main table')].find((x) => x.getBoundingClientRect().width > 0)
@@ -233,7 +238,9 @@ try {
       const ancho = (i) => Math.round(ths[i].getBoundingClientRect().width)
       return { insumos: ancho(1), acciones: ancho(ths.length - 1), sobra: t.parentElement.scrollWidth - t.parentElement.clientWidth }
     })
-    comprobar(r.insumos > r.acciones && r.sobra <= 0, `Atención ${ancho}: los insumos tienen más ancho que los botones (${r.insumos} contra ${r.acciones}) y la tabla cabe`)
+    // A quien compra, los insumos más anchos que su botón; a Almacén, que lleva dos o tres, su ancho mínimo (176 px).
+    const bien = puesto === 'logistica' ? r.insumos > r.acciones : r.insumos >= 170
+    comprobar(bien && r.sobra <= 0, `Atención ${puesto} ${ancho}: los insumos tienen su ancho (${r.insumos} contra ${r.acciones} de los botones) y la tabla cabe`)
     await contexto.close()
   }
 

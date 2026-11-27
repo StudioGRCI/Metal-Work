@@ -128,7 +128,7 @@ function GrupoDeInsumos({
       <Tabla>
         <TablaCabecera>
           <tr>
-            <TH className="w-10">
+            <TH className="w-12">
               <span className="sr-only">Marcar</span>
             </TH>
             <TH>Insumo</TH>
@@ -189,16 +189,20 @@ function MaterialPorComprar({
   return (
     <>
       <TR className="bg-superficie-2">
-        <TD>
-          <input
-            type="checkbox"
-            aria-label={`Marcar todo lo que falta de ${primero.material}`}
-            checked={todos}
-            ref={(el) => {
-              if (el) el.indeterminate = algunos
-            }}
-            onChange={(e) => alternar(insumos.map((i) => i.id), e.target.checked)}
-          />
+        <TD className="px-1 py-0">
+          {/* La casilla es chica; la etiqueta que la envuelve da los 44 px para el dedo. */}
+          <label className="flex min-h-11 min-w-11 cursor-pointer items-center justify-center">
+            <input
+              type="checkbox"
+              className="size-4"
+              aria-label={`Marcar todo lo que falta de ${primero.material}`}
+              checked={todos}
+              ref={(el) => {
+                if (el) el.indeterminate = algunos
+              }}
+              onChange={(e) => alternar(insumos.map((i) => i.id), e.target.checked)}
+            />
+          </label>
         </TD>
         <TD className="sm:hidden">
           <span className="font-semibold text-texto">{primero.material}</span>
@@ -222,13 +226,16 @@ function MaterialPorComprar({
       </TR>
       {insumos.map((i) => (
         <TR key={i.id}>
-          <TD>
-            <input
-              type="checkbox"
-              aria-label={`Marcar ${i.descripcion} del ${i.requerimiento}`}
-              checked={marcados.has(i.id)}
-              onChange={(e) => alternar([i.id], e.target.checked)}
-            />
+          <TD className="px-1 py-0">
+            <label className="flex min-h-11 min-w-11 cursor-pointer items-center justify-center">
+              <input
+                type="checkbox"
+                className="size-4"
+                aria-label={`Marcar ${i.descripcion} del ${i.requerimiento}`}
+                checked={marcados.has(i.id)}
+                onChange={(e) => alternar([i.id], e.target.checked)}
+              />
+            </label>
           </TD>
           <TD className="text-sm text-texto">
             {i.descripcion}
