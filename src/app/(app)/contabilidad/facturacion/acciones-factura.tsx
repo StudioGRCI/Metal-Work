@@ -36,6 +36,8 @@ export type UnidadPorFacturar = {
   facturado: number
   /** Pasó a otro comprador: ya no espera OT ni factura en esta cotización. */
   paso?: boolean
+  /** El número de su OT, aunque se haya quedado sin código (entrega 3). */
+  ot?: string | null
 }
 
 /** El valor de «toda la cotización» en el campo de la unidad: así lo espera `registrar_factura_venta_de_unidad`. */
@@ -207,7 +209,7 @@ export function RegistrarFactura({
                   ? 'La factura por toda la cotización (un adelanto, por ejemplo) se reparte en partes iguales entre sus unidades.'
                   : algunaPaso
                     ? 'Se elige la unidad que ya tiene su OT. Ya no hay factura por toda la cotización: cada unidad que queda lleva la suya.'
-                    : 'Se elige la unidad que ya tiene su OT. La factura por toda la cotización se registra cuando Administración cargue todas las OT.'
+                    : 'Se elige la unidad que ya tiene su OT con código. La factura por toda la cotización se registra cuando todas lo tengan.'
               }
               ayudaEnIcono={false}
             >
@@ -221,7 +223,9 @@ export function RegistrarFactura({
                       ? `Unidad ${u.numero} · código ${u.codigo}`
                       : u.paso
                         ? `Unidad ${u.numero} · pasó a otro comprador`
-                        : `Unidad ${u.numero} · falta su OT`}
+                        : u.ot
+                          ? `Unidad ${u.numero} · su OT ${u.ot} sin código`
+                          : `Unidad ${u.numero} · falta su OT`}
                   </option>
                 ))}
                 <option value={TODA} disabled={!todasConOt}>

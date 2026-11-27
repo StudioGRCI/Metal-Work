@@ -355,6 +355,68 @@ end $$;
 rollback to savepoint las_dos_facturadas;
 release savepoint las_dos_facturadas;
 
+-- 5d. Lo que dice la base de la unidad que pasó, y la OT que llegó de otra venta -----
+-- (entrega 3, 20261127010000) Contabilidad no la factura y se le dice por qué; la
+-- factura de toda la cotización tampoco, porque una unidad ya no es de esta venta;
+-- Administración no la elige para cargarle otra OT. Y en la venta nueva, la OT que
+-- llegó cuenta desde que llegó, no desde que se creó en la de antes.
+savepoint lo_de_la_que_paso;
+do $$
+declare
+  v_cot constant uuid := current_setting('prueba.cot3')::uuid;
+  v_en timestamptz;
+  v_llego timestamptz;
+begin
+  perform test.como_usuario(current_setting('prueba.contable')::uuid);
+  set local role authenticated;
+  perform test.debe_fallar(format(
+    'select public.registrar_factura_venta_de_unidad(gen_random_uuid(), %L, %L, current_date, current_date + 30, %L, 3000, null, %L, %L, 1)',
+    v_cot, 'E001-49590', 'PEN', 'fv/qa-495-x.pdf', 'f.pdf'),
+    'la unidad que pasó a otro comprador no se factura aquí, y se dice por qué',
+    'pasó a otro comprador con su OT: ya no se factura en esta cotización');
+  perform test.debe_fallar(format(
+    'select public.registrar_factura_venta_de_unidad(gen_random_uuid(), %L, %L, current_date, current_date + 30, %L, 9000, null, %L, %L, 0)',
+    v_cot, 'E001-49591', 'PEN', 'fv/qa-495-y.pdf', 'f.pdf'),
+    'ni la factura de toda la cotización: una unidad ya no es de esta venta',
+    'pasaron unidades a otro comprador: factura por separado cada unidad que sigue en la venta');
+  reset role;
+
+  -- Con una unidad libre (se anula la OT 49503), la que pasó tampoco se elige.
+  perform set_config('session_replication_role', 'replica', true);
+  update public.ordenes_trabajo set estado = 'ANULADA', motivo_anulacion = 'Prueba del check 495'
+   where id = current_setting('prueba.ot3')::uuid;
+  perform set_config('session_replication_role', 'origin', true);
+  perform test.como_usuario(current_setting('prueba.oficina')::uuid);
+  set local role authenticated;
+  perform test.debe_fallar(format(
+    'select public.cargar_codigo_y_ot_de_cotizacion(%L, %L, %L, %L, %L, null, %L, %L, 100, null, null, 1)',
+    v_cot, '49590000-0000-4000-8000-000000000001', 'QA-495 X', '49590', 'SEMIRREMOLQUE',
+    'ot/49590000-0000-4000-8000-000000000001/orden.pdf', 'orden.pdf'),
+    'Administración no elige la unidad que pasó para cargarle otra OT',
+    'pasó a otro comprador: ya no lleva otra OT');
+  reset role;
+
+  -- La OT 49502 se creó hace diez días en la venta de antes y pasó a la nueva después.
+  perform set_config('session_replication_role', 'replica', true);
+  update public.ordenes_trabajo set creado_en = now() - interval '10 days' where id = current_setting('prueba.ot2')::uuid;
+  perform set_config('session_replication_role', 'origin', true);
+  select max(v.creado_en) into v_llego from public.ot_ventas_anteriores v where v.orden_id = current_setting('prueba.ot2')::uuid;
+  perform test.como_usuario(current_setting('prueba.contable')::uuid);
+  set local role authenticated;
+  select r.en into v_en from public.recorrido_de_cotizaciones(array[current_setting('prueba.nueva3')::uuid]) r
+   where r.paso = 'CODIGO_Y_OT' and r.situacion = 'HECHO';
+  perform test.afirmar(v_en = v_llego,
+    format('en la venta nueva, su OT cuenta desde que llegó (%s), no desde que se creó allá hace diez días (%s)', v_llego, v_en));
+  -- Y su factura espera desde entonces: no «hace 10 días».
+  select r.en into v_en from public.recorrido_de_cotizaciones(array[current_setting('prueba.nueva3')::uuid]) r
+   where r.paso = 'FACTURA' and r.situacion = 'AHORA';
+  reset role;
+  perform test.afirmar(v_en >= v_llego,
+    format('y su factura espera desde que llegó (%s), no desde que se creó allá (%s)', v_llego, v_en));
+end $$;
+rollback to savepoint lo_de_la_que_paso;
+release savepoint lo_de_la_que_paso;
+
 -- 6. Volver a aprobarla no le pide otra OT a Administración ------------------------
 -- Ventas la corrige (vuelve a «Por revisar») y Gerencia la aprueba otra vez.
 do $$

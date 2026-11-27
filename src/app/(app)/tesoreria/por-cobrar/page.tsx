@@ -237,7 +237,7 @@ export default async function PaginaPorCobrar() {
                     </span>
                     <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-texto-suave">
                       {Number(c.facturas) === 0 ? (
-                        <Insignia tono="neutro">{c.unidades.some((u) => u.codigo) ? 'Contabilidad aún no la factura' : 'Falta cargar la OT'}</Insignia>
+                        <Insignia tono="neutro">{c.unidades.some((u) => u.codigo) ? 'Contabilidad aún no la factura' : c.unidades.some((u) => u.ot) ? 'Falta el código de su OT' : 'Falta cargar la OT'}</Insignia>
                       ) : (
                         // Facturada solo en la otra moneda, no se pinta «Facturado US$ 0.00 (0 %)»: diría que no se facturó nada.
                         (Number(c.facturado) > 0 || !otra) && (

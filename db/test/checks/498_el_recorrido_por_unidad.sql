@@ -72,6 +72,17 @@ begin
     pg_temp.id(p_cot), pg_temp.id(p_ot), p_codigo, p_numero, 'SEMIRREMOLQUE',
     current_setting('prueba.hoy')::date + 30, 'ot/' || current_setting('prueba.' || p_ot) || '/orden.pdf', 'orden.pdf', 100);
 end $$;
+-- La misma carga, en la unidad que elige Administración (entrega 3, 20261127010000).
+create or replace function pg_temp.cargar_en(p_cot text, p_ot text, p_codigo text, p_numero text, p_unidad integer) returns uuid language plpgsql as $$
+begin
+  insert into storage.objects (bucket_id, name, owner_id, metadata)
+  values ('adjuntos-ot', 'ot/' || current_setting('prueba.' || p_ot) || '/orden.pdf', current_setting('prueba.administracion'),
+          '{"mimetype": "application/pdf", "size": 100}');
+  return public.cargar_codigo_y_ot_de_cotizacion(
+    pg_temp.id(p_cot), pg_temp.id(p_ot), p_codigo, p_numero, 'SEMIRREMOLQUE',
+    current_setting('prueba.hoy')::date + 30, 'ot/' || current_setting('prueba.' || p_ot) || '/orden.pdf', 'orden.pdf', 100,
+    null, null, p_unidad);
+end $$;
 -- Contabilidad registra una factura en soles: p_unidad = 0 es toda la cotización.
 create or replace function pg_temp.facturar(p_f text, p_cot text, p_numero text, p_total numeric, p_unidad integer)
 returns uuid language sql as $$
@@ -391,11 +402,107 @@ end $$;
 reset role;
 rollback to savepoint otra_ot_de_la_unidad_3;
 
+-- 8d. Administración elige la unidad (entrega 3): la OT del vehículo de la unidad 3 va a la 3
+-- aunque la 1 y la 2 estén libres; sin elegir, la primera libre. Fuera de rango, ocupada:
+-- no entra y dice por qué.
+savepoint elige_la_unidad;
+select set_config('prueba.' || k, gen_random_uuid()::text, true) from unnest(array['otp3', 'otp1', 'otpx', 'otpy']) k;
+select pg_temp.como('administracion');
+set local role authenticated;
+select pg_temp.cargar_en('cotp', 'otp3', 'qa-498 p3', '49821', 3);
+select pg_temp.cargar_en('cotp', 'otp1', 'qa-498 p1', '49822', null);
+select test.debe_fallar(format('select pg_temp.cargar_en(%L, %L, %L, %L, 4)', 'cotp', 'otpx', 'qa-498 px', '49823'),
+  'la unidad 4 de una cotización de 3 no existe', 'es de 3 unidades: elige una de la 1 a la 3');
+select test.debe_fallar(format('select pg_temp.cargar_en(%L, %L, %L, %L, 3)', 'cotp', 'otpy', 'qa-498 py', '49824'),
+  'la unidad 3 ya tiene su OT', 'ya tiene su OT 49821-');
+reset role;
+select test.afirmar(
+  (select string_agg(o.numero || '=' || o.numero_de_unidad, ' ' order by o.numero) from public.ordenes_trabajo o
+    where o.cotizacion_pdf_id = pg_temp.id('cotp') and o.estado <> 'ANULADA')
+  = '49821-' || current_setting('prueba.anio') || '=3 49822-' || current_setting('prueba.anio') || '=1',
+  'la elegida quedó en la unidad 3 y la otra, sin elegir, en la primera libre');
+select test.afirmar(
+  (select descripcion like '%unidad 3 de 3' from public.ordenes_trabajo where id = pg_temp.id('otp3')),
+  'y su descripción dice «unidad 3 de 3»');
+select test.afirmar(pg_temp.camino('contabilidad', 'cotp', 3) like 'CODIGO_Y_OT:HECHO:OT 49821-% > FACTURA:AHORA:Contabilidad%',
+  'en el recorrido, la unidad 3 tiene su OT y espera su factura (' || pg_temp.camino('contabilidad', 'cotp', 3) || ')');
+select test.afirmar(pg_temp.camino('contabilidad', 'cotp', 2) like 'CODIGO_Y_OT:AHORA:Administración%',
+  'y la 2 sigue esperando la suya (' || pg_temp.camino('contabilidad', 'cotp', 2) || ')');
+
+-- 8e. La unidad de la OT se queda sin código interno: el recorrido ya no dice «Con código
+-- interno y OT» y la factura espera con ella (sin código no se factura).
+update public.unidades set codigo_interno = null where id = (select unidad_id from public.ordenes_trabajo where id = pg_temp.id('otp3'));
+select test.afirmar(pg_temp.camino('contabilidad', 'cotp', 3) like 'CODIGO_Y_OT:AHORA:Administración:OT 49821-% > FACTURA:PENDIENTE%',
+  'sin código, espera a Administración con su OT y la factura queda pendiente (' || pg_temp.camino('contabilidad', 'cotp', 3) || ')');
+select pg_temp.como('contabilidad');
+set local role authenticated;
+select test.afirmar(
+  (select r.espera = 'SIN_CODIGO' from public.recorrido_de_cotizaciones(array[pg_temp.id('cotp')]) r
+    where r.unidad = 3 and r.paso = 'CODIGO_Y_OT'),
+  'y la espera dice que le falta el código, no la OT');
+reset role;
+rollback to savepoint elige_la_unidad;
+
 -- ============================================ 7. La cotización de una unidad, como siempre
 select pg_temp.como('administracion');
 set local role authenticated;
 select pg_temp.cargar('cot1', 'ots', 'qa-498 s', '49810');
 reset role;
+
+-- 7b. La de una unidad cuya OT se queda sin código: espera a Administración, la
+-- factura no se registra y dice por qué; mientras se corrige, queda pendiente; y
+-- devuelto el código, la factura cuenta desde entonces, no desde la primera vez
+-- (la OT y su código se cargaron hace diez días).
+savepoint una_unidad_sin_codigo;
+set local session_replication_role = replica;
+update public.ordenes_trabajo set creado_en = creado_en - interval '10 days' where id = pg_temp.id('ots');
+update public.audit_log set creado_en = creado_en - interval '10 days'
+ where tabla = 'unidades' and registro_id = (select unidad_id from public.ordenes_trabajo where id = pg_temp.id('ots'));
+set local session_replication_role = origin;
+select test.afirmar(
+  (select r.dias = 10 from public.recorrido_de_cotizaciones(array[pg_temp.id('cot1')]) r where r.paso = 'FACTURA' and r.situacion = 'AHORA'),
+  'con su código de hace diez días, la factura espera diez días');
+select test.afirmar(
+  (select f.dias = 10 from public.facturacion_por_unidad(array[pg_temp.id('cot1')]) f),
+  'y en Facturación, los mismos diez días');
+update public.unidades set codigo_interno = null where id = (select unidad_id from public.ordenes_trabajo where id = pg_temp.id('ots'));
+select test.afirmar(pg_temp.camino('contabilidad', 'cot1') like 'CODIGO_Y_OT:AHORA:Administración:OT 49810-% > FACTURA:PENDIENTE%',
+  'una unidad sin código: espera a Administración con su OT y la factura queda pendiente (' || pg_temp.camino('contabilidad', 'cot1') || ')');
+select pg_temp.como('contabilidad');
+set local role authenticated;
+select test.debe_fallar('select pg_temp.facturar(''fs'', ''cot1'', ''E001-4980'', 4000, 1)',
+  'sin código no se factura, y no dice que falte cargar la OT', 'La OT 49810-' || current_setting('prueba.anio') || ' de la cotización');
+-- Facturación dice que tiene su OT y le falta el código, no que falte cargarla.
+select test.afirmar(
+  (select f.ot_numero like '49810-%' and f.codigo_interno is null and f.desde is null and f.dias is null
+     from public.facturacion_por_unidad(array[pg_temp.id('cot1')]) f),
+  'en Facturación la unidad sin código trae el número de su OT, sin código ni días');
+reset role;
+do $$
+begin
+  set local session_replication_role = replica;
+  update public.cotizaciones_pdf set estado = 'POR_REVISAR' where id = pg_temp.id('cot1');
+  set local session_replication_role = origin;
+  perform test.afirmar(pg_temp.camino('gerente', 'cot1') not like '%CODIGO_Y_OT:HECHO%'
+                       and pg_temp.camino('gerente', 'cot1') like '%CODIGO_Y_OT:PENDIENTE%',
+    'mientras se corrige, la OT sin código tampoco sale «Con código interno y OT» (' || coalesce(pg_temp.camino('gerente', 'cot1'), 'nada') || ')');
+  reset role;
+  set local session_replication_role = replica;
+  update public.cotizaciones_pdf set estado = 'APROBADA' where id = pg_temp.id('cot1');
+  set local session_replication_role = origin;
+end $$;
+update public.unidades set codigo_interno = 'QA-498 S' where id = (select unidad_id from public.ordenes_trabajo where id = pg_temp.id('ots'));
+select test.afirmar(
+  (select r.dias = 0 from public.recorrido_de_cotizaciones(array[pg_temp.id('cot1')]) r where r.paso = 'FACTURA' and r.situacion = 'AHORA'),
+  'devuelto el código, la factura espera desde hoy, no desde hace diez días');
+select pg_temp.como('contabilidad');
+set local role authenticated;
+select test.afirmar(
+  (select f.codigo_interno = 'QA-498 S' and f.dias = 0 from public.facturacion_por_unidad(array[pg_temp.id('cot1')]) f),
+  'y Facturación también cuenta desde hoy');
+reset role;
+rollback to savepoint una_unidad_sin_codigo;
+
 select pg_temp.como('contabilidad');
 set local role authenticated;
 select pg_temp.facturar('fs', 'cot1', 'E001-4989', 4000, 1);
@@ -448,6 +555,15 @@ select test.afirmar(pg_temp.camino('contabilidad', 'cot3', 2) like 'CODIGO_Y_OT:
   'y Contabilidad, que sí las lee, lo sigue viendo');
 
 -- ============================================ 12. Anulada la cotización, nadie la espera y la anulación cuenta bien sus días
+-- Con sus OT activas no se anula, y las nombra todas (decía una sola).
+select pg_temp.como('gerente');
+set local role authenticated;
+select test.debe_fallar(format(
+  'update public.cotizaciones_pdf set estado = %L, observacion = %L where id = %L',
+  'ANULADA', 'El cliente desistió de la compra', current_setting('prueba.cot3')),
+  'con OT activas no se anula, y las nombra todas',
+  'tiene las OT 49801-' || current_setting('prueba.anio') || ', 49802-' || current_setting('prueba.anio') || ' activas');
+reset role;
 -- Las OT que quedaban se anulan y Gerencia anula la cotización. Lo último que se hizo
 -- fue el cobro de hoy: la anulación dice «el mismo día», no los nueve días desde la aprobación.
 do $$
@@ -456,10 +572,31 @@ begin
   update public.ordenes_trabajo set estado = 'ANULADA', motivo_anulacion = 'El cliente desistió' where id in (pg_temp.id('ot1'), pg_temp.id('ot2'));
   set local session_replication_role = origin;
 end $$;
+-- Con facturas vigentes, Gerencia no la anula (entrega 3, 20261127010000): las nombra y
+-- dice que primero las anula Contabilidad.
+select pg_temp.como('gerente');
+set local role authenticated;
+select test.debe_fallar(format(
+  'update public.cotizaciones_pdf set estado = %L, observacion = %L where id = %L',
+  'ANULADA', 'El cliente desistió de la compra', current_setting('prueba.cot3')),
+  'con facturas vigentes, Gerencia no anula la cotización',
+  'tiene facturas vigentes (E001-4981, E001-4982, E001-4983): Contabilidad las anula primero');
+reset role;
+-- Contabilidad las anula y entonces sí.
+do $$
+begin
+  set local session_replication_role = replica;
+  update public.facturas_venta set anulada_en = now(), anulada_por = current_setting('prueba.contabilidad')::uuid,
+         motivo_anulacion = 'El cliente desistió de la compra'
+   where cotizacion_pdf_id = pg_temp.id('cot3') and anulada_en is null;
+  set local session_replication_role = origin;
+end $$;
 select pg_temp.como('gerente');
 set local role authenticated;
 update public.cotizaciones_pdf set estado = 'ANULADA', observacion = 'El cliente desistió de la compra' where id = pg_temp.id('cot3');
 reset role;
+select test.afirmar((select estado = 'ANULADA' from public.cotizaciones_pdf where id = pg_temp.id('cot3')),
+  'sin facturas vigentes, Gerencia la anula');
 -- Con la cuenta de Gerencia: la anulada ya no la ven Contabilidad ni Tesorería, como siempre.
 select pg_temp.como('gerente');
 set local role authenticated;
@@ -470,10 +607,12 @@ begin
          max(r.orden) filter (where r.paso = 'ANULACION') = max(r.orden) as al_final,
          max(r.dias) filter (where r.paso = 'ANULACION') as dias,
          bool_and(r.unidad is null) filter (where r.paso = 'ANULACION') as sin_unidad,
-         count(*) filter (where r.unidad is not null and r.paso = 'FACTURA') as facturas
+         count(*) filter (where r.paso = 'FACTURA') as facturas,
+         string_agg(coalesce(r.unidad::text, '-') || r.paso, ' ' order by r.orden) as pasos
     into v from public.recorrido_de_cotizaciones(array[pg_temp.id('cot3')]) r;
-  perform test.afirmar(v.esperan = 0 and v.al_final and v.sin_unidad and v.facturas = 3,
-    format('anulada, no espera a nadie; quedan los hechos de cada unidad y la anulación va al final, sin unidad (esperan %s, facturas %s)', v.esperan, v.facturas));
+  -- Sus facturas se anularon antes (sin eso no se anula): ya no salen como hechas.
+  perform test.afirmar(v.esperan = 0 and v.al_final and v.sin_unidad and v.facturas = 0,
+    format('anulada, no espera a nadie ni da por hechas sus facturas anuladas, y la anulación va al final, sin unidad (esperan %s, facturas %s: %s)', v.esperan, v.facturas, v.pasos));
   perform test.afirmar(v.dias = 0,
     format('la anulación cuenta sus días desde lo último que se hizo en cualquier unidad, no desde la aprobación (%s)', v.dias));
 end $$;

@@ -15514,6 +15514,7 @@ export type Database = {
           p_tamano_pdf: number | null
           p_marca?: string | null
           p_modelo?: string | null
+          p_unidad?: number | null
         }
         Returns: string
       }
@@ -19004,6 +19005,12 @@ export type Database = {
         }
         Returns: boolean
       }
+      ot_lista_para_facturar_desde: {
+        Args: {
+          p_orden: string | null
+        }
+        Returns: string
+      }
       ot_recalcular_avance: {
         Args: {
           p_orden_id: string | null
@@ -19029,6 +19036,13 @@ export type Database = {
           p_datos?: Json | null
           p_etapa_id?: string | null
           p_usuario_id?: string | null
+        }
+        Returns: string
+      }
+      ot_sin_codigo_desde: {
+        Args: {
+          p_cotizacion: string | null
+          p_orden: string | null
         }
         Returns: string
       }
@@ -22829,6 +22843,12 @@ export type Database = {
           estado: string | null
           fecha_entrega: string | null
         }[]
+      }
+      unidades_en_letra: {
+        Args: {
+          p_n: number | null
+        }
+        Returns: string
       }
       unidades_libres_ya_facturadas: {
         Args: {

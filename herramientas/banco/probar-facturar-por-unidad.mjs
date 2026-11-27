@@ -604,7 +604,7 @@ const delaSalida = (pagina, que) => pagina.locator('li, article').filter({ hasTe
   await pagina.getByRole('button', { name: 'Cargar la OT 2 de 3' }).first().click()
   const v = pagina.locator('[role="dialog"]')
   const aviso = limpio(await v.locator('[data-unidad-ya-facturada]').textContent({ timeout: 10000 }).catch(() => ''))
-  comprobar(aviso.includes('va a quedar como la unidad 2, que ya tiene factura') && aviso.includes(C2) && aviso.includes('solo si es ese mismo vehículo') && !/S\/\s?\d/.test(aviso),
+  comprobar(aviso.includes('La unidad 2 ya tiene factura') && aviso.includes(C2) && aviso.includes('solo si esta OT es de ese mismo vehículo') && !/S\/\s?\d/.test(aviso),
     `la ventana de la OT avisa que la unidad 2 ya tiene factura, con su código y sin montos («${aviso}»)`)
   await pagina.addStyleTag({ content: 'nextjs-portal { display: none !important; }' })
   await pagina.screenshot({ path: join(CAPTURAS, 'unidad-1440-ventana-de-la-ot.png') })
@@ -617,6 +617,73 @@ const delaSalida = (pagina, que) => pagina.locator('li, article').filter({ hasTe
   comprobar((await v.locator('[data-unidad-ya-facturada]').count()) === 0, 'con una sola unidad libre la ventana no avisa nada')
   await v.getByRole('button', { name: 'Cancelar' }).click()
   await contexto.close()
+}
+
+// ------------- 8. La OT que se quedó sin código no es «Falta su OT» (entrega 3)
+// Administración le quita el código a la unidad 1 (la 3 sigue sin OT): Facturación
+// dice que esa OT existe y le falta el código, y que la otra unidad no tiene OT.
+{
+  const ot1 = await uno(
+    `select o.numero, o.unidad_id from public.ordenes_trabajo o
+      where o.cotizacion_pdf_id = $1 and o.estado <> 'ANULADA' and coalesce(o.numero_de_unidad, 1) = 1`,
+    [tres.id],
+  )
+  await consulta(`update public.unidades set codigo_interno = null where id = $1`, [ot1.unidad_id])
+  try {
+    for (const [ancho, alto] of [[1440, 900], [390, 844]]) {
+      const { pagina, contexto } = await entrar(CUENTAS.contabilidad, { width: ancho, height: alto })
+      await ir(pagina, `${BASE}/contabilidad/facturacion`)
+      const tarjeta = pagina.locator(`li[data-cotizacion="${tres.numero}"]`)
+      await tarjeta.waitFor({ timeout: 15000 })
+      const aviso = limpio(await tarjeta.locator('[data-ot-sin-codigo]').textContent({ timeout: 5000 }).catch(() => ''))
+      comprobar(aviso.includes(`La OT ${ot1.numero}`) && aviso.includes('«Editar OT»') && aviso.includes('Falta además la OT de una unidad'),
+        `${ancho}: el aviso dice que la OT existe y le falta el código, y que a otra le falta la OT («${aviso}»)`)
+      const u1 = limpio(await tarjeta.locator('li[data-unidad="1"]').textContent())
+      comprobar(u1.includes(`OT ${ot1.numero}`) && u1.includes('Su OT sin código') && !u1.includes('Falta su OT') && !u1.includes('Registrar factura'),
+        `${ancho}: la unidad 1 dice «Su OT sin código», con su OT y sin «Registrar factura» («${u1}»)`)
+      const u3 = limpio(await tarjeta.locator('li[data-unidad="3"]').textContent())
+      comprobar(u3.includes('Falta su OT'), `${ancho}: la unidad 3, que no tiene OT, sigue «Falta su OT» («${u3}»)`)
+      comprobar((await desborde(pagina)) <= 0, `${ancho}: Facturación no se corre de costado`)
+      await pagina.addStyleTag({ content: 'nextjs-portal { display: none !important; }' })
+      await tarjeta.scrollIntoViewIfNeeded()
+      await tarjeta.screenshot({ path: join(CAPTURAS, `unidad-${ancho}-ot-sin-codigo.png`) })
+      await contexto.close()
+    }
+    // En Cotización, Administración le da el código a esa OT con su propio botón (no
+    // «Cargar la OT», que es para la unidad 3) y «Editar OT» abre con el cursor en el código.
+    {
+      const { pagina, contexto } = await entrar(CUENTAS.administracion)
+      await ir(pagina, `${BASE}/cotizaciones/pdf?${new URLSearchParams({ q: tres.numero })}`)
+      const darle = pagina.locator('[data-darle-el-codigo]')
+      comprobar((await darle.count()) === 1 && limpio(await darle.textContent()) === `Darle el código a la OT ${ot1.numero}`,
+        `Administración: «Darle el código a la OT ${ot1.numero}» en la cotización`)
+      const cargar = await pagina.getByRole('button', { name: /^Cargar la OT/ }).allTextContents()
+      comprobar(cargar.length === 1 && cargar[0].includes('3 de 3'), `y «Cargar la OT» solo para la unidad que no tiene («${cargar.join(' | ')}»)`)
+      await darle.click()
+      await pagina.waitForURL(/\/ordenes\//, { timeout: 15000 })
+      await pagina.locator('#editar-codigo').waitFor({ timeout: 15000 })
+      await pagina.waitForFunction(() => document.activeElement?.id === 'editar-codigo', null, { timeout: 5000 }).catch(() => {})
+      comprobar((await pagina.evaluate(() => document.activeElement?.id)) === 'editar-codigo', '«Editar OT» se abre con el cursor en el código interno')
+      comprobar(!pagina.url().includes('editar='), 'y se quita «editar» de la dirección')
+      await contexto.close()
+    }
+    // Gerencia, que no edita la OT, lee por qué no se factura y quién lo resuelve.
+    {
+      const { pagina, contexto } = await entrar(CUENTAS.gerencia, { width: 390, height: 844 })
+      await ir(pagina, `${BASE}/cotizaciones/pdf?${new URLSearchParams({ q: tres.numero })}`)
+      const aviso = limpio(await pagina.locator('[data-ot-sin-codigo]').first().textContent({ timeout: 10000 }).catch(() => ''))
+      comprobar(aviso.includes(`La OT ${ot1.numero} se quedó sin código interno`) && aviso.includes('«Editar OT»'),
+        `Gerencia: la cotización dice que la OT se quedó sin código y quién se lo da («${aviso}»)`)
+      comprobar((await pagina.locator('[data-darle-el-codigo]').count()) === 0, 'y no le ofrece darle el código')
+      comprobar((await desborde(pagina)) <= 0, 'Cotización no se corre de costado en el teléfono')
+      await pagina.addStyleTag({ content: 'nextjs-portal { display: none !important; }' })
+      await pagina.locator('[data-ot-sin-codigo]').first().scrollIntoViewIfNeeded()
+      await pagina.screenshot({ path: join(CAPTURAS, 'unidad-390-cotizacion-ot-sin-codigo.png') })
+      await contexto.close()
+    }
+  } finally {
+    await consulta(`update public.unidades set codigo_interno = $2 where id = $1`, [ot1.unidad_id, C1])
+  }
 }
 
 await navegador.close()

@@ -290,24 +290,11 @@ const PASOS_DE_LA_COTIZACION: Record<string, Frases> = {
 const ESPERAS_DE_LA_COTIZACION: Record<string, (detalle: string | null) => string> = {
   REVISION: () => 'La aprueba o la rechaza.',
   CORRECCION: () => 'Sube la corrección con el mismo número.',
-  // Con varias unidades el detalle decía cuántas OT lleva de cuántas («1/3»), y
-  // cuántas pasaron a otro comprador si alguna («1/3/1», migración 20261126988000).
-  // Desde la 20261126998900 la base ya no lo manda: la cotización de varias
-  // unidades aprobada va unidad por unidad y cada una trae este paso sin detalle.
-  // Se conserva para la base que todavía no tiene esa migración; se retira después.
-  CODIGO_Y_OT: (d) => {
-    const [lleva, de, pasaron = 0] = (d ?? '').split('/').map(Number)
-    if (!de) return 'Le da el código interno de la unidad y sube la OT.'
-    const faltan = de - lleva - pasaron
-    const falta = faltan === 1 ? 'falta la de 1 unidad, con su código interno' : `faltan las de ${faltan} unidades, cada una con su código interno`
-    if (pasaron) {
-      const paso = pasaron === 1 ? '1 pasó a otro comprador' : `${pasaron} pasaron a otro comprador`
-      return lleva ? `De ${de} unidades, lleva ${lleva} OT y ${paso}: ${falta}.` : `De ${de} unidades, ${paso}: ${falta}.`
-    }
-    return lleva
-      ? `Lleva ${lleva} de ${de} OT: ${falta}.`
-      : `Le da a cada una de las ${de} unidades su código interno y sube su OT.`
-  },
+  // El detalle «lleva/de» de la cotización de varias unidades se retiró en la
+  // 20261127010000: desde la 20261126998900 cada unidad trae su propio paso.
+  CODIGO_Y_OT: () => 'Le da el código interno de la unidad y sube la OT.',
+  // La unidad de su OT se quedó sin código interno (20261127010000): sin él no se factura.
+  SIN_CODIGO: (d) => `La unidad de ${d ? `la ${d}` : 'su OT'} se quedó sin código interno: se lo vuelve a dar con «Editar OT».`,
   FACTURA: () => 'Registra su factura.',
   FACTURA_RESTO: () => 'Registra la factura de lo que falta del total.',
   COBRO: (detalle) => (detalle === 'EN_PARTE' ? 'Cobra lo que falta: ya cobró una parte.' : 'Cobra sus facturas.'),
