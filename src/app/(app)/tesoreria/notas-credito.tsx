@@ -264,7 +264,7 @@ export function DeshacerUsoDeLaNota({
     <>
       <Boton
         type="button"
-        variante="contornoPeligro"
+        variante="fantasma"
         tamano="sm"
         onClick={() => {
           limpiar()

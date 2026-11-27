@@ -159,7 +159,7 @@ export function AnularPagoParte({ pagoId, etiqueta }: { pagoId: string; etiqueta
     <>
       <Boton
         type="button"
-        variante="contornoPeligro"
+        variante="fantasma"
         tamano="sm"
         onClick={() => setAbierta(true)}
         aria-label={`Anular ${etiqueta}`}

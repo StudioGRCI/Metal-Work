@@ -17,7 +17,7 @@
  *      que se lee es la de la base. También con Tesorería y Gerencia, que consultan.
  *   3. Caja diaria, con Tesorería (1440, 1366, 1280, 1024, 768, 700 y 390) y
  *      Gerencia (1440, 1024 y 390), la de hoy y la del último día con el saldo
- *      del banco capturado: nada se sale; hasta 1399 px lo del banco va bajo el
+ *      del banco capturado y la del último con una diferencia: nada se sale; hasta 1399 px lo del banco va bajo el
  *      saldo final de cada cuenta (su monto o «Sin captura del banco», y la
  *      diferencia o «Cuadra con el banco»), también en el teléfono; de 1400 en
  *      adelante tiene sus columnas.
@@ -31,8 +31,8 @@
  *   6. La escala de separaciones: 20 px bajo los filtros de Cotización,
  *      Recibos por honorarios y Trabajos, y entre los bloques de Gastos del mes.
  *   7. Las demás pantallas de la entrega, con la cuenta de su puesto y a 1440,
- *      1024 y 390: nada se sale, ninguna letra de menos de 12 px y sin errores
- *      de consola.
+ *      1024 y 390: nada se sale, ninguna letra de menos de 12 px, ningún botón
+ *      con el borde rojo (decisión 6) y sin errores de consola.
  *
  * Solo consulta: abre una ventana y la cierra, no escribe en la base.
  *
@@ -288,15 +288,28 @@ try {
       where saldo_banco is not null and anulado_en is null group by fecha order by fecha desc limit 1`,
   )
   comprobar(Boolean(conBanco?.dia), `hay un día con el saldo del banco capturado para mirar (${conBanco?.dia ?? 'ninguno'}, ${conBanco?.n ?? 0} cuentas)`)
+  // Y el último con una diferencia que no cuadra: el de arriba puede cuadrar en todas sus cuentas.
+  const conDiferencia = await uno(
+    `select to_char(fecha, 'YYYY-MM-DD') dia,
+            count(*) filter (where saldo_banco is not null)::int n,
+            count(*) filter (where diferencia <> 0)::int descuadradas
+       from cierres_caja
+      where anulado_en is null and fecha = (select max(fecha) from cierres_caja where anulado_en is null and diferencia <> 0)
+      group by fecha`,
+  )
+  comprobar(Boolean(conDiferencia?.dia), `hay un día con una diferencia que no cuadra (${conDiferencia?.dia ?? 'ninguno'}, ${conDiferencia?.descuadradas ?? 0} cuentas)`)
   for (const [puesto, anchos] of [
     ['tesoreria', [1440, 1366, 1280, 1024, 768, 700, 390]],
     ['gerencia', [1440, 1024, 390]],
   ]) {
     for (const ancho of anchos) {
       const { pagina, contexto, errores } = await entrar(puesto, ancho)
-      for (const [ruta, cual] of [
+      for (const [ruta, cual, delDia] of [
         ['/tesoreria/caja-diaria', 'hoy'],
-        ...(conBanco?.dia ? [[`/tesoreria/caja-diaria?fecha=${conBanco.dia}`, conBanco.dia]] : []),
+        ...(conBanco?.dia ? [[`/tesoreria/caja-diaria?fecha=${conBanco.dia}`, conBanco.dia, conBanco]] : []),
+        ...(conDiferencia?.dia && conDiferencia.dia !== conBanco?.dia
+          ? [[`/tesoreria/caja-diaria?fecha=${conDiferencia.dia}`, conDiferencia.dia, conDiferencia]]
+          : []),
       ]) {
         errores.length = 0
         await ir(pagina, ruta)
@@ -310,10 +323,19 @@ try {
           comprobar(ths.includes('Según el banco') && ths.includes('Diferencia') && lineas.every((l) => !l.visto), `${donde}: «Según el banco» y «Diferencia» tienen su columna (${ths.join(' | ')})`)
         } else {
           comprobar(!ths.includes('Según el banco') && lineas.length > 0 && lineas.every((l) => l.visto), `${donde}: lo del banco va bajo el saldo final de cada cuenta (${lineas.filter((l) => l.visto).length} de ${lineas.length})`)
-          if (cual !== 'hoy') {
-            comprobar(conMonto.length === conBanco.n, `${donde}: dice el saldo del banco de cada cuenta que lo tiene (${conMonto.length} de ${conBanco.n}); las demás, «Sin captura del banco»`)
-            const diferencias = await aLaVista(pagina, 'main [data-diferencia-en-fila]')
-            comprobar(diferencias === conBanco.n, `${donde}: y su diferencia, o que cuadra (${diferencias} de ${conBanco.n})`)
+          const sinCaptura = lineas.filter((l) => l.texto === 'Sin captura del banco')
+          comprobar(conMonto.length + sinCaptura.length === lineas.length, `${donde}: cada línea dice el saldo del banco o «Sin captura del banco» (${conMonto.length} con monto, ${sinCaptura.length} sin captura, de ${lineas.length})`)
+          if (delDia) {
+            comprobar(conMonto.length === delDia.n, `${donde}: dice el saldo del banco de cada cuenta que lo tiene (${conMonto.length} de ${delDia.n})`)
+            const diferencias = await pagina.locator('main [data-diferencia-en-fila]').evaluateAll((es) =>
+              es.filter((e) => e.getBoundingClientRect().height > 0).map((e) => e.textContent.replace(/\s+/g, ' ').trim()),
+            )
+            const descuadres = diferencias.filter((t) => /^Diferencia (−|-)?(S\/|US\$) ?-?[\d,]+\.\d\d$/.test(t))
+            comprobar(
+              diferencias.length === delDia.n && descuadres.length + diferencias.filter((t) => t === 'Cuadra con el banco').length === diferencias.length,
+              `${donde}: y su diferencia o «Cuadra con el banco» (${diferencias.length} de ${delDia.n}: ${[...new Set(diferencias)].slice(0, 3).join(' · ')})`,
+            )
+            if (delDia.descuadradas !== undefined) comprobar(descuadres.length === delDia.descuadradas, `${donde}: la que no cuadra dice cuánto (${descuadres.length} de ${delDia.descuadradas})`)
           }
         }
         await comprobarCaja(pagina, errores, donde)
@@ -429,6 +451,11 @@ try {
         await ir(pagina, ruta)
         const titulo = ((await pagina.locator('main h1').first().textContent()) ?? '').trim()
         comprobar(!/No tienes acceso/.test(titulo), `${puesto} entra a ${ruta} («${titulo}»)`)
+        // Decisión 6: anular, quitar y deshacer van al final y sin borde; el rojo queda para la ventana.
+        const rojos = await pagina.locator('main button.border-peligro').evaluateAll((bs) =>
+          bs.filter((b) => b.getBoundingClientRect().width > 0 && !b.closest('dialog, [role="dialog"]')).map((b) => b.textContent.replace(/\s+/g, ' ').trim()),
+        )
+        comprobar(rojos.length === 0, `${ruta} (${puesto}) ${ancho}: ningún botón de la pantalla lleva el borde rojo (${rojos.length}${rojos.length ? `: ${[...new Set(rojos)].join(', ')}` : ''})`)
         await comprobarCaja(pagina, errores, `${ruta} (${puesto}) ${ancho}`)
       }
       await contexto.close()
