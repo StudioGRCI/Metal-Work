@@ -268,14 +268,18 @@ for (const [ancho, alto] of [[1440, 900], [390, 844]]) {
 
   // 3. La de 3 unidades: una OT, una que pasó, la 2 anulada.
   let v = await abrirCorreccion(pagina, cot.tres)
-  const cliente = v.locator(`#corregir-cliente-${cot.tres.id}`)
-  const ayudaCliente = await ayudaDe(v, `#corregir-cliente-${cot.tres.id}`)
-  comprobar(await cliente.isDisabled(), `${ancho}: en ${cot.tres.numero} el cliente está fijo`)
-  comprobar(ayudaCliente.includes('Ya tiene su OT: el cliente no cambia'), `${ancho}: y dice por qué, a la vista («${ayudaCliente}»)`)
+  const fijo = limpio(await v.locator('[data-cliente-fijo]').innerText().catch(() => ''))
+  comprobar((await v.locator(`#corregir-cliente-${cot.tres.id}`).count()) === 0 && fijo.includes(clientes.a.nombre),
+    `${ancho}: en ${cot.tres.numero} el cliente está fijo, con su razón social entera y sin lista que elegir`)
+  comprobar(fijo.includes('Ya tiene su OT: el cliente no cambia'), `${ancho}: y dice por qué, a la vista («${fijo}»)`)
+  const caja = await v.locator('[data-cliente-fijo] p').nth(1).evaluate((e) => e.scrollWidth <= e.clientWidth + 1)
+  comprobar(caja, `${ancho}: la razón social no se corta`)
+  const descripcion = limpio(await pagina.locator(`[id="${((await v.getAttribute('aria-describedby')) ?? '').split(' ')[0]}"]`).innerText().catch(() => ''))
+  comprobar(descripcion.includes('El cliente no cambia.'), `${ancho}: la descripción de la ventana, que oye el lector, también lo dice`)
   const minimo = await v.locator('#corregir-unidades').getAttribute('min')
   const ayudaUnidades = await ayudaDe(v, '#corregir-unidades')
   comprobar(minimo === '3', `${ancho}: la cantidad no baja de 3 (min=${minimo})`)
-  comprobar(ayudaUnidades.includes('Ya tiene una OT y una unidad que pasó a otro comprador, y una es la unidad 3: no baja de 3.'),
+  comprobar(ayudaUnidades.includes('Ya tiene una OT y una unidad que pasó a otro comprador, y la mayor es la unidad 3: no baja de 3.'),
     `${ancho}: y la ayuda lo dice («${ayudaUnidades}»)`)
   await pagina.screenshot({ path: join(CAPTURAS, `cliente-fijo-ventas-${ancho}-1-con-ot.png`) })
   if (ancho === 390) {
@@ -292,7 +296,8 @@ for (const [ancho, alto] of [[1440, 900], [390, 844]]) {
 
   // 4. La de 1 unidad que recibió la OT.
   v = await abrirCorreccion(pagina, cot.una)
-  comprobar(await v.locator(`#corregir-cliente-${cot.una.id}`).isDisabled(), `${ancho}: en ${cot.una.numero}, que recibió la OT, el cliente también está fijo`)
+  comprobar((await v.locator(`#corregir-cliente-${cot.una.id}`).count()) === 0 && limpio(await v.locator('[data-cliente-fijo]').innerText()).includes(clientes.b.nombre),
+    `${ancho}: en ${cot.una.numero}, que recibió la OT, el cliente también está fijo`)
   await pagina.keyboard.press('Escape')
   await esperar(async () => (await pagina.getByRole('dialog').count()) === 0, 5000)
 
@@ -300,7 +305,8 @@ for (const [ancho, alto] of [[1440, 900], [390, 844]]) {
   v = await abrirCorreccion(pagina, cot.libre)
   const libre = v.locator(`#corregir-cliente-${cot.libre.id}`)
   const ayudaLibre = await ayudaDe(v, `#corregir-cliente-${cot.libre.id}`)
-  comprobar(!(await libre.isDisabled()) && !ayudaLibre.includes('no cambia'), `${ancho}: en ${cot.libre.numero}, sin OT, el cliente se puede cambiar`)
+  comprobar(!(await libre.isDisabled()) && !ayudaLibre.includes('no cambia') && (await v.locator('[data-cliente-fijo]').count()) === 0,
+    `${ancho}: en ${cot.libre.numero}, sin OT, el cliente se puede cambiar`)
   const otro = ancho === 1440 ? clientes.a : clientes.c
   await libre.selectOption(otro.id)
   await pagina.screenshot({ path: join(CAPTURAS, `cliente-fijo-ventas-${ancho}-2-sin-ot.png`) })

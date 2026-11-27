@@ -117,6 +117,9 @@ function loQueYaTiene(conOrdenes: number, pasaron: number): string {
   return `Ya tiene ${ot} y ${paso}`
 }
 
+/** La primera letra en minúscula, sin tocar «OT». */
+const conMinuscula = (t: string) => t.charAt(0).toLowerCase() + t.slice(1)
+
 export function CorregirCotizacion({
   id,
   numero,
@@ -125,6 +128,7 @@ export function CorregirCotizacion({
   aprobada = false,
   version,
   clienteId,
+  clienteNombre = null,
   carroceriaId,
   unidades,
   conOrdenes,
@@ -142,6 +146,8 @@ export function CorregirCotizacion({
   aprobada?: boolean
   version: number
   clienteId: string
+  /** La razón social de la cotización: con el cliente fijo se muestra tal cual, aunque ya no esté activo. */
+  clienteNombre?: string | null
   carroceriaId: string
   /** Cuántas unidades lleva hoy (migración 20261126760000). */
   unidades: number
@@ -168,6 +174,9 @@ export function CorregirCotizacion({
   // La venta que ya tiene su OT, o la tuvo y pasó a otro comprador, no cambia
   // de cliente con una corrección: la base lo rechaza (20261127160000).
   const clienteFijo = tomadas > 0
+  const porQueClienteFijo = conOrdenes > 0
+    ? `Ya tiene ${conOrdenes === 1 ? 'su OT' : `sus ${conOrdenes} OT`}: el cliente no cambia. Si la venta es de otro cliente, va con su propia cotización y Administración le pasa la OT.`
+    : `${pasaron === 1 ? 'Su OT pasó' : 'Sus OT pasaron'} a otro comprador: la venta queda con este cliente.`
   // Con el campo vacío no se avisa: todavía se está escribiendo.
   const unidadesNoCalzan = unidadesLeidas !== null && cantidad.trim() !== '' && Number(cantidad) !== unidadesLeidas
   const [dice, setDice] = useState<string | null>(null)
@@ -387,7 +396,7 @@ export function CorregirCotizacion({
         titulo={`Corregir la cotización ${numero}`}
         descripcion={
           aprobada
-            ? `Reemplaza el PDF o Word y corrige los datos. Conserva el número y el archivo anterior. Vuelve a Por revisar: no se factura${unidades > conOrdenes + pasaron ? ' ni se cargan las OT que faltan' : ''} hasta que Gerencia apruebe esta versión.`
+            ? `Reemplaza el PDF o Word y corrige los datos. Conserva el número y el archivo anterior. Vuelve a Por revisar: no se factura${unidades > conOrdenes + pasaron ? ' ni se cargan las OT que faltan' : ''} hasta que Gerencia apruebe esta versión.${clienteFijo ? ' El cliente no cambia.' : ''}`
             : 'Reemplaza el PDF o Word y corrige los datos. Conserva el número y el archivo anterior; Gerencia revisará esta versión.'
         }
         ancho="md"
@@ -407,30 +416,24 @@ export function CorregirCotizacion({
           {/* Uno debajo del otro: lado a lado, en esta ventana la razón social
               se cortaba («TRANSPORTES SAN RO…») y no se sabía qué cliente era. */}
           <div className="grid gap-3">
-            <Campo
-              etiqueta="Cliente"
-              htmlFor={`corregir-cliente-${id}`}
-              requerido
-              ayuda={
-                clienteFijo
-                  ? conOrdenes > 0
-                    ? 'Ya tiene su OT: el cliente no cambia. Si la venta es de otro cliente, va con su propia cotización y Administración le pasa la OT.'
-                    : 'Su OT pasó a otro comprador: la venta queda con este cliente.'
-                  : undefined
-              }
-              ayudaEnIcono={false}
-            >
-              <Seleccion
-                id={`corregir-cliente-${id}`}
-                value={cliente}
-                onChange={e => setCliente(e.target.value)}
-                disabled={clienteFijo}
-                required
-              >
-                <option value="" disabled>Elige el cliente</option>
-                {clientes.map(c => <option key={c.id} value={c.id}>{c.razon_social}</option>)}
-              </Seleccion>
-            </Campo>
+            {clienteFijo ? (
+              // Fijo, va como texto y no como lista apagada: la apagada cortaba la
+              // razón social en el teléfono, no se podía abrir para leerla, el
+              // tabulador la saltaba con su motivo y, si el cliente ya no está
+              // activo, mostraba a otro (auditoría de diseño, 2026-11-27).
+              <div className="space-y-1.5" data-cliente-fijo>
+                <p className="text-xs font-medium text-texto-suave">Cliente</p>
+                <p className="text-sm text-texto [overflow-wrap:anywhere]">{clienteNombre ?? 'El de la cotización'}</p>
+                <p className="text-xs text-pretty text-texto-suave">{porQueClienteFijo}</p>
+              </div>
+            ) : (
+              <Campo etiqueta="Cliente" htmlFor={`corregir-cliente-${id}`} requerido>
+                <Seleccion id={`corregir-cliente-${id}`} value={cliente} onChange={e => setCliente(e.target.value)} required>
+                  <option value="" disabled>Elige el cliente</option>
+                  {clientes.map(c => <option key={c.id} value={c.id}>{c.razon_social}</option>)}
+                </Seleccion>
+              </Campo>
+            )}
             <Campo etiqueta="Carrocería" htmlFor={`corregir-carroceria-${id}`} requerido>
               <Seleccion id={`corregir-carroceria-${id}`} value={carroceria} onChange={e => setCarroceria(e.target.value)} required>
                 <option value="" disabled>Elige la carrocería</option>
@@ -444,7 +447,7 @@ export function CorregirCotizacion({
                 ayuda={
                   tomadas === 0
                     ? 'Una OT por cada unidad.'
-                    : `${loQueYaTiene(conOrdenes, pasaron)}${minimo > tomadas ? `, y una es la unidad ${minimo}` : ''}: no baja de ${minimo}.`
+                    : `${loQueYaTiene(conOrdenes, pasaron)}${minimo > tomadas ? `, y la mayor es la unidad ${minimo}` : ''}: no baja de ${minimo}.`
                 }
                 // El tope es una regla que frena: a la vista, no detrás de la «i».
                 ayudaEnIcono={tomadas > 0 ? false : undefined}
@@ -471,7 +474,7 @@ export function CorregirCotizacion({
                   El documento dice {unidadesLeidas === 1 ? '1 unidad' : `${unidadesLeidas} unidades`}
                   {unidadesLeidas !== null && unidadesLeidas < minimo
                     ? pasaron > 0
-                      ? `, pero ${loQueYaTiene(conOrdenes, pasaron).toLowerCase()}: no baja de ${minimo}.`
+                      ? `, pero ${conMinuscula(loQueYaTiene(conOrdenes, pasaron))}: no baja de ${minimo}.`
                       : `, pero ya tiene ${conOrdenes === 1 ? 'una OT' : `${conOrdenes} OT`}: para bajar la cantidad, Administración anula primero la que sobra.`
                     : ': revisa.'}
                 </p>
