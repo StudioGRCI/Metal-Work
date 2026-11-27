@@ -87,7 +87,7 @@ En `src/components/ui/`:
 - `SinDatos` tiene dos tamaños: el grande es para la lista que es el trabajo
   de la pantalla; `compacto` para la bandeja que comparte pantalla con otras
   (lo pendiente del Kardex). No se escribe el vacío a mano con un `<p>`: la
-  entrega 7 cambió veinticinco («Todavía no hay planos…», el costo de la OT,
+  entrega 7 cambió veintisiete («Todavía no hay planos…», el costo de la OT,
   Costeo, los avisos); el título sin punto y lo que explica en `descripcion`.
   Queda a mano la nota de Pagos de oficina junto a su botón: no es una lista
   vacía, dice por qué el botón no tiene a quién pagar.
