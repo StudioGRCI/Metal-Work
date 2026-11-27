@@ -508,7 +508,7 @@ Administración (ADM). El expediente con sus archivos, las gestiones con fecha
 y el cierre con el documento final son la entrega 2 (migración
 `20261127002000_el_expediente_del_tramite`, check 499 y
 `herramientas/banco/probar-expediente.mjs`). Los avisos de alta y de
-vencimiento son la entrega 3 (migración `20261127003000_los_tramites_avisan_solos`,
+vencimiento son la entrega 3 (migración `20261127004000_los_tramites_avisan_solos`,
 check 500 y `herramientas/banco/probar-avisos-de-tramites.mjs`). El enlace con
 el plazo de la OT y las renovaciones (entrega 4) todavía no están.
 

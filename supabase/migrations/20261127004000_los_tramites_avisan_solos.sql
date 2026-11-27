@@ -49,7 +49,7 @@ create table if not exists public.tramite_avisos (
     or (tipo in ('VENCIDO', 'VIGENCIA_VENCIDA') and tramite_id is not null and fecha is not null and dias is null))
 );
 comment on table public.tramite_avisos is
-  'Cada aviso de vencimiento de un trámite que salió (de qué trámite, de qué tipo, por qué fecha y por cuál de los días de aviso de su tipo, a cuántas cuentas) y cada revisión diaria que corrió (REVISION). Lo escribe solo la revisión diaria. Migración 20261127003000.';
+  'Cada aviso de vencimiento de un trámite que salió (de qué trámite, de qué tipo, por qué fecha y por cuál de los días de aviso de su tipo, a cuántas cuentas) y cada revisión diaria que corrió (REVISION). Lo escribe solo la revisión diaria. Migración 20261127004000.';
 
 -- Uno por trámite, tipo, fecha y día de aviso; una anotación por día de
 -- revisión. Así la revisión se puede correr dos veces sin repetir.
@@ -123,7 +123,7 @@ begin
 end;
 $$;
 comment on function public.fn_tramite_avisa_al_registrarse() is
-  'Al registrarse un trámite, avisa a quien tiene tramites.gestionar, salvo a quien lo registró. Migración 20261127003000.';
+  'Al registrarse un trámite, avisa a quien tiene tramites.gestionar, salvo a quien lo registró. Migración 20261127004000.';
 revoke all on function public.fn_tramite_avisa_al_registrarse() from public, anon, authenticated;
 
 create or replace trigger trg_tramite_avisa_al_registrarse

@@ -1,4 +1,4 @@
--- Los trámites avisan solos (migración 20261127003000; plan «El puesto de
+-- Los trámites avisan solos (migración 20261127004000; plan «El puesto de
 -- Tramitador», entrega 3). El trámite nuevo avisa a quien lleva los trámites,
 -- salvo a quien lo registró. La revisión diaria avisa una vez por cada día de
 -- aviso del tipo (por la fecha límite y por la vigencia de lo que se renueva),
