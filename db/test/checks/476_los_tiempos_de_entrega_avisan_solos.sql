@@ -57,11 +57,15 @@ begin
   insert into public.etapa_responsables (etapa_id, trabajador_id, asignado_por)
   values ('47600000-0000-4000-8000-0000000000e2', '47600000-0000-4000-8000-000000000001', current_setting('prueba.recursos_humanos_rrh')::uuid);
 
-  -- El día de la revisión: el laborable de hoy o el siguiente, que no sea lunes
-  -- (el lunes se prueba aparte).
+  -- El día de la revisión: el laborable de hoy o el siguiente que no sea el
+  -- primero laborable de su semana, porque ese día sale el resumen (se prueba
+  -- aparte). No basta con que no sea lunes: con el lunes feriado, el resumen
+  -- sale el martes, y Gerencia recibía uno que la sección 2 no espera.
   perform set_config('prueba.hoy', (
-    select min(d)::text from generate_series(current_date::timestamp, current_date + 14, interval '1 day') d
-     where public.es_laborable(d::date) and extract(isodow from d::date) <> 1), true);
+    select min(d)::date::text from generate_series(current_date::timestamp, current_date + 14, interval '1 day') d
+     where public.es_laborable(d::date)
+       and exists (select 1 from generate_series((d::date - (extract(isodow from d::date)::int - 1))::timestamp, d::date - 1, interval '1 day') a
+                    where public.es_laborable(a::date))), true);
 end $$;
 
 create or replace function pg_temp.como(p_clave text) returns void language plpgsql as $$
@@ -242,10 +246,13 @@ select test.afirmar(
       and n.usuario_id in (current_setting('prueba.recursos_humanos_rrh')::uuid, current_setting('prueba.supervisor_prd')::uuid)),
   'el resumen le llega a Gerencia, con las etapas sin nadie a cargo, y no a RR. HH. ni al supervisor');
 
--- Si el lunes es feriado, el resumen sale el martes, y el miércoles ya no.
+-- Si el lunes es feriado, el resumen sale el martes, y el miércoles ya no. El
+-- martes y el miércoles tienen que ser laborables: en día no laborable la
+-- revisión no devuelve nada y la prueba fallaba (la semana del 08/12).
 do $$
-declare v_lunes date := (select min(d)::date from generate_series((current_date + 22)::timestamp, current_date + 40, interval '1 day') d
-                          where extract(isodow from d::date) = 1);
+declare v_lunes date := (select min(d)::date from generate_series((current_date + 22)::timestamp, current_date + 70, interval '1 day') d
+                          where extract(isodow from d::date) = 1
+                            and public.es_laborable(d::date + 1) and public.es_laborable(d::date + 2));
 begin
   perform set_config('prueba.lunes_feriado', v_lunes::text, true);
   delete from public.feriados where fecha = v_lunes;
