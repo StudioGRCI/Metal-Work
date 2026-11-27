@@ -100,14 +100,6 @@ export function RevisarCotizacion({ id, conOrden }: { id: string; conOrden: bool
   )
 }
 
-/**
- * Ventas reemplaza el documento y corrige datos. La versión previa queda en el
- * historial y Gerencia revisa otra vez; si ya tenía OT, conserva su código y su OT.
- *
- * Antes de subir se lee el número del archivo: si dice otra cotización, se
- * avisa. No se impide —el vendedor puede haber corregido justo el número—,
- * pero equivocarse de Word en la carpeta es lo más fácil que hay.
- */
 /** Lo que ya ocupa sus unidades, dicho para la ayuda: «Ya tiene una OT y una unidad que pasó a otro comprador». */
 function loQueYaTiene(conOrdenes: number, pasaron: number): string {
   const ot = conOrdenes === 1 ? 'una OT' : `${conOrdenes} OT`
@@ -120,6 +112,14 @@ function loQueYaTiene(conOrdenes: number, pasaron: number): string {
 /** La primera letra en minúscula, sin tocar «OT». */
 const conMinuscula = (t: string) => t.charAt(0).toLowerCase() + t.slice(1)
 
+/**
+ * Ventas reemplaza el documento y corrige datos. La versión previa queda en el
+ * historial y Gerencia revisa otra vez; si ya tenía OT, conserva su código y su OT.
+ *
+ * Antes de subir se lee el número del archivo: si dice otra cotización, se
+ * avisa. No se impide —el vendedor puede haber corregido justo el número—,
+ * pero equivocarse de Word en la carpeta es lo más fácil que hay.
+ */
 export function CorregirCotizacion({
   id,
   numero,

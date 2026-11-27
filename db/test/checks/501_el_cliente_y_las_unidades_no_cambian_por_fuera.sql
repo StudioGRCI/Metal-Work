@@ -248,24 +248,20 @@ begin
   perform test.debe_fallar(pg_temp.corregir_sql(current_setting('prueba.cot_a'), current_setting('prueba.cliente_a'), 2),
     'Ventas no baja a 2 una cotización cuya unidad 3 pasó a otro comprador', 'La unidad 3 de la cotización QA-501-A pasó a otro comprador');
   perform test.debe_fallar(pg_temp.corregir_sql(current_setting('prueba.cot_a'), current_setting('prueba.cliente_a'), 1),
-    'Ni a 1: tiene una unidad con OT y otra que pasó', 'tiene 1 unidad con OT y 1 que pasó a otro comprador');
+    'Ni a 1: tiene una unidad con OT y otra que pasó', 'tiene 1 unidad con OT y 1 unidad que pasó a otro comprador: no puede quedar con 1 unidad');
   reset role;
   perform test.afirmar((select cantidad_unidades from public.cotizaciones_pdf where id = current_setting('prueba.cot_a')::uuid) = 3,
     'La A sigue siendo de 3 unidades');
 end $$;
 
--- Quien lee las órdenes ve en el aviso cuál OT pasó (Ventas lee las OT de sus ventas).
+-- Ventas lee las OT (`ordenes.ver`, docs/PERMISOS.md): el aviso le dice cuál pasó.
 do $$
 begin
   perform test.como_usuario(current_setting('prueba.ventas')::uuid);
   set local role authenticated;
-  if public.tiene_permiso('ordenes.ver') then
-    perform test.debe_fallar(pg_temp.corregir_sql(current_setting('prueba.cot_a'), current_setting('prueba.cliente_a'), 2),
-      'Con permiso de leer las OT, el aviso dice cuál pasó', 'con la OT 50113-');
-  else
-    perform test.debe_fallar(pg_temp.corregir_sql(current_setting('prueba.cot_a'), current_setting('prueba.cliente_a'), 2),
-      'Sin permiso de leer las OT, el aviso no dice su número', 'pasó a otro comprador: no puede quedar');
-  end if;
+  perform test.afirmar(public.tiene_permiso('ordenes.ver'), 'Ventas lee las OT');
+  perform test.debe_fallar(pg_temp.corregir_sql(current_setting('prueba.cot_a'), current_setting('prueba.cliente_a'), 2),
+    'El aviso le dice a Ventas cuál OT pasó', 'con la OT 50113-');
   -- Con 3 o más sigue corrigiéndose.
   execute pg_temp.corregir_sql(current_setting('prueba.cot_a'), current_setting('prueba.cliente_a'), 4);
   reset role;

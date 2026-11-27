@@ -57,7 +57,7 @@ begin
       ('public.poner_cliente_a_orden(uuid,uuid)',
        array['c68837ab86745b134b1ff6bd0e690e9e', '1b356406a1b688cb1be5e2fd1cbdcad0']),
       ('public.fn_cotizacion_pdf_unidades_alcanzan()',
-       array['5af5470104d409b4b5998d6e2a88060f', '2b5e3fc708f40a65ffd167625353e775'])
+       array['5af5470104d409b4b5998d6e2a88060f', 'b25b67edc8510a6236f53a28d7b3bad7'])
     ) as t(firma, conocidas)
   loop
     select md5(replace(p.prosrc, E'\r', '')) into huella from pg_proc p where p.oid = to_regprocedure(f.firma);
@@ -85,7 +85,7 @@ end $$;
 create or replace function public.fn_ot_cliente_cambia_solo_por_su_camino()
 returns trigger
 language plpgsql
-security definer
+security invoker
 set search_path to 'public'
 as $$
 begin
@@ -191,6 +191,16 @@ revoke all on function public.poner_cliente_a_orden(uuid, uuid) from public, ano
 grant execute on function public.poner_cliente_a_orden(uuid, uuid) to authenticated;
 
 -- 2. La cantidad de unidades no baja de las que ya pasaron a otro comprador -------
+-- «1 unidad», «2 unidades»: para los avisos. Ayudante interno.
+create or replace function public.unidades_en_letra(p_n integer)
+returns text
+language sql
+immutable
+set search_path to 'public'
+as $$ select p_n || case when p_n = 1 then ' unidad' else ' unidades' end $$;
+
+revoke all on function public.unidades_en_letra(integer) from public, anon, authenticated;
+
 -- La de la 20261126760000, que contaba solo las OT vigentes. Ahora cuenta
 -- también cada unidad cuya OT pasó a otro comprador, con la unidad que dejó
 -- (la de su venta anterior). El número de la OT que pasó, solo a quien lee o
@@ -223,8 +233,14 @@ begin
         case when new.cantidad_unidades = 1 then 'unidad' else 'unidades' end
         using errcode = 'check_violation';
     end if;
-    raise exception 'La cotización % tiene % % con OT y % que pasó a otro comprador: no puede quedar con % %.',
-      old.numero, v_vigentes, case when v_vigentes = 1 then 'unidad' else 'unidades' end, v_salieron,
+    raise exception 'La cotización % %: no puede quedar con % %. Lo que pasó a otro comprador sigue contando en esta venta.',
+      old.numero,
+      case when v_vigentes = 0
+           then format('tiene %s que %s a otro comprador', public.unidades_en_letra(v_salieron),
+                       case when v_salieron = 1 then 'pasó' else 'pasaron' end)
+           else format('tiene %s con OT y %s que %s a otro comprador', public.unidades_en_letra(v_vigentes),
+                       public.unidades_en_letra(v_salieron), case when v_salieron = 1 then 'pasó' else 'pasaron' end)
+      end,
       new.cantidad_unidades, case when new.cantidad_unidades = 1 then 'unidad' else 'unidades' end
       using errcode = 'check_violation';
   end if;
