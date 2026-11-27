@@ -472,6 +472,84 @@ export async function cargarCodigoYOt(
   }
 }
 
+const esquemaEnganchar = z.object({
+  cotizacion_id: z.guid({ message: 'No se pudo identificar la cotización: recarga la página.' }),
+  orden_id: z.guid({ message: 'Elige la OT ya registrada que es de esta cotización.' }),
+  version: z.string().min(1, 'Recarga la página: falta la versión de la OT.'),
+  // La unidad que elige Administración en la cotización de varias; sin ella, la primera libre.
+  unidad: z.union([z.literal(''), z.coerce.number().int().min(1, 'Elige qué unidad es la OT.').max(50, 'Elige qué unidad es la OT.')]).optional(),
+  motivo: z
+    .string()
+    .trim()
+    .min(5, 'Explica por qué esta OT es la de esa cotización (5 a 500 caracteres).')
+    .max(500, 'Explica por qué esta OT es la de esa cotización (5 a 500 caracteres).'),
+})
+
+/**
+ * Administración engancha una OT que se registró antes que su cotización (sin
+ * cotización, del mismo cliente) como una de las unidades de la cotización
+ * aprobada, sin cargar otra OT (migración 20261127210000). La base comprueba
+ * todo, lo deja en la Trazabilidad de la OT y avisa a Ventas.
+ */
+export async function engancharOtACotizacion(
+  _previo: unknown,
+  datos: FormData,
+): Promise<ResultadoAccion<{ numero: string | null }>> {
+  const perfil = await exigirSesion()
+  // El mismo permiso que exige la función: el de quien carga las OT de las cotizaciones.
+  if (!puede(perfil, 'ordenes.crear')) {
+    return { ok: false, error: 'La OT ya registrada la engancha a su cotización Administración, que carga las OT.' }
+  }
+
+  const analisis = esquemaEnganchar.safeParse(Object.fromEntries(datos))
+  if (!analisis.success) {
+    return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa la OT, la unidad y el motivo.' }
+  }
+  const v = analisis.data
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('enganchar_ot_a_su_cotizacion', {
+    p_orden: v.orden_id,
+    p_cotizacion: v.cotizacion_id,
+    p_unidad: typeof v.unidad === 'number' ? v.unidad : null,
+    p_version: v.version,
+    p_motivo: v.motivo,
+  })
+  // El mismo envío otra vez (la primera respuesta se perdió): la base dice que
+  // ya quedó enganchada por esta persona. Quedó; el motivo es el de la primera vez.
+  const yaQuedo = error?.code === '23505' && error.message.includes('la primera vez que la enviaste')
+  if (error && !yaQuedo) {
+    const delMotor = /violates|duplicate key|permission denied/i.test(error.message)
+    return { ok: false, error: delMotor ? mensajeDeError(error) : error.message }
+  }
+  if (!error && data !== v.orden_id) return { ok: false, error: NO_TOCO_NADA }
+
+  const { data: ot } = await supabase.from('ordenes_trabajo').select('numero').eq('id', v.orden_id).maybeSingle()
+  const { data: cuenta, error: errorCuenta } = await supabase
+    .from('v_cotizaciones_pdf')
+    .select('ordenes_faltantes')
+    .eq('id', v.cotizacion_id)
+    .maybeSingle()
+  const faltan = errorCuenta || !cuenta ? null : (cuenta.ordenes_faltantes ?? 0)
+  const cual = ot?.numero ? `La OT ${ot.numero}` : 'La OT'
+
+  revalidatePath('/cotizaciones/pdf')
+  revalidatePath('/ordenes')
+  revalidatePath(`/ordenes/${v.orden_id}`)
+  revalidatePath('/contabilidad/facturacion')
+  return {
+    ok: true,
+    mensaje: yaQuedo
+      ? `${cual} ya había quedado enganchada a esta cotización la primera vez que la enviaste.`
+      : faltan === null
+        ? `${cual} quedó enganchada a su cotización.`
+        : faltan > 0
+          ? `${cual} quedó enganchada a su cotización. ${faltan === 1 ? 'Falta 1 OT' : `Faltan ${faltan} OT`}.`
+          : `${cual} quedó enganchada a su cotización, que ya tiene todas sus OT: Contabilidad ya la puede facturar.`,
+    datos: { numero: ot?.numero ?? null },
+  }
+}
+
 /**
  * Anota si el total trae IGV para la versión que acaba de entrar. La cotización
  * ya quedó registrada: si esto falla no se deshace, se avisa para confirmarlo

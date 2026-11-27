@@ -11,7 +11,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Recorrido } from '@/components/ui/recorrido'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { etiquetaDeMime } from '@/lib/archivo-cotizacion'
-import { catalogosDeCotizacion, listarCotizacionesPdf, unidadesLibresYaFacturadas } from '@/lib/datos/cotizaciones-pdf'
+import { catalogosDeCotizacion, listarCotizacionesPdf, otsParaEnganchar, unidadesLibresYaFacturadas } from '@/lib/datos/cotizaciones-pdf'
 import { recorridoDeCotizaciones } from '@/lib/datos/recorrido'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
@@ -21,6 +21,7 @@ import { diaLima, fecha as fmtFecha, hora, hoyLima, moneda as formatoMoneda } fr
 import { exigirPermiso, puede, puedeCorregirCotizacion, puedeQuitarCotizacion } from '@/lib/sesion'
 
 import { CancelarVenta, CargarCodigoYOt, CorregirCotizacion, EstadoDeLaOt, QuitarCotizacion, RevisarCotizacion } from './acciones-cotizacion'
+import { EngancharOtRegistrada, EstadoDelEnganche } from './enganchar-ot'
 import { IrALaTarjetaDelAviso } from './ir-a-la-tarjeta-del-aviso'
 import { EstadoDeSubirCotizacion, SubirCotizacion } from './subir-cotizacion'
 
@@ -261,6 +262,16 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
       })
     : null
 
+  // A quien carga la OT: las OT del mismo cliente que se registraron antes que su
+  // cotización y se le pueden enganchar como una de sus unidades (migración
+  // 20261127210000). Si no se leen, la tarjeta sigue ofreciendo solo la carga.
+  const registradas = cargaOt
+    ? await otsParaEnganchar(visibles.flatMap((c) => (c.id && sinCodigo(c) ? [c.id] : []))).catch((e: unknown) => {
+        console.error('Cotización: no se pudo leer qué OT ya registradas se pueden enganchar.', e)
+        return null
+      })
+    : null
+
   const opciones = [
     { valor: null, etiqueta: `Vigentes (${cotizaciones.length - anuladas})` },
     { valor: 'POR_REVISAR', etiqueta: `Por revisar (${porRevisar})` },
@@ -282,6 +293,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
             <>
               {puedeSubir && <EstadoDeSubirCotizacion />}
               {cargaOt && <EstadoDeLaOt />}
+              {cargaOt && <EstadoDelEnganche />}
             </>
           )
         }
@@ -661,6 +673,16 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                               otras: c.ordenes.flatMap((o, i) => (o.codigo_interno ? [{ unidad: o.unidad ?? i + 1, codigo: o.codigo_interno }] : [])),
                               facturadas: yaFacturadas?.get(c.id),
                             }}
+                          />
+                        )}
+                        {cargaOt && sinCodigo(c) && c.id && (registradas?.get(c.id)?.length ?? 0) > 0 && (
+                          <EngancharOtRegistrada
+                            cotizacionId={c.id}
+                            numero={c.numero ?? 'cotización'}
+                            ots={registradas?.get(c.id) ?? []}
+                            unidades={unidades}
+                            libres={libres}
+                            facturadas={yaFacturadas?.get(c.id)}
                           />
                         )}
                         {editaOt &&
