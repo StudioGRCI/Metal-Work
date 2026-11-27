@@ -85,16 +85,31 @@ def leer_texto(imagen: Path | Image.Image, modo: str = '11') -> str:
     return r.stdout.decode(errors='replace')
 
 
-def leer_pantalla(imagen: Path | Image.Image) -> str:
-    """Una pantalla leída de las dos maneras, una tras otra.
+def leer_pantalla(imagen: Path | Image.Image) -> tuple[str, str]:
+    """Una pantalla leída de las dos maneras: como texto suelto y como un solo bloque.
 
     Como texto suelto (`11`) tesseract entiende mejor una pantalla con
     columnas, pero se salta renglones que son solo cifras; como un solo bloque
-    (`6`) mezcla las columnas y no se salta ninguno. Para buscar datos se
-    quieren los dos: lo probó un DNI pintado en la cabecera, que como texto
+    (`6`) mezcla las columnas y los íconos le salen como letras, pero no se
+    salta ninguno. Lo probó un DNI pintado en la cabecera, que como texto
     suelto no se leía a ningún tamaño.
     """
-    return leer_texto(imagen, '11') + '\n' + leer_texto(imagen, '6')
+    return leer_texto(imagen, '11'), leer_texto(imagen, '6')
+
+
+def datos_de_pantalla(lectura: tuple[str, str], inventados: tuple[tuple[str, float], ...] = (), vistos: set | None = None) -> list[tuple[str, str]]:
+    """Los datos de una pantalla leída de las dos maneras.
+
+    De la lectura suelta, todo. De la lectura en bloque, solo lo que la suelta
+    se salta —las cifras: un RUC, un DNI, un teléfono o un monto con sus dos
+    decimales—, porque en bloque un ícono del menú sale como «$8».
+    """
+    suelto, bloque = lectura
+    hallados = datos_en(suelto, inventados, vistos)
+    for h in datos_en(bloque, inventados, vistos):
+        if h not in hallados and (h[0] in ('RUC', 'DNI', 'teléfono') or (h[0] == 'monto' and re.search(r'\.\d{2}(?!\d)', h[1]))):
+            hallados.append(h)
+    return hallados
 
 
 def _png(imagen: Image.Image) -> bytes:
@@ -179,6 +194,16 @@ def es_resto_de_inventado(escrito: str, inventados: tuple[tuple[str, float], ...
         if entero.startswith(leido) and entero[len(leido) : len(leido) + 1] in (',', '.'):
             return True
         if entero.endswith(leido) and entero[: len(entero) - len(leido)][-1:] in (',', '.'):
+            return True
+    return False
+
+
+def es_inventado_mal_leido(escrito: str, inventados: tuple[tuple[str, float], ...]) -> bool:
+    """Un monto inventado con una sola cifra cambiada: a medio fundido una raya cruza un «0» y sale «135,900.00»."""
+    moneda, leidas = moneda_del_monto(escrito), cifras(escrito)
+    for suya, valor in inventados:
+        suyas = f'{valor:.2f}'.replace('.', '')
+        if moneda in (None, suya) and len(leidas) == len(suyas) and sum(a != b for a, b in zip(leidas, suyas)) == 1:
             return True
     return False
 
@@ -329,14 +354,14 @@ def revisar(carpeta: Path, formato: str) -> bool:
     capturas = sorted((carpeta / 'capturas' / formato).glob('*.png'))
     with ThreadPoolExecutor(4) as grupo:
         textos = list(grupo.map(leer_pantalla, capturas))
-    en_capturas = [(c.name, h) for c, t in zip(capturas, textos) for h in datos_en(t, inventados)]
+    en_capturas = [(c.name, h) for c, t in zip(capturas, textos) for h in datos_de_pantalla(t, inventados)]
     # Lo que las capturas dicen, pegado. En un cuadro chico el OCR se come el guion de «9001-2026»
     # o el espacio de «1. 10 KG» y quedan ocho cifras seguidas o un «1.10», que parecen un DNI o un
     # monto y no lo son: las capturas, leídas enteras, no los traen. Para el DNI solo se pegan
     # guiones y barras (un número de documento, una fecha): ocho cifras partidas por un espacio en
     # la captura sí pueden ser un DNI, y arriba ya se marcan.
-    sin_guiones = [re.sub(r'[/-]+', '', t) for t in textos]
-    sin_espacios = [re.sub(r'\s+', '', t) for t in textos]
+    sin_guiones = [re.sub(r'[/-]+', '', '\n'.join(t)) for t in textos]
+    sin_espacios = [re.sub(r'\s+', '', '\n'.join(t)) for t in textos]
 
     def es_texto_pegado(hallado) -> bool:
         clase, valor = hallado
@@ -373,7 +398,7 @@ def revisar(carpeta: Path, formato: str) -> bool:
     dudosos = []
 
     for archivo, numero, t in zip(cuadros, elegidos, textos):
-        hallados = datos_en(t, inventados, vistos)
+        hallados = datos_de_pantalla(t, inventados, vistos)
         if not hallados:
             archivo.unlink()
             continue
@@ -388,11 +413,11 @@ def revisar(carpeta: Path, formato: str) -> bool:
         otras = []
         for veces in (2, 3):
             grande = gris.resize((gris.width * veces, gris.height * veces), Image.LANCZOS)
-            otras.append({mismo_dato(h) for h in datos_en(leer_pantalla(grande), inventados)})
+            otras.append({mismo_dato(h) for h in datos_de_pantalla(leer_pantalla(grande), inventados)})
         confirmados = [
             h
             for h in hallados
-            if not (h[0] == 'monto' and es_resto_de_inventado(h[1], inventados))
+            if not (h[0] == 'monto' and (es_resto_de_inventado(h[1], inventados) or es_inventado_mal_leido(h[1], inventados)))
             and not es_texto_pegado(h)
             and any(mismo_dato(h) in lectura for lectura in otras)
         ]
@@ -412,7 +437,7 @@ def revisar(carpeta: Path, formato: str) -> bool:
     for numero, hallados in en_cuadros[:20]:
         inf.nota(f"{numero / fps:.2f} s: {', '.join(f'{n} «{v}»' for n, v in hallados)}")
     for numero, hallados in dudosos[:20]:
-        inf.nota(f"lectura dudosa en {numero / fps:.2f} s ({', '.join(f'{n} «{v}»' for n, v in hallados)}): trozo de un monto inventado, texto de las capturas leído sin su guion o su espacio, o lectura que no se repite al leer el cuadro otra vez al doble y al triple de tamaño; queda en generado/{formato}/revision/ para mirarlo")
+        inf.nota(f"lectura dudosa en {numero / fps:.2f} s ({', '.join(f'{n} «{v}»' for n, v in hallados)}): trozo de un monto inventado o el mismo con una cifra cambiada, texto de las capturas leído sin su guion o su espacio, o lectura que no se repite al leer el cuadro otra vez al doble y al triple de tamaño; queda en generado/{formato}/revision/ para mirarlo")
 
     if inventados:
         dicho = lambda d: f'{d[0]} {d[1]:,.2f}'  # noqa: E731

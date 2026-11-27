@@ -57,12 +57,13 @@ pip install edge-tts faster-whisper pillow numpy
 
 ## Hacer un video
 
-Hay tres hechos, que sirven de ejemplo:
+Hay cuatro hechos, que sirven de ejemplo:
 
 | Video | Puesto | Muestra cómo |
 | --- | --- | --- |
 | `videos/como-subir-una-cotizacion-con-varias-unidades/` | Ventas | subir un documento inventado y declarar sus montos |
 | `videos/como-cargar-la-ot-de-cada-unidad/` | Administración | otros puestos preparan el caso fuera de cámara; una ventana con error a propósito |
+| `videos/como-registrar-la-factura-de-cada-unidad/` | Contabilidad | tapar un dato que la pantalla trae (el RUC del cliente de demostración) |
 | `videos/como-pedir-un-rq/` | Supervisor de área | llenar un formulario y que otro puesto actúe fuera de cámara |
 
 Las órdenes de abajo usan el primero; con los otros son iguales.
@@ -84,7 +85,7 @@ BANCO_CLAVE='la-del-banco' node herramientas/videos/videos/como-subir-una-cotiza
 
 Cada corrida hace la tarea de verdad y deja su documento en el banco: se rehace
 el banco (`preparar.sh`) antes de tomar las capturas otra vez, para que salgan
-con el mismo número.
+con el mismo número. Las capturas de la corrida anterior se quitan solas.
 
 Cada video trae su `capturar.mjs`: entra con la cuenta `*.local@metalwork.test`
 del puesto, hace la tarea de verdad en el banco y en cada paso guarda la
@@ -105,6 +106,12 @@ el video inventa se declaran con su moneda en
 `abrir({ montosInventados: [{ moneda: 'USD', valor: 135000 }] })`, con las
 mismas constantes con que se escriben. La revisión deja pasar esos y ningún
 otro, admite hasta cuatro y falla si alguno declarado no sale en el video.
+
+Si la pantalla misma trae un dato que el video no puede mostrar —la tarjeta de
+Facturación pone el RUC del cliente, y el de demostración también cuenta—, se
+tapa con `abrir({ tapar: (pagina) => pagina.locator('…') })`: sale borroso en
+todas las capturas, sin mover nada de su lugar. La revisión lee las capturas
+igual: si lo tapado todavía se lee, el video no pasa.
 
 **3. Todo lo demás, de una vez:**
 
@@ -147,9 +154,10 @@ propiedades que usa `hacer.mjs` (guion, `linea.json` y `capturas.json`).
   oída se tolera y se anota).
 - **Datos reales**: compara todos los cuadros y lee con OCR cada uno en que la
   imagen cambia (y por lo menos uno por segundo), y cada captura a su tamaño
-  completo. Cada pantalla se lee de dos maneras, como texto suelto y como un
-  solo bloque: de la primera, tesseract se salta renglones que son solo
-  cifras. Ante la duda, marca: toda serie de 8 u 11 cifras es un DNI o un
+  completo. Cada pantalla se lee de dos maneras: como texto suelto, de donde
+  se toma todo, y como un solo bloque, de donde se toman las cifras (RUC, DNI,
+  teléfono, monto con decimales) que tesseract se salta de la otra manera.
+  Ante la duda, marca: toda serie de 8 u 11 cifras es un DNI o un
   RUC, y toda cifra con dos decimales es un monto. No puede aparecer un RUC,
   un DNI, un teléfono, un correo que no sea de prueba ni una clave, ni más
   montos que los inventados que declaró la captura. Y las capturas tienen que
@@ -172,6 +180,9 @@ queda como `DATO-…png` en `generado/<formato>/revision/`. Queda como
 - el trozo de un monto inventado: con su moneda, el comienzo («US$ 13»); sin
   moneda, un comienzo o un final cortado en una coma o en el punto («000.00»).
   Un monto entero distinto («US$ 5,000.00») no es un trozo;
+- un monto inventado con una sola cifra cambiada («135,900.00» por
+  «135,000.00»), que es lo que sale cuando una raya de la otra pantalla cruza
+  un cero a medio fundido;
 - un número suelto que las capturas muestran con un guion, una barra o un
   espacio que el OCR se comió («9001-2026» leído «90012026», «1. 10 KG» leído
   «1.10»). Ocho cifras partidas por un espacio no entran aquí: se marcan como

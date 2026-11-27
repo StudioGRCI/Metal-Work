@@ -17,7 +17,7 @@
  * recuadro con esos números: no se mide nada a ojo.
  */
 import { createHash } from 'node:crypto'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -128,10 +128,16 @@ export function pdfConTexto(lineas) {
  * video. El `capturar.mjs` escribe sus textos con las mismas constantes que
  * declara. Un RUC, un DNI, un teléfono o una clave no se pueden declarar: no
  * salen en pantalla.
+ *
+ * `tapar`: `(pagina) => locator` de lo que la pantalla trae y el video no puede
+ * mostrar —el RUC del cliente de demostración en la tarjeta de Facturación—.
+ * Sale borroso en todas las capturas, sin mover nada de su lugar.
  */
-export async function abrir({ video, formato, cuenta, montosInventados = [] }) {
+export async function abrir({ video, formato, cuenta, montosInventados = [], tapar = null }) {
   const carpeta = join(dirname(fileURLToPath(video)), 'capturas', formato)
   mkdirSync(carpeta, { recursive: true })
+  // Las capturas de una corrida anterior no se quedan: una con otro nombre saldría en la revisión sin su huella.
+  for (const vieja of readdirSync(carpeta)) if (vieja.endsWith('.png')) rmSync(join(carpeta, vieja))
   const f = FORMATOS[formato].captura
   const sesion = await entrar(cuenta, formato)
   // De dónde salieron: la revisión automática no deja pasar capturas que no sean del banco local.
@@ -153,6 +159,12 @@ export async function abrir({ video, formato, cuenta, montosInventados = [] }) {
         window.scrollBy(0, -76)
       })
     } else if (primero) await primero.scrollIntoViewIfNeeded()
+    // Lo que la pantalla trae y un video no muestra (el RUC del cliente de demostración) sale borroso, como se tapa en cualquier video.
+    if (tapar) {
+      await tapar(pagina).evaluateAll((lugares) => {
+        for (const el of lugares) el.style.filter = 'blur(7px)'
+      })
+    }
     // El cursor de texto parpadea: sin él, dos corridas dan la misma imagen.
     await pagina.addStyleTag({ content: '*{caret-color:transparent!important}' }).catch(() => {})
     await pagina.waitForTimeout(350)
