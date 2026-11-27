@@ -12944,6 +12944,50 @@ export type Database = {
           }
         ]
       }
+      tramite_avisos: {
+        Row: {
+          id: string
+          tramite_id: string | null
+          tipo: string
+          fecha: string | null
+          dias: number | null
+          dia_revision: string
+          avisados: number
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          tramite_id?: string | null
+          tipo: string
+          fecha?: string | null
+          dias?: number | null
+          dia_revision: string
+          avisados?: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          tramite_id?: string | null
+          tipo?: string
+          fecha?: string | null
+          dias?: number | null
+          dia_revision?: string
+          avisados?: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tramite_avisos_tramite_id_fkey"
+            columns: ["tramite_id"]
+            isOneToOne: false
+            referencedRelation: "tramites"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       tramite_gestiones: {
         Row: {
           id: string
@@ -15116,6 +15160,15 @@ export type Database = {
           p_cuerpo: string | null
           p_tabla: string | null
           p_id: string | null
+          p_gerencia: boolean | null
+        }
+        Returns: number
+      }
+      avisar_tramite: {
+        Args: {
+          p_tramite: string | null
+          p_titulo: string | null
+          p_cuerpo: string | null
           p_gerencia: boolean | null
         }
         Returns: number
@@ -20531,6 +20584,16 @@ export type Database = {
           cuentas: number | null
         }[]
       }
+      revisar_tramites: {
+        Args: {
+          p_hoy?: string | null
+        }
+        Returns: {
+          tipo: string | null
+          avisos: number | null
+          cuentas: number | null
+        }[]
+      }
       revisar_version_plano: {
         Args: {
           p_id: string | null
@@ -22343,6 +22406,12 @@ export type Database = {
         Args: {
           p_tramite: string | null
           p_ruta: string | null
+        }
+        Returns: string
+      }
+      tramite_en_texto: {
+        Args: {
+          p_tramite: string | null
         }
         Returns: string
       }
