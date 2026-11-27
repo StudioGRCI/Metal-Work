@@ -212,14 +212,30 @@ select test.afirmar(
   'otra subetapa que vence después avisa por su nombre, sin repetir el aviso anterior');
 
 -- ============================================ 4. El lunes, el resumen a Gerencia
+-- El lunes va después del último día que ya revisaron las secciones de arriba
+-- (hoy + 2 días hábiles): si cae antes o ese mismo día, esa revisión ya mandó el
+-- resumen y esta no repite. Pasaba un viernes, con el sábado laborable: hoy + 2
+-- es el lunes siguiente y la prueba fallaba sin que la función tuviera nada.
+select set_config('prueba.lunes', (
+  select min(d)::date::text from generate_series(
+           (public.sumar_dias_habiles(current_setting('prueba.hoy')::date, 2) + 1)::timestamp,
+           public.sumar_dias_habiles(current_setting('prueba.hoy')::date, 2) + 21, interval '1 day') d
+   where extract(isodow from d::date) = 1 and public.es_laborable(d::date)), true);
 select test.afirmar(
-  (select r.avisos = 1 from public.revisar_tiempos_de_entrega(
-     (select min(d)::date from generate_series((current_date + 1)::timestamp, current_date + 21, interval '1 day') d
-       where extract(isodow from d::date) = 1 and public.es_laborable(d::date))) r
+  current_setting('prueba.lunes') <> ''
+  and not exists (select 1 from public.tiempos_entrega_avisos a
+                   where a.tipo = 'RESUMEN_SEMANAL' and a.fecha = current_setting('prueba.lunes')::date),
+  'el lunes de la prueba todavía no tiene resumen');
+-- Los resúmenes que ya hubiera (otra semana de arriba) no cuentan para este lunes.
+select set_config('prueba.resumenes_antes', coalesce(
+  (select string_agg(n.id::text, ',') from public.notificaciones n where n.titulo like 'Resumen%'), ''), true);
+select test.afirmar(
+  (select r.avisos = 1 from public.revisar_tiempos_de_entrega(current_setting('prueba.lunes')::date) r
     where r.tipo = 'RESUMEN_SEMANAL'),
   'el lunes sale el resumen');
 select test.afirmar(
   (select count(*) = 1 from public.notificaciones n where n.titulo like 'Resumen%'
+      and n.id::text <> all (string_to_array(current_setting('prueba.resumenes_antes'), ','))
       and n.usuario_id = current_setting('prueba.gerente_gge')::uuid and n.ruta = '/rrhh/tiempos-de-entrega'
       and n.cuerpo like '%sin nadie a cargo%')
   and not exists (select 1 from public.notificaciones n where n.titulo like 'Resumen%'
