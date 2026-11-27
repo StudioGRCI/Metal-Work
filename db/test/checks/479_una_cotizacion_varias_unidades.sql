@@ -317,6 +317,12 @@ begin
   select current_setting('prueba.ot6')::uuid, '47406-2099', cliente_id, unidad_id, tipo_carroceria_id, sede_id, tipo_trabajo, prioridad,
          'Prueba 474: la misma unidad', fecha_entrega_comprometida, 'APROBADA'
     from public.ordenes_trabajo where id = current_setting('prueba.ot1')::uuid;
+  -- Con sesión, desde la 20261127003000 ni se intenta: la cotización de una OT
+  -- cambia solo con «Editar OT». Sin sesión (una migración) sigue mirando el código.
+  perform test.debe_fallar(format('update public.ordenes_trabajo set cotizacion_pdf_id = %L, numero_de_unidad = 2 where id = %L',
+    current_setting('prueba.cot3'), current_setting('prueba.ot6')),
+    'Con sesión, una OT no se cuelga de la cotización por la API', 'solo con «Editar OT / cambiar cliente»');
+  perform set_config('request.jwt.claim.sub', '', true);
   perform test.debe_fallar(format('update public.ordenes_trabajo set cotizacion_pdf_id = %L, numero_de_unidad = 2 where id = %L',
     current_setting('prueba.cot3'), current_setting('prueba.ot6')),
     'Por fuera de la carga tampoco entra otra OT de una unidad que ya está', 'cada unidad lleva su propio código');
