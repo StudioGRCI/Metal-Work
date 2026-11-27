@@ -11,7 +11,10 @@
 --   * lo que no entra: otra cotización, otro cliente, otra carrocería, la OT
 --     anulada, la de garantía o mantenimiento, la del taller por revisar, la
 --     unidad ocupada, la cotización llena, la versión vieja, sin motivo;
---   * el reenvío de la misma dice «la primera vez»;
+--   * el reenvío de la misma dice «la primera vez», y el que cambió la unidad o
+--     el motivo dice en qué unidad quedó y que lo cambiado no se guardó;
+--   * la OT sin unidad no entra, y la del vehículo que ya es de otra OT de la
+--     cotización ni se ofrece;
 --   * el UPDATE directo sigue cerrado;
 --   * la lista `ots_para_enganchar` ofrece solo lo que entra, y solo a Administración.
 -- Cada paso con la cuenta del puesto y `set local role authenticated`. Termina en rollback.
@@ -54,10 +57,10 @@ do $$
 declare
   k text;
 begin
-  foreach k in array array['e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7', 'x1'] loop
+  foreach k in array array['e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7', 'e8', 'e9', 'e10', 'x1'] loop
     insert into public.unidades (cliente_id, codigo_interno, placa, tipo_vehiculo)
     values (case when k = 'x1' then current_setting('prueba.otro') else current_setting('prueba.cliente') end::uuid,
-            'QA-504 ' || upper(k), 'Q504' || upper(k), 'SEMIRREMOLQUE');
+            'QA-504 ' || upper(k), 'Q5' || lpad(upper(k), 4, '0'), 'SEMIRREMOLQUE');
     perform set_config('prueba.u_' || k, (select id::text from public.unidades where codigo_interno = 'QA-504 ' || upper(k)), true);
     perform set_config('prueba.ot_' || k, gen_random_uuid()::text, true);
   end loop;
@@ -142,6 +145,9 @@ begin
   perform pg_temp.registrar('e5', '50405', 'FABRICACION', null, current_setting('prueba.cliente'));                      -- se anula
   perform pg_temp.registrar('e6', '50406', 'FABRICACION', null, current_setting('prueba.cliente'));                      -- a la llena
   perform pg_temp.registrar('x1', '50409', 'FABRICACION', null, current_setting('prueba.otro'));                         -- otro cliente
+  perform pg_temp.registrar('e8', '50411', 'FABRICACION', null, current_setting('prueba.cliente'));                      -- pasa a garantía
+  perform pg_temp.registrar('e9', '50412', 'FABRICACION', null, current_setting('prueba.cliente'));                      -- del taller, por revisar
+  perform pg_temp.registrar('e10', '50413', 'FABRICACION', null, current_setting('prueba.cliente'));                     -- sin unidad
   -- La de una unidad ya tiene su OT, cargada desde la cotización.
   perform pg_temp.cargar(current_setting('prueba.cot1'), current_setting('prueba.ot_e7'), 'QA-504 E7', '50407');
   reset role;
@@ -153,6 +159,14 @@ begin
   update public.ordenes_trabajo set estado = 'ANULADA', motivo_anulacion = 'Se registró dos veces (prueba 504)'
    where id = current_setting('prueba.ot_e5')::uuid;
   reset role;
+
+  -- Las tres raras se dejan como llegarían por otros caminos (la garantía, el
+  -- taller, una OT vieja sin vehículo), sin pasar por sus disparadores.
+  perform set_config('session_replication_role', 'replica', true);
+  update public.ordenes_trabajo set tipo_trabajo = 'GARANTIA' where id = current_setting('prueba.ot_e8')::uuid;
+  update public.ordenes_trabajo set abierta_en_taller = true where id = current_setting('prueba.ot_e9')::uuid;
+  update public.ordenes_trabajo set unidad_id = null where id = current_setting('prueba.ot_e10')::uuid;
+  perform set_config('session_replication_role', 'origin', true);
 
   perform test.afirmar((pg_temp.ot('e1')).cotizacion_pdf_id is null and (pg_temp.ot('e1')).estado = 'APROBADA'
                        and (pg_temp.ot('e2')).estado = 'BORRADOR' and (pg_temp.ot('e5')).estado = 'ANULADA',
@@ -171,7 +185,7 @@ begin
     from public.ots_para_enganchar(array[current_setting('prueba.cot')::uuid])
    where cotizacion_id = current_setting('prueba.cot')::uuid;
   perform test.afirmar(v = format('50401-%1$s,50402-%1$s,50406-%1$s', to_char((now() at time zone 'America/Lima')::date, 'YYYY')),
-    'Administración ve para la cotización las tres OT del cliente que entran, también la que espera el visto de Gerencia (ni la de otra carrocería, ni la de mantenimiento, ni la anulada, ni la del otro cliente, ni la que ya tiene cotización): ' || coalesce(v, 'ninguna'));
+    'Administración ve para la cotización las tres OT del cliente que entran, también la que espera el visto de Gerencia (ni la de otra carrocería, ni la de mantenimiento o garantía, ni la del taller por revisar, ni la sin unidad, ni la anulada, ni la del otro cliente, ni la que ya tiene cotización): ' || coalesce(v, 'ninguna'));
   select count(*) into n from public.ots_para_enganchar(array[current_setting('prueba.cot_rev')::uuid]);
   perform test.afirmar(n = 0, 'A la cotización por revisar no se le ofrece ninguna');
   reset role;
@@ -219,6 +233,12 @@ begin
     'la de mantenimiento no es una venta', 'no es una venta');
   perform test.debe_fallar(pg_temp.sql_enganchar('e5', current_setting('prueba.cot'), null),
     'la anulada no', 'está anulada');
+  perform test.debe_fallar(pg_temp.sql_enganchar('e8', current_setting('prueba.cot'), null),
+    'la de garantía no es una venta', 'es de garantía');
+  perform test.debe_fallar(pg_temp.sql_enganchar('e9', current_setting('prueba.cot'), null),
+    'la del taller que espera su revisión no', 'todavía espera su revisión');
+  perform test.debe_fallar(pg_temp.sql_enganchar('e10', current_setting('prueba.cot'), null),
+    'la que no tiene unidad no', 'no tiene unidad');
   perform test.debe_fallar(pg_temp.sql_enganchar('e6', current_setting('prueba.cot1'), null),
     'a la cotización llena no', 'ya tiene su OT');
   perform test.debe_fallar(pg_temp.sql_enganchar('e7', current_setting('prueba.cot'), null),
@@ -286,6 +306,20 @@ begin
   set local role authenticated;
   perform test.debe_fallar(pg_temp.sql_enganchar('e1', current_setting('prueba.cot'), 2),
     'la misma otra vez dice que quedó la primera vez', 'la primera vez que la enviaste');
+  perform test.debe_fallar(pg_temp.sql_enganchar('e1', current_setting('prueba.cot'), null),
+    'la misma sin elegir unidad también es el mismo envío', 'la primera vez que la enviaste');
+  perform test.debe_fallar(pg_temp.sql_enganchar('e1', current_setting('prueba.cot'), 3),
+    'reenviada con otra unidad dice en cuál quedó y que lo cambiado no se guardó',
+    'ya había quedado enganchada a la cotización QA-504-A como la unidad 2 de 3 con el primer envío: lo que cambiaste al reenviar no se guardó');
+  perform test.debe_fallar(pg_temp.sql_enganchar('e1', current_setting('prueba.cot'), 2, 'Otro motivo para la misma (prueba 504)'),
+    'reenviada con otro motivo tampoco es el mismo envío', 'lo que cambiaste al reenviar no se guardó');
+  -- Otra OT del mismo vehículo que ya es la unidad 2: ni se ofrece.
+  perform set_config('prueba.ot_e11', gen_random_uuid()::text, true);
+  perform set_config('prueba.u_e11', current_setting('prueba.u_e1'), true);
+  perform pg_temp.registrar('e11', '50414', 'FABRICACION', null, current_setting('prueba.cliente'));
+  perform test.afirmar(not exists (select 1 from public.ots_para_enganchar(array[current_setting('prueba.cot')::uuid])
+                                    where orden_id = current_setting('prueba.ot_e11')::uuid),
+    'La OT de un vehículo que ya es el de otra OT de la cotización no se ofrece');
   perform test.debe_fallar(pg_temp.sql_enganchar('e2', current_setting('prueba.cot'), 2),
     'la unidad 2 ya está tomada', 'La unidad 2 de la cotización QA-504-A ya tiene su OT');
   perform test.debe_fallar(pg_temp.sql_enganchar('e7', current_setting('prueba.cot1'), null),

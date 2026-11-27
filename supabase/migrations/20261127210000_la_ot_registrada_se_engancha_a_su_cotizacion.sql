@@ -216,6 +216,12 @@ begin
      and o.tipo_trabajo not in ('GARANTIA', 'MANTENIMIENTO')
      and (o.tipo_carroceria_id is null or o.tipo_carroceria_id = c.tipo_carroceria_id)
      and not exists (select 1 from public.ot_entregas e where e.orden_id = o.id)
+     -- Su vehículo no es ya el de otra OT de la cotización: el enganche lo
+     -- rechazaría (`fn_ot_cabe_en_su_cotizacion`, cada unidad su código).
+     and not exists (select 1 from public.ordenes_trabajo x
+                       join public.unidades ux on ux.id = x.unidad_id
+                      where x.cotizacion_pdf_id = c.id and x.estado <> 'ANULADA'
+                        and public.normalizar_codigo_interno(ux.codigo_interno) = public.normalizar_codigo_interno(u.codigo_interno))
      and public.puede_ver_orden(o.id)
    order by c.id, o.creado_en desc, o.numero;
 end;
@@ -252,6 +258,7 @@ declare
   v_n        integer;
   v_cual     text;
   v_quedan   integer;
+  v_antes    jsonb;
 begin
   if public.usuario_actual() is null then
     raise exception 'Inicia sesión.' using errcode = 'insufficient_privilege';
@@ -292,22 +299,37 @@ begin
     raise exception 'No se encontró la OT.' using errcode = 'foreign_key_violation';
   end if;
   -- La misma OT otra vez (la respuesta se perdió y se envió de nuevo): ya es de
-  -- esta cotización por un enganche de quien la envía. Se dice como duplicado,
-  -- y la acción lo da por hecho. Si llegó por otro camino (la carga, otra
-  -- persona), se dice tal cual.
+  -- esta cotización por un enganche de quien la envía. Si es el mismo envío
+  -- (la misma unidad, o sin elegirla, y el mismo motivo) se dice como
+  -- duplicado, y la acción lo da por hecho. Si cambió algo, no es el mismo
+  -- envío: se dice en qué unidad quedó y que lo cambiado no se guardó. Si llegó
+  -- por otro camino (la carga, otra persona), se dice tal cual.
   if o.cotizacion_pdf_id = p_cotizacion then
-    if exists (select 1 from public.ot_bitacora b
-                where b.orden_id = o.id and b.usuario_id = public.usuario_actual()
-                  and (b.datos->>'enganche_a_cotizacion') = 'true'
-                  and (b.datos->>'cotizacion_pdf_id') = p_cotizacion::text) then
-      raise exception 'La OT % ya quedó enganchada a la cotización % la primera vez que la enviaste.', o.numero, c.numero
+    select b.datos into v_antes
+      from public.ot_bitacora b
+     where b.orden_id = o.id and b.usuario_id = public.usuario_actual()
+       and (b.datos->>'enganche_a_cotizacion') = 'true'
+       and (b.datos->>'cotizacion_pdf_id') = p_cotizacion::text
+     order by b.creado_en desc
+     limit 1;
+    if v_antes is not null then
+      if (p_unidad is null or p_unidad = (v_antes->>'unidad')::integer)
+         and v_motivo = (v_antes->>'motivo') then
+        raise exception 'La OT % ya quedó enganchada a la cotización % la primera vez que la enviaste.', o.numero, c.numero
+          using errcode = 'unique_violation';
+      end if;
+      raise exception '%', format('La OT %s ya había quedado enganchada a la cotización %s%s con el primer envío: lo que cambiaste al reenviar no se guardó.',
+        o.numero, c.numero,
+        case when c.cantidad_unidades > 1 then format(' como la unidad %s de %s', v_antes->>'unidad', c.cantidad_unidades) else '' end)
         using errcode = 'unique_violation';
     end if;
     raise exception 'La OT % ya es de la cotización %.', o.numero, c.numero using errcode = 'unique_violation';
   end if;
   if o.actualizado_en is distinct from p_version then
+    -- Sin `serialization_failure`: `mensajeDeError` lo cambiaría por «otra
+    -- persona guardaba algo a la vez», y esto dice qué hacer.
     raise exception 'La OT % cambió mientras la enganchabas. Recarga y revisa antes de guardar.', o.numero
-      using errcode = 'serialization_failure';
+      using errcode = 'check_violation';
   end if;
   if o.cotizacion_pdf_id is not null then
     raise exception 'La OT % ya es de otra cotización: no se engancha a una segunda. Si el vehículo pasó a otro comprador, Administración la pasa con «Editar OT / cambiar cliente».', o.numero

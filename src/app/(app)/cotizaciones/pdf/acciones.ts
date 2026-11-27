@@ -475,7 +475,10 @@ export async function cargarCodigoYOt(
 const esquemaEnganchar = z.object({
   cotizacion_id: z.guid({ message: 'No se pudo identificar la cotización: recarga la página.' }),
   orden_id: z.guid({ message: 'Elige la OT ya registrada que es de esta cotización.' }),
-  version: z.string().min(1, 'Recarga la página: falta la versión de la OT.'),
+  version: z
+    .string()
+    .min(1, 'Recarga la página: falta la versión de la OT.')
+    .refine((t) => !Number.isNaN(Date.parse(t)), 'Recarga la página: la versión de la OT no se entiende.'),
   // La unidad que elige Administración en la cotización de varias; sin ella, la primera libre.
   unidad: z.union([z.literal(''), z.coerce.number().int().min(1, 'Elige qué unidad es la OT.').max(50, 'Elige qué unidad es la OT.')]).optional(),
   motivo: z
@@ -518,10 +521,7 @@ export async function engancharOtACotizacion(
   // El mismo envío otra vez (la primera respuesta se perdió): la base dice que
   // ya quedó enganchada por esta persona. Quedó; el motivo es el de la primera vez.
   const yaQuedo = error?.code === '23505' && error.message.includes('la primera vez que la enviaste')
-  if (error && !yaQuedo) {
-    const delMotor = /violates|duplicate key|permission denied/i.test(error.message)
-    return { ok: false, error: delMotor ? mensajeDeError(error) : error.message }
-  }
+  if (error && !yaQuedo) return { ok: false, error: mensajeDeError(error) }
   if (!error && data !== v.orden_id) return { ok: false, error: NO_TOCO_NADA }
 
   const { data: ot } = await supabase.from('ordenes_trabajo').select('numero').eq('id', v.orden_id).maybeSingle()

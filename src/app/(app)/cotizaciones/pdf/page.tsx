@@ -244,33 +244,36 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
     // Primero la venta que se reabrió y espera a quien la registró: «decide si sigue» (Inicio lleva aquí).
     .sort((a, b) => Number(esperaSuDecision(b)) - Number(esperaSuDecision(a)) || Number(arriba(b)) - Number(arriba(a)))
 
-  // El recorrido de las que se muestran. Sin él, la tarjeta sigue con todo lo demás y lo dice en su lugar.
-  const recorridos = await recorridoDeCotizaciones(visibles.flatMap((c) => (c.id ? [c.id] : []))).catch((e: unknown) => {
-    console.error('Cotización: no se pudo leer el recorrido.', e)
-    return null
-  })
-
-  // A quien carga la OT: las unidades libres que ya tienen factura, para avisarle antes de que
-  // otro vehículo se quede con ella. Solo puede pasar si falta más de una OT. Es un aviso de
-  // más: si no se lee, la ventana sigue como siempre.
-  const yaFacturadas = cargaOt
-    ? await unidadesLibresYaFacturadas(
-        visibles.flatMap((c) => (c.id && sinCodigo(c) && (c.cantidad_unidades ?? 1) > 1 && (c.ordenes_faltantes ?? 0) > 1 ? [c.id] : [])),
-      ).catch((e: unknown) => {
-        console.error('Cotización: no se pudo leer qué unidades sin OT ya tienen factura.', e)
-        return null
-      })
-    : null
-
-  // A quien carga la OT: las OT del mismo cliente que se registraron antes que su
-  // cotización y se le pueden enganchar como una de sus unidades (migración
-  // 20261127210000). Si no se leen, la tarjeta sigue ofreciendo solo la carga.
-  const registradas = cargaOt
-    ? await otsParaEnganchar(visibles.flatMap((c) => (c.id && sinCodigo(c) ? [c.id] : []))).catch((e: unknown) => {
-        console.error('Cotización: no se pudo leer qué OT ya registradas se pueden enganchar.', e)
-        return null
-      })
-    : null
+  // Tres lecturas que no dependen una de otra: van juntas.
+  const conId = visibles.flatMap((c) => (c.id ? [c.id] : []))
+  const [recorridos, yaFacturadas, registradas] = await Promise.all([
+    // El recorrido de las que se muestran. Sin él, la tarjeta sigue con todo lo demás y lo dice en su lugar.
+    recorridoDeCotizaciones(conId).catch((e: unknown) => {
+      console.error('Cotización: no se pudo leer el recorrido.', e)
+      return null
+    }),
+    // A quien carga la OT: las unidades libres que ya tienen factura, para avisarle antes de que
+    // otro vehículo se quede con ella. Solo puede pasar si falta más de una OT. Es un aviso de
+    // más: si no se lee, la ventana sigue como siempre.
+    cargaOt
+      ? unidadesLibresYaFacturadas(
+          visibles.flatMap((c) => (c.id && sinCodigo(c) && (c.cantidad_unidades ?? 1) > 1 && (c.ordenes_faltantes ?? 0) > 1 ? [c.id] : [])),
+        ).catch((e: unknown) => {
+          console.error('Cotización: no se pudo leer qué unidades sin OT ya tienen factura.', e)
+          return null
+        })
+      : null,
+    // A quien carga la OT: las OT del mismo cliente que se registraron antes que su
+    // cotización y se le pueden enganchar como una de sus unidades (migración
+    // 20261127210000). Si no se leen, la tarjeta lo dice: sin aviso, se volvía
+    // a cargar otra OT para el mismo vehículo.
+    cargaOt
+      ? otsParaEnganchar(visibles.flatMap((c) => (c.id && sinCodigo(c) ? [c.id] : []))).catch((e: unknown) => {
+          console.error('Cotización: no se pudo leer qué OT ya registradas se pueden enganchar.', e)
+          return null
+        })
+      : null,
+  ])
 
   const opciones = [
     { valor: null, etiqueta: `Vigentes (${cotizaciones.length - anuladas})` },
@@ -657,7 +660,13 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                     />
 
                     {cargaOt && c.id && <EngancheEnLaTarjeta cotizacionId={c.id} />}
-                    {cargaOt && sinCodigo(c) && c.id && <AvisoDeOtRegistrada ots={registradas?.get(c.id) ?? []} />}
+                    {cargaOt && sinCodigo(c) && c.id && (registradas
+                      ? <AvisoDeOtRegistrada ots={registradas.get(c.id) ?? []} />
+                      : (
+                        <p className="text-xs text-texto-suave" data-registradas-sin-leer>
+                          No se pudo ver si el cliente ya tiene una OT registrada sin cotización: mira sus OT antes de cargar otra para el mismo vehículo.
+                        </p>
+                      ))}
 
                     {(revisa && c.estado === 'POR_REVISAR' || cargaOt && sinCodigo(c) || (editaOt && otsSinCodigo.some((o) => o.id)) || corrige || quitable || cancela) && (
                       <div className="flex flex-wrap items-center gap-2">
