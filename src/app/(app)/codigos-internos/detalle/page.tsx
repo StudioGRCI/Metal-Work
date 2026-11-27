@@ -357,7 +357,7 @@ function ComoVa({
               : costo.pen === 0
                 ? 'Todavía nada costeado'
                 : [
-                    c.usd_al_cambio > 0 ? `En soles, con ${moneda(c.usd_al_cambio, 'USD')} pasados al cambio de Contabilidad` : 'Todo en soles',
+                    c.usd_al_cambio > 0 ? `En soles, con ${moneda(c.usd_al_cambio, 'USD')} pasados a soles` : 'Todo en soles',
                     // Lo gastado contra lo que se podía gastar, en sus dos unidades.
                     verPrecio && presupuesto !== null && c.venta?.consumido_pct !== null && c.venta?.consumido_pct !== undefined
                       ? `${porcentaje(c.venta.consumido_pct)} del presupuesto de ${moneda(presupuesto)}: ${c.venta.semaforo === 'EXCEDIDO' ? 'se pasó en' : 'quedan'} ${moneda(Math.abs(presupuesto - costo.pen))}`
@@ -1145,6 +1145,17 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
   const recibos = lineas.filter((l) => l.fuente === 'SUBCONTRATOS' || l.fuente === 'SUBCONTRATOS_POR_PAGAR')
   const gastos = lineas.filter((l) => l.fuente === 'GASTOS_DEL_MES' || l.fuente === 'GASTOS_OT' || l.fuente === 'CAJA')
   const suma = (ls: typeof lineas, m: 'PEN' | 'USD') => ls.reduce((n, l) => n + (l.moneda === m ? (l.monto ?? 0) : 0), 0)
+  // Lo que los servicios aprobados pesan en el costo: los soles de cada OS (la que está en dólares,
+  // con el monto en soles que guarda) y, aparte, los dólares de las que todavía no lo tienen. Null
+  // sin dólares, o si de alguna en dólares no se leyó su cambio: no se da una suma a medias.
+  const enDolares = aprobados.filter((l) => l.moneda === 'USD')
+  const enElCosto =
+    enDolares.length === 0 || enDolares.some((l) => !cambioDe(l))
+      ? null
+      : {
+          soles: Math.round((suma(aprobados, 'PEN') + enDolares.reduce((n, l) => n + (cambioDe(l)?.monto_pen ?? 0), 0)) * 100) / 100,
+          sinCambio: Math.round(enDolares.reduce((n, l) => n + (cambioDe(l)?.monto_pen === null ? (l.monto ?? 0) : 0), 0) * 100) / 100,
+        }
   // Las horas del recargo ya están en las del reporte: el recargo solo suma soles.
   const horasMo = manoObra.reduce((n, l) => n + (l.fuente === 'RECARGO_EXTRAS' ? 0 : (l.horas ?? 0)), 0)
   const abrePdf = puede(perfil, ['compras.ver', 'almacen.recibir'])
@@ -1270,7 +1281,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
       <Tarjeta className="overflow-hidden" data-servicios>
         <TarjetaCabecera
           titulo="Órdenes de servicio"
-          ayuda="Los trabajos de terceros para este código —torno, pintura, flete—, sin IGV. La aprobada por Gerencia suma al costo, porque no pasa por el almacén; la que espera su aprobación se muestra y no se suma todavía. Las rechazadas y las anuladas no aparecen. La que está en dólares pesa en el costo su monto en soles, el mismo que se lee en Compras › Servicios y en Tesorería: sale del tipo de cambio de la fecha de su factura o, mientras no la tiene, del que había al emitirla, y ya no se mueve cuando su detracción está depositada o la orden pagada. Si todavía no tiene monto en soles porque falta registrar el cambio de ese día, no suma hasta que Contabilidad lo registre."
+          ayuda="Los trabajos de terceros para este código —torno, pintura, flete—, sin IGV. La aprobada por Gerencia suma al costo, porque no pasa por el almacén; la que espera su aprobación se muestra y no se suma todavía. Las rechazadas y las anuladas no aparecen. La que está en dólares pesa en el costo el monto en soles que guarda la orden, el mismo de Compras y de Tesorería: sale del tipo de cambio de la fecha de su factura o, mientras no la tiene, del que había al emitirla, y queda fijo cuando su detracción está depositada o la orden pagada. Si todavía no tiene monto en soles porque falta registrar el cambio de ese día, no suma hasta que Contabilidad lo registre."
         />
         <Tabla>
           <TablaCabecera>
@@ -1304,8 +1315,9 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
                           {cambio ? `Emitida el ${fecha(emitidaEl(l))}` : fecha(emitidaEl(l))}
                         </p>
                         {/* En dólares, con qué cambio se hizo el monto en soles que guarda la OS, que es lo
-                            que suma el costo: el día del cambio registrado del que sale; que quedó fija
-                            con el de antes; o que todavía no tiene monto en soles, y de qué día falta. */}
+                            que suma el costo: el día del cambio registrado del que sale; que ya no se mueve, y por
+                            qué (con las palabras de la ayuda); o que todavía no tiene monto en soles, y de qué
+                            día falta. */}
                         {cambio &&
                           (cambio.monto_pen === null ? (
                             // La insignia no parte en dos renglones: lleva solo «Sin cambio» y el día va
@@ -1319,7 +1331,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
                             </p>
                           ) : cambio.origen ? (
                             <p className="text-xs text-texto-suave" data-dia-de-la-linea={l.fecha} data-cambio-registrado-el="" data-origen-del-cambio={cambio.origen}>
-                              {cambio.origen.startsWith('DEPOSITADA') || cambio.origen === 'FIJA_SIN_FACTURA' ? 'Al cambio con que quedó fija' : 'Al cambio que guarda la orden'}
+                              {cambio.origen.startsWith('DEPOSITADA') || cambio.origen === 'FIJA_SIN_FACTURA' ? 'Cambio fijo: detracción depositada u orden pagada' : 'Al cambio que guarda la orden'}
                             </p>
                           ) : null)}
                       </TD>
@@ -1338,16 +1350,34 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
                         {/* Lo que pesa en el costo: el monto en soles de la OS, el de Compras y Tesorería. */}
                         {cambio && cambio.monto_pen !== null && (
                           <p className="text-xs text-texto-suave" data-soles-de-la-os={cambio.monto_pen}>
+                            <span className="sr-only">En el costo: </span>
                             {moneda(cambio.monto_pen)}
                           </p>
                         )}
-                        {!aprobada && <p className="text-xs">no suma</p>}
+                        {/* La aprobada sin monto en soles tampoco suma: sin esto, entre filas que
+                            llevan sus soles debajo, el hueco se leía como que sí. */}
+                        {(!aprobada || (cambio && cambio.monto_pen === null)) && <p className="text-xs text-texto-suave">no suma</p>}
                       </TD>
                     </TR>
                   )
                 })}
                 <TR className="font-semibold">
-                  <TD colSpan={2}>Total aprobado</TD>
+                  <TD colSpan={2}>
+                    Total aprobado
+                    {/* Con dólares, el total va en dos monedas y cada fila dice sus soles: aquí, la
+                        suma de lo que pesan, que es la parte de los servicios en el costo. */}
+                    {enElCosto && (
+                      <p className="text-xs font-normal text-texto-suave" data-servicios-en-el-costo={enElCosto.soles} data-servicios-sin-cambio={enElCosto.sinCambio}>
+                        En el costo: <span className="tabular whitespace-nowrap">{moneda(enElCosto.soles)}</span>
+                        {enElCosto.sinCambio > 0 && (
+                          <>
+                            {' '}
+                            · <span className="tabular whitespace-nowrap">{moneda(enElCosto.sinCambio, 'USD')}</span> sin cambio, no suman
+                          </>
+                        )}
+                      </p>
+                    )}
+                  </TD>
                   <TD className="hidden sm:table-cell" />
                   <TD className="tabular text-right whitespace-nowrap">
                     {moneda(suma(aprobados, 'PEN'))}

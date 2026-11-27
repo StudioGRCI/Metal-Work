@@ -34,6 +34,10 @@
 -- y de dónde sale. Y lo que el costo suma en soles por las OS en dólares es la
 -- suma de esos montos, leída de la tabla.
 --
+-- Un tercer código, PRB_SR_499_3, con la OS emitida cuando el último cambio
+-- registrado tenía más de diez días (osd): guarda su monto en soles y el costeo
+-- lo suma; antes la daba por línea sin cambio y trababa el cierre.
+--
 -- Al final Gerencia cierra el costeo: lo congelado es esa misma cifra.
 --
 -- Lo lee quien ve el costo (Gerencia, Administración) y no quien no (Supervisión).
@@ -65,7 +69,7 @@ begin
    order by r limit 1
   on conflict (tipo_documento, numero_documento) do update set activo = true;
   perform set_config('prueba.proveedor', (select id::text from public.proveedores where razon_social = 'PROVEEDOR DE PRUEBA 499'), true);
-  foreach v in array array['osa', 'osb', 'osp', 'osv', 'fa', 'fb', 'fp', 'fv', 'pagov'] loop
+  foreach v in array array['osa', 'osb', 'osp', 'osv', 'osd', 'fa', 'fb', 'fp', 'fv', 'pagov'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
 end $$;
@@ -377,6 +381,35 @@ select test.afirmar(pg_temp.costo() = '7800.00|0|0|2000.00|7300.00' and pg_temp.
   format('y el costeo con ella: no la vuelve a pasar con el cambio de hoy, que daría S/ 3 750 (dice %s)', pg_temp.costo()));
 select test.afirmar(pg_temp.cambio('osa') = '0|-1|0|3700.00|SIN_FACTURA',
   format('la base dice que su monto sale del cambio de ayer, no del de hoy (dice %s)', pg_temp.cambio('osa')));
+
+-- ============================================ La OS emitida con un cambio de más de diez días
+-- Se emite hoy (S/ 3 750, con el cambio de hoy) y se lleva su emisión a hace 35 días, como si
+-- entonces el último cambio registrado tuviera más de diez: `cambio_del_dia` de ese día no da
+-- ninguno, y el costeo la dejaba sin cambio aunque la OS tuviera su monto en soles.
+select pg_temp.como('comprador');
+set local role authenticated;
+select public.emitir_orden_servicio(pg_temp.id('osd'), pg_temp.id('proveedor'), null, (select id from public.areas where codigo = 'ACB'),
+  'PRB_SR_499_3', 'Doblado de planchas, prueba 499', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'USD', 1000, 'CONTADO', 0, '025', null);
+reset role;
+select pg_temp.como('gerente');
+set local role authenticated;
+select public.aprobar_orden_servicio(pg_temp.id('osd'));
+reset role;
+set local session_replication_role = replica;
+update public.ordenes_servicio set creado_en = creado_en - interval '35 days' where id = pg_temp.id('osd');
+set local session_replication_role = origin;
+select test.afirmar((pg_temp.os('osd')).monto_pen = 3750.00 and public.cambio_del_dia(pg_temp.hoy() - 35, 'VENTA') is null,
+  'la OS guarda S/ 3 750 y el día en que se emitió no tiene cambio a menos de diez días');
+select test.afirmar(pg_temp.costo('gerente', 'PRB_SR_499_3') = '3750.00|0|0|1000.00|3750.00' and pg_temp.el_costo_es_el_de_las_os('PRB_SR_499_3'),
+  format('el costeo la suma con lo que guarda la OS, sin darla por línea sin cambio (dice %s)', pg_temp.costo('gerente', 'PRB_SR_499_3')));
+select test.afirmar(pg_temp.cambio('osd', 'gerente', 'PRB_SR_499_3') = '-35|∅|-35|3750.00|SIN_FACTURA',
+  format('y la base dice su monto en soles sin nombrar un cambio que no hubo ese día (dice %s)', pg_temp.cambio('osd', 'gerente', 'PRB_SR_499_3')));
+
+-- La función que elige los soles de cada línea es interna: la llaman las del costo y del cierre.
+select test.afirmar(
+  not has_function_privilege('authenticated', 'public.soles_de_la_linea_del_costeo(text, uuid, date, numeric)', 'execute')
+  and not has_function_privilege('anon', 'public.soles_de_la_linea_del_costeo(text, uuid, date, numeric)', 'execute'),
+  'nadie de afuera ejecuta soles_de_la_linea_del_costeo');
 
 -- Quien ve el costeo tiene que poder leer el cambio de la OS: si no, la fila sale sin decir con cuál.
 select test.afirmar(
