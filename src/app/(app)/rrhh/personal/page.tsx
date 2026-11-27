@@ -63,11 +63,12 @@ export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/r
               <TH>Persona</TH>
               <TH className="hidden md:table-cell">Horario</TH>
               {/* La cuenta bancaria la lee solo RR. HH. (migración 20261126620000); el administrador ve el sueldo. */}
-              {ve && <TH className="hidden lg:table-cell">{gestiona ? 'Cuenta' : 'Sueldo y costo'}</TH>}
+              {/* Desde 1280: entre 1024 y 1279 le quitaba a la persona su ancho (115 px); ahí la cuenta va bajo el nombre. */}
+              {ve && <TH className="hidden xl:table-cell">{gestiona ? 'Cuenta' : 'Sueldo y costo'}</TH>}
               <TH>Estado</TH>
               {gestiona && (
-                // Su ancho, para que «Corregir» y «Dar de baja» vayan en un renglón cuando aparece «Cuenta».
-                <TH className="text-right lg:w-64">
+                // Su ancho, para que «Corregir» y «Dar de baja» vayan en un renglón.
+                <TH className="text-right md:w-64">
                   <span className="sr-only">Acciones</span>
                 </TH>
               )}
@@ -132,7 +133,7 @@ function FilaTrabajador({
         )}
         {/* En el teléfono la columna de la cuenta no cabe: el sueldo y el costo van bajo el nombre. */}
         {ve && (t.remuneracion_mensual || t.costo_mensual) && (
-          <p className="text-xs text-texto-suave lg:hidden">
+          <p className="text-xs text-texto-suave xl:hidden">
             {t.remuneracion_mensual && (
               <>
                 Gana <span className="tabular whitespace-nowrap">{moneda(t.remuneracion_mensual)}</span>
@@ -147,13 +148,24 @@ function FilaTrabajador({
             )}
           </p>
         )}
+        {gestiona && (
+          <p className="hidden text-xs text-texto-suave md:block xl:hidden">
+            {t.cuenta ? (
+              <>
+                {t.cuenta.banco} · <span className="tabular">{t.cuenta.numero_cuenta}</span>
+              </>
+            ) : (
+              'Sin cuenta'
+            )}
+          </p>
+        )}
         <p className="tabular text-xs text-texto-suave md:hidden">{horario}</p>
       </TD>
       <TD className="hidden align-top md:table-cell">
         <span className="tabular text-sm text-texto">{horario}</span>
       </TD>
       {ve && (
-        <TD className="hidden align-top lg:table-cell">
+        <TD className="hidden align-top xl:table-cell">
           {!gestiona ? null : t.cuenta ? (
             <>
               <p className="text-sm text-texto">
