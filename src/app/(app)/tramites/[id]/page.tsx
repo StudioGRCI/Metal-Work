@@ -8,11 +8,11 @@ import { Pliegue } from '@/components/ui/seccion-desplegable'
 import { AccionesDeFila, SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { archivosDelTramite, cargarTramite, gestionesDelTramite, type ArchivoDelTramite, type GestionDelTramite, type Tramite } from '@/lib/datos/tramites'
-import { AMBITO_TRAMITE, CLASE_DE_ARCHIVO, nombreDeLaUnidad, PERMISOS_TRAMITES, plazoDelTramite, SITUACION_TRAMITE } from '@/lib/dominio/tramites'
+import { AMBITO_TRAMITE, CLASE_DE_ARCHIVO, nombreDeLaUnidad, ORIGEN_TRAMITE, PERMISOS_TRAMITES, plazoDelTramite, SITUACION_TRAMITE } from '@/lib/dominio/tramites'
 import { fecha, fechaHora, hoyLima, tamanoArchivo } from '@/lib/format'
 import { exigirSesion, puede } from '@/lib/sesion'
 
-import { ActualizarTramite, AprobarAnulacion, AvisoDelTramite, NoAprobarAnulacion, PedirAnulacion } from './controles'
+import { ActualizarTramite, AprobarAnulacion, AvisoDelTramite, NoAprobarAnulacion, PedirAnulacion, RenovarTramite } from './controles'
 import { AnotarGestion, CerrarTramite, RetirarArchivo, SubirArchivo } from './expediente'
 
 export const metadata = { title: 'Trámite' }
@@ -39,7 +39,7 @@ export default async function PaginaTramite({ params }: PageProps<'/tramites/[id
   // El número de la OT lleva a ella solo si quien mira abre las OT.
   const veOt = puede(perfil, ['ordenes.ver', 'ordenes.listar'])
   const s = SITUACION_TRAMITE[t.situacion]
-  const plazo = plazoDelTramite(t.dias_para_limite)
+  const plazo = plazoDelTramite(t.dias_para_limite, t.por_vencer)
   const deQuien = t.ambito === 'UNIDAD' ? nombreDeLaUnidad(t) : 'De la empresa'
 
   const acciones = (
@@ -51,6 +51,7 @@ export default async function PaginaTramite({ params }: PageProps<'/tramites/[id
       {t.puede_resolver_anulacion && t.anulacion_pedida_en && <NoAprobarAnulacion id={t.id} numero={t.numero} pedido={t.anulacion_pedida_en} />}
       {t.puede_actualizar && <ActualizarTramite tramite={t} hoy={hoy} />}
       {t.puede_concluir && <CerrarTramite tramite={t} hoy={hoy} />}
+      {t.puede_renovar && <RenovarTramite id={t.id} numero={t.numero} vigenteHasta={t.vigente_hasta} />}
       {t.puede_pedir_anulacion && <PedirAnulacion id={t.id} numero={t.numero} />}
     </>
   )
@@ -76,6 +77,11 @@ export default async function PaginaTramite({ params }: PageProps<'/tramites/[id
                 </Insignia>
               )}
               {t.se_renueva && t.situacion !== 'ANULADO' && <Insignia tono="info">Se renueva</Insignia>}
+              {t.origen !== 'MANUAL' && ORIGEN_TRAMITE[t.origen] && (
+                <Insignia tono="neutro" data-origen={t.origen}>
+                  {ORIGEN_TRAMITE[t.origen].etiqueta}
+                </Insignia>
+              )}
             </div>
             <QueSigue tramite={t} />
             {/* El cierre: cuándo, quién y el documento que lo prueba, a un toque. */}
@@ -101,6 +107,31 @@ export default async function PaginaTramite({ params }: PageProps<'/tramites/[id
                     Ver el documento final
                     <span className="sr-only"> (se abre en otra pestaña)</span>
                   </Link>
+                )}
+              </div>
+            )}
+            {/* La renovación y lo que renueva, a un toque: es la misma historia en dos trámites. */}
+            {(t.renueva_a || t.renovado_con) && (
+              <div className="space-y-1 text-sm" data-renovacion>
+                {t.renueva_a && t.renueva_numero && (
+                  <p className="text-texto">
+                    Renueva el documento del{' '}
+                    <Link href={`/tramites/${t.renueva_a}`} className="tabular inline-flex min-h-11 items-center font-semibold text-acento hover:underline sm:min-h-0">
+                      {t.renueva_numero}
+                    </Link>
+                    .
+                  </p>
+                )}
+                {t.renovado_con && t.renovado_numero && (
+                  <p className="text-texto">
+                    {t.renovado_estado === 'ANULADO' ? 'Su renovación, el ' : 'Se renueva con el '}
+                    <Link href={`/tramites/${t.renovado_con}`} className="tabular inline-flex min-h-11 items-center font-semibold text-acento hover:underline sm:min-h-0">
+                      {t.renovado_numero}
+                    </Link>
+                    {t.renovado_estado === 'ANULADO'
+                      ? ', se anuló: no se abre otra sola.'
+                      : `, ${(SITUACION_TRAMITE[t.renovado_estado ?? '']?.etiqueta ?? '').toLowerCase()}.`}
+                  </p>
                 )}
               </div>
             )}
@@ -250,8 +281,12 @@ export default async function PaginaTramite({ params }: PageProps<'/tramites/[id
                   )}
                 </Dato>
               )}
-              <Dato titulo="Registró">
-                {[t.registro, t.registro_puesto].filter(Boolean).join(' · ')}
+              <Dato titulo={t.origen === 'MANUAL' ? 'Registró' : 'Lo abrió'}>
+                {t.registro
+                  ? [t.registro, t.registro_puesto].filter(Boolean).join(' · ')
+                  : t.origen === 'OT'
+                    ? `El sistema, al terminar la unidad de la OT ${t.orden_numero ?? ''}`.trim()
+                    : 'El sistema, al acercarse el vencimiento'}
                 <span className="block text-xs text-texto-suave">{fechaHora(t.creado_en)}</span>
               </Dato>
             </div>
@@ -276,10 +311,18 @@ function QueSigue({ tramite: t }: { tramite: Tramite }) {
     texto = t.puede_llevar_expediente
       ? 'El expediente sigue abierto para lo que venga después: el cargo de entrega al cliente, una gestión.'
       : 'El documento que entregó la entidad está en el expediente.'
+    // Lo que se renueva y todavía no tiene renovación: quién la abre y cuándo.
+    // Con la renovación anulada no se abre otra sola: lo dice el bloque de la renovación.
+    // Solo a quien la puede abrir (su tipo sigue en uso y no tiene otra) y si su
+    // documento todavía vale: la revisión no abre la de uno ya vencido.
+    if (t.puede_renovar && !t.renovado_con && t.vigente_hasta && t.vigente_hasta >= hoyLima()) {
+      texto += ' Al llegar el primer día de aviso de su tipo, el sistema abre su renovación.'
+    }
   } else if (t.puede_actualizar) {
     texto =
       t.estado === 'POR_INICIAR'
-        ? 'Te toca: cuando lo presentes ante la entidad, anota la fecha y su número de expediente, y sube el cargo.'
+        ? (t.origen === 'OT' ? 'Lo abrió el sistema al terminar la unidad de la OT. ' : t.origen === 'RENOVACION' ? 'Es una renovación. ' : '') +
+          'Te toca: cuando lo presentes ante la entidad, anota la fecha y su número de expediente, y sube el cargo.'
         : t.estado === 'OBSERVADO'
           ? 'Te toca: subsana lo que observó la entidad y vuelve a ponerlo «En trámite».'
           : 'En la entidad. Anota cada gestión y, cuando te entreguen el documento, ciérralo subiéndolo.'

@@ -34,7 +34,12 @@ En `src/components/ui/`:
   «Reactivar» a otro renglón. Lo de
   desactivar y eliminar es **provisional**: DKS decidió que vayan dentro de
   un menú «⋯» de la fila (decisión 6 del plan de orden y diseño), y ese menú
-  todavía no existe. Si los botones vienen de un componente con su propia caja
+  todavía no existe. Desde la entrega 7 (2026-11-27) ningún botón de pantalla
+  lleva `contornoPeligro` (anular, quitar, dar de baja, borrar el borrador): el
+  rojo queda para el botón que confirma dentro de la ventana. Solo lo conservan
+  las decisiones («Rechazar» de Aprobación y de la OT por revisar, «No
+  autorizar» del metrado) y el envío directo de «Dejarla sin nadie». `probar-orden-barrido-final.mjs` lo
+  mira en el menú entero de cada puesto. Si los botones vienen de un componente con su propia caja
   (`AccionesCompra`, `AvanceServicio`, `ControlesVehiculo`,
   `AccionesProveedor`, `AccionesEquipo`), su caja va `contents` para que entren al renglón, y
   quien lo usa lo envuelve en `AccionesDeFila` (también en el encabezado de
@@ -81,7 +86,14 @@ En `src/components/ui/`:
   grupo que ya existe.
 - `SinDatos` tiene dos tamaños: el grande es para la lista que es el trabajo
   de la pantalla; `compacto` para la bandeja que comparte pantalla con otras
-  (lo pendiente del Kardex). No se escribe el vacío a mano con un `<p>`.
+  (lo pendiente del Kardex). No se escribe el vacío a mano con un `<p>`: la
+  entrega 7 cambió cincuenta («Todavía no hay planos…», el costo de la OT,
+  Costeo, los avisos, las pestañas de la OT, Carrocerías); el título sin punto
+  y lo que explica en `descripcion`. Quedan a mano a propósito las notas que no
+  son una lista vacía sino el porqué de un botón o de un paso (Pagos de
+  oficina, «Responsables por plano», las facturas que «van abajo») y los
+  vacíos con ícono de Tesorería y Contabilidad (por cobrar, caja diaria, por
+  pagar, pagos de servicio, facturación), que dicen qué falta con su dibujo.
 - `Campo` (etiqueta + ayuda + requerido), `Entrada`, `Seleccion`, `AreaTexto`
 - `ElegirArchivo` para todo archivo que se elige en un formulario, nunca
   `Entrada type="file"`: el botón del navegador sale en su idioma («Choose

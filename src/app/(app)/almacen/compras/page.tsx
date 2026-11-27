@@ -176,7 +176,7 @@ export default async function PaginaControlDeCompras({ searchParams }: PageProps
               <TablaCabecera>
                 <tr>
                   <TH>Compra</TH>
-                  <TH className="hidden lg:table-cell">Destino</TH>
+                  <TH className="hidden xl:table-cell">Destino</TH>
                   <TH className="hidden md:table-cell text-right">Monto</TH>
                   <TH className="hidden md:table-cell">Material</TH>
                   <TH>Almacén recibió</TH>
@@ -238,9 +238,9 @@ function Fila({ f, anota, conFecha }: { f: FilaControlDeCompras; anota: boolean;
           </p>
           <Material f={f} />
         </DetalleEnTelefono>
-        <p className="hidden text-xs text-texto-suave md:block lg:hidden">Va a {f.destino ?? 'STOCK'}</p>
+        <p className="hidden text-xs text-texto-suave md:block xl:hidden">Va a {f.destino ?? 'STOCK'}</p>
       </TD>
-      <TD className="hidden lg:table-cell">{f.destino ?? 'STOCK'}</TD>
+      <TD className="hidden xl:table-cell">{f.destino ?? 'STOCK'}</TD>
       <TD className="hidden md:table-cell text-right tabular whitespace-nowrap">{monto}</TD>
       <TD className="hidden md:table-cell">
         <Material f={f} />

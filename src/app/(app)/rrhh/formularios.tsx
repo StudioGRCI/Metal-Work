@@ -107,7 +107,7 @@ export function QuitarPersona({ personaId, nombre }: { personaId: string; nombre
   const [abierta, setAbierta] = useState(false)
   const { alEnviar, enviando, error } = useEnvio(quitarPersona, () => setAbierta(false))
   return <>
-    <Boton type="button" tamano="sm" variante="contornoPeligro" onClick={() => setAbierta(true)} aria-label={`Quitar a ${nombre} de la planilla`}>
+    <Boton type="button" tamano="sm" variante="fantasma" onClick={() => setAbierta(true)} aria-label={`Quitar a ${nombre} de la planilla`}>
       <UserMinus aria-hidden className="size-4" />Quitar de la planilla
     </Boton>
     <Ventana abierta={abierta} alCerrar={() => setAbierta(false)} titulo={`Quitar a ${nombre}`}

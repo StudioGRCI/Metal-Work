@@ -20,6 +20,7 @@ import { PieDeVentana } from '@/components/ui/pie-de-ventana'
 import { SeleccionBuscable } from '@/components/ui/seleccion-buscable'
 import { Progreso } from '@/components/ui/progreso'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { SinDatos } from '@/components/ui/tabla'
 import { cantidad, fecha as formatearFecha, porcentaje as fmtPorcentaje } from '@/lib/format'
 import { yaEntroLaPrimeraVez } from '@/lib/acciones'
 import { SIN_RESPUESTA, useAccion, useEnvio, useIdDelEnvio } from '@/lib/envio'
@@ -276,7 +277,7 @@ export function TableroMateriales({
         </TarjetaCuerpo></Tarjeta>
       })}
       {lineas.length > 0 && agrupados.length === 0 && (
-        <Tarjeta><TarjetaCuerpo><p className="text-sm text-texto-suave">No hay materiales con este estado.</p></TarjetaCuerpo></Tarjeta>
+        <Tarjeta><TarjetaCuerpo><SinDatos compacto titulo="No hay materiales con este estado" descripcion="Elige otro estado arriba." /></TarjetaCuerpo></Tarjeta>
       )}
 
     </div>
@@ -500,7 +501,7 @@ function FormularioCompra({id,alSalir,alYaEntrar,alCancelar,lineas,proveedores,p
    const p=padron.find(x=>x.id===id)
    if(p){setCondicion(p.condicion_pago);setDias(p.dias_credito)}
  }
- return <><form onSubmit={alEnviar} className="space-y-6">
+ return <><form onSubmit={alEnviar} className="space-y-4">
    <input type="hidden" name="operacion_id" value={id}/>
    <div className="grid gap-4 sm:grid-cols-2">
      <Campo etiqueta="Proveedor" htmlFor="oc-proveedor" requerido ayuda={padron.length===0?'El padrón está vacío: registra el primero.':undefined}>

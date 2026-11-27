@@ -409,7 +409,7 @@ export function AnularAveria({ id, numero, paroElEquipo }: { id: string; numero:
   const v = useVentanaDeLaFicha(id, anularAveria)
   return (
     <>
-      <Boton type="button" variante="contornoPeligro" data-anular-averia onClick={v.abrir}>
+      <Boton type="button" variante="fantasma" data-anular-averia onClick={v.abrir}>
         <Ban aria-hidden className="size-4" />
         Anular
       </Boton>

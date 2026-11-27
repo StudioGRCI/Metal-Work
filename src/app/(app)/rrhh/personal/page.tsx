@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Vistas } from '@/components/estructura/vistas'
 import { Insignia } from '@/components/ui/etiqueta-estado'
-import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
+import { AccionesDeFila, SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
 import { Tarjeta } from '@/components/ui/tarjeta'
 import { areasParaPersonal, listarTrabajadores, periodosAnteriores, type Trabajador } from '@/lib/datos/rrhh'
 import { HORAS_DEL_MES, TIPO_CUENTA, horaCorta } from '@/lib/dominio/rrhh'
@@ -56,16 +56,19 @@ export default async function PaginaPersonalRRHH({ searchParams }: PageProps<'/r
       />
 
       <Tarjeta className="overflow-hidden">
-        <Tabla>
+        {/* En el teléfono cada persona es una ficha: con los botones al lado el nombre quedaba en 115 px y tres renglones. */}
+        <Tabla apilada>
           <TablaCabecera>
             <tr>
               <TH>Persona</TH>
               <TH className="hidden md:table-cell">Horario</TH>
               {/* La cuenta bancaria la lee solo RR. HH. (migración 20261126620000); el administrador ve el sueldo. */}
-              {ve && <TH className="hidden lg:table-cell">{gestiona ? 'Cuenta' : 'Sueldo y costo'}</TH>}
+              {/* Desde 1280: entre 1024 y 1279 le quitaba a la persona su ancho (115 px); ahí la cuenta va bajo el nombre. */}
+              {ve && <TH className="hidden xl:table-cell">{gestiona ? 'Cuenta' : 'Sueldo y costo'}</TH>}
               <TH>Estado</TH>
               {gestiona && (
-                <TH className="text-right">
+                // Su ancho, para que «Corregir» y «Dar de baja» vayan en un renglón.
+                <TH className="text-right md:w-64">
                   <span className="sr-only">Acciones</span>
                 </TH>
               )}
@@ -130,7 +133,7 @@ function FilaTrabajador({
         )}
         {/* En el teléfono la columna de la cuenta no cabe: el sueldo y el costo van bajo el nombre. */}
         {ve && (t.remuneracion_mensual || t.costo_mensual) && (
-          <p className="text-xs text-texto-suave lg:hidden">
+          <p className="text-xs text-texto-suave xl:hidden">
             {t.remuneracion_mensual && (
               <>
                 Gana <span className="tabular whitespace-nowrap">{moneda(t.remuneracion_mensual)}</span>
@@ -145,13 +148,24 @@ function FilaTrabajador({
             )}
           </p>
         )}
+        {gestiona && (
+          <p className="hidden text-xs text-texto-suave md:block xl:hidden">
+            {t.cuenta ? (
+              <>
+                {t.cuenta.banco} · <span className="tabular">{t.cuenta.numero_cuenta}</span>
+              </>
+            ) : (
+              'Sin cuenta'
+            )}
+          </p>
+        )}
         <p className="tabular text-xs text-texto-suave md:hidden">{horario}</p>
       </TD>
       <TD className="hidden align-top md:table-cell">
         <span className="tabular text-sm text-texto">{horario}</span>
       </TD>
       {ve && (
-        <TD className="hidden align-top lg:table-cell">
+        <TD className="hidden align-top xl:table-cell">
           {!gestiona ? null : t.cuenta ? (
             <>
               <p className="text-sm text-texto">
@@ -186,7 +200,7 @@ function FilaTrabajador({
           </p>
         </TD>
       )}
-      <TD className="align-top">
+      <TD className="align-top" data-rotulo="Estado">
         {t.activo ? <Insignia tono="exito">Activo</Insignia> : <Insignia tono="neutro">De baja</Insignia>}
         <p className="mt-1 text-xs text-texto-suave" data-planilla={t.planilla}>
           {t.planilla === 'ADMINISTRATIVA' ? 'Planilla administrativa' : 'Planilla de taller'}
@@ -202,8 +216,10 @@ function FilaTrabajador({
         ))}
       </TD>
       {gestiona && (
-        <TD className="text-right align-top">
-          <ControlesTrabajador trabajador={t} areas={areas} hoy={hoy} />
+        <TD className="align-top">
+          <AccionesDeFila>
+            <ControlesTrabajador trabajador={t} areas={areas} hoy={hoy} />
+          </AccionesDeFila>
         </TD>
       )}
     </TR>

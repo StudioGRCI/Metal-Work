@@ -437,7 +437,7 @@ export function AnularCharla({ id, tema }: { id: string; tema: string }) {
     <>
       <Boton
         type="button"
-        variante="contornoPeligro"
+        variante="fantasma"
         data-anular-charla
         onClick={() => {
           limpiar()

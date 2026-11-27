@@ -224,8 +224,8 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
           ) : (
           <Tabla>
             <TablaCabecera><tr>
-              <TH className="hidden w-10 sm:table-cell">Ítem</TH><TH>Código interno / OT</TH><TH className="hidden sm:table-cell">Tipo</TH><TH>Actividad</TH><TH className="hidden md:table-cell">Componente</TH>
-              <TH className="hidden md:table-cell">Día</TH><TH className="hidden md:table-cell">Responsable</TH>{escribe && <TH className="w-12" aria-label="Quitar" />}
+              <TH className="hidden w-10 sm:table-cell">Ítem</TH><TH>Código interno / OT</TH><TH className="hidden sm:table-cell">Tipo</TH><TH>Actividad</TH><TH className="hidden xl:table-cell">Componente</TH>
+              <TH className="hidden xl:table-cell">Día</TH><TH className="hidden xl:table-cell">Responsable</TH>{escribe && <TH className="w-12" aria-label="Quitar" />}
             </tr></TablaCabecera>
             <tbody>
               {datos.tareas.map((t, i) => <TR key={t.id}>
@@ -235,15 +235,15 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
                 <TD className="sm:whitespace-nowrap">
                   {nombreTarea(t.tipo)}
                   {/* En el teléfono el día va debajo, para que no se esconda. */}
-                  <span className="tabular block text-xs text-texto md:hidden">{t.fecha_inicio === t.fecha_entrega ? fecha(t.fecha_inicio) : `${fecha(t.fecha_inicio)} al ${fecha(t.fecha_entrega)}`}</span>
+                  <span className="tabular block text-xs text-texto xl:hidden">{t.fecha_inicio === t.fecha_entrega ? fecha(t.fecha_inicio) : `${fecha(t.fecha_inicio)} al ${fecha(t.fecha_entrega)}`}</span>
                   {/* Lo que en el monitor tiene columna propia. */}
-                  <span className="block text-xs text-texto-suave md:hidden">{t.componente} · {t.responsable}</span>
-                  {t.observacion && <span className="block text-xs text-texto-suave md:hidden">{t.observacion}</span>}
+                  <span className="block text-xs text-texto-suave xl:hidden">{t.componente} · {t.responsable}</span>
+                  {t.observacion && <span className="block text-xs text-texto-suave xl:hidden">{t.observacion}</span>}
                 </TD>
-                <TD className="hidden min-w-48 md:table-cell">{t.componente}{t.observacion && <span className="block text-xs text-texto-suave">{t.observacion}</span>}</TD>
+                <TD className="hidden min-w-48 xl:table-cell">{t.componente}{t.observacion && <span className="block text-xs text-texto-suave">{t.observacion}</span>}</TD>
                 {/* Las de antes, planificadas, dicen las dos fechas. */}
-                <TD className="tabular hidden whitespace-nowrap md:table-cell">{t.fecha_inicio === t.fecha_entrega ? fecha(t.fecha_inicio) : `${fecha(t.fecha_inicio)} al ${fecha(t.fecha_entrega)}`}</TD>
-                <TD className="hidden whitespace-nowrap md:table-cell">{t.responsable}</TD>
+                <TD className="tabular hidden whitespace-nowrap xl:table-cell">{t.fecha_inicio === t.fecha_entrega ? fecha(t.fecha_inicio) : `${fecha(t.fecha_inicio)} al ${fecha(t.fecha_entrega)}`}</TD>
+                <TD className="hidden whitespace-nowrap xl:table-cell">{t.responsable}</TD>
                 {escribe && <TD>{t.creado_por === perfil.id && <QuitarRegistro id={t.id} tabla="tarea" descripcion={`la actividad ${t.componente}`} />}</TD>}
               </TR>)}
             </tbody>
@@ -252,7 +252,7 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
           {escribe && (elegibles.length
             ? <div className="rounded-[var(--radius-base)] border border-borde p-4"><h3 className="mb-3 text-sm font-semibold text-texto">Anotar una actividad</h3>
                 <FormularioTareaDiseno ordenes={elegibles} personas={equipo.data ?? []} hoy={hoyLima()} /></div>
-            : <p className="text-sm text-texto-suave">No hay OT con colaboradores de Diseño en su equipo. Diseño los agrega en la pestaña Planos de cada OT, en «Personas que elaboran los planos».</p>)}
+            : <SinDatos compacto titulo="No hay OT con colaboradores de Diseño en su equipo" descripcion="Diseño los agrega en la pestaña Planos de cada OT, en «Personas que elaboran los planos»." />)}
         </TarjetaCuerpo>
       </Tarjeta>
 
@@ -265,7 +265,7 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
           <Tabla>
             <TablaCabecera><tr>
               <TH className="hidden w-10 sm:table-cell">Ítem</TH><TH>Código interno / OT</TH><TH className="hidden sm:table-cell">Tipo</TH><TH className="text-right">N.º planos</TH>
-              <TH className="hidden text-right sm:table-cell">N.º piezas</TH><TH className="hidden md:table-cell">Tipo de plano</TH><TH className="hidden md:table-cell">Entrega</TH><TH>Estado</TH><TH className="hidden md:table-cell">Responsable</TH><TH className="hidden md:table-cell">Entregado a</TH>
+              <TH className="hidden text-right sm:table-cell">N.º piezas</TH><TH className="hidden xl:table-cell">Tipo de plano</TH><TH className="hidden xl:table-cell">Entrega</TH><TH>Estado</TH><TH className="hidden xl:table-cell">Responsable</TH><TH className="hidden xl:table-cell">Entregado a</TH>
               {escribe && <TH className="w-12" aria-label="Quitar" />}
             </tr></TablaCabecera>
             <tbody>
@@ -273,9 +273,9 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
                 <TD className="tabular hidden text-texto-suave sm:table-cell">{i + 1}</TD>
                 <TD className="font-medium sm:whitespace-nowrap">
                   {codigoInternoOt(e.codigo_interno, e.ot)}
-                  <span className="block text-xs font-normal text-texto-suave md:hidden">{e.tipo_plano} · {e.responsable}{e.fecha_entrega ? ` · ${fecha(e.fecha_entrega)}` : ''}</span>
+                  <span className="block text-xs font-normal text-texto-suave xl:hidden">{e.tipo_plano} · {e.responsable}{e.fecha_entrega ? ` · ${fecha(e.fecha_entrega)}` : ''}</span>
                   {e.entregado_a.length > 0 && (
-                    <span className="block text-xs font-normal text-texto-suave md:hidden">
+                    <span className="block text-xs font-normal text-texto-suave xl:hidden">
                       Entregado a {e.entregado_a.map((a) => AREAS_QUE_RECIBEN[a as keyof typeof AREAS_QUE_RECIBEN] ?? a).join(', ')}
                     </span>
                   )}
@@ -283,11 +283,11 @@ export default async function PaginaInformeSemanalDiseno({ searchParams }: {
                 <TD className="hidden sm:table-cell">{siglaCarroceria(e.tipo_unidad)}</TD>
                 <TD className="tabular text-right">{e.n_planos}</TD>
                 <TD className="tabular hidden text-right sm:table-cell">{e.n_piezas}</TD>
-                <TD className="hidden min-w-48 md:table-cell">{e.tipo_plano}</TD>
-                <TD className="tabular hidden whitespace-nowrap md:table-cell">{e.fecha_entrega ? fecha(e.fecha_entrega) : '—'}</TD>
+                <TD className="hidden min-w-48 xl:table-cell">{e.tipo_plano}</TD>
+                <TD className="tabular hidden whitespace-nowrap xl:table-cell">{e.fecha_entrega ? fecha(e.fecha_entrega) : '—'}</TD>
                 <TD><Insignia tono={e.estado === 'CULMINADO' ? 'exito' : 'aviso'}>{ESTADOS_ENTREGA[e.estado as keyof typeof ESTADOS_ENTREGA] ?? e.estado}</Insignia></TD>
-                <TD className="hidden whitespace-nowrap md:table-cell">{e.responsable}</TD>
-                <TD className="hidden text-xs text-texto-suave md:table-cell">{e.entregado_a.map((a) => AREAS_QUE_RECIBEN[a as keyof typeof AREAS_QUE_RECIBEN] ?? a).join(', ') || '—'}</TD>
+                <TD className="hidden whitespace-nowrap xl:table-cell">{e.responsable}</TD>
+                <TD className="hidden text-xs text-texto-suave xl:table-cell">{e.entregado_a.map((a) => AREAS_QUE_RECIBEN[a as keyof typeof AREAS_QUE_RECIBEN] ?? a).join(', ') || '—'}</TD>
                 {escribe && <TD>{e.creado_por === perfil.id && <QuitarRegistro id={e.id} tabla="entrega" descripcion={`la entrega ${e.tipo_plano}`} />}</TD>}
               </TR>)}
               <tr className="border-t-2 border-borde-fuerte font-semibold">

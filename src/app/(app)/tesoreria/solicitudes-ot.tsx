@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Seleccion } from '@/components/ui/campos'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { SinDatos } from '@/components/ui/tabla'
 import type { solicitudesPendientesTesoreria } from '@/lib/datos/costos-ot'
 import { fechaHora, moneda } from '@/lib/format'
 import { useEnvio } from '@/lib/envio'
@@ -13,7 +14,7 @@ type Solicitud = Awaited<ReturnType<typeof solicitudesPendientesTesoreria>>[numb
 
 export function SolicitudesOT({ solicitudes }: { solicitudes: Solicitud[] }) {
   return <Tarjeta className="mb-5"><TarjetaCabecera titulo="Solicitudes de Costos y Materiales" ayuda="Responde los pedidos de revisión de salida. Marcar atendida documenta la coordinación; la liberación de salida se registra por separado en la OT." />
-    <TarjetaCuerpo className="space-y-3">{solicitudes.length === 0 ? <p className="text-sm text-texto-suave">No hay solicitudes pendientes.</p> : solicitudes.map(s => <SolicitudPendiente key={s.id} solicitud={s} />)}</TarjetaCuerpo>
+    <TarjetaCuerpo className="space-y-3">{solicitudes.length === 0 ? <SinDatos compacto titulo="No hay solicitudes pendientes" /> : solicitudes.map(s => <SolicitudPendiente key={s.id} solicitud={s} />)}</TarjetaCuerpo>
   </Tarjeta>
 }
 

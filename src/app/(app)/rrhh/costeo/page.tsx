@@ -197,7 +197,7 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
           />
           <TarjetaCuerpo className="space-y-2">
             {grupos.length === 0 ? (
-              <p className="text-sm text-texto-suave">Todavía no hay horas cargadas este mes. Carga las primeras con «Cargar horas».</p>
+              <SinDatos compacto titulo="Todavía no hay horas cargadas este mes" descripcion="Carga las primeras con «Cargar horas»." />
             ) : (
               grupos.map((g) => (
                 <details key={g.codigo} className="rounded-lg border border-borde" data-codigo={g.codigo}>
@@ -289,7 +289,7 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
           />
           <TarjetaCuerpo className="space-y-2">
             {recargos.length === 0 ? (
-              <p className="text-sm text-texto-suave">Ninguna planilla diaria pagó horas extras este mes.</p>
+              <SinDatos compacto titulo="Ninguna planilla diaria pagó horas extras este mes" />
             ) : (
               recargos.map((r) => (
                 <details key={r.codigo} className="rounded-lg border border-borde" data-recargo={r.codigo}>
@@ -409,7 +409,8 @@ export default async function PaginaCosteo({ searchParams }: PageProps<'/rrhh/co
                   const anulado = t.anulado_en !== null
                   return (
                     <TR key={t.id} className={anulado ? 'opacity-60' : undefined}>
-                      <TD className="align-top">
+                      {/* Un asunto largo del reporte corría la tabla 2 px en el teléfono. */}
+                      <TD className="align-top [overflow-wrap:anywhere]">
                         {delCodigo && <p className="tabular text-xs text-texto-suave first-letter:uppercase">{fechaLarga(t.fecha)}</p>}
                         <p className={`font-medium text-texto ${anulado ? 'line-through' : ''}`}>{nombre}</p>
                         <p className="font-mono text-xs text-texto-suave md:hidden">{t.codigo_interno}</p>

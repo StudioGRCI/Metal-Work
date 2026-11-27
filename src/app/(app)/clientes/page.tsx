@@ -103,9 +103,11 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
                     ubicación se esconden aquí y bajan a la celda del nombre en letra
                     chica, que es donde el dedo ya está mirando. */}
                 <TH className="hidden sm:table-cell">Contacto</TH>
-                <TH className="hidden sm:table-cell">Ubicación</TH>
-                <TH className="hidden text-right sm:table-cell">Unidades</TH>
-                <TH className="hidden text-right sm:table-cell">Órdenes</TH>
+                {/* Entre 640 y 1279 px no caben siete columnas (a 1024 la tabla se salía
+                    98 px): ubicación, unidades y órdenes bajan a la celda del nombre. */}
+                <TH className="hidden xl:table-cell">Ubicación</TH>
+                <TH className="hidden text-right xl:table-cell">Unidades</TH>
+                <TH className="hidden text-right xl:table-cell">Órdenes</TH>
                 {puede(perfil, 'clientes.editar') && <TH>Acciones</TH>}
               </tr>
             </TablaCabecera>
@@ -135,6 +137,10 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
                     // no deja el «0» arriba y «unidades» abajo.
                     `${unidades}\u00a0${unidades === 1 ? 'unidad' : 'unidades'}`, `${ordenes}\u00a0${ordenes === 1 ? 'orden' : 'órdenes'}`,
                   ].filter(Boolean).join(' · ')
+                  const enLaLaptop = [
+                    ubicacion,
+                    `${unidades}\u00a0${unidades === 1 ? 'unidad' : 'unidades'}`, `${ordenes}\u00a0${ordenes === 1 ? 'orden' : 'órdenes'}`,
+                  ].filter(Boolean).join(' · ')
 
                   return (
                     <TR key={c.id}>
@@ -151,6 +157,9 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
                         {enElTelefono && (
                           <p className="text-xs text-texto-suave sm:hidden">{enElTelefono}</p>
                         )}
+                        <p className="hidden text-xs text-texto-suave sm:block xl:hidden" data-ubicacion-en-fila>
+                          {enLaLaptop}
+                        </p>
                       </TD>
                       <TD className="hidden whitespace-nowrap sm:table-cell">
                         <span className="text-texto-suave">{c.tipo_documento}</span>{' '}
@@ -175,9 +184,9 @@ export default async function PaginaClientes({ searchParams }: PageProps<'/clien
                           </p>
                         )}
                       </TD>
-                      <TD className="hidden text-texto-suave sm:table-cell">{ubicacion || '—'}</TD>
-                      <TD className="tabular hidden text-right sm:table-cell">{unidades}</TD>
-                      <TD className="tabular hidden text-right sm:table-cell">{ordenes}</TD>
+                      <TD className="hidden text-texto-suave xl:table-cell">{ubicacion || '—'}</TD>
+                      <TD className="tabular hidden text-right xl:table-cell">{unidades}</TD>
+                      <TD className="tabular hidden text-right xl:table-cell">{ordenes}</TD>
                       {puede(perfil, 'clientes.editar') && (
                         <TD>
                           <AccionesCatalogo tipo="cliente" id={c.id} nombre={c.razon_social} activo={c.activo} puedeEditar esAdmin={perfil.rol.codigo === 'ADMIN'} />

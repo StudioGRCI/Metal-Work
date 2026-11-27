@@ -8,6 +8,7 @@ import { Progreso } from '@/components/ui/progreso'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { ConfirmarAccion } from '@/components/ui/ventana'
+import { SinDatos } from '@/components/ui/tabla'
 import type { ResultadoAccion } from '@/lib/acciones'
 import type { AccesorioOT, PasoVerificacion, RepuestoOT } from '@/lib/datos/ficha-ot'
 import { useAccion, useEnvio } from '@/lib/envio'
@@ -705,16 +706,15 @@ function Accesorios({
         )}
 
         {accesorios.length === 0 ? (
-          <div className="py-6 text-center">
-            <p className="text-sm font-medium text-texto">
-              Esta orden todavía no tiene accesorios que montar
-            </p>
-            <p className="mx-auto mt-1 max-w-md text-xs text-texto-suave">
-              {puedeArmar
+          <SinDatos
+            compacto
+            titulo="Esta orden todavía no tiene accesorios que montar"
+            descripcion={
+              puedeArmar
                 ? 'Se traen solos de la cotización al armar la ficha. Si esta unidad lleva algo que no se cotizó, agrégalo con el botón de arriba.'
-                : 'Se traen de la cotización al armar la ficha de taller.'}
-            </p>
-          </div>
+                : 'Se traen de la cotización al armar la ficha de taller.'
+            }
+          />
         ) : (
           <ul className="divide-y divide-borde">
             {accesorios.map((a) => (
@@ -877,15 +877,15 @@ function Repuestos({
         )}
 
         {repuestos.length === 0 ? (
-          <div className="py-6 text-center">
-            <p className="text-sm font-medium text-texto">Esta orden no entrega repuestos</p>
-            {puedeEditar && (
-              <p className="mx-auto mt-1 max-w-md text-xs text-texto-suave">
-                Si con la unidad se va alguna pieza de repuesto, anótala con el botón de arriba
-                para que quede en el acta de entrega.
-              </p>
-            )}
-          </div>
+          <SinDatos
+            compacto
+            titulo="Esta orden no entrega repuestos"
+            descripcion={
+              puedeEditar
+                ? 'Si con la unidad se va alguna pieza de repuesto, anótala con el botón de arriba para que quede en el acta de entrega.'
+                : undefined
+            }
+          />
         ) : (
           <ul className="divide-y divide-borde">
             {repuestos.map((r) => (
