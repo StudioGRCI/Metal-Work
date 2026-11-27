@@ -18,6 +18,7 @@ import {
   CODIGOS_FIJOS_DEL_RQ,
   DESTINO_DEL_RQ,
   TIPO_REQUERIMIENTO,
+  MOTIVO_PLANTA_NO_ES_UNIDAD,
   type DestinoDelRq,
   type TipoRequerimiento,
 } from '@/lib/dominio/requerimientos'
@@ -109,7 +110,7 @@ export function VentanaDelRequerimiento({
   const titulo = soloAdministracion
     ? 'Nuevo requerimiento de Administración'
     : ventana.codigo === CODIGO_DEL_GASTO_OPERATIVO
-      ? 'Nuevo requerimiento para el área (gasto operativo)'
+      ? `Nuevo requerimiento para ${areaFija?.nombre ?? 'el área'} (gasto operativo)`
       : ventana.codigo ? `Nuevo requerimiento para ${ventana.codigo}` : 'Nuevo requerimiento'
   return (
     <Ventana
@@ -158,7 +159,7 @@ const RADIO = 'mt-0.5 size-4 shrink-0 accent-[var(--acento)]'
 
 /** Con «Para una unidad» no se escribe PLANTA: lo del área se pide con su opción, y la base lo marca. */
 const VETADO_PARA_UNA_UNIDAD = [
-  { codigos: [CODIGO_DEL_GASTO_OPERATIVO], motivo: 'PLANTA no es una unidad: lo del área se pide marcando «Para el área (gasto operativo)».' },
+  { codigos: [CODIGO_DEL_GASTO_OPERATIVO], motivo: MOTIVO_PLANTA_NO_ES_UNIDAD },
 ] as const
 
 function insumoVacio(): Insumo {

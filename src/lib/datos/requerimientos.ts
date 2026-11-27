@@ -132,6 +132,8 @@ export async function contarRequerimientosAbiertos(opciones: {
   tipo?: 'OPERACION' | 'ADMINISTRACION'
   area?: string
   codigo?: string
+  /** Con PLANTA: true, solo el gasto operativo del área; false, solo los de antes de esa opción. */
+  paraElArea?: boolean
   necesitadoDesde: string | null
   necesitadoHasta: string
 }): Promise<number> {
@@ -140,6 +142,7 @@ export async function contarRequerimientosAbiertos(opciones: {
   if (opciones.tipo) consulta = consulta.eq('tipo', opciones.tipo)
   if (opciones.area) consulta = consulta.eq('area_id', opciones.area)
   if (opciones.codigo) consulta = consulta.eq('codigo_interno', opciones.codigo)
+  if (opciones.paraElArea !== undefined) consulta = consulta.eq('para_el_area', opciones.paraElArea)
   if (opciones.necesitadoDesde) consulta = consulta.gte('fecha_requerida', opciones.necesitadoDesde)
   const { count, error } = await consulta.lte('fecha_requerida', opciones.necesitadoHasta)
   if (error) throw new Error(`No se pudieron contar los requerimientos por su fecha: ${error.message}`)
@@ -164,6 +167,8 @@ export async function cargarRequerimientos(
     ids?: string[]
     area?: string
     codigo?: string
+    /** Con PLANTA: true, solo el gasto operativo del área; false, solo los de antes de esa opción. */
+    paraElArea?: boolean
     conEntregado?: boolean
     /** Para contar, sin la fecha esperada: no lee si Logística la corrigió. */
     sinFechaCorregida?: boolean
@@ -180,6 +185,7 @@ export async function cargarRequerimientos(
   if (opciones.ids) consulta = consulta.in('id', opciones.ids)
   if (opciones.area) consulta = consulta.eq('area_id', opciones.area)
   if (opciones.codigo) consulta = consulta.eq('codigo_interno', opciones.codigo)
+  if (opciones.paraElArea !== undefined) consulta = consulta.eq('para_el_area', opciones.paraElArea)
   if (opciones.necesitadoDesde) consulta = consulta.gte('fecha_requerida', opciones.necesitadoDesde)
   if (opciones.necesitadoHasta) consulta = consulta.lte('fecha_requerida', opciones.necesitadoHasta)
   // Por fecha, el más vencido primero: es lo que se mira con «Vencido sin entregar».

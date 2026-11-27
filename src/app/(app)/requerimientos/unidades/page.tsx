@@ -123,9 +123,12 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
   for (const e of etapas) if (e.area_id === area) de(e.codigo).etapas.push(e)
   for (const p of planos) if (p.area_id === area && !p.anulado_en && !p.recibido_en) de(p.codigo).porRecibir++
   const dePlanta: RequerimientoListado[] = []
+  // Los de PLANTA de antes de la opción del área no son gasto operativo: van aparte.
+  const plantaDeAntes: RequerimientoListado[] = []
   for (const r of requerimientos) {
-    if (normalizarCodigo(r.codigo_interno) === CODIGO_FIJO_PLANTA.codigo) dePlanta.push(r)
-    else de(normalizarCodigo(r.codigo_interno)).rqs.push(r)
+    if (normalizarCodigo(r.codigo_interno) !== CODIGO_FIJO_PLANTA.codigo) de(normalizarCodigo(r.codigo_interno)).rqs.push(r)
+    else if (esGastoOperativo(r)) dePlanta.push(r)
+    else plantaDeAntes.push(r)
   }
 
   // Se busca por el código o por la placa y la marca, como en el buscador de código.
@@ -280,7 +283,16 @@ export default async function PaginaRqPorUnidad({ searchParams }: PageProps<'/re
           />
           <TarjetaCuerpo className="space-y-3">
             <AvisoDeLaUnidad codigo={CODIGO_FIJO_PLANTA.codigo} />
-            <RequerimientosDeLaUnidad codigo={CODIGO_FIJO_PLANTA.codigo} rqs={dePlanta} seguimiento={seguimiento} desde={desde} yo={perfil.id} />
+            <RequerimientosDeLaUnidad codigo={CODIGO_FIJO_PLANTA.codigo} rqs={dePlanta} seguimiento={seguimiento} desde={desde} yo={perfil.id}
+              verTodos={`/requerimientos?codigo=${CODIGO_FIJO_PLANTA.codigo}&gasto=area`} conInsignia={false} />
+            {plantaDeAntes.length > 0 && (
+              <div className="border-t border-borde pt-3" data-planta-de-antes>
+                <RequerimientosDeLaUnidad codigo={CODIGO_FIJO_PLANTA.codigo} rqs={plantaDeAntes} seguimiento={seguimiento} desde={desde} yo={perfil.id}
+                  titulo="Pedidos con PLANTA antes del 27/11"
+                  nota="No son gasto operativo: Almacén elige a qué unidad sale lo suyo. Si uno es del área y Almacén no lo atendió, anúlalo y pídelo con «Nuevo RQ» de arriba."
+                  verTodos={`/requerimientos?codigo=${CODIGO_FIJO_PLANTA.codigo}&gasto=antes`} />
+              </div>
+            )}
           </TarjetaCuerpo>
         </Tarjeta>
       )}
@@ -362,6 +374,10 @@ function RequerimientosDeLaUnidad({
   seguimiento,
   desde,
   yo,
+  titulo = 'Requerimientos de tu área',
+  nota,
+  verTodos,
+  conInsignia = true,
 }: {
   codigo: string
   rqs: RequerimientoListado[]
@@ -369,6 +385,13 @@ function RequerimientosDeLaUnidad({
   desde: string
   /** Quien mira: el sustento se le pide solo en los RQ que registró. */
   yo: string
+  titulo?: string
+  /** Una línea bajo el título: qué son y qué hacer con ellos. */
+  nota?: string
+  /** La lista entera de estos, si no es la del código (PLANTA separa el gasto operativo de lo de antes). */
+  verTodos?: string
+  /** En la tarjeta del gasto operativo la insignia sobra: lo dice la tarjeta. */
+  conInsignia?: boolean
 }) {
   // Los tres más recientes en camino; el resto, en «Ver sus N».
   const enCaminoTodos = rqs.filter(abierto)
@@ -388,7 +411,8 @@ function RequerimientosDeLaUnidad({
   const aVer = [...enCamino, ...recien]
   return (
     <div>
-      <h3 className="text-xs font-medium text-texto-suave">Requerimientos de tu área</h3>
+      <h3 className="text-xs font-medium text-texto-suave">{titulo}</h3>
+      {nota && <p className="mt-1 text-xs text-texto-suave">{nota}</p>}
       {rqs.length === 0 ? (
         <p className="mt-1 text-sm text-texto-suave">Ninguno todavía.</p>
       ) : (
@@ -407,7 +431,7 @@ function RequerimientosDeLaUnidad({
                         {r.numero}
                       </Link>
                       {estado && <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>}
-                      {esGastoOperativo(r) && (
+                      {conInsignia && esGastoOperativo(r) && (
                         <Insignia tono={GASTO_OPERATIVO.tono} title={GASTO_OPERATIVO.descripcion} data-gasto-operativo>
                           {GASTO_OPERATIVO.etiqueta}
                         </Insignia>
@@ -428,7 +452,7 @@ function RequerimientosDeLaUnidad({
             {[sinVer > 0 ? (sinVer === 1 ? '1 más en camino' : `${sinVer} más en camino`) : null, ...yaCerrados].filter(Boolean).join(', ')}
             {(sinVer > 0 || yaCerrados.length > 0) && ' · '}
             <Link
-              href={`/requerimientos?codigo=${encodeURIComponent(codigo)}`}
+              href={verTodos ?? `/requerimientos?codigo=${encodeURIComponent(codigo)}`}
               className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0"
             >
               {rqs.length === 1 ? 'Ver su requerimiento' : `Ver sus ${rqs.length} requerimientos`}

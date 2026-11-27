@@ -541,7 +541,7 @@ export function NuevaSalida({ materiales, unidades, codigos, lineasRq = [], rqCo
         abierta={abierta}
         alCerrar={() => cerrar({ cancelada: true })}
         titulo="Salida de almacén"
-        descripcion="Lo que sale sin solicitud de OT. Toda salida queda vinculada a un vehículo o al código de la unidad."
+        descripcion="Lo que sale sin solicitud de OT. Toda salida queda vinculada a un vehículo, al código de la unidad o a PLANTA (gasto operativo de un área)."
         ancho="lg"
       >
         <form key={id} onSubmit={alEnviar} className="space-y-5">

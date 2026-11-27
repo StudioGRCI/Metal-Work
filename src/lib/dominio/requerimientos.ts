@@ -94,6 +94,9 @@ export const DESTINO_DEL_RQ: Record<DestinoDelRq, { etiqueta: string; ayuda: str
 /** El código con que va el RQ del área: PLANTA, el que no es de una unidad. */
 export const CODIGO_DEL_GASTO_OPERATIVO = CODIGO_FIJO_PLANTA.codigo
 
+/** PLANTA no es una unidad: lo del área se pide con su opción, que la base marca (`para_el_area`). */
+export const MOTIVO_PLANTA_NO_ES_UNIDAD = 'PLANTA no es una unidad: lo del área se pide marcando «Para el área (gasto operativo)».'
+
 /** El RQ es gasto operativo de su área: lo dice la base, no el código (un RQ de PLANTA de antes puede haber salido a una unidad). */
 export const esGastoOperativo = (rq: { para_el_area?: boolean | null }) => rq.para_el_area === true
 

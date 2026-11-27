@@ -251,13 +251,16 @@ export async function lineasDeRequerimientoParaSalida(): Promise<LineaRqParaSali
     .order('item')
     .limit(500)
   if (error) throw new Error(`No se pudieron cargar los requerimientos por atender: ${error.message}`)
-  // Cuáles son del área: su salida va a PLANTA y la base no acepta otra.
-  const ids = [...new Set((data ?? []).flatMap((l) => (l.requerimiento_id ? [l.requerimiento_id] : [])))]
+  // Cuáles son del área: su salida va a PLANTA y la base no acepta otra. Solo
+  // puede serlo uno de PLANTA, así que se pregunta por esos, de una vez.
+  const ids = [...new Set((data ?? []).flatMap((l) =>
+    l.requerimiento_id && normalizarCodigo(l.codigo_interno ?? 'PLANTA') === 'PLANTA' ? [l.requerimiento_id] : []))]
+  const tandas = Array.from({ length: Math.ceil(ids.length / 100) }, (_, i) => ids.slice(i * 100, i * 100 + 100))
+  const marcados = await Promise.all(tandas.map((t) => db.from('requerimientos').select('id').eq('para_el_area', true).in('id', t)))
   const delArea = new Set<string>()
-  for (let i = 0; i < ids.length; i += 100) {
-    const { data: marcados, error: sinMarca } = await db.from('requerimientos').select('id').eq('para_el_area', true).in('id', ids.slice(i, i + 100))
+  for (const { data: filas, error: sinMarca } of marcados) {
     if (sinMarca) throw new Error(`No se pudo leer qué requerimientos son del área: ${sinMarca.message}`)
-    for (const r of marcados ?? []) delArea.add(r.id)
+    for (const r of filas ?? []) delArea.add(r.id)
   }
   return (data ?? []).flatMap((l) => l.linea_id && l.requerimiento_id && l.numero ? [{
     linea_id: l.linea_id, requerimiento_id: l.requerimiento_id, numero: l.numero,

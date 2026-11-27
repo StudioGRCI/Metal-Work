@@ -7,7 +7,10 @@
 --    es del área, no lo marca. Otra área, no.
 -- 2. Un RQ del área con otro código no entra; corregido a otro código, deja
 --    de ser del área.
--- 3. Lo que sale para el RQ del área va a PLANTA: hacia una unidad, no.
+-- 3. Lo que sale para el RQ del área va a PLANTA: hacia un código de unidad,
+--    no; hacia un vehículo registrado, tampoco; y una vez registrada, la salida
+--    no se cambia a otro código.
+-- 4. Quien no registra RQ (el almacenero) no registra uno del área.
 begin;
 
 do $$
@@ -45,6 +48,12 @@ begin
   perform set_config('prueba.otro', gen_random_uuid()::text, true);
   perform set_config('prueba.prd', (select id::text from public.areas where codigo = 'PRD'), true);
   perform set_config('prueba.mtz', (select id::text from public.areas where codigo = 'MTZ'), true);
+  -- Un vehículo con su código, para la salida que intenta ir a él.
+  insert into public.clientes (tipo_documento, numero_documento, razon_social)
+  values ('RUC', '20999950101', 'TRANSPORTES DEL CHECK 501 S.A.C.');
+  insert into public.unidades (cliente_id, placa, tipo_vehiculo, marca, modelo)
+  select id, 'C50-501', 'VOLQUETE', 'VOLVO', 'FMX' from public.clientes where numero_documento = '20999950101';
+  perform set_config('prueba.vehiculo', (select id::text from public.unidades where placa = 'C50-501'), true);
 end $$;
 
 -- 1. El supervisor registra el RQ del área ------------------------------------------
@@ -61,7 +70,8 @@ begin
     'Discos para el área de Producción, se deshace', null, v_lineas);
   if v_id is distinct from current_setting('prueba.rq')::uuid then raise exception 'FALLA: el reenvío devolvió otro id (%)', v_id; end if;
 
-  -- Un RQ de una unidad con su id: el del área no lo marca.
+  -- Un RQ de una unidad con su id: el del área no lo marca. Es la misma
+  -- persona, así que la primera vez entró (la respuesta se perdió) y se dice así.
   perform public.emitir_requerimiento(current_setting('prueba.otro')::uuid, 'OPERACION', current_setting('prueba.prd')::uuid, 'UNI-501',
     'Para la unidad del check 501, se deshace', null, v_lineas);
   begin
@@ -70,7 +80,7 @@ begin
     raise exception 'FALLA: marcó del área un RQ de una unidad';
   exception when others then
     if sqlerrm like 'FALLA:%' then raise; end if;
-    if sqlerrm not like 'Este requerimiento ya existe con otros datos%' then raise; end if;
+    if sqlerrm not like 'Este requerimiento ya quedó registrado como RQ-% la primera vez que lo enviaste%' then raise; end if;
   end;
 
   -- Otra área, no.
@@ -119,7 +129,7 @@ do $$
 declare k text;
 begin
   perform set_config('prueba.linea', (select id::text from public.requerimiento_lineas where requerimiento_id = current_setting('prueba.rq')::uuid and item = 1), true);
-  foreach k in array array['s_unidad', 's_planta'] loop
+  foreach k in array array['s_unidad', 's_vehiculo', 's_planta'] loop
     perform set_config('prueba.' || k, gen_random_uuid()::text, true);
     insert into storage.objects (bucket_id, name, owner_id, metadata)
     values ('evidencias-almacen', current_setting('prueba.almacenero') || '/' || current_setting('prueba.' || k) || '.jpg',
@@ -142,6 +152,16 @@ begin
     if sqlerrm like 'FALLA:%' then raise; end if;
     if sqlerrm not like '%es gasto operativo de Producción: lo que sale para él va a PLANTA%' then raise; end if;
   end;
+  -- Hacia un vehículo registrado: tampoco (era la fuga que encontró el auditor).
+  begin
+    perform public.registrar_salida_material(current_setting('prueba.s_vehiculo')::uuid, current_setting('prueba.mat')::uuid, 1,
+      current_setting('prueba.vehiculo')::uuid, null, 'Salida del check 501', 'Persona de prueba',
+      v_uid || '/' || current_setting('prueba.s_vehiculo') || '.jpg', current_setting('prueba.linea')::uuid);
+    raise exception 'FALLA: lo del RQ del área salió hacia un vehículo';
+  exception when others then
+    if sqlerrm like 'FALLA:%' then raise; end if;
+    if sqlerrm not like '%es gasto operativo de Producción%' then raise; end if;
+  end;
   v_id := public.registrar_salida_material(current_setting('prueba.s_planta')::uuid, current_setting('prueba.mat')::uuid, 2,
     null, 'PLANTA', 'Salida del check 501', 'Persona de prueba', v_uid || '/' || current_setting('prueba.s_planta') || '.jpg',
     current_setting('prueba.linea')::uuid);
@@ -149,7 +169,26 @@ begin
   if v_cod is distinct from 'PLANTA' or v_ot is not null or v_uni is not null then
     raise exception 'FALLA: la salida del RQ del área quedó con código %, OT % y unidad %', v_cod, v_ot, v_uni;
   end if;
+  perform set_config('prueba.mov', v_id::text, true);
 end $$;
+reset role;
+
+-- Ya registrada, la salida no pasa a una unidad, la cambie quien la cambie.
+select test.debe_fallar(
+  $q$update public.movimientos_materiales set codigo_interno = 'UNI-501' where id = current_setting('prueba.mov')::uuid$q$,
+  'la salida del RQ del área no se cambia a otro código', 'es gasto operativo de Producción');
+select test.debe_fallar(
+  $q$update public.movimientos_materiales set unidad_id = current_setting('prueba.vehiculo')::uuid where id = current_setting('prueba.mov')::uuid$q$,
+  'ni se cuelga de un vehículo', 'es gasto operativo de Producción');
+
+-- 4. El almacenero no registra RQ, tampoco del área ----------------------------------------
+select pg_temp.como('almacenero');
+set local role authenticated;
+select test.debe_fallar(
+  $q$select public.emitir_requerimiento_del_area(gen_random_uuid(), current_setting('prueba.prd')::uuid,
+       'Discos para Producción desde Almacén, se deshace', null,
+       jsonb_build_array(jsonb_build_object('material_id', current_setting('prueba.mat'), 'cantidad', 1)))$q$,
+  'el almacenero no registra un RQ del área', 'permiso');
 reset role;
 
 select 'OK 501 el RQ del área es gasto operativo' as resultado;

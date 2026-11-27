@@ -13,7 +13,7 @@ import { Ventana } from '@/components/ui/ventana'
 import type { MaterialParaRequerimiento, RequerimientoListado } from '@/lib/datos/requerimientos'
 import { CODIGO_TODOS_LOS_ACTIVOS, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { detalleDelMaterial } from '@/lib/dominio/grupos-de-insumo'
-import { CODIGOS_FIJOS_DEL_RQ, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
+import { CODIGO_DEL_GASTO_OPERATIVO, CODIGOS_FIJOS_DEL_RQ, MOTIVO_PLANTA_NO_ES_UNIDAD, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
 import { useEnvio } from '@/lib/envio'
 import { hoyLima } from '@/lib/format'
 
@@ -126,7 +126,13 @@ function Formulario({
   const fijos =
     tipo === 'ADMINISTRACION'
       ? [...CODIGOS_FIJOS_DEL_RQ.ADMINISTRACION, { codigo: CODIGO_TODOS_LOS_ACTIVOS, detalle: 'Partes iguales entre los códigos que trabajaron ese mes' }]
-      : CODIGOS_FIJOS_DEL_RQ[tipo]
+      : rq.para_el_area ? CODIGOS_FIJOS_DEL_RQ[tipo] : []
+  // El de una unidad no pasa a PLANTA: lo del área se pide con su opción. El
+  // del área sí puede ir a una unidad, y entonces deja de ser gasto operativo.
+  const vetados = tipo === 'OPERACION' && !rq.para_el_area && normalizarCodigo(rq.codigo_interno) !== CODIGO_DEL_GASTO_OPERATIVO
+    ? [{ codigos: [CODIGO_DEL_GASTO_OPERATIVO], motivo: MOTIVO_PLANTA_NO_ES_UNIDAD }]
+    : undefined
+  const dejaDeSerDelArea = rq.para_el_area && Boolean(normalizarCodigo(codigo)) && normalizarCodigo(codigo) !== CODIGO_DEL_GASTO_OPERATIVO
 
   // Solo viaja lo que cambió: la base anota antes y después.
   const cambios: Record<string, unknown> = {}
@@ -158,7 +164,13 @@ function Formulario({
             aceptadoInicial={rq.codigo_interno}
             codigos={codigos}
             fijos={fijos}
+            vetados={vetados}
           />
+          {dejaDeSerDelArea && (
+            <p className="text-xs text-aviso" data-deja-de-ser-del-area>
+              Con otro código deja de ser gasto operativo del área: lo que salga para él se carga a esa unidad.
+            </p>
+          )}
         </Campo>
         <Campo etiqueta="Se necesita el" htmlFor={`rq-corr-fecha-${rq.id}`}>
           <Entrada
