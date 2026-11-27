@@ -172,6 +172,8 @@ begin
   -- La 1 se registró diez días antes que su cotización, y el taller ya la empezó.
   update public.ordenes_trabajo set creado_en = now() - interval '10 days', estado = 'EN_PROCESO', avance_porcentaje = 40
    where id = current_setting('prueba.ot_e1')::uuid;
+  -- La de la cotización B se cargó con ella hace diez días.
+  update public.ordenes_trabajo set creado_en = now() - interval '10 days' where id = current_setting('prueba.ot_e7')::uuid;
   perform set_config('session_replication_role', 'origin', true);
 
   perform test.afirmar((pg_temp.ot('e1')).cotizacion_pdf_id is null and (pg_temp.ot('e1')).estado = 'EN_PROCESO'
@@ -285,6 +287,10 @@ begin
    where r.paso = 'CODIGO_Y_OT' and r.situacion = 'HECHO' and r.unidad = 2;
   perform test.afirmar(v.en >= now() - interval '1 hour',
     format('El recorrido da la unidad 2 por cargada cuando se enganchó, no cuando se registró la OT (%s)', v.en));
+  -- Y Facturación cuenta desde ahí los días que la unidad espera su factura.
+  select f.desde into v from public.facturacion_por_unidad(array[current_setting('prueba.cot')::uuid]) f where f.numero_de_unidad = 2;
+  perform test.afirmar(v.desde >= now() - interval '1 hour',
+    format('Facturación espera la factura de la unidad 2 desde el enganche, no desde que se registró la OT (%s)', v.desde));
   -- Desde el enganche, las listas muestran el avance de su código interno, como
   -- toda OT de una cotización: el 40 % de sus etapas pasa al 0 % del código sin
   -- etapas de Diseño. Es lo que hace hoy con la que nace de la carga; se le dice a DKS.
@@ -320,6 +326,27 @@ begin
                                   and x.titulo = 'Tu cotización ya tiene su OT'
                                   and x.cuerpo like '%OT 50401-%, que ya estaba registrada, como la unidad 2 de 3. Faltan 2.'),
     'Ventas recibe el aviso de su cotización');
+end $$;
+
+-- 5b. Un comentario con los datos del enganche no mueve el recorrido --------------------
+-- La nota de la bitácora la puede imitar cualquiera que ve la OT: el recorrido
+-- cree solo al cambio de cotización que anotó la auditoría.
+do $$
+declare
+  v timestamptz;
+begin
+  perform test.como_usuario(current_setting('prueba.gerente')::uuid);
+  set local role authenticated;
+  perform public.ot_registrar_evento(current_setting('prueba.ot_e7')::uuid, 'COMENTARIO', 'Comentario de prueba (504)',
+    jsonb_build_object('enganche_a_cotizacion', true, 'cotizacion_pdf_id', current_setting('prueba.cot1')));
+  reset role;
+  perform test.como_usuario(current_setting('prueba.oficina')::uuid);
+  set local role authenticated;
+  select r.en into v from public.recorrido_de_cotizaciones(array[current_setting('prueba.cot1')::uuid]) r
+   where r.paso = 'CODIGO_Y_OT' and r.situacion = 'HECHO';
+  reset role;
+  perform test.afirmar(v < now() - interval '9 days',
+    format('Un comentario que imita el enganche no cambia cuándo se cargó la OT (%s)', v));
 end $$;
 
 -- 6. El reenvío, la unidad ocupada y la carga que sigue ------------------------------

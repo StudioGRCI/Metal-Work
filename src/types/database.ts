@@ -19034,6 +19034,15 @@ export type Database = {
         }
         Returns: string
       }
+      ot_llego_a_su_venta: {
+        Args: {
+          p_orden: string | null
+        }
+        Returns: {
+          creado_por: string | null
+          creado_en: string | null
+        }[]
+      }
       ot_recalcular_avance: {
         Args: {
           p_orden_id: string | null

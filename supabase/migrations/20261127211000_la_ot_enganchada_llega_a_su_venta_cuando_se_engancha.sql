@@ -12,11 +12,15 @@
 -- PR #299 resolvió lo mismo para el traspaso.
 --
 -- `ot_llego_a_su_venta` dice cuándo y quién la trajo a su venta: lo último entre
--- el traspaso y el enganche (la bitácora de la OT, `enganche_a_cotizacion` de su
--- cotización de hoy). El recorrido (`recorrido_de_cotizaciones`) y sus dos
+-- el traspaso y el enganche (el cambio de la OT de sin cotización a la suya, como
+-- lo anotó la auditoría: la nota de la bitácora la puede imitar un comentario).
+-- En producción, el 2026-11-27, ninguna OT pasó así de sin cotización a una: nada
+-- de lo que ya se ve cambia. El recorrido (`recorrido_de_cotizaciones`) y sus dos
 -- ayudantes (`ot_sin_codigo_desde`, `ot_lista_para_facturar_desde`) la leen
--- donde antes leían solo el traspaso. Nada más cambia en ellos: el texto es el de
--- la 20261127010000 con esa lectura reemplazada.
+-- donde antes leían solo el traspaso: el texto es el de la 20261127010000 con esa
+-- lectura reemplazada. Por `ot_lista_para_facturar_desde`, también Facturación
+-- (`facturacion_por_unidad`) cuenta desde el enganche los días que la unidad
+-- lleva esperando su factura.
 --
 -- Las tres se comparan con producción (2026-11-27, las mismas de la
 -- 20261127010000) y se reemplazan solo si siguen siendo esas, o ya son las de
@@ -60,20 +64,23 @@ begin
             from public.ot_ventas_anteriores v
            where v.orden_id = p_orden
           union all
-          -- El enganche a su cotización de hoy (20261127210000).
-          select b.usuario_id, b.creado_en
-            from public.ot_bitacora b
-            join public.ordenes_trabajo o on o.id = b.orden_id
-           where b.orden_id = p_orden
-             and (b.datos ->> 'enganche_a_cotizacion') = 'true'
-             and (b.datos ->> 'cotizacion_pdf_id') = o.cotizacion_pdf_id::text) x
+          -- El enganche a su cotización de hoy (20261127210000): el cambio de la
+          -- OT de sin cotización a esta, como lo anotó la auditoría. No la nota
+          -- de la bitácora, que cualquiera que ve la OT puede escribir con esos
+          -- datos en un comentario (auditoría de realización, tercera vuelta).
+          select a.usuario_id, a.creado_en
+            from public.audit_log a
+            join public.ordenes_trabajo o on o.id = a.registro_id
+           where a.tabla = 'ordenes_trabajo' and a.registro_id = p_orden and a.accion = 'UPDATE'
+             and a.datos_antes ? 'cotizacion_pdf_id' and (a.datos_antes ->> 'cotizacion_pdf_id') is null
+             and (a.datos_despues ->> 'cotizacion_pdf_id') = o.cotizacion_pdf_id::text) x
    order by x.en desc
    limit 1;
 end;
 $$;
 
 comment on function public.ot_llego_a_su_venta(uuid) is
-  'Cuándo y quién trajo la OT a su venta: el último traspaso desde otra venta o el enganche a su cotización. Sin filas, nació en ella. Ayudante interno del recorrido (20261127211000).';
+  'Cuándo y quién trajo la OT a su venta: el último traspaso desde otra venta o el enganche a su cotización (por la auditoría de la OT). Sin filas, nació en ella. Ayudante interno del recorrido (20261127211000).';
 
 revoke all on function public.ot_llego_a_su_venta(uuid) from public, anon, authenticated;
 

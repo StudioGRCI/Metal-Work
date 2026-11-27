@@ -289,9 +289,9 @@ export function EngancharOtRegistrada({
                   Su vehículo no tiene código interno: después del enganche, dáselo con «Darle el código a la OT» para que Contabilidad la facture.
                 </p>
               )}
-              {ot.estado !== 'APROBADA' && (
+              {['EN_PROCESO', 'PAUSADA', 'CONTROL_CALIDAD', 'TERMINADA'].includes(ot.estado) && (
                 <p className="text-xs text-texto" data-ya-empezo>
-                  El taller ya la empezó: desde el enganche, las listas muestran el avance de su código interno, como toda OT de una cotización.
+                  El taller ya la empezó: desde el enganche, las listas muestran el avance de su código interno, como toda OT de una cotización, y puede salir más bajo que el de sus etapas.
                 </p>
               )}
             </div>
