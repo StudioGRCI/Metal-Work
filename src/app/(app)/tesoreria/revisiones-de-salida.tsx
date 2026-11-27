@@ -20,6 +20,12 @@ export type CobroDelCodigo = {
   moneda: CodigoMoneda
   /** Cuántas cotizaciones aprobadas suma el código. */
   cotizaciones: number
+  /**
+   * El código es una unidad de una cotización de varias (migración 20261126998000): `total` es lo
+   * que le toca a esa unidad, no la cotización, y se dice así. Nulo con una sola unidad o si el
+   * código suma más de una cotización.
+   */
+  unidad?: { numero: number; de: number } | null
   /** El código tiene cotizaciones en monedas distintas: lo de arriba es solo de la primera moneda. */
   monedasDistintas: boolean
   /**
@@ -141,12 +147,17 @@ function RevisionPorResponder({
             'La cotización del código no tiene total registrado.'
           ) : cobro.facturado === 0 && !otra ? (
             <>
-              Cotización de <span className="text-texto">{moneda(cobro.total, cobro.moneda)}</span>: Contabilidad todavía no la factura y no hay nada cobrado.
+              {cobro.unidad ? `A la unidad ${cobro.unidad.numero} de ${cobro.unidad.de} de su cotización le tocan` : 'Cotización de'}{' '}
+              <span className="text-texto">{moneda(cobro.total, cobro.moneda)}</span>: Contabilidad todavía no la factura y no hay nada cobrado.
             </>
           ) : cobro.facturado === 0 && otra ? (
             // Facturada solo en la otra moneda: decir «no la factura» era falso, y la tarjeta decide si el vehículo sale.
             <>
-              {cobro.cotizaciones > 1 ? `Las ${cobro.cotizaciones} cotizaciones, que suman` : 'Cotización de'}{' '}
+              {cobro.cotizaciones > 1
+                ? `Las ${cobro.cotizaciones} cotizaciones, que suman`
+                : cobro.unidad
+                  ? `La unidad ${cobro.unidad.numero} de ${cobro.unidad.de} de su cotización, a la que le tocan`
+                  : 'Cotización de'}{' '}
               <span className="text-texto">{moneda(cobro.total, cobro.moneda)}</span>
               {cobro.monedasDistintas && ' sin las de otra moneda'}, {cobro.cotizaciones > 1 ? 'facturadas' : 'facturada'} en{' '}
               <span data-otra-moneda>
@@ -159,7 +170,11 @@ function RevisionPorResponder({
             <>
               Cobrado <span className="font-medium text-texto">{moneda(cobro.cobrado, cobro.moneda)}</span>
               {parteDe(cobro.cobrado, cobro.total) !== null && ` · ${porcentaje(parteDe(cobro.cobrado, cobro.total))}`}
-              {cobro.cotizaciones > 1 ? ` de las ${cobro.cotizaciones} cotizaciones, que suman` : ' de la cotización de'}{' '}
+              {cobro.cotizaciones > 1
+                ? ` de las ${cobro.cotizaciones} cotizaciones, que suman`
+                : cobro.unidad
+                  ? ` de lo que le toca a la unidad ${cobro.unidad.numero} de ${cobro.unidad.de} de su cotización,`
+                  : ' de la cotización de'}{' '}
               {moneda(cobro.total, cobro.moneda)}
               {cobro.monedasDistintas && ' (las de otra moneda no se suman aquí)'}
               {porCobrar !== null && porCobrar > 0.005 && (

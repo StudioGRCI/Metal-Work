@@ -3685,6 +3685,47 @@ export type Database = {
           }
         ]
       }
+      facturas_venta_unidades: {
+        Row: {
+          id: string
+          factura_id: string
+          numero_de_unidad: number
+          de_unidades: number
+          codigo_interno: string
+          monto: number
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          factura_id: string
+          numero_de_unidad: number
+          de_unidades: number
+          codigo_interno: string
+          monto: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          factura_id?: string
+          numero_de_unidad?: number
+          de_unidades?: number
+          codigo_interno?: string
+          monto?: number
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "facturas_venta_unidades_factura_id_fkey"
+            columns: ["factura_id"]
+            isOneToOne: false
+            referencedRelation: "facturas_venta"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       feriados: {
         Row: {
           fecha: string
@@ -12814,6 +12855,200 @@ export type Database = {
           }
         ]
       }
+      tramite_tipos: {
+        Row: {
+          id: string
+          nombre: string
+          entidad: string
+          ambito: string
+          se_renueva: boolean
+          dias_aviso: number[]
+          activo: boolean
+          creado_por: string | null
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          nombre: string
+          entidad: string
+          ambito: string
+          se_renueva?: boolean
+          dias_aviso?: number[]
+          activo?: boolean
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          nombre?: string
+          entidad?: string
+          ambito?: string
+          se_renueva?: boolean
+          dias_aviso?: number[]
+          activo?: boolean
+          creado_por?: string | null
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tramite_tipos_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      tramites: {
+        Row: {
+          id: string
+          numero: string
+          tipo_id: string
+          tipo_nombre: string
+          se_renueva: boolean
+          ambito: string
+          entidad: string
+          asunto: string
+          unidad_id: string | null
+          cliente_id: string | null
+          orden_id: string | null
+          expediente: string | null
+          fecha_inicio: string | null
+          fecha_limite: string | null
+          nota: string | null
+          estado: string
+          anulacion_pedida_por: string | null
+          anulacion_pedida_en: string | null
+          motivo_anulacion: string | null
+          anulacion_rechazada_por: string | null
+          anulacion_rechazada_en: string | null
+          anulacion_rechazo_motivo: string | null
+          anulado_por: string | null
+          anulado_en: string | null
+          registrado_por: string
+          creado_en: string
+          actualizado_en: string
+        }
+        Insert: {
+          id?: string
+          numero: string
+          tipo_id: string
+          tipo_nombre: string
+          se_renueva?: boolean
+          ambito: string
+          entidad: string
+          asunto: string
+          unidad_id?: string | null
+          cliente_id?: string | null
+          orden_id?: string | null
+          expediente?: string | null
+          fecha_inicio?: string | null
+          fecha_limite?: string | null
+          nota?: string | null
+          estado?: string
+          anulacion_pedida_por?: string | null
+          anulacion_pedida_en?: string | null
+          motivo_anulacion?: string | null
+          anulacion_rechazada_por?: string | null
+          anulacion_rechazada_en?: string | null
+          anulacion_rechazo_motivo?: string | null
+          anulado_por?: string | null
+          anulado_en?: string | null
+          registrado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Update: {
+          id?: string
+          numero?: string
+          tipo_id?: string
+          tipo_nombre?: string
+          se_renueva?: boolean
+          ambito?: string
+          entidad?: string
+          asunto?: string
+          unidad_id?: string | null
+          cliente_id?: string | null
+          orden_id?: string | null
+          expediente?: string | null
+          fecha_inicio?: string | null
+          fecha_limite?: string | null
+          nota?: string | null
+          estado?: string
+          anulacion_pedida_por?: string | null
+          anulacion_pedida_en?: string | null
+          motivo_anulacion?: string | null
+          anulacion_rechazada_por?: string | null
+          anulacion_rechazada_en?: string | null
+          anulacion_rechazo_motivo?: string | null
+          anulado_por?: string | null
+          anulado_en?: string | null
+          registrado_por?: string
+          creado_en?: string
+          actualizado_en?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tramites_anulacion_pedida_por_fkey"
+            columns: ["anulacion_pedida_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tramites_anulacion_rechazada_por_fkey"
+            columns: ["anulacion_rechazada_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tramites_anulado_por_fkey"
+            columns: ["anulado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tramites_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tramites_orden_id_fkey"
+            columns: ["orden_id"]
+            isOneToOne: false
+            referencedRelation: "ordenes_trabajo"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tramites_registrado_por_fkey"
+            columns: ["registrado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tramites_tipo_id_fkey"
+            columns: ["tipo_id"]
+            isOneToOne: false
+            referencedRelation: "tramite_tipos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tramites_unidad_id_fkey"
+            columns: ["unidad_id"]
+            isOneToOne: false
+            referencedRelation: "unidades"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       unidades: {
         Row: {
           id: string
@@ -13579,6 +13814,36 @@ export type Database = {
           cancelada: boolean | null
           saldo: number | null
           ultimo_cobro: string | null
+          unidades_cubiertas: number | null
+          numero_de_unidad: number | null
+          unidades_de_la_cotizacion: number | null
+        }
+        Relationships: []
+      }
+      v_facturas_venta_por_unidad: {
+        Row: {
+          id: string | null
+          factura_id: string | null
+          numero_de_unidad: number | null
+          de_unidades: number | null
+          codigo_interno: string | null
+          monto: number | null
+          cotizacion_pdf_id: string | null
+          cotizacion_numero: string | null
+          cliente: string | null
+          numero: string | null
+          fecha_emision: string | null
+          fecha_vencimiento: string | null
+          moneda: string | null
+          total: number | null
+          concepto: string | null
+          creado_en: string | null
+          anulada_en: string | null
+          cancelada: boolean | null
+          cobrado: number | null
+          saldo: number | null
+          unidades_cubiertas: number | null
+          codigo_al_facturar: string | null
         }
         Relationships: []
       }
@@ -15143,6 +15408,13 @@ export type Database = {
         }
         Returns: string
       }
+      codigo_de_la_unidad_de_cotizacion: {
+        Args: {
+          p_cotizacion: string | null
+          p_unidad: number | null
+        }
+        Returns: string
+      }
       codigo_interno_actividades: {
         Args: {
           p_codigo: string | null
@@ -15316,6 +15588,12 @@ export type Database = {
       codigo_interno_de_cotizacion_desde: {
         Args: {
           p_cotizacion: string | null
+        }
+        Returns: string
+      }
+      codigo_interno_de_ot_desde: {
+        Args: {
+          p_orden: string | null
         }
         Returns: string
       }
@@ -16502,6 +16780,13 @@ export type Database = {
           por_reponer: number | null
         }[]
       }
+      cuenta_que_registra_cotizaciones: {
+        Args: {
+          p_activo: boolean | null
+          p_rol: string | null
+        }
+        Returns: boolean
+      }
       cumplimiento_de_proveedores: {
         Args: {
           p_ids: string[] | null
@@ -17197,6 +17482,26 @@ export type Database = {
         Returns: {
           por_facturar: number | null
           por_cobrar: number | null
+        }[]
+      }
+      facturacion_por_unidad: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          cotizacion: string | null
+          unidades: number | null
+          numero_de_unidad: number | null
+          codigo_interno: string | null
+          desde: string | null
+          dias: number | null
+          parte: number | null
+          facturas: number | null
+          facturado: number | null
+          cobrado: number | null
+          facturado_otra_moneda: number | null
+          cobrado_otra_moneda: number | null
+          ot_numero: string | null
         }[]
       }
       facturado_de_compras: {
@@ -18551,6 +18856,14 @@ export type Database = {
         }
         Returns: number
       }
+      parte_de_unidad: {
+        Args: {
+          p_total: number | null
+          p_unidades: number | null
+          p_unidad: number | null
+        }
+        Returns: number
+      }
       partes_con_boleta_de_la_compra: {
         Args: {
           p_compra: string | null
@@ -19022,6 +19335,12 @@ export type Database = {
         }
         Returns: string
       }
+      quien_registro_la_puede_cancelar: {
+        Args: {
+          p_cotizacion: string | null
+        }
+        Returns: boolean
+      }
       quien_subio_y_quien_leyo: {
         Args: {
           p_codigo: string | null
@@ -19411,6 +19730,22 @@ export type Database = {
           p_concepto: string | null
           p_ruta: string | null
           p_nombre_archivo: string | null
+        }
+        Returns: string
+      }
+      registrar_factura_venta_de_unidad: {
+        Args: {
+          p_id: string | null
+          p_cotizacion: string | null
+          p_numero: string | null
+          p_fecha_emision: string | null
+          p_fecha_vencimiento: string | null
+          p_moneda: string | null
+          p_total: number | null
+          p_concepto: string | null
+          p_ruta: string | null
+          p_nombre_archivo: string | null
+          p_unidad: number | null
         }
         Returns: string
       }
@@ -21824,6 +22159,138 @@ export type Database = {
           actividades: Json | null
         }[]
       }
+      tramites_actualizar: {
+        Args: {
+          p_id: string | null
+          p_estado: string | null
+          p_asunto: string | null
+          p_entidad: string | null
+          p_expediente: string | null
+          p_fecha_inicio: string | null
+          p_fecha_limite: string | null
+          p_nota: string | null
+          p_visto: string | null
+        }
+        Returns: string
+      }
+      tramites_guardar_tipo: {
+        Args: {
+          p_id: string | null
+          p_nombre: string | null
+          p_entidad: string | null
+          p_ambito: string | null
+          p_se_renueva: boolean | null
+          p_dias_aviso: Json | null
+          p_activo: boolean | null
+          p_alta: boolean | null
+        }
+        Returns: {
+          tipo: string | null
+          creado: boolean | null
+        }[]
+      }
+      tramites_pedir_anulacion: {
+        Args: {
+          p_id: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
+      tramites_registrar: {
+        Args: {
+          p_id: string | null
+          p_tipo: string | null
+          p_unidad: string | null
+          p_orden: string | null
+          p_asunto: string | null
+          p_entidad: string | null
+          p_expediente: string | null
+          p_fecha_inicio: string | null
+          p_fecha_limite: string | null
+          p_nota: string | null
+        }
+        Returns: {
+          tramite: string | null
+          numero_tramite: string | null
+        }[]
+      }
+      tramites_resolver_anulacion: {
+        Args: {
+          p_id: string | null
+          p_aprobar: boolean | null
+          p_motivo: string | null
+          p_pedido: string | null
+        }
+        Returns: {
+          tramite: string | null
+          anulado: boolean | null
+        }[]
+      }
+      tramites_unidades_para_elegir: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string | null
+          placa: string | null
+          codigo_interno: string | null
+          carroceria: string | null
+          marca: string | null
+          cliente: string | null
+          ordenes: Json | null
+        }[]
+      }
+      tramites_ve_los_de_unidades: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      tramites_ve_todos: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      tramites_visibles: {
+        Args: {
+          p_id: string | null
+        }
+        Returns: {
+          id: string | null
+          numero: string | null
+          estado: string | null
+          situacion: string | null
+          creado_en: string | null
+          actualizado_en: string | null
+          tipo_id: string | null
+          tipo: string | null
+          se_renueva: boolean | null
+          ambito: string | null
+          entidad: string | null
+          asunto: string | null
+          expediente: string | null
+          fecha_inicio: string | null
+          fecha_limite: string | null
+          dias_para_limite: number | null
+          vencido: boolean | null
+          nota: string | null
+          unidad_id: string | null
+          placa: string | null
+          codigo_interno: string | null
+          carroceria: string | null
+          cliente: string | null
+          orden_id: string | null
+          orden_numero: string | null
+          registro: string | null
+          registro_puesto: string | null
+          anulacion_pedida_en: string | null
+          anulacion_pidio: string | null
+          motivo_anulacion: string | null
+          anulacion_rechazada_en: string | null
+          anulacion_rechazo: string | null
+          anulacion_rechazo_motivo: string | null
+          anulado_en: string | null
+          anulo: string | null
+          puede_actualizar: boolean | null
+          puede_pedir_anulacion: boolean | null
+          puede_resolver_anulacion: boolean | null
+        }[]
+      }
       transitar_informe_diseno: {
         Args: {
           p_informe: string | null
@@ -21886,6 +22353,13 @@ export type Database = {
           paso: boolean | null
         }[]
       }
+      unidad_de_la_factura_por_su_codigo: {
+        Args: {
+          p_cotizacion: string | null
+          p_codigo: string | null
+        }
+        Returns: number
+      }
       unidades_del_cliente_con_su_entrega: {
         Args: {
           p_cliente: string | null
@@ -21897,6 +22371,16 @@ export type Database = {
           fecha_entrega: string | null
         }[]
       }
+      unidades_libres_ya_facturadas: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          cotizacion: string | null
+          numero_de_unidad: number | null
+          codigo_facturado: string | null
+        }[]
+      }
       unidades_para_salida_almacen: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -21906,6 +22390,16 @@ export type Database = {
           placa: string | null
           vehiculo: string | null
           ordenes: string | null
+        }[]
+      }
+      unidades_que_pasaron_a_otro_comprador: {
+        Args: {
+          p_ids: string[] | null
+        }
+        Returns: {
+          cotizacion_id: string | null
+          pasaron: number | null
+          unidades: number | null
         }[]
       }
       unidades_que_salieron_de_la_cotizacion: {
@@ -22092,7 +22586,7 @@ export type Database = {
       magnitud_medida: "UNIDAD" | "MASA" | "LONGITUD" | "AREA" | "VOLUMEN"
       moneda: "PEN" | "USD"
       prioridad_ot: "BAJA" | "NORMAL" | "ALTA" | "URGENTE"
-      tipo_correlativo: "ORDEN_TRABAJO" | "REQUERIMIENTO" | "ORDEN_COMPRA" | "INGRESO_ALMACEN" | "SALIDA_ALMACEN" | "DEVOLUCION_ALMACEN" | "AJUSTE_INVENTARIO" | "PARTE_DIARIO" | "ACTA_CONFORMIDAD" | "INSPECCION_CALIDAD" | "TRANSFERENCIA_ALMACEN" | "RECEPCION_COMPRA" | "ORDEN_SERVICIO" | "PLANILLA_DIARIA" | "SUBCONTRATO" | "REPORTE_INCIDENTE" | "REPORTE_AVERIA" | "RECLAMO_GARANTIA"
+      tipo_correlativo: "ORDEN_TRABAJO" | "REQUERIMIENTO" | "ORDEN_COMPRA" | "INGRESO_ALMACEN" | "SALIDA_ALMACEN" | "DEVOLUCION_ALMACEN" | "AJUSTE_INVENTARIO" | "PARTE_DIARIO" | "ACTA_CONFORMIDAD" | "INSPECCION_CALIDAD" | "TRANSFERENCIA_ALMACEN" | "RECEPCION_COMPRA" | "ORDEN_SERVICIO" | "PLANILLA_DIARIA" | "SUBCONTRATO" | "REPORTE_INCIDENTE" | "REPORTE_AVERIA" | "RECLAMO_GARANTIA" | "TRAMITE"
       tipo_documento_cliente: "RUC" | "DNI" | "CE" | "PASAPORTE"
       tipo_evento_ot: "CREACION" | "CAMBIO_ESTADO" | "AVANCE" | "MATERIAL" | "DOCUMENTO" | "INSPECCION" | "PAUSA" | "REANUDACION" | "COMENTARIO" | "ENTREGA"
       tipo_trabajo_ot: "FABRICACION" | "REPARACION" | "REPOTENCIACION" | "MANTENIMIENTO" | "GARANTIA"

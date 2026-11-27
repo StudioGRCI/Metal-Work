@@ -125,6 +125,9 @@ begin
          x.moneda, x.total, 'f/' || x.numero || '.pdf', x.numero || '.pdf', 1024
     from (values ('CHK481-A', 'E481-1', 'PEN', 5000), ('CHK481-A', 'E481-2', 'PEN', 1000), ('CHK481-A', 'E481-3', 'USD', 500)) x(cot, numero, moneda, total)
     join public.cotizaciones_pdf c on c.numero = x.cot;
+  -- Sin disparadores no nace la parte de cada factura (20261126998000): se anota aquí.
+  insert into public.facturas_venta_unidades (factura_id, numero_de_unidad, de_unidades, codigo_interno, monto)
+  select f.id, 1, 1, f.codigo_interno, f.total from public.facturas_venta f where f.numero like 'E481-%';
   update public.facturas_venta set anulada_en = now(), anulada_por = current_setting('prueba.gerente')::uuid, motivo_anulacion = 'Mal emitida, con otro monto' where numero = 'E481-2';
   set local session_replication_role = origin;
 end $$;
