@@ -953,7 +953,7 @@ function AnularMarca({ marca: m, de, conTexto = false }: { marca: Pick<Marca, 'i
   return (
     <>
       {conTexto ? (
-        <Boton type="button" variante="contornoPeligro" tamano="lg" className="w-full justify-center sm:w-auto" onClick={() => setAbierta(true)} data-cursor-vuelve="marca-confirmada">
+        <Boton type="button" variante="fantasma" tamano="lg" className="w-full justify-center sm:w-auto" onClick={() => setAbierta(true)} data-cursor-vuelve="marca-confirmada">
           <Ban aria-hidden className="size-4" />
           Anular esta marca
         </Boton>

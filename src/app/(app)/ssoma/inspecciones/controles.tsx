@@ -511,7 +511,7 @@ export function AnularInspeccion({ id, area }: { id: string; area: string }) {
     <>
       <Boton
         type="button"
-        variante="contornoPeligro"
+        variante="fantasma"
         data-anular-inspeccion
         onClick={() => {
           limpiar()

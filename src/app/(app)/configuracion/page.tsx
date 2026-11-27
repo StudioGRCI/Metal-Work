@@ -2,6 +2,7 @@ import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Boton } from '@/components/ui/boton'
 import { Entrada } from '@/components/ui/campos'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { SinDatos } from '@/components/ui/tabla'
 import {
   areasConResponsable,
   calendarioLaboral,
@@ -88,10 +89,11 @@ export default async function PaginaConfiguracion({
               {/* La lista vacía sin explicación se lee como pantalla rota. Es
                   además el caso que deja al taller sin poder cotizar. */}
               {catalogos.carrocerias.length === 0 && (
-                <p className="text-sm text-texto-suave">
-                  Todavía no hay tipos de carrocería. Se dan de alta al cargar una orden de
-                  trabajo o desde Carrocerías.
-                </p>
+                <SinDatos
+                  compacto
+                  titulo="Todavía no hay tipos de carrocería"
+                  descripcion="Se dan de alta al cargar una orden de trabajo o desde Carrocerías."
+                />
               )}
               {catalogos.carrocerias.map((c) => (
                 <MedidasCarroceria
@@ -109,9 +111,11 @@ export default async function PaginaConfiguracion({
             />
             <TarjetaCuerpo className="space-y-1">
               {catalogos.etapas.length === 0 && (
-                <p className="text-sm text-texto-suave">
-                  Todavía no hay etapas cargadas. Sin ellas ninguna orden puede reportar avance.
-                </p>
+                <SinDatos
+                  compacto
+                  titulo="Todavía no hay etapas cargadas"
+                  descripcion="Sin ellas ninguna orden puede reportar avance."
+                />
               )}
               {catalogos.etapas.map((e) => (
                 <div key={e.id} className="flex items-center justify-between gap-3 border-b border-borde py-1.5 text-sm last:border-0">
@@ -138,7 +142,7 @@ export default async function PaginaConfiguracion({
                   Fichas técnicas preescritas
                 </p>
                 {catalogos.fichas.length === 0 ? (
-                  <p className="text-sm text-texto-suave">Todavía no hay fichas.</p>
+                  <SinDatos compacto titulo="Todavía no hay fichas" />
                 ) : (
                   catalogos.fichas.map((f) => (
                     <p key={f.id} className="text-sm text-texto">
@@ -153,10 +157,11 @@ export default async function PaginaConfiguracion({
                   Pasos de verificación por carrocería
                 </p>
                 {catalogos.verificaciones.length === 0 ? (
-                  <p className="text-sm text-texto-suave">
-                    Ninguna carrocería tiene pasos de verificación: hoy las órdenes se aprueban sin
-                    lista de control.
-                  </p>
+                  <SinDatos
+                    compacto
+                    titulo="Ninguna carrocería tiene pasos de verificación"
+                    descripcion="Hoy las órdenes se aprueban sin lista de control."
+                  />
                 ) : (
                     catalogos.verificaciones.map((v) => (
                     <p key={v.id} className="text-sm text-texto">

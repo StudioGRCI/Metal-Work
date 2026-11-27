@@ -164,7 +164,7 @@ export default async function PaginaHorasExtras() {
           <TarjetaCabecera titulo="Lo decidido" ayuda="Una decisión equivocada se anula y sus horas vuelven a esperar, mientras no estén en una planilla." />
           {decisiones.length === 0 ? (
             <TarjetaCuerpo>
-              <p className="text-sm text-texto-suave">Todavía no se decidió ninguna hora extra.</p>
+              <SinDatos compacto titulo="Todavía no se decidió ninguna hora extra" />
             </TarjetaCuerpo>
           ) : (
             <ul className="divide-y divide-borde">

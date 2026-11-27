@@ -1653,7 +1653,7 @@ async function VistaDocumentos({ codigo, perfil }: { codigo: string; perfil: Per
             <TarjetaCabecera titulo={`${def.titulo}${deTipo.length > 0 ? ` (${deTipo.length})` : ''}`} />
             <TarjetaCuerpo>
               {deTipo.length === 0 ? (
-                <p className="text-sm text-texto-suave">{def.vacio}</p>
+                <SinDatos compacto titulo={def.vacio.replace(/\.$/, '')} />
               ) : (
                 <ul className="divide-y divide-borde">
                   {deTipo.map((d) => {
@@ -1706,9 +1706,11 @@ async function VistaFacturacion({ codigo, perfil }: { codigo: string; perfil: Pe
         />
         <TarjetaCuerpo>
           {cotizaciones.length === 0 ? (
-            <p className="text-sm text-texto-suave">
-              Ninguna cotización aprobada lleva este código. Una cotización toma el código cuando Administración carga su OT con la unidad que lo lleva.
-            </p>
+            <SinDatos
+              compacto
+              titulo="Ninguna cotización aprobada lleva este código"
+              descripcion="Una cotización toma el código cuando Administración carga su OT con la unidad que lo lleva."
+            />
           ) : (
             <ul className="divide-y divide-borde">
               {cotizaciones.map((c) => {
@@ -1792,7 +1794,7 @@ async function VistaFacturacion({ codigo, perfil }: { codigo: string; perfil: Pe
         />
         <TarjetaCuerpo className="space-y-3">
           {facturas.length === 0 ? (
-            <p className="text-sm text-texto-suave">Contabilidad todavía no registra una factura de este código.</p>
+            <SinDatos compacto titulo="Contabilidad todavía no registra una factura de este código" />
           ) : (
             facturas.map((f) => <FacturaDeVenta key={f.id} factura={f} delCodigo={codigo} />)
           )}

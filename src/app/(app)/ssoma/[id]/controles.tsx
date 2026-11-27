@@ -53,7 +53,7 @@ export function AnularReporte({ id, numero }: { id: string; numero: string }) {
     <>
       <Boton
         type="button"
-        variante="contornoPeligro"
+        variante="fantasma"
         data-anular-reporte
         onClick={() => {
           limpiar()

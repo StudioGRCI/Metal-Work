@@ -3,6 +3,7 @@
 import { Bell, Check, X } from 'lucide-react'
 import Link from 'next/link'
 import { useState, useRef } from 'react'
+import { SinDatos } from '@/components/ui/tabla'
 
 import { useAvisos } from './use-avisos'
 import type { Notificacion } from '@/lib/datos/notificaciones'
@@ -77,9 +78,9 @@ export function Campana({ avisos, sinLeer }: { avisos: Notificacion[]; sinLeer: 
             {error && <p role="alert" className="m-3 rounded-xl bg-peligro-suave p-3 text-sm text-peligro">{error}</p>}
 
             {avisos.length === 0 ? (
-              <p className="px-3 py-6 text-center text-xs text-texto-suave">
-                No hay avisos. Acá llega lo que pasa en tu área.
-              </p>
+              <div className="px-3 py-6">
+                <SinDatos compacto titulo="No hay avisos" descripcion="Acá llega lo que pasa en tu área." />
+              </div>
             ) : (
               <ul>
                 {avisos.map((a) => {

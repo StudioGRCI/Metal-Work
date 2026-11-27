@@ -6,6 +6,7 @@ import { EliminarReporte } from '@/components/avance/eliminar-reporte'
 import { RevisarReporte } from '@/components/avance/revisar-reporte'
 import { FirmaRevision, InsigniaRevision, NotaRevision } from '@/components/avance/revision'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { SinDatos } from '@/components/ui/tabla'
 import { enlacesDeFotos, etapasDeLaOrden, fotosDeAvances, listarAvances } from '@/lib/datos/avances'
 import { fecha as formatearFecha, hoyLima, porcentaje } from '@/lib/format'
 import { puede, puedeCorregirReporte, puedeEliminarReporte, type PerfilSesion } from '@/lib/sesion'
@@ -40,11 +41,11 @@ export async function AvanceDeOrden({
     avances.length === 0 ? (
       <Tarjeta>
         <TarjetaCuerpo>
-          <p className="text-sm font-medium text-texto">Todavía no hay avance registrado</p>
-          <p className="mt-1 text-sm text-texto-suave">
-            Cada día que se trabaja esta unidad, una línea acá y una foto. Es lo que después se le
-            muestra al cliente sin tener que bajar al taller.
-          </p>
+          <SinDatos
+            compacto
+            titulo="Todavía no hay avance registrado"
+            descripcion="Cada día que se trabaja esta unidad, una línea acá y una foto. Es lo que después se le muestra al cliente sin tener que bajar al taller."
+          />
         </TarjetaCuerpo>
       </Tarjeta>
     ) : (

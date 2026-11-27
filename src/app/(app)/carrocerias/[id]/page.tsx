@@ -4,6 +4,7 @@ import type { Metadata } from 'next'
 import { EncabezadoPagina } from '@/components/estructura/encabezado-pagina'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
+import { SinDatos } from '@/components/ui/tabla'
 import { plantillaEntera } from '@/lib/datos/carrocerias'
 import { cantidad } from '@/lib/format'
 import { exigirPermiso } from '@/lib/sesion'
@@ -71,7 +72,9 @@ export default async function PaginaPlantilla({ params }: PageProps<'/carroceria
           />
           <TarjetaCuerpo className="p-0">
             {plantilla.accesorios.length === 0 ? (
-              <p className="px-4 py-6 text-center text-sm text-texto-suave">Esta ficha no lista accesorios.</p>
+              <div className="px-4 py-4">
+                <SinDatos compacto titulo="Esta ficha no lista accesorios" />
+              </div>
             ) : (
               <ul className="divide-y divide-borde">
                 {plantilla.accesorios.map((a) => (
@@ -95,7 +98,7 @@ export default async function PaginaPlantilla({ params }: PageProps<'/carroceria
           />
           <TarjetaCuerpo className="space-y-5">
             {plantilla.secciones.length === 0 ? (
-              <p className="py-4 text-center text-sm text-texto-suave">Esta ficha no tiene líneas.</p>
+              <SinDatos compacto titulo="Esta ficha no tiene líneas" />
             ) : (
               plantilla.secciones.map((s) => (
                 <section key={s.seccion}>
@@ -126,9 +129,9 @@ export default async function PaginaPlantilla({ params }: PageProps<'/carroceria
           />
           <TarjetaCuerpo className="p-0">
             {plantilla.verificacion.length === 0 ? (
-              <p className="px-4 py-6 text-center text-sm text-texto-suave">
-                Sin lista propia: la OT usa la genérica.
-              </p>
+              <div className="px-4 py-4">
+                <SinDatos compacto titulo="Sin lista propia" descripcion="La OT usa la genérica." />
+              </div>
             ) : (
               <ol className="divide-y divide-borde">
                 {plantilla.verificacion.map((v) => (

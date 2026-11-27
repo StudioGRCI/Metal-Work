@@ -8,7 +8,7 @@ import { Boton } from '@/components/ui/boton'
 import { Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Progreso } from '@/components/ui/progreso'
-import { TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
+import { TD, TH, TR, Tabla, TablaCabecera, SinDatos } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import type { ResultadoAccion } from '@/lib/acciones'
 import type {
@@ -223,12 +223,11 @@ export function Cumplimiento({
       ) : planos.length === 0 ? (
         <Tarjeta>
           <TarjetaCuerpo>
-            <div className="py-8 text-center">
-              <p className="text-sm font-medium text-texto">Esta orden todavía no tiene planos</p>
-              <p className="mx-auto mt-1 max-w-md text-xs text-texto-suave">
-                Diseño agrega cada plano con su etapa y peso. Los materiales se definen en la pestaña Materiales.
-              </p>
-            </div>
+            <SinDatos
+              enTabla={false}
+              titulo="Esta orden todavía no tiene planos"
+              descripcion="Diseño agrega cada plano con su etapa y peso. Los materiales se definen en la pestaña Materiales."
+            />
           </TarjetaCuerpo>
         </Tarjeta>
       ) : (

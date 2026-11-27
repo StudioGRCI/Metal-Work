@@ -386,7 +386,9 @@ function RequerimientosDeLaUnidad({
     <div>
       <h3 className="text-xs font-medium text-texto-suave">Requerimientos de tu área</h3>
       {rqs.length === 0 ? (
-        <p className="mt-1 text-sm text-texto-suave">Ninguno todavía.</p>
+        <div className="mt-1">
+          <SinDatos compacto titulo="Ninguno todavía" />
+        </div>
       ) : (
         <>
           {aVer.length > 0 && (

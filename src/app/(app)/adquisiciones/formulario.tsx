@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada, Seleccion } from '@/components/ui/campos'
 import { ElegirArchivo, revisarArchivo } from '@/components/ui/elegir-archivo'
+import { SinDatos } from '@/components/ui/tabla'
 import type { CompraSinFactura, FacturaDeLogistica } from '@/lib/datos/adquisiciones'
 import { nombreDeOc, ocParaDetector } from '@/lib/dominio/adquisiciones'
 import { nombreMoneda } from '@/lib/dominio/caja'
@@ -619,9 +620,9 @@ function Formulario({
           Marca una o varias, del mismo proveedor y con la misma condición de pago. Si es un recibo o un gasto sin OC, no marques ninguna.
         </p>
         {compras.length === 0 ? (
-          <p className="mt-2 rounded-[var(--radius-base)] border border-dashed border-borde p-3 text-sm text-texto-suave">
-            Ninguna OC espera su factura. Aparecen cuando Logística emite una OC con factura.
-          </p>
+          <div className="mt-2 rounded-[var(--radius-base)] border border-dashed border-borde p-3">
+            <SinDatos compacto titulo="Ninguna OC espera su factura" descripcion="Aparecen cuando Logística emite una OC con factura." />
+          </div>
         ) : (
           <ul className="mt-2 max-h-72 space-y-1 overflow-y-auto rounded-[var(--radius-base)] border border-borde p-2">
             {compras.map((c) => {

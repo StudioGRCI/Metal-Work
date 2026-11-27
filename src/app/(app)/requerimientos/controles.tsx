@@ -16,7 +16,7 @@ export function AnularRequerimiento({ id, numero }: { id: string; numero: string
   const { alEnviar, enviando, error } = useEnvio(anularRequerimiento, () => setAbierta(false))
   return (
     <>
-      <Boton type="button" variante="contornoPeligro" tamano="sm" onClick={() => setAbierta(true)}>
+      <Boton type="button" variante="fantasma" tamano="sm" onClick={() => setAbierta(true)}>
         <Ban aria-hidden className="size-4" />
         Anular
       </Boton>

@@ -635,7 +635,7 @@ export default async function PaginaOrden({ params, searchParams }: PageProps<'/
       )}
 
       {vista === 'materiales' && listaMateriales && (
-        <div className="space-y-6"><MaterialesDeOrden
+        <div className="space-y-5"><MaterialesDeOrden
           ordenId={orden.id}
           materiales={listaMateriales.materiales}
           catalogo={listaMateriales.catalogo}

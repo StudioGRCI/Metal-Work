@@ -304,7 +304,7 @@ await salida(ids.entregado, 1, conos, 2, `Rosa Huamán ${sello}`)
 // El entregado con faltante: salieron los conos; los guantes ya no hacían falta y no salieron del kardex.
 await armazon(
   `update public.requerimientos set estado = 'ENTREGADO', revision_stock_en = now(), listo_en_almacen_en = now(),
-          entregado_en = now(), entregado_por = $2, faltante_al_entregar = true, motivo_del_faltante = 'Los guantes ya no hacen falta (prueba)'
+          entregado_en = now(), entregado_por = $2, faltante_al_entregar = '1 PAR de guantes de cuero (prueba)', motivo_del_faltante = 'Los guantes ya no hacen falta (prueba)'
     where id = $1`,
   [ids.faltante, almacen.id],
 )

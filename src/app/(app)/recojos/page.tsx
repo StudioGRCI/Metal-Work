@@ -52,7 +52,7 @@ export default async function PaginaRecojos() {
         }
       />
 
-      <div className="space-y-6">
+      <div className="space-y-5">
         <section className="space-y-3">
           <h2 className="text-base font-semibold text-texto">
             Por hacer <span className="tabular text-texto-suave">({pendientes.length})</span>
