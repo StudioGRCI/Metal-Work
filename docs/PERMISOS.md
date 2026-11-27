@@ -532,14 +532,22 @@ Los avisos (entrega 3), en la campana, sin permiso nuevo:
 | Aviso | A quién | Cómo lo hace la base |
 | --- | --- | --- |
 | «Trámite nuevo: TR-…», con el tipo, la placa y el cliente (o «de la empresa»), quién lo registró y su fecha límite | `tramites.gestionar`: los Tramitadores, salvo quien lo registró | `trg_tramite_avisa_al_registrarse`, después de cada alta, por `avisar_a_permiso` |
-| «Por vencer: TR-… · vence en N días» al llegar cada uno de los días de aviso de su tipo antes de la fecha límite (30, 15 y 7 en lo que se renueva; 5 en tarjeta y placas); «Por renovar: …» con la vigencia del documento final, en lo concluido que se renueva | `tramites.gestionar`: los Tramitadores | `revisar_tramites()`, que corre pg_cron (`revisar-tramites`) cada día a las 7:00 de Lima y solo en día laborable (`es_laborable`): lo que cayó en feriado o fin de semana sale el siguiente laborable, una vez por umbral, con el umbral más cercano que todavía no se mandó. No avisa lo anulado ni lo que espera el visto de su anulación |
-| «Venció el trámite TR-…» (fecha límite pasada, sin concluir) y «Venció TR-…: hay que renovarlo» (vigencia pasada) | Los Tramitadores y `tramites.aprobar_anulacion`: Gerencia | La misma revisión, una sola vez por fecha. Si el Tramitador corrige la fecha límite, la nueva vuelve a avisar |
+| «Por vencer: TR-… · vence en N días» al llegar cada uno de los días de aviso de su tipo antes de la fecha límite (30, 15 y 7 en lo que se renueva; 5 en tarjeta y placas); «Por renovar: …» con la vigencia del documento final, en lo concluido que se renueva | `tramites.gestionar`: los Tramitadores | `revisar_tramites()`, que corre pg_cron (`revisar-tramites`) cada día a las 7:00 de Lima y solo en día laborable (`es_laborable`): lo que cayó en domingo o feriado sale el siguiente laborable, una vez por umbral, con el umbral más cercano que todavía no se mandó. No avisa lo anulado, lo que espera el visto de su anulación ni lo de un lote de prueba. Un aviso que no tiene a quién llegar (ninguna cuenta activa del puesto) no se anota: sale en la primera revisión en que haya a quién |
+| «Venció el trámite TR-…» (fecha límite pasada, sin concluir) | Los Tramitadores y `tramites.aprobar_anulacion`: Gerencia | La misma revisión, una sola vez por fecha. Si el Tramitador corrige la fecha límite, la nueva vuelve a avisar |
+| «Venció TR-…: hay que renovarlo» (vigencia pasada) | Los Tramitadores; Gerencia no, hasta la entrega 4 | La misma revisión, una sola vez. El documento que se carga ya vencido no avisa |
 
 Lo que ya se mandó queda en `tramite_avisos` (trámite, tipo, fecha, umbral,
 a cuántas cuentas, y una fila por día revisado), que solo la revisión escribe
 y que leen quienes ven todos los trámites (`ver_tramite_avisos`, con
 `tramites_ve_todos()`). `revisar_tramites` no la ejecuta ninguna cuenta: la
 llama el sistema. Los días son corridos, no laborables.
+
+Límite conocido hasta la entrega 4: la revisión todavía no sabe qué trámite
+renueva a cuál. Si un SOAT se renueva con un trámite nuevo, el concluido viejo
+sigue avisando por su vigencia al Tramitador; por eso la vigencia vencida no
+va todavía a Gerencia. La entrega 4 enlaza la renovación y saca al viejo de la
+revisión. Si los días de aviso del tipo cambian a medio camino, no sale un día
+de aviso mayor que uno ya mandado para la misma fecha.
 
 Los globos: a Gerencia le cuenta las anulaciones que esperan su visto; al
 Tramitador, los trámites que pasaron su fecha límite y los que la entidad

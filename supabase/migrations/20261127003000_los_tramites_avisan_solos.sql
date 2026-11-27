@@ -164,6 +164,12 @@ revoke all on function public.avisar_tramite(uuid, text, text, boolean) from pub
 -- Así, con 30, 15 y 7: a los 30 días avisa el de 30, a los 15 el de 15; y si la
 -- revisión no corrió unos días y encuentra 5 por delante, da solo el de 7.
 -- Con la fecha pasada, un solo aviso de vencido, también a Gerencia.
+--
+-- Límite conocido hasta la entrega 4: la revisión no sabe todavía qué trámite
+-- renueva a cuál. Si el SOAT se renueva con un TR nuevo, el concluido viejo
+-- sigue avisando por su vigencia al Tramitador. Por eso la vigencia vencida no
+-- va a Gerencia todavía, y el documento cargado ya vencido no avisa. La
+-- entrega 4 enlaza la renovación con el trámite que renueva y lo saca de aquí.
 create or replace function public.revisar_tramites(p_hoy date default null)
 returns table (tipo text, avisos integer, cuentas integer)
 language plpgsql security definer set search_path to 'public' as $$
@@ -179,6 +185,8 @@ declare
   v_vencidos integer := 0;    v_c_vencidos integer := 0;
   v_renovar integer := 0;     v_c_renovar integer := 0;
   v_vigencias integer := 0;   v_c_vigencias integer := 0;
+  v_hay_tramitador boolean;
+  v_hay_gerencia boolean;
 begin
   -- Dos corridas a la vez (la de pg_cron y una a mano) no se duplican: la
   -- segunda espera a la primera y ya encuentra todo anotado.
@@ -194,22 +202,38 @@ begin
     return;
   end if;
 
+  -- Un aviso que no le llega a nadie (ninguna cuenta activa del puesto ese día)
+  -- no se anota: si se anotara, no saldría nunca, sin que nada lo dijera. Sale
+  -- en la primera revisión en que haya a quién.
+  select exists (select 1 from public.usuarios u join public.roles_permisos rp on rp.rol_id = u.rol_id
+                  where u.activo and rp.permiso_codigo = 'tramites.gestionar'),
+         exists (select 1 from public.usuarios u join public.roles_permisos rp on rp.rol_id = u.rol_id
+                  where u.activo and rp.permiso_codigo = 'tramites.aprobar_anulacion')
+    into v_hay_tramitador, v_hay_gerencia;
+
   for r in
-    select t.id, t.numero, x.que, x.fecha, x.fecha - v_hoy as d, coalesce(tt.dias_aviso, '{7}'::integer[]) as dias_aviso
+    select t.id, t.numero, x.que, x.fecha, x.fecha - v_hoy as d, tt.dias_aviso
       from public.tramites t
-      left join public.tramite_tipos tt on tt.id = t.tipo_id
+      join public.tramite_tipos tt on tt.id = t.tipo_id
       cross join lateral (
         select 'LIMITE'::text as que, t.fecha_limite as fecha
          where t.estado in ('POR_INICIAR', 'EN_TRAMITE', 'OBSERVADO') and t.fecha_limite is not null
         union all
         select 'VIGENCIA', t.vigente_hasta
          where t.estado = 'CONCLUIDO' and t.se_renueva and t.vigente_hasta is not null
+           -- El documento de antes que se carga ya vencido es historia: no avisa.
+           and t.vigente_hasta >= (t.concluido_en at time zone 'America/Lima')::date
       ) x
      where not (t.anulacion_pedida_en is not null and t.anulacion_rechazada_en is null)
-     order by x.fecha, t.numero
+       -- Lo de un lote de prueba no avisa a nadie ni deja filas que impidan limpiarlo.
+       and not exists (select 1 from public.pruebas_filas f where f.tabla = 'tramites' and f.fila_id = t.id)
+     -- Lo más lejano primero: la campana muestra lo último arriba, y así lo
+     -- vencido queda a la vista aunque la corrida sea larga.
+     order by x.fecha desc, t.numero desc
   loop
     if r.d < 0 then
       -- Venció: una vez, también a Gerencia.
+      continue when not (v_hay_tramitador or (r.que = 'LIMITE' and v_hay_gerencia));
       insert into public.tramite_avisos (tramite_id, tipo, fecha, dias, dia_revision)
       values (r.id, case r.que when 'LIMITE' then 'VENCIDO' else 'VIGENCIA_VENCIDA' end, r.fecha, null, v_hoy)
       on conflict do nothing;
@@ -221,7 +245,10 @@ begin
         v_titulo := 'Venció ' || r.numero || ': hay que renovarlo';
         v_cuerpo := public.tramite_en_texto(r.id) || '. El documento valía hasta el ' || to_char(r.fecha, 'DD/MM/YYYY') || '.';
       end if;
-      v_cuentas := public.avisar_tramite(r.id, v_titulo, v_cuerpo, true);
+      -- La vigencia vencida, solo al Tramitador hasta la entrega 4: sin saber
+      -- todavía qué trámite renueva a cuál, a Gerencia le llegaría «hay que
+      -- renovarlo» de un SOAT ya renovado.
+      v_cuentas := public.avisar_tramite(r.id, v_titulo, v_cuerpo, r.que = 'LIMITE');
       update public.tramite_avisos set avisados = v_cuentas
        where tramite_id = r.id and tipo = case r.que when 'LIMITE' then 'VENCIDO' else 'VIGENCIA_VENCIDA' end
          and fecha = r.fecha and dias is null;
@@ -232,7 +259,12 @@ begin
 
     -- Por vencer: el menor día de aviso que ya se cumplió.
     select min(a) into v_dia from unnest(r.dias_aviso) a where a >= r.d;
-    continue when v_dia is null;
+    continue when v_dia is null or not v_hay_tramitador;
+    -- Si los días del tipo cambiaron a medio camino, no se manda un día de aviso
+    -- mayor que uno que ya salió para esta misma fecha: sería casi repetido.
+    continue when exists (select 1 from public.tramite_avisos a
+                           where a.tramite_id = r.id and a.fecha = r.fecha and a.dias <= v_dia
+                             and a.tipo = case r.que when 'LIMITE' then 'POR_VENCER' else 'POR_RENOVAR' end);
     insert into public.tramite_avisos (tramite_id, tipo, fecha, dias, dia_revision)
     values (r.id, case r.que when 'LIMITE' then 'POR_VENCER' else 'POR_RENOVAR' end, r.fecha, v_dia, v_hoy)
     on conflict do nothing;
@@ -258,7 +290,7 @@ begin
 end;
 $$;
 comment on function public.revisar_tramites(date) is
-  'La revisión diaria de los trámites (7:00 a. m. de Lima, día laborable): por la fecha límite de los que se llevan y por la vigencia de los concluidos que se renuevan, avisa al Tramitador al cumplirse cada día de aviso de su tipo, y al pasar la fecha avisa una vez al Tramitador y a Gerencia. No repite: anota cada aviso, y cada corrida, en tramite_avisos. La corre pg_cron; cerrada a la gente.';
+  'La revisión diaria de los trámites (7:00 a. m. de Lima, día laborable): por la fecha límite de los que se llevan y por la vigencia de los concluidos que se renuevan, avisa al Tramitador al cumplirse cada día de aviso de su tipo, y al pasar la fecha límite avisa una vez al Tramitador y a Gerencia (la vigencia vencida, solo al Tramitador hasta la entrega 4). No repite: anota cada aviso, y cada corrida, en tramite_avisos. La corre pg_cron; cerrada a la gente.';
 revoke all on function public.revisar_tramites(date) from public, anon, authenticated;
 
 -- 6. La hora ------------------------------------------------------------------------

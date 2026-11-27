@@ -226,9 +226,9 @@ select test.afirmar(
   and pg_temp.avisos('ger', 'soat', 'Por renovar') = 0,
   'dice hasta cuándo vale, y no le llega a Gerencia');
 select test.afirmar(pg_temp.revisar(pg_temp.dia('v3'), 'VIGENCIA_VENCIDA') = 1
-                    and pg_temp.avisos('tra', 'soat', 'Venció TR-') = 1 and pg_temp.avisos('ger', 'soat', 'Venció TR-') = 1
+                    and pg_temp.avisos('tra', 'soat', 'Venció TR-') = 1 and pg_temp.avisos('ger', 'soat', 'Venció TR-') = 0
                     and pg_temp.revisar(pg_temp.dia('v3'), 'VIGENCIA_VENCIDA') = 0,
-  'vencida la vigencia avisa una vez a los Tramitadores y a Gerencia');
+  'vencida la vigencia avisa una vez a los Tramitadores; a Gerencia no hasta la entrega 4 (no sabe aún si ya se renovó)');
 select test.afirmar(pg_temp.revisar(pg_temp.dia('v3'), 'POR_VENCER') = 0
                     and pg_temp.avisos('tra', 'soat', 'Por vencer') = 0,
   'el concluido ya no avisa por su fecha límite');
@@ -260,5 +260,74 @@ do $$ begin
   perform test.debe_fallar($q$select public.tramite_en_texto(gen_random_uuid())$q$, 'ni lee un trámite por el ayudante del aviso', 'permission denied');
 end $$;
 reset role;
+
+-- 4b. El documento de antes, cargado ya vencido, no avisa --------------------------
+select set_config('prueba.historico', gen_random_uuid()::text, true), set_config('prueba.final_hist', gen_random_uuid()::text, true);
+select test.como_usuario(:'tra_id');
+set local role authenticated;
+do $$ begin
+  perform * from public.tramites_registrar(pg_temp.id('historico'), pg_temp.id('tipo_soat'), null, null,
+    'SOAT del año pasado, para el archivo', 'Aseguradora', null, pg_temp.hoy() - 400, null, null);
+  perform public.tramites_concluir(pg_temp.id('final_hist'), pg_temp.id('historico'), pg_temp.subir('historico'), 'soat-viejo.pdf',
+    pg_temp.hoy() - 380, pg_temp.hoy() - 15);
+end $$;
+reset role;
+select pg_temp.revisar(pg_temp.laborable(pg_temp.hoy()), 'VIGENCIA_VENCIDA');
+select test.afirmar((select count(*) from public.tramite_avisos where tramite_id = pg_temp.id('historico')) = 0
+                    and pg_temp.avisos('tra', 'historico', 'Venció') = 0,
+  'el documento de antes que se carga ya vencido no avisa «hay que renovarlo»');
+
+-- 4c. Los días del tipo cambian a medio camino --------------------------------------
+select test.como_usuario(:'admin_id');
+select set_config('prueba.cambio', gen_random_uuid()::text, true);
+-- Dos días laborables seguidos, c1 y c1 + 1, y la fecha límite 5 días después de c1:
+-- el primero toca el aviso de 5; el segundo, con 4 por delante, tocaría el de 10.
+select set_config('prueba.c1', (select min(x)::date from generate_series(pg_temp.hoy() + 30, pg_temp.hoy() + 60, interval '1 day') x
+                                 where public.es_laborable(x::date) and public.es_laborable(x::date + 1))::text, true);
+select set_config('prueba.d5_base', (pg_temp.dia('c1') + 5)::text, true);
+select test.como_usuario(:'tra_id');
+set local role authenticated;
+do $$ begin
+  perform * from public.tramites_registrar(pg_temp.id('cambio'), pg_temp.id('tipo_tarjeta'), pg_temp.id('unidad_a'), null,
+    'Tarjeta cuyo tipo cambia sus días de aviso', 'SUNARP', null, pg_temp.hoy() - 1, pg_temp.dia('d5_base'), null);
+end $$;
+reset role;
+select pg_temp.revisar(pg_temp.dia('c1'), 'POR_VENCER');
+update public.tramite_tipos set dias_aviso = '{10,3}' where id = pg_temp.id('tipo_tarjeta');
+select pg_temp.revisar(pg_temp.dia('c1') + 1, 'POR_VENCER');
+select test.afirmar(pg_temp.dias_anotados('cambio', 'POR_VENCER') = '{5}' and pg_temp.avisos('tra', 'cambio', 'Por vencer') = 1,
+  'si el tipo pasa de 5 a 10 y 3 días, no sale el de 10 tarde, casi repetido del de 5');
+update public.tramite_tipos set dias_aviso = '{5}' where id = pg_temp.id('tipo_tarjeta');
+
+-- 5. Lo de un lote de prueba, y el día sin Tramitador -------------------------------
+select set_config('prueba.lote', gen_random_uuid()::text, true), set_config('prueba.sin', gen_random_uuid()::text, true);
+select set_config('prueba.d5', pg_temp.laborable(pg_temp.dia('d3') + 10)::text, true);
+select test.como_usuario(:'tra_id');
+set local role authenticated;
+do $$ begin
+  perform * from public.tramites_registrar(pg_temp.id('lote'), pg_temp.id('tipo_tarjeta'), pg_temp.id('unidad_a'), null,
+    'Tarjeta de un lote de prueba', 'SUNARP', null, pg_temp.hoy() - 1, pg_temp.dia('limite'), null);
+  perform * from public.tramites_registrar(pg_temp.id('sin'), pg_temp.id('tipo_tarjeta'), pg_temp.id('unidad_a'), null,
+    'Tarjeta que vence sin Tramitador', 'SUNARP', null, pg_temp.hoy() - 1, pg_temp.dia('limite'), null);
+end $$;
+reset role;
+insert into public.pruebas_lotes (id, motivo) values ('50000000-0000-4000-8000-00000000a0a0', 'Check 500');
+insert into public.pruebas_filas (lote_id, tabla, fila_id)
+values ('50000000-0000-4000-8000-00000000a0a0', 'tramites', pg_temp.id('lote')) on conflict do nothing;
+-- Las cuentas se apagan con la sesión del administrador, que es quien puede.
+select test.como_usuario(:'admin_id');
+update public.usuarios set activo = false where rol_id in (select rp.rol_id from public.roles_permisos rp where rp.permiso_codigo = 'tramites.gestionar');
+update public.usuarios set activo = false where rol_id in (select rp.rol_id from public.roles_permisos rp where rp.permiso_codigo = 'tramites.aprobar_anulacion');
+select test.afirmar(pg_temp.revisar(pg_temp.dia('d5'), 'VENCIDO') = 0
+                    and (select count(*) from public.tramite_avisos where tramite_id = pg_temp.id('sin')) = 0,
+  'el día sin ninguna cuenta a quién avisar no anota el vencido: si lo anotara, no saldría nunca');
+update public.usuarios set activo = true where id in (pg_temp.id('tra'), pg_temp.id('ger'));
+select test.afirmar(pg_temp.revisar(pg_temp.laborable(pg_temp.dia('d5') + 1), 'VENCIDO') >= 1
+                    and pg_temp.avisos('tra', 'sin', 'Venció el trámite TR-') = 1 and pg_temp.avisos('ger', 'sin', 'Venció el trámite TR-') = 1,
+  'y sale en la primera revisión en que hay a quién');
+select test.afirmar(
+  (select count(*) from public.tramite_avisos where tramite_id = pg_temp.id('lote')) = 0
+  and (select count(*) from public.notificaciones where origen_tabla = 'tramites' and origen_id = pg_temp.id('lote') and titulo not like 'Trámite nuevo%') = 0,
+  'el trámite de un lote de prueba no avisa ni deja anotación que impida limpiar el lote');
 
 rollback;
