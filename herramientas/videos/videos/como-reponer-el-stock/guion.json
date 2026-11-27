@@ -1,0 +1,109 @@
+{
+  "id": "como-reponer-el-stock",
+  "tarea": "Cómo reponer el stock",
+  "puesto": "Almacén",
+  "voz": { "nombre": "es-PE-CamilaNeural", "velocidad": "-5%" },
+  "pronunciacion": {},
+  "pista_whisper": "Metal Work. Reposición de stock, Almacén, Logística, stock mínimo, compra por mayor, OC, discos, electrodos.",
+  "escenas": [
+    {
+      "tipo": "gancho",
+      "titular": "Que **no se acabe** lo que más usas",
+      "frases": ["Que no se te acabe lo que más usa el taller."]
+    },
+    { "tipo": "portada" },
+    {
+      "tipo": "antes-despues",
+      "antes": ["Te enterabas cuando ya no había", "A veces se compraba dos veces"],
+      "ahora": { "captura": "07-por-reponer", "resalte": ["insignia", "comprar"], "puntos": ["El sistema te avisa antes", "Dice cuánto comprar"] },
+      "frases": [
+        "Antes, te enterabas cuando ya no había, y a veces se compraba dos veces.",
+        "Ahora el sistema te avisa antes, y dice cuánto comprar."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Mira el aviso de stock bajo",
+      "tomas": [
+        { "captura": "01-aviso", "resalte": "aviso" }
+      ],
+      "frases": [
+        "Cuando un material baja de su mínimo, te avisa la campana: cuánto queda, el mínimo y cuánto se compra."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Toca el aviso y mira si ya viene",
+      "tomas": [
+        { "captura": "02-ya-viene", "resalte": ["hay", "minimo"] },
+        { "captura": "02-ya-viene", "resalte": ["enCamino", "insignia"], "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Toca el aviso y te lleva al material, con lo que hay y su mínimo.",
+        "Si ya viene en una orden de compra, lo dice aquí, y no se compra dos veces."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Revisa «Sin mínimo»",
+      "tomas": [
+        { "captura": "03-sin-minimo", "resalte": "pestana" },
+        { "captura": "03-sin-minimo", "resalte": ["material", "salio"], "desdeFrase": 1 }
+      ],
+      "frases": [
+        "En Reposición de stock, abre Sin mínimo.",
+        "Ahí está lo que salió en los últimos noventa días y nunca avisa si se acaba."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Toca «Fijar mínimo» y guarda",
+      "tomas": [
+        { "captura": "04-fijar", "resalte": "fijar" },
+        { "captura": "05-minimo", "resalte": "minimo", "desdeFrase": 1 },
+        { "captura": "05-minimo", "resalte": "porMayor", "desdeFrase": 2 },
+        { "captura": "06-guardar", "resalte": "guardar", "desdeFrase": 3 }
+      ],
+      "frases": [
+        "Toca Fijar mínimo.",
+        "Escribe el stock mínimo: por debajo de eso, el sistema avisa.",
+        "Y la compra por mayor: cuánto se pide de una vez, como la caja de discos.",
+        "Toca Guardar."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Mira cuánto comprar en «Por reponer»",
+      "tomas": [
+        { "captura": "07-por-reponer", "resalte": "insignia" },
+        { "captura": "07-por-reponer", "resalte": "comprar", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Si lo que hay ya está por debajo, el material pasa a Por reponer.",
+        "La columna Comprar dice cuánto pedir, y Logística compra mirando esta lista."
+      ]
+    },
+    {
+      "tipo": "porque",
+      "titulo": "Por qué importa",
+      "puntos": ["El taller no para por falta", "Nada se compra dos veces"],
+      "lema": "El sistema te guía. Tú decides.",
+      "frases": [
+        "¿Por qué importa? Porque el taller no se detiene por falta de material,",
+        "y nada se compra dos veces.",
+        "El sistema te guía; tú decides el mínimo de cada material."
+      ]
+    },
+    {
+      "tipo": "cierre",
+      "titulo": "En resumen",
+      "puntos": ["Atiende el aviso", "Fija el mínimo de lo que más sale", "Revisa «Por reponer»"],
+      "frases": [
+        "En resumen.",
+        "Uno: atiende el aviso de stock bajo.",
+        "Dos: fija el mínimo de lo que más sale.",
+        "Tres: revisa Por reponer."
+      ]
+    }
+  ]
+}

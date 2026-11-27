@@ -1,0 +1,109 @@
+{
+  "id": "como-validar-un-ingreso-y-contar-el-stock",
+  "tarea": "Cómo validar un ingreso y contar el stock",
+  "puesto": "Almacén",
+  "voz": { "nombre": "es-PE-CamilaNeural", "velocidad": "-5%" },
+  "pronunciacion": {},
+  "pista_whisper": "Metal Work. Kardex, Almacén, ingreso, OC, guía de remisión, conteo físico, discos, electrodos.",
+  "escenas": [
+    {
+      "tipo": "gancho",
+      "titular": "Tu kardex **cuadra con lo que hay** en el estante",
+      "frases": ["Haz que tu kardex cuadre con lo que de verdad hay en el estante."]
+    },
+    { "tipo": "portada" },
+    {
+      "tipo": "antes-despues",
+      "antes": ["Las compras se quedaban sin registrar", "El conteo se anotaba aparte"],
+      "ahora": { "captura": "07-conteos", "resalte": "conteo", "puntos": ["Cada compra espera tu visto", "Cada conteo deja su diferencia"] },
+      "frases": [
+        "Antes, una compra podía quedarse días sin registrar, y el conteo se anotaba aparte.",
+        "Ahora cada compra espera tu visto, y cada conteo deja su diferencia en el kardex."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Mira los ingresos por validar",
+      "tomas": [
+        { "captura": "01-por-validar", "resalte": "titulo" },
+        { "captura": "01-por-validar", "resalte": ["oc", "espera"], "desdeFrase": 1 }
+      ],
+      "frases": [
+        "En el Kardex, arriba, están las compras que el conductor dejó en almacén.",
+        "Cada una dice su OC y cuántos días lleva esperando; la más antigua va primero."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Cuenta lo que llegó y anota la guía",
+      "tomas": [
+        { "captura": "02-llego", "resalte": ["linea", "llego"] },
+        { "captura": "03-guia", "resalte": "guia", "desdeFrase": 1 },
+        { "captura": "03-guia", "resalte": "validar", "desdeFrase": 2 }
+      ],
+      "frases": [
+        "Cuenta lo que llegó y revisa la cantidad. Si falta algo, escribe qué faltó.",
+        "Anota la guía de remisión del proveedor.",
+        "Toca Validar ingreso."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "El ingreso entra al kardex",
+      "tomas": [
+        { "captura": "04-en-el-kardex", "resalte": "movimiento" }
+      ],
+      "frases": [
+        "El ingreso entra al kardex con su guía, y el saldo sube solo."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Toca «Conteo físico» y anota lo que contaste",
+      "tomas": [
+        { "captura": "05-conteo", "resalte": "contado" },
+        { "captura": "05-conteo", "resalte": "ajuste", "desdeFrase": 1 },
+        { "captura": "06-guardar", "resalte": ["motivo", "guardar"], "desdeFrase": 2 }
+      ],
+      "frases": [
+        "Cuando cuentes el estante, toca Conteo físico, elige el material y anota lo que contaste.",
+        "El sistema te dice la diferencia antes de guardar.",
+        "Escribe el motivo y toca Guardar conteo."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Mira la diferencia de cada conteo",
+      "tomas": [
+        { "captura": "07-conteos", "resalte": "conteo" },
+        { "captura": "07-conteos", "resalte": "diferencia", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "En Conteos físicos queda lo que contaste, lo que decía el sistema y quién contó.",
+        "La diferencia queda como ajuste en el kardex, con su motivo."
+      ]
+    },
+    {
+      "tipo": "porque",
+      "titulo": "Por qué importa",
+      "puntos": ["El stock del sistema es el real", "Nadie pide lo que ya hay"],
+      "lema": "El sistema te guía. Tú decides.",
+      "frases": [
+        "¿Por qué importa? Porque el stock del sistema es el que de verdad hay,",
+        "y así nadie compra lo que ya está en el estante.",
+        "El sistema te guía; tú decides qué validar."
+      ]
+    },
+    {
+      "tipo": "cierre",
+      "titulo": "En resumen",
+      "puntos": ["Valida cada compra con su guía", "Cuenta el estante", "Revisa la diferencia"],
+      "frases": [
+        "En resumen.",
+        "Uno: valida cada compra con su guía.",
+        "Dos: cuenta el estante.",
+        "Tres: revisa la diferencia."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,105 @@
+{
+  "id": "como-responder-una-nota-de-entrega",
+  "tarea": "Cómo responder una nota de entrega",
+  "puesto": "Almacén",
+  "voz": { "nombre": "es-PE-CamilaNeural", "velocidad": "-5%" },
+  "pronunciacion": {},
+  "pista_whisper": "Metal Work. RQ, requerimiento, Almacén, nota de entrega, llegó incompleto, discos.",
+  "escenas": [
+    {
+      "tipo": "gancho",
+      "titular": "Si algo no llegó, **te enteras y lo resuelves** en un solo lugar",
+      "frases": ["Si algo no llegó completo, te enteras al momento y lo resuelves aquí."]
+    },
+    { "tipo": "portada" },
+    {
+      "tipo": "antes-despues",
+      "antes": ["El reclamo llegaba por teléfono", "Nadie sabía si se resolvió"],
+      "ahora": { "captura": "02-nota", "resalte": "nota", "puntos": ["La nota llega a Almacén", "Tu respuesta queda escrita"] },
+      "frases": [
+        "Antes, el reclamo llegaba por teléfono, y nadie sabía si se había resuelto.",
+        "Ahora quien pidió deja una nota en el sistema, y tu respuesta queda escrita."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Mira el aviso en la campana",
+      "tomas": [
+        { "captura": "01-campana", "resalte": "aviso" }
+      ],
+      "frases": [
+        "Cuando alguien anota que no le llegó o que le llegó incompleto, te avisa la campana."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Lee la nota arriba de «Atención»",
+      "tomas": [
+        { "captura": "02-nota", "resalte": "cuantas" },
+        { "captura": "03-que-dice", "resalte": ["insignia", "dice"], "desdeFrase": 1 }
+      ],
+      "frases": [
+        "En Atención de requerimiento, la nota sale arriba, antes que todo.",
+        "Dice cuánto llegó y qué pasó, con las palabras de quien pidió."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Revisa la salida y su foto",
+      "tomas": [
+        { "captura": "04-foto", "resalte": ["salio", "foto"] }
+      ],
+      "frases": [
+        "Revisa cuánto salió, quién lo recibió y la foto de la salida.",
+        "Así sabes qué pasó antes de responder."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Toca «Responder» y escribe qué hiciste",
+      "tomas": [
+        { "captura": "05-responder", "resalte": "responder" },
+        { "captura": "06-que-hiciste", "resalte": "texto", "desdeFrase": 1 },
+        { "captura": "06-que-hiciste", "resalte": "cerrarNota", "desdeFrase": 2 }
+      ],
+      "frases": [
+        "Toca Responder.",
+        "Escribe qué hiciste; por ejemplo, que repusiste lo que faltaba.",
+        "Toca Cerrar la nota."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "La nota se cierra y le avisa a quien la anotó",
+      "tomas": [
+        { "captura": "07-cerrada", "resalte": "cerrada" }
+      ],
+      "frases": [
+        "La nota se cierra, y a quien la anotó le llega tu respuesta.",
+        "La salida del kardex no cambia: la nota queda aparte, como evidencia."
+      ]
+    },
+    {
+      "tipo": "porque",
+      "titulo": "Por qué importa",
+      "puntos": ["Ningún reclamo se pierde", "Queda quién respondió y cuándo"],
+      "lema": "El sistema te guía. Tú decides.",
+      "frases": [
+        "¿Por qué importa? Porque ningún reclamo se pierde,",
+        "y queda escrito quién respondió y cuándo.",
+        "El sistema te guía; tú decides cómo resolverlo."
+      ]
+    },
+    {
+      "tipo": "cierre",
+      "titulo": "En resumen",
+      "puntos": ["Mira el aviso", "Revisa la salida y su foto", "Responde y cierra la nota"],
+      "frases": [
+        "En resumen.",
+        "Uno: mira el aviso.",
+        "Dos: revisa la salida y su foto.",
+        "Tres: responde y cierra la nota."
+      ]
+    }
+  ]
+}
