@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
-import { AMBITOS_TRAMITE, diasDeAvisoDesdeTexto, ESTADOS_QUE_SE_LLEVAN } from '@/lib/dominio/tramites'
+import { AMBITOS_TRAMITE, CLASES_QUE_SE_SUBEN, diasDeAvisoDesdeTexto, ESTADOS_QUE_SE_LLEVAN } from '@/lib/dominio/tramites'
 import { exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
@@ -259,4 +259,163 @@ export async function guardarTipo(_previo: unknown, formulario: FormData): Promi
 
   revalidatePath('/tramites', 'layout')
   return { ok: true, mensaje: data.creado ? `Tipo «${d.nombre}» agregado.` : `Tipo «${d.nombre}» guardado.` }
+}
+
+/*
+ * El expediente (entrega 2, migración 20261127002000). El archivo ya subió a
+ * Storage desde el navegador (`subirArchivoTramite`): aquí llega solo su ruta.
+ */
+
+/** La ruta de un archivo del expediente: `{trámite}/{archivo}.{extensión}`, como la exige `tramite_archivo_subido`. */
+const RUTA_DEL_ARCHIVO = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\.(pdf|jpg|png|webp)$/
+
+/**
+ * El Tramitador suma un archivo al expediente: el cargo, un recibo u otro
+ * documento. Mismo permiso que `tramites_adjuntar_archivo`.
+ */
+export async function adjuntarArchivo(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'tramites.gestionar')) return { ok: false, error: 'No tienes permiso para llevar los trámites.' }
+
+  const analisis = z
+    .object({
+      id: z.guid(),
+      tramite_id: z.guid(),
+      clase: z.enum(CLASES_QUE_SE_SUBEN, { message: 'Elige qué es el archivo: el cargo, un recibo u otro documento.' }),
+      descripcion: z.string().max(200, 'La descripción pasa de 200 caracteres.'),
+      ruta: z.string().regex(RUTA_DEL_ARCHIVO, 'Vuelve a adjuntar el archivo.'),
+      nombre: z.string().max(300, 'El nombre del archivo es demasiado largo: acórtalo y vuelve a subirlo.'),
+    })
+    .safeParse({
+      id: dato(formulario, 'id'),
+      tramite_id: dato(formulario, 'tramite_id'),
+      clase: dato(formulario, 'clase'),
+      descripcion: dato(formulario, 'descripcion'),
+      ruta: dato(formulario, 'ruta'),
+      nombre: dato(formulario, 'nombre'),
+    })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el archivo.' }
+  const d = analisis.data
+  if (d.clase === 'OTRO' && d.descripcion.length < 3) return { ok: false, error: 'Cuenta qué documento es, en al menos 3 caracteres.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('tramites_adjuntar_archivo', {
+    p_id: d.id,
+    p_tramite: d.tramite_id,
+    p_clase: d.clase,
+    p_descripcion: d.descripcion || null,
+    p_ruta: d.ruta,
+    p_nombre: d.nombre || null,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== d.id) return { ok: false, error: 'El archivo no quedó en el expediente. Recarga la pantalla.' }
+
+  revalidatePath('/tramites', 'layout')
+  return { ok: true, mensaje: 'Archivo guardado en el expediente.' }
+}
+
+/**
+ * El Tramitador cierra el trámite al subir su documento final, con la fecha del
+ * documento y, si se renueva, hasta cuándo vale. Mismo permiso que
+ * `tramites_concluir`. No pasa por Gerencia: el documento es la prueba.
+ */
+export async function concluirTramite(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'tramites.gestionar')) return { ok: false, error: 'No tienes permiso para llevar los trámites.' }
+
+  const analisis = z
+    .object({
+      id: z.guid(),
+      tramite_id: z.guid(),
+      ruta: z.string().regex(RUTA_DEL_ARCHIVO, 'Vuelve a adjuntar el documento final.'),
+      nombre: z.string().max(300, 'El nombre del archivo es demasiado largo: acórtalo y vuelve a subirlo.'),
+      fecha: z.string().regex(FECHA, 'Pon la fecha del documento final.'),
+      vigente_hasta: fechaOpcional('hasta cuándo vale el documento'),
+    })
+    .safeParse({
+      id: dato(formulario, 'id'),
+      tramite_id: dato(formulario, 'tramite_id'),
+      ruta: dato(formulario, 'ruta'),
+      nombre: dato(formulario, 'nombre'),
+      fecha: dato(formulario, 'fecha'),
+      vigente_hasta: dato(formulario, 'vigente_hasta'),
+    })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa el cierre.' }
+  const d = analisis.data
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('tramites_concluir', {
+    p_id: d.id,
+    p_tramite: d.tramite_id,
+    p_ruta: d.ruta,
+    p_nombre: d.nombre || null,
+    p_fecha: d.fecha,
+    p_vigente_hasta: d.vigente_hasta || null,
+  })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== d.id) return { ok: false, error: 'El trámite no quedó concluido. Recarga la pantalla.' }
+
+  revalidatePath('/tramites', 'layout')
+  return { ok: true, mensaje: 'Trámite concluido: su documento final quedó en el expediente.' }
+}
+
+/**
+ * El Tramitador retira del expediente un archivo subido por error, con su
+ * motivo: no se borra. Si es el documento final, el trámite se reabre. Mismo
+ * permiso que `tramites_retirar_archivo`.
+ */
+export async function retirarArchivo(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'tramites.gestionar')) return { ok: false, error: 'No tienes permiso para llevar los trámites.' }
+
+  const analisis = z
+    .object({ id: z.guid(), motivo: motivo('por qué se retira') })
+    .safeParse({ id: dato(formulario, 'id'), motivo: dato(formulario, 'motivo') })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Vuelve a cargar la pantalla.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('tramites_retirar_archivo', { p_archivo: analisis.data.id, p_motivo: analisis.data.motivo })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (typeof data !== 'boolean') return { ok: false, error: 'El archivo no quedó retirado. Recarga la pantalla.' }
+
+  revalidatePath('/tramites', 'layout')
+  return {
+    ok: true,
+    mensaje: data
+      ? 'Documento final retirado: el trámite volvió a «En trámite». Queda en el expediente, con su motivo.'
+      : 'Archivo retirado. Queda en el expediente, con su motivo.',
+  }
+}
+
+/**
+ * El Tramitador anota una gestión del trámite, con su fecha. Mismo permiso que
+ * `tramites_anotar_gestion`. Lo anotado no se corrige.
+ */
+export async function anotarGestion(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+  const perfil = await exigirSesion()
+  if (!puede(perfil, 'tramites.gestionar')) return { ok: false, error: 'No tienes permiso para llevar los trámites.' }
+
+  const analisis = z
+    .object({
+      id: z.guid(),
+      tramite_id: z.guid(),
+      fecha: z.string().regex(FECHA, 'Pon la fecha de la gestión.'),
+      detalle: z.string().min(5, 'Cuenta qué se hizo, en al menos 5 caracteres.').max(500, 'La gestión pasa de 500 caracteres.'),
+    })
+    .safeParse({
+      id: dato(formulario, 'id'),
+      tramite_id: dato(formulario, 'tramite_id'),
+      fecha: dato(formulario, 'fecha'),
+      detalle: dato(formulario, 'detalle'),
+    })
+  if (!analisis.success) return { ok: false, error: analisis.error.issues[0]?.message ?? 'Revisa la gestión.' }
+  const d = analisis.data
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('tramites_anotar_gestion', { p_id: d.id, p_tramite: d.tramite_id, p_fecha: d.fecha, p_detalle: d.detalle })
+  if (error) return { ok: false, error: mensajeDeError(error) }
+  if (data !== d.id) return { ok: false, error: 'La gestión no quedó anotada. Recarga la pantalla.' }
+
+  revalidatePath('/tramites', 'layout')
+  return { ok: true, mensaje: 'Gestión anotada.' }
 }

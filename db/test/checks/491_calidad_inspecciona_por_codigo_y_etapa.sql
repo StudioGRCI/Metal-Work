@@ -31,12 +31,12 @@ begin
   perform test.afirmar((select count(*) = 7 from public.usuarios where apellidos = 'Check 491'),
     'los siete puestos de la prueba existen');
   -- Producción y Maestranza parten sin cuenta responsable, traiga lo que traiga la base.
-  update public.areas set jefe_id = null where codigo in ('PRD', 'MTZ', 'MKT');
-  -- Marketing sin cuentas activas, para probar que el aviso no se pierde.
+  update public.areas set jefe_id = null where codigo in ('PRD', 'MTZ', 'TIC');
+  -- TI / Soporte, área de oficina sin cuentas activas, para probar que el aviso no se pierde.
   perform test.afirmar(not exists (select 1 from public.usuarios u join public.areas a on a.id = u.area_id
-                                    where a.codigo = 'MKT' and u.activo),
-    'Marketing no tiene cuentas activas en la base de prueba');
-  foreach v in array array['PRD', 'MTZ', 'MKT', 'CAL', 'ACB'] loop
+                                    where a.codigo = 'TIC' and u.activo),
+    'TI / Soporte no tiene cuentas activas en la base de prueba');
+  foreach v in array array['PRD', 'MTZ', 'TIC', 'CAL', 'ACB'] loop
     perform set_config('prueba.area_' || lower(v), (select id::text from public.areas where codigo = v), true);
   end loop;
 
@@ -44,7 +44,7 @@ begin
   insert into public.codigo_etapas (codigo_interno, orden, nombre, area_id, inicio_real, creado_por)
   values ('CHK491_A', 1, 'Ensamblado', current_setting('prueba.area_prd')::uuid, current_date - 5, current_setting('prueba.diseno')::uuid),
          ('CHK491_A', 2, 'Habilitado', current_setting('prueba.area_mtz')::uuid, null, current_setting('prueba.diseno')::uuid),
-         ('CHK491_A', 3, 'Rotulado', current_setting('prueba.area_mkt')::uuid, null, current_setting('prueba.diseno')::uuid),
+         ('CHK491_A', 3, 'Rotulado', current_setting('prueba.area_tic')::uuid, null, current_setting('prueba.diseno')::uuid),
          -- Como «Trámites» y «Entrega» de las etapas de siempre: sin área a cargo.
          ('CHK491_A', 4, 'Entrega', null, null, current_setting('prueba.diseno')::uuid),
          -- Y una a cargo de Calidad: Calidad no se observa a sí misma, elige el área.
@@ -53,7 +53,7 @@ begin
   perform set_config('prueba.etapa_sin_area', (select id::text from public.codigo_etapas where codigo_interno = 'CHK491_A' and orden = 4), true);
   perform set_config('prueba.etapa_prd', (select id::text from public.codigo_etapas where codigo_interno = 'CHK491_A' and orden = 1), true);
   perform set_config('prueba.etapa_mtz', (select id::text from public.codigo_etapas where codigo_interno = 'CHK491_A' and orden = 2), true);
-  perform set_config('prueba.etapa_mkt', (select id::text from public.codigo_etapas where codigo_interno = 'CHK491_A' and orden = 3), true);
+  perform set_config('prueba.etapa_tic', (select id::text from public.codigo_etapas where codigo_interno = 'CHK491_A' and orden = 3), true);
   -- Una etapa de otro código, para probar que no se cuela.
   insert into public.codigo_etapas (codigo_interno, orden, nombre, area_id, creado_por)
   values ('CHK491_Z', 1, 'De otro código', current_setting('prueba.area_prd')::uuid, current_setting('prueba.diseno')::uuid);
@@ -199,13 +199,13 @@ select test.debe_fallar(pg_temp.inspeccionar('i1', 'CHK491_C', null, 'area_prd',
   'un código ya entregado no se inspecciona', 'Elige un código');
 select test.debe_fallar(pg_temp.inspeccionar('i1', 'CHK491_B', null, null, 'CONFORME', null, null),
   'un código sin etapas pide el área', 'Elige el área');
-select test.debe_fallar(pg_temp.inspeccionar('i1', 'CHK491_B', null, 'area_mkt', 'NO_CONFORME', 'Soldadura con poros en el larguero', null),
+select test.debe_fallar(pg_temp.inspeccionar('i1', 'CHK491_B', null, 'area_tic', 'NO_CONFORME', 'Soldadura con poros en el larguero', null),
   'elegida a mano, un área de oficina no entra (el aviso iría a quien no hizo el trabajo)', 'Elige el área de la planta');
 select test.debe_fallar(pg_temp.inspeccionar('i1', 'CHK491_B', null, 'area_cal', 'NO_CONFORME', 'Soldadura con poros en el larguero', null),
   'elegida a mano, Calidad no se observa a sí misma', 'Elige el área de la planta');
 select test.debe_fallar(pg_temp.inspeccionar('i5', 'CHK491_A', 'etapa_sin_area', null, 'CONFORME', null, null),
   'una etapa sin área a cargo pide el área', 'Elige el área que hizo');
-select test.debe_fallar(pg_temp.inspeccionar('i5', 'CHK491_A', 'etapa_sin_area', 'area_mkt', 'CONFORME', null, null),
+select test.debe_fallar(pg_temp.inspeccionar('i5', 'CHK491_A', 'etapa_sin_area', 'area_tic', 'CONFORME', null, null),
   'en la etapa sin área, la elegida también es de la planta', 'Elige el área de la planta');
 select test.debe_fallar(pg_temp.inspeccionar('i5', 'CHK491_A', 'etapa_cal', null, 'NO_CONFORME', 'Falla la prueba de frenos', null),
   'la etapa a cargo de Calidad pide el área que hizo el trabajo (Calidad no se observa a sí misma)', 'Elige el área que hizo');
@@ -373,13 +373,13 @@ select test.afirmar((select avisado from public.calidad_inspeccionar(current_set
   'con cuenta responsable, el aviso va a ella');
 -- Un área sin nadie: el aviso le llega a Gerencia.
 select test.afirmar((select avisado from public.calidad_inspeccionar(current_setting('prueba.i4')::uuid, 'CHK491_A',
-  current_setting('prueba.etapa_mkt')::uuid, null, 'NO_CONFORME', 'El rotulado no sigue el diseño', '[]')) = 'GERENCIA',
+  current_setting('prueba.etapa_tic')::uuid, null, 'NO_CONFORME', 'El rotulado no sigue el diseño', '[]')) = 'GERENCIA',
   'si el área no tiene cuenta activa, el aviso le llega a Gerencia');
 -- El mismo envío otra vez (se perdió la respuesta) dice a quién llegó de verdad.
 select test.afirmar((select avisado from public.calidad_inspeccionar(current_setting('prueba.i3')::uuid, 'CHK491_A',
   current_setting('prueba.etapa_prd')::uuid, null, 'NO_CONFORME', 'Falta el refuerzo del travesaño', '[]')) = 'RESPONSABLE'
   and (select avisado from public.calidad_inspeccionar(current_setting('prueba.i4')::uuid, 'CHK491_A',
-  current_setting('prueba.etapa_mkt')::uuid, null, 'NO_CONFORME', 'El rotulado no sigue el diseño', '[]')) = 'GERENCIA',
+  current_setting('prueba.etapa_tic')::uuid, null, 'NO_CONFORME', 'El rotulado no sigue el diseño', '[]')) = 'GERENCIA',
   'el reenvío idéntico repite a quién llegó (responsable o Gerencia), sin otro aviso');
 reset role;
 select test.afirmar(pg_temp.avisos('sup_prd', 'i3') = 1 and pg_temp.avisos('operario_prd', 'i3') = 0,

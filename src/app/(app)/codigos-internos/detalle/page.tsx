@@ -20,6 +20,7 @@ import {
   aporteDeLosPlanos,
   avanceDelCodigo,
   comprasDelCodigo,
+  cambioDeServiciosDelCodigo,
   costeoDelCodigo,
   documentosDelCodigo,
   recorridoDelCodigo,
@@ -356,7 +357,7 @@ function ComoVa({
               : costo.pen === 0
                 ? 'Todavía nada costeado'
                 : [
-                    c.usd_al_cambio > 0 ? `En soles, con ${moneda(c.usd_al_cambio, 'USD')} pasados al cambio de Contabilidad` : 'Todo en soles',
+                    c.usd_al_cambio > 0 ? `Con ${moneda(c.usd_al_cambio, 'USD')} pasados a soles` : 'Todo en soles',
                     // Lo gastado contra lo que se podía gastar, en sus dos unidades.
                     verPrecio && presupuesto !== null && c.venta?.consumido_pct !== null && c.venta?.consumido_pct !== undefined
                       ? `${porcentaje(c.venta.consumido_pct)} del presupuesto de ${moneda(presupuesto)}: ${c.venta.semaforo === 'EXCEDIDO' ? 'se pasó en' : 'quedan'} ${moneda(Math.abs(presupuesto - costo.pen))}`
@@ -1129,14 +1130,35 @@ async function VistaAvance({ codigo, perfil, avance }: { codigo: string; perfil:
 }
 
 async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilSesion }) {
-  const [lineas, compras] = await Promise.all([costeoDelCodigo(codigo), comprasDelCodigo(codigo)])
+  const [lineas, compras, cambios] = await Promise.all([costeoDelCodigo(codigo), comprasDelCodigo(codigo), cambioDeServiciosDelCodigo(codigo)])
   const manoObra = lineas.filter((l) => l.fuente === 'MANO_OBRA' || l.fuente === 'MANO_OBRA_SIN_COSTO' || l.fuente === 'RECARGO_EXTRAS')
   const materiales = lineas.filter((l) => l.fuente === 'MATERIALES' || l.fuente === 'MATERIALES_SIN_PRECIO' || l.fuente === 'MERMA')
-  const servicios = lineas.filter((l) => l.fuente === 'SERVICIOS' || l.fuente === 'SERVICIOS_POR_APROBAR')
+  // Lo que la base dice de cada OS en dólares: cuánto pesa en soles, con qué cambio y cuándo se emitió.
+  // La fecha de la línea de una OS en dólares es el día de su cambio (el de su factura), no el día
+  // en que se emitió: ese lo dice la base aparte, y por él se ordenan, como las que están en soles.
+  const cambioDe = (l: (typeof lineas)[number]) => (l.referencia_id ? cambios.get(l.referencia_id) : undefined)
+  const emitidaEl = (l: (typeof lineas)[number]) => cambioDe(l)?.emitida_el ?? l.fecha
+  const servicios = lineas
+    .filter((l) => l.fuente === 'SERVICIOS' || l.fuente === 'SERVICIOS_POR_APROBAR')
+    .sort((a, b) => emitidaEl(b).localeCompare(emitidaEl(a)))
   const aprobados = servicios.filter((l) => l.fuente === 'SERVICIOS')
   const recibos = lineas.filter((l) => l.fuente === 'SUBCONTRATOS' || l.fuente === 'SUBCONTRATOS_POR_PAGAR')
   const gastos = lineas.filter((l) => l.fuente === 'GASTOS_DEL_MES' || l.fuente === 'GASTOS_OT' || l.fuente === 'CAJA')
   const suma = (ls: typeof lineas, m: 'PEN' | 'USD') => ls.reduce((n, l) => n + (l.moneda === m ? (l.monto ?? 0) : 0), 0)
+  // Lo que los servicios aprobados pesan en el costo: los soles de cada OS (la que está en dólares,
+  // con el monto en soles que guarda) y, aparte, los dólares de las que todavía no lo tienen. Null
+  // sin dólares, o si de alguna en dólares no se leyó su cambio: no se da una suma a medias.
+  // Repite la regla de `soles_de_la_linea_del_costeo` (migración 20261126998800): suma la aprobada
+  // por su `monto_pen` y deja fuera la que no lo tiene. Si la base cambia qué OS cuenta, esto también;
+  // lo vigila probar-costeo-de-la-os.mjs, que compara este renglón con el costo de la base.
+  const enDolares = aprobados.filter((l) => l.moneda === 'USD')
+  const enElCosto =
+    enDolares.length === 0 || enDolares.some((l) => !cambioDe(l))
+      ? null
+      : {
+          soles: Math.round((suma(aprobados, 'PEN') + enDolares.reduce((n, l) => n + (cambioDe(l)?.monto_pen ?? 0), 0)) * 100) / 100,
+          sinCambio: Math.round(enDolares.reduce((n, l) => n + (cambioDe(l)?.monto_pen === null ? (l.monto ?? 0) : 0), 0) * 100) / 100,
+        }
   // Las horas del recargo ya están en las del reporte: el recargo solo suma soles.
   const horasMo = manoObra.reduce((n, l) => n + (l.fuente === 'RECARGO_EXTRAS' ? 0 : (l.horas ?? 0)), 0)
   const abrePdf = puede(perfil, ['compras.ver', 'almacen.recibir'])
@@ -1262,7 +1284,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
       <Tarjeta className="overflow-hidden" data-servicios>
         <TarjetaCabecera
           titulo="Órdenes de servicio"
-          ayuda="Los trabajos de terceros para este código —torno, pintura, flete—, sin IGV. La aprobada por Gerencia suma al costo, porque no pasa por el almacén; la que espera su aprobación se muestra y no se suma todavía. Las rechazadas y las anuladas no aparecen."
+          ayuda="Los trabajos de terceros para este código —torno, pintura, flete—, sin IGV. La aprobada por Gerencia suma al costo, porque no pasa por el almacén; la que espera su aprobación se muestra y no se suma todavía. Las rechazadas y las anuladas no aparecen. La que está en dólares pesa en el costo el monto en soles que guarda la orden, el mismo de Compras y de Tesorería: sale del tipo de cambio de la fecha de su factura o, mientras no la tiene, del que había al emitirla, y queda fijo cuando su detracción está depositada o la orden pagada. Si todavía no tiene monto en soles porque falta registrar el cambio de ese día, no suma hasta que Contabilidad lo registre."
         />
         <Tabla>
           <TablaCabecera>
@@ -1280,17 +1302,41 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
               <>
                 {servicios.map((l) => {
                   const aprobada = l.fuente === 'SERVICIOS'
+                  const cambio = cambioDe(l)
                   return (
                     <TR key={l.referencia_id ?? l.documento} data-servicio={l.documento}>
                       <TD className="align-top">
                         {abreServicios ? (
-                          <Link href={`/compras/servicios?codigo=${encodeURIComponent(codigo)}`} className="font-medium text-acento hover:underline">
+                          <Link href={`/compras/servicios?codigo=${encodeURIComponent(codigo)}`} className="font-medium whitespace-nowrap text-acento hover:underline">
                             {l.documento}
                           </Link>
                         ) : (
-                          <p className="font-medium text-texto">{l.documento}</p>
+                          <p className="font-medium whitespace-nowrap text-texto">{l.documento}</p>
                         )}
-                        <p className="tabular text-xs text-texto-suave">{fecha(l.fecha)}</p>
+                        {/* Con el renglón del cambio debajo hay dos fechas: esta dice cuál es. */}
+                        <p className="tabular text-xs text-texto-suave" data-emitida-el={emitidaEl(l)}>
+                          {cambio ? `Emitida el ${fecha(emitidaEl(l))}` : fecha(emitidaEl(l))}
+                        </p>
+                        {/* En dólares, con qué cambio se hizo el monto en soles que guarda la OS, que es lo
+                            que suma el costo: el día del cambio registrado del que sale; que ya no se mueve, y por
+                            qué (con las palabras de la ayuda); o que todavía no tiene monto en soles, y de qué
+                            día falta. */}
+                        {cambio &&
+                          (cambio.monto_pen === null ? (
+                            // La insignia no parte en dos renglones: lleva solo «Sin cambio» y el día va
+                            // al lado, o debajo en el teléfono, para que la columna no empuje el importe.
+                            <p className="tabular mt-1 flex flex-wrap items-center gap-x-1 text-xs text-texto-suave" data-dia-de-la-linea={l.fecha} data-cambio-registrado-el="">
+                              <Insignia tono="aviso">Sin cambio</Insignia> <span className="whitespace-nowrap">del {fecha(cambio.dia)}</span>
+                            </p>
+                          ) : cambio.registrado_el ? (
+                            <p className="tabular text-xs text-texto-suave" data-dia-de-la-linea={l.fecha} data-cambio-registrado-el={cambio.registrado_el}>
+                              Al cambio del {fecha(cambio.registrado_el)}
+                            </p>
+                          ) : cambio.origen ? (
+                            <p className="text-xs text-texto-suave" data-dia-de-la-linea={l.fecha} data-cambio-registrado-el="" data-origen-del-cambio={cambio.origen}>
+                              {cambio.origen.startsWith('DEPOSITADA') || cambio.origen === 'FIJA_SIN_FACTURA' ? 'Cambio fijo' : 'Al cambio que guarda la orden'}
+                            </p>
+                          ) : null)}
                       </TD>
                       <TD className="align-top">
                         <p className="text-texto">{l.concepto}</p>
@@ -1304,17 +1350,40 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
                       </TD>
                       <TD className={`tabular text-right align-top whitespace-nowrap ${aprobada ? '' : 'text-texto-suave'}`}>
                         {moneda(l.monto, l.moneda ?? 'PEN')}
-                        {!aprobada && <p className="text-xs">no suma</p>}
+                        {/* Lo que pesa en el costo: el monto en soles de la OS, el de Compras y Tesorería. */}
+                        {cambio && cambio.monto_pen !== null && (
+                          <p className="text-xs text-texto-suave" data-soles-de-la-os={cambio.monto_pen}>
+                            <span className="sr-only">{aprobada ? 'En el costo: ' : 'En soles: '}</span>
+                            {moneda(cambio.monto_pen)}
+                          </p>
+                        )}
+                        {/* La aprobada sin monto en soles tampoco suma: sin esto, entre filas que
+                            llevan sus soles debajo, el hueco se leía como que sí. */}
+                        {(!aprobada || (cambio && cambio.monto_pen === null)) && <p className="text-xs text-texto-suave">no suma</p>}
                       </TD>
                     </TR>
                   )
                 })}
                 <TR className="font-semibold">
-                  <TD colSpan={2}>Total aprobado</TD>
+                  <TD colSpan={2}>
+                    Total aprobado
+                    {enElCosto && enElCosto.sinCambio > 0 && (
+                      <p className="text-xs font-normal text-texto-suave">
+                        <span className="tabular whitespace-nowrap">{moneda(enElCosto.sinCambio, 'USD')}</span> sin cambio, no suman
+                      </p>
+                    )}
+                  </TD>
                   <TD className="hidden sm:table-cell" />
                   <TD className="tabular text-right whitespace-nowrap">
                     {moneda(suma(aprobados, 'PEN'))}
                     {suma(aprobados, 'USD') > 0 && <p>+ {moneda(suma(aprobados, 'USD'), 'USD')}</p>}
+                    {/* Con dólares, el total va en dos monedas y cada fila dice sus soles debajo: aquí,
+                        igual, la suma de lo que pesan, que es la parte de los servicios en el costo. */}
+                    {enElCosto && (
+                      <p className="text-xs font-normal text-texto-suave" data-servicios-en-el-costo={enElCosto.soles} data-servicios-sin-cambio={enElCosto.sinCambio}>
+                        En el costo: {moneda(enElCosto.soles)}
+                      </p>
+                    )}
                   </TD>
                 </TR>
               </>
@@ -1644,25 +1713,41 @@ async function VistaFacturacion({ codigo, perfil }: { codigo: string; perfil: Pe
             <ul className="divide-y divide-borde">
               {cotizaciones.map((c) => {
                 const m = deMoneda(c.moneda)
-                const total = totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
+                // De la cotización de varias unidades, este código es una: lo que le toca del total y lo
+                // facturado y cobrado de esa unidad (migración 20261126998000). Con una sola, lo de la cotización.
+                const unidad = c.unidades.length > 1 ? (c.unidades.find((u) => u.codigo === codigo) ?? null) : null
+                const total = unidad ? unidad.parte : totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
+                const facturas = unidad ? unidad.facturas : Number(c.facturas)
+                const facturado = unidad ? unidad.facturado : Number(c.facturado)
+                const cobrado = unidad ? unidad.cobrado : Number(c.cobrado)
+                const facturadoOtra = unidad ? unidad.facturadoOtraMoneda : Number(c.facturado_otra_moneda)
+                const cobradoOtra = unidad ? unidad.cobradoOtraMoneda : Number(c.cobrado_otra_moneda)
                 const pdf = c.archivo_mime === 'application/pdf'
                 return (
                   <li key={c.cotizacion_id} className="flex flex-wrap items-start justify-between gap-2 py-2 text-sm first:pt-0 last:pb-0" data-cotizacion={c.numero ?? undefined}>
                     <div className="min-w-0">
-                      <p className="font-medium text-texto">Cotización {c.numero}</p>
+                      <p className="font-medium text-texto">
+                        Cotización {c.numero}
+                        {unidad && (
+                          <span className="font-normal text-texto-suave" data-unidad={unidad.numero}>
+                            {' '}
+                            · unidad {unidad.numero} de {c.unidades.length}
+                          </span>
+                        )}
+                      </p>
                       <p className="text-xs text-texto-suave">{c.cliente ?? 'Cliente sin registrar'}</p>
                       {/* Lo facturado en la otra moneda va aparte: sumarlo mezclaba soles con dólares (20261126960000).
                           Facturada solo en la otra moneda, no se pinta «Facturado US$ 0.00»: diría que no se facturó nada. */}
-                      {(Number(c.facturas) === 0 || Number(c.facturado) > 0 || Number(c.facturado_otra_moneda) === 0) && (
+                      {(facturas === 0 || facturado > 0 || facturadoOtra === 0) && (
                         <p className="tabular text-xs text-texto-suave">
-                          {Number(c.facturas) === 0 ? 'Contabilidad aún no la factura' : `Facturado ${moneda(c.facturado, m)} · cobrado ${moneda(c.cobrado, m)}`}
+                          {facturas === 0 ? 'Contabilidad aún no la factura' : `Facturado ${moneda(facturado, m)} · cobrado ${moneda(cobrado, m)}`}
                         </p>
                       )}
-                      {Number(c.facturado_otra_moneda) > 0 && (
+                      {facturadoOtra > 0 && (
                         <p className="tabular text-xs text-texto-suave" data-otra-moneda>
-                          {Number(c.facturado) > 0 ? 'Y en ' : 'Facturada en '}
-                          {nombreMoneda(otraMoneda(m))}: {Number(c.facturado) > 0 && 'facturado '}{moneda(c.facturado_otra_moneda, otraMoneda(m))} · cobrado{' '}
-                          {moneda(c.cobrado_otra_moneda, otraMoneda(m))}
+                          {facturado > 0 ? 'Y en ' : 'Facturada en '}
+                          {nombreMoneda(otraMoneda(m))}: {facturado > 0 && 'facturado '}{moneda(facturadoOtra, otraMoneda(m))} · cobrado{' '}
+                          {moneda(cobradoOtra, otraMoneda(m))}
                         </p>
                       )}
                       {c.url && (
@@ -1688,7 +1773,10 @@ async function VistaFacturacion({ codigo, perfil }: { codigo: string; perfil: Pe
                         </a>
                       )}
                     </div>
-                    <strong className="tabular">{total === null ? <span className="font-normal text-texto-suave">Sin total</span> : moneda(total, m)}</strong>
+                    <strong className={unidad ? 'tabular text-left sm:text-right' : 'tabular text-right'}>
+                      {total === null ? <span className="font-normal text-texto-suave">Sin total</span> : moneda(total, m)}
+                      {unidad && total !== null && <span className="block text-xs font-normal text-texto-suave">lo que le toca a esta unidad</span>}
+                    </strong>
                   </li>
                 )
               })}
@@ -1700,13 +1788,13 @@ async function VistaFacturacion({ codigo, perfil }: { codigo: string; perfil: Pe
       <Tarjeta>
         <TarjetaCabecera
           titulo={`Facturas de venta${facturas.length > 0 ? ` (${facturas.length})` : ''}`}
-          ayuda="Cada factura que registró Contabilidad, con los cobros que registró Tesorería y su voucher. Las anuladas salen tachadas."
+          ayuda={`Cada factura que registró Contabilidad, con los cobros que registró Tesorería y su voucher. Las anuladas salen tachadas.${facturas.some((f) => (f.unidades_de_la_cotizacion ?? 1) > 1) ? ' La factura por toda una cotización de varias unidades sale en el código de cada una, con lo que le toca.' : ''}`}
         />
         <TarjetaCuerpo className="space-y-3">
           {facturas.length === 0 ? (
             <p className="text-sm text-texto-suave">Contabilidad todavía no registra una factura de este código.</p>
           ) : (
-            facturas.map((f) => <FacturaDeVenta key={f.id} factura={f} />)
+            facturas.map((f) => <FacturaDeVenta key={f.id} factura={f} delCodigo={codigo} />)
           )}
         </TarjetaCuerpo>
       </Tarjeta>

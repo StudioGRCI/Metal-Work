@@ -389,13 +389,16 @@ export async function asignarResponsableDeArea(_previo: unknown, datos: FormData
   }
   const { data, error } = await supabase
     .from('areas')
-    .update({ jefe_id: v.jefe_id || null })
+    // Lo que se elige a mano es propio, también si es la misma cuenta del área
+    // que la lleva: deja de seguirla. Sin cuenta elegida, la base decide si le
+    // anota la de esa área (migración 20261126998500).
+    .update({ jefe_id: v.jefe_id || null, jefe_heredado: false })
     .eq('id', v.area_id)
     // Una fila que el RLS esconde no es un error: sin esto diría «listo» sin
     // haber guardado nada.
     // La cuenta, para saber si sigue activa: el disparador no vuelve a juzgar
     // la que no cambió, y «Guardar» con la dada de baja no es «listo».
-    .select('nombre, responsable:usuarios!areas_jefe_id_fkey(activo)')
+    .select('nombre, jefe_heredado, responsable:usuarios!areas_jefe_id_fkey(activo)')
     .maybeSingle()
 
   if (error) {
@@ -413,13 +416,24 @@ export async function asignarResponsableDeArea(_previo: unknown, datos: FormData
     revalidatePath('/configuracion')
     return { ok: false, error: CUENTA_YA_NO_ACTIVA }
   }
+  // Se eligió una cuenta y la fila sigue diciendo que es la heredada: no quedó
+  // como propia, y decir «listo» sería mentir.
+  if (v.jefe_id && data.jefe_heredado) {
+    revalidatePath('/configuracion')
+    return { ok: false, error: `No se pudo dejar esa cuenta como propia de ${data.nombre}. Vuelve a intentarlo.` }
+  }
 
   revalidatePath('/configuracion')
   return {
     ok: true,
     mensaje: v.jefe_id
       ? `${data.nombre} ya tiene su cuenta responsable.`
-      : `${data.nombre} quedó sin cuenta responsable.`,
+      : // A la que otra área lleva, la base le anota la cuenta de esa (migración 20261126998500).
+        data.jefe_heredado
+        ? cuenta?.activo
+          ? `${data.nombre} quedó sin cuenta propia: responde la del área que la lleva.`
+          : `${data.nombre} quedó sin cuenta propia. La del área que la lleva está dada de baja: no responde nadie hasta que se cambie.`
+        : `${data.nombre} quedó sin cuenta responsable.`,
   }
 }
 
