@@ -1,0 +1,127 @@
+{
+  "id": "como-cargar-la-ot-de-cada-unidad",
+  "tarea": "Cómo cargar la OT de cada unidad",
+  "puesto": "Administración",
+  "voz": { "nombre": "es-PE-CamilaNeural", "velocidad": "-5%" },
+  "pronunciacion": {},
+  "pista_whisper": "Metal Work. Cotización, Cotizar, Gerencia, Administración, orden de trabajo, unidades, código interno, PDF.",
+  "escenas": [
+    {
+      "tipo": "gancho",
+      "titular": "Varias unidades: **una OT por cada una**",
+      "frases": ["Cada unidad de una cotización lleva ahora su propia orden de trabajo."]
+    },
+    { "tipo": "portada" },
+    {
+      "tipo": "antes-despues",
+      "antes": ["Una cotización, una sola OT", "Con tres unidades no alcanzaba"],
+      "ahora": { "captura": "10-todas", "resalte": "ordenes", "puntos": ["Una OT por cada unidad", "Cada una con su código"] },
+      "frases": [
+        { "texto": "Antes, una cotización aprobada solo podía tener una orden de trabajo, aunque trajera tres unidades.", "vertical": "Antes, una cotización solo podía tener una orden de trabajo." },
+        { "texto": "Ahora le cargas una orden a cada unidad, cada una con su propio código interno.", "vertical": "Ahora le cargas una a cada unidad." }
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Busca la cotización aprobada",
+      "tomas": [
+        { "captura": "01-aprobada", "resalte": "entrada", "solo": "horizontal" },
+        { "captura": "01-aprobada", "resalte": "unidades", "desdeFrase": 1 }
+      ],
+      "frases": [
+        { "texto": "Entra a Cotización.", "vertical": "En Cotizar, busca la cotización aprobada." },
+        { "texto": "La cotización aprobada dice cuántas unidades lleva.", "vertical": "" }
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Toca «Cargar la OT 1 de 3»",
+      "tomas": [
+        { "captura": "01-aprobada", "resalte": "boton" },
+        { "captura": "02-ventana", "resalte": "titulo", "desdeFrase": 1 }
+      ],
+      "frases": [
+        { "texto": "Toca el botón para cargar la primera orden.", "vertical": "Toca el botón para cargar la primera." },
+        { "texto": "La ventana te dice qué unidad estás cargando.", "vertical": "La ventana dice qué unidad es." }
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Escribe el código interno de la unidad",
+      "tomas": [{ "captura": "03-codigo", "resalte": "codigo" }],
+      "frases": [
+        "Escribe el código interno de esta unidad.",
+        { "texto": "Cada unidad lleva el suyo.", "vertical": "" }
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Elige el PDF de la OT",
+      "tomas": [
+        { "captura": "04-pdf", "resalte": "pdf" },
+        { "captura": "04-pdf", "resalte": ["leido", "numero"], "desdeFrase": 1 },
+        { "captura": "05-fecha", "resalte": "fecha", "desdeFrase": 2 }
+      ],
+      "frases": [
+        { "texto": "Elige el PDF de la orden de trabajo.", "vertical": "Elige el PDF de la orden." },
+        { "texto": "El sistema lo lee y te propone el número de la orden.", "vertical": "El sistema lee su número: revísalo." },
+        { "texto": "También la fecha de entrega: revisa los dos antes de guardar.", "vertical": "" }
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Toca «Guardar código y OT»",
+      "tomas": [
+        { "captura": "06-guardar", "resalte": "guardar" },
+        { "captura": "07-primera", "resalte": ["ordenes", "boton"], "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Toca el botón Guardar.",
+        { "texto": "La tarjeta ya muestra la primera unidad, con su código y su orden, y te ofrece cargar la segunda.", "vertical": "La tarjeta ya muestra la primera unidad." }
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Repite con las demás unidades",
+      "tomas": [
+        { "captura": "08-otras", "resalte": "otras" },
+        { "captura": "09-repetido", "resalte": ["codigo", "error"], "desdeFrase": 2 }
+      ],
+      "frases": [
+        { "texto": "Haz lo mismo con las demás unidades.", "vertical": "Repite con las demás unidades." },
+        { "texto": "La ventana te recuerda los códigos que ya usaste.", "vertical": "" },
+        { "texto": "Si repites un código, el sistema no lo guarda y te dice por qué.", "vertical": "Si repites un código, el sistema no lo guarda." }
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Revisa que estén todas",
+      "tomas": [{ "captura": "10-todas", "resalte": "ordenes" }],
+      "frases": [
+        { "texto": "Cuando cargas la última, la tarjeta lista todas las unidades, cada una con su código y su orden.", "vertical": "Al final, la tarjeta lista todas las unidades." }
+      ]
+    },
+    {
+      "tipo": "porque",
+      "titulo": "Por qué importa",
+      "puntos": ["Cada unidad, con su código y su OT", "Ninguna se queda sin cargar"],
+      "lema": "El sistema te guía. Tú decides.",
+      "frases": [
+        { "texto": "¿Por qué importa? Porque cada unidad se fabrica y se sigue por separado,", "vertical": "Así cada unidad se sigue por separado." },
+        { "texto": "y así ninguna se queda sin su orden.", "vertical": "" },
+        { "texto": "El sistema lleva la cuenta; tú cargas cada una.", "vertical": "El sistema lleva la cuenta; tú cargas." }
+      ]
+    },
+    {
+      "tipo": "cierre",
+      "titulo": "En resumen",
+      "puntos": ["Una OT por cada unidad", "Cada una con su código", "Revisa que estén todas"],
+      "frases": [
+        { "texto": "En resumen.", "vertical": "" },
+        { "texto": "Uno: carga una orden por cada unidad.", "vertical": "Carga una orden por cada unidad," },
+        { "texto": "Dos: dale a cada una su propio código.", "vertical": "dale a cada una su código" },
+        { "texto": "Tres: revisa que estén todas en la tarjeta.", "vertical": "y revisa que estén todas." }
+      ]
+    }
+  ]
+}

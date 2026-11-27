@@ -34,6 +34,8 @@ export type UnidadPorFacturar = {
   parte: number | null
   /** Lo ya facturado de esta unidad en la moneda de la cotización. */
   facturado: number
+  /** Pasó a otro comprador: ya no espera OT ni factura en esta cotización. */
+  paso?: boolean
 }
 
 /** El valor de «toda la cotización» en el campo de la unidad: así lo espera `registrar_factura_venta_de_unidad`. */
@@ -99,8 +101,8 @@ export function RegistrarFactura({
   /** Lo ya facturado en la moneda de la cotización, sin las anuladas. */
   facturado: number
   /**
-   * De una cotización de varias unidades, cuántas pasaron a otro comprador: el
-   * total es el de la cotización entera y Contabilidad decide cuánto factura
+   * De una cotización de varias unidades, cuántas pasaron a otro comprador: esas
+   * ya no se facturan aquí y cada una de las que quedan lleva su factura
    * (StudioGRCI, 2026-11-26). Se repite aquí, donde se escribe el monto.
    */
   unidadesAOtroComprador?: { pasaron: number; unidades: number } | null
@@ -113,6 +115,8 @@ export function RegistrarFactura({
   const [monedaFactura, setMonedaFactura] = useState<'PEN' | 'USD'>(monedaCotizacion)
   const conOt = (unidades ?? []).filter((u) => u.codigo)
   const todasConOt = unidades !== undefined && conOt.length === unidades.length
+  const cuantasPasaron = (unidades ?? []).filter((u) => u.paso).length
+  const algunaPaso = cuantasPasaron > 0
   // Con una sola unidad que ya tiene su OT no hay qué elegir: va esa.
   const unidadInicial = conOt.length === 1 && !todasConOt ? String(conOt[0]?.numero ?? '') : ''
   const [unidad, setUnidad] = useState(unidadInicial)
@@ -182,7 +186,9 @@ export function RegistrarFactura({
         titulo={unidades ? `Factura de la cotización ${numeroCotizacion}` : `Factura del código ${codigoInterno}`}
         descripcion={
           unidades
-            ? `La cotización es de ${unidades.length} unidades: di de cuál es la factura, o si es por toda la cotización. Los datos como salen en la factura que emitiste en SUNAT, con su PDF.`
+            ? `La cotización es de ${unidades.length} unidades: di de cuál es la factura${
+                algunaPaso ? '' : ', o si es por toda la cotización'
+              }. Los datos como salen en la factura que emitiste en SUNAT, con su PDF.`
             : `Por la cotización ${numeroCotizacion}. Los datos como salen en la factura que emitiste en SUNAT, con su PDF; entra sola a las cuentas por cobrar de Tesorería. Una cotización puede llevar varias: la inicial y el saldo.`
         }
         ancho="md"
@@ -199,7 +205,9 @@ export function RegistrarFactura({
               ayuda={
                 todasConOt
                   ? 'La factura por toda la cotización (un adelanto, por ejemplo) se reparte en partes iguales entre sus unidades.'
-                  : 'Se elige la unidad que ya tiene su OT. La factura por toda la cotización se registra cuando Administración cargue todas las OT.'
+                  : algunaPaso
+                    ? 'Se elige la unidad que ya tiene su OT. Ya no hay factura por toda la cotización: cada unidad que queda lleva la suya.'
+                    : 'Se elige la unidad que ya tiene su OT. La factura por toda la cotización se registra cuando Administración cargue todas las OT.'
               }
               ayudaEnIcono={false}
             >
@@ -209,13 +217,19 @@ export function RegistrarFactura({
                 </option>
                 {unidades.map((u) => (
                   <option key={u.numero} value={u.numero} disabled={!u.codigo}>
-                    {u.codigo ? `Unidad ${u.numero} · código ${u.codigo}` : `Unidad ${u.numero} · falta su OT`}
+                    {u.codigo
+                      ? `Unidad ${u.numero} · código ${u.codigo}`
+                      : u.paso
+                        ? `Unidad ${u.numero} · pasó a otro comprador`
+                        : `Unidad ${u.numero} · falta su OT`}
                   </option>
                 ))}
                 <option value={TODA} disabled={!todasConOt}>
                   {todasConOt
                     ? `Toda la cotización · ${unidades.length} unidades, en partes iguales`
-                    : 'Toda la cotización · cuando estén todas las OT'}
+                    : algunaPaso
+                      ? `Toda la cotización · no va: ${cuantasPasaron === 1 ? 'una unidad pasó' : `${cuantasPasaron} unidades pasaron`} a otro comprador`
+                      : 'Toda la cotización · cuando estén todas las OT'}
                 </option>
               </Seleccion>
             </Campo>
@@ -278,9 +292,7 @@ export function RegistrarFactura({
           {unidadesAOtroComprador && (
             <p data-unidades-a-otro-comprador className="rounded-[var(--radius-base)] bg-aviso-suave px-3 py-2 text-sm text-aviso">
               {unidadesAOtroComprador.pasaron} de sus {unidadesAOtroComprador.unidades} unidades{' '}
-              {unidadesAOtroComprador.pasaron === 1 ? 'pasó' : 'pasaron'} a otro comprador
-              {totalCotizacion !== null ? ` y el total de la cotización (${moneda(totalCotizacion, monedaCotizacion)}) es el de todas` : ''}: factura solo lo que
-              corresponde.
+              {unidadesAOtroComprador.pasaron === 1 ? 'pasó' : 'pasaron'} a otro comprador: se factura cada una de las que quedan, por su parte.
             </p>
           )}
           {pasa && tope !== null && (

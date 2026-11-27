@@ -692,6 +692,83 @@ export async function inspeccionesPorArea(): Promise<AreaInspeccionada[]> {
   )
 }
 
+/**
+ * La lectura de Gerencia (15.6) de toda la planta. Los días se cuentan en la base con la fecha de Lima:
+ * desde el último accidente (el que SSOMA clasificó como accidente, o reportado como tal y sin clasificar)
+ * o, si nunca hubo uno, desde el primer registro. Sin ningún reporte, `registroDesde` y `dias` van vacíos.
+ */
+export type SeguridadDeLaPlanta = {
+  ultimoAccidente: string | null
+  areaDelUltimo: string | null
+  registroDesde: string | null
+  diasSinAccidentes: number | null
+  reportesAbiertos: number
+  porClasificar: number
+  accionesAbiertas: number
+  accionesVencidas: number
+}
+
+/** La fila de la planta. A quien no es SSOMA ni Gerencia la base no le da ninguna: `null`. */
+export async function seguridadDeLaPlanta(): Promise<SeguridadDeLaPlanta | null> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('ssoma_seguridad_de_la_planta').maybeSingle()
+  if (error) throw new Error(`No se pudo leer cómo va la seguridad de la planta: ${error.message}`)
+  if (!data) return null
+  return {
+    ultimoAccidente: data.ultimo_accidente,
+    areaDelUltimo: data.area_del_ultimo,
+    registroDesde: data.registro_desde,
+    diasSinAccidentes: data.dias_sin_accidentes,
+    reportesAbiertos: data.reportes_abiertos ?? 0,
+    porClasificar: data.por_clasificar ?? 0,
+    accionesAbiertas: data.acciones_abiertas ?? 0,
+    accionesVencidas: data.acciones_vencidas ?? 0,
+  }
+}
+
+export type SeguridadDelArea = {
+  area_id: string
+  area: string
+  /** Un área dada de baja sale solo mientras le quede un reporte o una acción abierta, o si es la del último accidente de la planta. */
+  activa: boolean
+  ultimoAccidente: string | null
+  diasSinAccidentes: number | null
+  /** Desde qué día se cuentan: su último accidente o, sin ninguno, el primer registro o el día en que se creó el área. */
+  contadoDesde: string | null
+  reportesAbiertos: number
+  porClasificar: number
+  accionesAbiertas: number
+  accionesVencidas: number
+  /** La fecha límite más vieja de las que ya pasaron. */
+  vencidaMasAntigua: string | null
+}
+
+/** Cada área con sus días sin accidentes, sus reportes abiertos y sus acciones vencidas, en el orden de la empresa. */
+export async function seguridadPorArea(): Promise<SeguridadDelArea[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('ssoma_seguridad_por_area')
+  if (error) throw new Error(`No se pudo leer cómo va la seguridad de cada área: ${error.message}`)
+  return (data ?? []).flatMap((a) =>
+    a.area_id && a.area
+      ? [
+          {
+            area_id: a.area_id,
+            area: a.area,
+            activa: a.activa !== false,
+            ultimoAccidente: a.ultimo_accidente,
+            diasSinAccidentes: a.dias_sin_accidentes,
+            contadoDesde: a.contado_desde,
+            reportesAbiertos: a.reportes_abiertos ?? 0,
+            porClasificar: a.por_clasificar ?? 0,
+            accionesAbiertas: a.acciones_abiertas ?? 0,
+            accionesVencidas: a.acciones_vencidas ?? 0,
+            vencidaMasAntigua: a.vencida_mas_antigua,
+          },
+        ]
+      : [],
+  )
+}
+
 export type PuntoDeLista = {
   id: string
   /** Sin área: se revisa en todas. */

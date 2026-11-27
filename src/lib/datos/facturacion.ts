@@ -52,13 +52,16 @@ export type CotizacionAprobada = FilaCotizacion & { url: string | null; unidades
 /**
  * En la bandeja de Contabilidad, `facturas` deja de ser la cuenta y trae las facturas mismas.
  * `unidades_a_otro_comprador`: de una cotización de varias unidades, cuántas pasaron a otro
- * comprador mientras otra sigue siendo de esta venta. El total no descuenta nada (la cotización
- * guarda un solo monto): Facturación lo avisa y Contabilidad decide (migración 20261126998600).
+ * comprador mientras otra sigue siendo de esta venta (migración 20261126998600). Esas ya no
+ * esperan OT ni factura aquí: Facturación las marca y cierra la cotización con las que quedan.
+ * El total de la cotización no descuenta nada, porque guarda un solo monto.
  */
 export type CotizacionParaFacturar = Omit<CotizacionAprobada, 'facturas'> & {
   facturas: FacturaVenta[]
-  unidades_a_otro_comprador: { pasaron: number; unidades: number } | null
+  unidades_a_otro_comprador: UnidadesAOtroComprador | null
 }
+/** `cuales`: el número de cada unidad que pasó, como lo guarda su OT. */
+export type UnidadesAOtroComprador = { pasaron: number; unidades: number; cuales: number[] }
 
 export const SIN_ENLACES =
   'No se pudieron preparar los enlaces temporales de los documentos. Recarga la página para volver a intentar.'
@@ -344,15 +347,28 @@ async function ventasCerradas(ids: string[]): Promise<Map<string, (string | null
  * otra sigue siendo de esta venta: cuántas pasaron y de cuántas. Si no se puede leer, lanza: sin
  * ese aviso Contabilidad facturaría el total entero sin saber que una unidad ya no es de esa venta.
  */
-async function unidadesAOtroComprador(ids: string[]): Promise<Map<string, { pasaron: number; unidades: number }>> {
-  const mapa = new Map<string, { pasaron: number; unidades: number }>()
+async function unidadesAOtroComprador(ids: string[]): Promise<Map<string, UnidadesAOtroComprador>> {
+  const mapa = new Map<string, UnidadesAOtroComprador>()
   if (ids.length === 0) return mapa
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('unidades_que_pasaron_a_otro_comprador', { p_ids: ids })
   if (error) throw new Error(`No se pudo leer qué unidades pasaron a otro comprador: ${error.message}`)
-  for (const u of data ?? []) {
-    if (u.cotizacion_id && u.pasaron && u.unidades) mapa.set(u.cotizacion_id, { pasaron: u.pasaron, unidades: u.unidades })
-  }
+  // Cuál es cada una: la OT conserva su número de unidad al pasar (migración 20261126988000). Son
+  // pocas cotizaciones, y solo de ellas se pregunta.
+  await Promise.all(
+    (data ?? []).map(async (u) => {
+      if (!u.cotizacion_id || !u.pasaron || !u.unidades) return
+      const { data: salieron, error: e } = await supabase.rpc('unidades_que_salieron_de_la_cotizacion', { p_cotizacion: u.cotizacion_id })
+      if (e) throw new Error(`No se pudo leer qué unidades pasaron a otro comprador: ${e.message}`)
+      // Con otra forma no se adivina cuál pasó: marcar la unidad equivocada sería peor que no cargar.
+      if (!Array.isArray(salieron)) throw new Error('No se pudo leer qué unidades pasaron a otro comprador: la base contestó con otra forma.')
+      const cuales = salieron.flatMap((s) => {
+        const n = s && typeof s === 'object' && !Array.isArray(s) ? Number(s.unidad) : NaN
+        return Number.isInteger(n) && n >= 1 ? [n] : []
+      })
+      mapa.set(u.cotizacion_id, { pasaron: u.pasaron, unidades: u.unidades, cuales })
+    }),
+  )
   return mapa
 }
 

@@ -14,6 +14,9 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Worktrees de los auditores (skill `auditar`): no son código del proyecto.
     ".claude/worktrees/**",
+    // Los videos (Remotion) son un proyecto aparte, con su package.json y su
+    // tsconfig: herramientas/videos/README.md.
+    "herramientas/videos/**",
   ]),
   // La letra más chica del sistema es de 12 px (`text-xs`): decisión de DKS del
   // 2026-11-25, skill `diseno` › Texto. Corta `text-[11px]` y `text-[0.7rem]` en
