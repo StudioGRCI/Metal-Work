@@ -305,6 +305,13 @@ begin
     (select sum(c.precio_venta_pen) from public.codigos_internos_costo_calculado(null) c where c.codigo like 'QA-474 _' and c.codigo <> 'QA-474 S')
       = 30000.01,
     'las cuatro partes suman el total, sin perder el céntimo del redondeo');
+  -- El costeo no depende de quién lo pide: con la sesión de Almacén, que no ve los
+  -- códigos de la cotización (sección 8), el cálculo interno da lo mismo.
+  perform test.como_usuario(current_setting('prueba.almacen')::uuid);
+  perform test.afirmar(
+    (select sum(c.precio_venta_pen) from public.codigos_internos_costo_calculado(null) c where c.codigo like 'QA-474 _' and c.codigo <> 'QA-474 S')
+      = 30000.01,
+    'el precio de cada código es el mismo con la sesión de un puesto que no ve los códigos de la cotización');
   -- Ventas sube una corrección a 5 unidades y Gerencia todavía no la aprueba.
   set local session_replication_role = replica;
   update public.cotizaciones_pdf set monto_venta = 30000, cantidad_unidades = 5, estado = 'POR_REVISAR'

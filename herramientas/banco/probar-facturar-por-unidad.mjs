@@ -604,7 +604,7 @@ const delaSalida = (pagina, que) => pagina.locator('li, article').filter({ hasTe
   await pagina.getByRole('button', { name: 'Cargar la OT 2 de 3' }).first().click()
   const v = pagina.locator('[role="dialog"]')
   const aviso = limpio(await v.locator('[data-unidad-ya-facturada]').textContent({ timeout: 10000 }).catch(() => ''))
-  comprobar(aviso.includes('va a quedar como la unidad 2, que ya tiene factura') && aviso.includes(C2) && aviso.includes('solo si es ese mismo vehículo') && !/S\/\s?\d/.test(aviso),
+  comprobar(aviso.includes('La unidad 2 ya tiene factura') && aviso.includes(C2) && aviso.includes('solo si esta OT es de ese mismo vehículo') && !/S\/\s?\d/.test(aviso),
     `la ventana de la OT avisa que la unidad 2 ya tiene factura, con su código y sin montos («${aviso}»)`)
   await pagina.addStyleTag({ content: 'nextjs-portal { display: none !important; }' })
   await pagina.screenshot({ path: join(CAPTURAS, 'unidad-1440-ventana-de-la-ot.png') })

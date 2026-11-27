@@ -47,7 +47,7 @@ begin
       ('fn_cotizacion_pdf_anular', array['f4b882cbd42c112831e248a41e5ae2cd', '8a5ce7f184bc1932cd67c908c93467bd']),
       -- Las de la 20261126998800 (el costeo) y la 20261126760000, y las de esta.
       ('margen_ot', array['088e295d4723fba20ca7236eb322de0d', '073c23ee30f1e1cbf6d0b16ac8474b91']),
-      ('codigos_internos_costo_calculado', array['a55f8e1dd0f91f18a64a65bde5104c56', '4b840334dad6a827d75d4e17eb7369fe']),
+      ('codigos_internos_costo_calculado', array['a55f8e1dd0f91f18a64a65bde5104c56', '4e60932c5c6e2fc9ea5ebfa558a0e13b']),
       ('ordenes_de_cotizacion', array['e4acea0d52c7122a10ac633c3d25fb96', '25bc7b3a1be2905a2ce341056e00a76b'])
     ) as t(nombre, conocidas)
   loop
@@ -1319,11 +1319,18 @@ begin
       from public.cotizaciones_pdf c
       -- El IGV confirmado para esta versión: una corrección sin confirmar no tiene precio.
       left join public.cotizaciones_pdf_igv ig on ig.cotizacion_id = c.id and ig.version = c.version
+      -- Los códigos, de las OT mismas y no de `ordenes_de_cotizacion`: esa los
+      -- tapa según quién mira (sección 6), y el costeo de un código es el mismo
+      -- para todo puesto que lo pide, también el que Gerencia cierra.
       cross join lateral (
-        select distinct on (e ->> 'codigo_interno') e ->> 'codigo_interno' as codigo, (e ->> 'unidad')::integer as unidad
-          from jsonb_array_elements(public.ordenes_de_cotizacion(c.id)) e
-         where e ->> 'codigo_interno' is not null
-         order by e ->> 'codigo_interno', (e ->> 'unidad')::integer
+        select distinct on (public.normalizar_codigo_interno(u.codigo_interno))
+               public.normalizar_codigo_interno(u.codigo_interno) as codigo, coalesce(o.numero_de_unidad, 1) as unidad
+          from public.ordenes_trabajo o
+          join public.unidades u on u.id = o.unidad_id
+         where o.cotizacion_pdf_id = c.id
+           and o.estado <> 'ANULADA'
+           and public.normalizar_codigo_interno(u.codigo_interno) is not null
+         order by public.normalizar_codigo_interno(u.codigo_interno), coalesce(o.numero_de_unidad, 1)
       ) x
      where c.estado::text <> 'ANULADA' and c.monto_venta is not null and public.cotizacion_fue_aprobada(c.id)
   ), venta_linea as (
