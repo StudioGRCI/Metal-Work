@@ -15402,6 +15402,8 @@ export type Database = {
           dia: string | null
           registrado_el: string | null
           emitida_el: string | null
+          monto_pen: number | null
+          origen: string | null
         }[]
       }
       codigo_interno_compras: {
@@ -20946,6 +20948,15 @@ export type Database = {
           a_otras: number | null
           entera: boolean | null
         }[]
+      }
+      soles_de_la_linea_del_costeo: {
+        Args: {
+          p_fuente: string | null
+          p_referencia: string | null
+          p_fecha: string | null
+          p_monto: number | null
+        }
+        Returns: number
       }
       solicitar_revision_salida: {
         Args: {

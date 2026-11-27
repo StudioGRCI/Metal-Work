@@ -1133,6 +1133,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
   const [lineas, compras, cambios] = await Promise.all([costeoDelCodigo(codigo), comprasDelCodigo(codigo), cambioDeServiciosDelCodigo(codigo)])
   const manoObra = lineas.filter((l) => l.fuente === 'MANO_OBRA' || l.fuente === 'MANO_OBRA_SIN_COSTO' || l.fuente === 'RECARGO_EXTRAS')
   const materiales = lineas.filter((l) => l.fuente === 'MATERIALES' || l.fuente === 'MATERIALES_SIN_PRECIO' || l.fuente === 'MERMA')
+  // Lo que la base dice de cada OS en dólares: cuánto pesa en soles, con qué cambio y cuándo se emitió.
   // La fecha de la línea de una OS en dólares es el día de su cambio (el de su factura), no el día
   // en que se emitió: ese lo dice la base aparte, y por él se ordenan, como las que están en soles.
   const cambioDe = (l: (typeof lineas)[number]) => (l.referencia_id ? cambios.get(l.referencia_id) : undefined)
@@ -1269,7 +1270,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
       <Tarjeta className="overflow-hidden" data-servicios>
         <TarjetaCabecera
           titulo="Órdenes de servicio"
-          ayuda="Los trabajos de terceros para este código —torno, pintura, flete—, sin IGV. La aprobada por Gerencia suma al costo, porque no pasa por el almacén; la que espera su aprobación se muestra y no se suma todavía. Las rechazadas y las anuladas no aparecen. La que está en dólares pasa a soles con el tipo de cambio de la fecha de su factura o, mientras no la tiene, del día en que se emitió; si ese día no tiene cambio registrado, con el último de los diez días anteriores, y si no hay ninguno no suma hasta que Contabilidad lo registre."
+          ayuda="Los trabajos de terceros para este código —torno, pintura, flete—, sin IGV. La aprobada por Gerencia suma al costo, porque no pasa por el almacén; la que espera su aprobación se muestra y no se suma todavía. Las rechazadas y las anuladas no aparecen. La que está en dólares pesa en el costo su monto en soles, el mismo que se lee en Compras › Servicios y en Tesorería: sale del tipo de cambio de la fecha de su factura o, mientras no la tiene, del que había al emitirla, y ya no se mueve cuando su detracción está depositada o la orden pagada. Si todavía no tiene monto en soles porque falta registrar el cambio de ese día, no suma hasta que Contabilidad lo registre."
         />
         <Tabla>
           <TablaCabecera>
@@ -1302,20 +1303,25 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
                         <p className="tabular text-xs text-texto-suave" data-emitida-el={emitidaEl(l)}>
                           {cambio ? `Emitida el ${fecha(emitidaEl(l))}` : fecha(emitidaEl(l))}
                         </p>
-                        {/* En dólares, con qué cambio pasa a soles: el día del cambio registrado que de
-                            verdad se usa (el de su factura, o el último anterior), o que no hay ninguno. */}
+                        {/* En dólares, con qué cambio se hizo el monto en soles que guarda la OS, que es lo
+                            que suma el costo: el día del cambio registrado del que sale; que quedó fija
+                            con el de antes; o que todavía no tiene monto en soles, y de qué día falta. */}
                         {cambio &&
-                          (cambio.registrado_el ? (
-                            <p className="tabular text-xs text-texto-suave" data-dia-de-la-linea={l.fecha} data-cambio-registrado-el={cambio.registrado_el}>
-                              Al cambio del {fecha(cambio.registrado_el)}
-                            </p>
-                          ) : (
+                          (cambio.monto_pen === null ? (
                             // La insignia no parte en dos renglones: lleva solo «Sin cambio» y el día va
                             // al lado, o debajo en el teléfono, para que la columna no empuje el importe.
                             <p className="tabular mt-1 flex flex-wrap items-center gap-x-1 text-xs text-texto-suave" data-dia-de-la-linea={l.fecha} data-cambio-registrado-el="">
                               <Insignia tono="aviso">Sin cambio</Insignia> <span className="whitespace-nowrap">del {fecha(cambio.dia)}</span>
                             </p>
-                          ))}
+                          ) : cambio.registrado_el ? (
+                            <p className="tabular text-xs text-texto-suave" data-dia-de-la-linea={l.fecha} data-cambio-registrado-el={cambio.registrado_el}>
+                              Al cambio del {fecha(cambio.registrado_el)}
+                            </p>
+                          ) : cambio.origen ? (
+                            <p className="text-xs text-texto-suave" data-dia-de-la-linea={l.fecha} data-cambio-registrado-el="" data-origen-del-cambio={cambio.origen}>
+                              {cambio.origen.startsWith('DEPOSITADA') || cambio.origen === 'FIJA_SIN_FACTURA' ? 'Al cambio con que quedó fija' : 'Al cambio que guarda la orden'}
+                            </p>
+                          ) : null)}
                       </TD>
                       <TD className="align-top">
                         <p className="text-texto">{l.concepto}</p>
@@ -1329,6 +1335,12 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
                       </TD>
                       <TD className={`tabular text-right align-top whitespace-nowrap ${aprobada ? '' : 'text-texto-suave'}`}>
                         {moneda(l.monto, l.moneda ?? 'PEN')}
+                        {/* Lo que pesa en el costo: el monto en soles de la OS, el de Compras y Tesorería. */}
+                        {cambio && cambio.monto_pen !== null && (
+                          <p className="text-xs text-texto-suave" data-soles-de-la-os={cambio.monto_pen}>
+                            {moneda(cambio.monto_pen)}
+                          </p>
+                        )}
                         {!aprobada && <p className="text-xs">no suma</p>}
                       </TD>
                     </TR>
