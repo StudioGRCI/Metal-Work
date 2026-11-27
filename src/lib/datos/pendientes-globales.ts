@@ -4,13 +4,14 @@ import { cache } from 'react'
 
 import type { Tono } from '@/components/ui/etiqueta-estado'
 import { codigosDeDiseno, planosDeCodigo } from '@/lib/datos/diseno-codigos'
+import { unidadesDeCotizaciones } from '@/lib/datos/facturacion'
 import { otsDeMantenimiento } from '@/lib/datos/mantenimiento'
 import { recorridoDeRequerimientos } from '@/lib/datos/recorrido'
 import { cargarRequerimientos } from '@/lib/datos/requerimientos'
 import { planillaAjusteDesde } from '@/lib/datos/rrhh'
 import { todasLasFilas } from '@/lib/datos/todas-las-filas'
 import { ESTADOS_ACTIVOS_OT } from '@/lib/dominio/estados'
-import { totalConIgv } from '@/lib/dominio/finanzas'
+import { esperaFactura, totalConIgv } from '@/lib/dominio/finanzas'
 import { PERMISO_OTS_DE_MANTENIMIENTO, tieneTrabajoHoy } from '@/lib/dominio/mantenimiento'
 import { devueltaEntera } from '@/lib/dominio/pago-de-boleta'
 import { estadoDePlanilla } from '@/lib/dominio/planilla-diaria'
@@ -564,40 +565,45 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
   })()
 
   if (puede(perfil, 'contabilidad.facturar')) {
+    // La cuenta es de unidades con su OT: la cotización de varias unidades lleva una factura por
+    // unidad (migración 20261126998000). Mientras todas sean de una unidad se dice «cotización»,
+    // como siempre; con alguna de varias a la vista, «unidad».
+    let hayDeVarias = false
     tareas.push({
       clave: 'por_facturar',
       ruta: '/contabilidad/facturacion',
       tono: 'acento',
-      texto: (n) => plural(n, 'cotización aprobada por facturar', 'cotizaciones aprobadas por facturar'),
+      texto: (n) =>
+        hayDeVarias
+          ? plural(n, 'unidad con su OT por facturar', 'unidades con su OT por facturar')
+          : plural(n, 'cotización aprobada por facturar', 'cotizaciones aprobadas por facturar'),
       contar: async () => {
-        // La cuenta es la de la base; lo que vale sale de la misma bandeja que
-        // Facturación: las que tienen código y no tienen factura vigente o están
-        // facturadas en parte (Plan 10.1), por lo que les falta facturar.
-        // Con IGV, como la tarjeta de cada cotización en Facturación (`totalConIgv`).
+        // La cuenta es la de la base; lo que vale sale de las mismas unidades que lista
+        // Facturación: las que tienen su OT y no tienen factura vigente o están facturadas en
+        // parte (Plan 10.1), por lo que les falta facturar de su parte, con IGV.
         const [cuenta, bandeja] = await Promise.all([facturacion(), supabase.rpc('cotizaciones_para_facturar')])
         const cantidad = cuenta.por_facturar ?? 0
         // El monto es un dato más: si la bandeja no se lee, el globo sigue con su cuenta.
         if (bandeja.error) return cantidad
-        const total = (c: { monto_venta: number | null; incluye_igv: boolean | null }) =>
-          totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
-        const falta = (c: { monto_venta: number | null; incluye_igv: boolean | null; facturado: number | null }) =>
-          Math.max(0, (total(c) ?? 0) - Number(c.facturado ?? 0))
-        // Sin factura, o facturada en parte: el monto es lo que falta facturar (Plan 10.1).
-        // Con una factura en otra moneda no se compara, como en la base (20261126470000).
-        const porFacturar = (bandeja.data ?? []).filter(
-          (c) =>
-            c.codigo_interno &&
-            ((c.facturas ?? 0) === 0 || (Number(c.facturado_otra_moneda ?? 0) === 0 && total(c) !== null && falta(c) > 0.005)),
+        const cotizaciones = bandeja.data ?? []
+        const unidades = await unidadesDeCotizaciones(cotizaciones.flatMap((c) => (c.cotizacion_id ? [c.cotizacion_id] : []))).catch((e: unknown) => {
+          console.error('[pendientes] No se pudieron leer las unidades por facturar:', e)
+          return null
+        })
+        if (!unidades) return cantidad
+        const porFacturar = cotizaciones.flatMap((c) =>
+          ((c.cotizacion_id && unidades.get(c.cotizacion_id)) || []).filter(esperaFactura).map((u) => ({ c, u })),
         )
-        // La bandeja trae las 300 más nuevas, y una factura en otra moneda no se compara:
-        // si no son las mismas que cuenta la base, un monto corto mentiría; va solo la cuenta.
+        hayDeVarias = porFacturar.some((f) => f.u.de > 1)
+        // La bandeja trae las 300 más nuevas: si no son las mismas unidades que cuenta la base,
+        // un monto corto mentiría; va solo la cuenta.
         if (porFacturar.length !== cantidad) return cantidad
         // Como lo dice Facturación: «con IGV», o que falta confirmarlo si alguna no lo tiene.
-        const sinConfirmar = porFacturar.some((c) => c.incluye_igv === null)
+        const sinConfirmar = porFacturar.some((f) => f.c.incluye_igv === null)
         return {
           cantidad,
           monto: {
-            ...enMonedas(porFacturar, (c) => c.moneda, falta),
+            ...enMonedas(porFacturar, (f) => f.c.moneda, (f) => Math.max(0, (f.u.parte ?? 0) - f.u.facturado)),
             rotulo: sinConfirmar ? 'falta confirmar si incluye IGV' : 'con IGV',
           },
         }

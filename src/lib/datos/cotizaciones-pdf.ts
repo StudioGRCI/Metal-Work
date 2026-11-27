@@ -40,8 +40,11 @@ export type CotizacionPdf = Omit<Vistas<'v_cotizaciones_pdf'>, 'ordenes' | 'unid
   /**
    * La venta se reabrió: su OT pasó a otro comprador y allí se anuló, y volvió a esperar su OT
    * hasta que Ventas la cancele (migración 20261126988000). Con el número de esa OT si se puede leer.
+   * `sin_quien_la_registro`: quien la registró ya no la puede cancelar (no tiene cuenta activa o
+   * cambió de puesto); lo sabe solo quien revisa cotizaciones, que entonces es quien la cancela
+   * (migración 20261126998600).
    */
-  reabierta_por_ot_anulada: { numero: string | null } | null
+  reabierta_por_ot_anulada: { numero: string | null; sin_quien_la_registro: boolean } | null
   url: string | null
   urlAprobada: string | null
   versiones: VersionCotizacion[]
@@ -159,7 +162,10 @@ export async function listarCotizacionesPdf(limite = 200): Promise<CotizacionPdf
       unidades_a_otro_comprador: Array.isArray(f.unidades_a_otro_comprador) ? (f.unidades_a_otro_comprador as UnidadQuePaso[]) : [],
       reabierta_por_ot_anulada:
         f.reabierta_por_ot_anulada && typeof f.reabierta_por_ot_anulada === 'object' && !Array.isArray(f.reabierta_por_ot_anulada)
-          ? { numero: typeof f.reabierta_por_ot_anulada.numero === 'string' ? f.reabierta_por_ot_anulada.numero : null }
+          ? {
+              numero: typeof f.reabierta_por_ot_anulada.numero === 'string' ? f.reabierta_por_ot_anulada.numero : null,
+              sin_quien_la_registro: f.reabierta_por_ot_anulada.sin_quien_la_registro === true,
+            }
           : null,
       cliente: f.cliente ?? (f.id && clientes.get(f.id)) ?? null,
       facturas: (facturas.data ?? []).filter((x) => x.cotizacion_pdf_id === f.id),
@@ -262,4 +268,26 @@ export async function catalogosDeCotizacion() {
   if (clientes.error) throw new Error('No se pudo cargar la lista de clientes. Recarga la página para volver a intentar.')
   if (carrocerias.error) throw new Error('No se pudo cargar el catálogo de carrocerías. Recarga la página para volver a intentar.')
   return { clientes: clientes.data ?? [], carrocerias: carrocerias.data ?? [] }
+}
+
+/**
+ * De las cotizaciones de varias unidades a las que les falta más de una OT: las
+ * unidades libres que ya tienen una factura propia (se facturaron y después se
+ * anuló su OT), con el código con que se facturaron. La factura sigue al número
+ * de la unidad, así que la OT que ocupe ese número se queda con ella: la
+ * ventana de la OT lo avisa (migración 20261126998000). Solo responde a quien
+ * carga órdenes; sin montos.
+ */
+export async function unidadesLibresYaFacturadas(ids: string[]): Promise<Map<string, { unidad: number; codigo: string }[]>> {
+  const mapa = new Map<string, { unidad: number; codigo: string }[]>()
+  const unicos = [...new Set(ids)].slice(0, 500)
+  if (unicos.length === 0) return mapa
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('unidades_libres_ya_facturadas', { p_ids: unicos })
+  if (error) throw new Error(`No se pudo leer qué unidades sin OT ya tienen factura: ${error.message}`)
+  for (const f of data ?? []) {
+    if (!f.cotizacion || f.numero_de_unidad == null || !f.codigo_facturado) continue
+    mapa.set(f.cotizacion, [...(mapa.get(f.cotizacion) ?? []), { unidad: Number(f.numero_de_unidad), codigo: f.codigo_facturado }])
+  }
+  return mapa
 }

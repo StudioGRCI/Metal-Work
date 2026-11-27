@@ -3,7 +3,7 @@ import 'server-only'
 import { cambioDeLosServicios, COLUMNAS_DETRACCION, cargarTiposDetraccion, detraccionDeFila, documentosDeServicios, type DocumentoDeServicio } from '@/lib/datos/logistica'
 import { bajarComo } from '@/lib/descarga'
 import type { DetraccionDeServicio, SaldoDeServicio } from '@/lib/dominio/detraccion'
-import { BUCKET_COBROS_VENTA, BUCKET_FACTURAS_VENTA, BUCKET_PAGOS_SERVICIO, comoVaLaFactura, totalConIgv, type ComoVaLaFactura } from '@/lib/dominio/finanzas'
+import { BUCKET_COBROS_VENTA, BUCKET_FACTURAS_VENTA, BUCKET_PAGOS_SERVICIO, comoVaLaFactura, totalConIgv, type ComoVaLaFactura, type UnidadDeCotizacion } from '@/lib/dominio/finanzas'
 import type { CodigoMoneda } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 import type { Database, Tablas, Vistas } from '@/types/database'
@@ -28,19 +28,37 @@ type FilaFactura = Pick<
   Vistas<'v_facturas_venta'>,
   | 'id' | 'codigo_interno' | 'cotizacion_pdf_id' | 'cotizacion_numero' | 'cliente' | 'numero' | 'fecha_emision'
   | 'fecha_vencimiento' | 'moneda' | 'total' | 'concepto' | 'ruta_storage' | 'anulada_en' | 'motivo_anulacion'
-  | 'cobrado' | 'cancelada' | 'saldo' | 'creado_en'
+  | 'cobrado' | 'cancelada' | 'saldo' | 'creado_en' | 'unidades_cubiertas' | 'numero_de_unidad' | 'unidades_de_la_cotizacion'
 >
-export type FacturaVenta = FilaFactura & { url: string | null; cobros: CobroFactura[] }
+/**
+ * Lo que le toca a una unidad de una factura (migración 20261126998000): el código que la unidad
+ * tiene hoy, su parte del total y, en la misma proporción, lo cobrado y el saldo.
+ */
+export type ParteDeFactura = Pick<
+  Vistas<'v_facturas_venta_por_unidad'>,
+  'factura_id' | 'numero_de_unidad' | 'codigo_interno' | 'monto' | 'cobrado' | 'saldo'
+>
+/** `partes` trae una por unidad que cubre la factura: una sola, salvo la que es por toda la cotización. */
+export type FacturaVenta = FilaFactura & { url: string | null; cobros: CobroFactura[]; partes: ParteDeFactura[] }
 
 type FilaCotizacion = Funciones<'cotizaciones_para_facturar'>['Returns'][number]
 /**
+ * `unidades` trae siempre al menos una: la cotización de una sola unidad es su unidad 1.
  * `paso_a_otro_comprador`: la venta se cerró porque su OT pasó a otro comprador (las OT, el
  * número solo para quien lee las órdenes); ya no lleva OT y queda cobrar o anular su factura
  * (migración 20261126988000). Nulo: no se cerró.
  */
-export type CotizacionAprobada = FilaCotizacion & { url: string | null; paso_a_otro_comprador: (string | null)[] | null }
-/** En la bandeja de Contabilidad, `facturas` deja de ser la cuenta y trae las facturas mismas. */
-export type CotizacionParaFacturar = Omit<CotizacionAprobada, 'facturas'> & { facturas: FacturaVenta[] }
+export type CotizacionAprobada = FilaCotizacion & { url: string | null; unidades: UnidadDeCotizacion[]; paso_a_otro_comprador: (string | null)[] | null }
+/**
+ * En la bandeja de Contabilidad, `facturas` deja de ser la cuenta y trae las facturas mismas.
+ * `unidades_a_otro_comprador`: de una cotización de varias unidades, cuántas pasaron a otro
+ * comprador mientras otra sigue siendo de esta venta. El total no descuenta nada (la cotización
+ * guarda un solo monto): Facturación lo avisa y Contabilidad decide (migración 20261126998600).
+ */
+export type CotizacionParaFacturar = Omit<CotizacionAprobada, 'facturas'> & {
+  facturas: FacturaVenta[]
+  unidades_a_otro_comprador: { pasaron: number; unidades: number } | null
+}
 
 export const SIN_ENLACES =
   'No se pudieron preparar los enlaces temporales de los documentos. Recarga la página para volver a intentar.'
@@ -70,16 +88,65 @@ export async function enlaces(bucket: string, rutas: (string | null)[], segundos
 }
 
 /**
- * Cada cotización aprobada y vigente, con su código interno (nulo mientras
- * Administración no cargue la OT), el cliente, el total y el enlace al archivo
- * aprobado. La cotización en Word se baja con su nombre; el PDF se abre.
+ * Las unidades de cada cotización aprobada, con el código de la OT de cada una
+ * (nulo mientras no la tenga), desde cuándo lo tiene, lo que le toca del total
+ * con IGV y lo facturado y cobrado de esa unidad (`facturacion_por_unidad`,
+ * migración 20261126998000). Lo lee quien lee las cotizaciones aprobadas.
+ */
+export async function unidadesDeCotizaciones(ids: string[]): Promise<Map<string, UnidadDeCotizacion[]>> {
+  const mapa = new Map<string, UnidadDeCotizacion[]>()
+  const unicos = [...new Set(ids)]
+  if (unicos.length === 0) return mapa
+  const supabase = await createClient()
+  // De a 500, el tope de la función.
+  for (let i = 0; i < unicos.length; i += 500) {
+    const { data, error } = await supabase.rpc('facturacion_por_unidad', { p_ids: unicos.slice(i, i + 500) })
+    if (error) throw new Error(`No se pudieron leer las unidades de las cotizaciones aprobadas: ${error.message}`)
+    for (const f of data ?? []) {
+      if (!f.cotizacion || f.numero_de_unidad == null) continue
+      const lista = mapa.get(f.cotizacion) ?? []
+      lista.push({
+        numero: Number(f.numero_de_unidad),
+        de: Number(f.unidades ?? 1),
+        codigo: f.codigo_interno,
+        ot: f.ot_numero,
+        desde: f.desde,
+        dias: f.dias == null ? null : Number(f.dias),
+        parte: f.parte == null ? null : Number(f.parte),
+        facturas: Number(f.facturas ?? 0),
+        facturado: Number(f.facturado ?? 0),
+        cobrado: Number(f.cobrado ?? 0),
+        facturadoOtraMoneda: Number(f.facturado_otra_moneda ?? 0),
+        cobradoOtraMoneda: Number(f.cobrado_otra_moneda ?? 0),
+      })
+      mapa.set(f.cotizacion, lista)
+    }
+  }
+  for (const lista of mapa.values()) lista.sort((a, b) => a.numero - b.numero)
+  return mapa
+}
+
+/**
+ * Cada cotización aprobada y vigente, con sus unidades (cada una con el código
+ * interno de su OT, nulo mientras Administración no la cargue), el cliente, el
+ * total y el enlace al archivo aprobado. La cotización en Word se baja con su
+ * nombre; el PDF se abre.
  */
 export async function cotizacionesAprobadas(codigo?: string): Promise<CotizacionAprobada[]> {
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('cotizaciones_para_facturar')
   if (error) throw new Error(`No se pudieron leer las cotizaciones aprobadas: ${error.message}`)
-  // Con `codigo`, solo las de ese código interno: no se firman enlaces de las demás.
-  const filas = (data ?? []).filter((f) => codigo === undefined || f.codigo_interno === codigo)
+  const unidades = await unidadesDeCotizaciones((data ?? []).flatMap((f) => (f.cotizacion_id ? [f.cotizacion_id] : [])))
+  // La base da siempre al menos una unidad por cotización. Si faltara, no se inventa: pintarla
+  // como de una unidad cargaría lo de varias al código de la última OT sin que nadie lo note.
+  const unidadesDe = (f: FilaCotizacion): UnidadDeCotizacion[] => {
+    const lista = f.cotizacion_id ? unidades.get(f.cotizacion_id) : undefined
+    if (!lista || lista.length === 0) throw new Error(`No se pudieron leer las unidades de la cotización ${f.numero ?? ''}.`)
+    return lista
+  }
+  // Con `codigo`, solo las que tienen una unidad con ese código interno: no se firman enlaces de las demás.
+  // La de varias unidades lleva un código por unidad (migración 20261126998000).
+  const filas = (data ?? []).filter((f) => codigo === undefined || unidadesDe(f).some((u) => u.codigo === codigo))
   const esPdf = (f: FilaCotizacion) => (f.archivo_mime ?? 'application/pdf') === 'application/pdf'
   // Solo puede estar cerrada la que no tiene código: la base mira esas.
   const [urls, cerradas] = await Promise.all([
@@ -98,12 +165,13 @@ export async function cotizacionesAprobadas(codigo?: string): Promise<Cotizacion
   return filas.map((f) => ({
     ...f,
     url: (f.archivo_ruta && urls.get(f.archivo_ruta)) ?? null,
+    unidades: unidadesDe(f),
     paso_a_otro_comprador: (f.cotizacion_id && cerradas.get(f.cotizacion_id)) || null,
   }))
 }
 
 const COLUMNAS_FACTURA =
-  'id, codigo_interno, cotizacion_pdf_id, cotizacion_numero, cliente, numero, fecha_emision, fecha_vencimiento, moneda, total, concepto, ruta_storage, anulada_en, motivo_anulacion, cobrado, cancelada, saldo, creado_en'
+  'id, codigo_interno, cotizacion_pdf_id, cotizacion_numero, cliente, numero, fecha_emision, fecha_vencimiento, moneda, total, concepto, ruta_storage, anulada_en, motivo_anulacion, cobrado, cancelada, saldo, creado_en, unidades_cubiertas, numero_de_unidad, unidades_de_la_cotizacion'
 
 /**
  * Las facturas de venta con sus cobros y los enlaces a la factura y a cada
@@ -150,7 +218,9 @@ async function enTandas<T>(ids: string[], leer: (tanda: string[]) => Promise<T[]
 /**
  * Lo que falta cobrar de las facturas de cada código, por moneda, sin las anuladas: para quien
  * responde las salidas de vehículos sin leer las cotizaciones aprobadas (Costos). Cuenta todas
- * las facturas del código, no solo las que la lista de Cuentas por cobrar trae a la vista.
+ * las facturas del código, no solo las que la lista de Cuentas por cobrar trae a la vista. De la
+ * factura de toda una cotización de varias unidades, a cada código le cuenta su parte del saldo
+ * (`v_facturas_venta_por_unidad`, migración 20261126998000).
  */
 export async function saldoDeFacturasPorCodigo(
   codigos: string[],
@@ -159,7 +229,7 @@ export async function saldoDeFacturasPorCodigo(
   if (unicos.length === 0) return {}
   const supabase = await createClient()
   const filas = await enTandas(unicos, async (tanda) => {
-    const r = await supabase.from('v_facturas_venta').select('codigo_interno, moneda, saldo, cancelada')
+    const r = await supabase.from('v_facturas_venta_por_unidad').select('codigo_interno, moneda, saldo, cancelada')
       .in('codigo_interno', tanda).is('anulada_en', null)
     if (r.error) throw new Error(`No se pudieron leer las facturas de los códigos: ${r.error.message}`)
     return r.data ?? []
@@ -178,20 +248,40 @@ export async function saldoDeFacturasPorCodigo(
   return porCodigo
 }
 
-/** Las facturas de un código interno, anuladas incluidas, de la más vieja a la más nueva: Gerencia en Códigos internos. */
+/**
+ * Las facturas de un código interno, anuladas incluidas, de la más vieja a la más nueva: Gerencia en
+ * Códigos internos. Son las de su unidad y las de toda su cotización, que le dejan una parte
+ * (migración 20261126998000): antes la de toda la cotización salía solo en el código de una unidad.
+ */
 export async function facturasDelCodigo(codigo: string): Promise<FacturaVenta[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase.from('v_facturas_venta').select(COLUMNAS_FACTURA).eq('codigo_interno', codigo).order('creado_en')
-  if (error) throw new Error(`No se pudieron leer las facturas del código: ${error.message}`)
-  return conCobros(data ?? [])
+  const partes = await supabase.from('v_facturas_venta_por_unidad').select('factura_id').eq('codigo_interno', codigo)
+  if (partes.error) throw new Error(`No se pudieron leer las facturas del código: ${partes.error.message}`)
+  const ids = [...new Set((partes.data ?? []).flatMap((p) => (p.factura_id ? [p.factura_id] : [])))]
+  const filas = await enTandas(ids, async (tanda) => {
+    const r = await supabase.from('v_facturas_venta').select(COLUMNAS_FACTURA).in('id', tanda)
+    if (r.error) throw new Error(`No se pudieron leer las facturas del código: ${r.error.message}`)
+    return r.data ?? []
+  })
+  return conCobros(filas.sort((a, b) => (a.creado_en ?? '').localeCompare(b.creado_en ?? '')))
 }
 
-/** Le pega a cada factura sus cobros y los enlaces a la factura y a cada voucher. */
+/** Le pega a cada factura sus cobros, sus partes (una por unidad que cubre), y los enlaces a la factura y a cada voucher. */
 async function conCobros(filas: FilaFactura[]): Promise<FacturaVenta[]> {
   const supabase = await createClient()
   const ids = filas.flatMap((f) => (f.id ? [f.id] : []))
-  const cobros = {
-    data: await enTandas(ids, async (tanda) => {
+  // Las partes y los cobros no dependen uno del otro: se leen a la vez.
+  const [partes, filasDeCobros] = await Promise.all([
+    enTandas(ids, async (tanda) => {
+      const r = await supabase
+        .from('v_facturas_venta_por_unidad')
+        .select('factura_id, numero_de_unidad, codigo_interno, monto, cobrado, saldo')
+        .in('factura_id', tanda)
+        .order('numero_de_unidad')
+      if (r.error) throw new Error(`No se pudo leer el reparto de las facturas: ${r.error.message}`)
+      return r.data ?? []
+    }),
+    enTandas(ids, async (tanda) => {
       const r = await supabase
         .from('cobros_factura_venta')
         .select('id, factura_id, fecha, monto, cancela, operacion, archivo_ruta, archivo_mime, anulado_en, motivo_anulacion')
@@ -201,7 +291,8 @@ async function conCobros(filas: FilaFactura[]): Promise<FacturaVenta[]> {
       if (r.error) throw new Error(`No se pudieron leer los cobros: ${r.error.message}`)
       return r.data ?? []
     }),
-  }
+  ])
+  const cobros = { data: filasDeCobros }
   const [urlsFactura, urlsVoucher] = await Promise.all([
     enlaces(BUCKET_FACTURAS_VENTA, filas.map((f) => f.ruta_storage)),
     enlaces(BUCKET_COBROS_VENTA, (cobros.data ?? []).map((c) => c.archivo_ruta)),
@@ -212,19 +303,26 @@ async function conCobros(filas: FilaFactura[]): Promise<FacturaVenta[]> {
     cobros: (cobros.data ?? [])
       .filter((c) => c.factura_id === f.id)
       .map((c) => ({ ...c, url: urlsVoucher.get(c.archivo_ruta) ?? null })),
+    partes: partes.filter((p) => p.factura_id === f.id),
   }))
 }
 
 /**
  * Lo que Contabilidad tiene por facturar: cada cotización aprobada con sus
- * facturas. Primero las que tienen código interno y ninguna factura vigente;
- * al final, las que esperan que Administración cargue la OT. La pantalla de
- * Facturación las vuelve a ordenar con los días que llevan esperando (Plan 10.1).
+ * unidades y sus facturas. Primero las que tienen código interno y ninguna
+ * factura vigente; al final, las que esperan que Administración cargue la OT.
+ * La pantalla de Facturación las vuelve a ordenar con los días que llevan
+ * esperando (Plan 10.1).
  */
 export async function bandejaDeFacturacion(): Promise<CotizacionParaFacturar[]> {
   const cotizaciones = await cotizacionesAprobadas()
-  const facturas = await facturasDeVenta(cotizaciones.flatMap((c) => (c.cotizacion_id ? [c.cotizacion_id] : [])))
-  const lista = cotizaciones.map((c) => ({ ...c, facturas: facturas.filter((f) => f.cotizacion_pdf_id === c.cotizacion_id) }))
+  const ids = cotizaciones.flatMap((c) => (c.cotizacion_id ? [c.cotizacion_id] : []))
+  const [facturas, pasaron] = await Promise.all([facturasDeVenta(ids), unidadesAOtroComprador(ids)])
+  const lista = cotizaciones.map((c) => ({
+    ...c,
+    facturas: facturas.filter((f) => f.cotizacion_pdf_id === c.cotizacion_id),
+    unidades_a_otro_comprador: (c.cotizacion_id && pasaron.get(c.cotizacion_id)) || null,
+  }))
   const turno = (c: CotizacionParaFacturar) =>
     !c.codigo_interno ? 2 : c.facturas.some((f) => !f.anulada_en) ? 1 : 0
   return lista.sort((a, b) => turno(a) - turno(b))
@@ -242,6 +340,23 @@ async function ventasCerradas(ids: string[]): Promise<Map<string, (string | null
 }
 
 /**
+ * De las cotizaciones dadas, las de varias unidades de las que alguna pasó a otro comprador y
+ * otra sigue siendo de esta venta: cuántas pasaron y de cuántas. Si no se puede leer, lanza: sin
+ * ese aviso Contabilidad facturaría el total entero sin saber que una unidad ya no es de esa venta.
+ */
+async function unidadesAOtroComprador(ids: string[]): Promise<Map<string, { pasaron: number; unidades: number }>> {
+  const mapa = new Map<string, { pasaron: number; unidades: number }>()
+  if (ids.length === 0) return mapa
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('unidades_que_pasaron_a_otro_comprador', { p_ids: ids })
+  if (error) throw new Error(`No se pudo leer qué unidades pasaron a otro comprador: ${error.message}`)
+  for (const u of data ?? []) {
+    if (u.cotizacion_id && u.pasaron && u.unidades) mapa.set(u.cotizacion_id, { pasaron: u.pasaron, unidades: u.unidades })
+  }
+  return mapa
+}
+
+/**
  * Lo facturado de un código contra lo vendido, cotización por cotización, con la regla de la bandeja de
  * Contabilidad (`comoVaLaFactura`). `null`: no se comparó (sin permiso para leer lo vendido, o alguna
  * cotización sin monto); quien lo muestra lo dice en vez de darlo por hecho.
@@ -255,32 +370,6 @@ export type FacturadoContraVendido = {
   como: ComoVaLaFactura[]
   /** Alguna sin confirmar si su monto incluye IGV: lo vendido se toma con IGV, como en la bandeja, y puede faltar el 18 %. */
   igvSinConfirmar: boolean
-}
-
-/** Desde cuándo espera su factura cada cotización y cuántos días van, por fecha de Lima. */
-export type EsperaDeFacturacion = { desde: string | null; dias: number | null }
-
-/**
- * Desde que la OT de cada cotización tiene código interno, que es cuando se
- * puede facturar (DKS, Plan 10), y los días que van contados por la base con
- * la fecha de Lima (migración 20261126470000). Lo lee quien lee las
- * cotizaciones aprobadas. Si la base no contesta, lanza: la pantalla sigue sin
- * los días y lo dice.
- */
-export async function esperaDeFacturacion(ids: string[]): Promise<Map<string, EsperaDeFacturacion>> {
-  const mapa = new Map<string, EsperaDeFacturacion>()
-  const unicos = [...new Set(ids)]
-  if (unicos.length === 0) return mapa
-  const supabase = await createClient()
-  // De a 500, el tope de la función.
-  for (let i = 0; i < unicos.length; i += 500) {
-    const { data, error } = await supabase.rpc('facturacion_en_espera', { p_ids: unicos.slice(i, i + 500) })
-    if (error) throw new Error(`No se pudieron contar los días que esperan su factura: ${error.message}`)
-    for (const f of data ?? []) {
-      if (f.cotizacion) mapa.set(f.cotizacion, { desde: f.desde, dias: f.dias == null ? null : Number(f.dias) })
-    }
-  }
-  return mapa
 }
 
 /** Lo facturado de un código, en cada moneda, sin las anuladas, y cómo va contra lo vendido. */
@@ -301,7 +390,8 @@ export type FacturadoDelCodigo = {
 export async function facturadoDelCodigo(codigo: string, leeLoVendido: boolean): Promise<FacturadoDelCodigo> {
   const supabase = await createClient()
   const [{ data, error }, ventas] = await Promise.all([
-    supabase.from('v_facturas_venta').select('moneda, total, cobrado, saldo').eq('codigo_interno', codigo).is('anulada_en', null),
+    // Lo de este código: de la factura de toda una cotización de varias unidades, su parte (migración 20261126998000).
+    supabase.from('v_facturas_venta_por_unidad').select('moneda, monto, cobrado, saldo').eq('codigo_interno', codigo).is('anulada_en', null),
     leeLoVendido ? supabase.rpc('codigo_interno_lo_vendido', { p_codigo: codigo }) : Promise.resolve(null),
   ])
   if (error) throw new Error(`No se pudo leer lo facturado del código: ${error.message}`)
@@ -335,7 +425,7 @@ export async function facturadoDelCodigo(codigo: string, leeLoVendido: boolean):
   for (const f of data ?? []) {
     const m: CodigoMoneda = f.moneda === 'USD' ? 'USD' : 'PEN'
     r.facturas += 1
-    r.total[m] += Number(f.total ?? 0)
+    r.total[m] += Number(f.monto ?? 0)
     r.cobrado[m] += Number(f.cobrado ?? 0)
     r.saldo[m] += Number(f.saldo ?? 0)
   }
