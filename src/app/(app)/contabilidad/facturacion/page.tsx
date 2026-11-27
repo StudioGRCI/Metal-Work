@@ -70,7 +70,9 @@ function estadoDe(c: CotizacionParaFacturar): Estado {
   const sinOt = como.filter((x) => x === 'SIN_OT').length
   if (sinOt === como.length) return { etiqueta: 'Sin código interno', tono: 'neutro' }
   if (c.unidades.some(esperaFactura)) {
-    return { etiqueta: c.unidades.some((u) => u.facturas > 0) ? 'Facturada en parte' : 'Por facturar', tono: 'aviso' }
+    // Lo facturado de la unidad que pasó no hace «en parte» a las que quedan (auditoría, tercera vuelta).
+    const algoFacturado = c.unidades.some((u) => !pasaron.has(u.numero) && u.facturas > 0)
+    return { etiqueta: algoFacturado ? 'Facturada en parte' : 'Por facturar', tono: 'aviso' }
   }
   if (sinOt > 0) return { etiqueta: `Falta la OT de ${sinOt === 1 ? 'una unidad' : `${sinOt} unidades`}`, tono: 'neutro' }
   if (como.includes('OTRA_MONEDA')) return { etiqueta: 'Facturada en otra moneda', tono: 'neutro' }
