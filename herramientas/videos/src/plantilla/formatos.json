@@ -1,0 +1,42 @@
+{
+  "horizontal": {
+    "nombre": "Horizontal",
+    "ancho": 1920,
+    "alto": 1080,
+    "fps": 30,
+    "duracion": {
+      "minimo": 60,
+      "maximo": 120
+    },
+    "captura": {
+      "ancho": 1440,
+      "alto": 810,
+      "densidad": 2,
+      "telefono": false
+    },
+    "subtitulos": {
+      "y": 958,
+      "alto": 108
+    }
+  },
+  "vertical": {
+    "nombre": "Vertical",
+    "ancho": 1080,
+    "alto": 1920,
+    "fps": 30,
+    "duracion": {
+      "minimo": 30,
+      "maximo": 60
+    },
+    "captura": {
+      "ancho": 390,
+      "alto": 844,
+      "densidad": 3,
+      "telefono": true
+    },
+    "subtitulos": {
+      "y": 1536,
+      "alto": 250
+    }
+  }
+}

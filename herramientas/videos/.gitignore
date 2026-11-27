@@ -1,0 +1,6 @@
+node_modules/
+# De cada video, lo que se rehace: capturas del banco, voz y tiempos, y los MP4.
+videos/*/capturas/
+videos/*/generado/
+videos/*/salida/
+__pycache__/

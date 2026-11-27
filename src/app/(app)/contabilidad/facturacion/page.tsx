@@ -42,7 +42,8 @@ type Estado = { etiqueta: string; tono: 'aviso' | 'exito' | 'neutro' }
  * nada por facturar (auditoría del 27/10/2026). `sola`: la cotización es de
  * una unidad, y se dice como siempre.
  */
-function estadoDeUnidad(u: UnidadDeCotizacion, sola: boolean): Estado {
+function estadoDeUnidad(u: UnidadDeCotizacion, sola: boolean, paso = false): Estado {
+  if (paso) return { etiqueta: 'Pasó a otro comprador', tono: 'neutro' }
   const como = comoVaLaUnidad(u)
   if (como === 'SIN_OT') return { etiqueta: sola ? 'Sin código interno' : 'Falta su OT', tono: 'neutro' }
   if (como === 'POR_FACTURAR') return { etiqueta: 'Por facturar', tono: 'aviso' }
@@ -63,15 +64,38 @@ function estadoDe(c: CotizacionParaFacturar): Estado {
   if (c.paso_a_otro_comprador) return { etiqueta: 'Pasó a otro comprador', tono: 'neutro' }
   const [primera] = c.unidades
   if (c.unidades.length === 1 && primera) return estadoDeUnidad(primera, true)
-  const como = c.unidades.map(comoVaLaUnidad)
+  // La unidad que pasó a otro comprador no espera OT ni factura: la cotización se juzga por las que quedan.
+  const pasaron = lasQuePasaron(c)
+  const como = c.unidades.filter((u) => !pasaron.has(u.numero)).map(comoVaLaUnidad)
   const sinOt = como.filter((x) => x === 'SIN_OT').length
   if (sinOt === como.length) return { etiqueta: 'Sin código interno', tono: 'neutro' }
   if (c.unidades.some(esperaFactura)) {
-    return { etiqueta: c.unidades.some((u) => u.facturas > 0) ? 'Facturada en parte' : 'Por facturar', tono: 'aviso' }
+    // Lo facturado de la unidad que pasó no hace «en parte» a las que quedan (auditoría, tercera vuelta).
+    const algoFacturado = c.unidades.some((u) => !pasaron.has(u.numero) && u.facturas > 0)
+    return { etiqueta: algoFacturado ? 'Facturada en parte' : 'Por facturar', tono: 'aviso' }
   }
   if (sinOt > 0) return { etiqueta: `Falta la OT de ${sinOt === 1 ? 'una unidad' : `${sinOt} unidades`}`, tono: 'neutro' }
   if (como.includes('OTRA_MONEDA')) return { etiqueta: 'Facturada en otra moneda', tono: 'neutro' }
   return { etiqueta: 'Facturada', tono: 'exito' }
+}
+
+/**
+ * Las unidades de la cotización que pasaron a otro comprador, por su número: el
+ * que conserva su OT al pasar (`cuales`), y con él cuenta la base al numerar la
+ * OT que falta. Si una OT cargada antes de la 20261126988000 tomó ese número,
+ * la que pasó es otra de las que no tienen OT aquí: entre esas no hay
+ * diferencia —ninguna tiene código ni fecha— y se toma la última.
+ */
+function lasQuePasaron(c: CotizacionParaFacturar): Set<number> {
+  const paso = c.unidades_a_otro_comprador
+  if (!paso) return new Set()
+  const sinOt = c.unidades.filter((u) => !u.codigo).map((u) => u.numero)
+  const son = new Set(paso.cuales.filter((n) => sinOt.includes(n)).slice(0, paso.pasaron))
+  for (const n of [...sinOt].reverse()) {
+    if (son.size >= paso.pasaron) break
+    son.add(n)
+  }
+  return son
 }
 
 /** Lo que espera factura: alguna unidad con su OT, sin factura vigente o facturada en parte (Plan 10.1). */
@@ -91,6 +115,9 @@ function pasoAOtroComprador(c: CotizacionParaFacturar, ordenes: (string | null)[
   const porCobrar = c.facturas.some((f) => !f.anulada_en && !f.cancelada)
   return `${ot} ${paso} a otro comprador: esta venta ya no lleva OT.${porCobrar ? ' Queda cobrar su factura, o anularla.' : ''}`
 }
+
+/** «2», «2 y 3», «2, 3 y 4». */
+const enLista = (partes: string[]) => (partes.length <= 1 ? (partes[0] ?? '') : `${partes.slice(0, -1).join(', ')} y ${partes[partes.length - 1]}`)
 
 /** «1 de 3 unidades pasó a otro comprador.» */
 function unidadesAOtroComprador({ pasaron, unidades }: { pasaron: number; unidades: number }) {
@@ -191,14 +218,26 @@ export default async function PaginaFacturacion() {
             const m = codigo(c.moneda)
             const total = totalConIgv(c.monto_venta === null ? null : Number(c.monto_venta), c.incluye_igv)
             const facturado = facturadoDe(c)
+            // La que pasó a otro comprador no cuenta entre las que esperan su OT ni su factura.
+            const pasaron = lasQuePasaron(c)
+            // Lo que ya no se va a facturar aquí: lo que les faltaba a las unidades que pasaron.
+            const yaNoSeFactura = c.unidades.reduce((s, u) => (pasaron.has(u.numero) ? s + (faltaDe(u) ?? 0) : s), 0)
+            const porFacturarEnTotal = total === null ? null : Math.max(0, total - yaNoSeFactura)
             // La venta cerrada no se factura más: el % diría que falta el resto.
-            const facturadoPct = total === null || enOtraMoneda(c) || c.paso_a_otro_comprador ? null : parteDe(facturado, total)
+            const facturadoPct =
+              porFacturarEnTotal === null || enOtraMoneda(c) || c.paso_a_otro_comprador ? null : parteDe(facturado, porFacturarEnTotal)
             // La venta cerrada no se factura más: no le falta nada.
-            const falta = total === null || enOtraMoneda(c) || c.paso_a_otro_comprador ? 0 : Math.max(0, total - facturado)
+            const falta =
+              porFacturarEnTotal === null || enOtraMoneda(c) || c.paso_a_otro_comprador ? 0 : Math.max(0, porFacturarEnTotal - facturado)
             const aguarda = esperaDe(c, laQueMasEspera(c), recorridos)
             const varias = c.unidades.length > 1
             const conOt = c.unidades.filter((u) => u.codigo)
-            const sinOt = c.unidades.length - conOt.length
+            const quedan = c.unidades.length - pasaron.size
+            // Las que quedan ya tienen su OT y ninguna espera factura.
+            const yaTodoFacturado = pasaron.size > 0 && conOt.length === quedan && !porFacturar(c)
+            // Lo facturado de la unidad que pasó (un adelanto por toda la cotización, por ejemplo) sigue vigente y por cobrar.
+            const facturadasAntesDePasar = c.unidades.filter((u) => pasaron.has(u.numero) && (u.facturado > 0 || u.facturadoOtraMoneda > 0))
+            const sinOt = quedan - conOt.length
             return (
               // Con `id`: el aviso de la campana aterriza en esta cotización (`#id`).
               <li key={c.cotizacion_id} id={c.cotizacion_id ?? undefined} className="scroll-mt-20" data-cotizacion={c.numero ?? undefined}>
@@ -246,7 +285,7 @@ export default async function PaginaFacturacion() {
                       {facturado > 0 && (
                         <span className="tabular text-texto-suave">
                           Facturado: <span className="text-texto">{moneda(facturado, m)}</span>
-                          {facturadoPct !== null && ` · ${porcentaje(facturadoPct)}`}
+                          {facturadoPct !== null && ` · ${porcentaje(facturadoPct)}${pasaron.size > 0 ? ' de lo que se factura aquí' : ''}`}
                           {falta > 0.005 && (
                             <>
                               {' '}
@@ -288,14 +327,39 @@ export default async function PaginaFacturacion() {
                       </p>
                     )}
 
-                    {/* Una unidad de varias pasó a otro comprador: el total de arriba sigue siendo el de la
-                        cotización entera, que guarda un solo monto. Se avisa y Contabilidad decide (StudioGRCI, 2026-11-26). */}
+                    {/* Una unidad de varias pasó a otro comprador: no espera OT ni factura, y la cotización se
+                        cierra con las que quedan (StudioGRCI, 2026-11-26: «Que se cierre sola, sin botón»). El
+                        total de arriba sigue siendo el de la cotización entera, que guarda un solo monto. Con
+                        todo facturado ya no pide nada y deja el ámbar; si la que pasó tenía algo facturado, eso
+                        sí queda por resolver y lo dice. */}
                     {c.unidades_a_otro_comprador && (
-                      <p data-unidades-a-otro-comprador className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-aviso-suave px-2.5 py-1.5 text-xs text-aviso">
+                      <p
+                        data-unidades-a-otro-comprador
+                        className={`flex items-start gap-1.5 rounded-[var(--radius-base)] px-2.5 py-1.5 text-xs ${
+                          yaTodoFacturado && facturadasAntesDePasar.length === 0 ? 'bg-neutro-suave text-texto-suave' : 'bg-aviso-suave text-aviso'
+                        }`}
+                      >
                         <UserRoundX aria-hidden className="mt-0.5 size-3.5 shrink-0" />
                         <span>
                           <span className="font-medium">{unidadesAOtroComprador(c.unidades_a_otro_comprador)}</span>{' '}
-                          El total de venta es el de la cotización entera: revisa cuánto corresponde facturar.
+                          {yaTodoFacturado
+                            ? quedan === 1
+                              ? 'Se facturó la que quedó, por su parte'
+                              : `Se facturaron las ${quedan} que quedaron, cada una por su parte`
+                            : quedan === 1
+                              ? 'Se factura la que queda, por su parte'
+                              : `Se facturan las ${quedan} que quedan, cada una por su parte`}
+                          : el total de venta de arriba es el de la cotización entera.
+                          {facturadasAntesDePasar.length > 0 && (
+                            <span data-facturada-antes-de-pasar>
+                              {' '}
+                              {facturadasAntesDePasar.length === 1
+                                ? `La unidad ${facturadasAntesDePasar[0]?.numero} ya tenía`
+                                : `Las unidades ${enLista(facturadasAntesDePasar.map((u) => String(u.numero)))} ya tenían`}{' '}
+                              algo facturado en esta cotización cuando {facturadasAntesDePasar.length === 1 ? 'pasó' : 'pasaron'}: revisa qué corresponde
+                              hacer con esa factura.
+                            </span>
+                          )}
                         </span>
                       </p>
                     )}
@@ -313,7 +377,9 @@ export default async function PaginaFacturacion() {
                             ? 'Falta que Administración cargue la OT con el código interno de la unidad: la factura se registra en ese código.'
                             : `Falta que Administración cargue la OT de ${
                                 sinOt === c.unidades.length ? `las ${sinOt} unidades` : sinOt === 1 ? 'una unidad' : `${sinOt} unidades`
-                              }: cada unidad se factura cuando tiene la suya, y la factura por toda la cotización, cuando estén todas.`}
+                              }: cada unidad se factura cuando tiene la suya${
+                                pasaron.size > 0 ? '.' : ', y la factura por toda la cotización, cuando estén todas.'
+                              }`}
                         </span>
                       </p>
                     )}
@@ -349,7 +415,7 @@ export default async function PaginaFacturacion() {
                         facturado={facturado}
                         unidadesAOtroComprador={c.unidades_a_otro_comprador}
                         unidades={
-                          varias ? c.unidades.map((u) => ({ numero: u.numero, codigo: u.codigo, parte: u.parte, facturado: u.facturado })) : undefined
+                          varias ? c.unidades.map((u) => ({ numero: u.numero, codigo: u.codigo, parte: u.parte, facturado: u.facturado, paso: pasaron.has(u.numero) })) : undefined
                         }
                       />
                     )}
@@ -392,16 +458,18 @@ function Unidades({
   factura: boolean
 }) {
   const otra: CodigoMoneda = m === 'USD' ? 'PEN' : 'USD'
+  const pasaron = lasQuePasaron(c)
   return (
     <section aria-label={`Unidades de la cotización ${c.numero}`} className="border-t border-borde pt-3">
       <h3 className="text-xs font-semibold text-texto-suave">Unidades</h3>
       <ul className="mt-1 divide-y divide-borde">
         {c.unidades.map((u) => {
-          const estado = estadoDeUnidad(u, false)
+          const paso = pasaron.has(u.numero)
+          const estado = estadoDeUnidad(u, false, paso)
           const falta = faltaDe(u)
           const espera = esperaFactura(u) && !c.en_correccion ? esperaDe(c, u, recorridos) : null
           return (
-            <li key={u.numero} data-unidad={u.numero} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2 text-sm last:pb-0">
+            <li key={u.numero} data-unidad={u.numero} data-paso-a-otro-comprador={paso || undefined} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2 text-sm last:pb-0">
               <p className="flex flex-wrap items-center gap-2">
                 <span className="font-medium text-texto">Unidad {u.numero}</span>
                 {u.codigo && <span className="tabular whitespace-nowrap text-texto-suave">código {u.codigo}</span>}
@@ -417,7 +485,10 @@ function Unidades({
                 )}
               </p>
               <p className="tabular text-xs text-texto-suave">
-                {u.parte === null ? (
+                {paso ? (
+                  // Lo que tenga facturado se dice abajo; lo que le tocaba ya no se factura aquí.
+                  u.facturado > 0 || u.facturadoOtraMoneda > 0 ? null : 'Ya no se factura en esta cotización'
+                ) : u.parte === null ? (
                   'Sin total registrado'
                 ) : (
                   <>
@@ -426,11 +497,11 @@ function Unidades({
                 )}
                 {u.facturado > 0 && (
                   <>
-                    {' '}
-                    · facturado <span className="whitespace-nowrap">{moneda(u.facturado, m)}</span>
+                    {paso ? 'Facturado antes de pasar: ' : ' · facturado '}
+                    <span className="whitespace-nowrap">{moneda(u.facturado, m)}</span>
                   </>
                 )}
-                {u.facturado > 0 && falta !== null && falta > 0.005 && (
+                {!paso && u.facturado > 0 && falta !== null && falta > 0.005 && (
                   <>
                     {' '}
                     ·{' '}
@@ -441,8 +512,8 @@ function Unidades({
                 )}
                 {u.facturadoOtraMoneda > 0 && (
                   <>
-                    {' '}
-                    · en {nombreMoneda(otra)}, <span className="whitespace-nowrap">{moneda(u.facturadoOtraMoneda, otra)}</span>
+                    {paso && u.facturado === 0 ? 'Facturado antes de pasar: en ' : ' · en '}
+                    {nombreMoneda(otra)}, <span className="whitespace-nowrap">{moneda(u.facturadoOtraMoneda, otra)}</span>
                   </>
                 )}
               </p>
