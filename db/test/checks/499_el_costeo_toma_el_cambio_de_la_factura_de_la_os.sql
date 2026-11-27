@@ -13,6 +13,20 @@
 --        sin sumarla. Contabilidad registra ese cambio (3,60) y pesa S/ 3 600.
 --   osp: S/ 500. Su factura no cambia nada: la línea sigue con su día de emisión.
 --
+-- Otro código, PRB_SR_499_2, con una sola OS (osv, US$ 1 000) para lo que no
+-- iguala y lo que no debe moverse:
+--
+--   · Con factura y todavía por aprobar, su línea ya lleva el día de la factura.
+--   · Depositada su detracción queda fija en S/ 3 800; Contabilidad corrige
+--     después el cambio de ese día (3,90) y el costeo pesa S/ 3 900. Es el
+--     límite conocido: el costeo y la OS difieren en S/ 100.
+--   · La «última actividad» del código es el día en que se emitió la OS, hace 40
+--     días, no el de su factura.
+--
+-- En cada paso, `codigo_interno_cambio_de_servicios` dice con qué cambio va la
+-- OS en el costeo: el día que le toca, el del cambio registrado que se usa y el
+-- día en que se emitió. Lo que dice sale del mismo cambio que `cambio_del_dia`.
+--
 -- Al final Gerencia cierra el costeo: lo congelado sale del mismo cambio.
 --
 -- Lo lee quien ve el costo (Gerencia, Administración) y no quien no (Supervisión).
@@ -44,7 +58,7 @@ begin
    order by r limit 1
   on conflict (tipo_documento, numero_documento) do update set activo = true;
   perform set_config('prueba.proveedor', (select id::text from public.proveedores where razon_social = 'PROVEEDOR DE PRUEBA 499'), true);
-  foreach v in array array['osa', 'osb', 'osp', 'fa', 'fb', 'fp'] loop
+  foreach v in array array['osa', 'osb', 'osp', 'osv', 'fa', 'fb', 'fp', 'fv', 'pagov'] loop
     perform set_config('prueba.' || v, gen_random_uuid()::text, true);
   end loop;
 end $$;
@@ -72,25 +86,70 @@ end $$;
 -- Lo que lee la pantalla de ese puesto, con su rol: el día de la línea de esa OS (contado
 -- desde hoy) y, del costo del código, soles | dólares sin cambio | líneas sin cambio |
 -- dólares pasados al cambio | lo que suman en soles.
-create or replace function pg_temp.linea(p_os text, p_como text default 'gerente') returns text language plpgsql as $$
+create or replace function pg_temp.linea(p_os text, p_como text default 'gerente', p_codigo text default 'PRB_SR_499_1') returns text language plpgsql as $$
 declare v text;
 begin
   perform pg_temp.como(p_como);
   set local role authenticated;
   select (k.fecha - pg_temp.hoy())::text || '|' || k.moneda || '|' || k.monto::text into v
-    from public.codigo_interno_costeo('PRB_SR_499_1') k where k.referencia_id = pg_temp.id(p_os);
+    from public.codigo_interno_costeo(p_codigo) k where k.referencia_id = pg_temp.id(p_os);
   reset role;
   return coalesce(v, 'nada');
 end $$;
-create or replace function pg_temp.costo(p_como text default 'gerente') returns text language plpgsql as $$
+create or replace function pg_temp.costo(p_como text default 'gerente', p_codigo text default 'PRB_SR_499_1') returns text language plpgsql as $$
 declare v text;
 begin
   perform pg_temp.como(p_como);
   set local role authenticated;
   select concat_ws('|', c.costo_pen, c.usd_sin_cambio, c.lineas_sin_cambio, c.usd_al_cambio, c.usd_en_soles) into v
-    from public.codigos_internos_costo('PRB_SR_499_1') c;
+    from public.codigos_internos_costo(p_codigo) c;
   reset role;
   return coalesce(v, 'nada');
+end $$;
+-- Con qué cambio dice la base que va esa OS en el costeo, contado desde hoy: el día que le
+-- toca | el del cambio registrado que se usa (∅ si no hay) | el día en que se emitió. «nada» si
+-- no viene (la OS en soles).
+create or replace function pg_temp.cambio(p_os text, p_como text default 'gerente', p_codigo text default 'PRB_SR_499_1') returns text language plpgsql as $$
+declare v text;
+begin
+  perform pg_temp.como(p_como);
+  set local role authenticated;
+  select concat_ws('|', c.dia - pg_temp.hoy(), coalesce((c.registrado_el - pg_temp.hoy())::text, '∅'), c.emitida_el - pg_temp.hoy()) into v
+    from public.codigo_interno_cambio_de_servicios(p_codigo) c where c.orden_servicio_id = pg_temp.id(p_os);
+  reset role;
+  return coalesce(v, 'nada');
+end $$;
+-- Lo que dice de cada OS sale del mismo cambio que usa el costo: el de `cambio_del_dia`.
+create or replace function pg_temp.el_cambio_calza(p_codigo text default 'PRB_SR_499_1') returns boolean language plpgsql as $$
+declare v boolean;
+begin
+  perform pg_temp.como('gerente');
+  set local role authenticated;
+  select count(*) > 0
+         and bool_and((select t.venta from public.tipos_de_cambio t where t.fecha = c.registrado_el)
+                      is not distinct from public.cambio_del_dia(c.dia, 'VENTA')) into v
+    from public.codigo_interno_cambio_de_servicios(p_codigo) c;
+  reset role;
+  return coalesce(v, false);
+end $$;
+-- La fuente de la línea de esa OS y la «última actividad» de su código, contada desde hoy.
+create or replace function pg_temp.fuente(p_os text, p_codigo text) returns text language plpgsql as $$
+declare v text;
+begin
+  perform pg_temp.como('gerente');
+  set local role authenticated;
+  select k.fuente into v from public.codigo_interno_costeo(p_codigo) k where k.referencia_id = pg_temp.id(p_os);
+  reset role;
+  return coalesce(v, 'nada');
+end $$;
+create or replace function pg_temp.ultima(p_codigo text) returns integer language plpgsql as $$
+declare v integer;
+begin
+  perform pg_temp.como('gerente');
+  set local role authenticated;
+  select r.ultima_actividad - pg_temp.hoy() into v from public.codigos_internos_resumen() r where r.codigo = p_codigo;
+  reset role;
+  return v;
 end $$;
 grant execute on all functions in schema pg_temp to authenticated;
 
@@ -126,6 +185,9 @@ select test.afirmar(pg_temp.linea('osa') = '0|USD|1000.00',
   format('sin factura, la línea de la OS lleva el día en que se emitió (dice %s)', pg_temp.linea('osa')));
 select test.afirmar(pg_temp.costo() = '7900.00|0|0|2000.00|7400.00',
   format('el costo del código pasa las dos OS en dólares a S/ 3 700 cada una, más los S/ 500 (dice %s)', pg_temp.costo()));
+select test.afirmar(pg_temp.cambio('osa') = '0|-1|0',
+  format('la base dice que va con el cambio de ayer, el último registrado hasta su día (dice %s)', pg_temp.cambio('osa')));
+select test.afirmar(pg_temp.cambio('osp') = 'nada', 'de la OS en soles no dice ningún cambio');
 
 -- Contabilidad registra después el cambio de hace 3 días: nada cambia todavía.
 select pg_temp.como('contabilidad');
@@ -149,6 +211,10 @@ select test.afirmar((pg_temp.os('osa')).monto_pen = 3800.00 and (pg_temp.os('osa
 select test.afirmar(pg_temp.linea('osa') = '-3|USD|1000.00',
   format('la línea del costeo lleva el día de la factura, y sigue en dólares (dice %s)', pg_temp.linea('osa')));
 select test.afirmar(pg_temp.linea('osb') = '0|USD|1000.00', 'la otra OS, sin factura, sigue con su día de emisión');
+select test.afirmar(pg_temp.cambio('osa') = '-3|-3|0' and pg_temp.cambio('osb') = '0|-1|0',
+  format('la base dice que va con el cambio del día de su factura, y que se emitió hoy (dice %s)', pg_temp.cambio('osa')));
+select test.afirmar(pg_temp.cambio('osa', 'administracion') = '-3|-3|0', 'Administración lee lo mismo');
+select test.afirmar(pg_temp.el_cambio_calza(), 'y ese cambio es el que usa el costo para cada OS');
 select test.afirmar(pg_temp.costo() = '8000.00|0|0|2000.00|7500.00',
   format('el costo del código sube S/ 100: la OS pesa los mismos S/ 3 800 que dice (dice %s)', pg_temp.costo()));
 select test.afirmar(
@@ -163,6 +229,8 @@ select test.debe_fallar($q$select * from public.codigos_internos_costo('PRB_SR_4
   'un supervisor no lee el costo del código', 'codigos_internos.ver');
 select test.debe_fallar($q$select * from public.codigo_interno_costeo('PRB_SR_499_1')$q$,
   'ni sus líneas', 'codigos_internos.ver');
+select test.debe_fallar($q$select * from public.codigo_interno_cambio_de_servicios('PRB_SR_499_1')$q$,
+  'ni con qué cambio va cada OS', 'codigos_internos.ver');
 select test.debe_fallar($q$select public.codigo_interno_lineas_servicio('PRB_SR_499_1')$q$,
   'la función interna sigue sin llamarse desde afuera', 'permission denied');
 reset role;
@@ -179,6 +247,9 @@ reset role;
 select test.afirmar((pg_temp.os('osb')).monto_pen is null, 'esa OS queda sin monto en soles');
 select test.afirmar(pg_temp.costo() = '4300.00|1000.00|1|1000.00|3800.00',
   format('el costeo no la suma: la cuenta como una línea en dólares sin tipo de cambio (dice %s)', pg_temp.costo()));
+select test.afirmar(pg_temp.cambio('osb') = '-20|∅|0',
+  format('y la base dice que el día de su factura no tiene ningún cambio registrado (dice %s)', pg_temp.cambio('osb')));
+select test.afirmar(pg_temp.el_cambio_calza(), 'lo mismo que dice el costo: sin cambio');
 
 select pg_temp.como('contabilidad');
 set local role authenticated;
@@ -191,6 +262,8 @@ select test.afirmar(pg_temp.costo() = '7900.00|0|0|2000.00|7400.00',
 select test.afirmar(
   split_part(pg_temp.costo(), '|', 5)::numeric = (pg_temp.os('osa')).monto_pen + (pg_temp.os('osb')).monto_pen,
   'otra vez, lo que suman en soles es la suma de los montos en soles de las OS');
+select test.afirmar(pg_temp.cambio('osb') = '-20|-20|0' and pg_temp.el_cambio_calza(),
+  format('y la base ya dice con cuál va (dice %s)', pg_temp.cambio('osb')));
 
 -- ============================================ La OS en soles no cambia
 select set_config('prueba.ruta_p', pg_temp.subir('osp', 'comprador'), true);
@@ -222,6 +295,62 @@ select test.afirmar(
   (select servicios = 3 and servicios_pen = 500 and servicios_usd = 2000 from public.codigos_internos_servicios() where codigo = 'PRB_SR_499_1'),
   'la lista de códigos sigue sumando las tres OS, cada una en su moneda');
 reset role;
+
+-- ============================================ Otro código: por aprobar, la OS fija y la última actividad
+select pg_temp.como('comprador');
+set local role authenticated;
+select public.emitir_orden_servicio(pg_temp.id('osv'), pg_temp.id('proveedor'), null, (select id from public.areas where codigo = 'ACB'),
+  'PRB_SR_499_2', 'Rectificado del eje, prueba 499', null, pg_temp.hoy(), pg_temp.hoy() + 5, 'USD', 1000, 'CONTADO', 0, '025', null);
+reset role;
+select set_config('prueba.ruta_v', pg_temp.subir('osv', 'comprador'), true);
+select pg_temp.como('comprador');
+set local role authenticated;
+select test.afirmar(
+  public.adjuntar_documento_servicio(pg_temp.id('fv'), pg_temp.id('osv'), 'FACTURA', 'F001-4994', 'factura.pdf',
+                                     current_setting('prueba.ruta_v'), pg_temp.hoy() - 3) = pg_temp.id('fv'),
+  'Logística adjunta la factura de hace 3 días a una OS que Gerencia todavía no aprobó');
+reset role;
+select test.afirmar(pg_temp.fuente('osv', 'PRB_SR_499_2') = 'SERVICIOS_POR_APROBAR'
+                and pg_temp.linea('osv', 'gerente', 'PRB_SR_499_2') = '-3|USD|1000.00'
+                and pg_temp.costo('gerente', 'PRB_SR_499_2') = '0|0|0|0|0',
+  format('por aprobar, su línea ya lleva el día de su factura y todavía no suma (dice %s, %s y %s)',
+         pg_temp.fuente('osv', 'PRB_SR_499_2'), pg_temp.linea('osv', 'gerente', 'PRB_SR_499_2'), pg_temp.costo('gerente', 'PRB_SR_499_2')));
+select pg_temp.como('gerente');
+set local role authenticated;
+select public.aprobar_orden_servicio(pg_temp.id('osv'));
+reset role;
+select test.afirmar((pg_temp.os('osv')).monto_pen = 3800.00 and pg_temp.costo('gerente', 'PRB_SR_499_2') = '3800.00|0|0|1000.00|3800.00',
+  format('aprobada, pesa los S/ 3 800 que dice la OS (dice %s)', pg_temp.costo('gerente', 'PRB_SR_499_2')));
+
+-- El límite conocido. Depositada su detracción, la OS queda fija; Contabilidad corrige después el
+-- cambio del día de su factura: la OS sigue en S/ 3 800 y el costeo toma el corregido.
+set local session_replication_role = replica;
+insert into public.pagos_orden_servicio (id, orden_servicio_id, fecha_pago, moneda, monto, cancela, destino, archivo_ruta, archivo_mime, archivo_tamano, registrado_por)
+values (pg_temp.id('pagov'), pg_temp.id('osv'), current_date, 'PEN', (pg_temp.os('osv')).detraccion_monto, false, 'DETRACCION', 'prueba/499/detraccion-v.pdf', 'application/pdf', 1000, pg_temp.id('contabilidad'));
+set local session_replication_role = origin;
+select test.afirmar((pg_temp.os('osv')).detraccion_monto > 0 and public.servicio_con_el_cambio_fijo(pg_temp.id('osv')),
+  'la OS tiene detracción y, depositada, queda fija');
+select pg_temp.como('contabilidad');
+set local role authenticated;
+update public.tipos_de_cambio set venta = 3.90, compra = 3.85 where fecha = pg_temp.hoy() - 3;
+reset role;
+select test.afirmar((pg_temp.os('osv')).monto_pen = 3800.00,
+  'la OS fija no se mueve con la corrección: sigue en S/ 3 800');
+select test.afirmar(pg_temp.costo('gerente', 'PRB_SR_499_2') = '3900.00|0|0|1000.00|3900.00',
+  format('el costeo sí toma el cambio corregido: S/ 3 900, S/ 100 más que la OS. Es lo que no iguala (dice %s)', pg_temp.costo('gerente', 'PRB_SR_499_2')));
+select test.afirmar(pg_temp.cambio('osv', 'gerente', 'PRB_SR_499_2') = '-3|-3|0' and pg_temp.el_cambio_calza('PRB_SR_499_2'),
+  'y lo que la base dice del costeo sigue siendo el cambio que el costeo usa');
+select test.afirmar(pg_temp.costo() = '7800.00|0|0|2000.00|7300.00', 'el otro código, sin facturas de ese día, no se mueve');
+
+-- La última actividad del código es el día en que se emitió la OS, no el de su factura.
+set local session_replication_role = replica;
+update public.ordenes_servicio set creado_en = creado_en - interval '40 days' where id = pg_temp.id('osv');
+set local session_replication_role = origin;
+select test.afirmar(pg_temp.linea('osv', 'gerente', 'PRB_SR_499_2') = '-3|USD|1000.00' and pg_temp.cambio('osv', 'gerente', 'PRB_SR_499_2') = '-3|-3|-40',
+  format('emitida hace 40 días, su línea sigue con el día de su factura y la base dice cuándo se emitió (dice %s)', pg_temp.cambio('osv', 'gerente', 'PRB_SR_499_2')));
+select test.afirmar(pg_temp.ultima('PRB_SR_499_2') = -40,
+  format('la última actividad del código es de hace 40 días, cuando se emitió la OS: la fecha de la factura no lo mueve (dice %s)', pg_temp.ultima('PRB_SR_499_2')));
+select test.afirmar(pg_temp.ultima('PRB_SR_499_1') = 0, 'y la del código con OS emitidas hoy es hoy');
 
 -- ============================================ El cierre del costeo congela ese mismo costo
 select pg_temp.como('gerente');

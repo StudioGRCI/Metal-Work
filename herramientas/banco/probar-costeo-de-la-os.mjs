@@ -7,12 +7,15 @@
  *   1. Contabilidad tiene el cambio de ayer y el de hace 3 días. Logística emite
  *      para un código nuevo una OS en dólares y una en soles, y Gerencia las
  *      aprueba. Eso se siembra por SQL, con el rol de cada uno.
- *   2. Gerencia abre el costeo del código: la OS en dólares dice «Al cambio del
- *      (día en que se emitió)» y el costo la suma con ese cambio.
+ *   2. Gerencia abre el costeo del código: bajo la OS en dólares está el día en
+ *      que se emitió y «Al cambio del (último registrado hasta ese día)», y el
+ *      costo la suma con ese cambio.
  *   3. Logística le adjunta su factura de hace 3 días, con clic.
  *   4. Gerencia vuelve al costeo: la OS dice «Al cambio del (día de la
  *      factura)» y pesa lo mismo que su monto en soles. En el teléfono también.
  *   5. Administración lee lo mismo; un supervisor no entra.
+ *   6. Otra OS en dólares recibe una factura de hace 45 días, sin cambio
+ *      registrado: la fila dice «Sin cambio del (ese día)» y el costo no la suma.
  *
  * Cada corrida usa un código y unas OS propias: se puede repetir. Solo en el
  * banco. Variables: BANCO_CLAVE, BASE (http://localhost:3111), BANCO_BASE
@@ -73,8 +76,9 @@ async function como(cuenta, sql, v = []) {
 }
 
 // 1. La siembra ---------------------------------------------------------------
-const [{ hoy, hace3 }] = await q(
-  `select to_char(h, 'YYYY-MM-DD') as hoy, to_char(h - 3, 'YYYY-MM-DD') as hace3 from (select (now() at time zone 'America/Lima')::date as h) x`,
+const [{ hoy, hace3, hace45 }] = await q(
+  `select to_char(h, 'YYYY-MM-DD') as hoy, to_char(h - 3, 'YYYY-MM-DD') as hace3, to_char(h - 45, 'YYYY-MM-DD') as hace45
+     from (select (now() at time zone 'America/Lima')::date as h) x`,
 )
 for (const [dias, venta] of [[1, 3.7], [3, 3.8]]) {
   await como(
@@ -96,7 +100,8 @@ await q(
 )
 const [{ proveedor }] = await q(`select id as proveedor from public.proveedores where activo order by razon_social limit 1`)
 const emitidas = {}
-for (const [clave, moneda, monto, que] of [['d', 'USD', 1000, 'Torneado de ejes'], ['s', 'PEN', 500, 'Pintura de la tolva']]) {
+/** Logística emite la OS para el código y Gerencia la aprueba. */
+async function emitir(clave, moneda, monto, que) {
   const [{ id }] = await como(
     'logistica',
     `select public.emitir_orden_servicio(gen_random_uuid(), $1, null, (select id from public.areas where codigo = 'MTZ'), $2, $3, null,
@@ -106,11 +111,18 @@ for (const [clave, moneda, monto, que] of [['d', 'USD', 1000, 'Torneado de ejes'
   await como('gerencia', `select public.aprobar_orden_servicio($1)`, [id])
   const [os] = await q(`select id, numero, monto, monto_pen from public.ordenes_servicio where id = $1`, [id])
   emitidas[clave] = os
+  return os
 }
+await emitir('d', 'USD', 1000, 'Torneado de ejes')
+await emitir('s', 'PEN', 500, 'Pintura de la tolva')
 const { d, s } = emitidas
 // El costeo convierte con el cambio que le toca a ese día: el último registrado hasta él.
 const cambioDe = async (dia) => Number((await q(`select public.cambio_del_dia($1::date, 'VENTA') as c`, [dia]))[0].c)
+// Y lo dice con el día en que se registró ese cambio, que puede no ser el suyo.
+const registradoDe = async (dia) =>
+  (await q(`select to_char(max(fecha), 'YYYY-MM-DD') as f from public.tipos_de_cambio where fecha <= $1::date and fecha > $1::date - 10`, [dia]))[0].f
 const tcHoy = await cambioDe(hoy)
+const regHoy = await registradoDe(hoy)
 const tc3 = await cambioDe(hace3)
 console.log(`  Código ${CODIGO}: ${d.numero} (US$ 1 000, S/ ${d.monto_pen}) y ${s.numero} (S/ 500); cambio de hoy ${tcHoy}, de hace 3 días ${tc3}`)
 comprobar(d.monto_pen !== null && tc3 > 0 && tcHoy > 0, 'la OS en dólares nació con monto en soles y hay cambio para hoy y para hace 3 días')
@@ -147,19 +159,26 @@ async function captura(pagina, nombre) {
   // Y la tarjeta de las órdenes de servicio sola, que es lo que cambió.
   await pagina.locator('[data-servicios]').first().screenshot({ path: `${CAPTURAS}/${nombre}-servicios.png` })
 }
-const desborda = (pagina) => pagina.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
+// Ni la página ni la tarjeta de las OS: la tarjeta corta lo que se sale, y el importe quedaba tapado.
+const desborda = (pagina) =>
+  pagina.evaluate(() => {
+    const tarjeta = document.querySelector('[data-servicios]')
+    return document.documentElement.scrollWidth > window.innerWidth || (tarjeta ? tarjeta.scrollWidth > tarjeta.clientWidth : false)
+  })
 const COSTEO = `/codigos-internos/detalle?${new URLSearchParams({ codigo: CODIGO, vista: 'costeo' })}`
 
 /** Lo que el costeo dice de la OS en dólares y del costo del código. */
-async function leerCosteo(pagina) {
+async function leerCosteo(pagina, os = d) {
   await ir(pagina, COSTEO)
-  const fila = pagina.locator(`[data-servicios] [data-servicio="${d.numero}"]`).first()
+  const fila = pagina.locator(`[data-servicios] [data-servicio="${os.numero}"]`).first()
   const filaSoles = pagina.locator(`[data-servicios] [data-servicio="${s.numero}"]`).first()
   return {
     dia: await fila.locator('[data-dia-de-la-linea]').getAttribute('data-dia-de-la-linea').catch(() => null),
     texto: limpio(await fila.locator('[data-dia-de-la-linea]').textContent().catch(() => '')),
+    emitida: limpio(await fila.locator('[data-emitida-el]').textContent().catch(() => '')),
     importe: limpio(await fila.innerText().catch(() => '')),
-    soles: limpio(await filaSoles.locator('[data-dia-de-la-linea]').textContent().catch(() => '')),
+    soles: limpio(await filaSoles.locator('[data-emitida-el]').textContent().catch(() => '')),
+    solesConCambio: await filaSoles.locator('[data-dia-de-la-linea]').count(),
     costo: Number(await pagina.locator('[data-costo]').first().getAttribute('data-costo').catch(() => NaN)),
     alCambio: Number(await pagina.locator('[data-dolares-al-cambio]').first().getAttribute('data-dolares-al-cambio').catch(() => NaN)),
     ayuda: await pagina.locator('[data-servicios]').first().innerHTML().catch(() => ''),
@@ -171,8 +190,10 @@ const ger = await entrar('gerencia', 1440)
 {
   const c = await leerCosteo(ger)
   const esperado = Math.round(1000 * tcHoy * 100) / 100
-  comprobar(c.dia === hoy && c.texto === `Al cambio del ${dma(hoy)}`, `sin factura, la ${d.numero} dice «Al cambio del ${dma(hoy)}», el día en que se emitió (dice «${c.texto}»)`)
-  comprobar(c.soles === dma(hoy), `la ${s.numero}, en soles, lleva solo su fecha (dice «${c.soles}»)`)
+  comprobar(c.dia === hoy && c.texto === `Al cambio del ${dma(regHoy)}`,
+    `sin factura, la ${d.numero} va con el cambio de su día de emisión y dice el último registrado hasta él: «Al cambio del ${dma(regHoy)}» (dice «${c.texto}»)`)
+  comprobar(c.emitida === dma(hoy), `y encima, el día en que se emitió (dice «${c.emitida}»)`)
+  comprobar(c.soles === dma(hoy) && c.solesConCambio === 0, `la ${s.numero}, en soles, lleva solo su fecha (dice «${c.soles}»)`)
   comprobar(c.importe.includes('US$') || c.importe.includes('$'), 'la OS en dólares sigue mostrándose en dólares')
   comprobar(c.alCambio === esperado && c.costo === esperado + 500, `el costo la suma con el cambio de ese día: S/ ${esperado} + S/ 500 (dice ${c.costo}, con ${c.alCambio} de dólares al cambio)`)
   comprobar(!(await desborda(ger)), 'el costeo no se sale de la pantalla a 1440')
@@ -180,26 +201,27 @@ const ger = await entrar('gerencia', 1440)
 }
 
 // 3. Logística adjunta la factura de hace 3 días, con clic ----------------------------
-{
+async function adjuntarFactura(os, dia, numero, que) {
   const log = await entrar('logistica', 1440)
   await ir(log, '/compras/servicios')
-  await log.locator(`[data-adjuntar-documento-servicio="${d.numero}"]`).first().click()
+  await log.locator(`[data-adjuntar-documento-servicio="${os.numero}"]`).first().click()
   const v = log.locator(VENTANA)
   await v.waitFor()
-  await v.locator('input[name="numero"]').fill(`F001-${SELLO}`)
-  await v.locator('input[name="fecha_emision"]').fill(hace3)
+  await v.locator('input[name="numero"]').fill(numero)
+  await v.locator('input[name="fecha_emision"]').fill(dia)
   await v.locator('input[type="file"]').setInputFiles({
-    name: `factura-${SELLO}.pdf`,
+    name: `factura-${numero}.pdf`,
     mimeType: 'application/pdf',
-    buffer: Buffer.from(`%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n${SELLO}`),
+    buffer: Buffer.from(`%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n${numero}`),
   })
   await v.locator('button[type="submit"]').click()
   await Promise.race([v.waitFor({ state: 'hidden', timeout: 40000 }), v.locator('[role="alert"]').waitFor({ timeout: 40000 })]).catch(() => {})
   const error = limpio(await v.locator('[role="alert"]').textContent({ timeout: 500 }).catch(() => ''))
   await log.waitForLoadState('networkidle')
-  comprobar(!error, `Logística adjunta la factura de hace 3 días${error ? ` («${error}»)` : ''}`)
+  comprobar(!error, `Logística adjunta ${que}${error ? ` («${error}»)` : ''}`)
   await log.context().close()
 }
+await adjuntarFactura(d, hace3, `F001-${SELLO}`, 'la factura de hace 3 días')
 const [despues] = await q(`select monto_pen, to_char(fecha_cambio, 'YYYY-MM-DD') as fecha_cambio from public.ordenes_servicio where id = $1`, [d.id])
 comprobar(despues.fecha_cambio === hace3 && Number(despues.monto_pen) === Math.round(1000 * tc3 * 100) / 100,
   `la OS tomó el cambio de su factura: S/ ${despues.monto_pen}`)
@@ -208,6 +230,7 @@ comprobar(despues.fecha_cambio === hace3 && Number(despues.monto_pen) === Math.r
 {
   const c = await leerCosteo(ger)
   comprobar(c.dia === hace3 && c.texto === `Al cambio del ${dma(hace3)}`, `con su factura, la ${d.numero} dice «Al cambio del ${dma(hace3)}» (dice «${c.texto}»)`)
+  comprobar(c.emitida === dma(hoy), `y sigue diciendo el día en que se emitió (dice «${c.emitida}»)`)
   comprobar(c.alCambio === Number(despues.monto_pen), `y pesa en el costo lo mismo que su monto en soles: S/ ${despues.monto_pen} (dice ${c.alCambio})`)
   comprobar(c.costo === Number(despues.monto_pen) + 500, `el costo del código es S/ ${Number(despues.monto_pen) + 500} (dice ${c.costo})`)
   comprobar(c.ayuda.includes('fecha de su factura'), 'la ayuda de la tarjeta dice con qué cambio pasa a soles la OS en dólares')
@@ -234,6 +257,28 @@ comprobar(despues.fecha_cambio === hace3 && Number(despues.monto_pen) === Math.r
   comprobar(new URL(sup.url()).pathname.startsWith('/sin-permiso') || (await sup.locator('[data-servicios]').count()) === 0,
     `el supervisor de Maestranza no lee el costeo del código (${new URL(sup.url()).pathname}${cuerpo ? '' : ', sin contenido'})`)
   await sup.context().close()
+}
+
+// 6. La factura de un día sin cambio registrado: la fila lo dice y no afirma ninguno ----
+{
+  const sinCambio = (await cambioDe(hace45)) === 0
+  if (!sinCambio) {
+    console.log(`  (hay un cambio registrado cerca del ${dma(hace45)}: no se prueba la OS sin cambio)`)
+  } else {
+    const n = await emitir('n', 'USD', 200, 'Flete de la tolva')
+    await adjuntarFactura(n, hace45, `F002-${SELLO}`, 'a otra OS una factura de hace 45 días, sin cambio registrado')
+    const [os] = await q(`select monto_pen from public.ordenes_servicio where id = $1`, [n.id])
+    for (const ancho of [1440, 390]) {
+      const p = await entrar('gerencia', ancho)
+      const c = await leerCosteo(p, n)
+      comprobar(c.texto === `Sin cambio del ${dma(hace45)}` && os.monto_pen === null,
+        `a ${ancho}, la ${n.numero} dice «Sin cambio del ${dma(hace45)}» y no afirma ningún cambio (dice «${c.texto}»)`)
+      comprobar(c.costo === Number(despues.monto_pen) + 500, `y el costo no la suma: sigue en S/ ${Number(despues.monto_pen) + 500} (dice ${c.costo})`)
+      comprobar(!(await desborda(p)), `sin salirse de la pantalla a ${ancho}`)
+      await captura(p, `costeo-sin-cambio-${ancho}`)
+      await p.context().close()
+    }
+  }
 }
 
 comprobar(errores.length === 0, `sin errores de consola${errores.length ? `: ${errores.slice(0, 3).join(' | ')}` : ''}`)

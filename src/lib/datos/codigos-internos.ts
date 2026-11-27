@@ -595,6 +595,32 @@ export const costeoDelCodigo = cache(async (codigo: string): Promise<LineaCosteo
   }))
 })
 
+/**
+ * Con qué tipo de cambio pasa a soles en el costeo una OS en otra moneda, como lo dice la base
+ * (`codigo_interno_cambio_de_servicios`, 20261126998400). La pantalla no lo deduce: el día que
+ * le toca sale de su factura, y el cambio que se usa es el último registrado hasta ese día.
+ */
+export type CambioDelServicioEnElCosteo = {
+  /** El día que le toca: el de su factura o, sin ella, el día en que se emitió. Es la fecha de su línea. */
+  dia: string
+  /** El día del cambio registrado que se usa. Null: no hay ninguno, y la línea no pasa a soles. */
+  registrado_el: string | null
+  /** El día en que se emitió la OS. */
+  emitida_el: string | null
+}
+
+/** El cambio de las OS en otra moneda de ese código, por el id de la OS. Las que están en soles no vienen. */
+export async function cambioDeServiciosDelCodigo(codigo: string): Promise<Map<string, CambioDelServicioEnElCosteo>> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('codigo_interno_cambio_de_servicios', { p_codigo: codigo })
+  if (error) throw new Error(`No se pudo leer con qué tipo de cambio van las órdenes de servicio del código: ${error.message}`)
+  return new Map(
+    (data ?? []).flatMap((c) =>
+      c.orden_servicio_id && c.dia ? [[c.orden_servicio_id, { dia: c.dia, registrado_el: c.registrado_el, emitida_el: c.emitida_el }] as const] : [],
+    ),
+  )
+}
+
 /** Lo que le tocó a cada código de lo cargado a TODOS LOS ACTIVOS, por mes. */
 export type RepartoATodos = {
   periodo: string

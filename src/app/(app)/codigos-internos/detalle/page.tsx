@@ -20,6 +20,7 @@ import {
   aporteDeLosPlanos,
   avanceDelCodigo,
   comprasDelCodigo,
+  cambioDeServiciosDelCodigo,
   costeoDelCodigo,
   documentosDelCodigo,
   recorridoDelCodigo,
@@ -1129,10 +1130,16 @@ async function VistaAvance({ codigo, perfil, avance }: { codigo: string; perfil:
 }
 
 async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilSesion }) {
-  const [lineas, compras] = await Promise.all([costeoDelCodigo(codigo), comprasDelCodigo(codigo)])
+  const [lineas, compras, cambios] = await Promise.all([costeoDelCodigo(codigo), comprasDelCodigo(codigo), cambioDeServiciosDelCodigo(codigo)])
   const manoObra = lineas.filter((l) => l.fuente === 'MANO_OBRA' || l.fuente === 'MANO_OBRA_SIN_COSTO' || l.fuente === 'RECARGO_EXTRAS')
   const materiales = lineas.filter((l) => l.fuente === 'MATERIALES' || l.fuente === 'MATERIALES_SIN_PRECIO' || l.fuente === 'MERMA')
-  const servicios = lineas.filter((l) => l.fuente === 'SERVICIOS' || l.fuente === 'SERVICIOS_POR_APROBAR')
+  // La fecha de la línea de una OS en dólares es el día de su cambio (el de su factura), no el día
+  // en que se emitió: ese lo dice la base aparte, y por él se ordenan, como las que están en soles.
+  const cambioDe = (l: (typeof lineas)[number]) => (l.referencia_id ? cambios.get(l.referencia_id) : undefined)
+  const emitidaEl = (l: (typeof lineas)[number]) => cambioDe(l)?.emitida_el ?? l.fecha
+  const servicios = lineas
+    .filter((l) => l.fuente === 'SERVICIOS' || l.fuente === 'SERVICIOS_POR_APROBAR')
+    .sort((a, b) => emitidaEl(b).localeCompare(emitidaEl(a)))
   const aprobados = servicios.filter((l) => l.fuente === 'SERVICIOS')
   const recibos = lineas.filter((l) => l.fuente === 'SUBCONTRATOS' || l.fuente === 'SUBCONTRATOS_POR_PAGAR')
   const gastos = lineas.filter((l) => l.fuente === 'GASTOS_DEL_MES' || l.fuente === 'GASTOS_OT' || l.fuente === 'CAJA')
@@ -1262,7 +1269,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
       <Tarjeta className="overflow-hidden" data-servicios>
         <TarjetaCabecera
           titulo="Órdenes de servicio"
-          ayuda="Los trabajos de terceros para este código —torno, pintura, flete—, sin IGV. La aprobada por Gerencia suma al costo, porque no pasa por el almacén; la que espera su aprobación se muestra y no se suma todavía. Las rechazadas y las anuladas no aparecen. La que está en dólares pasa a soles con el tipo de cambio de la fecha de su factura, el mismo de la orden; mientras no tiene factura, con el del día en que se emitió."
+          ayuda="Los trabajos de terceros para este código —torno, pintura, flete—, sin IGV. La aprobada por Gerencia suma al costo, porque no pasa por el almacén; la que espera su aprobación se muestra y no se suma todavía. Las rechazadas y las anuladas no aparecen. La que está en dólares pasa a soles con el tipo de cambio de la fecha de su factura o, mientras no la tiene, del día en que se emitió; si ese día no tiene cambio registrado, con el último anterior."
         />
         <Tabla>
           <TablaCabecera>
@@ -1280,6 +1287,7 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
               <>
                 {servicios.map((l) => {
                   const aprobada = l.fuente === 'SERVICIOS'
+                  const cambio = cambioDe(l)
                   return (
                     <TR key={l.referencia_id ?? l.documento} data-servicio={l.documento}>
                       <TD className="align-top">
@@ -1290,11 +1298,23 @@ async function VistaCosteo({ codigo, perfil }: { codigo: string; perfil: PerfilS
                         ) : (
                           <p className="font-medium text-texto">{l.documento}</p>
                         )}
-                        {/* La fecha de la línea es el día cuyo cambio le toca: en dólares, el de su
-                            factura (o el de emisión mientras no la tiene), y se dice para qué es. */}
-                        <p className="tabular text-xs text-texto-suave" data-dia-de-la-linea={l.fecha}>
-                          {l.moneda && l.moneda !== 'PEN' ? `Al cambio del ${fecha(l.fecha)}` : fecha(l.fecha)}
+                        <p className="tabular text-xs text-texto-suave" data-emitida-el={emitidaEl(l)}>
+                          {fecha(emitidaEl(l))}
                         </p>
+                        {/* En dólares, con qué cambio pasa a soles: el día del cambio registrado que de
+                            verdad se usa (el de su factura, o el último anterior), o que no hay ninguno. */}
+                        {cambio &&
+                          (cambio.registrado_el ? (
+                            <p className="tabular text-xs text-texto-suave" data-dia-de-la-linea={l.fecha} data-cambio-registrado-el={cambio.registrado_el}>
+                              Al cambio del {fecha(cambio.registrado_el)}
+                            </p>
+                          ) : (
+                            // La insignia no parte en dos renglones: lleva solo «Sin cambio» y el día va
+                            // al lado, o debajo en el teléfono, para que la columna no empuje el importe.
+                            <p className="tabular mt-1 flex flex-wrap items-center gap-x-1 text-xs text-texto-suave" data-dia-de-la-linea={l.fecha} data-cambio-registrado-el="">
+                              <Insignia tono="aviso">Sin cambio</Insignia> del {fecha(cambio.dia)}
+                            </p>
+                          ))}
                       </TD>
                       <TD className="align-top">
                         <p className="text-texto">{l.concepto}</p>

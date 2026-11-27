@@ -15302,6 +15302,17 @@ export type Database = {
           reportes: number | null
         }[]
       }
+      codigo_interno_cambio_de_servicios: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          orden_servicio_id: string | null
+          dia: string | null
+          registrado_el: string | null
+          emitida_el: string | null
+        }[]
+      }
       codigo_interno_compras: {
         Args: {
           p_codigo: string | null
