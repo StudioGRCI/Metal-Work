@@ -92,13 +92,29 @@ export type AreaConResponsable = {
   encargado: string | null
   /** La cuenta responsable, nombrada por su puesto (migración 109). */
   responsable: { id: string; etiqueta: string; activo: boolean } | null
+  /**
+   * La cuenta no es propia: es la del área que la lleva, que la base le anota
+   * sola (`areas.jefe_heredado`, migración 20261126998500).
+   */
+  heredada: boolean
+  /**
+   * El área cuyo puesto lleva también esta (a Ingeniería la lleva Diseño), con
+   * la cuenta que tiene hoy: es la que responde si esta no tiene una propia.
+   */
+  llevadaPor: { id: string; nombre: string; cuenta: { etiqueta: string; activo: boolean } | null } | null
+  /**
+   * Las áreas que esta lleva. Su cuenta responde por las que no tienen una
+   * `propia`.
+   */
+  lleva: { nombre: string; propia: boolean }[]
 }
 
 /** Una cuenta activa que se puede asignar: `etiqueta` es su puesto (`etiquetasDePuesto`). */
 export type CuentaParaResponsable = { id: string; etiqueta: string; area_id: string | null }
 
 /**
- * Las áreas del organigrama con su cuenta responsable (`areas.jefe_id`) y las
+ * Las áreas del organigrama con su cuenta responsable (`areas.jefe_id`), el
+ * área que lleva a cada una si la hay (`areas.llevada_por_id`) y las
  * cuentas activas que se pueden asignar. Solo para el administrador del
  * sistema: la pantalla no lo pide para nadie más.
  */
@@ -109,7 +125,7 @@ export async function areasConResponsable() {
     supabase
       .from('areas')
       // Entre `areas` y `usuarios` hay dos llaves, una por lado: se nombra la del responsable.
-      .select('id, codigo, nombre, encargado, responsable:usuarios!areas_jefe_id_fkey(id, puesto, correo, activo)')
+      .select('id, codigo, nombre, encargado, jefe_heredado, llevada_por_id, responsable:usuarios!areas_jefe_id_fkey(id, puesto, correo, activo)')
       .eq('activo', true)
       .order('orden_secuencia'),
     // Por puesto (migración 109); el correo distingue dos cuentas con el mismo.
@@ -123,16 +139,32 @@ export async function areasConResponsable() {
   const activas = (cuentas.data ?? []) as unknown as Cuenta[]
   const etiquetas = etiquetasDePuesto(activas)
 
+  const filas = areas.data ?? []
+  // La dada de baja no está entre las activas: se nombra por su puesto a secas.
+  const cuentaDe = (a: (typeof filas)[number]) => {
+    const r = a.responsable as unknown as (Omit<Cuenta, 'area_id'> & { activo: boolean }) | null
+    return r && { id: r.id, etiqueta: etiquetas.get(r.id) ?? puesto(r), activo: r.activo }
+  }
+  const sinId = (c: ReturnType<typeof cuentaDe>) => c && { etiqueta: c.etiqueta, activo: c.activo }
+  // La que lleva a otra está en la misma lista: solo un área activa lleva a otra (`fn_area_llevada_por`).
+  const porId = new Map(filas.map((a) => [a.id as string, a]))
+
   return {
-    areas: (areas.data ?? []).map((a): AreaConResponsable => {
-      const r = a.responsable as unknown as (Omit<Cuenta, 'area_id'> & { activo: boolean }) | null
+    areas: filas.map((a): AreaConResponsable => {
+      const laLleva = a.llevada_por_id ? porId.get(a.llevada_por_id as string) : undefined
       return {
         id: a.id as string,
         codigo: a.codigo as string,
         nombre: a.nombre as string,
         encargado: (a.encargado as string | null)?.trim() || null,
-        // La dada de baja no está entre las activas: se nombra por su puesto a secas.
-        responsable: r && { id: r.id, etiqueta: etiquetas.get(r.id) ?? puesto(r), activo: r.activo },
+        responsable: cuentaDe(a),
+        heredada: Boolean(a.responsable && a.jefe_heredado),
+        llevadaPor: laLleva
+          ? { id: laLleva.id as string, nombre: laLleva.nombre as string, cuenta: sinId(cuentaDe(laLleva)) }
+          : null,
+        lleva: filas
+          .filter((b) => b.llevada_por_id === a.id)
+          .map((b) => ({ nombre: b.nombre as string, propia: Boolean(b.responsable && !b.jefe_heredado) })),
       }
     }),
     cuentas: activas
