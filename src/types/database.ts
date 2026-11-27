@@ -21349,6 +21349,15 @@ export type Database = {
         }
         Returns: string
       }
+      ssoma_accidentes: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          reporte_id: string | null
+          area_id: string | null
+          fecha: string | null
+          ocurrido_en: string | null
+        }[]
+      }
       ssoma_accion_de_hallazgo: {
         Args: {
           p_id: string | null
@@ -21904,6 +21913,10 @@ export type Database = {
         }
         Returns: string
       }
+      ssoma_registro_desde: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
       ssoma_reportar: {
         Args: {
           p_id: string | null
@@ -22005,6 +22018,35 @@ export type Database = {
           abiertas: number | null
           vencidas: number | null
           cerradas: number | null
+        }[]
+      }
+      ssoma_seguridad_de_la_planta: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          ultimo_accidente: string | null
+          area_del_ultimo: string | null
+          registro_desde: string | null
+          dias_sin_accidentes: number | null
+          reportes_abiertos: number | null
+          por_clasificar: number | null
+          acciones_abiertas: number | null
+          acciones_vencidas: number | null
+        }[]
+      }
+      ssoma_seguridad_por_area: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          area_id: string | null
+          area: string | null
+          activa: boolean | null
+          ultimo_accidente: string | null
+          dias_sin_accidentes: number | null
+          contado_desde: string | null
+          reportes_abiertos: number | null
+          por_clasificar: number | null
+          acciones_abiertas: number | null
+          acciones_vencidas: number | null
+          vencida_mas_antigua: string | null
         }[]
       }
       ssoma_vigente_en_el_mes: {
