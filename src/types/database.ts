@@ -197,6 +197,8 @@ export type Database = {
           jefe_id: string | null
           requerimiento: string | null
           es_oficina: boolean
+          llevada_por_id: string | null
+          jefe_heredado: boolean
         }
         Insert: {
           id?: string
@@ -210,6 +212,8 @@ export type Database = {
           jefe_id?: string | null
           requerimiento?: string | null
           es_oficina?: boolean
+          llevada_por_id?: string | null
+          jefe_heredado?: boolean
         }
         Update: {
           id?: string
@@ -223,6 +227,8 @@ export type Database = {
           jefe_id?: string | null
           requerimiento?: string | null
           es_oficina?: boolean
+          llevada_por_id?: string | null
+          jefe_heredado?: boolean
         }
         Relationships: [
           {
@@ -230,6 +236,13 @@ export type Database = {
             columns: ["jefe_id"]
             isOneToOne: false
             referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "areas_llevada_por_id_fkey"
+            columns: ["llevada_por_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
             referencedColumns: ["id"]
           }
         ]
@@ -15536,6 +15549,17 @@ export type Database = {
           por_etapa: boolean | null
           ultima_fecha: string | null
           reportes: number | null
+        }[]
+      }
+      codigo_interno_cambio_de_servicios: {
+        Args: {
+          p_codigo: string | null
+        }
+        Returns: {
+          orden_servicio_id: string | null
+          dia: string | null
+          registrado_el: string | null
+          emitida_el: string | null
         }[]
       }
       codigo_interno_compras: {
