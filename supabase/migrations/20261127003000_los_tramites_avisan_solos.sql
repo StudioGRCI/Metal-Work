@@ -16,8 +16,9 @@
 --     fechas: la fecha límite del trámite que se lleva, y hasta cuándo vale el
 --     documento del concluido que se renueva (el SOAT, la revisión técnica).
 --     Al llegar a cada uno de los días de aviso de su tipo avisa una vez al
---     Tramitador («Vence en 7 días»); el día que la fecha pasa, avisa una vez
---     al Tramitador y a Gerencia. No es un aviso diario: cada uno queda
+--     Tramitador («Vence en 7 días»); el día que la fecha límite pasa, avisa
+--     una vez al Tramitador y a Gerencia (la vigencia vencida, solo al
+--     Tramitador hasta la entrega 4). No es un aviso diario: cada uno queda
 --     anotado y no se repite. Si la fecha cambia, se avisa por la fecha nueva.
 --   · Si la revisión no corrió un día (feriado, domingo), al día siguiente da
 --     solo el aviso que corresponde a ese día, no los que se pasaron.
@@ -163,7 +164,7 @@ revoke all on function public.avisar_tramite(uuid, text, text, boolean) from pub
 -- toca es el menor de su tipo que sea `>= d`. Si ya salió, nada; si no, sale.
 -- Así, con 30, 15 y 7: a los 30 días avisa el de 30, a los 15 el de 15; y si la
 -- revisión no corrió unos días y encuentra 5 por delante, da solo el de 7.
--- Con la fecha pasada, un solo aviso de vencido, también a Gerencia.
+-- Con la fecha pasada, un solo aviso de vencido; el de la fecha límite, también a Gerencia.
 --
 -- Límite conocido hasta la entrega 4: la revisión no sabe todavía qué trámite
 -- renueva a cuál. Si el SOAT se renueva con un TR nuevo, el concluido viejo
@@ -186,7 +187,6 @@ declare
   v_renovar integer := 0;     v_c_renovar integer := 0;
   v_vigencias integer := 0;   v_c_vigencias integer := 0;
   v_hay_tramitador boolean;
-  v_hay_gerencia boolean;
 begin
   -- Dos corridas a la vez (la de pg_cron y una a mano) no se duplican: la
   -- segunda espera a la primera y ya encuentra todo anotado.
@@ -202,14 +202,12 @@ begin
     return;
   end if;
 
-  -- Un aviso que no le llega a nadie (ninguna cuenta activa del puesto ese día)
-  -- no se anota: si se anotara, no saldría nunca, sin que nada lo dijera. Sale
+  -- Sin ningún Tramitador activo ese día (quien atiende el aviso), el aviso
+  -- no se anota: si se anotara, no le llegaría nunca, sin que nada lo dijera. Sale
   -- en la primera revisión en que haya a quién.
   select exists (select 1 from public.usuarios u join public.roles_permisos rp on rp.rol_id = u.rol_id
-                  where u.activo and rp.permiso_codigo = 'tramites.gestionar'),
-         exists (select 1 from public.usuarios u join public.roles_permisos rp on rp.rol_id = u.rol_id
-                  where u.activo and rp.permiso_codigo = 'tramites.aprobar_anulacion')
-    into v_hay_tramitador, v_hay_gerencia;
+                  where u.activo and rp.permiso_codigo = 'tramites.gestionar')
+    into v_hay_tramitador;
 
   for r in
     select t.id, t.numero, x.que, x.fecha, x.fecha - v_hoy as d, tt.dias_aviso
@@ -232,8 +230,9 @@ begin
      order by x.fecha desc, t.numero desc
   loop
     if r.d < 0 then
-      -- Venció: una vez, también a Gerencia.
-      continue when not (v_hay_tramitador or (r.que = 'LIMITE' and v_hay_gerencia));
+      -- Venció: una vez; el de la fecha límite, también a Gerencia.
+      -- Sin Tramitador activo espera: quien lo atiende es él.
+      continue when not v_hay_tramitador;
       insert into public.tramite_avisos (tramite_id, tipo, fecha, dias, dia_revision)
       values (r.id, case r.que when 'LIMITE' then 'VENCIDO' else 'VIGENCIA_VENCIDA' end, r.fecha, null, v_hoy)
       on conflict do nothing;

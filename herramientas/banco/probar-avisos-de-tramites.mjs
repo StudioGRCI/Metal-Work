@@ -163,7 +163,8 @@ const dos = numeros['AVT-2']
   await pagina.screenshot({ path: `${CAPTURAS}/avisos-gerencia-campana-1440.png` })
   await panel.getByText(`Venció el trámite ${dos.numero}`).first().click()
   await pagina.waitForURL((u) => u.pathname === `/tramites/${dos.id}`, { timeout: 60000 }).catch(() => {})
-  comprobar(new URL(pagina.url()).pathname === `/tramites/${dos.id}` && (await pagina.locator('main').innerText()).includes(dos.numero),
+  const ficha = await pagina.locator('main', { hasText: dos.numero }).first().waitFor({ timeout: 30000 }).then(() => true).catch(() => false)
+  comprobar(new URL(pagina.url()).pathname === `/tramites/${dos.id}` && ficha,
     'el aviso le abre la ficha, que Gerencia puede leer')
   comprobar(errores.length === 0, `sin errores de consola como Gerencia (${errores.join(' · ') || 'ninguno'})`)
   await contexto.close()
