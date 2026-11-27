@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { BuscadorSimple } from '@/components/estructura/buscador-simple'
 import { Paginacion } from '@/components/estructura/paginacion'
 import { PastillaFiltro } from '@/components/estructura/pastilla-filtro'
+import { ConRotulo } from '@/components/ui/con-rotulo'
 import { DiasEnEspera } from '@/components/ui/dias-en-espera'
 import { Insignia } from '@/components/ui/etiqueta-estado'
 import { SinDatos, TD, TH, TR, Tabla, TablaCabecera } from '@/components/ui/tabla'
@@ -51,9 +52,10 @@ import { AnularGuia, CargarGuia } from './guia-remision'
 const POR_PAGINA = 50
 const RUTA = '/adquisiciones'
 const enlace = 'font-medium text-acento hover:underline'
-// En el teléfono cada enlace mide 44 px de alto, como las pastillas: son los
-// comprobantes que se abren con el dedo.
-const toque = 'inline-flex min-h-11 items-center sm:min-h-0'
+// Con el dedo cada enlace mide 44 px de alto, como las pastillas: son los
+// comprobantes que se abren tocando. La ficha llega hasta 1279 px, así que
+// una tablet los conserva; con ratón, desde 640 px, vuelven a su alto.
+const toque = 'inline-flex min-h-11 items-center sm:pointer-fine:min-h-0 xl:min-h-0'
 const codigo = (m: string | null) => (m === 'USD' ? 'USD' : 'PEN')
 
 type Params = Record<string, string | string[] | undefined>
@@ -200,7 +202,7 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
 
   return (
     <>
-      <div className="mb-4 space-y-3">
+      <div className="mb-5 space-y-3">
         {papeles === null && (
           <p role="alert" className="text-sm text-peligro">
             No se pudo leer qué documento falta en cada orden: «Incompletas» y los días de espera no salen. Recarga la página para volver a intentar.
@@ -251,31 +253,49 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
         />
       </div>
 
-      {/* En el teléfono, una tarjeta por orden: siete columnas se corrían de costado. */}
-      <div className="sm:hidden">
+      {/* Hasta 1280 px, una ficha por orden con cada parte bajo su rótulo (entrega
+          6 del plan de orden y diseño). En el teléfono las partes iban sueltas, sin
+          decir cuál era cuál; y entre 640 y 1279 la tabla de siete columnas se
+          salía 343 px de su tarjeta, con los documentos y el pago fuera de la vista. */}
+      <div className="xl:hidden">
         {visibles.length === 0 ? (
-          <Tarjeta className="px-4 py-8 text-center">
-            <p className="text-sm font-medium text-texto">{vacio.titulo}</p>
-            <p className="mt-1 text-xs text-texto-suave">{vacio.descripcion}</p>
+          <Tarjeta>
+            <SinDatos enTabla={false} titulo={vacio.titulo} descripcion={vacio.descripcion} />
           </Tarjeta>
         ) : (
           <Tarjeta className="overflow-hidden">
             <ul className="divide-y divide-borde" aria-label="Órdenes de compra y de servicio">
               {visibles.map((f) => (
-                <li key={f.id} className="space-y-2 px-4 py-3" data-orden-telefono={nombreDe(f)}>
+                <li key={f.id} className="space-y-3 px-4 py-3" data-orden-telefono={nombreDe(f)}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <NumeroDeOrden f={f} acceso={acceso} />
                       <p className="text-sm text-texto">
                         <NombreProveedor proveedor={f.proveedor} acceso={acceso} />
                       </p>
+                      {/* Como en la tabla: antes la ficha solo la decía si la OC no tenía número. */}
+                      {f.referencia && f.referencia !== f.numero && (
+                        <p className="text-xs text-texto-suave">Ref. del proveedor: {f.referencia}</p>
+                      )}
                     </div>
                     <Total f={f} />
                   </div>
-                  <Origen f={f} acceso={acceso} />
-                  <EnQueVa f={f} />
-                  <Documentos f={f} urls={urls} acceso={acceso} />
-                  <Pago f={f} urls={urls} acceso={acceso} control={control} />
+                  {/* Dos columnas desde 640 px: lo que dice de dónde sale y en qué va,
+                      y debajo los papeles y el pago. */}
+                  <dl className="grid gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <ConRotulo rotulo="De dónde sale">
+                      <Origen f={f} acceso={acceso} />
+                    </ConRotulo>
+                    <ConRotulo rotulo="En qué va">
+                      <EnQueVa f={f} />
+                    </ConRotulo>
+                    <ConRotulo rotulo="Documentos">
+                      <Documentos f={f} urls={urls} acceso={acceso} />
+                    </ConRotulo>
+                    <ConRotulo rotulo="Pago">
+                      <Pago f={f} urls={urls} acceso={acceso} control={control} />
+                    </ConRotulo>
+                  </dl>
                 </li>
               ))}
             </ul>
@@ -283,12 +303,14 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
         )}
       </div>
 
-      <Tarjeta className="hidden overflow-hidden sm:block">
+      <Tarjeta className="hidden overflow-hidden xl:block">
         <Tabla aria-label="Órdenes de compra y de servicio: de dónde salen, su aprobación, sus documentos y su pago">
           <TablaCabecera>
             <tr>
               <TH>Orden</TH>
-              <TH>De dónde sale</TH>
+              {/* «De dónde sale» espera a 1440 px: a 1280 la tabla se salía 87 px, y a 1400 cabía
+                  con 2 px de holgura. Hasta ahí va bajo la orden. */}
+              <TH className="hidden min-[1440px]:table-cell">De dónde sale</TH>
               <TH>Proveedor</TH>
               <TH className="text-right">Total</TH>
               <TH>En qué va</TH>
@@ -304,8 +326,11 @@ export async function PestanaCompras({ perfil, params }: { perfil: PerfilSesion;
                 <TR key={f.id} data-orden={nombreDe(f)}>
                   <TD className="min-w-36 align-top">
                     <NumeroDeOrden f={f} acceso={acceso} />
+                    <div className="mt-1 min-[1440px]:hidden" data-origen-en-fila>
+                      <Origen f={f} acceso={acceso} />
+                    </div>
                   </TD>
-                  <TD className="min-w-32 align-top">
+                  <TD className="hidden min-w-32 align-top min-[1440px]:table-cell">
                     <Origen f={f} acceso={acceso} />
                   </TD>
                   <TD className="min-w-36 align-top">
@@ -374,7 +399,6 @@ function NumeroDeOrden({ f, acceso }: { f: CompraTrazada; acceso: Acceso }) {
         {f.emitido_por && ` · ${f.emitido_por}`}
       </p>
       {f.tipo === 'OS' && f.descripcion && <p className="line-clamp-2 max-w-56 text-xs text-texto-suave">{f.descripcion}</p>}
-      {!f.numero && f.referencia && <p className="text-xs text-texto-tenue sm:hidden">Ref. del proveedor: {f.referencia}</p>}
     </div>
   )
 }
@@ -446,12 +470,20 @@ function Total({ f }: { f: CompraTrazada }) {
       <p className="tabular font-semibold whitespace-nowrap text-texto">
         {f.total === null ? '—' : f.sin_precio ? <span className="font-normal text-aviso">Precio pendiente</span> : moneda(f.total, codigo(f.moneda))}
       </p>
-      <p className="text-xs whitespace-nowrap text-texto-suave">
-        {condicionDePago(f.condicion_pago, f.dias_credito)}
+      {/* Cada pieza entera y la línea puede partirse entre las dos: «Crédito a 30 días · sin factura»
+          de un tirón pedía 181 px de columna. */}
+      <p className="text-xs text-texto-suave">
+        <span className="whitespace-nowrap">{condicionDePago(f.condicion_pago, f.dias_credito)}</span>
         {/* La que iba con boleta y el proveedor entregó factura ya no es «sin factura». */}
-        {f.tipo === 'OC' &&
-          f.con_factura === false &&
-          (f.facturas.length > 0 || f.documentos.some((d) => d.tipo === 'FACTURA' && !d.anulado_en) ? ' · iba con boleta' : ' · sin factura')}
+        {f.tipo === 'OC' && f.con_factura === false && (
+          <>
+            {' '}
+            ·{' '}
+            <span className="whitespace-nowrap">
+              {f.facturas.length > 0 || f.documentos.some((d) => d.tipo === 'FACTURA' && !d.anulado_en) ? 'iba con boleta' : 'sin factura'}
+            </span>
+          </>
+        )}
       </p>
     </div>
   )
@@ -761,10 +793,17 @@ function Pago({ f, urls, acceso, control }: { f: Fila; urls: Map<string, string>
           <div key={x.id} className="space-y-0.5">
             {registradas.length > 1 && <p className="tabular text-texto-suave">{x.numero}</p>}
             {x.saldo > 0 && (
-              <p className="tabular whitespace-nowrap text-texto">
-                {x.pagado > 0 ? 'Saldo' : 'Por pagar'} {moneda(x.saldo, m)}
+              // Cada pieza entera, pero la línea puede partirse entre ellas: de un solo tirón,
+              // «Saldo S/ 12,345.00 · pagado 45 %» pedía 250 px y sacaba la tabla de su tarjeta.
+              <p className="tabular text-texto">
+                {x.pagado > 0 ? 'Saldo' : 'Por pagar'} <span className="whitespace-nowrap">{moneda(x.saldo, m)}</span>
                 {/* Lo pagado como parte de la factura (DKS, 27/10/2026: porcentaje y costo). */}
-                {(x.pagado ?? 0) > 0 && <span className="text-texto-suave"> · pagado {porcentaje(parteDe(x.pagado, x.total))}</span>}
+                {(x.pagado ?? 0) > 0 && (
+                  <span className="text-texto-suave">
+                    {' '}
+                    · <span className="whitespace-nowrap">pagado {porcentaje(parteDe(x.pagado, x.total))}</span>
+                  </span>
+                )}
               </p>
             )}
             {/* La factura que pasa el total de sus OC sin que nadie lo diga: el aviso de Contabilidad va en su pestaña, y aquí no se veía (27/10/2026).

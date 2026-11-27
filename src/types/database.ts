@@ -7867,6 +7867,7 @@ export type Database = {
           creado_por: string
           creado_en: string
           actualizado_en: string
+          numero_de_unidad: number | null
         }
         Insert: {
           id?: string
@@ -7877,6 +7878,7 @@ export type Database = {
           creado_por: string
           creado_en?: string
           actualizado_en?: string
+          numero_de_unidad?: number | null
         }
         Update: {
           id?: string
@@ -7887,6 +7889,7 @@ export type Database = {
           creado_por?: string
           creado_en?: string
           actualizado_en?: string
+          numero_de_unidad?: number | null
         }
         Relationships: [
           {

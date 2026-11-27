@@ -152,10 +152,18 @@ await consulta(
 
 const RUTA = `${BASE}/tesoreria/caja-diaria`
 const delDia = (dia) => (dia === hoy ? RUTA : `${RUTA}?fecha=${dia}`)
-/** Las celdas de la fila de una cuenta en la tabla de saldos, sin la primera. */
+/** Las celdas de la fila de una cuenta en la tabla de saldos, sin la primera. Sin la línea del
+ *  banco que va bajo el saldo final hasta 1400 px: esa la mira probar-orden-tesoreria-…. */
 async function saldos(pagina, nombre) {
   const celdas = pagina.locator('table').first().locator('tr', { hasText: nombre }).locator('td')
-  return (await celdas.allTextContents()).map(limpio).slice(1)
+  const textos = await celdas.evaluateAll((tds) =>
+    tds.map((td) => {
+      const copia = td.cloneNode(true)
+      copia.querySelectorAll('[data-segun-el-banco], [data-diferencia-en-fila]').forEach((e) => e.remove())
+      return copia.textContent
+    }),
+  )
+  return textos.map(limpio).slice(1)
 }
 
 async function darDeAlta(pagina, { nombre, tipo, banco, moneda, saldo }) {

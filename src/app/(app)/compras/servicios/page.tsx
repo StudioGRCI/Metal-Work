@@ -138,8 +138,9 @@ export default async function PaginaOrdenesServicio({ searchParams }: { searchPa
               <TH className="hidden xl:table-cell">Para</TH>
               <TH className="hidden text-right md:table-cell">Monto sin IGV</TH>
               <TH className="hidden md:table-cell">En qué va</TH>
-              {/* El ancho, solo para quien emite: a quien consulta le dejaba 448 px para un «PDF». */}
-              <TH className={cn('text-right', emite && 'md:w-80 xl:w-[28rem]')}>
+              {/* El ancho, según los botones: a quien consulta le dejaba 448 px para un «PDF», y a Contabilidad,
+                  sin ancho, «PDF» y «Detracción» le salían uno sobre otro. */}
+              <TH className={cn('text-right', emite ? 'md:w-80 xl:w-[28rem]' : adjunta ? 'md:w-64' : corrigeDetraccion && 'md:w-52')}>
                 <span className="sr-only">Acciones</span>
               </TH>
             </tr>
