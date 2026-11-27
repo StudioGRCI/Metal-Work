@@ -1,7 +1,7 @@
 import { Check, ChevronDown, Route, X } from 'lucide-react'
 
 import { Insignia } from '@/components/ui/etiqueta-estado'
-import { enQueTermino, haceDias, quienLoTiene, tardo, tramosDelRecorrido, type PasoDescrito } from '@/lib/dominio/recorrido'
+import { comoTermino, haceDias, quienLoTiene, tardo, tramosDelRecorrido, type PasoDescrito } from '@/lib/dominio/recorrido'
 import { fecha, fechaHora } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -64,8 +64,8 @@ export function Recorrido({
 
   // Quién lo tiene: uno, o varios a la vez en la cotización de varias unidades.
   const ahora = quienLoTiene(pasos)
-  // Cerrado, dice en qué terminó (ver `enQueTermino`).
-  const ultimo = enQueTermino(pasos)
+  // Cerrado, dice en qué terminó (ver `comoTermino`).
+  const final = ahora ? null : comoTermino(pasos)
   const tramos = tramosDelRecorrido(pasos)
 
   return (
@@ -92,9 +92,10 @@ export function Recorrido({
           </span>
           )
         ) : (
-          ultimo && (
-            <span className="min-w-0 text-xs break-words text-texto-suave">
-              {ultimo.titulo} · {fecha(ultimo.en)}
+          final && (
+            <span className="min-w-0 text-xs break-words text-texto-suave" data-recorrido-final>
+              {final.texto}
+              {final.en ? ` · ${fecha(final.en)}` : ''}
             </span>
           )
         )}
@@ -102,12 +103,23 @@ export function Recorrido({
 
       <ol className={cn('border-t border-borde pt-3 pb-3', relleno)}>
         {tramos.map((t, n) =>
-          t.unidad === null ? (
+          t.unidad === null && n === 0 ? (
             t.pasos.map((p, i) => <Paso key={p.orden} paso={p} conLinea={i < t.pasos.length - 1} masAbajo={n < tramos.length - 1} lo={lo} />)
+          ) : t.unidad === null ? (
+            // Lo de toda la cotización que va después de sus unidades (la anulación):
+            // aparte y con su rótulo, para que no se lea como un paso de la última unidad.
+            <li key={`toda-${n}`} className="border-t border-borde pt-3 pb-3 last:pb-0" data-recorrido-toda>
+              <p className="mb-2 text-sm font-medium text-texto">Toda la cotización</p>
+              <ol>
+                {t.pasos.map((p, i) => (
+                  <Paso key={p.orden} paso={p} conLinea={i < t.pasos.length - 1} masAbajo={false} lo={lo} />
+                ))}
+              </ol>
+            </li>
           ) : (
             // Lo de una unidad: su OT, su factura y su cobro, bajo su rótulo.
             <li key={`unidad-${t.unidad}`} className="border-t border-borde pt-3 pb-3 last:pb-0" data-recorrido-unidad={t.unidad}>
-              <p className="mb-2 text-xs font-semibold text-texto-suave">
+              <p className="mb-2 text-sm font-medium text-texto">
                 Unidad {t.unidad}
                 {t.unidades ? ` de ${t.unidades}` : ''}
               </p>

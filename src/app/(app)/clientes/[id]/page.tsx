@@ -277,8 +277,15 @@ export default async function PaginaCliente({ params }: PageProps<'/clientes/[id
                               <p className="text-xs text-texto-suave">Subida el {fecha(c.creado_en)}</p>
                             </div>
                             {ahora && (
-                              <span data-cotizacion-ahora>
-                                <DiasEnEspera dias={ahora.dias} desde={ahora.desde} quien={ahora.quien} plural={ahora.plural} verQuien />
+                              // Varios puestos no caben en la insignia, que no parte la línea
+                              // (a 360 px se salía de la fila): van como texto y la insignia dice el tiempo.
+                              <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1" data-cotizacion-ahora>
+                                {ahora.plural && (
+                                  <span aria-hidden className="min-w-0 text-xs break-words text-texto-suave">
+                                    {ahora.quien}
+                                  </span>
+                                )}
+                                <DiasEnEspera dias={ahora.dias} desde={ahora.desde} quien={ahora.quien} plural={ahora.plural} verQuien={!ahora.plural} />
                               </span>
                             )}
                           </Link>

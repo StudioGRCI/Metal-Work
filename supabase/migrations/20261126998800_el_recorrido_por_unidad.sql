@@ -24,6 +24,9 @@
 --     su parte (`facturas_venta_unidades`); su cobro, igual.
 --   · La unidad cuya OT pasó a otro comprador (20261126988000) lo dice en su
 --     unidad y ya no espera OT ni factura.
+--   · La unidad espera su OT desde la aprobación; si ya tuvo una y se anuló
+--     (aquí, o allá donde había pasado, y la venta se reabrió), desde esa
+--     anulación: los días que Administración no la tuvo no se le cuentan.
 --   · Quién ve qué no cambia: la factura dice solo quién y cuándo; «en parte»,
 --     lo que falta facturar y el cobro, solo a quien lee los cobros; el número
 --     de la OT, solo a quien lee las órdenes.
@@ -52,7 +55,7 @@ begin
   for f in
     select * from (values
       -- La de la 20261126988000, y la de esta migración.
-      ('public.recorrido_de_cotizaciones(uuid[])', array['dd8275d9fb006291102445a6d2e83a84', '384fcf342a792165368cccaad32f966c']),
+      ('public.recorrido_de_cotizaciones(uuid[])', array['dd8275d9fb006291102445a6d2e83a84', '237b63688f27733b2194e6f7ba118ac1']),
       -- La de la 20261126640000, y la de esta.
       ('public.codigo_interno_recorrido(text)', array['ddee94a2eaf1d16f79d9314f760230ab', '3560c133732a6ff3ee8b64e044814868'])
     ) as t(firma, conocidas)
@@ -213,7 +216,11 @@ begin
       join public.cobros_factura_venta b on b.factura_id = x.id and b.anulado_en is null
      order by x.cot, b.fecha desc, b.creado_en desc
   ),
-  -- Los pasos de la cotización contada como una sola cosa: los de siempre.
+  -- Los pasos de la cotización contada como una sola cosa: los de siempre. Es
+  -- el cuerpo de la 20261126988000 sin tocar, para que la de una unidad salga
+  -- idéntica. De la que se sigue por unidad solo quedan, más abajo, los pasos de
+  -- toda la cotización: lo que aquí se arma con varias unidades para la OT, la
+  -- factura y el cobro (el detalle «lleva/de», «N OT») ya no llega a nadie.
   pasos_de_toda as (
     -- `canon` desempata lo que pasó a la misma hora: cada versión con su revisión
     -- y su corrección, en ese orden, antes que la OT, la factura y el cobro.
@@ -372,6 +379,27 @@ begin
        and not exists (select 1 from u_ot o where o.cot = c.id and o.unidad = coalesce(t.numero_de_unidad, 1))
      order by c.id, coalesce(t.numero_de_unidad, 1), s.salio_en desc
   ),
+  -- Cuándo perdió la unidad su última OT: la anulación de una OT suya, aquí o
+  -- allá donde había pasado. La OT anulada no acepta más cambios, así que su
+  -- `actualizado_en` es la hora en que se anuló (como en
+  -- `ot_anulada_que_reabre_la_venta`).
+  u_sin_ot_desde as (
+    select x.cot, x.unidad, max(x.en) as en
+      from (
+        select o.cotizacion_pdf_id as cot, coalesce(o.numero_de_unidad, 1)::integer as unidad, o.actualizado_en as en
+          from public.ordenes_trabajo o
+          join cot c on c.id = o.cotizacion_pdf_id
+         where c.por_unidad and o.estado = 'ANULADA'
+        union all
+        select c.id, coalesce(t.numero_de_unidad, 1)::integer, t.actualizado_en
+          from cot c
+          cross join lateral public.camino_de_las_salidas(c.id, null) s
+          join public.ordenes_trabajo t on t.id = s.orden_id
+         where c.por_unidad and s.anulada
+           and exists (select 1 from public.ot_ventas_anteriores va where va.cotizacion_pdf_id = c.id)
+      ) x
+     group by x.cot, x.unidad
+  ),
   -- Cada factura vigente en la unidad que cubre, con su parte. La factura por
   -- toda la cotización sale una vez por unidad.
   u_facturas as (
@@ -416,8 +444,10 @@ begin
     select s.cot, s.unidad, 99990, 'OTRO_COMPRADOR', 'HECHO', s.por, null, s.en, null, case when v_ordenes then s.numero end
       from u_salio s join uni u on u.cot = s.cot and u.unidad = s.unidad
     union all
-    -- Espera su OT desde la aprobación.
-    select u.cot, u.unidad, 100000, 'CODIGO_Y_OT', 'AHORA', null, 'Administración', u.revisado_en, 'CODIGO_Y_OT', null
+    -- Espera su OT desde la aprobación; si ya tuvo una y se anuló, desde entonces.
+    select u.cot, u.unidad, 100000, 'CODIGO_Y_OT', 'AHORA', null, 'Administración',
+           greatest(u.revisado_en, (select d.en from u_sin_ot_desde d where d.cot = u.cot and d.unidad = u.unidad)),
+           'CODIGO_Y_OT', null
       from uni u
      where u.estado = 'APROBADA'
        and not exists (select 1 from u_ot o where o.cot = u.cot and o.unidad = u.unidad)
@@ -508,7 +538,8 @@ begin
   -- Los días de cada paso hecho: cuántas fechas de Lima pasaron desde el paso
   -- hecho anterior (la subida no tiene anterior). Así el vendedor ve cuánto
   -- tardó Gerencia en responder y cuánto tardó la OT, sin hacer la cuenta. En
-  -- cada unidad, desde su paso anterior; el primero, desde la aprobación.
+  -- cada unidad, desde su paso anterior; el primero, desde la aprobación. La
+  -- anulación de la que va por unidad, desde lo último que se hizo en cualquiera.
   select x.cot, x.n, x.paso, x.situacion, x.puesto, x.en,
          case when x.situacion = 'AHORA' then public.dias_en_espera(x.en)
               when x.situacion = 'HECHO' and x.en is not null and x.previo is not null
@@ -526,8 +557,12 @@ begin
              case when p.situacion = 'HECHO' then public.puesto(u) else p.puesto_fijo end as puesto,
              p.en,
              -- El paso hecho justo antes, en el mismo orden en que se muestran.
-             coalesce(lag(p.en) over (partition by p.cot, p.unidad, p.situacion = 'HECHO' order by p.en, p.canon),
-                      case when p.unidad is not null then (select c.revisado_en from cot c where c.id = p.cot) end) as previo,
+             case when p.bloque = 2
+                  then (select max(q.en) from pasos q
+                         where q.cot = p.cot and q.bloque < 2 and q.situacion = 'HECHO' and q.en <= p.en)
+                  else coalesce(lag(p.en) over (partition by p.cot, p.unidad, p.situacion = 'HECHO' order by p.en, p.canon),
+                                case when p.unidad is not null then (select c.revisado_en from cot c where c.id = p.cot) end)
+             end as previo,
              p.espera, p.detalle, p.unidad, p.unidades
         from pasos p
         left join public.usuarios u on u.id = p.quien

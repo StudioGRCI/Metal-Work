@@ -314,6 +314,47 @@ begin
   reset role;
 end $$;
 
+-- 5c. Facturadas las dos unidades que quedan, la venta espera solo su cobro -----------
+-- (20261126998800) La unidad que pasó no espera a nadie; cada una de las otras dos,
+-- con su factura, pasa de Contabilidad a Tesorería. Se deshace al terminar: las
+-- secciones que siguen cuentan con la de tres todavía sin facturas.
+savepoint las_dos_facturadas;
+do $$
+declare
+  v_cot constant uuid := current_setting('prueba.cot3')::uuid;
+  v_factura uuid;
+  v_camino text;
+  o record;
+begin
+  perform set_config('session_replication_role', 'replica', true);
+  for o in select t.numero_de_unidad as unidad, public.codigo_de_la_unidad_de_cotizacion(v_cot, t.numero_de_unidad) as codigo
+             from public.ordenes_trabajo t where t.cotizacion_pdf_id = v_cot and t.estado <> 'ANULADA' loop
+    insert into public.facturas_venta (codigo_interno, cotizacion_pdf_id, cotizacion_numero, cliente, numero, fecha_emision,
+                                       fecha_vencimiento, moneda, total, ruta_storage, nombre_archivo, tamano_bytes, registrado_por)
+    values (o.codigo, v_cot, 'QA-495-3', 'QA PRIMER COMPRADOR 495', 'E001-4953' || o.unidad, current_date, current_date + 30,
+            'PEN', 3000, 'fv/qa-495-3-' || o.unidad || '.pdf', 'f.pdf', 120, current_setting('prueba.contable')::uuid)
+    returning id into v_factura;
+    insert into public.facturas_venta_unidades (factura_id, numero_de_unidad, de_unidades, codigo_interno, monto)
+    values (v_factura, o.unidad, 3, o.codigo, 3000);
+  end loop;
+  perform set_config('session_replication_role', 'origin', true);
+
+  -- Como Contabilidad, que ve los cobros.
+  perform test.como_usuario(current_setting('prueba.contable')::uuid);
+  set local role authenticated;
+  select string_agg(r.unidad || '·' || r.paso || ':' || r.situacion || case when r.situacion = 'AHORA' then ':' || r.puesto else '' end,
+                    ' > ' order by r.orden) into v_camino
+    from public.recorrido_de_cotizaciones(array[v_cot]) r where r.unidad is not null;
+  reset role;
+  perform test.afirmar(
+    v_camino = '1·OTRO_COMPRADOR:HECHO'
+               || ' > 2·CODIGO_Y_OT:HECHO > 2·FACTURA:HECHO > 2·COBRO:AHORA:Tesorería'
+               || ' > 3·CODIGO_Y_OT:HECHO > 3·FACTURA:HECHO > 3·COBRO:AHORA:Tesorería',
+    'Facturadas las dos que quedan, la que pasó no espera a nadie y las otras dos esperan solo su cobro: ' || coalesce(v_camino, 'nada'));
+end $$;
+rollback to savepoint las_dos_facturadas;
+release savepoint las_dos_facturadas;
+
 -- 6. Volver a aprobarla no le pide otra OT a Administración ------------------------
 -- Ventas la corrige (vuelve a «Por revisar») y Gerencia la aprueba otra vez.
 do $$

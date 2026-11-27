@@ -13,6 +13,11 @@
 --   6. La cotización de una unidad da los pasos de siempre, sin unidad.
 --   7. La ficha del código encuentra su cotización en cualquier unidad, y dice cuál.
 --   8. La cotización con una factura vigente no cambia su cantidad de unidades.
+--   9. La unidad que perdió su OT espera desde esa anulación, no desde la
+--      aprobación: los días que Administración no la tuvo no se le cuentan.
+--  10. El número de la OT de cada unidad, solo a quien lee las órdenes.
+--  11. Anulada la cotización, la anulación cuenta sus días desde lo último que
+--      se hizo en cualquier unidad, y ya no espera a nadie.
 --
 -- Cada paso con la cuenta del puesto —nunca ADMIN— y `set local role
 -- authenticated`. Termina en rollback.
@@ -306,6 +311,46 @@ select test.debe_fallar(format(
 reset role;
 select test.afirmar((select cantidad_unidades from public.cotizaciones_pdf where id = pg_temp.id('cot3')) = 3, 'y sigue siendo de tres');
 
+-- 8b. Gerencia aprobó hace nueve días y la OT de la unidad 3 se anuló hace dos: esa unidad
+-- espera a Administración desde hace dos días, no nueve. (La OT anulada no acepta más
+-- cambios: su `actualizado_en` es la hora en que se anuló.)
+do $$
+begin
+  set local session_replication_role = replica;
+  update public.cotizaciones_pdf set revisado_en = now() - interval '9 days' where id in (pg_temp.id('cot3'), pg_temp.id('cotp'));
+  update public.ordenes_trabajo set actualizado_en = now() - interval '2 days' where id = pg_temp.id('ot3');
+  set local session_replication_role = origin;
+end $$;
+select pg_temp.como('contabilidad');
+set local role authenticated;
+do $$
+declare v record;
+begin
+  select r.dias, r.en into v from public.recorrido_de_cotizaciones(array[pg_temp.id('cot3')]) r
+   where r.unidad = 3 and r.paso = 'CODIGO_Y_OT' and r.situacion = 'AHORA';
+  perform test.afirmar(v.dias = 2 and v.en = now() - interval '2 days',
+    format('la unidad que perdió su OT hace dos días espera desde entonces, no desde la aprobación de hace nueve (%s días)', v.dias));
+end $$;
+reset role;
+-- La que nunca tuvo OT sí espera desde la aprobación.
+select pg_temp.como('gerente');
+set local role authenticated;
+update public.cotizaciones_pdf set estado = 'APROBADA' where id = pg_temp.id('cotp');
+reset role;
+do $$
+begin
+  set local session_replication_role = replica;
+  update public.cotizaciones_pdf set revisado_en = now() - interval '9 days' where id = pg_temp.id('cotp');
+  set local session_replication_role = origin;
+end $$;
+select pg_temp.como('contabilidad');
+set local role authenticated;
+select test.afirmar(
+  (select count(*) = 3 and bool_and(r.dias = 9) from public.recorrido_de_cotizaciones(array[pg_temp.id('cotp')]) r
+    where r.paso = 'CODIGO_Y_OT' and r.situacion = 'AHORA'),
+  'las tres unidades que nunca tuvieron OT esperan desde la aprobación: nueve días');
+reset role;
+
 select pg_temp.como('tesoreria');
 set local role authenticated;
 select pg_temp.cobrar('c4', 'f3', 3000, true);
@@ -363,6 +408,53 @@ begin
   perform test.afirmar(v.cotizacion_numero = 'QA-498-1' and v.cotizacion_unidad is null and v.cotizacion_unidades is null,
     'el código de la cotización de una unidad, como siempre: sin unidad');
 end $$;
+reset role;
+
+-- ============================================ 11. El número de la OT de cada unidad, solo a quien lee las órdenes
+-- Hoy todo puesto que ve cotizaciones las lee; se le quita el permiso a Ventas para probar la puerta.
+delete from public.roles_permisos
+ where permiso_codigo = 'ordenes.ver' and rol_id = (select id from public.roles where codigo = 'VENDEDOR');
+select test.afirmar(pg_temp.camino('vendedor', 'cot3', 1) = 'CODIGO_Y_OT:HECHO > FACTURA:HECHO'
+  and pg_temp.camino('vendedor', 'cot3', 2) = 'CODIGO_Y_OT:HECHO > FACTURA:HECHO',
+  'sin leer las órdenes, Ventas ve que cada unidad tiene su OT, sin el número (' || pg_temp.camino('vendedor', 'cot3', 1) || ')');
+select test.afirmar(pg_temp.camino('contabilidad', 'cot3', 2) like 'CODIGO_Y_OT:HECHO:OT 49802-%',
+  'y Contabilidad, que sí las lee, lo sigue viendo');
+
+-- ============================================ 12. Anulada la cotización, nadie la espera y la anulación cuenta bien sus días
+-- Las OT que quedaban se anulan y Gerencia anula la cotización. Lo último que se hizo
+-- fue el cobro de hoy: la anulación dice «el mismo día», no los nueve días desde la aprobación.
+do $$
+begin
+  set local session_replication_role = replica;
+  update public.ordenes_trabajo set estado = 'ANULADA', motivo_anulacion = 'El cliente desistió' where id in (pg_temp.id('ot1'), pg_temp.id('ot2'));
+  set local session_replication_role = origin;
+end $$;
+select pg_temp.como('gerente');
+set local role authenticated;
+update public.cotizaciones_pdf set estado = 'ANULADA', observacion = 'El cliente desistió de la compra' where id = pg_temp.id('cot3');
+reset role;
+-- Con la cuenta de Gerencia: la anulada ya no la ven Contabilidad ni Tesorería, como siempre.
+select pg_temp.como('gerente');
+set local role authenticated;
+do $$
+declare v record;
+begin
+  select count(*) filter (where r.situacion <> 'HECHO') as esperan,
+         max(r.orden) filter (where r.paso = 'ANULACION') = max(r.orden) as al_final,
+         max(r.dias) filter (where r.paso = 'ANULACION') as dias,
+         bool_and(r.unidad is null) filter (where r.paso = 'ANULACION') as sin_unidad,
+         count(*) filter (where r.unidad is not null and r.paso = 'FACTURA') as facturas
+    into v from public.recorrido_de_cotizaciones(array[pg_temp.id('cot3')]) r;
+  perform test.afirmar(v.esperan = 0 and v.al_final and v.sin_unidad and v.facturas = 3,
+    format('anulada, no espera a nadie; quedan los hechos de cada unidad y la anulación va al final, sin unidad (esperan %s, facturas %s)', v.esperan, v.facturas));
+  perform test.afirmar(v.dias = 0,
+    format('la anulación cuenta sus días desde lo último que se hizo en cualquier unidad, no desde la aprobación (%s)', v.dias));
+end $$;
+reset role;
+select pg_temp.como('tesoreria');
+set local role authenticated;
+select test.afirmar((select count(*) from public.recorrido_de_cotizaciones(array[pg_temp.id('cot3')])) = 0,
+  'y Tesorería ya no lee el recorrido de la anulada, como antes');
 reset role;
 
 rollback;

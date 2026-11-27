@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { describirRecorridoDeLaAveria, describirRecorridoDeLaCotizacion, describirRecorridoDeLaOrdenDeCompra, describirRecorridoDeLaOrdenDeServicio, describirRecorridoDelRequerimiento, enQueTermino, enumerar, haceDias, insumos, quienLoTiene, recorridoDeLaUnidad, tardo, tramosDelRecorrido } from './recorrido.ts'
+import { describirRecorridoDeLaAveria, describirRecorridoDeLaCotizacion, describirRecorridoDeLaOrdenDeCompra, describirRecorridoDeLaOrdenDeServicio, describirRecorridoDelRequerimiento, comoTermino, enQueTermino, enumerar, haceDias, insumos, quienLoTiene, recorridoDeLaUnidad, tardo, tramosDelRecorrido } from './recorrido.ts'
 
 const paso = (orden, paso, situacion, mas = {}) => ({
   orden, paso, situacion, puesto: null, en: null, dias: null, espera: null, detalle: null, ...mas,
@@ -289,7 +289,8 @@ test('cada paso de una unidad habla de esa unidad', () => {
 
 test('con varias unidades la tienen varios a la vez: se nombran todos, con la espera más larga', () => {
   assert.deepEqual(quienLoTiene(deTresUnidades()), {
-    quien: 'Contabilidad, Tesorería y Administración', plural: true, dias: 6, desde: '2026-11-20T15:00:00Z',
+    // En el orden del circuito (la OT, la factura, el cobro), no en el de las unidades.
+    quien: 'Administración, Contabilidad y Tesorería', plural: true, dias: 6, desde: '2026-11-20T15:00:00Z',
   })
   // Todas las unidades esperan al mismo puesto: uno solo, en singular.
   const uno = quienLoTiene([
@@ -307,6 +308,37 @@ test('con varias unidades la tienen varios a la vez: se nombran todos, con la es
   assert.equal(quienLoTiene([paso(1, 'REVISION', 'AHORA')])?.quien, 'alguien')
   assert.equal(enumerar(['Gerencia']), 'Gerencia')
   assert.equal(enumerar(['Administración', 'Tesorería']), 'Administración y Tesorería')
+})
+
+test('cerrado y sin nadie que la tenga, la de varias unidades dice cómo terminó cada una', () => {
+  const base = [
+    paso(1, 'SUBIDA', 'HECHO', { puesto: 'Ventas', en: '2026-11-01T15:00:00Z' }),
+    paso(2, 'REVISION', 'HECHO', { puesto: 'Gerencia', detalle: 'APROBADA', en: '2026-11-02T15:00:00Z' }),
+  ]
+  const cobrada = (orden, unidad, en) => [
+    paso(orden, 'FACTURA', 'HECHO', { puesto: 'Contabilidad', en: '2026-11-10T15:00:00Z', unidad, unidades: 3 }),
+    paso(orden + 1, 'COBRO', 'HECHO', { puesto: 'Tesorería', en, unidad, unidades: 3 }),
+  ]
+  // Dos cobradas y una que pasó a otro comprador antes: no se lee «Pasó a otro comprador», que es solo la última de la lista.
+  const mezcla = describirRecorridoDeLaCotizacion([
+    ...base, ...cobrada(3, 1, '2026-11-25T15:00:00Z'), ...cobrada(5, 2, '2026-11-17T15:00:00Z'),
+    paso(7, 'OTRO_COMPRADOR', 'HECHO', { puesto: 'Administración', en: '2026-11-05T15:00:00Z', unidad: 3, unidades: 3 }),
+  ])
+  assert.deepEqual(comoTermino(mezcla), { texto: 'Cobrada: unidades 1 y 2 · Pasó a otro comprador: unidad 3', en: null })
+  // Todas terminaron igual: eso, con la fecha de la última aunque no sea la última unidad.
+  const todas = describirRecorridoDeLaCotizacion([...base, ...cobrada(3, 1, '2026-11-25T15:00:00Z'), ...cobrada(5, 2, '2026-11-17T15:00:00Z')])
+  assert.deepEqual(comoTermino(todas), { texto: 'Cobrada', en: '2026-11-25T15:00:00Z' })
+  // La anulación va después de las unidades y manda.
+  const anulada = describirRecorridoDeLaCotizacion([
+    ...base, ...cobrada(3, 1, '2026-11-25T15:00:00Z'),
+    paso(5, 'ANULACION', 'HECHO', { puesto: 'Gerencia', en: '2026-11-26T15:00:00Z' }),
+  ])
+  assert.deepEqual(comoTermino(anulada), { texto: 'Anulada', en: '2026-11-26T15:00:00Z' })
+  assert.deepEqual(tramosDelRecorrido(anulada).map((t) => t.unidad), [null, 1, null])
+  // Sin unidades, lo de siempre: el último hecho.
+  const deUna = describirRecorridoDeLaCotizacion([...base, paso(3, 'COBRO', 'HECHO', { puesto: 'Tesorería', en: '2026-11-20T15:00:00Z' })])
+  assert.deepEqual(comoTermino(deUna), { texto: 'Cobrada', en: '2026-11-20T15:00:00Z' })
+  assert.equal(comoTermino([]), null)
 })
 
 test('la OT y la ficha del código ven lo de toda la cotización y lo de su unidad, sin las otras', () => {

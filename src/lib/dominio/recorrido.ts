@@ -80,21 +80,64 @@ export function enQueTermino(pasos: readonly PasoDescrito[]): PasoDescrito | und
   return hechos.filter((p) => p.cierra).at(-1) ?? hechos.filter((p) => !p.alMargen).at(-1) ?? hechos.at(-1)
 }
 
+/**
+ * Lo que dice cerrado un recorrido que ya no espera a nadie. Sin unidades, en qué
+ * terminó y cuándo (`enQueTermino`). La cotización de varias unidades termina
+ * unidad por unidad: si todas terminaron igual, eso y la fecha de la última; si
+ * no, cada final con sus unidades («Cobrada: unidades 1 y 2 · Pasó a otro
+ * comprador: unidad 3»), sin fecha, porque el último paso de la lista es el de
+ * la última unidad y no cómo terminó la venta. Si después de las unidades hay un
+ * paso de toda la cotización (la anulación), manda ese.
+ */
+export function comoTermino(pasos: readonly PasoDescrito[]): { texto: string; en: string | null } | null {
+  const tramos = tramosDelRecorrido(pasos)
+  const deUnidad = tramos.filter((t) => t.unidad !== null)
+  const final = tramos.at(-1)
+  if (deUnidad.length === 0 || final?.unidad == null) {
+    const cierre = deUnidad.length > 0 && final ? enQueTermino(final.pasos) : undefined
+    const ultimo = cierre ?? enQueTermino(pasos)
+    return ultimo ? { texto: ultimo.titulo, en: ultimo.en } : null
+  }
+  const finales = new Map<string, { unidades: number[]; en: string | null }>()
+  for (const t of deUnidad) {
+    const ultimo = enQueTermino(t.pasos)
+    if (!ultimo || t.unidad === null) continue
+    const grupo = finales.get(ultimo.titulo) ?? { unidades: [], en: null }
+    grupo.unidades.push(t.unidad)
+    if (ultimo.en && (!grupo.en || ultimo.en > grupo.en)) grupo.en = ultimo.en
+    finales.set(ultimo.titulo, grupo)
+  }
+  if (finales.size === 0) return null
+  if (finales.size === 1) {
+    const [[titulo, grupo]] = [...finales]
+    return { texto: titulo, en: grupo.en }
+  }
+  return {
+    texto: [...finales]
+      .map(([titulo, g]) => `${titulo}: ${g.unidades.length === 1 ? 'unidad' : 'unidades'} ${enumerar(g.unidades.map(String))}`)
+      .join(' · '),
+    en: null,
+  }
+}
+
 /** «Gerencia», «Administración y Tesorería», «Administración, Contabilidad y Tesorería». */
 export function enumerar(nombres: readonly string[]): string {
   if (nombres.length <= 1) return nombres[0] ?? ''
   return `${nombres.slice(0, -1).join(', ')} y ${nombres[nombres.length - 1]}`
 }
 
+/** Los pasos de una unidad de la cotización, en el orden en que pasan de un puesto a otro. */
+const CIRCUITO_DE_LA_UNIDAD = ['CODIGO_Y_OT', 'FACTURA', 'FACTURA_RESTO', 'COBRO']
+
 /**
  * Quién tiene el documento ahora, en una línea: el primer paso que espera, como
  * siempre. La cotización de varias unidades puede esperar a varios a la vez (una
  * unidad sin OT, otra sin factura, otra sin cobro): ahí se nombran todos, una vez
- * cada uno y en el orden del recorrido, con la espera más larga. `null` si no
- * espera a nadie.
+ * cada uno y en el orden del circuito (la OT, la factura, el cobro), no en el de
+ * las unidades, con la espera más larga. `null` si no espera a nadie.
  */
 export function quienLoTiene(
-  pasos: readonly (Pick<PasoDelRecorrido, 'situacion' | 'puesto' | 'dias' | 'en' | 'unidad'> & { plural?: boolean })[],
+  pasos: readonly (Pick<PasoDelRecorrido, 'situacion' | 'puesto' | 'dias' | 'en' | 'unidad'> & { paso?: string; plural?: boolean })[],
 ): { quien: string; plural: boolean; dias: number | null; desde: string | null } | null {
   const ahora = pasos.filter((p) => p.situacion === 'AHORA')
   if (ahora.length === 0) return null
@@ -102,7 +145,13 @@ export function quienLoTiene(
   if (!pasos.some((p) => p.unidad != null)) {
     return { quien: primero.puesto ?? 'alguien', plural: primero.plural === true, dias: primero.dias, desde: primero.en }
   }
-  const puestos = [...new Set(ahora.flatMap((p) => (p.puesto ? [p.puesto] : [])))]
+  const lugar = (p: { paso?: string }) => {
+    const i = CIRCUITO_DE_LA_UNIDAD.indexOf(p.paso ?? '')
+    return i < 0 ? CIRCUITO_DE_LA_UNIDAD.length : i
+  }
+  // `sort` es estable: dentro del mismo paso queda el orden de las unidades.
+  const enCircuito = [...ahora].sort((a, b) => lugar(a) - lugar(b))
+  const puestos = [...new Set(enCircuito.flatMap((p) => (p.puesto ? [p.puesto] : [])))]
   // La espera más larga: la que más días lleva; sin días, no se inventa.
   const conDias = ahora.filter((p) => p.dias !== null)
   const masVieja = conDias.length > 0 ? conDias.reduce((a, b) => ((b.dias ?? 0) > (a.dias ?? 0) ? b : a)) : null
@@ -241,8 +290,11 @@ const PASOS_DE_LA_COTIZACION: Record<string, Frases> = {
 const ESPERAS_DE_LA_COTIZACION: Record<string, (detalle: string | null) => string> = {
   REVISION: () => 'La aprueba o la rechaza.',
   CORRECCION: () => 'Sube la corrección con el mismo número.',
-  // Con varias unidades el detalle dice cuántas OT lleva de cuántas («1/3»), y
+  // Con varias unidades el detalle decía cuántas OT lleva de cuántas («1/3»), y
   // cuántas pasaron a otro comprador si alguna («1/3/1», migración 20261126988000).
+  // Desde la 20261126998800 la base ya no lo manda: la cotización de varias
+  // unidades aprobada va unidad por unidad y cada una trae este paso sin detalle.
+  // Se conserva para la base que todavía no tiene esa migración; se retira después.
   CODIGO_Y_OT: (d) => {
     const [lleva, de, pasaron = 0] = (d ?? '').split('/').map(Number)
     if (!de) return 'Le da el código interno de la unidad y sube la OT.'

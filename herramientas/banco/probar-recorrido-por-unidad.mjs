@@ -4,7 +4,7 @@
  *
  *   1. Ventas, en monitor y en teléfono: la tarjeta de la cotización de tres
  *      unidades (una cobrada, otra con su OT y sin factura, otra sin OT) dice,
- *      cerrada, a quiénes espera y hace cuánto; abierta, lo de toda la
+ *      cerrada, a quiénes espera (en el orden del circuito) y hace cuánto; abierta, lo de toda la
  *      cotización y cada unidad bajo su rótulo, con su OT y su factura. Ventas
  *      no ve el cobro. La cotización de una unidad se ve como siempre. La ficha
  *      del cliente nombra a todos los que la tienen.
@@ -14,6 +14,8 @@
  *   3. Gerencia, en la ficha de cada código: el código de la unidad 1 (que no
  *      es la OT más nueva) ya tiene su cotización, dice «unidad 1 de 3» y su
  *      recorrido trae solo esa unidad.
+ *   3b. Gerencia: la cotización de dos unidades ya cobradas dice, cerrada, en
+ *      qué terminó («Cobrada» y la fecha), no a quién espera.
  *   4. Administración, en la OT de la unidad 2: el recorrido de su cotización
  *      trae lo de toda la cotización y lo de la unidad 2, sin las otras.
  *
@@ -252,7 +254,7 @@ async function facturar(cot, numero, total, unidad) {
 async function cobrar(facturaId, monto, caja) {
   const { id } = await uno('select gen_random_uuid() as id')
   const ruta = `${facturaId}/${id}.pdf`
-  const contenido = pdfConTexto(['CONSTANCIA DE OPERACION', `Operacion OP-${sello}`, 'Banco de prueba'])
+  const contenido = pdfConTexto(['CONSTANCIA DE OPERACION', `Operacion OP-${sello}-${id.slice(0, 4)}`, 'Banco de prueba'])
   guardar('cobros-venta', ruta, contenido)
   await consulta(
     `insert into storage.objects (bucket_id, name, owner, owner_id, metadata)
@@ -263,7 +265,7 @@ async function cobrar(facturaId, monto, caja) {
   await como(
     'tesoreria',
     `select public.registrar_cobro_factura($1, $2, (now() at time zone 'America/Lima')::date, $3, true, $4, $5, $6, null)`,
-    [id, facturaId, monto, `OP-${sello}`, ruta, cajaId],
+    [id, facturaId, monto, `OP-${sello}-${id.slice(0, 4)}`, ruta, cajaId],
   )
 }
 
@@ -286,6 +288,14 @@ const F_UNA = `${serie}-1`
 const F_DOS = `${serie}-2`
 const caja = await crearCajaDePrueba(consulta, CUENTAS.tesoreria)
 await cobrar(await facturar(tres, F_UNA, 11800, 1), 11800, caja)
+// La de dos, 20 000 sin IGV (11 800 por unidad), con sus dos OT, facturadas y cobradas: ya nadie la tiene.
+const CA = `QA-RUA ${sello}`
+const CB = `QA-RUB ${sello}`
+const dos = await cotizacion(20000, 2, false)
+await cargarOt(dos, CA)
+await cargarOt(dos, CB)
+await cobrar(await facturar(dos, `${serie}-3`, 11800, 1), 11800, caja)
+await cobrar(await facturar(dos, `${serie}-4`, 11800, 2), 11800, caja)
 const PDF_FACTURA = join(CAPTURAS, `factura-${serie}.pdf`)
 writeFileSync(PDF_FACTURA, pdfConTexto([`FACTURA ELECTRONICA ${serie}`, CLIENTE, 'Archivo de prueba del banco local']))
 const ots = await consulta(
@@ -335,7 +345,7 @@ for (const [ancho, viewport] of [['1440', { width: 1440, height: 900 }], ['390',
   const tarjeta = pagina.locator(`li[id="${tres.id}"]`)
   const rec = await leerRecorrido(tarjeta)
   console.log(`     Ventas ${ancho}, cerrado: ${rec.cerrado}`)
-  comprobar(rec.cerrado.includes('La tienen Contabilidad y Administración') && rec.cerrado.includes('desde hoy'),
+  comprobar(rec.cerrado.includes('La tienen Administración y Contabilidad') && rec.cerrado.includes('desde hoy'),
     `Ventas ${ancho}: cerrado nombra a los dos que la tienen, sin Tesorería, y desde cuándo («${rec.cerrado}»)`)
   comprobar(rec.deToda === 'SUBIDA:HECHO > REVISION:HECHO', `Ventas ${ancho}: primero lo de toda la cotización (${rec.deToda})`)
   comprobar(rec.unidades.length === 3 && rec.unidades.map((u) => u.rotulo).join(' | ') === 'Unidad 1 de 3 | Unidad 2 de 3 | Unidad 3 de 3',
@@ -363,7 +373,7 @@ for (const [ancho, viewport] of [['1440', { width: 1440, height: 900 }], ['390',
   await ir(pagina, `${BASE}/clientes/${clienteId}`)
   const filaTres = pagina.locator('[data-cotizaciones-del-cliente] li', { hasText: tres.numero })
   const ahora = limpio(await filaTres.locator('[data-cotizacion-ahora]').textContent().catch(() => ''))
-  comprobar(ahora.includes('Contabilidad y Administración · desde hoy') && ahora.includes('Lo tienen Contabilidad y Administración'),
+  comprobar(ahora.startsWith('Administración y Contabilidad') && ahora.includes('desde hoy') && ahora.includes('Lo tienen Administración y Contabilidad'),
     `Ventas ${ancho}: la ficha del cliente dice quiénes la tienen («${ahora}»)`)
   const filaUna = pagina.locator('[data-cotizaciones-del-cliente] li', { hasText: una.numero })
   const ahoraUna = limpio(await filaUna.locator('[data-cotizacion-ahora]').textContent().catch(() => ''))
@@ -385,7 +395,7 @@ for (const [ancho, viewport] of [['1440', { width: 1440, height: 900 }], ['390',
     comprobar(deLaUnidad(rec, 2).pasos === 'CODIGO_Y_OT:HECHO > FACTURA:AHORA > COBRO:PENDIENTE'
       && deLaUnidad(rec, 3).pasos === 'CODIGO_Y_OT:AHORA > FACTURA:PENDIENTE > COBRO:PENDIENTE',
       `Contabilidad: la 2 espera su factura y la 3 su OT, cada una con el cobro que le falta (${deLaUnidad(rec, 2).pasos} | ${deLaUnidad(rec, 3).pasos})`)
-    comprobar(rec.cerrado.includes('La tienen Contabilidad y Administración'), `Contabilidad: cerrado, a quiénes espera («${rec.cerrado}»)`)
+    comprobar(rec.cerrado.includes('La tienen Administración y Contabilidad'), `Contabilidad: cerrado, a quiénes espera («${rec.cerrado}»)`)
 
     // Con clic real: la factura de la unidad 2, entera.
     await tarjeta.locator('li[data-unidad="2"] [data-facturar-unidad="2"]').click()
@@ -405,7 +415,7 @@ for (const [ancho, viewport] of [['1440', { width: 1440, height: 900 }], ['390',
     comprobar(deLaUnidad(rec, 1).pasos === 'CODIGO_Y_OT:HECHO > FACTURA:HECHO > COBRO:HECHO'
       && deLaUnidad(rec, 3).pasos === 'CODIGO_Y_OT:AHORA > FACTURA:PENDIENTE > COBRO:PENDIENTE',
       'y las otras dos unidades no cambian')
-    comprobar(rec.cerrado.includes('La tienen Tesorería y Administración'), `cerrado, ahora espera a Tesorería y a Administración («${rec.cerrado}»)`)
+    comprobar(rec.cerrado.includes('La tienen Administración y Tesorería'), `cerrado, ahora espera a Administración y a Tesorería («${rec.cerrado}»)`)
   } else {
     comprobar(rec.unidades.length === 3 && deLaUnidad(rec, 2).pasos === 'CODIGO_Y_OT:HECHO > FACTURA:HECHO > COBRO:AHORA',
       `Contabilidad 390: las tres unidades, con la 2 ya en Tesorería (${deLaUnidad(rec, 2).pasos})`)
@@ -438,6 +448,18 @@ for (const [ancho, viewport] of [['1440', { width: 1440, height: 900 }], ['390',
       await capturar(pagina, `recorrido-${ancho}-ficha-del-codigo.png`, rec.donde)
     }
   }
+  await contexto.close()
+}
+
+// ------------------------------------------- 3b. Gerencia: la que ya nadie tiene
+{
+  const { pagina, contexto } = await entrar(CUENTAS.gerencia, { width: 390, height: 844 })
+  await ir(pagina, `${BASE}/cotizaciones/pdf?q=${encodeURIComponent(dos.numero)}`)
+  const rec = await leerRecorrido(pagina.locator(`li[id="${dos.id}"]`))
+  comprobar(/Recorrido\s*Cobrada · \d{2}\/\d{2}\/\d{4}$/.test(rec.cerrado) && !rec.cerrado.includes('tiene'),
+    `Gerencia: con sus dos unidades cobradas, cerrado dice en qué terminó y cuándo («${rec.cerrado}»)`)
+  comprobar(rec.unidades.length === 2 && rec.unidades.every((u) => u.pasos === 'CODIGO_Y_OT:HECHO > FACTURA:HECHO > COBRO:HECHO'),
+    `Gerencia: y abierta, cada unidad con su OT, su factura y su cobro hechos (${rec.unidades.map((u) => u.pasos).join(' | ')})`)
   await contexto.close()
 }
 
