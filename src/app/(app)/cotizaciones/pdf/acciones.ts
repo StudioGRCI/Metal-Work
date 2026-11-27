@@ -369,6 +369,8 @@ const esquemaCodigoYOt = z.object({
   // La unidad que elige Administración en la cotización de varias (entrega 3,
   // migración 20261127010000). Sin ella, la base toma la primera libre.
   unidad: z.union([z.literal(''), z.coerce.number().int().min(1, 'Elige de qué unidad es la OT.').max(50, 'Elige de qué unidad es la OT.')]).optional(),
+  // La primera libre, la que la base elige sola: con ella se puede reintentar sin `p_unidad`.
+  primera_libre: z.union([z.literal(''), z.coerce.number().int().min(1).max(50)]).optional(),
 })
 
 /**
@@ -396,7 +398,8 @@ export async function cargarCodigoYOt(
   }
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('cargar_codigo_y_ot_de_cotizacion', {
+  const unidad = typeof v.unidad === 'number' ? v.unidad : undefined
+  const argumentos = {
     p_cotizacion: v.cotizacion_id,
     p_orden: v.orden_id,
     p_codigo_interno: v.codigo_interno,
@@ -409,8 +412,17 @@ export async function cargarCodigoYOt(
     p_tamano_pdf: v.tamano_pdf,
     p_marca: v.marca ?? '',
     p_modelo: v.modelo ?? '',
-    p_unidad: typeof v.unidad === 'number' ? v.unidad : undefined,
-  })
+  }
+  let { data, error } = await supabase.rpc('cargar_codigo_y_ot_de_cotizacion', { ...argumentos, p_unidad: unidad })
+  // Una base sin la migración 20261127010000 no conoce `p_unidad` (PGRST202). Si
+  // la elegida es la primera libre, es la que esa base toma sola: se reintenta sin
+  // ella. Si es otra, no se carga en una unidad que no es (skill `esquema`).
+  if (error?.code === 'PGRST202' && unidad !== undefined) {
+    if (unidad !== v.primera_libre) {
+      return { ok: false, error: `Elegir la unidad llega con la actualización del sistema que está en camino: por ahora la OT entra en la unidad ${v.primera_libre ?? 1}. Elige esa, o vuelve a intentar en unos minutos.` }
+    }
+    ;({ data, error } = await supabase.rpc('cargar_codigo_y_ot_de_cotizacion', argumentos))
+  }
 
   if (error) {
     // La misma carga otra vez: la primera respuesta se perdió y la pantalla

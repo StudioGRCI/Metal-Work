@@ -95,7 +95,10 @@ async function cotizacionesPorRevisar(): Promise<Leido> {
               c.carroceria,
               (c.cantidad_unidades ?? 1) > 1 ? `${c.cantidad_unidades} unidades` : null,
               c.monto_venta === null ? null : moneda(Number(c.monto_venta), divisa(c.moneda)),
-            ].filter(Boolean).join(' · ') || null,
+            ]
+              .filter(Boolean)
+              // El punto va con lo de antes: en el teléfono no empieza renglón.
+              .join('\u00a0· ') || null,
             quien: c.registrado_por_nombre && c.registrado_por_nombre !== 'Ventas' ? `Ventas · ${c.registrado_por_nombre}` : 'Ventas',
             // La corregida espera desde que se subió su versión nueva.
             desde: c.archivo_subido_en ?? c.creado_en,

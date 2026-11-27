@@ -45,6 +45,8 @@ type Estado = { etiqueta: string; tono: 'aviso' | 'exito' | 'neutro' }
 function estadoDeUnidad(u: UnidadDeCotizacion, sola: boolean, paso = false): Estado {
   if (paso) return { etiqueta: 'Pasó a otro comprador', tono: 'neutro' }
   const como = comoVaLaUnidad(u)
+  // Con su OT y sin código: no falta cargarla, falta que Administración le devuelva el código (entrega 3).
+  if (como === 'SIN_OT' && u.ot) return { etiqueta: sola ? 'Sin código interno' : 'Su OT sin código', tono: 'aviso' }
   if (como === 'SIN_OT') return { etiqueta: sola ? 'Sin código interno' : 'Falta su OT', tono: 'neutro' }
   if (como === 'POR_FACTURAR') return { etiqueta: 'Por facturar', tono: 'aviso' }
   // Facturada en dólares una cotización en soles (o al revés): no se compara, pero tampoco se la da por entera o por parte.
@@ -74,7 +76,12 @@ function estadoDe(c: CotizacionParaFacturar): Estado {
     const algoFacturado = c.unidades.some((u) => !pasaron.has(u.numero) && u.facturas > 0)
     return { etiqueta: algoFacturado ? 'Facturada en parte' : 'Por facturar', tono: 'aviso' }
   }
-  if (sinOt > 0) return { etiqueta: `Falta la OT de ${sinOt === 1 ? 'una unidad' : `${sinOt} unidades`}`, tono: 'neutro' }
+  if (sinOt > 0) {
+    const sinCodigo = c.unidades.filter((u) => !pasaron.has(u.numero) && !u.codigo && u.ot).length
+    const unidades = (n: number) => (n === 1 ? 'una unidad' : `${n} unidades`)
+    if (sinCodigo === sinOt) return { etiqueta: `Falta el código de ${unidades(sinCodigo)}`, tono: 'aviso' }
+    return { etiqueta: `Falta la OT de ${unidades(sinOt - sinCodigo)}`, tono: 'neutro' }
+  }
   if (como.includes('OTRA_MONEDA')) return { etiqueta: 'Facturada en otra moneda', tono: 'neutro' }
   return { etiqueta: 'Facturada', tono: 'exito' }
 }
@@ -89,7 +96,8 @@ function estadoDe(c: CotizacionParaFacturar): Estado {
 function lasQuePasaron(c: CotizacionParaFacturar): Set<number> {
   const paso = c.unidades_a_otro_comprador
   if (!paso) return new Set()
-  const sinOt = c.unidades.filter((u) => !u.codigo).map((u) => u.numero)
+  // La que pasó no tiene OT aquí; la que tiene su OT sin código no es candidata.
+  const sinOt = c.unidades.filter((u) => !u.codigo && !u.ot).map((u) => u.numero)
   const son = new Set(paso.cuales.filter((n) => sinOt.includes(n)).slice(0, paso.pasaron))
   for (const n of [...sinOt].reverse()) {
     if (son.size >= paso.pasaron) break
@@ -237,7 +245,9 @@ export default async function PaginaFacturacion() {
             const yaTodoFacturado = pasaron.size > 0 && conOt.length === quedan && !porFacturar(c)
             // Lo facturado de la unidad que pasó (un adelanto por toda la cotización, por ejemplo) sigue vigente y por cobrar.
             const facturadasAntesDePasar = c.unidades.filter((u) => pasaron.has(u.numero) && (u.facturado > 0 || u.facturadoOtraMoneda > 0))
-            const sinOt = quedan - conOt.length
+            // Las que tienen su OT pero se quedaron sin código: no falta cargarlas.
+            const sinCodigo = c.unidades.filter((u) => !pasaron.has(u.numero) && !u.codigo && u.ot)
+            const sinOt = quedan - conOt.length - sinCodigo.length
             return (
               // Con `id`: el aviso de la campana aterriza en esta cotización (`#id`).
               <li key={c.cotizacion_id} id={c.cotizacion_id ?? undefined} className="scroll-mt-20" data-cotizacion={c.numero ?? undefined}>
@@ -368,6 +378,16 @@ export default async function PaginaFacturacion() {
                       <p data-paso-a-otro-comprador className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-neutro-suave px-2.5 py-1.5 text-xs text-texto-suave">
                         <UserRoundX aria-hidden className="mt-0.5 size-3.5 shrink-0" />
                         <span>{pasoAOtroComprador(c, c.paso_a_otro_comprador)}</span>
+                      </p>
+                    ) : sinCodigo.length > 0 ? (
+                      <p data-ot-sin-codigo className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-aviso-suave px-2.5 py-1.5 text-xs text-texto">
+                        <Hourglass aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+                        <span>
+                          {sinCodigo.length === 1 ? 'La OT ' : 'Las OT '}
+                          {sinCodigo.map((u) => u.ot).join(', ')}
+                          {sinCodigo.length === 1 ? ' se quedó' : ' se quedaron'} sin código interno: Administración se lo vuelve a dar con «Editar OT», y
+                          entonces se factura{sinOt > 0 ? `. Falta además la OT de ${sinOt === 1 ? 'una unidad' : `${sinOt} unidades`}.` : '.'}
+                        </span>
                       </p>
                     ) : sinOt > 0 && (
                       <p className="flex items-start gap-1.5 rounded-[var(--radius-base)] bg-neutro-suave px-2.5 py-1.5 text-xs text-texto-suave">

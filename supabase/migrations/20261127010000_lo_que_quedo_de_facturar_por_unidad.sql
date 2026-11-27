@@ -21,6 +21,10 @@
 --    «todavía no tiene su OT … la carga Administración», que nadie iba a cargar.
 -- 4. La cotización no se anula con facturas vigentes (la pantalla no lo ofrecía,
 --    la API sí dejaba), y si tiene varias OT activas las nombra todas.
+-- 5. El costeo reparte el precio con `parte_de_unidad` y lee los códigos de las
+--    OT mismas; los códigos de la cotización, solo a quien la puede ver.
+-- 6. Facturación dice «Su OT sin código» en vez de «Falta su OT» cuando la OT
+--    existe y lo que falta es el código.
 --
 -- Solo si las funciones que reemplaza siguen siendo las que conoce el
 -- repositorio (la guarda de la huella). La carga de la OT cambia de firma: se
@@ -40,15 +44,17 @@ begin
       -- La de la 20261126988000, y la de esta migración (con su firma nueva).
       ('cargar_codigo_y_ot_de_cotizacion', array['ead3df8364d77d7bbb1b4b2bc68c16de', 'd3e5e1b6fdcd9bc4a32fdbe20c4f1299']),
       -- La de la 20261126998900, y la de esta.
-      ('recorrido_de_cotizaciones', array['e5a553a26cd019f52826f33ac472c0fa', 'ade95929f25ab67cfd6d0482c3b57462']),
+      ('recorrido_de_cotizaciones', array['e5a553a26cd019f52826f33ac472c0fa', 'a1dd1b75b1bcaa1e4a0593b75152253a']),
       -- La de la 20261126998000, y la de esta.
-      ('registrar_factura_venta_de_unidad', array['7c0672cb2a79fd67a0bd774c4d0eb2aa', '99576605a8eb809a3e579dda2db0575a']),
+      ('registrar_factura_venta_de_unidad', array['7c0672cb2a79fd67a0bd774c4d0eb2aa', '7c0c5a2410cbb23f065f5ced38843521']),
       -- La de la 20261126988000, y la de esta.
       ('fn_cotizacion_pdf_anular', array['f4b882cbd42c112831e248a41e5ae2cd', '8a5ce7f184bc1932cd67c908c93467bd']),
       -- Las de la 20261126998800 (el costeo) y la 20261126760000, y las de esta.
-      ('margen_ot', array['088e295d4723fba20ca7236eb322de0d', '073c23ee30f1e1cbf6d0b16ac8474b91']),
-      ('codigos_internos_costo_calculado', array['a55f8e1dd0f91f18a64a65bde5104c56', '4e60932c5c6e2fc9ea5ebfa558a0e13b']),
-      ('ordenes_de_cotizacion', array['e4acea0d52c7122a10ac633c3d25fb96', '25bc7b3a1be2905a2ce341056e00a76b'])
+      ('margen_ot', array['088e295d4723fba20ca7236eb322de0d', '31a5d97beec1781a0967f69640473dee']),
+      ('codigos_internos_costo_calculado', array['a55f8e1dd0f91f18a64a65bde5104c56', '504d6ac0621c44abaac2e5327a23f0bc']),
+      ('ordenes_de_cotizacion', array['e4acea0d52c7122a10ac633c3d25fb96', '25bc7b3a1be2905a2ce341056e00a76b']),
+      -- La de la 20261126998000, y la de esta.
+      ('facturacion_por_unidad', array['681cd724a95d4bf75c7158a2898cd059', '52e26a99e11d6de3893b5f3ddc44539e'])
     ) as t(nombre, conocidas)
   loop
     hay := false;
@@ -98,6 +104,33 @@ comment on function public.ot_sin_codigo_desde(uuid, uuid) is
   'Desde cuándo una OT vigente espera que Administración le vuelva a dar el código interno a su unidad. Ayudante interno del recorrido (20261127010000).';
 
 revoke all on function public.ot_sin_codigo_desde(uuid, uuid) from public, anon, authenticated;
+
+-- 0c. Desde cuándo la OT está lista para facturar en esta venta -----------------
+-- Lo último entre que llegó a esta venta (se creó aquí, o pasó desde otra con
+-- «Editar OT») y la última vez que su unidad recibió el código después de
+-- quedarse sin él (la bitácora). El recorrido lo junta con desde cuándo tiene
+-- código: así la factura no espera «hace 10 días» una OT que llegó hoy, ni
+-- cuenta los días en que la unidad no tenía código.
+create or replace function public.ot_lista_para_facturar_desde(p_orden uuid)
+returns timestamptz
+language sql
+stable
+security invoker
+set search_path to 'public'
+as $$
+  select greatest(coalesce((select max(v.creado_en) from public.ot_ventas_anteriores v where v.orden_id = o.id), o.creado_en),
+                  (select max(b.creado_en) from public.audit_log b
+                    where b.tabla = 'unidades' and b.registro_id = o.unidad_id
+                      and public.normalizar_codigo_interno(b.datos_antes ->> 'codigo_interno') is null
+                      and public.normalizar_codigo_interno(b.datos_despues ->> 'codigo_interno') is not null))
+    from public.ordenes_trabajo o
+   where o.id = p_orden;
+$$;
+
+comment on function public.ot_lista_para_facturar_desde(uuid) is
+  'Desde cuándo la OT está lista para facturar en su venta: cuando llegó a ella, o cuando su unidad volvió a tener código interno. Ayudante interno del recorrido (20261127010000).';
+
+revoke all on function public.ot_lista_para_facturar_desde(uuid) from public, anon, authenticated;
 
 -- 1. Administración elige la unidad al cargar la OT -----------------------------
 -- La firma cambia (p_unidad al final, con null por omisión): se suelta la de antes.
@@ -472,18 +505,19 @@ begin
   -- `sin_codigo`: su unidad se quedó sin código interno; sin código no se factura.
   ot as (
     select distinct on (o.cotizacion_pdf_id) o.cotizacion_pdf_id as cot, o.numero, o.por as creado_por, o.en as creado_en,
-           public.codigo_interno_de_cotizacion_desde(o.cotizacion_pdf_id) as con_codigo_en,
+           greatest(public.codigo_interno_de_cotizacion_desde(o.cotizacion_pdf_id),
+                    public.ot_lista_para_facturar_desde(o.orden)) as con_codigo_en,
            (count(*) over (partition by o.cotizacion_pdf_id))::integer as vigentes,
            max(o.en) over (partition by o.cotizacion_pdf_id) as ultima_en,
            o.sin_codigo
-      from (select o.cotizacion_pdf_id, o.numero,
+      from (select o.id as orden, o.cotizacion_pdf_id, o.numero,
                    coalesce(l.creado_por, o.creado_por) as por, coalesce(l.creado_en, o.creado_en) as en,
                    public.normalizar_codigo_interno(u.codigo_interno) is null as sin_codigo
               from public.ordenes_trabajo o
               left join public.unidades u on u.id = o.unidad_id
               left join lateral (select v.creado_por, v.creado_en from public.ot_ventas_anteriores v
                                   where v.orden_id = o.id order by v.creado_en desc limit 1) l on true
-             where o.estado <> 'ANULADA') o
+             where o.estado <> 'ANULADA' and o.cotizacion_pdf_id = any(p_ids)) o
       join cot c on c.id = o.cotizacion_pdf_id
      order by o.cotizacion_pdf_id, o.en
   ),
@@ -585,7 +619,7 @@ begin
            case when c.unidades > 1 then o.vigentes || ' OT' when v_ordenes then 'OT ' || o.numero end
       from ot o join cot c on c.id = o.cot
      where (o.vigentes + c.salieron >= c.unidades or c.estado = 'ANULADA')
-       and not (c.estado = 'APROBADA' and c.unidades = 1 and o.sin_codigo)
+       and not (c.estado <> 'ANULADA' and c.unidades = 1 and o.sin_codigo)
     union all
     -- Su OT se quedó sin código interno: Administración se lo vuelve a dar, desde
     -- que lo perdió (la bitácora de la unidad) o desde la OT.
@@ -593,6 +627,11 @@ begin
            case when v_ordenes then 'OT ' || o.numero end
       from ot o join cot c on c.id = o.cot
      where c.estado = 'APROBADA' and c.unidades = 1 and o.sin_codigo
+    union all
+    -- La misma, mientras la cotización espera una corrección: queda pendiente.
+    select o.cot, 100000, 'CODIGO_Y_OT', 'PENDIENTE', null, null, null, null, null
+      from ot o join cot c on c.id = o.cot
+     where c.estado in ('POR_REVISAR', 'RECHAZADA') and c.unidades = 1 and o.sin_codigo
     union all
     -- Su OT pasó a otro comprador con «Editar OT» (20261126988000): esa unidad ya
     -- no lleva OT. El número, solo a quien lee las órdenes.
@@ -607,8 +646,7 @@ begin
       ) va
      where c.salieron > 0
     union all
-    -- Espera desde la aprobación, tenga ya algunas o ninguna. El detalle dice
-    -- cuántas lleva de cuántas («1/3») cuando la cotización es de varias.
+    -- Espera desde la aprobación, tenga ya algunas o ninguna.
     select c.id, 100000, 'CODIGO_Y_OT', 'AHORA', null, 'Administración', c.revisado_en, 'CODIGO_Y_OT',
            null
       from cot c left join ot o on o.cot = c.id
@@ -623,8 +661,8 @@ begin
            case when v_cobros and exists (select 1 from falta_resto r where r.cot = f.cot) then 'EN_PARTE' end
       from factura f
     union all
-    -- Espera su factura desde que la OT tiene código interno (DKS, Plan 10). Con
-    -- varias unidades, cuando están todas sus OT, desde la última.
+    -- Espera su factura desde que la OT tiene código interno (DKS, Plan 10) y está
+    -- en esta venta. Con varias unidades, cuando están todas sus OT, desde la última.
     select c.id, 100010, 'FACTURA', 'AHORA', null, 'Contabilidad',
            case when c.unidades > 1 then o.ultima_en else coalesce(o.con_codigo_en, o.creado_en) end, 'FACTURA', null
       from cot c join ot o on o.cot = c.id
@@ -690,7 +728,7 @@ begin
     select distinct on (o.cotizacion_pdf_id, coalesce(o.numero_de_unidad, 1))
            o.cotizacion_pdf_id as cot, coalesce(o.numero_de_unidad, 1)::integer as unidad, o.id,
            o.numero, coalesce(l.creado_por, o.creado_por) as creado_por, coalesce(l.creado_en, o.creado_en) as creado_en,
-           public.codigo_interno_de_ot_desde(o.id) as con_codigo_en,
+           greatest(public.codigo_interno_de_ot_desde(o.id), public.ot_lista_para_facturar_desde(o.id)) as con_codigo_en,
            public.normalizar_codigo_interno(un.codigo_interno) is null as sin_codigo
       from public.ordenes_trabajo o
       join cot c on c.id = o.cotizacion_pdf_id
@@ -779,13 +817,17 @@ begin
     select o.cot, o.unidad, 100000 as canon, 'CODIGO_Y_OT' as paso, 'HECHO' as situacion, o.creado_por as quien, null::text as puesto_fijo,
            o.creado_en as en, null::text as espera, case when v_ordenes then 'OT ' || o.numero end as detalle
       from u_ot o join uni u on u.cot = o.cot and u.unidad = o.unidad
-     where not (u.estado = 'APROBADA' and o.sin_codigo)
+     where not (u.estado <> 'ANULADA' and o.sin_codigo)
     union all
     -- Su OT se quedó sin código interno: Administración se lo vuelve a dar.
     select o.cot, o.unidad, 100000, 'CODIGO_Y_OT', 'AHORA', null, 'Administración', public.ot_sin_codigo_desde(null, o.id),
            'SIN_CODIGO', case when v_ordenes then 'OT ' || o.numero end
       from u_ot o join uni u on u.cot = o.cot and u.unidad = o.unidad
      where u.estado = 'APROBADA' and o.sin_codigo
+    union all
+    select o.cot, o.unidad, 100000, 'CODIGO_Y_OT', 'PENDIENTE', null, null, null, null, null
+      from u_ot o join uni u on u.cot = o.cot and u.unidad = o.unidad
+     where u.estado in ('POR_REVISAR', 'RECHAZADA') and o.sin_codigo
     union all
     -- Su OT pasó a otro comprador: esta unidad ya no lleva OT.
     select s.cot, s.unidad, 99990, 'OTRO_COMPRADOR', 'HECHO', s.por, null, s.en, null, case when v_ordenes then s.numero end
@@ -814,8 +856,8 @@ begin
               from u_facturas x order by x.cot, x.unidad, x.creado_en) f
       join uni u on u.cot = f.cot and u.unidad = f.unidad
     union all
-    -- Espera su factura desde que su OT tiene código interno, sin esperar a las
-    -- demás unidades (DKS, 2026-11-26).
+    -- Espera su factura desde que su OT tiene código interno y está en esta venta,
+    -- sin esperar a las demás unidades (DKS, 2026-11-26).
     select u.cot, u.unidad, 100010, 'FACTURA', 'AHORA', null, 'Contabilidad', coalesce(o.con_codigo_en, o.creado_en), 'FACTURA', null
       from uni u join u_ot o on o.cot = u.cot and o.unidad = u.unidad
      where u.estado = 'APROBADA' and not o.sin_codigo
@@ -928,7 +970,7 @@ end;
 $$;
 
 comment on function public.recorrido_de_cotizaciones(uuid[]) is
-  'El recorrido de cada cotización que quien llama ya puede ver: lo hecho con el puesto de quien lo hizo y su hora, quién la tiene ahora y hace cuántos días, y lo que falta. La de varias unidades da, además, la OT, la factura y el cobro de cada unidad (unidad, unidades); en la de una, esas dos columnas van vacías. Migraciones 20261125130000 y 20261126998900.';
+  'El recorrido de cada cotización que quien llama ya puede ver: lo hecho con el puesto de quien lo hizo y su hora, quién la tiene ahora y hace cuántos días, y lo que falta. La de varias unidades da, además, la OT, la factura y el cobro de cada unidad (unidad, unidades); en la de una, esas dos columnas van vacías. Migraciones 20261125130000, 20261126998900 y 20261127010000.';
 
 revoke all on function public.recorrido_de_cotizaciones(uuid[]) from public, anon;
 grant execute on function public.recorrido_de_cotizaciones(uuid[]) to authenticated;
@@ -956,6 +998,7 @@ declare
   v_cli      text;
   v_otra     text;
   v_concepto text := nullif(btrim(coalesce(p_concepto, '')), '');
+  v_ot_sin   text;
 begin
   perform public.exigir_permiso('contabilidad.facturar');
   if p_id is null then raise exception 'Vuelve a abrir el formulario de la factura.' using errcode = 'check_violation'; end if;
@@ -1009,6 +1052,16 @@ begin
       raise exception 'La unidad % de la cotización % pasó a otro comprador con su OT: ya no se factura en esta cotización.', v_unidad, v_cot.numero
         using errcode = 'check_violation';
     end if;
+    -- Tiene su OT, pero su unidad se quedó sin código: no es que falte cargarla.
+    if v_codigo is null then
+      select o.numero into v_ot_sin from public.ordenes_trabajo o
+       where o.cotizacion_pdf_id = p_cotizacion and o.estado <> 'ANULADA' and coalesce(o.numero_de_unidad, 1) = v_unidad
+       order by o.creado_en desc limit 1;
+      if v_ot_sin is not null then
+        raise exception 'La OT % de la cotización % se quedó sin código interno: Administración se lo vuelve a dar con «Editar OT», y entonces se factura.', v_ot_sin, v_cot.numero
+          using errcode = 'check_violation';
+      end if;
+    end if;
     if v_codigo is null and v_unidades = 1 then
       raise exception 'La cotización % todavía no tiene código interno: lo pone Administración al cargar la OT.', v_cot.numero
         using errcode = 'check_violation';
@@ -1020,7 +1073,7 @@ begin
   else
     -- Toda la cotización: se reparte entre todas, así que todas tienen que tener su código.
     if v_con_ot < v_unidades and jsonb_array_length(public.unidades_que_salieron_de_la_cotizacion(p_cotizacion)) > 0 then
-      raise exception 'Una unidad de la cotización % pasó a otro comprador: factura cada unidad que sigue en la venta por separado.', v_cot.numero
+      raise exception 'De la cotización % ya pasaron unidades a otro comprador: factura por separado cada unidad que sigue en la venta.', v_cot.numero
         using errcode = 'check_violation';
     end if;
     if v_con_ot < v_unidades then
@@ -1096,7 +1149,7 @@ end;
 $$;
 
 comment on function public.registrar_factura_venta_de_unidad(uuid, uuid, text, date, date, text, numeric, text, text, text, integer) is
-  'Contabilidad registra la factura de venta de una unidad de la cotización (p_unidad = 1, 2, 3…) o de toda la cotización (p_unidad = 0), que se reparte en partes iguales entre sus unidades. Pide contabilidad.facturar. Migración 20261126998000.';
+  'Contabilidad registra la factura de venta de una unidad de la cotización (p_unidad = 1, 2, 3…) o de toda la cotización (p_unidad = 0), que se reparte en partes iguales entre sus unidades. Pide contabilidad.facturar. Migraciones 20261126998000 y 20261127010000.';
 
 revoke all on function public.registrar_factura_venta_de_unidad(uuid, uuid, text, date, date, text, numeric, text, text, text, integer) from public, anon;
 grant execute on function public.registrar_factura_venta_de_unidad(uuid, uuid, text, date, date, text, numeric, text, text, text, integer) to authenticated;
@@ -1161,36 +1214,13 @@ $$;
 revoke all on function public.fn_cotizacion_pdf_anular() from public, anon, authenticated;
 
 -- 5. El precio de cada unidad en el costeo ---------------------------------------
--- Dos menores del PR #245: el reparto redondeaba cada parte (100 entre 3 daba
--- 33.33 tres veces y se perdía un céntimo), y mientras una corrección esperaba a
--- Gerencia el costeo ya dividía por la cantidad nueva. Ahora cada unidad recibe
--- su `parte_de_unidad` (las partes suman el total, como las facturas, 20261126998000)
--- de la cantidad que Gerencia aprobó por última vez.
-create or replace function public.unidades_aprobadas(p_cotizacion uuid)
-returns integer
-language sql
-stable
-security invoker
-set search_path to 'public'
-as $$
-  select greatest(1, case
-    when c.estado = 'APROBADA' then coalesce(c.cantidad_unidades, 1)
-    else coalesce((select coalesce((b.datos_despues ->> 'cantidad_unidades')::integer, 1)
-                     from public.audit_log b
-                    where b.tabla = 'cotizaciones_pdf' and b.registro_id = c.id
-                      and b.datos_despues ->> 'estado' = 'APROBADA'
-                    order by b.id desc
-                    limit 1),
-                  coalesce(c.cantidad_unidades, 1))
-  end)
-    from public.cotizaciones_pdf c
-   where c.id = p_cotizacion;
-$$;
-
-comment on function public.unidades_aprobadas(uuid) is
-  'Cuántas unidades tenía la cotización la última vez que Gerencia la aprobó (la de hoy si está aprobada). Ayudante interno del costeo (20261127010000).';
-
-revoke all on function public.unidades_aprobadas(uuid) from public, anon, authenticated;
+-- Menor del PR #245: el reparto redondeaba cada parte (100 entre 3 daba 33.33
+-- tres veces y se perdía un céntimo). Ahora cada unidad recibe su
+-- `parte_de_unidad`: las partes suman el total, como las facturas (20261126998000).
+-- Mientras una corrección espera a Gerencia, el precio sigue siendo el de la
+-- versión que se cobra, total y unidades juntos, y sin su IGV confirmado no hay
+-- precio (check 397, «El IGV es el de la versión que se cobra»): tomar el total
+-- corregido con las unidades aprobadas daba una cifra que no es ninguna de las dos.
 
 CREATE OR REPLACE FUNCTION public.margen_ot(p_orden uuid)
  RETURNS TABLE(moneda_venta text, precio_venta numeric, incluye_igv boolean, precio_neto numeric, cambio_venta numeric, precio_neto_pen numeric, costo_pen numeric, margen_pen numeric, margen_pct numeric, despachos_sin_precio integer, lineas_sin_cambio integer)
@@ -1222,8 +1252,8 @@ begin
     raise exception 'No tienes acceso a esta OT.' using errcode = 'insufficient_privilege';
   end if;
 
-  -- El precio de esta unidad: el total de la cotización entre sus unidades.
-  select c.moneda::text, public.parte_de_unidad(c.monto_venta, public.unidades_aprobadas(c.id), coalesce(o.numero_de_unidad, 1)),
+  -- El precio de esta unidad: su parte del total de la cotización.
+  select c.moneda::text, public.parte_de_unidad(c.monto_venta, greatest(coalesce(c.cantidad_unidades, 1), 1), coalesce(o.numero_de_unidad, 1)),
          case when i.version = c.version then i.incluye_igv end,
          o.fecha_registro::date
     into v_moneda, v_precio, v_igv, v_fecha
@@ -1314,7 +1344,7 @@ begin
     -- La cotización aprobada (o aprobada antes de una corrección) de las OT del
     -- código: a cada código vigente de la cotización, su parte del total.
     select x.codigo, c.moneda::text as moneda,
-           public.parte_de_unidad(c.monto_venta::numeric, public.unidades_aprobadas(c.id), x.unidad) as monto,
+           public.parte_de_unidad(c.monto_venta::numeric, greatest(coalesce(c.cantidad_unidades, 1), 1), x.unidad) as monto,
            ig.incluye_igv, (coalesce(c.revisado_en, c.creado_en) at time zone 'America/Lima')::date as fecha
       from public.cotizaciones_pdf c
       -- El IGV confirmado para esta versión: una corrección sin confirmar no tiene precio.
@@ -1448,5 +1478,89 @@ $$;
 
 comment on function public.ordenes_de_cotizacion(uuid) is
   'Las OT vigentes de la cotización, por su número de unidad; el id, el número y el estado solo para quien ve las órdenes, y el código interno para quien ve las órdenes, el costeo o esa cotización (migraciones 20261126760000 y 20261127010000).';
+
+-- 7. Facturación distingue la unidad sin OT de la OT sin código -----------------
+-- Lo vio el auditor de funcionamiento: la OT cuya unidad se quedó sin código
+-- salía en Facturación como «Falta su OT», y el aviso le pedía a Administración
+-- cargar una OT que ya existe. Ahora la unidad trae el número de su OT aunque le
+-- falte el código (la pantalla dice «Su OT sin código» y que Administración se
+-- lo vuelve a dar con «Editar OT»); el código, desde cuándo y los días siguen
+-- nulos mientras no lo tenga, así que no se factura. Y desde cuándo espera la
+-- factura cuenta como en el recorrido: desde que la OT llegó a esta venta y
+-- desde que su unidad recibió otra vez el código.
+create or replace function public.facturacion_por_unidad(p_ids uuid[])
+ returns table(cotizacion uuid, unidades integer, numero_de_unidad integer, codigo_interno text, desde timestamp with time zone, dias integer, parte numeric, facturas integer, facturado numeric, cobrado numeric, facturado_otra_moneda numeric, cobrado_otra_moneda numeric, ot_numero text)
+ language plpgsql
+ stable security definer rows 100
+ set search_path to 'public'
+as $function$
+#variable_conflict use_column
+begin
+  if not (public.es_admin() or public.tiene_permiso('contabilidad.facturar') or public.tiene_permiso('cotizaciones.ver_aprobadas')) then
+    raise exception 'No tienes permiso para ver las cotizaciones aprobadas.' using errcode = 'insufficient_privilege';
+  end if;
+  if p_ids is null or cardinality(p_ids) = 0 then
+    return;
+  end if;
+  if cardinality(p_ids) > 500 then
+    raise exception 'Pide lo que falta facturar de hasta 500 cotizaciones a la vez.' using errcode = 'check_violation';
+  end if;
+
+  return query
+  with cot as (
+    select c.id, c.cantidad_unidades::integer as unidades, coalesce(c.moneda::text, 'PEN') as moneda,
+           case when c.monto_venta is null then null
+                when ig.incluye_igv = false then round(c.monto_venta::numeric * 1.18, 2)
+                else c.monto_venta::numeric end as total
+      from public.cotizaciones_pdf c
+      left join public.cotizaciones_pdf_igv ig on ig.cotizacion_id = c.id
+     where c.id = any(p_ids)
+       and c.estado::text <> 'ANULADA' and public.cotizacion_fue_aprobada(c.id)
+  ),
+  -- Lo facturado vigente de cada unidad, por moneda.
+  partes as (
+    select p.cotizacion_pdf_id as cot, p.numero_de_unidad as unidad, p.moneda::text as moneda,
+           count(*)::integer as facturas, sum(p.monto)::numeric as facturado, sum(p.cobrado)::numeric as cobrado
+      from public.v_facturas_venta_por_unidad p
+     where p.cotizacion_pdf_id = any(p_ids) and p.anulada_en is null
+     group by p.cotizacion_pdf_id, p.numero_de_unidad, p.moneda
+  )
+  select c.id, c.unidades, k.unidad, ot.codigo, ot.desde, public.dias_en_espera(ot.desde),
+         public.parte_de_unidad(c.total, c.unidades, k.unidad),
+         coalesce(fx.facturas, 0), coalesce(fx.facturado, 0), coalesce(fx.cobrado, 0),
+         coalesce(fx.facturado_otra, 0), coalesce(fx.cobrado_otra, 0), ot.numero
+    from cot c
+    cross join lateral generate_series(1, c.unidades) as k(unidad)
+    left join lateral (
+      select x.codigo,
+             case when x.codigo is not null
+                  then greatest(public.codigo_interno_de_ot_desde(x.id), public.ot_lista_para_facturar_desde(x.id)) end as desde,
+             x.numero
+        from (select o.id, o.numero::text as numero, o.creado_en,
+                     public.normalizar_codigo_interno(u.codigo_interno) as codigo
+                from public.ordenes_trabajo o
+                join public.unidades u on u.id = o.unidad_id
+               where o.cotizacion_pdf_id = c.id and o.estado <> 'ANULADA'
+                 and coalesce(o.numero_de_unidad, 1) = k.unidad) x
+       -- La que tiene código antes que la que no, y la más nueva primero.
+       order by (x.codigo is null), x.creado_en desc
+       limit 1) ot on true
+    left join lateral (
+      select sum(p.facturas)::integer as facturas,
+             sum(p.facturado) filter (where p.moneda = c.moneda) as facturado,
+             sum(p.cobrado) filter (where p.moneda = c.moneda) as cobrado,
+             sum(p.facturado) filter (where p.moneda <> c.moneda) as facturado_otra,
+             sum(p.cobrado) filter (where p.moneda <> c.moneda) as cobrado_otra
+        from partes p
+       where p.cot = c.id and p.unidad = k.unidad) fx on true
+   order by c.id, k.unidad;
+end;
+$function$;
+
+revoke all on function public.facturacion_por_unidad(uuid[]) from public, anon;
+grant execute on function public.facturacion_por_unidad(uuid[]) to authenticated;
+
+comment on function public.facturacion_por_unidad(uuid[]) is
+  'Cada unidad de las cotizaciones aprobadas: el número de su OT vigente (aunque su unidad no tenga código), el código interno y desde cuándo espera la factura (nulos sin código), su parte del total con IGV y lo facturado y cobrado (migraciones 20261126998000 y 20261127010000).';
 
 notify pgrst, 'reload schema';

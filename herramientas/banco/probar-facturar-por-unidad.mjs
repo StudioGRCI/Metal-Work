@@ -619,6 +619,41 @@ const delaSalida = (pagina, que) => pagina.locator('li, article').filter({ hasTe
   await contexto.close()
 }
 
+// ------------- 8. La OT que se quedó sin código no es «Falta su OT» (entrega 3)
+// Administración le quita el código a la unidad 1 (la 3 sigue sin OT): Facturación
+// dice que esa OT existe y le falta el código, y que la otra unidad no tiene OT.
+{
+  const ot1 = await uno(
+    `select o.numero, o.unidad_id from public.ordenes_trabajo o
+      where o.cotizacion_pdf_id = $1 and o.estado <> 'ANULADA' and coalesce(o.numero_de_unidad, 1) = 1`,
+    [tres.id],
+  )
+  await consulta(`update public.unidades set codigo_interno = null where id = $1`, [ot1.unidad_id])
+  try {
+    for (const [ancho, alto] of [[1440, 900], [390, 844]]) {
+      const { pagina, contexto } = await entrar(CUENTAS.contabilidad, { width: ancho, height: alto })
+      await ir(pagina, `${BASE}/contabilidad/facturacion`)
+      const tarjeta = pagina.locator(`li[data-cotizacion="${tres.numero}"]`)
+      await tarjeta.waitFor({ timeout: 15000 })
+      const aviso = limpio(await tarjeta.locator('[data-ot-sin-codigo]').textContent({ timeout: 5000 }).catch(() => ''))
+      comprobar(aviso.includes(`La OT ${ot1.numero}`) && aviso.includes('«Editar OT»') && aviso.includes('Falta además la OT de una unidad'),
+        `${ancho}: el aviso dice que la OT existe y le falta el código, y que a otra le falta la OT («${aviso}»)`)
+      const u1 = limpio(await tarjeta.locator('li[data-unidad="1"]').textContent())
+      comprobar(u1.includes(`OT ${ot1.numero}`) && u1.includes('Su OT sin código') && !u1.includes('Falta su OT') && !u1.includes('Registrar factura'),
+        `${ancho}: la unidad 1 dice «Su OT sin código», con su OT y sin «Registrar factura» («${u1}»)`)
+      const u3 = limpio(await tarjeta.locator('li[data-unidad="3"]').textContent())
+      comprobar(u3.includes('Falta su OT'), `${ancho}: la unidad 3, que no tiene OT, sigue «Falta su OT» («${u3}»)`)
+      comprobar((await desborde(pagina)) <= 0, `${ancho}: Facturación no se corre de costado`)
+      await pagina.addStyleTag({ content: 'nextjs-portal { display: none !important; }' })
+      await tarjeta.scrollIntoViewIfNeeded()
+      await tarjeta.screenshot({ path: join(CAPTURAS, `unidad-${ancho}-ot-sin-codigo.png`) })
+      await contexto.close()
+    }
+  } finally {
+    await consulta(`update public.unidades set codigo_interno = $2 where id = $1`, [ot1.unidad_id, C1])
+  }
+}
+
 await navegador.close()
 await base.end()
 if (errores.length > 0) {

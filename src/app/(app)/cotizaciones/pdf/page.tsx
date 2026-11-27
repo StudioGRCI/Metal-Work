@@ -111,8 +111,15 @@ function aprobadaEsteMes(c: { estado: string | null; revisado_en: string | null 
 
 // Le falta alguna OT: la aprobada a la que Administración todavía no le cargó
 // todas sus unidades (una OT por unidad, migración 20261126760000).
-function faltaSuOt(c: { estado: string | null; ordenes_faltantes: number | null }) {
-  return c.estado === 'APROBADA' && (c.ordenes_faltantes ?? 0) > 0
+function faltaSuOt(c: { estado: string | null; ordenes: { codigo_interno: string | null }[]; ordenes_faltantes: number | null }) {
+  return c.estado === 'APROBADA' && ((c.ordenes_faltantes ?? 0) > 0 || otSinCodigo(c))
+}
+
+// Una OT vigente cuya unidad se quedó sin código interno: no se factura, y
+// Administración se lo vuelve a dar con «Editar OT». Espera con las que no tienen
+// OT y no cuenta como «Con código y OT» (entrega 3, auditoría de diseño).
+function otSinCodigo(c: { ordenes: { codigo_interno: string | null }[] }) {
+  return c.ordenes.some((o) => !o.codigo_interno)
 }
 
 // La OT que fue su venta y pasó a otro comprador con «Editar OT»: esa unidad
@@ -128,7 +135,7 @@ function pasoAOtroComprador(salieron: (string | null)[] | null) {
 }
 
 function enFiltro(
-  c: { estado: string | null; ordenes: unknown[]; ordenes_faltantes: number | null; revisado_en: string | null },
+  c: { estado: string | null; ordenes: { codigo_interno: string | null }[]; ordenes_faltantes: number | null; revisado_en: string | null },
   filtro: FiltroEstado | null,
   mes: string,
 ) {
@@ -143,7 +150,7 @@ function enFiltro(
       return c.estado === 'RECHAZADA'
     case 'CON_OT':
       // Con todas sus OT: la que está a medio cargar sigue en las que esperan.
-      return c.ordenes.length > 0 && (c.ordenes_faltantes ?? 0) === 0
+      return c.ordenes.length > 0 && (c.ordenes_faltantes ?? 0) === 0 && !otSinCodigo(c)
     case 'ANULADA':
       return c.estado === 'ANULADA'
     default:
@@ -573,8 +580,16 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                                 ) : (
                                   <span className="font-mono font-medium break-all text-texto">{o.codigo_interno}</span>
                                 )
+                              ) : veOt && o.id ? (
+                                <Link
+                                  href={`/ordenes/${o.id}?editar=1`}
+                                  className="pointer-coarse:inline-flex pointer-coarse:min-h-11 pointer-coarse:items-center"
+                                  aria-label={`Sin código interno: darle el código a la OT${o.numero ? ` ${o.numero}` : ''} con «Editar OT»`}
+                                >
+                                  <Insignia tono="aviso">Sin código interno</Insignia>
+                                </Link>
                               ) : (
-                                <span className="text-texto-suave">Sin código interno</span>
+                                <Insignia tono="aviso">Sin código interno</Insignia>
                               )}
                               {o.numero &&
                                 (veOt && o.id ? (

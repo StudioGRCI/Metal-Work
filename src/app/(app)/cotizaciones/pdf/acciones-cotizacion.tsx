@@ -884,9 +884,18 @@ export function CargarCodigoYOt({
   const avisoError = useRef<HTMLParagraphElement>(null)
   const campoNumero = useRef<HTMLInputElement>(null)
   const campoCodigo = useRef<HTMLInputElement>(null)
+  const campoUnidad = useRef<HTMLSelectElement>(null)
   const errorNumero = error && /^(Ya hay una OT|El número de la OT)/.test(error) ? error : null
   const errorCodigo = error && /^(Escribe el código interno|El código|PLANTA no es una unidad)/.test(error) ? error : null
-  useCursorAlRechazo(enviando, error, () => (errorNumero ? campoNumero.current : errorCodigo ? campoCodigo.current : avisoError.current))
+  // La unidad elegida que ya no está libre (otra persona le cargó su OT, o pasó a
+  // otro comprador) o que no existe: se dice junto a «Unidad» (auditoría de diseño).
+  const errorUnidad =
+    error && eligeLaUnidad && /^La unidad \d+ de la cotización .*(ya tiene su OT|pasó a otro comprador)|^La cotización .* es de (\d+ unidades: elige|una sola unidad)/.test(error)
+      ? error
+      : null
+  useCursorAlRechazo(enviando, error, () =>
+    errorNumero ? campoNumero.current : errorCodigo ? campoCodigo.current : errorUnidad ? campoUnidad.current : avisoError.current,
+  )
   // Lo que la persona escribió a mano: la lectura del PDF, aunque termine
   // después o sea de otro PDF, no lo pisa.
   const aMano = useRef(new Set<'numero' | 'fecha' | 'tipo'>())
@@ -1024,7 +1033,10 @@ export function CargarCodigoYOt({
         datos.set('ruta_pdf', ruta)
         datos.set('nombre_pdf', archivo.name.slice(0, 200))
         datos.set('tamano_pdf', String(archivo.size))
-        if (varias) datos.set('unidad', String(cual))
+        if (varias) {
+          datos.set('unidad', String(cual))
+          datos.set('primera_libre', String(libres[0] ?? cual))
+        }
 
         // Si no se guardó, el PDF que ya viajó se quita, para que no quede un
         // archivo que ninguna OT nombra. Sin respuesta se pregunta otra vez con
@@ -1125,16 +1137,21 @@ export function CargarCodigoYOt({
           )}
           {varias && eligeLaUnidad && (
             <Campo
-              etiqueta="Unidad"
+              etiqueta={`Unidad · faltan ${libres.length} de ${varias.de}`}
               htmlFor={`eo-unidad-${cotizacionId}`}
-              ayuda={`Faltan ${libres.length} de ${varias.de}. Elige la unidad de este vehículo: la que reemplaza a una OT anulada va en la unidad de esa OT.`}
+              ayuda="Elige la unidad de este vehículo: la que reemplaza a una OT anulada va en la unidad de esa OT."
+              error={errorUnidad ?? undefined}
               requerido
             >
               <Seleccion
+                ref={campoUnidad}
                 id={`eo-unidad-${cotizacionId}`}
                 name="unidad_elegida"
                 value={String(cual)}
-                onChange={(e) => setElegida(Number(e.target.value))}
+                onChange={(e) => {
+                  setElegida(Number(e.target.value))
+                  if (errorUnidad) setError(null)
+                }}
                 aria-describedby={hayYaFacturadas ? `eo-facturada-${cotizacionId}` : undefined}
                 data-elige-la-unidad
                 required
@@ -1316,7 +1333,7 @@ export function CargarCodigoYOt({
 
           </fieldset>
 
-          <Falla ref={avisoError} texto={errorNumero || errorCodigo ? null : error} />
+          <Falla ref={avisoError} texto={errorNumero || errorCodigo || errorUnidad ? null : error} />
 
           {/* Fuera de lo trabado: «Cancelar» cierra también mientras se envía, como la X (D2 de la trigesimosexta pasada). */}
           <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">

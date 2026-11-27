@@ -18979,6 +18979,12 @@ export type Database = {
         }
         Returns: boolean
       }
+      ot_lista_para_facturar_desde: {
+        Args: {
+          p_orden: string | null
+        }
+        Returns: string
+      }
       ot_recalcular_avance: {
         Args: {
           p_orden_id: string | null
@@ -22751,12 +22757,6 @@ export type Database = {
       unidad_que_dejo_la_ot: {
         Args: {
           p_orden: string | null
-          p_cotizacion: string | null
-        }
-        Returns: number
-      }
-      unidades_aprobadas: {
-        Args: {
           p_cotizacion: string | null
         }
         Returns: number

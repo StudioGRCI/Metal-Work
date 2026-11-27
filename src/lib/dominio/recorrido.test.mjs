@@ -156,7 +156,7 @@ test('la espera de la OT ya no lee «lleva/de»; la OT sin código dice qué le 
     paso(3, 'CODIGO_Y_OT', 'HECHO', { detalle: '3 OT' }),
   ])
   assert.equal(espera.nota, 'Le da el código interno de la unidad y sube la OT.')
-  assert.equal(sinCodigo.nota, 'La unidad de la OT 9357-2026 se quedó sin código interno: se lo vuelve a dar.')
+  assert.equal(sinCodigo.nota, 'La unidad de la OT 9357-2026 se quedó sin código interno: se lo vuelve a dar con «Editar OT».')
   assert.equal(todas.nota, '3 OT')
 })
 

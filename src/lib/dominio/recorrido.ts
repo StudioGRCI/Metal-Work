@@ -294,7 +294,7 @@ const ESPERAS_DE_LA_COTIZACION: Record<string, (detalle: string | null) => strin
   // 20261127010000: desde la 20261126998900 cada unidad trae su propio paso.
   CODIGO_Y_OT: () => 'Le da el código interno de la unidad y sube la OT.',
   // La unidad de su OT se quedó sin código interno (20261127010000): sin él no se factura.
-  SIN_CODIGO: (d) => `La unidad de ${d ? `la ${d}` : 'su OT'} se quedó sin código interno: se lo vuelve a dar.`,
+  SIN_CODIGO: (d) => `La unidad de ${d ? `la ${d}` : 'su OT'} se quedó sin código interno: se lo vuelve a dar con «Editar OT».`,
   FACTURA: () => 'Registra su factura.',
   FACTURA_RESTO: () => 'Registra la factura de lo que falta del total.',
   COBRO: (detalle) => (detalle === 'EN_PARTE' ? 'Cobra lo que falta: ya cobró una parte.' : 'Cobra sus facturas.'),

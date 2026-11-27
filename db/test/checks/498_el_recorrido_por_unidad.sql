@@ -448,6 +448,61 @@ select pg_temp.como('administracion');
 set local role authenticated;
 select pg_temp.cargar('cot1', 'ots', 'qa-498 s', '49810');
 reset role;
+
+-- 7b. La de una unidad cuya OT se queda sin código: espera a Administración, la
+-- factura no se registra y dice por qué; mientras se corrige, queda pendiente; y
+-- devuelto el código, la factura cuenta desde entonces, no desde la primera vez
+-- (la OT y su código se cargaron hace diez días).
+savepoint una_unidad_sin_codigo;
+set local session_replication_role = replica;
+update public.ordenes_trabajo set creado_en = creado_en - interval '10 days' where id = pg_temp.id('ots');
+update public.audit_log set creado_en = creado_en - interval '10 days'
+ where tabla = 'unidades' and registro_id = (select unidad_id from public.ordenes_trabajo where id = pg_temp.id('ots'));
+set local session_replication_role = origin;
+select test.afirmar(
+  (select r.dias = 10 from public.recorrido_de_cotizaciones(array[pg_temp.id('cot1')]) r where r.paso = 'FACTURA' and r.situacion = 'AHORA'),
+  'con su código de hace diez días, la factura espera diez días');
+select test.afirmar(
+  (select f.dias = 10 from public.facturacion_por_unidad(array[pg_temp.id('cot1')]) f),
+  'y en Facturación, los mismos diez días');
+update public.unidades set codigo_interno = null where id = (select unidad_id from public.ordenes_trabajo where id = pg_temp.id('ots'));
+select test.afirmar(pg_temp.camino('contabilidad', 'cot1') like 'CODIGO_Y_OT:AHORA:Administración:OT 49810-% > FACTURA:PENDIENTE%',
+  'una unidad sin código: espera a Administración con su OT y la factura queda pendiente (' || pg_temp.camino('contabilidad', 'cot1') || ')');
+select pg_temp.como('contabilidad');
+set local role authenticated;
+select test.debe_fallar('select pg_temp.facturar(''fs'', ''cot1'', ''E001-4980'', 4000, 1)',
+  'sin código no se factura, y no dice que falte cargar la OT', 'La OT 49810-' || current_setting('prueba.anio') || ' de la cotización');
+-- Facturación dice que tiene su OT y le falta el código, no que falte cargarla.
+select test.afirmar(
+  (select f.ot_numero like '49810-%' and f.codigo_interno is null and f.desde is null and f.dias is null
+     from public.facturacion_por_unidad(array[pg_temp.id('cot1')]) f),
+  'en Facturación la unidad sin código trae el número de su OT, sin código ni días');
+reset role;
+do $$
+begin
+  set local session_replication_role = replica;
+  update public.cotizaciones_pdf set estado = 'POR_REVISAR' where id = pg_temp.id('cot1');
+  set local session_replication_role = origin;
+  perform test.afirmar(pg_temp.camino('gerente', 'cot1') not like '%CODIGO_Y_OT:HECHO%'
+                       and pg_temp.camino('gerente', 'cot1') like '%CODIGO_Y_OT:PENDIENTE%',
+    'mientras se corrige, la OT sin código tampoco sale «Con código interno y OT» (' || coalesce(pg_temp.camino('gerente', 'cot1'), 'nada') || ')');
+  reset role;
+  set local session_replication_role = replica;
+  update public.cotizaciones_pdf set estado = 'APROBADA' where id = pg_temp.id('cot1');
+  set local session_replication_role = origin;
+end $$;
+update public.unidades set codigo_interno = 'QA-498 S' where id = (select unidad_id from public.ordenes_trabajo where id = pg_temp.id('ots'));
+select test.afirmar(
+  (select r.dias = 0 from public.recorrido_de_cotizaciones(array[pg_temp.id('cot1')]) r where r.paso = 'FACTURA' and r.situacion = 'AHORA'),
+  'devuelto el código, la factura espera desde hoy, no desde hace diez días');
+select pg_temp.como('contabilidad');
+set local role authenticated;
+select test.afirmar(
+  (select f.codigo_interno = 'QA-498 S' and f.dias = 0 from public.facturacion_por_unidad(array[pg_temp.id('cot1')]) f),
+  'y Facturación también cuenta desde hoy');
+reset role;
+rollback to savepoint una_unidad_sin_codigo;
+
 select pg_temp.como('contabilidad');
 set local role authenticated;
 select pg_temp.facturar('fs', 'cot1', 'E001-4989', 4000, 1);

@@ -378,7 +378,7 @@ begin
     'select public.registrar_factura_venta_de_unidad(gen_random_uuid(), %L, %L, current_date, current_date + 30, %L, 9000, null, %L, %L, 0)',
     v_cot, 'E001-49591', 'PEN', 'fv/qa-495-y.pdf', 'f.pdf'),
     'ni la factura de toda la cotización: una unidad ya no es de esta venta',
-    'pasó a otro comprador: factura cada unidad que sigue en la venta por separado');
+    'pasaron unidades a otro comprador: factura por separado cada unidad que sigue en la venta');
   reset role;
 
   -- Con una unidad libre (se anula la OT 49503), la que pasó tampoco se elige.
@@ -405,9 +405,14 @@ begin
   set local role authenticated;
   select r.en into v_en from public.recorrido_de_cotizaciones(array[current_setting('prueba.nueva3')::uuid]) r
    where r.paso = 'CODIGO_Y_OT' and r.situacion = 'HECHO';
-  reset role;
   perform test.afirmar(v_en = v_llego,
     format('en la venta nueva, su OT cuenta desde que llegó (%s), no desde que se creó allá hace diez días (%s)', v_llego, v_en));
+  -- Y su factura espera desde entonces: no «hace 10 días».
+  select r.en into v_en from public.recorrido_de_cotizaciones(array[current_setting('prueba.nueva3')::uuid]) r
+   where r.paso = 'FACTURA' and r.situacion = 'AHORA';
+  reset role;
+  perform test.afirmar(v_en >= v_llego,
+    format('y su factura espera desde que llegó (%s), no desde que se creó allá (%s)', v_llego, v_en));
 end $$;
 rollback to savepoint lo_de_la_que_paso;
 release savepoint lo_de_la_que_paso;

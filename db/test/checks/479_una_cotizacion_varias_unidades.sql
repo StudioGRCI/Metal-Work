@@ -293,7 +293,8 @@ begin
 end $$;
 
 -- 6b. Las partes suman el total, céntimo por céntimo, y mientras una corrección espera a
--- Gerencia se reparte entre las unidades que Gerencia aprobó (entrega 3, 20261127010000).
+-- Gerencia el precio es el de la versión que se cobra, total y unidades juntos: nunca el
+-- total corregido entre las unidades de antes (entrega 3, 20261127010000).
 savepoint el_precio_de_cada_unidad;
 do $$
 declare v record;
@@ -312,9 +313,9 @@ begin
     (select sum(c.precio_venta_pen) from public.codigos_internos_costo_calculado(null) c where c.codigo like 'QA-474 _' and c.codigo <> 'QA-474 S')
       = 30000.01,
     'el precio de cada código es el mismo con la sesión de un puesto que no ve los códigos de la cotización');
-  -- Ventas sube una corrección a 5 unidades y Gerencia todavía no la aprueba.
+  -- Ventas sube una corrección a 37 500 en 5 unidades y Gerencia todavía no la aprueba.
   set local session_replication_role = replica;
-  update public.cotizaciones_pdf set monto_venta = 30000, cantidad_unidades = 5, estado = 'POR_REVISAR'
+  update public.cotizaciones_pdf set monto_venta = 37500, cantidad_unidades = 5, estado = 'POR_REVISAR'
    where id = current_setting('prueba.cot3')::uuid;
   set local session_replication_role = origin;
   perform test.como_usuario(current_setting('prueba.gerente')::uuid);
@@ -322,7 +323,7 @@ begin
   select * into v from public.margen_ot(current_setting('prueba.ot2')::uuid);
   reset role;
   perform test.afirmar(v.precio_venta = 7500.00,
-    format('con la corrección sin aprobar, la OT 2 sigue con su parte de las 4 unidades aprobadas (%s)', v.precio_venta));
+    format('con la corrección sin aprobar, la OT 2 tiene su parte de la versión que se cobra: 37 500 entre 5, no 37 500 entre 4 (%s)', v.precio_venta));
 end $$;
 rollback to savepoint el_precio_de_cada_unidad;
 
