@@ -70,7 +70,7 @@ import {
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
 import { totalConIgv } from '@/lib/dominio/finanzas'
 import { situacionCompra, validacionDeCompra } from '@/lib/dominio/logistica'
-import { describirRecorridoDeLaCotizacion, type PasoDescrito } from '@/lib/dominio/recorrido'
+import { describirRecorridoDeLaCotizacion, recorridoDeLaUnidad, type PasoDescrito } from '@/lib/dominio/recorrido'
 import { ESTADO_REPORTE, type EstadoReporte } from '@/lib/dominio/reporte-diario'
 import { ESTADO_REQUERIMIENTO_DEL_CODIGO } from '@/lib/dominio/requerimientos'
 import { horasCortas } from '@/lib/dominio/rrhh'
@@ -1804,7 +1804,8 @@ async function VistaFacturacion({ codigo, perfil }: { codigo: string; perfil: Pe
 
 /**
  * La cotización y la OT del código (`codigo_interno_recorrido`) y, para quien abre la cotización, su
- * recorrido del Plan 0. Lo que no se lee queda en `null` y la pantalla lo dice en su paso.
+ * recorrido del Plan 0. Lo que no se lee queda en `null` y la pantalla lo dice en su paso. De la
+ * cotización de varias unidades, lo de toda la cotización y lo de la unidad de este código.
  */
 async function leerElRecorrido(
   codigo: string,
@@ -1817,7 +1818,7 @@ async function leerElRecorrido(
   const id = base?.cotizacion?.id
   if (!id || !abreCotizacion) return { base, cotizacion: undefined }
   const pasos = await recorridoDeCotizaciones([id])
-    .then((m) => describirRecorridoDeLaCotizacion(m.get(id) ?? []))
+    .then((m) => recorridoDeLaUnidad(describirRecorridoDeLaCotizacion(m.get(id) ?? []), base?.cotizacion?.unidad))
     .catch((e: unknown) => {
       console.error('Código interno: no se pudo leer el recorrido de la cotización.', e)
       return null
