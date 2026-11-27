@@ -10841,6 +10841,7 @@ export type Database = {
           motivo_del_faltante: string | null
           con_metrado: boolean
           codigo_desde: string | null
+          para_el_area: boolean
         }
         Insert: {
           id?: string
@@ -10872,6 +10873,7 @@ export type Database = {
           motivo_del_faltante?: string | null
           con_metrado?: boolean
           codigo_desde?: string | null
+          para_el_area?: boolean
         }
         Update: {
           id?: string
@@ -10903,6 +10905,7 @@ export type Database = {
           motivo_del_faltante?: string | null
           con_metrado?: boolean
           codigo_desde?: string | null
+          para_el_area?: boolean
         }
         Relationships: [
           {
@@ -17490,6 +17493,16 @@ export type Database = {
           p_tipo: string | null
           p_area_id: string | null
           p_codigo_interno: string | null
+          p_justificacion: string | null
+          p_fecha_requerida: string | null
+          p_lineas: Json | null
+        }
+        Returns: string
+      }
+      emitir_requerimiento_del_area: {
+        Args: {
+          p_id: string | null
+          p_area_id: string | null
           p_justificacion: string | null
           p_fecha_requerida: string | null
           p_lineas: Json | null

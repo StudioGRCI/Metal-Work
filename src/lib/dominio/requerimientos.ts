@@ -69,6 +69,43 @@ export const CODIGOS_FIJOS_DEL_RQ: Record<TipoRequerimiento, { codigo: string; d
   ADMINISTRACION: [CODIGO_FIJO_OFICINA],
 }
 
+/**
+ * Para qué es el RQ de operación: para una unidad (su código o el N.º de su
+ * OT) o para el área misma, las herramientas y los insumos con que trabaja.
+ * El del área es **gasto operativo** (DKS, 2026-11-27: «pedir herramientas
+ * para el área… ese costo iría como gasto operativo»): va con PLANTA, la base
+ * lo marca (`para_el_area`, migración 20261127180000) y lo que sale del
+ * almacén para él va a PLANTA, nunca a una unidad ni a una OT. Cuánto gasta
+ * cada área se sumará en la entrega 2 del plan.
+ */
+export type DestinoDelRq = 'UNIDAD' | 'AREA'
+
+export const DESTINO_DEL_RQ: Record<DestinoDelRq, { etiqueta: string; ayuda: string }> = {
+  UNIDAD: {
+    etiqueta: 'Para una unidad',
+    ayuda: 'Lo que lleva la unidad: se carga al costo de su código o de su OT.',
+  },
+  AREA: {
+    etiqueta: 'Para el área (gasto operativo)',
+    ayuda: 'Herramientas e insumos con que trabaja el área. No se carga a ninguna OT: Almacén lo entrega a PLANTA y cuenta como gasto operativo del área.',
+  },
+}
+
+/** El código con que va el RQ del área: PLANTA, el que no es de una unidad. */
+export const CODIGO_DEL_GASTO_OPERATIVO = CODIGO_FIJO_PLANTA.codigo
+
+/** PLANTA no es una unidad: lo del área se pide con su opción, que la base marca (`para_el_area`). */
+export const MOTIVO_PLANTA_NO_ES_UNIDAD = 'PLANTA no es una unidad: lo del área se pide marcando «Para el área (gasto operativo)».'
+
+/** El RQ es gasto operativo de su área: lo dice la base, no el código (un RQ de PLANTA de antes puede haber salido a una unidad). */
+export const esGastoOperativo = (rq: { para_el_area?: boolean | null }) => rq.para_el_area === true
+
+export const GASTO_OPERATIVO: Def = {
+  etiqueta: 'Gasto operativo',
+  tono: 'info',
+  descripcion: 'Es para el área, no para una unidad: sale a PLANTA y no se carga a ninguna OT.',
+}
+
 /** Los que todavía esperan a alguien: lo que la bandeja de atención muestra primero. */
 export const ESTADOS_RQ_ABIERTOS = ESTADOS_CON_ALGO_POR_ENTREGAR
 
