@@ -90,6 +90,8 @@ create index if not exists ix_ssoma_epp_equipo on public.ssoma_epp_entregas (mat
 create index if not exists ix_ssoma_epp_envio on public.ssoma_epp_entregas (envio_id);
 -- creado_por, sin_renovacion_por y anulado_por: (a), (b) y (c) no se cumplen; sin índice.
 select public.activar_timestamps('ssoma_epp_entregas');
+-- Sin `activar_auditoria`, como el resto de SSOMA: quién la anotó, quién la anuló y quién dijo que no se
+-- renueva ya están en la fila, sellados por su disparador; y `audit_log` se lee con otro permiso.
 select public.activar_registro_de_prueba('ssoma_epp_entregas');
 
 -- 2. La entrega solo cambia al anularse o al dejar de renovarse; quién y cuándo los pone la base ----
@@ -169,6 +171,7 @@ create unique index if not exists uq_ssoma_epp_sin_reparto_vigente
 create index if not exists ix_ssoma_epp_sin_reparto_salida on public.ssoma_epp_sin_reparto (movimiento_id);
 -- creado_por y deshecho_por: (a), (b) y (c) no se cumplen; sin índice.
 select public.activar_timestamps('ssoma_epp_sin_reparto');
+-- Sin `activar_auditoria`, por lo mismo: quién lo dijo y quién lo deshizo van en la fila.
 select public.activar_registro_de_prueba('ssoma_epp_sin_reparto');
 
 create or replace function public.fn_ssoma_epp_sin_reparto_guardia()
@@ -287,10 +290,18 @@ language sql stable security definer set search_path to 'public' rows 50 as $$
                     where e.movimiento_id = s.id and e.anulado_en is null), '[]'::jsonb),
          -- De la lista para marcar (`ssoma_personal_para_epp`), quién no estaba en la planta el día
          -- de la salida: la ventana no los ofrece. Solo para quien anota y si queda algo por asignar.
+         -- Es la regla de `ssoma_estuvo_en_la_planta` (la que usa la base al anotar) escrita aquí mismo:
+         -- llamada por cada salida y cada persona costaba 19 µs el par, 0,4 s con 100 salidas por anotar.
+         -- El check 493 compara las dos, par por par.
          case when (public.es_admin() or public.tiene_permiso('ssoma.gestionar')) and s.cantidad - s.devuelto - s.asignado > 0
               then coalesce((select array_agg(t.id) from public.trabajadores t
                               where (t.activo or t.fecha_baja >= public.ssoma_hoy() - 180)
-                                and not public.ssoma_estuvo_en_la_planta(t.id, t.activo, t.fecha_ingreso, t.fecha_baja, s.fecha, s.fecha + 1)),
+                                and not ((t.fecha_ingreso is null or t.fecha_ingreso <= s.fecha)
+                                         and case when t.activo then t.fecha_baja is null or t.fecha_baja >= s.fecha
+                                                  else t.fecha_baja is not null and t.fecha_baja >= s.fecha end)
+                                and not exists (select 1 from public.trabajador_periodos q
+                                                 where q.trabajador_id = t.id
+                                                   and (q.ingreso is null or q.ingreso <= s.fecha) and q.baja >= s.fecha)),
                             '{}'::uuid[])
               else '{}'::uuid[] end
     from s
@@ -715,16 +726,47 @@ comment on function public.ssoma_epp_por_persona(uuid) is
 revoke all on function public.ssoma_epp_por_persona(uuid) from public, anon;
 grant execute on function public.ssoma_epp_por_persona(uuid) to authenticated;
 
--- 10. Lo que espera por SSOMA, para sus pendientes ---------------------------------------------------
+-- 10. Lo que espera por SSOMA, para sus pendientes y el encabezado de su pantalla -------------------
 -- Lo mismo que cuenta la pantalla: las salidas con equipo por asignar que no se
--- marcaron «no va por persona», y lo vencido de quien sigue en la planta.
+-- marcaron «no va por persona», lo vencido y todo lo que está por renovar de quien
+-- sigue en la planta. Cuenta por su cuenta, sin armar la lista de salidas: corre
+-- en cada pantalla de SSOMA (sus pendientes van en el marco), y por la lista
+-- costaba un segundo con 400 salidas por anotar. El check 493 las compara.
 create or replace function public.ssoma_epp_por_atender()
-returns table (por_asignar integer, vencidos integer)
-language sql stable security definer set search_path to 'public' rows 1 as $$
-  select (select count(*)::integer from public.ssoma_salidas_de_epp(null) s where s.por_asignar > 0 and not s.sin_reparto),
-         (select count(*)::integer from public.ssoma_epp_entregas_a_la_vista(null, null, true) e where e.situacion = 'VENCIDA');
+returns table (por_asignar integer, vencidos integer, por_renovar integer)
+language plpgsql stable security definer set search_path to 'public' rows 1 as $$
+declare
+  v_hoy     constant date := public.ssoma_hoy();
+  v_salidas integer;
+  v_vencen  integer;
+  v_renovar integer;
+begin
+  if not public.puede_ver_reportes_ssoma() then
+    return query select 0, 0, 0;
+    return;
+  end if;
+  select count(*) into v_salidas
+    from public.movimientos_materiales k
+    join public.materiales m on m.id = k.material_id
+    join public.categorias_material c on c.id = m.categoria_id
+   where k.tipo = 'SALIDA' and c.almacen = 'EPP'
+     and (k.registrado_en at time zone 'America/Lima')::date >= v_hoy - 180
+     and not exists (select 1 from public.ssoma_epp_sin_reparto x where x.movimiento_id = k.id and x.deshecho_en is null)
+     and k.cantidad::numeric
+         - coalesce((select sum(d.cantidad::numeric) from public.movimientos_materiales d
+                      where d.devolucion_de = k.id and d.tipo = 'INGRESO' and d.origen = 'DEVOLUCION'), 0)
+         - coalesce((select sum(e.cantidad) from public.ssoma_epp_entregas e
+                      where e.movimiento_id = k.id and e.anulado_en is null), 0) > 0;
+  select count(*) filter (where x.renovar_el < v_hoy), count(*) into v_vencen, v_renovar
+    from public.ssoma_epp_entregas x
+    join public.trabajadores t on t.id = x.trabajador_id
+   where t.activo and x.anulado_en is null and x.sin_renovacion_en is null
+     and x.renovar_el <= v_hoy + public.ssoma_epp_dias_de_aviso()
+     and public.ssoma_epp_estado(x.id, x.trabajador_id, x.material_id, x.entregado_el, x.creado_en, x.anulado_en, x.sin_renovacion_en) = 'VIGENTE';
+  return query select v_salidas, v_vencen, v_renovar;
+end;
 $$;
 comment on function public.ssoma_epp_por_atender() is
-  'Cuántas salidas del almacén de EPP esperan que se anote a quién le tocó y cuántos equipos vigentes ya vencieron. Solo para SSOMA y Gerencia; a los demás, ceros.';
+  'Cuántas salidas del almacén de EPP esperan que se anote a quién le tocó, cuántos equipos vigentes ya vencieron y cuántos están por renovar (vencidos o por vencer en 15 días), de quien sigue en la planta. Solo para SSOMA y Gerencia; a los demás, ceros.';
 revoke all on function public.ssoma_epp_por_atender() from public, anon;
 grant execute on function public.ssoma_epp_por_atender() to authenticated;

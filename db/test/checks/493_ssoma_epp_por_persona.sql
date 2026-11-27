@@ -355,6 +355,9 @@ begin
        from public.ssoma_epp_entregas_a_la_vista(null, null, true)),
     'por renovar: lo vencido y lo que vence en 15 días, lo más atrasado primero; lo que está al día no');
   perform test.afirmar(
+    (select vencidos = 1 and por_renovar = 2 from public.ssoma_epp_por_atender()),
+    'la cuenta de SSOMA dice lo mismo sin armar la lista: 1 vencido de 2 por renovar');
+  perform test.afirmar(
     (select vigentes = 1 and vencidas = 1 and por_vencer = 0 from public.ssoma_epp_por_persona(v_t3))
     and (select vigentes = 2 and vencidas = 0 and por_vencer = 1 and proxima = v_hoy + 10 from public.ssoma_epp_por_persona(v_t2)),
     'cada persona con lo que tiene vigente, vencido y por vencer');
@@ -670,14 +673,34 @@ begin
   perform test.afirmar(
     v_ahora.por_asignar = v_antes.por_asignar + 1
     and v_ahora.por_asignar = (select count(*) from public.ssoma_salidas_de_epp(null) where por_asignar > 0 and not sin_reparto)
-    and v_ahora.vencidos = (select count(*) from public.ssoma_epp_entregas_a_la_vista(null, null, true) where situacion = 'VENCIDA'),
-    'los pendientes de SSOMA cuentan las salidas que esperan reparto y lo vencido, como la pantalla');
+    and v_ahora.vencidos = (select count(*) from public.ssoma_epp_entregas_a_la_vista(null, null, true) where situacion = 'VENCIDA')
+    and v_ahora.por_renovar = (select count(*) from public.ssoma_epp_entregas_a_la_vista(null, null, true)),
+    'los pendientes de SSOMA cuentan las salidas que esperan reparto, lo vencido y lo por renovar, como la pantalla');
   -- «Repartir» no contesta «listo» a lo que no es una salida de EPP.
   perform test.debe_fallar(format('select public.ssoma_epp_salida_se_reparte(%L)', current_setting('prueba.s_disco')),
     '«Repartir» no acepta una salida que no es de EPP', 'no es de EPP');
   perform test.debe_fallar(format('select public.ssoma_epp_salida_se_reparte(%L)', gen_random_uuid()),
     '«Repartir» no acepta una salida que no existe', 'no es de EPP');
   reset role;
+
+  -- Quién no estaba en la planta lo dice la salida con la regla escrita en su consulta: tiene que dar
+  -- lo mismo que `ssoma_estuvo_en_la_planta`, la que usa la base al anotar. Par por par, y también
+  -- con quien volvió a entrar: Nora entró hoy, pero RR. HH. le guarda un periodo de hace 300 a 90 días.
+  perform test.afirmar(
+    (select v_t5 = any (no_estaban) from public.ssoma_salidas_de_epp(v_cien)),
+    'antes del periodo anterior, Nora no estaba el día de la salida de hace 100 días');
+  insert into public.trabajador_periodos (trabajador_id, ingreso, baja, registrado_por)
+  values (v_t5, v_hoy - 300, v_hoy - 90, current_setting('prueba.ssoma')::uuid);
+  perform test.afirmar(
+    (select not v_t5 = any (no_estaban) from public.ssoma_salidas_de_epp(v_cien)),
+    'con un periodo anterior que cubre ese día, la salida ya no dice que Nora no estaba');
+  perform test.afirmar(
+    (select count(*) >= 10 and count(*) filter (where t.id = any (s.no_estaban)) >= 2
+        and bool_and((t.id = any (s.no_estaban))
+                     = (not public.ssoma_estuvo_en_la_planta(t.id, t.activo, t.fecha_ingreso, t.fecha_baja, s.fecha, s.fecha + 1)))
+       from public.ssoma_salidas_de_epp(null) s cross join public.trabajadores t
+      where s.por_asignar > 0 and (t.activo or t.fecha_baja >= public.ssoma_hoy() - 180)),
+    'quién no estaba sale igual que con la regla de RR. HH. que usa la base al anotar, par por par');
 
   -- Gerencia lee a quién le tocó, pero no la lista de quién no estaba: no anota.
   perform test.como_usuario(current_setting('prueba.gerente')::uuid);

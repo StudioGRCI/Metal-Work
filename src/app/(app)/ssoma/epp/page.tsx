@@ -7,6 +7,7 @@ import { AccionesDeFila, DetalleEnTelefono, SinDatos, TD, TH, TR, Tabla, TablaCa
 import { Tarjeta, TarjetaCabecera } from '@/components/ui/tarjeta'
 import {
   entregasDeEpp,
+  eppPorAtender,
   eppPorPersona,
   MAXIMO_ENTREGAS_EPP,
   personalParaEpp,
@@ -41,20 +42,23 @@ export default async function PaginaEppSsoma({ searchParams }: PageProps<'/ssoma
   const params = await searchParams
   const vista = params.vista === 'personas' ? 'personas' : params.vista === 'salidas' ? 'salidas' : 'renovar'
 
-  const [porRenovar, salidas, personas, personal] = await Promise.all([
-    entregasDeEpp({ porRenovar: true }),
-    salidasDeEpp(),
+  // Cada vista trae solo su lista; las cuentas del encabezado y de las pestañas salen de una lectura
+  // aparte, que no arma las listas ni tiene tope.
+  const [cuenta, porRenovar, salidas, personas, personal] = await Promise.all([
+    eppPorAtender(),
+    vista === 'renovar' ? entregasDeEpp({ porRenovar: true }) : Promise.resolve([]),
+    vista === 'salidas' ? salidasDeEpp() : Promise.resolve([]),
     vista === 'personas' ? eppPorPersona() : Promise.resolve([]),
     gestiona && vista === 'salidas' ? personalParaEpp() : Promise.resolve([]),
   ])
 
-  const vencidas = porRenovar.filter((e) => e.situacion === 'VENCIDA').length
+  const vencidas = cuenta.vencidos
   // Lo que espera por SSOMA: equipo fuera de Almacén sin dueño anotado, salvo lo que ya dijo que no va por persona.
-  const porAsignar = salidas.filter(esperaReparto).length
+  const porAsignar = cuenta.porAsignar
   const resumen = [
-    porRenovar.length === 0
+    cuenta.porRenovar === 0
       ? 'Nada por renovar'
-      : `${porRenovar.length} por renovar${vencidas > 0 ? `, ${vencidas} ${vencidas === 1 ? 'vencido' : 'vencidos'}` : ''}`,
+      : `${cuenta.porRenovar} por renovar${vencidas > 0 ? `, ${vencidas} ${vencidas === 1 ? 'vencido' : 'vencidos'}` : ''}`,
     porAsignar > 0 ? `${porAsignar} ${porAsignar === 1 ? 'salida de Almacén por asignar' : 'salidas de Almacén por asignar'}` : null,
   ]
     .filter(Boolean)
@@ -74,7 +78,7 @@ export default async function PaginaEppSsoma({ searchParams }: PageProps<'/ssoma
       {gestiona && porAsignar > 0 && vista !== 'salidas' && (
         <p role="note" className="mb-3 rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-4 py-3 text-sm text-texto" data-epp-por-asignar={porAsignar}>
           Almacén entregó equipo que falta anotar a quién le tocó:{' '}
-          <Link href="/ssoma/epp?vista=salidas" className="font-medium underline underline-offset-2">
+          <Link href="/ssoma/epp?vista=salidas" className="inline-flex min-h-11 items-center font-medium underline underline-offset-2 md:inline md:min-h-0">
             {porAsignar === 1 ? 'ver la salida por asignar' : `ver las ${porAsignar} salidas por asignar`}
           </Link>
           .
@@ -85,9 +89,11 @@ export default async function PaginaEppSsoma({ searchParams }: PageProps<'/ssoma
         etiqueta="Vista"
         className="mb-3"
         vistas={[
-          { clave: 'renovar', titulo: 'Por renovar', href: '/ssoma/epp', activa: vista === 'renovar', cuenta: porRenovar.length },
+          // Las dos cuentas dicen lo que espera, como el menú y el inicio; «Salidas de Almacén» contaba todas
+          // las listadas y se leía como pendiente. Sin nada por anotar no lleva número: un 0 se leía «no hay salidas».
+          { clave: 'renovar', titulo: 'Por renovar', href: '/ssoma/epp', activa: vista === 'renovar', cuenta: cuenta.porRenovar },
           { clave: 'personas', titulo: 'Por persona', href: '/ssoma/epp?vista=personas', activa: vista === 'personas' },
-          { clave: 'salidas', titulo: 'Salidas de Almacén', href: '/ssoma/epp?vista=salidas', activa: vista === 'salidas', cuenta: salidas.length },
+          { clave: 'salidas', titulo: 'Salidas de Almacén', href: '/ssoma/epp?vista=salidas', activa: vista === 'salidas', cuenta: porAsignar || undefined },
         ]}
       />
 
@@ -98,9 +104,9 @@ export default async function PaginaEppSsoma({ searchParams }: PageProps<'/ssoma
             ayuda={`El equipo vigente de quien sigue en la planta que ya venció o vence en los próximos ${DIAS_DE_AVISO_EPP} días, lo más atrasado primero. Sale de la lista cuando se le anota una entrega nueva del mismo equipo, o cuando SSOMA dice que ya no se renueva.`}
           />
           <TablaPorRenovar entregas={porRenovar} gestiona={gestiona} />
-          {porRenovar.length >= MAXIMO_ENTREGAS_EPP && (
+          {cuenta.porRenovar > porRenovar.length && porRenovar.length >= MAXIMO_ENTREGAS_EPP && (
             <p className="border-t border-borde px-4 py-3 text-xs text-texto-suave" data-tope-por-renovar>
-              Se ven las {MAXIMO_ENTREGAS_EPP} más atrasadas: hay más por renovar que no entran en esta lista.
+              Se ven las {MAXIMO_ENTREGAS_EPP} más atrasadas de {cuenta.porRenovar} por renovar.
             </p>
           )}
         </Tarjeta>
@@ -364,11 +370,11 @@ function TablaDeSalidas({ salidas, personal, gestiona }: {
     <Tabla apilada>
       <TablaCabecera>
         <tr>
-          <TH>Salida</TH>
+          <TH className="md:w-1/3 xl:w-1/4">Salida</TH>
           <TH className="hidden md:table-cell">Cantidad</TH>
           <TH className="hidden xl:table-cell xl:min-w-56">A quién le tocó</TH>
           {gestiona && (
-            <TH className="md:w-80">
+            <TH className="md:w-72">
               <span className="sr-only">Acciones</span>
             </TH>
           )}
@@ -418,7 +424,13 @@ function TablaDeSalidas({ salidas, personal, gestiona }: {
                 <div className="md:hidden">{porQue}</div>
                 {/* Por debajo de 1280 px no hay columna de «A quién»: va aquí. */}
                 <div className="xl:hidden">
-                  {quienes.length > 0 && <div className="mt-1.5 text-xs">{aQuien}</div>}
+                  {quienes.length > 0 && (
+                    <div className="mt-1.5 text-xs">
+                      {/* Sin rótulo, los nombres caían bajo «recibió…» y se leían como quien recibió en Almacén. */}
+                      <p className="text-texto-suave">Le tocó a:</p>
+                      {aQuien}
+                    </div>
+                  )}
                   {deMas}
                 </div>
               </TD>
@@ -465,17 +477,17 @@ function AQuienLeToco({ entregas, unidad }: { entregas: PersonaDeLaSalida[]; uni
   return (
     <ul className="xl:space-y-0.5">
       {entregas.map((e) => (
-        <li key={e.id}>
-          {/* Subrayado, para que se lea como enlace; en el teléfono, con el alto de un dedo. */}
+        <li key={e.id} className="flex flex-wrap items-center gap-x-1.5">
+          {/* Subrayado, para que se lea como enlace; en el teléfono y con el dedo, del alto de un dedo (en la
+              laptop con ratón no: la fila de cuatro personas medía 243 px). */}
           <Link
             href={`/ssoma/epp/${e.trabajador_id}`}
-            className="inline-flex min-h-11 items-center text-texto underline decoration-borde-fuerte underline-offset-2 hover:text-acento xl:min-h-0"
+            className="inline-flex min-h-11 items-center text-texto underline decoration-borde-fuerte underline-offset-2 hover:text-acento md:min-h-0 md:pointer-coarse:min-h-11"
           >
             {e.persona}
           </Link>
           {e.cantidad !== 1 && (
-            <span className="tabular text-texto-suave">
-              {' '}
+            <span className="tabular whitespace-nowrap text-texto-suave">
               · {cantidad(e.cantidad)} {unidad}
             </span>
           )}

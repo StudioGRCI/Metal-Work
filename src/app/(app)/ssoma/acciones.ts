@@ -735,7 +735,7 @@ export async function registrarEntregasEpp(_previo: unknown, formulario: FormDat
 }
 
 /** SSOMA anula una entrega mal anotada, con su motivo; no se borra. Mismo permiso que `ssoma_anular_entrega_epp`. */
-export async function anularEntregaEpp(_previo: unknown, formulario: FormData): Promise<ResultadoAccion> {
+export async function anularEntregaEpp(_previo: unknown, formulario: FormData): Promise<ResultadoAccion<{ sinReparto: boolean }>> {
   const perfil = await exigirSesion()
   if (!puede(perfil, 'ssoma.gestionar')) return { ok: false, error: 'Una entrega de EPP la anula SSOMA.' }
   const analisis = z
@@ -751,8 +751,22 @@ export async function anularEntregaEpp(_previo: unknown, formulario: FormData): 
   if (error) return { ok: false, error: mensajeDeError(error) }
   if (data !== analisis.data.id) return { ok: false, error: 'La entrega no se anuló. Recarga la pantalla.' }
 
+  // Si de esa salida se dijo «no va por persona», lo anulado no vuelve a la cola de SSOMA: queda bajo
+  // esa marca hasta «Repartir». El aviso lo dice, en vez de prometer que vuelve a quedar por asignar.
+  const { data: entrega } = await supabase.from('ssoma_epp_entregas').select('movimiento_id').eq('id', analisis.data.id).maybeSingle()
+  const { data: marca } = entrega
+    ? await supabase.from('ssoma_epp_sin_reparto').select('id').eq('movimiento_id', entrega.movimiento_id).is('deshecho_en', null).limit(1)
+    : { data: null }
+  const sinReparto = (marca?.length ?? 0) > 0
+
   revalidatePath('/ssoma', 'layout')
-  return { ok: true, mensaje: 'Entrega anulada: lo que tenía asignado vuelve a quedar por asignar en su salida.' }
+  return {
+    ok: true,
+    mensaje: sinReparto
+      ? 'Entrega anulada. Su salida está marcada «No va por persona».'
+      : 'Entrega anulada: lo que tenía asignado vuelve a quedar por asignar en su salida.',
+    datos: { sinReparto },
+  }
 }
 
 /** SSOMA saca una entrega vigente de «Por renovar», con su motivo. Mismo permiso que `ssoma_epp_no_se_renueva`. */

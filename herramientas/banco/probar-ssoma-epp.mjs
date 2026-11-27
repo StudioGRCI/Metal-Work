@@ -64,6 +64,23 @@ async function como(correo, sql, valores = []) {
   }
 }
 
+/** Lo mismo, pero se queda: lo que otra sesión de SSOMA haría mientras la ventana está abierta. */
+async function deVerdad(correo, sql, valores = []) {
+  const [yo] = await consulta(`select id from public.usuarios where correo = $1`, [correo])
+  await base.query('begin')
+  try {
+    await base.query(`select set_config('request.jwt.claim.sub', $1, true), set_config('request.jwt.claim.role', 'authenticated', true),
+                             set_config('request.jwt.claims', json_build_object('sub', $1::text, 'role', 'authenticated')::text, true)`, [yo.id])
+    await base.query('set local role authenticated')
+    const filas = (await base.query(sql, valores)).rows
+    await base.query('commit')
+    return filas
+  } catch (e) {
+    await base.query('rollback')
+    throw e
+  }
+}
+
 const fallas = []
 function comprobar(cond, texto) {
   console.log(`${cond ? '  ok' : 'FALLA'} · ${texto}`)
@@ -511,6 +528,32 @@ if (!oscar || !carlos) {
   comprobar(vuelve?.por_asignar === 1 && vuelve.asignado === 1, `${T} lo que tenía asignado vuelve a quedar por asignar en su salida (1 de ${salidaA.cantidad})`)
   await captura(pagina, 'ssoma-epp-hoja-anulada-1440.png')
 
+  // --- Anular en una salida marcada «no va por persona»: lo anulado no vuelve solo a la cola, y se dice.
+  await deVerdad(CUENTAS.ssoma, `select public.ssoma_epp_salida_sin_reparto($1, 'El que queda es de repuesto del área.')`, [salidaA.movimiento_id])
+  await ir(pagina, `${BASE}/ssoma/epp/${carlos.id}`)
+  const [deCarlos] = await consulta(
+    `select id from public.ssoma_epp_entregas where movimiento_id = $1 and trabajador_id = $2 and anulado_en is null`,
+    [salidaA.movimiento_id, carlos.id],
+  )
+  const [antesDeAnular] = await como(CUENTAS.ssoma, `select por_asignar from public.ssoma_epp_por_atender()`)
+  await pagina.locator(`tr[data-entrega-epp="${deCarlos?.id}"] [data-anular-epp]`).click()
+  ventana = pagina.getByRole('dialog')
+  await ventana.waitFor()
+  await ventana.locator('textarea[name="motivo"]').fill('Tampoco era de él: quedó en el pañol del área.')
+  await ventana.getByRole('button', { name: 'Anular', exact: true }).click()
+  dicho = limpio(await hasta(() => verde(pagina).innerText().catch(() => ''), (t) => /anulada/.test(t), 30000))
+  await quieta(pagina)
+  const [marcadaA] = (await como(CUENTAS.ssoma, SALIDAS)).filter((s) => s.movimiento_id === salidaA.movimiento_id)
+  const [despuesDeAnular] = await como(CUENTAS.ssoma, `select por_asignar from public.ssoma_epp_por_atender()`)
+  comprobar(
+    marcadaA?.sin_reparto && marcadaA.por_asignar === 2 && despuesDeAnular.por_asignar === antesDeAnular.por_asignar,
+    `${T} anulada una entrega de una salida marcada «no va por persona», lo anulado queda bajo esa marca y no entra a la cola`,
+  )
+  comprobar(
+    /marcada «No va por persona»/.test(dicho) && /toca «Repartir»/.test(dicho) && !/vuelve a quedar por asignar/.test(dicho),
+    `${T} y el verde no promete que vuelve a quedar por asignar: «${dicho}»`,
+  )
+
   // Una hoja que no existe no enseña nada.
   await ir(pagina, `${BASE}/ssoma/epp/00000000-0000-4000-8000-000000000000`)
   comprobar(
@@ -540,6 +583,10 @@ if (!oscar || !carlos) {
   const altos = await pagina
     .locator('tr[data-salida-epp] a[href^="/ssoma/epp/"]:visible')
     .evaluateAll((a) => a.map((e) => Math.round(e.getBoundingClientRect().height)))
+  comprobar(
+    /Le tocó a:/.test(limpio(await pagina.locator(`tr[data-salida-epp="${salidaB.movimiento_id}"]`).innerText())),
+    `${T} los nombres llevan su rótulo, «Le tocó a:», para no leerse como quien recibió en Almacén`,
+  )
   comprobar(altos.length >= 1 && altos.every((h) => h >= 44), `${T} los ${altos.length} nombres de «A quién le tocó» se tocan con el dedo (${Math.min(...altos)} px el menor)`)
   await captura(pagina, 'ssoma-epp-salidas-390.png')
 
@@ -555,35 +602,56 @@ if (!oscar || !carlos) {
   comprobar(propuesta === esperada, `${T} propone la renovación de la última vez que se entregó ese equipo (${salidaB.dias_sugeridos} días)`)
   const anotar = ventana.getByRole('button', { name: 'Anotar', exact: true })
 
-  // Quien ya tiene anotada esa salida: la base lo rechaza y se dice junto a la lista.
-  await ventana.locator(`[data-persona-epp="${conB}"]`).check()
+  // Quien ya tiene anotada esa salida sale sin casilla: marcarlo otra vez era un rechazo seguro.
+  const yaEnB = await yaTienen(salidaB.movimiento_id)
+  comprobar(
+    (await ventana.locator(`[data-ya-anotado="${conB}"]`).count()) === 1 &&
+      (await ventana.locator(`[data-persona-epp="${conB}"]`).count()) === 0 &&
+      (await ventana.locator('[data-ya-anotado]').count()) === yaEnB.length,
+    `${T} quien ya tiene esa entrega sale en la lista sin casilla (${yaEnB.length})`,
+  )
+  // Otra sesión de SSOMA le anota la misma salida a una persona mientras esta ventana sigue abierta:
+  // al marcarla aquí, la base la rechaza y se dice junto a la lista.
+  const rival = personal.find(
+    (p) => p.en_planta && p.id !== nuevo.id && !yaEnB.includes(p.id) && !salidaB.no_estaban.includes(p.id) && p.area !== nuevo.area,
+  )
+  await deVerdad(
+    CUENTAS.ssoma,
+    `select public.ssoma_registrar_entregas_epp(gen_random_uuid(), $1, $2::date, jsonb_build_array(jsonb_build_object('trabajador', $3::text, 'cantidad', 1)))`,
+    [salidaB.movimiento_id, esperada, rival.id],
+  )
+  await ventana.locator(`[data-persona-epp="${rival.id}"]`).check()
   let antes = envios.n
   await anotar.click()
   const rechazo = await hasta(() => ventana.locator('#epp-personas-error').innerText().catch(() => ''), (t) => t !== '', 15000)
   comprobar(/ya tiene anotada su entrega/.test(rechazo), `${T} la base rechaza a quien ya la tiene y lo dice junto a la lista: «${limpio(rechazo)}»`)
-  comprobar(await pagina.evaluate(() => document.activeElement?.id === 'epp-personas-error'), `${T} el cursor va al rechazo mismo`)
+  // El cursor llega cuando el envío termina del todo, y este rechazo además pone la pantalla al día.
+  comprobar(
+    (await hasta(() => pagina.evaluate(() => document.activeElement?.id), (i) => i === 'epp-personas-error', 8000)) === 'epp-personas-error',
+    `${T} el cursor va al rechazo mismo`,
+  )
   const aLaVista = await ventana.locator('#epp-personas-error').evaluate((e) => {
     const c = e.getBoundingClientRect()
     return c.top >= 0 && c.bottom <= window.innerHeight
   })
   comprobar(aLaVista, `${T} y el rechazo queda a la vista en el teléfono, sin tener que subir`)
+  // La pantalla se pone al día sola: la persona pasa a «ya tiene esta entrega», marcada, y deja de contar.
+  const alDia = await hasta(() => ventana.locator(`li[data-rechazada][data-ya-anotado="${rival.id}"]`).count(), (n) => n === 1, 15000)
   comprobar(
-    (await ventana.locator('li[data-rechazada]').count()) === 1 &&
-      (await ventana.locator(`li[data-rechazada] [data-persona-epp="${conB}"]`).getAttribute('aria-invalid')) === 'true',
-    `${T} la fila de esa persona queda marcada, para no buscarla en la lista`,
+    alDia === 1 && (await ventana.locator('li[data-rechazada]').count()) === 1 && (await ventana.locator(`[data-persona-epp="${rival.id}"]`).count()) === 0,
+    `${T} la ventana se pone al día: su fila queda marcada y sin casilla, para no buscarla en la lista`,
   )
   await captura(pagina, 'ssoma-epp-rechazo-390.png', false)
   comprobar(
     envios.n - antes === 1 &&
-      (await yaTienen(salidaB.movimiento_id)).length === salidaB.asignado &&
-      (await ventana.locator(`[data-persona-epp="${conB}"]`).isChecked()),
-    `${T} no quedó nada anotado y la persona sigue marcada`,
+      (await yaTienen(salidaB.movimiento_id)).length === yaEnB.length + 1 &&
+      (await ventana.locator('#epp-renovar').inputValue()) === esperada,
+    `${T} de este envío no quedó nada anotado y la fecha sigue puesta`,
   )
-  await ventana.locator(`[data-persona-epp="${conB}"]`).uncheck()
-  comprobar((await ventana.locator('#epp-personas-error').count()) === 0, `${T} al quitarla de la lista, el rechazo deja de verse`)
   await ventana.locator(`[data-persona-epp="${nuevo.id}"]`).check()
+  comprobar((await ventana.locator('#epp-personas-error').count()) === 0, `${T} al marcar a otra persona, el rechazo deja de verse`)
   await ventana.locator(`[data-cantidad-epp="${nuevo.id}"]`).fill('2')
-  comprobar(Number(await ventana.locator('[data-anotado]').getAttribute('data-anotado')) === 2, `${T} una persona con 2: anota 2 de ${salidaB.por_asignar}`)
+  comprobar(Number(await ventana.locator('[data-anotado]').getAttribute('data-anotado')) === 2, `${T} una persona con 2: anota 2 de ${salidaB.por_asignar - 1}`)
   await captura(pagina, 'ssoma-epp-anotar-a-quien-390.png', false)
   antes = envios.n
   await tresToques(anotar)
@@ -599,8 +667,8 @@ if (!oscar || !carlos) {
     `${T} tres toques en «Anotar»: ${nuevas.length} entrega de 2, ${envios.n - antes} envío`,
   )
   comprobar(/Entrega anotada a 1 persona\./.test(dicho), `${T} el verde lo dice: «${limpio(dicho)}»`)
-  const queda = await hasta(() => filaB.getAttribute('data-por-asignar').then(Number), (n) => n === salidaB.por_asignar - 2, 15000)
-  comprobar(queda === salidaB.por_asignar - 2, `${T} a la salida le queda ${queda} por asignar, sin recargar`)
+  const queda = await hasta(() => filaB.getAttribute('data-por-asignar').then(Number), (n) => n === salidaB.por_asignar - 3, 15000)
+  comprobar(queda === salidaB.por_asignar - 3, `${T} a la salida le queda ${queda} por asignar, sin recargar`)
   await captura(pagina, 'ssoma-epp-salida-anotada-390.png')
 
   await ir(pagina, `${BASE}/ssoma/epp?vista=personas`)

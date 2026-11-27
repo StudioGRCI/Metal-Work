@@ -764,11 +764,12 @@ function personasDeLaSalida(json: unknown): PersonaDeLaSalida[] {
 
 /**
  * Las salidas del almacén de EPP: las de los últimos 60 días y, hasta 180 días atrás, las que tienen algo
- * por asignar; las que esperan por SSOMA, primero. Con `movimiento`, esa sola, de cualquier fecha.
+ * por asignar; las que esperan por SSOMA, primero. (`p_movimiento` trae una sola, de cualquier fecha: lo usan
+ * las funciones de la base y sus pruebas, no la pantalla.)
  */
-export async function salidasDeEpp(movimiento: string | null = null): Promise<SalidaDeEpp[]> {
+export async function salidasDeEpp(): Promise<SalidaDeEpp[]> {
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('ssoma_salidas_de_epp', { p_movimiento: movimiento })
+  const { data, error } = await supabase.rpc('ssoma_salidas_de_epp', { p_movimiento: null })
   if (error) throw new Error(`No se pudieron leer las salidas de EPP: ${error.message}`)
   return (data ?? []).flatMap((s) =>
     s.movimiento_id && s.fecha && s.material
@@ -795,6 +796,20 @@ export async function salidasDeEpp(movimiento: string | null = null): Promise<Sa
         ]
       : [],
   )
+}
+
+/** Lo que espera del EPP: salidas por anotar, equipo vencido y todo lo que está por renovar. */
+export type EppPorAtender = { porAsignar: number; vencidos: number; porRenovar: number }
+
+/**
+ * Las tres cuentas del encabezado y de las pestañas, sin traer las listas: lo que cuenta es lo mismo que
+ * listan `ssoma_salidas_de_epp` y «Por renovar», y no tiene tope. A quien no ve SSOMA, ceros.
+ */
+export async function eppPorAtender(): Promise<EppPorAtender> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('ssoma_epp_por_atender').single()
+  if (error) throw new Error(`No se pudo leer lo que espera del EPP: ${error.message}`)
+  return { porAsignar: data?.por_asignar ?? 0, vencidos: data?.vencidos ?? 0, porRenovar: data?.por_renovar ?? 0 }
 }
 
 /**

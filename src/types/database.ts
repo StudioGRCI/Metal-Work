@@ -21416,6 +21416,7 @@ export type Database = {
         Returns: {
           por_asignar: number | null
           vencidos: number | null
+          por_renovar: number | null
         }[]
       }
       ssoma_epp_por_persona: {

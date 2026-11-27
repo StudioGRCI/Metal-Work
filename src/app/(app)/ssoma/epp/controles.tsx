@@ -1,8 +1,8 @@
 'use client'
 
-import { Ban, UserCheck } from 'lucide-react'
+import { Ban, Check, UserCheck } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useCallback, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 
 import { Boton } from '@/components/ui/boton'
 import { AreaTexto, Campo, Entrada } from '@/components/ui/campos'
@@ -43,6 +43,19 @@ const llano = (texto: string) =>
 
 /** «2,5» o «2.5» → 2.5; lo que no es un número, NaN. */
 const numero = (texto: string) => (texto.trim() === '' ? Number.NaN : Number(texto.trim().replace(',', '.')))
+/** La base guarda la cantidad con tres decimales, de 0,001 a 999: lo demás lo rechazaría sin decir de quién. */
+const cantidadQueNoVa = (c: number) => !Number.isFinite(c) || c <= 0 || c > 999 || Math.abs(c * 1000 - Math.round(c * 1000)) > 1e-6
+
+/** Los rechazos que dicen que la pantalla quedó vieja: otra cuenta ya anotó, repartió o marcó esa salida. */
+const LA_SALIDA_CAMBIO = /no va por persona|anotada su entrega|ya no queda nada por asignar|y anotaste/
+
+/** Tras uno de esos rechazos, la pantalla se pone al día: la fila seguía ofreciendo lo que ya no se puede. */
+function usePonerAlDia(error: string | null) {
+  const router = useRouter()
+  useEffect(() => {
+    if (error && LA_SALIDA_CAMBIO.test(error)) refrescarSiEsDeLaPestana(router)
+  }, [error, router])
+}
 
 /**
  * Lleva el cursor a un mando cuando la pantalla puesta al día lo pinta, si para entonces el cursor se
@@ -92,6 +105,7 @@ export function AsignarEpp({ salida, personal }: {
     },
     { alYaEntrar: id.otro },
   )
+  usePonerAlDia(error)
   return (
     <>
       <Boton
@@ -174,6 +188,9 @@ function FormularioEpp({
     return personal.filter((p) => !fuera.has(p.id))
   }, [personal, salida.no_estaban])
   const noEstaban = personal.length - disponibles.length
+  // Quien ya tiene anotada esta salida sale en la lista sin casilla: marcarlo de nuevo (o con «Marcar el
+  // área») era un rechazo seguro de la base.
+  const yaAnotados = useMemo(() => new Map(salida.a_quien.map((q) => [q.trabajador_id, q.cantidad])), [salida.a_quien])
 
   const errorFecha = error && DE_LA_FECHA.test(error) ? error : null
   const errorPersonas = !errorFecha && error && DE_LAS_PERSONAS.test(error) ? error : null
@@ -214,6 +231,7 @@ function FormularioEpp({
     setMarcados((antes) => {
       const despues = { ...antes }
       for (const i of ids) {
+        if (yaAnotados.has(i)) continue
         if (!marcar) delete despues[i]
         else if (!(i in despues)) despues[i] = String(porPersona)
       }
@@ -221,9 +239,22 @@ function FormularioEpp({
     })
   }
 
-  const elegidos = Object.entries(marcados)
+  // Si la pantalla se puso al día con la ventana abierta y alguien marcado ya la tiene, deja de contar.
+  const elegidos = Object.entries(marcados).filter(([i]) => !yaAnotados.has(i))
   const cantidades = elegidos.map(([, c]) => numero(c))
-  const malas = cantidades.some((c) => !Number.isFinite(c) || c <= 0 || c > 999)
+  const malas = cantidades.some(cantidadQueNoVa)
+
+  // En el monitor la lista desplaza por dentro: la fila que la base nombró se trae a la vista, que
+  // con el aviso arriba había que buscarla. En el teléfono desplaza la ventana y el cursor ya va al aviso.
+  useEffect(() => {
+    if (!errorPersonas) return
+    const fila = document.querySelector<HTMLElement>('[data-lista-personas] li[data-rechazada]')
+    const lista = fila?.closest<HTMLElement>('[data-lista-personas]')
+    if (!fila || !lista || lista.scrollHeight <= lista.clientHeight) return
+    const f = fila.getBoundingClientRect()
+    const l = lista.getBoundingClientRect()
+    if (f.top < l.top + 44 || f.bottom > l.bottom) lista.scrollTop += f.top - l.top - 52
+  }, [errorPersonas])
   const total = malas ? null : Math.round(cantidades.reduce((n, c) => n + c, 0) * 1000) / 1000
   const sePasa = total !== null && total > queda
   const yaPaso = renovar !== '' && renovar <= salida.fecha
@@ -232,7 +263,7 @@ function FormularioEpp({
     elegidos.length === 0
       ? 'Marca a quién se le entregó.'
       : malas
-        ? 'Revisa las cantidades: cada una es mayor que cero.'
+        ? 'Revisa las cantidades: cada una es mayor que cero, con hasta tres decimales.'
         : sePasa
           ? `Anotas ${cantidad(total)} y de esta salida ${queda === 1 ? 'queda 1' : `quedan ${cantidad(queda)}`} por asignar.`
           : renovar === ''
@@ -350,12 +381,13 @@ function FormularioEpp({
                 onChange={(e) => setBusqueda(e.target.value)}
               />
               {/* En el teléfono desplaza solo la ventana: una lista que desplaza dentro de otra atrapa el dedo. */}
-              <div className="rounded-[var(--radius-base)] border border-borde md:max-h-80 md:overflow-y-auto">
+              <div className="rounded-[var(--radius-base)] border border-borde md:max-h-80 md:overflow-y-auto" data-lista-personas>
                 {porArea.length === 0 ? (
                   <p className="px-3 py-3 text-sm text-texto-suave">Nadie coincide con «{busqueda.trim()}».</p>
                 ) : (
                   porArea.map(([area, gente], i) => {
-                    const todos = gente.every((p) => p.id in marcados)
+                    const libres = gente.filter((p) => !yaAnotados.has(p.id))
+                    const todos = libres.length > 0 && libres.every((p) => p.id in marcados)
                     return (
                       <fieldset key={area} aria-labelledby={`epp-area-${i}`} className="border-b border-borde last:border-b-0">
                         <div className="sticky top-0 z-[1] flex items-center justify-between gap-2 bg-superficie-2 px-3 py-1.5">
@@ -363,12 +395,12 @@ function FormularioEpp({
                             {area} <span className="tabular text-texto-suave">· {gente.length}</span>
                           </p>
                           {/* Quien ya se fue se marca de a uno: solo si recibió de una salida de antes de irse. */}
-                          {area !== SE_FUERON && (
+                          {area !== SE_FUERON && libres.length > 0 && (
                             <button
                               type="button"
                               className="inline-flex min-h-11 items-center text-xs font-medium text-acento hover:underline sm:min-h-0"
-                              onClick={() => cambiar(gente.map((p) => p.id), !todos)}
-                              aria-label={`${todos ? 'Desmarcar' : 'Marcar'} a ${gente.length === 1 ? 'la persona' : `las ${gente.length} personas`} de ${area}`}
+                              onClick={() => cambiar(libres.map((p) => p.id), !todos)}
+                              aria-label={`${todos ? 'Desmarcar' : 'Marcar'} a ${libres.length === 1 ? 'la persona' : `las ${libres.length} personas`} de ${area}${libres.length < gente.length ? ' que faltan' : ''}`}
                             >
                               {todos ? 'Desmarcar el área' : 'Marcar el área'}
                             </button>
@@ -376,10 +408,26 @@ function FormularioEpp({
                         </div>
                         <ul>
                           {gente.map((p) => {
-                            const marcado = p.id in marcados
+                            const ya = yaAnotados.get(p.id)
+                            const marcado = ya === undefined && p.id in marcados
                             // La base nombra a quien rechaza: su fila se marca, para no buscarla en la lista.
-                            const rechazada = marcado && Boolean(errorPersonas?.includes(p.nombre))
-                            const cantidadMala = marcado && !(numero(marcados[p.id]) > 0 && numero(marcados[p.id]) <= 999)
+                            const rechazada = (marcado || ya !== undefined) && Boolean(errorPersonas?.includes(p.nombre))
+                            const cantidadMala = marcado && cantidadQueNoVa(numero(marcados[p.id]))
+                            if (ya !== undefined)
+                              return (
+                                <li
+                                  key={p.id}
+                                  className={cn('flex min-h-11 items-center gap-3 py-1 pr-3 pl-3 text-sm', rechazada && 'bg-peligro-suave')}
+                                  data-ya-anotado={p.id}
+                                  data-rechazada={rechazada || undefined}
+                                >
+                                  <Check aria-hidden className="size-4 shrink-0 text-texto-suave" />
+                                  <span className="min-w-0 flex-1 truncate text-texto-suave">{p.nombre}</span>
+                                  <span className="tabular shrink-0 text-xs text-texto-suave">
+                                    Ya tiene esta entrega{ya !== 1 ? ` · ${cantidad(ya)} ${unidad}` : ''}
+                                  </span>
+                                </li>
+                              )
                             return (
                               // El margen de arriba y abajo le deja sitio al anillo de foco de la cantidad: sin él lo tapaba la cabecera del área.
                               <li
@@ -464,10 +512,17 @@ type DeQuien = { id: string; persona: string; material: string }
 export function AnularEntrega({ entrega }: { entrega: DeQuien }) {
   const [abierta, setAbierta] = useState(false)
   const [, setEntro] = useEstadoCompartido<string | null>(`${CLAVE}:aviso`, null)
-  const { alEnviar, enviando, error, limpiar } = useEnvio(anularEntregaEpp, () => {
+  const { alEnviar, enviando, error, limpiar } = useEnvio(anularEntregaEpp, (r) => {
     setAbierta(false)
     // El aviso nombra la entrega: la fila cambia de sitio, y «entrega anulada» a secas no decía cuál.
-    setEntro(`Entrega anulada: ${entrega.material}, de ${entrega.persona}. Lo que tenía asignado vuelve a quedar por asignar en su salida.`)
+    // Si su salida está marcada «no va por persona», lo anulado no vuelve solo a la cola: se dice cómo.
+    setEntro(
+      `Entrega anulada: ${entrega.material}, de ${entrega.persona}. ${
+        r.datos?.sinReparto
+          ? 'Su salida está marcada «No va por persona»: para anotárselo a quien lo recibió, toca «Repartir» en «Salidas de Almacén».'
+          : 'Lo que tenía asignado vuelve a quedar por asignar en su salida.'
+      }`,
+    )
   })
   return (
     <>
@@ -581,6 +636,7 @@ export function NoVaPorPersona({ salida }: { salida: DeSalida }) {
     setAbierta(false)
     setEntro(`Listo: lo que queda de ${salida.material} (${nombreDeSalidaEpp(salida)}) ya no espera reparto.`)
   })
+  usePonerAlDia(error)
   const queda = `${cantidad(salida.por_asignar)} ${salida.unidad ?? ''}`.trim()
   return (
     <>
