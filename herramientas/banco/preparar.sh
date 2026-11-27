@@ -159,15 +159,16 @@ SQL
 # Los datos de demostración anotan en Storage la foto de cada salida del kardex
 # y el PDF de cada factura, pero el archivo no viaja en el SQL. En el banco se
 # les pone uno de muestra, para que «Ver la foto» y «Ver el PDF» abran algo.
-# Sin ImageMagick (`convert`) se saltan: la fila sigue y el archivo no se ve.
+# Sin ImageMagick (`convert`), o si su política no deja escribir PDF (la de
+# serie en Ubuntu), se saltan: la fila sigue y el archivo no se ve.
 ARCHIVOS="${BANCO_ARCHIVOS:-/tmp/banco-archivos}"
-if command -v convert >/dev/null 2>&1; then
+MUESTRAS="$(mktemp -d)"
+if command -v convert >/dev/null 2>&1 \
+   && convert -size 1200x900 xc:'#d9dde3' -gravity center -pointsize 64 -fill '#3b4350' \
+        -annotate 0 'Foto de muestra\nbanco local' "$MUESTRAS/muestra.jpg" 2>/dev/null \
+   && convert -size 1240x1754 xc:white -gravity north -pointsize 48 -fill '#3b4350' \
+        -annotate +0+200 'Documento de muestra\nbanco local' "$MUESTRAS/muestra.pdf" 2>/dev/null; then
   echo "→ fotos y PDF de muestra"
-  MUESTRAS="$(mktemp -d)"
-  convert -size 1200x900 xc:'#d9dde3' -gravity center -pointsize 64 -fill '#3b4350' \
-    -annotate 0 'Foto de muestra\nbanco local' "$MUESTRAS/muestra.jpg"
-  convert -size 1240x1754 xc:white -gravity north -pointsize 48 -fill '#3b4350' \
-    -annotate +0+200 'Documento de muestra\nbanco local' "$MUESTRAS/muestra.pdf"
   psql -Atd "$BASE" -c "select bucket_id || '/' || name, metadata->>'mimetype' from storage.objects" |
     while IFS='|' read -r camino tipo; do
       destino="$ARCHIVOS/$camino"
@@ -178,10 +179,10 @@ if command -v convert >/dev/null 2>&1; then
         image/*) cp "$MUESTRAS/muestra.jpg" "$destino" ;;
       esac
     done
-  rm -rf "$MUESTRAS"
 else
-  echo "→ sin ImageMagick: las fotos y los PDF de la demostración no tendrán archivo"
+  echo "→ sin ImageMagick que escriba JPG y PDF: las fotos y los PDF de la demostración no tendrán archivo"
 fi
+rm -rf "$MUESTRAS"
 
 psql -Atd "$BASE" -c "
   select 'usuarios ' || (select count(*) from public.usuarios)

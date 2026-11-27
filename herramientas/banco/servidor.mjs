@@ -658,12 +658,18 @@ async function manejarArchivos(req, res, url) {
     if (!entrega) return responder(res, 400, NO_ENCONTRADO)
     try {
       const contenido = await readFile(join(ARCHIVOS, camino))
+      // El tipo que se anotó al subir, como lo guarda Supabase: con
+      // octet-stream el navegador bajaba la foto o el PDF en vez de abrirlo.
+      const { rows: anotado } = await grupo.query(
+        "select metadata->>'mimetype' as tipo from storage.objects where bucket_id = $1 and name = $2",
+        [cubeta, nombre],
+      )
       // Con `download` (createSignedUrl(…, { download })), como Supabase: se
       // baja con ese nombre, o con el del archivo si viene vacío.
       const bajar = url.searchParams.get('download')
       const comoNombre = bajar === null ? null : encodeURIComponent(bajar || nombre.split('/').pop())
       res.writeHead(200, {
-        'content-type': 'application/octet-stream',
+        'content-type': anotado[0]?.tipo || 'application/octet-stream',
         'access-control-allow-origin': '*',
         ...(comoNombre ? { 'content-disposition': `attachment; filename=${comoNombre}; filename*=UTF-8''${comoNombre};` } : {}),
       })

@@ -120,15 +120,15 @@ por falta de material, una urgente programada, una ya entregada con su acta de
 conformidad y una en borrador—. El script es idempotente y no toca nada de lo
 que ya exista.
 
-Trae además un circuito de compras y almacén: cinco proveedores, siete
-requerimientos (uno en cada estado, de «por revisar» a «entregado con
-faltante»), cinco órdenes de compra (una esperando a Gerencia, una en la lista
-del conductor, una por validar en el kardex, una recibida en partes y una
-entera), el ingreso inicial del kardex, un conteo, una orden de servicio y un
-subcontrato. Se cargan con las funciones reales y la sesión de cada puesto, así
-que **sus números salen de las series de verdad** (RQ, OC, OS) y, como todo
-documento numerado, no se borran: la demostración va en una base de prueba,
-nunca en la que va a producción.
+Trae además un circuito de compras y almacén: cinco proveedores, trece
+requerimientos (de dos a tres en cada estado, de «por revisar» a «entregado»,
+uno con faltante), seis órdenes de compra en los pasos de la compra (esperando
+a Gerencia, en la lista del conductor, por validar en el kardex, recibida en
+partes y entera), el kardex con su saldo inicial, stock mínimo y un conteo, dos
+órdenes de servicio y dos subcontratos. Se cargan con las funciones reales y la
+sesión de cada puesto, así que **sus números salen de las series de verdad**
+(RQ, OC, OS) y, como todo documento numerado, no se borran: la demostración va
+en una base de prueba, nunca en la que va a producción.
 
 ### Desarrollo
 
