@@ -77,15 +77,22 @@ end $$;
 -- Hoy la OT que pasa conserva su número de unidad (20261126988000), así que es
 -- el de la OT. Se lee en un solo lugar a propósito: si la OT llega a tomar otra
 -- unidad en la venta nueva, esta función pasa a leer la que dejó, y el
--- recorrido sigue diciendo la unidad correcta sin tocarlo.
-create or replace function public.unidad_que_dejo_la_ot(p_orden uuid, p_cotizacion uuid)
-returns integer
-language sql
-stable
-set search_path to 'public'
-as $$
+-- recorrido sigue diciendo la unidad correcta sin tocarlo. Esa migración
+-- (la de Administración, posterior) la redefine; por eso aquí solo se crea si
+-- todavía no existe: volver a correr esta no le pisa el cuerpo.
+do $crear$
+begin
+  if to_regprocedure('public.unidad_que_dejo_la_ot(uuid, uuid)') is null then
+    create function public.unidad_que_dejo_la_ot(p_orden uuid, p_cotizacion uuid)
+    returns integer
+    language sql
+    stable
+    set search_path to 'public'
+    as $$
   select coalesce(o.numero_de_unidad, 1)::integer from public.ordenes_trabajo o where o.id = p_orden;
 $$;
+  end if;
+end $crear$;
 
 comment on function public.unidad_que_dejo_la_ot(uuid, uuid) is
   'La unidad que la OT ocupaba en la cotización p_cotizacion antes de pasar a otro comprador. Ayudante interno del recorrido.';
