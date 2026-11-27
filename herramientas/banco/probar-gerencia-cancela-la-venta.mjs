@@ -22,7 +22,7 @@
  *      Contabilidad factura con clic real las dos unidades que quedan y la
  *      tarjeta de Facturación queda «Facturada», fuera de «Por facturar». Y si
  *      la que pasó ya tenía un adelanto facturado, la fila y el aviso lo dicen.
- *      (El «Recorrido» de la tarjeta lo arma otra función de la base.)
+ *      El «Recorrido» de la tarjeta (recorrido por unidad, #288) dice lo mismo.
  *
  * Capturas en teléfono (390) y monitor (1440). Arma sus datos ficticios
  * (QA-P8G-…) y las cuentas `*.p8g@banco.test` con la clave local. Variables:
@@ -598,6 +598,15 @@ async function esperarVentana(pagina) {
     comprobar((await c.locator('[data-facturar-unidad]').count()) === 0 && (await c.locator('li[data-unidad="1"]').textContent()).includes('Pasó a otro comprador')
       && (await c.locator('[data-unidades-a-otro-comprador]').count()) === 1,
     `Contabilidad ${ancho}: ninguna unidad ofrece «Facturar» y la 1 sigue diciendo que pasó a otro comprador`)
+    // Con el recorrido por unidad (#288) el «Recorrido» de la tarjeta dice lo mismo que ella: ya
+    // no espera factura, lo que queda es cobrarla (Tesorería), y la unidad que pasó no espera nada.
+    const rec = c.locator('[data-recorrido]').first()
+    const recDice = limpio(await rec.textContent().catch(() => ''))
+    const porHacer = await rec.locator('[data-situacion="AHORA"]').evaluateAll((ps) => ps.map((p) => p.getAttribute('data-recorrido-paso')))
+    const deLaQuePaso = await rec.locator('[data-recorrido-unidad="1"] [data-situacion="AHORA"], [data-recorrido-unidad="1"] [data-recorrido-paso="FACTURA"]').count()
+    comprobar(recDice.includes('La tiene Tesorería') && !recDice.includes('La tiene Contabilidad') && !recDice.includes('en parte')
+      && porHacer.length > 0 && porHacer.every((p) => p === 'COBRO') && deLaQuePaso === 0,
+      `Contabilidad ${ancho}: el «Recorrido» de la tarjeta ya no espera factura: la tiene Tesorería para cobrar, y la unidad que pasó no espera nada (por hacer: ${porHacer.join(', ') || 'nada'})`)
     const enEspera = await s.pagina.locator(`#por-facturar [data-por-facturar^="QA_P8G_${sello}_D"], #por-facturar [data-por-facturar^="QA_P8G_${sello}_F"]`).count()
     comprobar(enEspera === 0, `Contabilidad ${ancho}: ninguna de sus unidades figura en «Por facturar»`)
     if (ancho === 390) {
