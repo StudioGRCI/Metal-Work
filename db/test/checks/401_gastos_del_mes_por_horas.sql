@@ -7,7 +7,8 @@
 --      OFICINA no reciben, y el gasto entero queda repartido.
 --   3. El sueldo de la oficina entra solo, repartido igual: lo que RR. HH.
 --      registró como pagado a la oficina en el mes (20261020120000), sin lo que
---      esa gente ya cargó en horas a una unidad.
+--      esa gente ya cargó en horas a cualquier código, también OFICINA
+--      (20261128110000).
 --   4. Un mes sin horas no reparte: el gasto espera hasta que alguien reporte.
 --   5. La pantalla de Gastos del mes: Administración y Gerencia ven el reparto
 --      y la oficina sumada; Ventas no.
@@ -156,15 +157,17 @@ select test.afirmar(pg_temp.gasto('CHK401_B_21/03', 'Electricidad') = 200,
 select test.afirmar(exists (select 1 from public.codigo_interno_costeo('CHK401_A_21/03') l
                              where l.fuente = 'GASTOS_DEL_MES' and l.detalle = 'Por horas: 40 de 50 h del mes, entre 2 unidades · Recibo de luz de marzo'),
   'la línea dice de dónde sale: sus horas, las del mes y entre cuántas unidades');
--- Oficina: Ana 3,000 y Caro 2,000 menos sus 100 en la unidad A = 4,900; A carga 4/5 y B 1/5.
-select test.afirmar(pg_temp.gasto('CHK401_A_21/03', 'Sueldos de la oficina 03/2021') = 3920,
-  format('A carga 3,920 de los 4,900 de la oficina: carga %s', pg_temp.gasto('CHK401_A_21/03', 'Sueldos de la oficina 03/2021')));
-select test.afirmar(pg_temp.gasto('CHK401_B_21/03', 'Sueldos de la oficina 03/2021') = 980,
-  format('B carga 980 de la oficina: carga %s', pg_temp.gasto('CHK401_B_21/03', 'Sueldos de la oficina 03/2021')));
+-- Oficina: Ana 3,000 y Caro 2,000 menos sus 100 en la unidad A y sus 40 en OFICINA
+-- = 4,860; A carga 4/5 y B 1/5. Las 4 h de Caro en OFICINA ya van en la mano de obra
+-- de OFICINA: si no se restaran, Metal Work contaría esos 40 dos veces (20261128110000).
+select test.afirmar(pg_temp.gasto('CHK401_A_21/03', 'Sueldos de la oficina 03/2021') = 3888,
+  format('A carga 3,888 de los 4,860 de la oficina: carga %s', pg_temp.gasto('CHK401_A_21/03', 'Sueldos de la oficina 03/2021')));
+select test.afirmar(pg_temp.gasto('CHK401_B_21/03', 'Sueldos de la oficina 03/2021') = 972,
+  format('B carga 972 de la oficina: carga %s', pg_temp.gasto('CHK401_B_21/03', 'Sueldos de la oficina 03/2021')));
 select test.afirmar(exists (select 1 from public.codigo_interno_costeo('CHK401_B_21/03') l
                              where l.concepto = 'Sueldos de la oficina 03/2021'
                                and l.detalle = 'Por horas: 10 de 50 h del mes, entre 2 unidades · pagos de la oficina registrados por RR. HH.'
-                               and l.precio_unitario = 4900 and l.moneda = 'PEN'),
+                               and l.precio_unitario = 4860 and l.moneda = 'PEN'),
   'la línea de la oficina dice el total del mes, sin nombres ni cuántas personas');
 select test.afirmar(pg_temp.gasto('PLANTA', '') = 0 and pg_temp.gasto('OFICINA', '') = 0,
   'PLANTA y OFICINA no son unidades: no reciben gastos del mes');
@@ -174,6 +177,18 @@ select test.afirmar((select sum(l.monto) from public.codigo_interno_costeo(null)
 -- La mano de obra no cambia: Caro sigue con sus 100 en A, y no vuelven a cobrarse en la oficina.
 select test.afirmar((select sum(l.monto) from public.codigo_interno_costeo('CHK401_A_21/03') l where l.fuente = 'MANO_OBRA') = 400,
   'la mano de obra de A sigue siendo la del tareo (300 de Beto y 100 de Caro)');
+-- Lo pagado a la oficina en marzo (5,000) se cuenta una sola vez en todo Metal Work:
+-- lo repartido a las unidades, más los 100 de Caro en la mano de obra de A, más sus
+-- 40 en la de OFICINA. Antes de la 20261128110000 daba 5,040.
+select test.afirmar((select sum(l.monto) from public.codigo_interno_costeo(null) l
+                      where l.concepto = 'Sueldos de la oficina 03/2021')
+                    + 100
+                    + (select sum(l.monto) from public.codigo_interno_costeo('OFICINA') l where l.fuente = 'MANO_OBRA') = 5000,
+  format('la oficina de marzo se cuenta una vez: %s + 100 + %s',
+         (select sum(l.monto) from public.codigo_interno_costeo(null) l where l.concepto = 'Sueldos de la oficina 03/2021'),
+         (select sum(l.monto) from public.codigo_interno_costeo('OFICINA') l where l.fuente = 'MANO_OBRA')));
+select test.afirmar((select sum(l.monto) from public.codigo_interno_costeo('OFICINA') l where l.fuente = 'MANO_OBRA') = 40,
+  'las 4 h de Caro siguen en la mano de obra de OFICINA, por su costo');
 reset role;
 
 -- ------------------------------------------- 4. Un mes sin horas no reparte hasta que las haya
@@ -211,15 +226,15 @@ select test.afirmar((select string_agg(r.codigo || ' ' || r.horas::text || ' ' |
   format('Administración ve entre quiénes se reparte marzo: %s',
          (select string_agg(r.codigo || ' ' || r.horas::text || ' ' || r.parte::text, ' | ' order by r.horas desc)
             from public.gastos_del_mes_reparto(date '2021-03-01') r)));
-select test.afirmar((select o.monto = 4900 and o.sin_pago = 0 from public.gastos_del_mes_oficina(date '2021-03-01') o),
-  'Administración ve la oficina de marzo sumada (S/ 4,900), sin cuántas personas; marzo está pagado entero');
+select test.afirmar((select o.monto = 4860 and o.sin_pago = 0 from public.gastos_del_mes_oficina(date '2021-03-01') o),
+  'Administración ve la oficina de marzo sumada (S/ 4,860), sin cuántas personas; marzo está pagado entero');
 select test.afirmar((select o.sin_pago = 2 from public.gastos_del_mes_oficina(date_trunc('month', now() at time zone 'America/Lima')::date) o),
   'en el mes en curso avisa: a Ana y a Caro les faltan días pagados');
 reset role;
 select pg_temp.como('gerente');
 set local role authenticated;
 select test.afirmar((select count(*) from public.gastos_del_mes_reparto(date '2021-03-01')) = 2
-                    and (select o.monto from public.gastos_del_mes_oficina(date '2021-03-01') o) = 4900,
+                    and (select o.monto from public.gastos_del_mes_oficina(date '2021-03-01') o) = 4860,
   'Gerencia, que ve los costos, ve el mismo reparto');
 reset role;
 select pg_temp.como('vendedor');
@@ -241,12 +256,12 @@ select test.como_usuario(:'costos_id');
 set local role authenticated;
 select test.afirmar((select count(*) from public.gastos_del_mes_reparto(date '2021-03-01')) = 2,
   'Costos y Materiales ve entre quiénes se reparte marzo');
-select test.afirmar((select o.monto from public.gastos_del_mes_oficina(date '2021-03-01') o) = 4900,
+select test.afirmar((select o.monto from public.gastos_del_mes_oficina(date '2021-03-01') o) = 4860,
   'Costos y Materiales ve el total de la oficina de marzo');
 select test.afirmar((select count(*) from public.oficina_pagos) = 0, 'Costos y Materiales no lee el pago de cada persona');
 -- Y el costo de la unidad es el mismo para todo puesto: lleva su parte de la
--- oficina (luz 800 + oficina 3,920 en A).
-select test.afirmar((select c.gastos_mes_pen from public.codigos_internos_costo('CHK401_A_21/03') c) = 800 + 3920,
+-- oficina (luz 800 + oficina 3,888 en A).
+select test.afirmar((select c.gastos_mes_pen from public.codigos_internos_costo('CHK401_A_21/03') c) = 800 + 3888,
   format('Costos y Materiales ve el costo de A con su parte de la oficina: %s',
          (select c.gastos_mes_pen from public.codigos_internos_costo('CHK401_A_21/03') c)));
 reset role;
@@ -258,15 +273,15 @@ set local role authenticated;
 select public.rrhh_guardar_costo_trabajador(current_setting('prueba.ana')::uuid, 4000);
 select public.rrhh_cambiar_estado_trabajador(current_setting('prueba.caro')::uuid, false);
 reset role;
-select test.afirmar((select o.monto from public.sueldos_oficina_del_mes(date '2021-03-01') o) = 4900,
-  format('marzo sigue con S/ 4,900 de oficina: %s', (select o.monto from public.sueldos_oficina_del_mes(date '2021-03-01') o)));
+select test.afirmar((select o.monto from public.sueldos_oficina_del_mes(date '2021-03-01') o) = 4860,
+  format('marzo sigue con S/ 4,860 de oficina: %s', (select o.monto from public.sueldos_oficina_del_mes(date '2021-03-01') o)));
 select test.afirmar((select o.monto from public.sueldos_oficina_del_mes(date '2021-05-01') o) = 5000,
   format('mayo sigue con S/ 5,000: %s', (select o.monto from public.sueldos_oficina_del_mes(date '2021-05-01') o)));
 -- Un tareo tardío de marzo de Ana en una unidad sí se descuenta: ese tramo ya va en la mano de obra.
 select test.como_usuario(:'admin_id');
 insert into public.tareos (trabajador_id, fecha, codigo_interno, horas, labor, costo_hora, costo)
 values (current_setting('prueba.ana')::uuid, date '2021-03-25', 'CHK401_B_21/03', 10, 'Compras en obra', 20, 200);
-select test.afirmar((select o.monto from public.sueldos_oficina_del_mes(date '2021-03-01') o) = 4700,
+select test.afirmar((select o.monto from public.sueldos_oficina_del_mes(date '2021-03-01') o) = 4660,
   format('el tareo tardío de Ana en B se descuenta de la oficina de marzo: %s', (select o.monto from public.sueldos_oficina_del_mes(date '2021-03-01') o)));
 select pg_temp.como('gerente');
 set local role authenticated;

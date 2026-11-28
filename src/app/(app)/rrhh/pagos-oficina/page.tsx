@@ -70,7 +70,7 @@ export default async function PaginaPagosOficina({ searchParams }: PageProps<'/r
     <>
       <EncabezadoPagina
         titulo="Pagos de la oficina"
-        ayuda="Lo que se le paga a cada persona de planilla administrativa (la planilla se elige en su ficha de Personal, no depende del área), como se le paga: por semana, por quincena o por mes. Se escribe su sueldo de esos días, antes de descuentos, y el sistema le resta solo lo que tiene por tardanzas y por permisos descontados; queda lo que se le pagó. Cada pago entra al sueldo de la oficina de cada mes por los días que caen en él, con sus aportes, y ese sueldo se reparte por horas entre las unidades que trabajaron el mes. Lo que esa persona cargó en horas a una unidad ya va en la mano de obra y se descuenta. Solo lo ve Recursos Humanos; Administración y Gerencia ven el total."
+        ayuda="Lo que se le paga a cada persona de planilla administrativa (la planilla se elige en su ficha de Personal, no depende del área), como se le paga: por semana, por quincena o por mes. Se escribe su sueldo de esos días, antes de descuentos, y el sistema le resta solo lo que tiene por tardanzas y por permisos descontados; queda lo que se le pagó. Cada pago entra al sueldo de la oficina de cada mes por los días que caen en él, con sus aportes, y ese sueldo se reparte por horas entre las unidades que trabajaron el mes. Lo que esa persona cargó en horas a cualquier código (una unidad, PLANTA u OFICINA) ya va en la mano de obra de ese código y se descuenta. Solo lo ve Recursos Humanos; Administración y Gerencia ven el total que se reparte, ya sin esas horas."
         migas={[{ titulo: 'Recursos Humanos' }, { titulo: 'Pagos de la oficina' }]}
         acciones={
           edita && (
