@@ -21,8 +21,10 @@ import {
   listarOrdenes,
 } from '@/lib/datos/ordenes'
 import { reemplazoDeLaOrden, trabajaPorCodigo } from '@/lib/dominio/acceso-orden'
-import { exigirSesion, puede } from '@/lib/sesion'
+import { cierraElCostoDeLaOt, exigirSesion, puede } from '@/lib/sesion'
 
+import { ordenesConCostoPorCerrar } from '@/lib/datos/costos-ot'
+import { FILTRO_COSTO_POR_CERRAR } from '@/lib/dominio/expediente'
 import { pendientesDeLasOt } from '@/lib/datos/pendientes-de-las-ot'
 
 import { FiltrosOrdenes } from './filtros-ordenes'
@@ -48,18 +50,24 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
   if (!puede(perfil, 'ordenes.listar')) redirect('/sin-permiso')
   const params = await searchParams
 
+  // Las terminadas con el costo por cerrar, adonde lleva el pendiente: solo para
+  // quien lo cierra, que es quien ve el costo. A otro, todas le saldrían sin
+  // cierre (`ot_cierres_costo` pide `costos.ver`), así que el filtro no se aplica.
+  const cierraCosto = cierraElCostoDeLaOt(perfil)
+  const costoPorCerrar = cierraCosto && params.costo === FILTRO_COSTO_POR_CERRAR
   const filtros = {
     busqueda: texto(params.q),
     estado: comoEstado(params.estado),
     prioridad: comoPrioridad(params.prioridad),
     atrasadas: params.atrasadas === '1',
+    ids: costoPorCerrar ? await ordenesConCostoPorCerrar() : undefined,
     pagina: paginaPedida(params.pagina),
   }
 
   // Una búsqueda de solo signos no filtra nada: no cuenta como filtro, o la
   // lista entera decía «3 órdenes con los filtros aplicados».
   const hayFiltros = Boolean(
-    palabrasDeBusqueda(filtros.busqueda).length > 0 || filtros.estado || filtros.prioridad || filtros.atrasadas,
+    palabrasDeBusqueda(filtros.busqueda).length > 0 || filtros.estado || filtros.prioridad || filtros.atrasadas || costoPorCerrar,
   )
   // Lo que falta completar (plan 8.1) lo ve quien carga las OT, arriba de la
   // lista y sin filtros: quien filtra está consultando, no atendiendo. Solo
@@ -89,6 +97,8 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
   const vacio = hayFiltros
     ? 'Ninguna orden coincide con los filtros aplicados'
     : 'Ninguna orden registrada todavía'
+  // Con solo el filtro del costo, el vacío es la buena noticia: no queda ninguno por cerrar.
+  const soloCosto = costoPorCerrar && !(palabrasDeBusqueda(filtros.busqueda).length > 0 || filtros.estado || filtros.prioridad || filtros.atrasadas)
 
   // Lo que cada orden muestra se calcula una vez: la misma fila sale como
   // tarjeta en el teléfono y como renglón de tabla en el monitor, y si cada una
@@ -176,7 +186,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
         </div>
       )}
 
-      <FiltrosOrdenes />
+      <FiltrosOrdenes costoPorCerrar={cierraCosto} />
 
       {/* En el teléfono, una tarjeta por orden que se toca entera: la tabla no
           cabía y solo se leía el número y medio cliente. Hasta 768 px: entre 640
@@ -242,11 +252,13 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
         {ordenes.length === 0 ? (
           <SinDatos
             enTabla={false}
-            titulo={hayFiltros ? 'Ninguna orden con estos filtros' : 'Aún no hay órdenes de trabajo'}
+            titulo={soloCosto ? 'Ninguna orden terminada con el costo por cerrar' : hayFiltros ? 'Ninguna orden con estos filtros' : 'Aún no hay órdenes de trabajo'}
             descripcion={
-              hayFiltros
-                ? 'Con los filtros puestos no aparece ninguna. Prueba con otro estado, otra prioridad, o quita la búsqueda.'
-                : 'La OT llega cuando Gerencia aprueba la cotización con su código interno.'
+              soloCosto
+                ? 'Las terminadas que se costean por su código interno se cierran en Códigos internos, no aquí.'
+                : hayFiltros
+                  ? 'Con los filtros puestos no aparece ninguna. Prueba con otro estado, otra prioridad, o quita la búsqueda.'
+                  : 'La OT llega cuando Gerencia aprueba la cotización con su código interno.'
             }
             accion={
               hayFiltros && (

@@ -21,6 +21,8 @@ export type FiltrosOrdenes = {
   sede?: string
   responsable?: string
   atrasadas?: boolean
+  /** Solo estas órdenes (`/ordenes?costo=por-cerrar`, de `ordenesConCostoPorCerrar`); vacía no trae ninguna. */
+  ids?: readonly string[]
   pagina?: number
 }
 
@@ -98,8 +100,10 @@ export async function listarOrdenes(filtros: FiltrosOrdenes) {
   const supabase = await createClient()
   const pagina = Math.max(1, filtros.pagina ?? 1)
   const desde = (pagina - 1) * ORDENES_POR_PAGINA
+  if (filtros.ids && filtros.ids.length === 0) return { ordenes: [], total: 0, pagina: 1, paginas: 1 }
 
   let consulta = supabase.from('ot_resumen').select('*', { count: 'exact' })
+  if (filtros.ids) consulta = consulta.in('id', [...filtros.ids])
 
   if (filtros.estado === 'ABIERTAS') {
     consulta = consulta.in('estado', ESTADOS_ABIERTOS)

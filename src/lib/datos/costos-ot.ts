@@ -1,8 +1,58 @@
 import 'server-only'
 
 import { todasLasFilas } from '@/lib/datos/todas-las-filas'
-import { CODIGO_SIN_AVANCE, normalizarCodigo } from '@/lib/dominio/codigos-internos'
+import { CODIGO_SIN_AVANCE, codigoDeCosteoDeLaOt, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { createClient } from '@/lib/supabase/server'
+
+/** Los estados de la OT en que `cerrar_costo_ot` deja cerrar su costo: el trabajo ya terminó. */
+export const ESTADOS_DE_COSTO_CERRABLE = ['TERMINADA', 'ENTREGADA', 'FACTURADA'] as const
+
+/**
+ * Las OT terminadas cuyo costo se cierra en su expediente y sigue abierto: las
+ * que cuenta el pendiente «órdenes terminadas con el costo sin cerrar» y las que
+ * lista `/ordenes?costo=por-cerrar`, para que la cifra y la lista digan lo mismo.
+ *
+ * Solo las que el expediente deja cerrar (`CerrarCosto` sale donde la OT no se
+ * costea por código): la de una unidad con código interno se costea por su
+ * código y se cierra en Códigos internos (`cerrar_costeo_codigo`), y la de
+ * mantenimiento o garantía, por el código de su OT. Contarlas aquí dejaba la
+ * cifra sin bajar nunca, porque nadie las cierra con `cerrar_costo_ot`.
+ *
+ * Todas, de mil en mil: con el tope de 500 de antes, las terminadas de más
+ * quedaban fuera sin aviso. Lee con el RLS de quien mira (`puede_ver_orden` y
+ * `costos.ver` en `ot_cierres_costo`): quien la llama tiene que ver el costo,
+ * o todas le saldrían sin cierre.
+ */
+export async function ordenesConCostoPorCerrar(): Promise<string[]> {
+  const supabase = await createClient()
+  const { data: ordenes, error } = await todasLasFilas(
+    () =>
+      supabase
+        .from('ordenes_trabajo')
+        .select('id, numero, tipo_trabajo, unidad:unidades(codigo_interno)')
+        .in('estado', [...ESTADOS_DE_COSTO_CERRABLE]),
+    ['id'],
+  )
+  if (error) throw new Error('No se pudieron leer las órdenes terminadas.')
+  const candidatas = ordenes
+    .filter((o) => {
+      const codigo = codigoDeCosteoDeLaOt(o, (o.unidad as unknown as { codigo_interno: string | null } | null)?.codigo_interno)
+      return codigo === '' || codigo === CODIGO_SIN_AVANCE
+    })
+    .map((o) => o.id)
+  if (candidatas.length === 0) return []
+  const conCierre = new Set<string>()
+  // De a 200: los id van en la dirección de la consulta.
+  for (let i = 0; i < candidatas.length; i += 200) {
+    const { data: cierres, error: errorCierres } = await supabase
+      .from('ot_cierres_costo')
+      .select('orden_id')
+      .in('orden_id', candidatas.slice(i, i + 200))
+    if (errorCierres) throw new Error('No se pudieron leer los cierres de costo.')
+    for (const c of cierres ?? []) conCierre.add(c.orden_id)
+  }
+  return candidatas.filter((id) => !conCierre.has(id))
+}
 
 export async function controlesYSolicitudesDeOrden(ordenId: string, verCosteo: boolean) {
   const supabase = await createClient()

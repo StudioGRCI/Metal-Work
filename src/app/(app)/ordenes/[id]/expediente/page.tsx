@@ -41,7 +41,7 @@ import {
 import { CODIGO_SIN_AVANCE, codigoDeCosteoDeLaOt, enlaceCodigo, faltanteDelCosto } from '@/lib/dominio/codigos-internos'
 import { nombreDeUnidad } from '@/lib/dominio/unidades'
 import { cantidad, fecha, fechaHora, fechaLarga, hora, hoyLima, moneda, porcentajeYMonto, numero, porcentaje } from '@/lib/format'
-import { exigirPermiso, puede } from '@/lib/sesion'
+import { cierraElCostoDeLaOt, exigirPermiso, puede } from '@/lib/sesion'
 import { cn, esUuid } from '@/lib/utils'
 
 import { VistaEtapas } from '../../../codigos-internos/detalle/vistas-diseno'
@@ -92,7 +92,7 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
   const verMargen = verCosteo && puede(perfil, 'cotizaciones.ver_pdf_comercial')
   const puedeConfirmarIgv = puede(perfil, ['cotizaciones.crear', 'cotizaciones.revisar', 'cotizaciones.liberar_tesoreria'])
   // Las llaves de `cerrar_costo_ot`: decidir y, además, ver el costo que se firma.
-  const puedeCerrarCosto = verCosteo && puede(perfil, ['costos.controlar_ot', 'ordenes.editar'])
+  const puedeCerrarCosto = cierraElCostoDeLaOt(perfil)
   // Las llaves de `fijar_presupuesto_ot`: decidir y, además, ver costo y precio.
   const puedeFijarPresupuesto = verMargen && puede(perfil, ['cotizaciones.revisar', 'ordenes.editar'])
   // La misma regla que el resumen de la OT: el documento comercial solo lo

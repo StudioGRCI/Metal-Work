@@ -98,6 +98,17 @@ export function puede(perfil: PerfilSesion | null, permiso: string | string[]): 
 }
 
 /**
+ * Si esta persona cierra el costo de la OT: decide (`costos.controlar_ot` u
+ * `ordenes.editar`) y además ve el costo que firma (`costos.ver`). Es la puerta
+ * de `cerrar_costo_ot` (migración 20261128100000): hoy Administración y Costos y
+ * Materiales. La usan la acción, el botón del expediente y el pendiente
+ * «órdenes terminadas con el costo sin cerrar», para que los tres pidan lo mismo.
+ */
+export function cierraElCostoDeLaOt(perfil: PerfilSesion | null): boolean {
+  return puede(perfil, 'costos.ver') && puede(perfil, ['costos.controlar_ot', 'ordenes.editar'])
+}
+
+/**
  * Si esta persona puede meterse en la hoja de un área: la suya siempre, las
  * demás solo con `produccion.cualquier_area` —el jefe de producción, el de
  * taller y Gerencia—.
