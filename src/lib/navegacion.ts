@@ -659,7 +659,7 @@ export const NAVEGACION = [
       { titulo: 'Tipo de cambio', ruta: '/tesoreria/tipo-de-cambio', icono: ArrowLeftRight, permiso: 'tesoreria.tipo_cambio', lectura: 'tesoreria.ver_tipo_cambio', descripcion: 'El cambio del dólar de cada día, para el costo en soles', disponible: true },
       // Cada carrocería con su ingreso y su ganancia, y el total de Metal Work
       // menos el gasto operativo y el de oficina (plan del gasto operativo,
-      // entrega 3, migración 20261128100000). Gerencia y Contabilidad, en lectura.
+      // entrega 3, migración 20261128130000). Gerencia y Contabilidad, en lectura.
       {
         titulo: 'Resultados',
         ruta: '/resultados',

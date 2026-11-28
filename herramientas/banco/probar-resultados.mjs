@@ -1,5 +1,5 @@
 /**
- * Recorre los resultados de Metal Work (migración 20261128100000) con la cuenta
+ * Recorre los resultados de Metal Work (migración 20261128130000) con la cuenta
  * de cada puesto, nunca ADMIN:
  *
  *   1. Gerencia y Contabilidad tienen «Resultados» en su menú y ven el mes de

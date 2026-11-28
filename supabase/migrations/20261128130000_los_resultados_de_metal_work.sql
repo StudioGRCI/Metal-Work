@@ -144,7 +144,7 @@ end $$;
 revoke all on function public.resultados_facturas_calculado(date) from public, anon, authenticated;
 
 comment on function public.resultados_facturas_calculado(date) is
-  'Cálculo interno del reporte de resultados (migración 20261128100000): cada parte de factura de venta vigente hasta una fecha, sin IGV y en soles al cambio de compra de su día, con la parte del costo de su código que le toca (medida con todas las facturas vigentes). No se le da a nadie: lo llama resultados_metal_work.';
+  'Cálculo interno del reporte de resultados (migración 20261128130000): cada parte de factura de venta vigente hasta una fecha, sin IGV y en soles al cambio de compra de su día, con la parte del costo de su código que le toca (medida con todas las facturas vigentes). No se le da a nadie: lo llama resultados_metal_work.';
 
 -- 3. El reporte --------------------------------------------------------------------
 -- Una fila por código facturado en el periodo (CODIGO), por área del gasto
@@ -320,6 +320,6 @@ revoke all on function public.resultados_metal_work(date, date) from public, ano
 grant execute on function public.resultados_metal_work(date, date) to authenticated;
 
 comment on function public.resultados_metal_work(date, date) is
-  'Los resultados de Metal Work entre dos fechas (hasta un año): cada código interno facturado con su ingreso sin IGV en soles, la parte de su costo que le toca por lo facturado y su ganancia; y lo que el total resta al final: el gasto operativo por área, el gasto de oficina y lo que no se repartió a ninguna unidad, con lo que todavía no suma. Exige resultados.ver (Gerencia y Contabilidad). Migración 20261128100000.';
+  'Los resultados de Metal Work entre dos fechas (hasta un año): cada código interno facturado con su ingreso sin IGV en soles, la parte de su costo que le toca por lo facturado y su ganancia; y lo que el total resta al final: el gasto operativo por área, el gasto de oficina y lo que no se repartió a ninguna unidad, con lo que todavía no suma. Exige resultados.ver (Gerencia y Contabilidad). Migración 20261128130000.';
 
 notify pgrst, 'reload schema';

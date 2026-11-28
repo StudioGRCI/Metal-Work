@@ -1,4 +1,4 @@
--- Los resultados de Metal Work (migración 20261128100000), con el rol real:
+-- Los resultados de Metal Work (migración 20261128130000), con el rol real:
 -- Gerencia y Contabilidad lo ven; Administración y el almacenero, no. Cada paso
 -- con `set local role authenticated`. Termina en rollback.
 --

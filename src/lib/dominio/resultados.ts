@@ -1,7 +1,7 @@
 /**
  * Los resultados de Metal Work (plan del gasto operativo, entrega 3): el periodo
  * que se pide en la URL y el total de la empresa. Qué suma cada fila lo decide la
- * base (`resultados_metal_work`, migración 20261128100000); aquí solo se suma lo
+ * base (`resultados_metal_work`, migración 20261128130000); aquí solo se suma lo
  * que ella da.
  */
 

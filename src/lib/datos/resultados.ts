@@ -3,7 +3,7 @@ import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 
 /**
- * Los resultados de Metal Work (migración 20261128100000): `resultados_metal_work`
+ * Los resultados de Metal Work (migración 20261128130000): `resultados_metal_work`
  * exige `resultados.ver` (Gerencia y Contabilidad) y da, para un periodo, cada
  * código interno facturado con su ingreso sin IGV en soles, la parte de su costo
  * que le toca por lo facturado y su ganancia; y lo que el total resta al final.
