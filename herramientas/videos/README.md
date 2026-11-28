@@ -67,6 +67,13 @@ Hay cuatro hechos, que sirven de ejemplo:
 | `videos/como-registrar-la-factura-de-cada-unidad/` | Contabilidad | tapar un dato que la pantalla trae (el RUC del cliente de demostración) |
 | `videos/como-pedir-un-rq/` | Supervisor de área | llenar un formulario y que otro puesto actúe fuera de cámara |
 
+Los siete de los puestos nuevos (Tramitador, Calidad, Garantías, Ingeniería,
+Mantenimiento de unidades, Mantenimiento de equipos y SSOMA) preparan lo de
+fuera de cámara con `scripts/banco.mjs`: `como(puesto, sql)` corre el SQL con la
+sesión de la cuenta de prueba del puesto, y `fotoInventada` hace la foto que la
+tarea pide. Cada uno se toma sobre el banco recién preparado: lo que registra
+(una inspección, un reclamo, un reporte) no se borra.
+
 Las órdenes de abajo usan el primero; con los otros son iguales.
 
 **1. El guion.** `videos/<video>/guion.json`, empezando por el gancho. Cada

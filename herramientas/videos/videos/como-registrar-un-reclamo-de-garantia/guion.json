@@ -1,0 +1,109 @@
+{
+  "id": "como-registrar-un-reclamo-de-garantia",
+  "tarea": "Cómo registrar un reclamo de garantía",
+  "puesto": "Garantías (Ventas)",
+  "voz": { "nombre": "es-PE-CamilaNeural", "velocidad": "-5%" },
+  "pronunciacion": {},
+  "pista_whisper": "Metal Work. Garantía, reclamo, RG, Ventas, Administración, Calidad, unidad, placa, OT de garantía.",
+  "escenas": [
+    {
+      "tipo": "gancho",
+      "titular": "Cada reclamo del cliente, **con su número y su seguimiento**",
+      "frases": ["Que cada reclamo del cliente tenga su número y su seguimiento."]
+    },
+    { "tipo": "portada" },
+    {
+      "tipo": "antes-despues",
+      "antes": ["El reclamo llegaba por teléfono", "Nadie sabía en qué quedó"],
+      "ahora": { "captura": "05-registrado", "resalte": "verde", "puntos": ["Cada reclamo con su número RG", "Administración recibe el aviso"] },
+      "frases": [
+        { "texto": "Antes, el reclamo llegaba por teléfono, y nadie sabía en qué había quedado.", "vertical": "" },
+        { "texto": "Ahora cada reclamo tiene su número, y Administración recibe el aviso al momento.", "vertical": "" }
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Entra a Garantías y toca «Registrar reclamo»",
+      "tomas": [
+        { "captura": "01-entrada", "resalte": "menu" },
+        { "captura": "01-entrada", "resalte": "registrar", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Entra a Garantías.",
+        "Toca Registrar reclamo."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Elige la unidad",
+      "tomas": [
+        { "captura": "02-unidad", "resalte": "unidad" },
+        { "captura": "02-unidad", "resalte": "cliente", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Busca la unidad por su placa, su código interno o el cliente.",
+        "El cliente sale solo de la unidad."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Escribe qué reclama y pon fotos",
+      "tomas": [
+        { "captura": "03-reclamo", "resalte": "reclama" },
+        { "captura": "03-reclamo", "resalte": "trae", "desdeFrase": 1 },
+        { "captura": "04-foto", "resalte": "fotos", "desdeFrase": 2 }
+      ],
+      "frases": [
+        "Escribe qué reclama el cliente, con sus palabras: qué falla y dónde.",
+        "Anota quién trajo la unidad y cómo avisarle.",
+        "Pon hasta cuatro fotos de la falla y de la placa."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Toca «Registrar el reclamo»",
+      "tomas": [
+        { "captura": "04-foto", "resalte": "enviar" },
+        { "captura": "05-registrado", "resalte": "verde", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Toca Registrar el reclamo.",
+        "Sale con su número RG, y ya le llegó a Administración."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Sigue cómo va",
+      "tomas": [
+        { "captura": "06-lista", "resalte": "fila" },
+        { "captura": "07-ficha", "resalte": "estado", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "En la lista ves cómo va cada reclamo.",
+        "Administración abre su OT de garantía, y al final Calidad anota por qué falló."
+      ]
+    },
+    {
+      "tipo": "porque",
+      "titulo": "Por qué importa",
+      "puntos": ["Ningún reclamo se olvida", "Se sabe por qué falló cada uno"],
+      "lema": "El sistema te guía. Tú decides.",
+      "frases": [
+        "¿Por qué importa? Porque ningún reclamo se olvida,",
+        "y al cerrarlo se sabe por qué falló, para que no se repita.",
+        "El sistema te guía; tú atiendes al cliente."
+      ]
+    },
+    {
+      "tipo": "cierre",
+      "titulo": "En resumen",
+      "puntos": ["Elige la unidad", "Escribe qué reclama", "Sigue cómo va"],
+      "frases": [
+        "En resumen.",
+        "Uno: elige la unidad.",
+        "Dos: escribe qué reclama, con fotos.",
+        "Tres: sigue cómo va hasta que se cierre."
+      ]
+    }
+  ]
+}

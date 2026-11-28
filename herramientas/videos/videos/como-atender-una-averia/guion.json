@@ -1,0 +1,107 @@
+{
+  "id": "como-atender-una-averia",
+  "tarea": "Cómo atender una avería",
+  "puesto": "Mantenimiento de equipos",
+  "voz": { "nombre": "es-PE-CamilaNeural", "velocidad": "-5%" },
+  "pronunciacion": {},
+  "pista_whisper": "Metal Work. Avería, Mantenimiento, equipo, diagnóstico, inversora, Maestranza, operativo, parado, relé térmico.",
+  "escenas": [
+    {
+      "tipo": "gancho",
+      "titular": "Atiende primero **lo que detiene el trabajo**",
+      "frases": ["Atiende primero lo que detiene el trabajo."]
+    },
+    { "tipo": "portada" },
+    {
+      "tipo": "antes-despues",
+      "antes": ["La avería llegaba de palabra", "No quedaba la historia del equipo"],
+      "ahora": { "captura": "07-cerrada", "resalte": "verde", "puntos": ["Cada avería con su número", "El equipo vuelve a operativo solo"] },
+      "frases": [
+        { "texto": "Antes, la avería llegaba de palabra, y no quedaba la historia del equipo.", "vertical": "" },
+        { "texto": "Ahora cada avería tiene su número, y al cerrarla el equipo vuelve a operativo solo.", "vertical": "" }
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Entra a Averías: primero lo que detiene el trabajo",
+      "tomas": [
+        { "captura": "01-bandeja", "resalte": "menu" },
+        { "captura": "01-bandeja", "resalte": "fila", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Entra a Averías.",
+        "En Por atender sale primero lo que detiene el trabajo."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Abre la avería y lee qué hace el equipo",
+      "tomas": [
+        { "captura": "02-ficha", "resalte": "falla" },
+        { "captura": "02-ficha", "resalte": "atender", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Ábrela y lee qué hace el equipo.",
+        "Revisa el equipo y toca Atender."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Anota el diagnóstico",
+      "tomas": [
+        { "captura": "03-diagnostico", "resalte": "diagnostico" },
+        { "captura": "04-en-atencion", "resalte": "verde", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Escribe qué tiene el equipo y toca Atender.",
+        "La avería queda En atención, y quien la reportó lo ve."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Ciérrala con el trabajo hecho",
+      "tomas": [
+        { "captura": "05-cerrar", "resalte": "cerrar" },
+        { "captura": "06-trabajo", "resalte": "trabajo", "desdeFrase": 1 },
+        { "captura": "06-trabajo", "resalte": "horas", "desdeFrase": 2 }
+      ],
+      "frases": [
+        "Cuando quede, toca Cerrar la avería.",
+        "Escribe el trabajo hecho.",
+        "Revisa las horas que estuvo parado."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "El equipo vuelve a operativo",
+      "tomas": [
+        { "captura": "07-cerrada", "resalte": "verde" }
+      ],
+      "frases": [
+        "El equipo vuelve a operativo, y a quien la reportó le llega el aviso para confirmar si quedó bien."
+      ]
+    },
+    {
+      "tipo": "porque",
+      "titulo": "Por qué importa",
+      "puntos": ["Nada que detiene el trabajo espera", "Cada equipo guarda su historia"],
+      "lema": "El sistema te guía. Tú decides.",
+      "frases": [
+        "¿Por qué importa? Porque lo que detiene el trabajo no espera,",
+        "y cada equipo guarda su historia de averías.",
+        "El sistema te guía; tú lo dejas funcionando."
+      ]
+    },
+    {
+      "tipo": "cierre",
+      "titulo": "En resumen",
+      "puntos": ["Atiende primero lo urgente", "Anota el diagnóstico", "Ciérrala con el trabajo hecho"],
+      "frases": [
+        "En resumen.",
+        "Uno: atiende primero lo urgente.",
+        "Dos: anota el diagnóstico.",
+        "Tres: ciérrala con el trabajo hecho."
+      ]
+    }
+  ]
+}

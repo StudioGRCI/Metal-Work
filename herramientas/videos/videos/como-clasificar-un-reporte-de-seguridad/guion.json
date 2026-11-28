@@ -1,0 +1,111 @@
+{
+  "id": "como-clasificar-un-reporte-de-seguridad",
+  "tarea": "Cómo clasificar un reporte de seguridad",
+  "puesto": "SSOMA",
+  "voz": { "nombre": "es-PE-CamilaNeural", "velocidad": "-5%" },
+  "pronunciacion": {},
+  "pista_whisper": "Metal Work. SSOMA, reporte de seguridad, condición insegura, causa, acción correctiva, plegadora, guarda, Maestranza, supervisor.",
+  "escenas": [
+    {
+      "tipo": "gancho",
+      "titular": "Cada riesgo reportado, **con quién lo corrige y hasta cuándo**",
+      "frases": ["Que cada riesgo reportado tenga quién lo corrige y hasta cuándo."]
+    },
+    { "tipo": "portada" },
+    {
+      "tipo": "antes-despues",
+      "antes": ["El riesgo se contaba en el pasillo", "Nadie sabía si se corrigió"],
+      "ahora": { "captura": "08-encargada", "resalte": "verde", "puntos": ["Cada reporte con su causa", "La corrección con responsable y fecha"] },
+      "frases": [
+        { "texto": "Antes, el riesgo se contaba en el pasillo, y nadie sabía si se había corregido.", "vertical": "" },
+        { "texto": "Ahora cada reporte queda con su causa, y la corrección con su responsable y su fecha.", "vertical": "" }
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Entra a Reportes de seguridad",
+      "tomas": [
+        { "captura": "01-lista", "resalte": "menu" },
+        { "captura": "01-lista", "resalte": "fila", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Entra a Reportes de seguridad.",
+        "Lo nuevo llega Por clasificar."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Abre el reporte y toca «Clasificar»",
+      "tomas": [
+        { "captura": "02-ficha", "resalte": "que" },
+        { "captura": "02-ficha", "resalte": "clasificar", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Ábrelo y lee qué se vio.",
+        "Toca Clasificar."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Elige qué fue y anota la causa",
+      "tomas": [
+        { "captura": "03-clase", "resalte": "clase" },
+        { "captura": "04-causa", "resalte": "causa", "desdeFrase": 1 },
+        { "captura": "05-clasificado", "resalte": "tarjeta", "desdeFrase": 2 }
+      ],
+      "frases": [
+        "Elige qué fue de verdad.",
+        "Escribe la causa: por qué pasó.",
+        "Toca Guardar la clasificación."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Encarga la corrección",
+      "tomas": [
+        { "captura": "06-agregar", "resalte": "agregar" },
+        { "captura": "07-accion", "resalte": "descripcion", "desdeFrase": 1 },
+        { "captura": "07-accion", "resalte": "responsable", "desdeFrase": 2 }
+      ],
+      "frases": [
+        "Toca Agregar acción.",
+        "Escribe qué se tiene que hacer.",
+        "Elige al responsable y la fecha límite."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Toca «Encargar la acción»",
+      "tomas": [
+        { "captura": "07-accion", "resalte": "encargar" },
+        { "captura": "08-encargada", "resalte": "verde", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Toca Encargar la acción.",
+        "Al responsable le llega el aviso, y la cierra con fotos cuando esté hecha."
+      ]
+    },
+    {
+      "tipo": "porque",
+      "titulo": "Por qué importa",
+      "puntos": ["Ningún riesgo queda sin dueño", "Se ve qué causa se repite"],
+      "lema": "El sistema te guía. Tú decides.",
+      "frases": [
+        "¿Por qué importa? Porque ningún riesgo queda sin dueño,",
+        "y con las causas anotadas se ve qué se repite en cada área.",
+        "El sistema te guía; tú cuidas a la gente."
+      ]
+    },
+    {
+      "tipo": "cierre",
+      "titulo": "En resumen",
+      "puntos": ["Clasifica el reporte", "Anota la causa", "Encarga la corrección"],
+      "frases": [
+        "En resumen.",
+        "Uno: clasifica el reporte.",
+        "Dos: anota la causa.",
+        "Tres: encarga la corrección, con responsable y fecha."
+      ]
+    }
+  ]
+}
