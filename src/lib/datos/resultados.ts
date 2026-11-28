@@ -13,6 +13,8 @@ import { createClient } from '@/lib/supabase/server'
 export type CodigoDelPeriodo = {
   codigo: string
   cliente: string | null
+  /** De qué cotización y unidad: «9578-2026», o «3568-2026 · unidad 1 de 2». */
+  unidad: string | null
   facturas: number
   /** Sin IGV, en soles: solo lo que ya se puede pasar a soles. */
   ingreso: number
@@ -32,13 +34,18 @@ export type CodigoDelPeriodo = {
   ganancia: number | null
 }
 
-/** Una fila de lo que el total resta: un área, un grupo de la oficina o algo sin repartir. */
+/**
+ * Una fila de lo que el total resta: un área, un grupo de la oficina o algo sin
+ * repartir. En lo sin repartir por mes, `nombre` lleva sus meses (`2026-10,2026-11`).
+ */
 export type GastoDelPeriodo = {
   clave: string | null
   nombre: string | null
   soles: number
   lineas: number
   lineasSinCambio: number
+  /** Lo que todavía no suma: salidas sin precio, horas sin costo, OS por aprobar. */
+  pendientes: number
 }
 
 export type Resultados = {
@@ -59,13 +66,14 @@ export async function resultadosDeMetalWork(desde: string, hasta: string): Promi
   const gasto = (tipo: string): GastoDelPeriodo[] =>
     filas
       .filter((f) => f.tipo === tipo)
-      .map((f) => ({ clave: f.clave, nombre: f.nombre, soles: n(f.soles), lineas: n(f.lineas), lineasSinCambio: n(f.lineas_sin_cambio) }))
+      .map((f) => ({ clave: f.clave, nombre: f.nombre, soles: n(f.soles), lineas: n(f.lineas), lineasSinCambio: n(f.lineas_sin_cambio), pendientes: n(f.pendientes) }))
   return {
     codigos: filas
       .filter((f) => f.tipo === 'CODIGO' && f.clave)
       .map((f) => ({
         codigo: f.clave ?? '',
         cliente: f.cliente,
+        unidad: f.nombre,
         facturas: n(f.facturas),
         ingreso: n(f.facturado_soles),
         usdSinCambio: n(f.facturado_usd_sin_cambio),

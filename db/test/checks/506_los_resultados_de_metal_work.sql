@@ -26,6 +26,16 @@
 -- 4. Una factura anulada deja de contar.
 -- 5. Sin permiso no se ve; el periodo al revés o de más de un año se rechaza; el
 --    cálculo interno no lo llama nadie, y el permiso lo tiene algún rol.
+-- 6. El sueldo de la oficina del mes pasado, sin horas en ninguna unidad, sale
+--    sin repartir (con `null`, `sueldos_oficina_del_mes` solo da los meses con
+--    horas: la primera versión nunca lo restaba).
+-- 7. C, cotizada en soles (11 800) y facturada en dólares el mes pasado (US$ 1 180
+--    al 3,50 = S/ 4 130, el 35 % de la unidad) y en soles este mes (5 900, el
+--    50 %): cada mes lleva su parte medida en la moneda de la cotización, y los
+--    dos meses suman lo mismo que el periodo de los dos.
+-- 8. D, cotizada sin monto: su costo se reparte por lo facturado entre todas sus
+--    facturas, no solo las de hasta el periodo: 1 180 el mes pasado (25 %) y
+--    3 540 este mes (75 %). Con la primera versión el mes pasado llevaba el 100 %.
 \set ON_ERROR_STOP on
 begin;
 
@@ -285,6 +295,130 @@ begin
   perform test.debe_fallar('select * from public.resultados_metal_work(null, null)', 'sin fechas se pide el periodo', 'Elige el día');
   perform test.debe_fallar('select * from public.resultados_facturas_calculado(null)', 'ni Gerencia llama el cálculo interno', 'permission denied');
   reset role;
+end $$;
+
+-- ============================================ 6 a 8: el sueldo sin horas, otra moneda y sin precio
+do $$
+declare v text; v_id uuid;
+begin
+  foreach v in array array['cotc', 'cotd', 'otc', 'otd', 'fc1', 'fc2', 'fd1', 'fd2'] loop
+    perform set_config('prueba.' || v, gen_random_uuid()::text, true);
+  end loop;
+  foreach v in array array['fc1', 'fc2', 'fd1', 'fd2'] loop
+    perform set_config('prueba.' || v || '_ruta', current_setting('prueba.' || v) || '/' || gen_random_uuid() || '.pdf', true);
+  end loop;
+end $$;
+insert into storage.objects (bucket_id, name, owner_id, metadata)
+select 'cotizaciones-pdf', 'cot/' || current_setting('prueba.' || c) || '/v1.pdf', current_setting('prueba.vendedor'),
+       '{"mimetype": "application/pdf", "size": 120}'::jsonb
+  from unnest(array['cotc', 'cotd']) c;
+insert into storage.objects (bucket_id, name, owner_id, metadata)
+select 'facturas-venta', current_setting('prueba.' || f || '_ruta'), current_setting('prueba.contabilidad'), '{"mimetype": "application/pdf", "size": 900}'::jsonb
+  from unnest(array['fc1', 'fc2', 'fd1', 'fd2']) f;
+
+select pg_temp.como('vendedor');
+set local role authenticated;
+insert into public.cotizaciones_pdf (id, numero, cliente_id, tipo_carroceria_id, nombre_archivo, ruta_storage, mime_type, tamano_bytes, registrado_por, monto_venta, moneda, cantidad_unidades)
+select pg_temp.id(c), 'QA-506-' || upper(right(c, 1)), pg_temp.id('cliente'), pg_temp.id('carroceria'),
+       'v1.pdf', 'cot/' || current_setting('prueba.' || c) || '/v1.pdf', 'application/pdf', 120, pg_temp.id('vendedor'), m, 'PEN', 1
+  from (values ('cotc', 11800), ('cotd', null)) x(c, m);
+reset role;
+insert into public.cotizaciones_pdf_igv (cotizacion_id, version, incluye_igv, confirmado_por)
+values (pg_temp.id('cotc'), 1, true, pg_temp.id('vendedor')), (pg_temp.id('cotd'), 1, true, pg_temp.id('vendedor'))
+on conflict (cotizacion_id) do update set incluye_igv = excluded.incluye_igv;
+
+select pg_temp.como('gerente');
+set local role authenticated;
+update public.cotizaciones_pdf set estado = 'APROBADA' where id in (pg_temp.id('cotc'), pg_temp.id('cotd'));
+reset role;
+
+select pg_temp.como('administracion');
+set local role authenticated;
+select pg_temp.cargar('cotc', 'otc', 'qa-506 c', '95063');
+select pg_temp.cargar('cotd', 'otd', 'qa-506 d', '95064');
+reset role;
+
+-- El cambio del día de la factura en dólares del mes pasado.
+insert into public.tipos_de_cambio (fecha, compra, venta, fuente, registrado_por)
+values (pg_temp.dia('pasado') + 9, 3.50, 3.55, 'OTRO', pg_temp.id('gerente'))
+on conflict (fecha) do update set compra = excluded.compra, venta = excluded.venta;
+
+select pg_temp.como('contabilidad');
+set local role authenticated;
+select pg_temp.facturar('fc1', 'cotc', 'E001-5065', pg_temp.dia('pasado') + 9, 'USD', 1180);
+select pg_temp.facturar('fc2', 'cotc', 'E001-5066', pg_temp.dia('hoy'), 'PEN', 5900);
+select pg_temp.facturar('fd1', 'cotd', 'E001-5067', pg_temp.dia('pasado') + 4, 'PEN', 1180);
+select pg_temp.facturar('fd2', 'cotd', 'E001-5068', pg_temp.dia('hoy'), 'PEN', 3540);
+reset role;
+
+-- Las horas de C y de D (para que tengan costo) y un sueldo de la oficina el mes
+-- pasado, de alguien de planilla administrativa que no cargó horas.
+set local session_replication_role = replica;
+do $$
+declare v_trab uuid := gen_random_uuid(); v_ofi uuid := gen_random_uuid(); v_ger uuid := pg_temp.id('gerente');
+begin
+  insert into public.trabajadores (id, nombres, apellidos, dni, area_id)
+  values (v_trab, 'OPERARIO', 'DOS DEL CHECK 506', '99950602', (select id from public.areas where codigo = 'PRD'));
+  insert into public.trabajadores (id, nombres, apellidos, dni, planilla)
+  values (v_ofi, 'ASISTENTE', 'DE OFICINA DEL CHECK 506', '99950603', 'ADMINISTRATIVA');
+  insert into public.tareos (trabajador_id, fecha, codigo_interno, horas, costo_hora, costo, registrado_por)
+  values (v_trab, pg_temp.dia('hoy'), 'QA-506 C', 8, 100, 800, v_ger),
+         (v_trab, pg_temp.dia('hoy'), 'QA-506 D', 4, 100, 400, v_ger);
+  insert into public.oficina_pagos (trabajador_id, desde, hasta, monto, aportes, registrado_por)
+  values (v_ofi, pg_temp.dia('pasado'), pg_temp.dia('mes') - 1, 2000, 180, v_ger);
+end $$;
+set local session_replication_role = origin;
+
+select test.afirmar(not exists (select 1 from public.horas_por_codigo_del_mes(pg_temp.dia('pasado')))
+  and (select monto from public.sueldos_oficina_del_mes(pg_temp.dia('pasado'))) >= 2180,
+  'la prueba vale: el mes pasado sigue sin horas en ninguna unidad y tiene S/ 2 180 de sueldo de la oficina');
+
+do $$
+declare
+  v_quien text; v record; w record; t record;
+  v_pasado date := pg_temp.dia('pasado'); v_fin_pasado date := (pg_temp.dia('mes') - 1);
+  v_mes date := pg_temp.dia('mes'); v_fin_mes date := (pg_temp.dia('mes') + interval '1 month' - interval '1 day')::date;
+begin
+  foreach v_quien in array array['gerente', 'contabilidad'] loop
+    perform pg_temp.como(v_quien);
+    set local role authenticated;
+
+    -- 6. El sueldo de la oficina sin horas.
+    perform test.afirmar(
+      (select coalesce(sum(r.soles), 0) from public.resultados_metal_work(v_pasado, v_fin_pasado) r where r.tipo = 'SIN_REPARTIR' and r.clave = 'SUELDOS_OFICINA')
+        - pg_temp.antes('pasado', 'SIN_REPARTIR', 'SUELDOS_OFICINA') = 2180
+      and (select r.nombre from public.resultados_metal_work(v_pasado, v_fin_pasado) r where r.tipo = 'SIN_REPARTIR' and r.clave = 'SUELDOS_OFICINA')
+        = to_char(v_pasado, 'YYYY-MM'),
+      v_quien || ': el sueldo de la oficina del mes pasado, sin horas en ninguna unidad, sale sin repartir con su mes');
+
+    -- 7. Otra moneda que la cotización.
+    select * into v from pg_temp.fila(v_pasado, v_fin_pasado, 'CODIGO', 'QA-506 C')
+      as (facturado numeric, usd numeric, sin_cambio integer, parte numeric, costo numeric, soles numeric, ganancia numeric, lineas integer, facturas integer);
+    select * into w from pg_temp.fila(v_mes, v_fin_mes, 'CODIGO', 'QA-506 C')
+      as (facturado numeric, usd numeric, sin_cambio integer, parte numeric, costo numeric, soles numeric, ganancia numeric, lineas integer, facturas integer);
+    select * into t from pg_temp.fila(v_pasado, v_fin_mes, 'CODIGO', 'QA-506 C')
+      as (facturado numeric, usd numeric, sin_cambio integer, parte numeric, costo numeric, soles numeric, ganancia numeric, lineas integer, facturas integer);
+    perform test.afirmar(v.facturado = 3500 and v.parte = 0.35 and w.parte = 0.5 and t.parte = 0.85 and v.costo > 0
+      and v.soles = round(v.costo * 0.35, 2) and w.soles = round(w.costo * 0.5, 2)
+      and abs(v.soles + w.soles - t.soles) <= 0.01
+      and not (select r.sin_precio_de_venta from public.resultados_metal_work(v_pasado, v_fin_pasado) r where r.clave = 'QA-506 C'),
+      format('%s: C en dólares contra su cotización en soles lleva el 35 %% el mes pasado y el 50 %% este mes, y los meses suman el periodo (dice %s + %s = %s)',
+             v_quien, v.parte, w.parte, t.parte));
+
+    -- 8. Sin precio de venta.
+    select * into v from pg_temp.fila(v_pasado, v_fin_pasado, 'CODIGO', 'QA-506 D')
+      as (facturado numeric, usd numeric, sin_cambio integer, parte numeric, costo numeric, soles numeric, ganancia numeric, lineas integer, facturas integer);
+    select * into w from pg_temp.fila(v_mes, v_fin_mes, 'CODIGO', 'QA-506 D')
+      as (facturado numeric, usd numeric, sin_cambio integer, parte numeric, costo numeric, soles numeric, ganancia numeric, lineas integer, facturas integer);
+    select * into t from pg_temp.fila(v_pasado, v_fin_mes, 'CODIGO', 'QA-506 D')
+      as (facturado numeric, usd numeric, sin_cambio integer, parte numeric, costo numeric, soles numeric, ganancia numeric, lineas integer, facturas integer);
+    perform test.afirmar(v.parte = 0.25 and w.parte = 0.75 and t.parte = 1 and v.costo > 0
+      and abs(v.soles + w.soles - t.soles) <= 0.01
+      and (select r.sin_precio_de_venta from public.resultados_metal_work(v_pasado, v_fin_pasado) r where r.clave = 'QA-506 D'),
+      format('%s: D sin precio reparte su costo entre todas sus facturas: 25 %% el mes pasado y 75 %% este (dice %s + %s = %s)',
+             v_quien, v.parte, w.parte, t.parte));
+    reset role;
+  end loop;
 end $$;
 
 select test.afirmar(

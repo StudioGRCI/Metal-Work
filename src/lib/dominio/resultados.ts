@@ -71,7 +71,7 @@ export function enOtraEscala(p: Periodo, escala: Escala, hoy: string): string {
 const redondear = (n: number) => Math.round(n * 100) / 100
 
 type ConSoles = { soles: number }
-type Codigo = { ingreso: number; costo: number; ganancia: number | null; usdSinCambio: number }
+type Codigo = { ingreso: number; costo: number; costoDelCodigo: number; ganancia: number | null; usdSinCambio: number }
 
 /**
  * El total de Metal Work: la suma de los códigos que se pueden decir en soles,
@@ -97,6 +97,8 @@ export function totalDeMetalWork(r: { codigos: Codigo[]; operativo: ConSoles[]; 
     ganancia: redondear(margen - operativo - oficina - sinRepartir),
     codigosFuera: fuera.length,
     usdFuera: redondear(fuera.reduce((s, c) => s + c.usdSinCambio, 0)),
+    /** Las que entran al total sin ningún costo cargado: su ganancia es todo lo facturado. */
+    sinCosto: completos.filter((c) => c.costoDelCodigo === 0).length,
   }
 }
 

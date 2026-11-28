@@ -11,6 +11,10 @@
  *   3. Administración y Almacén no entran: van a /sin-permiso y no tienen el
  *      enlace en el menú.
  *   4. A 390 y 1440 px nada se sale de costado. Las capturas quedan en CAPTURAS.
+ *   5. Lo que la auditoría encontró, mirado contra otra fuente que el reporte:
+ *      el mes pasado sin horas resta el sueldo de la oficina que da
+ *      `sueldos_oficina_del_mes`; el código sin costo lo dice; lo que todavía
+ *      no suma en el gasto operativo se avisa; un periodo que no existe lo dice.
  *
  * Variables: BANCO_CLAVE, BASE (http://localhost:3111), CAPTURAS, BANCO_BASE.
  */
@@ -133,9 +137,9 @@ for (const [puesto, correo] of [
       (s, f) => (f.tipo === 'CODIGO' ? (f.ganancia === null ? s : s + Number(f.ganancia)) : s - Number(f.soles)),
       0,
     )
-    const gananciaEnPantalla = numero(await pagina.locator('[data-renglon="ganancia"]').textContent().catch(() => ''))
+    const gananciaEnPantalla = numero(await pagina.locator('[data-renglon="ganancia"] dd').first().textContent().catch(() => ''))
     comprobar(Math.abs(gananciaEnPantalla - Math.round(total * 100) / 100) < 0.011, `${puesto} ${ancho}: ganancia de Metal Work ${gananciaEnPantalla} = ${total.toFixed(2)} de la base`)
-    const cifra = numero(await pagina.locator('[data-cifra="ganancia"]').textContent().catch(() => ''))
+    const cifra = numero(await pagina.locator('[data-cifra="ganancia"] dd').first().textContent().catch(() => ''))
     comprobar(cifra === gananciaEnPantalla, `${puesto} ${ancho}: la cifra de arriba dice lo mismo que el total`)
 
     const sale = await seSaleDeCostado(pagina)
@@ -159,7 +163,7 @@ for (const [puesto, correo] of [
       await pagina.goto(`${BASE}/resultados?periodo=2020-01-01`, { waitUntil: 'networkidle' })
       comprobar((await pagina.locator('[data-codigo]').count()) === 0, `gerencia ${ancho}: un día sin facturas no tiene filas`)
       const vacio = limpio(await pagina.locator('[data-por-codigo]').textContent())
-      comprobar(/Ninguna factura de venta en/.test(vacio), `gerencia ${ancho}: lo dice («${vacio.slice(0, 90)}»)`)
+      comprobar(/Ninguna factura de venta el 1 de enero de 2020/.test(vacio), `gerencia ${ancho}: lo dice («${vacio.slice(0, 90)}»)`)
       comprobar(!(await pagina.locator('[data-total-metal-work]').textContent()).includes('-0.00'), `gerencia ${ancho}: el cero no sale «S/ -0.00»`)
       await pagina.screenshot({ path: join(CAPTURAS, `resultados-dia-vacio-gerencia-${ancho}.png`), fullPage: true })
 
@@ -170,6 +174,38 @@ for (const [puesto, correo] of [
     comprobar(errores.length === 0, `${puesto} ${ancho}: sin errores en la consola${errores.length ? ` (${errores[0]})` : ''}`)
     await contexto.close()
   }
+}
+
+// 5 · Lo que encontró la auditoría.
+{
+  console.log('\nlo que encontró la auditoría')
+  const pasado = new Date(Date.UTC(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)) - 2, 1)).toISOString().slice(0, 7)
+  const [{ horas }] = (await base.query('select count(*)::int as horas from public.horas_por_codigo_del_mes($1)', [`${pasado}-01`])).rows
+  const [{ sueldo }] = (await base.query('select coalesce(sum(monto), 0)::numeric as sueldo from public.sueldos_oficina_del_mes($1)', [`${pasado}-01`])).rows
+  const { pagina, contexto } = await entrar('gerencia.local@metalwork.test')
+  await pagina.goto(`${BASE}/resultados?periodo=${pasado}`, { waitUntil: 'networkidle' })
+  const parte = pagina.locator('[data-parte="SUELDOS_OFICINA"]')
+  if (horas === 0 && Number(sueldo) > 0) {
+    comprobar(Math.abs(numero(await parte.locator('.tabular').textContent().catch(() => '')) - Number(sueldo)) < 0.011,
+      `${pasado}, sin horas en ninguna unidad: resta el sueldo de la oficina, S/ ${sueldo}`)
+  } else {
+    comprobar((await parte.count()) === 0, `${pasado} tiene horas (${horas}) o no tiene sueldo: no sale el sueldo sin repartir`)
+  }
+  await pagina.screenshot({ path: join(CAPTURAS, `resultados-mes-pasado-gerencia-1440.png`), fullPage: true })
+
+  await pagina.goto(`${BASE}/resultados`, { waitUntil: 'networkidle' })
+  const sinCosto = await resultadosEnLaBase('gerencia.local@metalwork.test', `${mes}-01`, `${mes}-${String(ultimo).padStart(2, '0')}`)
+  for (const c of sinCosto.filter((f) => f.tipo === 'CODIGO' && Number(f.costo_del_codigo) === 0)) {
+    comprobar((await pagina.locator(`[data-codigo="${c.clave}"] [data-aviso-codigo="Sin costo cargado"]`).count()) === 1, `${c.clave}, sin costo: lo dice`)
+  }
+  const pendientes = sinCosto.filter((f) => f.tipo === 'GASTO_OPERATIVO').reduce((s, f) => s + Number(f.pendientes ?? 0), 0)
+  comprobar((await pagina.locator('[data-renglon="operativo"] [data-pendientes]').count()) === (pendientes > 0 ? 1 : 0),
+    `el gasto operativo avisa lo que todavía no suma (${pendientes} líneas)`)
+  comprobar(!(await pagina.locator('[data-total-metal-work]').textContent()).includes('-0.00'), 'el mes de hoy no tiene «S/ -0.00»')
+
+  await pagina.goto(`${BASE}/resultados?periodo=2026-02-30`, { waitUntil: 'networkidle' })
+  comprobar((await pagina.locator('[data-periodo-no-valido]').count()) === 1, 'un 30 de febrero dice que no existe y qué muestra')
+  await contexto.close()
 }
 
 // 3 · Quien no debe no entra.

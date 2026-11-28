@@ -20690,6 +20690,9 @@ export type Database = {
           soles: number | null
           parte_del_costo: number | null
           sin_precio_de_venta: boolean | null
+          cotizacion: string | null
+          unidad: number | null
+          unidades: number | null
         }[]
       }
       resultados_metal_work: {
@@ -20715,6 +20718,7 @@ export type Database = {
           ganancia: number | null
           lineas: number | null
           lineas_sin_cambio: number | null
+          pendientes: number | null
         }[]
       }
       resumen_costeo_ot: {

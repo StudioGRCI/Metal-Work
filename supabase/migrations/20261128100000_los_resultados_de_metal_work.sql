@@ -22,8 +22,13 @@
 --     (`facturacion_por_unidad`); lo facturado de más ya no lleva costo. El
 --     costo es el que Gerencia congeló al cerrar el costeo, o el de hoy si sigue
 --     abierto: por eso un mes es provisional hasta que sus códigos se cierran.
---     Sin precio de la unidad (la cotización sin monto o en otra moneda), el
---     costo se reparte entre sus facturas por lo facturado hasta hoy, y se dice.
+--     La factura en otra moneda que su cotización se mide pasándola a la moneda
+--     de la cotización con el cambio de compra de su día. Sin precio de la
+--     unidad (la cotización sin monto, o una factura en otra moneda sin cambio
+--     todavía), el costo se reparte entre todas las facturas vigentes del código
+--     por lo facturado en soles, y se dice. Las cuentas que miden la unidad usan
+--     todas las facturas vigentes, no solo las del periodo: así los meses de un
+--     año suman lo mismo que el año.
 --   · Después, el total de Metal Work resta, una sola vez y al final:
 --       - el gasto operativo de cada área (lo cargado a PLANTA, migración
 --         20261127190000, con la misma regla de qué suma);
@@ -54,11 +59,13 @@ on conflict do nothing;
 
 -- 2. Lo que lleva cada factura de su unidad: sin permiso, lo llama solo el reporte --
 -- Una fila por parte de factura vigente (`v_facturas_venta_por_unidad`), con lo
--- que pesa en soles sin IGV y qué parte del costo de su código le toca.
+-- que pesa en soles sin IGV y qué parte del costo de su código le toca. Lo que
+-- mide la unidad (su precio, cuántas unidades, lo facturado) se cuenta con todas
+-- las facturas vigentes; `p_hasta` solo deja fuera las filas de después.
 create or replace function public.resultados_facturas_calculado(p_hasta date)
 returns table (parte_id uuid, factura_id uuid, codigo text, fecha date, cliente text, numero text, moneda text,
                monto numeric, sin_igv numeric, cambio numeric, soles numeric, parte_del_costo numeric,
-               sin_precio_de_venta boolean)
+               sin_precio_de_venta boolean, cotizacion text, unidad integer, unidades integer)
 language plpgsql stable rows 100 set search_path to 'public' as $$
 -- plpgsql y no sql: la llama el reporte, que se abre seguido (skill datos › Rendimiento).
 #variable_conflict use_column
@@ -68,14 +75,14 @@ begin
   return query
   with fx as (
     select p.id, p.factura_id, public.normalizar_codigo_interno(p.codigo_interno) as codigo, p.cotizacion_pdf_id as cot,
-           p.numero_de_unidad as unidad, p.fecha_emision as fecha, p.cliente, p.numero, p.moneda::text as moneda,
-           p.monto::numeric as monto, p.creado_en
+           p.cotizacion_numero, p.numero_de_unidad as unidad, p.fecha_emision as fecha, p.cliente, p.numero,
+           p.moneda::text as moneda, p.monto::numeric as monto, p.creado_en,
+           -- El cambio de compra de su día: pasa a soles la factura en dólares y
+           -- mide la que va en otra moneda que su cotización.
+           public.cambio_del_dia(p.fecha_emision, 'COMPRA') as tc
       from public.v_facturas_venta_por_unidad p
      where p.anulada_en is null
        and public.normalizar_codigo_interno(p.codigo_interno) is not null
-       -- Hasta el último día pedido: lo facturado antes también cuenta, para saber
-       -- cuánto del costo ya se llevaron las facturas anteriores.
-       and (p_hasta is null or p.fecha_emision <= p_hasta)
   ), precio as (
     -- La parte de la unidad en su cotización, con IGV y en su moneda: la cuenta de Facturación.
     select c.id as cot, coalesce(c.moneda::text, 'PEN') as moneda, greatest(coalesce(c.cantidad_unidades, 1), 1)::integer as unidades,
@@ -90,19 +97,26 @@ begin
     select fx.codigo, count(distinct (fx.cot, fx.unidad))::numeric as n from fx group by fx.codigo
   ), medida as (
     select fx.*,
-           case when pr.moneda = fx.moneda then public.parte_de_unidad(pr.total, pr.unidades, fx.unidad) end as de_la_unidad,
+           public.parte_de_unidad(pr.total, pr.unidades, fx.unidad) as de_la_unidad,
+           pr.unidades as unidades_de_la_cot,
+           -- La factura en la moneda de su cotización, para medirla contra el precio.
+           case when pr.moneda = fx.moneda then fx.monto
+                when fx.moneda = 'USD' and pr.moneda = 'PEN' then fx.monto * fx.tc
+                when fx.moneda = 'PEN' and pr.moneda = 'USD' then fx.monto / nullif(fx.tc, 0) end as medido,
+           -- Con IGV y en soles, para repartir cuando no hay precio.
+           case when fx.moneda = 'PEN' then fx.monto when fx.moneda = 'USD' then fx.monto * fx.tc end as en_soles,
            u.n as unidades_del_codigo
       from fx
       join unidades u on u.codigo = fx.codigo
       left join precio pr on pr.cot = fx.cot
   ), con_precio as (
-    select m.*, bool_and(coalesce(m.de_la_unidad > 0, false)) over (partition by m.codigo) as hay_precio,
-           sum(m.monto) over (partition by m.codigo) as facturado_del_codigo
+    select m.*, bool_and(coalesce(m.de_la_unidad > 0 and m.medido is not null, false)) over (partition by m.codigo) as hay_precio,
+           sum(m.en_soles) over (partition by m.codigo) as facturado_del_codigo
       from medida m
   ), fraccion as (
     select c.*,
-           case when c.hay_precio then c.monto / c.de_la_unidad / c.unidades_del_codigo
-                when c.facturado_del_codigo > 0 then c.monto / c.facturado_del_codigo end as fraccion
+           case when c.hay_precio then c.medido / c.de_la_unidad / c.unidades_del_codigo
+                when c.facturado_del_codigo > 0 then c.en_soles / c.facturado_del_codigo end as fraccion
       from con_precio c
   ), acumulada as (
     select f.*, sum(f.fraccion) over (partition by f.codigo order by f.fecha, f.creado_en, f.id) as hasta_aqui
@@ -110,31 +124,38 @@ begin
   )
   select a.id, a.factura_id, a.codigo, a.fecha, a.cliente, a.numero, a.moneda, a.monto,
          round(a.monto / (1 + c_igv), 2),
-         case when a.moneda = 'USD' then public.cambio_del_dia(a.fecha, 'COMPRA') end,
+         case when a.moneda = 'USD' then a.tc end,
          case when a.moneda = 'PEN' then round(a.monto / (1 + c_igv), 2)
-              when a.moneda = 'USD' then round(a.monto / (1 + c_igv) * public.cambio_del_dia(a.fecha, 'COMPRA'), 2) end,
-         -- Lo que esta factura se lleva del costo: hasta completar la unidad, nunca más.
-         greatest(least(a.hasta_aqui, 1) - least(a.hasta_aqui - a.fraccion, 1), 0),
-         not a.hay_precio
-    from acumulada a;
+              when a.moneda = 'USD' then round(a.monto / (1 + c_igv) * a.tc, 2) end,
+         -- Lo que esta factura se lleva del costo: hasta completar la unidad, nunca
+         -- más. Sin fracción (en dólares sin cambio y sin precio), nada todavía.
+         coalesce(greatest(least(a.hasta_aqui, 1) - least(a.hasta_aqui - a.fraccion, 1), 0), 0),
+         not a.hay_precio,
+         a.cotizacion_numero, a.unidad, a.unidades_de_la_cot
+    from acumulada a
+   where p_hasta is null or a.fecha <= p_hasta;
 end $$;
 
 revoke all on function public.resultados_facturas_calculado(date) from public, anon, authenticated;
 
 comment on function public.resultados_facturas_calculado(date) is
-  'Cálculo interno del reporte de resultados (migración 20261128100000): cada parte de factura de venta vigente hasta una fecha, sin IGV y en soles al cambio de compra de su día, con la parte del costo de su código que le toca. No se le da a nadie: lo llama resultados_metal_work.';
+  'Cálculo interno del reporte de resultados (migración 20261128100000): cada parte de factura de venta vigente hasta una fecha, sin IGV y en soles al cambio de compra de su día, con la parte del costo de su código que le toca (medida con todas las facturas vigentes). No se le da a nadie: lo llama resultados_metal_work.';
 
 -- 3. El reporte --------------------------------------------------------------------
 -- Una fila por código facturado en el periodo (CODIGO), por área del gasto
 -- operativo (GASTO_OPERATIVO), por grupo del gasto de oficina (OFICINA) y por
 -- cada cosa sin repartir (SIN_REPARTIR). `soles` es lo que se resta o se suma;
 -- vacío cuando no se puede decir todavía (falta el cambio), y entonces la
--- pantalla lo cuenta aparte en vez de sumarlo.
+-- pantalla lo cuenta aparte en vez de sumarlo. `pendientes` cuenta lo que
+-- todavía no suma (salidas sin precio, horas sin costo, OS por aprobar), como
+-- lo avisa el Gasto operativo. En CODIGO, `nombre` dice de qué cotización y
+-- unidad es; en lo sin repartir por mes, de qué meses (`YYYY-MM`, con comas).
 create or replace function public.resultados_metal_work(p_desde date, p_hasta date)
 returns table (tipo text, clave text, nombre text, cliente text, facturas integer,
                facturado_soles numeric, facturado_usd_sin_cambio numeric, facturas_sin_cambio integer,
                parte_del_costo numeric, costo_del_codigo numeric, costo_cerrado boolean, sin_precio_de_venta boolean,
-               costo_incompleto integer, soles numeric, ganancia numeric, lineas integer, lineas_sin_cambio integer)
+               costo_incompleto integer, soles numeric, ganancia numeric, lineas integer, lineas_sin_cambio integer,
+               pendientes integer)
 language plpgsql stable security definer rows 100 set search_path to 'public' as $$
 #variable_conflict use_column
 begin
@@ -157,6 +178,10 @@ begin
   ), del_periodo as (
     select f.codigo,
            string_agg(distinct f.cliente, ' · ') as cliente,
+           -- De qué cotización y unidad: «3568-2026 · unidad 1 de 2».
+           string_agg(distinct coalesce(f.cotizacion, 'Sin cotización')
+                               || case when f.unidades > 1 and f.unidad is not null then ' · unidad ' || f.unidad || ' de ' || f.unidades else '' end,
+                      ' · ') as unidad,
            count(distinct f.factura_id)::integer as facturas,
            coalesce(sum(f.soles), 0)::numeric as soles,
            coalesce(sum(f.sin_igv) filter (where f.soles is null), 0)::numeric as usd_sin_cambio,
@@ -181,15 +206,20 @@ begin
       from del_periodo d
       left join costo k on k.codigo = d.codigo
   ), operativo as (
-    select g.area_id, coalesce(sum(g.soles), 0)::numeric as soles, count(*)::integer as lineas,
-           count(*) filter (where g.soles is null and g.monto is not null)::integer as sin_cambio
+    select g.area_id, coalesce(sum(g.soles) filter (where g.suma), 0)::numeric as soles,
+           count(*) filter (where g.suma)::integer as lineas,
+           count(*) filter (where g.suma and g.soles is null and g.monto is not null)::integer as sin_cambio,
+           count(*) filter (where g.fuente in ('MATERIALES_SIN_PRECIO', 'MANO_OBRA_SIN_COSTO', 'SERVICIOS_POR_APROBAR'))::integer as pendientes
       from public.gasto_operativo_lineas_calculado(p_desde, p_hasta) g
-     where g.suma
      group by g.area_id
+    having count(*) filter (where g.suma) > 0
+        or count(*) filter (where g.fuente in ('MATERIALES_SIN_PRECIO', 'MANO_OBRA_SIN_COSTO', 'SERVICIOS_POR_APROBAR')) > 0
   ), lineas_de as (
     -- Lo cargado a OFICINA y a TODOS LOS ACTIVOS, con la regla de qué suma del costeo
-    -- (`codigos_internos_costo_calculado`) y lo comprado fuera.
+    -- (`codigos_internos_costo_calculado`) y lo comprado fuera. Lo que todavía no
+    -- suma (sin precio, sin costo, por aprobar) se trae solo para contarlo.
     select c.codigo, k.fuente, k.moneda, k.monto, k.referencia_id, k.fecha,
+           k.fuente in ('MATERIALES_SIN_PRECIO', 'MANO_OBRA_SIN_COSTO', 'SERVICIOS_POR_APROBAR') as pendiente,
            case
              when k.fuente in ('MATERIALES', 'MATERIALES_SIN_PRECIO', 'MERMA') then 'MATERIALES'
              when k.fuente in ('MANO_OBRA', 'MANO_OBRA_SIN_COSTO', 'RECARGO_EXTRAS') then 'MANO_OBRA'
@@ -201,67 +231,78 @@ begin
            end as grupo
       from unnest(array['OFICINA', 'TODOS LOS ACTIVOS']) as c(codigo)
       cross join lateral public.codigo_interno_lineas(c.codigo, true) k
-     where k.fuente in ('MANO_OBRA', 'RECARGO_EXTRAS', 'MATERIALES', 'SERVICIOS', 'SUBCONTRATOS',
-                        'SUBCONTRATOS_POR_PAGAR', 'GASTOS_DEL_MES', 'CAJA', 'GASTOS_OT', 'MERMA')
-       and k.monto is not null
-       and k.fecha between p_desde and p_hasta
+     where k.fecha between p_desde and p_hasta
+       and (k.fuente in ('MATERIALES_SIN_PRECIO', 'MANO_OBRA_SIN_COSTO', 'SERVICIOS_POR_APROBAR')
+            or (k.fuente in ('MANO_OBRA', 'RECARGO_EXTRAS', 'MATERIALES', 'SERVICIOS', 'SUBCONTRATOS',
+                             'SUBCONTRATOS_POR_PAGAR', 'GASTOS_DEL_MES', 'CAJA', 'GASTOS_OT', 'MERMA')
+                and k.monto is not null))
   ), en_soles as (
     select l.*,
-           case when l.moneda = 'PEN' then l.monto
+           case when l.pendiente then null
+                when l.moneda = 'PEN' then l.monto
                 when l.moneda = 'USD' then public.soles_de_la_linea_del_costeo(l.fuente, l.referencia_id, l.fecha, l.monto) end as soles
       from lineas_de l
   ), gasto_sin_horas as (
     -- Un gasto del mes POR HORAS de un mes en que ninguna unidad tiene horas: no
     -- lo lleva nadie todavía. Con el día en que se registró, como su línea del costeo.
-    select g.monto, g.moneda::text as moneda, (g.creado_en at time zone 'America/Lima')::date as fecha
+    select g.monto, g.moneda::text as moneda, g.periodo, (g.creado_en at time zone 'America/Lima')::date as fecha
       from public.gastos_generales_mes g
      where g.estado = 'ACTIVO' and g.reparto = 'HORAS'
        and (g.creado_en at time zone 'America/Lima')::date between p_desde and p_hasta
        and not exists (select 1 from public.horas_por_codigo_del_mes(g.periodo) h)
   ), oficina_sin_horas as (
-    -- El sueldo de la oficina de ese mes, con la fecha de su línea (el 1 del mes).
+    -- El sueldo de la oficina de cada mes del periodo en que ninguna unidad tiene
+    -- horas, con la fecha de su línea (el 1 del mes). Mes por mes: con `null`,
+    -- `sueldos_oficina_del_mes` solo da los meses que sí tienen horas.
     select o.monto, o.periodo
-      from public.sueldos_oficina_del_mes(null) o
+      from generate_series(date_trunc('month', p_desde)::date, p_hasta, interval '1 month') as m(mes)
+      cross join lateral public.sueldos_oficina_del_mes(m.mes::date) o
      where o.monto > 0 and o.periodo between p_desde and p_hasta
        and not exists (select 1 from public.horas_por_codigo_del_mes(o.periodo) h)
   )
-  select 'CODIGO'::text, c.codigo, null::text, c.cliente, c.facturas,
+  select 'CODIGO'::text, c.codigo, c.unidad, c.cliente, c.facturas,
          c.soles, c.usd_sin_cambio, c.sin_cambio,
          round(c.parte, 4), c.costo, c.cerrado, c.sin_precio, c.incompleto,
          c.costo_del_periodo,
          -- Con una factura sin cambio no se sabe el ingreso: la ganancia no se adivina.
          case when c.sin_cambio = 0 then c.soles - c.costo_del_periodo end,
-         null::integer, null::integer
+         null::integer, null::integer, null::integer
     from codigos c
   union all
   select 'GASTO_OPERATIVO', o.area_id::text, coalesce(a.nombre, 'Planta, sin área')::text, null, null,
          null, null, null, null, null, null, null, null,
-         o.soles, null, o.lineas, o.sin_cambio
+         o.soles, null, o.lineas, o.sin_cambio, o.pendientes
     from operativo o
     left join public.areas a on a.id = o.area_id
   union all
   select 'OFICINA', s.grupo, null, null, null, null, null, null, null, null, null, null, null,
-         coalesce(sum(s.soles), 0), null, count(*)::integer, count(*) filter (where s.soles is null)::integer
+         coalesce(sum(s.soles), 0), null, count(*) filter (where not s.pendiente)::integer,
+         count(*) filter (where not s.pendiente and s.soles is null)::integer,
+         count(*) filter (where s.pendiente)::integer
     from en_soles s
    where s.codigo = 'OFICINA'
    group by s.grupo
   union all
   select 'SIN_REPARTIR', 'TODOS_LOS_ACTIVOS', null, null, null, null, null, null, null, null, null, null, null,
-         coalesce(sum(s.soles), 0), null, count(*)::integer, count(*) filter (where s.soles is null)::integer
+         coalesce(sum(s.soles), 0), null, count(*) filter (where not s.pendiente)::integer,
+         count(*) filter (where not s.pendiente and s.soles is null)::integer,
+         count(*) filter (where s.pendiente)::integer
     from en_soles s
    where s.codigo = 'TODOS LOS ACTIVOS'
   having count(*) > 0
   union all
-  select 'SIN_REPARTIR', 'GASTOS_DEL_MES', null, null, null, null, null, null, null, null, null, null, null,
+  select 'SIN_REPARTIR', 'GASTOS_DEL_MES', string_agg(distinct to_char(g.periodo, 'YYYY-MM'), ','), null, null,
+         null, null, null, null, null, null, null, null,
          coalesce(sum(case when g.moneda = 'PEN' then g.monto
                            else round(g.monto * public.cambio_del_dia(g.fecha, 'VENTA'), 2) end), 0),
          null, count(*)::integer,
-         count(*) filter (where g.moneda <> 'PEN' and public.cambio_del_dia(g.fecha, 'VENTA') is null)::integer
+         count(*) filter (where g.moneda <> 'PEN' and public.cambio_del_dia(g.fecha, 'VENTA') is null)::integer, 0
     from gasto_sin_horas g
   having count(*) > 0
   union all
-  select 'SIN_REPARTIR', 'SUELDOS_OFICINA', null, null, null, null, null, null, null, null, null, null, null,
-         coalesce(sum(o.monto), 0), null, count(*)::integer, 0
+  select 'SIN_REPARTIR', 'SUELDOS_OFICINA', string_agg(distinct to_char(o.periodo, 'YYYY-MM'), ','), null, null,
+         null, null, null, null, null, null, null, null,
+         coalesce(sum(o.monto), 0), null, count(*)::integer, 0, 0
     from oficina_sin_horas o
   having count(*) > 0
   order by 1, 2;
@@ -271,6 +312,6 @@ revoke all on function public.resultados_metal_work(date, date) from public, ano
 grant execute on function public.resultados_metal_work(date, date) to authenticated;
 
 comment on function public.resultados_metal_work(date, date) is
-  'Los resultados de Metal Work entre dos fechas (hasta un año): cada código interno facturado con su ingreso sin IGV en soles, la parte de su costo que le toca por lo facturado y su ganancia; y lo que el total resta al final: el gasto operativo por área, el gasto de oficina y lo que no se repartió a ninguna unidad. Exige resultados.ver (Gerencia y Contabilidad). Migración 20261128100000.';
+  'Los resultados de Metal Work entre dos fechas (hasta un año): cada código interno facturado con su ingreso sin IGV en soles, la parte de su costo que le toca por lo facturado y su ganancia; y lo que el total resta al final: el gasto operativo por área, el gasto de oficina y lo que no se repartió a ninguna unidad, con lo que todavía no suma. Exige resultados.ver (Gerencia y Contabilidad). Migración 20261128100000.';
 
 notify pgrst, 'reload schema';

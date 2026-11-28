@@ -41,6 +41,15 @@ function nombreDelPeriodo(p: Periodo) {
 }
 /** «el día», «el mes», «el año»: para decir qué no tuvo. */
 const elPeriodo = (p: Periodo) => (p.escala === 'dia' ? 'ese día' : p.escala === 'mes' ? 'ese mes' : 'ese año')
+/** «el 20 de noviembre de 2026», «en noviembre de 2026», «en 2026». */
+const enElPeriodo = (p: Periodo) => `${p.escala === 'dia' ? 'el' : 'en'} ${nombreDelPeriodo(p)}`
+/** Lo de los meses `2026-10,2026-11` que la base da en lo sin repartir: «octubre y noviembre de 2026». */
+function deLosMeses(meses: string | null) {
+  const lista = (meses ?? '').split(',').filter(Boolean).map((m) => mesLargo(`${m}-01`))
+  return lista.length <= 1 ? (lista[0] ?? '') : `${lista.slice(0, -1).join(', ')} y ${lista[lista.length - 1]}`
+}
+/** El cero que sale de restar o redondear no se escribe «S/ -0.00». */
+const sinMenosCero = (v: number) => v || 0
 
 /**
  * Los resultados de Metal Work (plan del gasto operativo, entrega 3): primero
@@ -52,7 +61,10 @@ export default async function PaginaResultados({ searchParams }: PageProps<'/res
   const perfil = await exigirPermiso('resultados.ver')
   const params = await searchParams
   const hoy = hoyLima()
-  const p = leerPeriodo(typeof params.periodo === 'string' ? params.periodo : undefined, hoy)
+  const pedido = typeof params.periodo === 'string' ? params.periodo.trim() : ''
+  const p = leerPeriodo(pedido, hoy)
+  // Lo que se pidió y no se puede ver (un 30 de febrero, un mes que no llegó) no se cambia callado.
+  const pedidoNoValido = pedido !== '' && pedido !== p.valor ? pedido : null
   const r = await resultadosDeMetalWork(p.desde, p.hasta)
   const total = totalDeMetalWork(r)
   const nombre = nombreDelPeriodo(p)
@@ -61,7 +73,8 @@ export default async function PaginaResultados({ searchParams }: PageProps<'/res
   const enlace = (periodo: string) => `/resultados?${new URLSearchParams({ periodo })}`
   const verCodigos = puede(perfil, 'codigos_internos.ver')
   const verOperativo = puede(perfil, 'gasto_operativo.ver')
-  const verCambio = puede(perfil, ['tesoreria.tipo_cambio', 'tesoreria.ver_tipo_cambio'])
+  const registraCambio = puede(perfil, 'tesoreria.tipo_cambio')
+  const veCambio = registraCambio || puede(perfil, 'tesoreria.ver_tipo_cambio')
   // Las carrocerías de más ganancia arriba; las que no se pueden decir en soles, al final.
   const codigos = [...r.codigos].sort(
     (a, b) => Number(a.ganancia === null) - Number(b.ganancia === null) || (b.ganancia ?? 0) - (a.ganancia ?? 0) || a.codigo.localeCompare(b.codigo),
@@ -72,7 +85,7 @@ export default async function PaginaResultados({ searchParams }: PageProps<'/res
     <>
       <EncabezadoPagina
         titulo="Resultados de Metal Work"
-        ayuda="Primero cada carrocería, por su código interno: lo facturado sin IGV y en soles, el costo que le toca y lo que deja. Una factura lleva la parte del costo que factura: un adelanto del 50 % lleva la mitad del costo de la unidad, y la factura que la completa, el resto. Lo facturado de más no lleva costo. El costo es el que Gerencia cerró o, si sigue abierto, el de hoy: por eso un periodo cambia hasta que se cierra el costeo de sus carrocerías. Después, el total de Metal Work: la suma de las carrocerías menos el gasto operativo de las áreas, el gasto de oficina y lo que no se repartió a ninguna unidad. Las facturas en dólares pasan a soles con el cambio de compra de su día."
+        ayuda="Primero cada carrocería, por su código interno: lo facturado sin IGV y en soles, el costo que le toca y lo que deja. Una factura lleva la parte del costo que factura: un adelanto del 50 % lleva la mitad del costo de la unidad, y la factura que la completa, el resto. Lo facturado de más no lleva costo. El costo es el que Gerencia cerró o, si sigue abierto, el de hoy: por eso un periodo cambia hasta que se cierra el costeo de sus carrocerías. Después, el total de Metal Work: la suma de las carrocerías menos el gasto operativo de las áreas, el gasto de oficina y lo que no se repartió a ninguna unidad. Las facturas en dólares pasan a soles con el cambio de compra de su día, y la que va en otra moneda que su cotización se mide con ese mismo cambio."
       />
 
       <div className="space-y-5">
@@ -114,23 +127,42 @@ export default async function PaginaResultados({ searchParams }: PageProps<'/res
           </nav>
         </div>
 
+        {pedidoNoValido && (
+          <p className="text-sm text-texto-suave" role="status" data-periodo-no-valido>
+            «{pedidoNoValido}» no es un día, un mes ni un año que se pueda ver (de hoy hacia atrás): va {nombre}.
+          </p>
+        )}
+
         <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-cifras-resultados>
           <Cifra rotulo="Facturado sin IGV" valor={total.ingreso} dato="ingreso" />
-          <Cifra rotulo="Costo de lo facturado" valor={total.costo} dato="costo" />
+          <Cifra
+            rotulo="Costo de lo facturado"
+            valor={total.costo}
+            dato="costo"
+            pie={total.sinCosto > 0 ? `${plural(total.sinCosto, 'carrocería', 'carrocerías')} sin costo cargado` : undefined}
+            pieAviso
+          />
           <Cifra rotulo="Gastos de la empresa" valor={gastos} dato="gastos" pie="Operativo, oficina y sin repartir" />
-          <Cifra rotulo="Ganancia de Metal Work" valor={total.ganancia} dato="ganancia" destacada rojoSiPierde />
+          <Cifra
+            rotulo="Ganancia de Metal Work"
+            valor={total.ganancia}
+            dato="ganancia"
+            pie={total.ingreso > 0 ? `${porcentaje(parteDe(total.ganancia, total.ingreso))} de lo facturado` : undefined}
+            destacada
+            rojoSiPierde
+          />
         </dl>
 
         {total.codigosFuera > 0 && (
           <p className="rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-pretty text-texto" data-sin-cambio>
-            {plural(total.codigosFuera, 'carrocería no entra', 'carrocerías no entran')} en el total: {total.codigosFuera === 1 ? 'tiene' : 'tienen'}{' '}
-            facturas en dólares sin el cambio de su día (<span className="tabular whitespace-nowrap">{moneda(total.usdFuera, 'USD')}</span> sin IGV).{' '}
-            {verCambio ? (
-              <Link href="/tesoreria/tipo-de-cambio" className="font-medium text-acento hover:underline">
-                Registrar el tipo de cambio
+            {plural(total.codigosFuera, 'carrocería no entra', 'carrocerías no entran')} en el total, ni lo facturado en soles ni su costo:{' '}
+            {total.codigosFuera === 1 ? 'tiene' : 'tienen'} facturas en dólares sin el cambio de su día (
+            <span className="tabular whitespace-nowrap">{moneda(total.usdFuera, 'USD')}</span> sin IGV). Entran cuando Contabilidad registre el cambio de ese
+            día.{' '}
+            {veCambio && (
+              <Link href="/tesoreria/tipo-de-cambio" className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0">
+                {registraCambio ? 'Registrar el tipo de cambio' : 'Ver el tipo de cambio'}
               </Link>
-            ) : (
-              'Entran cuando Tesorería registre el tipo de cambio de ese día.'
             )}
           </p>
         )}
@@ -138,7 +170,7 @@ export default async function PaginaResultados({ searchParams }: PageProps<'/res
         <Tarjeta className="overflow-hidden" data-por-codigo>
           <TarjetaCabecera
             titulo="Por carrocería"
-            descripcion={codigos.length > 0 ? `${plural(codigos.length, 'código interno facturado', 'códigos internos facturados')} en ${nombre}.` : undefined}
+            descripcion={codigos.length > 0 ? `${plural(codigos.length, 'código interno facturado', 'códigos internos facturados')} ${enElPeriodo(p)}.` : undefined}
             ayuda="Cada código interno con lo que se le facturó en el periodo. «Costo» es la parte de su costo que lleva lo facturado; el porcentaje dice qué parte de la unidad se facturó."
           />
           <Tabla>
@@ -154,7 +186,7 @@ export default async function PaginaResultados({ searchParams }: PageProps<'/res
               {codigos.length === 0 ? (
                 <SinDatos
                   colSpan={4}
-                  titulo={`Ninguna factura de venta en ${nombre}`}
+                  titulo={`Ninguna factura de venta ${enElPeriodo(p)}`}
                   descripcion="Aparece aquí cada código interno al que Contabilidad le registra una factura de venta, con la fecha de emisión dentro del periodo."
                 />
               ) : (
@@ -172,10 +204,10 @@ export default async function PaginaResultados({ searchParams }: PageProps<'/res
           />
           <dl className="divide-y divide-borde text-sm">
             <Renglon rotulo="Facturado sin IGV" valor={total.ingreso} dato="ingreso" />
-            <Renglon rotulo="Costo de lo facturado" valor={restado(total.costo)} dato="costo" />
+            <Renglon rotulo="Menos el costo de lo facturado" valor={total.costo} dato="costo" />
             <Renglon rotulo="Lo que dejan las carrocerías" valor={total.margen} dato="margen" fuerte pie={total.ingreso > 0 ? `${porcentaje(parteDe(total.margen, total.ingreso))} de lo facturado` : undefined} />
             <Bloque
-              rotulo="Gasto operativo"
+              rotulo="Menos el gasto operativo"
               valor={total.operativo}
               dato="operativo"
               vacio={`Ninguna área tuvo gasto operativo ${elPeriodo(p)}.`}
@@ -183,20 +215,27 @@ export default async function PaginaResultados({ searchParams }: PageProps<'/res
               enlace={verOperativo && p.escala !== 'ano' ? { href: `/gasto-operativo?${new URLSearchParams({ mes: p.desde.slice(0, 7) })}`, texto: 'Ver el gasto operativo del mes' } : null}
             />
             <Bloque
-              rotulo="Gasto de oficina"
+              rotulo="Menos el gasto de oficina"
               valor={total.oficina}
               dato="oficina"
               vacio={`Nada cargado a OFICINA ${elPeriodo(p)}.`}
               partes={r.oficina.map((g) => ({ clave: g.clave ?? 'otros', etiqueta: etiquetaDeOficina(g.clave), gasto: g }))}
             />
             <Bloque
-              rotulo="Sin repartir a ninguna unidad"
+              rotulo="Menos lo que no se repartió a ninguna unidad"
               valor={total.sinRepartir}
               dato="sin-repartir"
               vacio="Todo lo de la empresa se repartió entre las carrocerías."
-              partes={r.sinRepartir.map((g) => ({ clave: g.clave ?? 'otros', etiqueta: sinRepartirDe(g.clave).etiqueta, porque: sinRepartirDe(g.clave).porque, gasto: g }))}
+              partes={r.sinRepartir.map((g) => ({ clave: g.clave ?? 'otros', etiqueta: g.nombre ? `${sinRepartirDe(g.clave).etiqueta}, ${deLosMeses(g.nombre)}` : sinRepartirDe(g.clave).etiqueta, porque: sinRepartirDe(g.clave).porque, gasto: g }))}
             />
-            <Renglon rotulo="Ganancia de Metal Work" valor={total.ganancia} dato="ganancia" fuerte destacada />
+            <Renglon
+              rotulo="Ganancia de Metal Work"
+              valor={total.ganancia}
+              dato="ganancia"
+              pie={total.ingreso > 0 ? `${porcentaje(parteDe(total.ganancia, total.ingreso))} de lo facturado` : undefined}
+              fuerte
+              destacada
+            />
           </dl>
         </Tarjeta>
       </div>
@@ -204,17 +243,43 @@ export default async function PaginaResultados({ searchParams }: PageProps<'/res
   )
 }
 
-function Cifra({ rotulo, valor, dato, pie, destacada, rojoSiPierde }: { rotulo: string; valor: number; dato: string; pie?: string; destacada?: boolean; rojoSiPierde?: boolean }) {
+function Cifra({
+  rotulo,
+  valor,
+  dato,
+  pie,
+  pieAviso,
+  destacada,
+  rojoSiPierde,
+}: {
+  rotulo: string
+  valor: number
+  dato: string
+  pie?: string
+  pieAviso?: boolean
+  destacada?: boolean
+  rojoSiPierde?: boolean
+}) {
   return (
     <div className={cn('rounded-[var(--radius-base)] border bg-superficie px-3 py-2', destacada ? 'border-acento' : 'border-borde')} data-cifra={dato}>
       <dt className="text-xs text-texto-suave">{rotulo}</dt>
-      <dd className={cn('tabular mt-1 text-lg font-semibold', rojoSiPierde && valor < 0 ? 'text-peligro' : 'text-texto')}>{moneda(valor)}</dd>
-      {pie && <dd className="text-xs text-texto-suave">{pie}</dd>}
+      <dd className={cn('tabular mt-1 text-lg font-semibold', rojoSiPierde && valor < 0 ? 'text-peligro' : 'text-texto')}>{moneda(sinMenosCero(valor))}</dd>
+      {pie && <dd className={cn('text-xs', pieAviso ? 'text-aviso' : 'text-texto-suave')}>{pie}</dd>}
     </div>
   )
 }
 
 function FilaDeCodigo({ c, enlace }: { c: CodigoDelPeriodo; enlace: boolean }) {
+  // Sin costo cargado, la ganancia sale igual a lo facturado: se dice, como el costeo, que no da margen con costo cero.
+  const sinCosto = c.costoDelCodigo === 0
+  const avisos = [
+    sinCosto && { texto: 'Sin costo cargado', porque: 'Todavía no tiene horas, salidas ni gastos: su ganancia sale igual a lo facturado.' },
+    !sinCosto && c.costoIncompleto > 0 && { texto: 'Costo incompleto', porque: 'Tiene salidas sin precio, horas sin costo o líneas en dólares sin cambio: el costo todavía va a subir.' },
+    c.sinPrecioDeVenta && {
+      texto: 'Sin precio de venta',
+      porque: 'Su cotización no tiene monto, o una factura en otra moneda no tiene el cambio de su día: el costo se reparte entre todas sus facturas por lo facturado en soles.',
+    },
+  ].filter((a): a is { texto: string; porque: string } => Boolean(a))
   const facturado = (
     <>
       <span className="whitespace-nowrap">{moneda(c.ingreso)}</span>
@@ -245,27 +310,32 @@ function FilaDeCodigo({ c, enlace }: { c: CodigoDelPeriodo; enlace: boolean }) {
         )}
         {c.cliente && <span className="block text-xs text-pretty text-texto-suave">{c.cliente}</span>}
         <span className="block text-xs text-texto-suave">
+          {c.unidad && `Cotización ${c.unidad} · `}
           {plural(c.facturas, 'factura', 'facturas')}
           {c.costoCerrado ? ' · costeo cerrado' : ' · costo de hoy'}
         </span>
-        {(c.costoIncompleto > 0 || c.sinPrecioDeVenta) && (
-          <span className="mt-1 flex flex-wrap gap-1">
-            {c.costoIncompleto > 0 && (
-              <Insignia tono="aviso" title="Hay salidas sin precio, horas sin costo o líneas en dólares sin cambio: el costo todavía va a subir.">
-                Costo incompleto
-              </Insignia>
-            )}
-            {c.sinPrecioDeVenta && (
-              <Insignia tono="aviso" title="Su cotización no tiene monto o va en otra moneda: el costo se reparte entre sus facturas por lo facturado hasta hoy.">
-                Sin precio de venta
-              </Insignia>
-            )}
+        {avisos.length > 0 && (
+          <span className="mt-1 block space-y-1">
+            {avisos.map((a) => (
+              <span key={a.texto} className="block" data-aviso-codigo={a.texto}>
+                <Insignia tono="aviso">{a.texto}</Insignia>
+                <span className="mt-1 block text-xs text-pretty text-texto-suave">{a.porque}</span>
+              </span>
+            ))}
           </span>
         )}
         <DetalleEnTelefono>
-          <span className="tabular block text-xs text-texto-suave">Facturado: {moneda(c.ingreso)}{c.usdSinCambio > 0 && ` + ${moneda(c.usdSinCambio, 'USD')} sin cambio`}</span>
           <span className="tabular block text-xs text-texto-suave">
-            Costo: {moneda(c.costo)} ({porcentaje(c.parteDelCosto * 100)} de {moneda(c.costoDelCodigo)})
+            Facturado: <span className="whitespace-nowrap">{moneda(c.ingreso)}</span>
+            {c.usdSinCambio > 0 && (
+              <>
+                {' '}+ <span className="whitespace-nowrap">{moneda(c.usdSinCambio, 'USD')}</span> sin cambio
+              </>
+            )}
+          </span>
+          <span className="tabular block text-xs text-texto-suave">
+            Costo: <span className="whitespace-nowrap">{moneda(c.costo)}</span> ({porcentaje(c.parteDelCosto * 100)} de{' '}
+            <span className="whitespace-nowrap">{moneda(c.costoDelCodigo)}</span>)
           </span>
         </DetalleEnTelefono>
       </TD>
@@ -278,8 +348,10 @@ function FilaDeCodigo({ c, enlace }: { c: CodigoDelPeriodo; enlace: boolean }) {
           </Insignia>
         ) : (
           <>
-            <span className={cn('font-semibold whitespace-nowrap', c.ganancia < 0 ? 'text-peligro' : 'text-texto')}>{moneda(c.ganancia)}</span>
-            {c.ingreso > 0 && <span className="block text-xs text-texto-suave">{porcentaje(parteDe(c.ganancia, c.ingreso))}</span>}
+            <span className={cn('font-semibold whitespace-nowrap', c.ganancia < 0 ? 'text-peligro' : sinCosto ? 'text-texto-suave' : 'text-texto')}>
+              {moneda(c.ganancia)}
+            </span>
+            {c.ingreso > 0 && <span className="block text-xs text-texto-suave">{porcentaje(parteDe(c.ganancia, c.ingreso))} de lo facturado</span>}
           </>
         )}
       </TD>
@@ -308,17 +380,10 @@ function Renglon({
         {rotulo}
         {pie && <span className="block text-xs font-normal text-texto-suave">{pie}</span>}
       </dt>
-      <dd className={cn('tabular whitespace-nowrap', fuerte && 'text-base font-semibold', valor < 0 && fuerte ? 'text-peligro' : 'text-texto')}>{moneda(valor)}</dd>
+      <dd className={cn('tabular whitespace-nowrap', fuerte && 'text-base font-semibold', valor < 0 && fuerte ? 'text-peligro' : 'text-texto')}>{moneda(sinMenosCero(valor))}</dd>
     </div>
   )
 }
-
-/**
- * Lo que se resta, con su signo: el gasto de 50 sale «S/ -50.00» y una nota de
- * crédito que lo deja en -5 sale «S/ 5.00», porque suma. Sin el `|| 0`, el cero
- * salía «S/ -0.00».
- */
-const restado = (v: number) => -v || 0
 
 type Parte = { clave: string; etiqueta: string; porque?: string; gasto: GastoDelPeriodo }
 
@@ -339,11 +404,12 @@ function Bloque({
   enlace?: { href: string; texto: string } | null
 }) {
   const sinCambio = partes.reduce((s, x) => s + x.gasto.lineasSinCambio, 0)
+  const pendientes = partes.reduce((s, x) => s + x.gasto.pendientes, 0)
   return (
     <div className="space-y-2 px-4 py-3" data-renglon={dato}>
       <div className="flex items-baseline justify-between gap-4">
         <dt className="text-texto-suave">{rotulo}</dt>
-        <dd className="tabular whitespace-nowrap text-texto">{moneda(restado(valor))}</dd>
+        <dd className="tabular whitespace-nowrap text-texto">{moneda(sinMenosCero(valor))}</dd>
       </div>
       {partes.length === 0 ? (
         <dd className="text-xs text-texto-suave">{vacio}</dd>
@@ -356,7 +422,7 @@ function Bloque({
                   {x.etiqueta}
                   {x.porque && <span className="block text-pretty text-texto-tenue">{x.porque}</span>}
                 </span>
-                <span className="tabular whitespace-nowrap text-texto">{moneda(restado(x.gasto.soles))}</span>
+                <span className="tabular whitespace-nowrap text-texto">{moneda(sinMenosCero(x.gasto.soles))}</span>
               </li>
             ))}
           </ul>
@@ -365,9 +431,15 @@ function Bloque({
       {sinCambio > 0 && (
         <dd className="text-xs text-aviso">{plural(sinCambio, 'línea en dólares todavía no suma', 'líneas en dólares todavía no suman')}: falta el cambio de su día.</dd>
       )}
+      {pendientes > 0 && (
+        <dd className="text-xs text-aviso" data-pendientes>
+          {plural(pendientes, 'línea todavía no suma', 'líneas todavía no suman')} (salidas sin precio, horas sin costo u OS por aprobar): la cifra
+          va a subir.
+        </dd>
+      )}
       {enlace && (
         <dd>
-          <Link href={enlace.href} className="text-xs font-medium text-acento hover:underline">
+          <Link href={enlace.href} className="inline-flex min-h-11 items-center text-xs font-medium text-acento hover:underline sm:min-h-0">
             {enlace.texto}
           </Link>
         </dd>
