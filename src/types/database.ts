@@ -20672,6 +20672,56 @@ export type Database = {
         }
         Returns: string
       }
+      resultados_facturas_calculado: {
+        Args: {
+          p_hasta: string | null
+        }
+        Returns: {
+          parte_id: string | null
+          factura_id: string | null
+          codigo: string | null
+          fecha: string | null
+          cliente: string | null
+          numero: string | null
+          moneda: string | null
+          monto: number | null
+          sin_igv: number | null
+          cambio: number | null
+          soles: number | null
+          parte_del_costo: number | null
+          sin_precio_de_venta: boolean | null
+          cotizacion: string | null
+          unidad: number | null
+          unidades: number | null
+          sin_medida: boolean | null
+        }[]
+      }
+      resultados_metal_work: {
+        Args: {
+          p_desde: string | null
+          p_hasta: string | null
+        }
+        Returns: {
+          tipo: string | null
+          clave: string | null
+          nombre: string | null
+          cliente: string | null
+          facturas: number | null
+          facturado_soles: number | null
+          facturado_usd_sin_cambio: number | null
+          facturas_sin_cambio: number | null
+          parte_del_costo: number | null
+          costo_del_codigo: number | null
+          costo_cerrado: boolean | null
+          sin_precio_de_venta: boolean | null
+          costo_incompleto: number | null
+          soles: number | null
+          ganancia: number | null
+          lineas: number | null
+          lineas_sin_cambio: number | null
+          pendientes: number | null
+        }[]
+      }
       resumen_costeo_ot: {
         Args: {
           p_orden: string | null
