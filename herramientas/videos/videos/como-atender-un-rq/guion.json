@@ -1,0 +1,108 @@
+{
+  "id": "como-atender-un-rq",
+  "tarea": "Cómo atender un RQ",
+  "puesto": "Almacén",
+  "voz": { "nombre": "es-PE-CamilaNeural", "velocidad": "-5%" },
+  "pronunciacion": {},
+  "pista_whisper": "Metal Work. RQ, requerimiento, Almacén, Logística, kardex, PLANTA, gasto operativo, insumo, electrodos.",
+  "escenas": [
+    {
+      "tipo": "gancho",
+      "titular": "Atiende cada RQ y sabe **cuánto falta entregar**",
+      "frases": ["Atiende cada RQ y sabe al instante cuánto falta entregar."]
+    },
+    { "tipo": "portada" },
+    {
+      "tipo": "antes-despues",
+      "antes": ["Anotabas cada salida en el Excel", "Contabas a mano cuánto faltaba"],
+      "ahora": { "captura": "07-falta", "resalte": "cuenta", "puntos": ["Cada insumo dice cuánto falta", "La salida queda con su foto"] },
+      "frases": [
+        "Antes, anotabas cada salida en el Excel y contabas a mano cuánto faltaba.",
+        "Ahora el sistema lleva la cuenta de cada insumo, y cada salida queda con su foto."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Entra a «Atención de requerimiento»",
+      "tomas": [
+        { "captura": "01-bandeja", "resalte": "menu" },
+        { "captura": "01-bandeja", "resalte": "esperan", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Entra a Atención de requerimiento.",
+        "Arriba ves cuántos pedidos esperan por ti."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Toca «Revisar stock» y anota cuánto tienes",
+      "tomas": [
+        { "captura": "02-revisar", "resalte": ["electrodo", "tienes"] },
+        { "captura": "03-guardar", "resalte": ["resumen", "guardar"], "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Toca Revisar stock y anota cuánto tienes de cada insumo.",
+        "Lo que tienes no se compra; a Logística le llega solo lo que falta."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Registra la salida, con quién recibe y la foto",
+      "tomas": [
+        { "captura": "04-salida", "resalte": ["cantidad", "hay"] },
+        { "captura": "05-foto", "resalte": ["recibe", "foto"], "desdeFrase": 1 },
+        { "captura": "06-confirmar", "resalte": "confirmar", "desdeFrase": 2 }
+      ],
+      "frases": [
+        "Registra la salida desde el RQ: sale solo lo que se pidió.",
+        "Escribe quién recibe y toma la foto del material.",
+        "Toca Confirmar salida."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Mira cuánto falta de cada insumo",
+      "tomas": [
+        { "captura": "07-falta", "resalte": "cuenta" }
+      ],
+      "frases": [
+        "Cada insumo dice cuánto entregaste y cuánto falta.",
+        "Y si viene en compra, la fecha en que llega."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "El gasto operativo sale a PLANTA",
+      "tomas": [
+        { "captura": "08-gasto", "resalte": "insignia" },
+        { "captura": "09-planta", "resalte": "planta", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Si el RQ dice Gasto operativo, es para el área, no para una unidad.",
+        "Su salida va sola a PLANTA, sin elegir unidad ni OT."
+      ]
+    },
+    {
+      "tipo": "porque",
+      "titulo": "Por qué importa",
+      "puntos": ["Nadie pregunta cuánto falta", "Cada salida tiene su evidencia"],
+      "lema": "El sistema te guía. Tú decides.",
+      "frases": [
+        "¿Por qué importa? Porque nadie tiene que preguntarte cuánto falta,",
+        "y cada salida queda con su foto, por si alguien dice que no llegó.",
+        "El sistema te guía; tú decides qué entregar."
+      ]
+    },
+    {
+      "tipo": "cierre",
+      "titulo": "En resumen",
+      "puntos": ["Revisa el stock", "Registra la salida con foto", "Mira lo que falta"],
+      "frases": [
+        "En resumen.",
+        "Uno: revisa el stock.",
+        "Dos: registra la salida con su foto.",
+        "Tres: mira lo que falta de cada insumo."
+      ]
+    }
+  ]
+}

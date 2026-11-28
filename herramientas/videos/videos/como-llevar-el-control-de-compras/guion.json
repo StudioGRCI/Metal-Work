@@ -1,0 +1,109 @@
+{
+  "id": "como-llevar-el-control-de-compras",
+  "tarea": "Cómo llevar el control de compras",
+  "puesto": "Almacén",
+  "voz": { "nombre": "es-PE-CamilaNeural", "velocidad": "-5%" },
+  "pronunciacion": {},
+  "pista_whisper": "Metal Work. Control de compras, Almacén, OC, factura, guía de remisión, pendientes, PLANTA, electrodos, discos.",
+  "escenas": [
+    {
+      "tipo": "gancho",
+      "titular": "Cada compra con **su factura y su guía**, sin cuaderno",
+      "frases": ["Lleva cada compra con su factura y su guía, sin cuaderno."]
+    },
+    { "tipo": "portada" },
+    {
+      "tipo": "antes-despues",
+      "antes": ["Las compras se anotaban a mano", "Las facturas se perdían en el camino"],
+      "ahora": { "captura": "07-anotado", "resalte": "recibio", "puntos": ["Cada OC aparece sola", "Anotas factura y guía en un toque"] },
+      "frases": [
+        "Antes, las compras se anotaban a mano, y las facturas se perdían en el camino.",
+        "Ahora cada orden de compra aparece sola, y tú anotas su factura y su guía en un toque."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Abre «Control de compras»",
+      "tomas": [
+        { "captura": "01-del-dia", "resalte": "menu" },
+        { "captura": "01-del-dia", "resalte": "resumen", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "En el menú de Almacén, abre Control de compras.",
+        "Arriba ves cuántas compras hay hoy, cuántas siguen sin factura y cuánto material falta llegar."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Mira las compras del día",
+      "tomas": [
+        { "captura": "02-filas", "resalte": ["destino", "monto"] },
+        { "captura": "03-material", "resalte": ["llego", "porVerificar"], "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Cada orden de compra sale en su fila, con su destino y su monto.",
+        "La columna Material te dice si ya llegó o si falta verificarlo."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Toca «Anotar» y escribe factura y guía",
+      "tomas": [
+        { "captura": "04-anotar", "resalte": "anotar" },
+        { "captura": "05-factura", "resalte": ["factura", "guia"], "desdeFrase": 1 },
+        { "captura": "06-guardar", "resalte": "guardar", "desdeFrase": 2 }
+      ],
+      "frases": [
+        "Cuando el proveedor te entregue los papeles, toca Anotar.",
+        "Escribe el número de la factura y el de la guía de remisión, como vienen impresos.",
+        "Toca Guardar."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "La compra queda con su factura",
+      "tomas": [
+        { "captura": "07-anotado", "resalte": "recibio" },
+        { "captura": "07-anotado", "resalte": "sinFactura", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "La compra queda con su factura, su guía, quién la anotó y a qué hora.",
+        "Y baja la cuenta de compras sin factura."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Revisa «Pendientes» y descarga el mes",
+      "tomas": [
+        { "captura": "08-pendientes", "resalte": ["pestana", "discos"] },
+        { "captura": "09-descargar", "resalte": "descargar", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "En Pendientes ves lo que falta recibir de cualquier día, para que nada se quede atrás.",
+        "Y con Descargar el mes te llevas todo en una hoja de cálculo."
+      ]
+    },
+    {
+      "tipo": "porque",
+      "titulo": "Por qué importa",
+      "puntos": ["Ninguna factura se pierde", "Contabilidad cuadra sin buscarte"],
+      "lema": "El sistema te guía. Tú decides.",
+      "frases": [
+        "¿Por qué importa? Porque ninguna factura se pierde,",
+        "y contabilidad cuadra las compras sin tener que buscarte.",
+        "El sistema te guía; tú decides qué anotar."
+      ]
+    },
+    {
+      "tipo": "cierre",
+      "titulo": "En resumen",
+      "puntos": ["Mira las compras del día", "Anota factura y guía", "Revisa los pendientes"],
+      "frases": [
+        "En resumen.",
+        "Uno: mira las compras del día.",
+        "Dos: anota la factura y la guía.",
+        "Tres: revisa los pendientes."
+      ]
+    }
+  ]
+}
