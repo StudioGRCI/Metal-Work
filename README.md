@@ -125,7 +125,7 @@ que ya exista.
 
 Trae además un circuito de compras y almacén, con dos o tres documentos en cada
 estado: seis proveedores; quince requerimientos, de «por revisar» a «entregado»
-(uno con faltante) y anulados; dieciocho órdenes de compra en cada paso, de la
+(uno con faltante) y anulados; veinte órdenes de compra en cada paso, de la
 aprobación de Gerencia (aprobadas, rechazadas, anuladas) al recojo del conductor
 y la validación en el kardex; doce órdenes de servicio, de por aprobar a
 conformes; seis subcontratos vigentes, terminados y anulados; y el kardex con
@@ -133,6 +133,22 @@ su saldo inicial, stock mínimo y un conteo. Se cargan con las funciones reales
 y la sesión de cada puesto, así que **sus números salen de las series de
 verdad** (OT, RQ, OC, OS) y, como todo documento numerado, no se borran: por eso
 la marca de base de prueba.
+
+Y la plata y el personal: Contabilidad registra cinco facturas de compra (una
+pagada, dos en parte, una por pagar y dos vencidas, una de ellas en parte),
+emite cinco guías de remisión (una anulada), dos notas de crédito y cinco
+facturas de venta (dos cobradas, dos a cuenta, una de ellas vencida, y una
+anulada);
+Tesorería lleva tres cajas, abiertas hace un mes, con los movimientos de las
+dos últimas semanas y días cerrados (uno con diferencia), paga compras con
+factura y con boleta, servicios con su detracción, dos recibos por honorarios
+(otros dos esperan) y dos planillas diarias, y deja anulados un cobro, un pago
+y un movimiento; RR. HH. tiene un mes de asistencia con tardanzas y una falta,
+reportes diarios validados, horas extras, permisos, observaciones, pagos de
+oficina y dos planillas, una cerrada y repartida entre las OT y otra en
+borrador; y Administración, los gastos generales de este mes y del anterior.
+Los puestos nuevos (Contabilidad, Tesorería, RR. HH.) tienen su ficha de
+demostración.
 
 ### Desarrollo
 

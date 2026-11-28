@@ -103,6 +103,34 @@ npx tsc --noEmit && npx eslint && npx next build
   archivo en Storage con `pg_temp.demo_archivo`) va entre `set local role
   authenticated` y `reset role`, para que pase por la política del puesto como
   desde la pantalla y la carga se detenga si deja de aceptarlo.
+- **Lo que tiene fecha se pone en su fecha al final del bloque, y los avisos con
+  la hora de lo que anuncian.** Cada sección termina con un bloque bajo
+  `session_replication_role = replica` que solo toca fechas (lo de días atrás,
+  la tarde de su día; lo de hoy, en minutos y en orden) y una guarda que detiene
+  la carga si un aviso de esta sección quedó con la hora de la carga. Lo ya
+  atendido va leído; lo que espera a quien lo recibe, no. Dos cosas que
+  costaron una vuelta en la entrega 2 (2026-11-28): el pago de una compra sella
+  `creado_en` con `clock_timestamp()`, no con `now()`, así que ese bloque busca
+  `creado_en >= now()`; y un aviso que dejó otra sección (la guía por emitir de
+  compras) se marca leído aquí, cuando esta sección lo atiende.
+- **Lo que una función solo hace hoy se carga a mano para los días de atrás.**
+  `marcar_asistencia` sella `now()`: el mes de asistencia va con `insert`,
+  registrado por Portería. Y el DNI de `trabajadores` no se lee con
+  `authenticated`: se lee antes del `set local role` (a un `jsonb`) y se usa
+  después.
+- **Una OT entregada ya no se engancha a su cotización**
+  (`enganchar_ot_a_su_cotizacion`), y sin cotización aprobada no se factura.
+  La factura de venta de la demostración va sobre OT que siguen en taller; la
+  de la entregada queda para cuando la sección del taller nazca con su
+  cotización (entrega 3). Cuando eso pase, el enganche de las OT 1 a 3 en la
+  sección de plata (`enganchar_ot_a_su_cotizacion`) caerá con «ya es de otra
+  cotización»: se quita ahí y la factura toma la cotización con que nació la OT.
+- **Una sección que depende de lo que otra agrega en una versión nueva se
+  detiene en una base vieja.** La sección de compras no vuelve a correr (su
+  centinela ya está), así que lo que se le sumó después no existe. El primer
+  bloque del archivo mira si la base tiene la demostración sin los recibos por
+  honorarios y, si es así, pide rehacerla antes de cargar nada (auditoría de la
+  entrega 2: caía a media carga con un mensaje que no decía qué hacer).
 
 ## Numeración y datos reales
 
