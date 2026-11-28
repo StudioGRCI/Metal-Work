@@ -129,7 +129,7 @@ export default async function PaginaResultados({ searchParams }: PageProps<'/res
 
         {pedidoNoValido && (
           <p className="text-sm text-texto-suave" role="status" data-periodo-no-valido>
-            «{pedidoNoValido}» no es un día, un mes ni un año que se pueda ver (de hoy hacia atrás): va {nombre}.
+            «{pedidoNoValido}» no es un día, un mes ni un año que se pueda ver (de hoy hacia atrás): se muestra {nombre}.
           </p>
         )}
 
@@ -142,7 +142,8 @@ export default async function PaginaResultados({ searchParams }: PageProps<'/res
             pie={total.sinCosto > 0 ? `${plural(total.sinCosto, 'carrocería', 'carrocerías')} sin costo cargado` : undefined}
             pieAviso
           />
-          <Cifra rotulo="Gastos de la empresa" valor={gastos} dato="gastos" pie="Operativo, oficina y sin repartir" />
+          <Cifra rotulo="Gastos de la empresa" valor={gastos} dato="gastos" pie={gastos < 0 ? 'A favor: pesan más las devoluciones o las notas de crédito' : 'Operativo, oficina y sin repartir'}
+          />
           <Cifra
             rotulo="Ganancia de Metal Work"
             valor={total.ganancia}
@@ -156,8 +157,13 @@ export default async function PaginaResultados({ searchParams }: PageProps<'/res
         {total.codigosFuera > 0 && (
           <p className="rounded-[var(--radius-base)] border border-aviso bg-aviso-suave px-3 py-2 text-sm text-pretty text-texto" data-sin-cambio>
             {plural(total.codigosFuera, 'carrocería no entra', 'carrocerías no entran')} en el total, ni lo facturado en soles ni su costo:{' '}
-            {total.codigosFuera === 1 ? 'tiene' : 'tienen'} facturas en dólares sin el cambio de su día (
-            <span className="tabular whitespace-nowrap">{moneda(total.usdFuera, 'USD')}</span> sin IGV). Entran cuando Contabilidad registre el cambio de ese
+            {total.codigosFuera === 1 ? 'tiene' : 'tienen'} facturas sin el cambio de su día
+            {total.usdFuera > 0 && (
+              <>
+                {' '}(<span className="tabular whitespace-nowrap">{moneda(total.usdFuera, 'USD')}</span> sin IGV)
+              </>
+            )}
+            . Entran cuando Contabilidad registre el cambio de ese
             día.{' '}
             {veCambio && (
               <Link href="/tesoreria/tipo-de-cambio" className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0">
@@ -273,7 +279,13 @@ function FilaDeCodigo({ c, enlace }: { c: CodigoDelPeriodo; enlace: boolean }) {
   // Sin costo cargado, la ganancia sale igual a lo facturado: se dice, como el costeo, que no da margen con costo cero.
   const sinCosto = c.costoDelCodigo === 0
   const avisos = [
-    sinCosto && { texto: 'Sin costo cargado', porque: 'Todavía no tiene horas, salidas ni gastos: su ganancia sale igual a lo facturado.' },
+    sinCosto && {
+      texto: 'Sin costo cargado',
+      porque:
+        c.costoIncompleto > 0
+          ? 'Tiene salidas sin precio u horas sin costo, y todavía no suman nada: su ganancia sale igual a lo facturado.'
+          : 'Todavía no tiene horas, salidas ni gastos: su ganancia sale igual a lo facturado.',
+    },
     !sinCosto && c.costoIncompleto > 0 && { texto: 'Costo incompleto', porque: 'Tiene salidas sin precio, horas sin costo o líneas en dólares sin cambio: el costo todavía va a subir.' },
     c.sinPrecioDeVenta && {
       texto: 'Sin precio de venta',
@@ -408,7 +420,10 @@ function Bloque({
   return (
     <div className="space-y-2 px-4 py-3" data-renglon={dato}>
       <div className="flex items-baseline justify-between gap-4">
-        <dt className="text-texto-suave">{rotulo}</dt>
+        <dt className="text-texto-suave">
+          {rotulo}
+          {valor < 0 && <span className="block text-xs text-texto-suave">A favor: pesan más las devoluciones o las notas de crédito.</span>}
+        </dt>
         <dd className="tabular whitespace-nowrap text-texto">{moneda(sinMenosCero(valor))}</dd>
       </div>
       {partes.length === 0 ? (

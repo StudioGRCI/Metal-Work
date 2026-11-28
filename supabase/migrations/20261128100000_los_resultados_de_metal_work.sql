@@ -23,10 +23,11 @@
 --     costo es el que Gerencia congeló al cerrar el costeo, o el de hoy si sigue
 --     abierto: por eso un mes es provisional hasta que sus códigos se cierran.
 --     La factura en otra moneda que su cotización se mide pasándola a la moneda
---     de la cotización con el cambio de compra de su día. Sin precio de la
---     unidad (la cotización sin monto, o una factura en otra moneda sin cambio
---     todavía), el costo se reparte entre todas las facturas vigentes del código
---     por lo facturado en soles, y se dice. Las cuentas que miden la unidad usan
+--     de la cotización con el cambio de compra de su día; sin ese cambio todavía
+--     no se puede medir, no se lleva costo y el periodo que la tiene sale sin
+--     ganancia, como la factura en dólares sin cambio (no se adivina). Sin precio
+--     de la unidad (la cotización sin monto), el costo se reparte entre todas las
+--     facturas vigentes del código por lo facturado en soles, y se dice. Las cuentas que miden la unidad usan
 --     todas las facturas vigentes, no solo las del periodo: así los meses de un
 --     año suman lo mismo que el año.
 --   · Después, el total de Metal Work resta, una sola vez y al final:
@@ -65,7 +66,7 @@ on conflict do nothing;
 create or replace function public.resultados_facturas_calculado(p_hasta date)
 returns table (parte_id uuid, factura_id uuid, codigo text, fecha date, cliente text, numero text, moneda text,
                monto numeric, sin_igv numeric, cambio numeric, soles numeric, parte_del_costo numeric,
-               sin_precio_de_venta boolean, cotizacion text, unidad integer, unidades integer)
+               sin_precio_de_venta boolean, cotizacion text, unidad integer, unidades integer, sin_medida boolean)
 language plpgsql stable rows 100 set search_path to 'public' as $$
 -- plpgsql y no sql: la llama el reporte, que se abre seguido (skill datos › Rendimiento).
 #variable_conflict use_column
@@ -110,7 +111,9 @@ begin
       join unidades u on u.codigo = fx.codigo
       left join precio pr on pr.cot = fx.cot
   ), con_precio as (
-    select m.*, bool_and(coalesce(m.de_la_unidad > 0 and m.medido is not null, false)) over (partition by m.codigo) as hay_precio,
+    -- El precio lo decide la cotización, no el cambio: una factura que todavía no
+    -- se puede medir no manda el código entero al reparto sin precio.
+    select m.*, bool_and(coalesce(m.de_la_unidad > 0, false)) over (partition by m.codigo) as hay_precio,
            sum(m.en_soles) over (partition by m.codigo) as facturado_del_codigo
       from medida m
   ), fraccion as (
@@ -131,7 +134,9 @@ begin
          -- más. Sin fracción (en dólares sin cambio y sin precio), nada todavía.
          coalesce(greatest(least(a.hasta_aqui, 1) - least(a.hasta_aqui - a.fraccion, 1), 0), 0),
          not a.hay_precio,
-         a.cotizacion_numero, a.unidad, a.unidades_de_la_cot
+         a.cotizacion_numero, a.unidad, a.unidades_de_la_cot,
+         -- Sin fracción: falta el cambio de su día para medirla.
+         a.fraccion is null
     from acumulada a
    where p_hasta is null or a.fecha <= p_hasta;
 end $$;
@@ -185,7 +190,8 @@ begin
            count(distinct f.factura_id)::integer as facturas,
            coalesce(sum(f.soles), 0)::numeric as soles,
            coalesce(sum(f.sin_igv) filter (where f.soles is null), 0)::numeric as usd_sin_cambio,
-           count(distinct f.factura_id) filter (where f.soles is null)::integer as sin_cambio,
+           -- Sin cambio: no se puede pasar a soles, o no se puede medir contra la cotización.
+           count(distinct f.factura_id) filter (where f.soles is null or f.sin_medida)::integer as sin_cambio,
            sum(f.parte_del_costo)::numeric as parte,
            bool_or(f.sin_precio_de_venta) as sin_precio
       from fx f
@@ -255,7 +261,9 @@ begin
     -- horas, con la fecha de su línea (el 1 del mes). Mes por mes: con `null`,
     -- `sueldos_oficina_del_mes` solo da los meses que sí tienen horas.
     select o.monto, o.periodo
-      from generate_series(date_trunc('month', p_desde)::date, p_hasta, interval '1 month') as m(mes)
+      -- Hasta el mes de hoy: un pago adelantado no resta un mes que todavía no empieza.
+      from generate_series(date_trunc('month', p_desde)::date,
+                           least(p_hasta, (now() at time zone 'America/Lima')::date), interval '1 month') as m(mes)
       cross join lateral public.sueldos_oficina_del_mes(m.mes::date) o
      where o.monto > 0 and o.periodo between p_desde and p_hasta
        and not exists (select 1 from public.horas_por_codigo_del_mes(o.periodo) h)

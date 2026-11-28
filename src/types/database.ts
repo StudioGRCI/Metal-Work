@@ -20693,6 +20693,7 @@ export type Database = {
           cotizacion: string | null
           unidad: number | null
           unidades: number | null
+          sin_medida: boolean | null
         }[]
       }
       resultados_metal_work: {
