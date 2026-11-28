@@ -7,7 +7,8 @@
 --      OFICINA no reciben, y el gasto entero queda repartido.
 --   3. El sueldo de la oficina entra solo, repartido igual: lo que RR. HH.
 --      registró como pagado a la oficina en el mes (20261020120000), sin lo que
---      esa gente ya cargó en horas a una unidad.
+--      esa gente ya cargó en horas a cualquier código, también OFICINA
+--      (20261128110000).
 --   4. Un mes sin horas no reparte: el gasto espera hasta que alguien reporte.
 --   5. La pantalla de Gastos del mes: Administración y Gerencia ven el reparto
 --      y la oficina sumada; Ventas no.
