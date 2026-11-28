@@ -18073,6 +18073,55 @@ export type Database = {
           reclamo_abierto: string | null
         }[]
       }
+      gasto_operativo: {
+        Args: {
+          p_desde: string | null
+          p_hasta: string | null
+        }
+        Returns: {
+          fecha: string | null
+          area_id: string | null
+          area: string | null
+          fuente: string | null
+          grupo: string | null
+          concepto: string | null
+          detalle: string | null
+          cantidad: number | null
+          unidad: string | null
+          moneda: string | null
+          monto: number | null
+          soles: number | null
+          suma: boolean | null
+          sin_precio: number | null
+          documento: string | null
+          referencia_id: string | null
+          requerimiento_id: string | null
+        }[]
+      }
+      gasto_operativo_lineas_calculado: {
+        Args: {
+          p_desde: string | null
+          p_hasta: string | null
+        }
+        Returns: {
+          fecha: string | null
+          area_id: string | null
+          fuente: string | null
+          grupo: string | null
+          concepto: string | null
+          detalle: string | null
+          cantidad: number | null
+          unidad: string | null
+          moneda: string | null
+          monto: number | null
+          soles: number | null
+          suma: boolean | null
+          sin_precio: number | null
+          documento: string | null
+          referencia_id: string | null
+          requerimiento_id: string | null
+        }[]
+      }
       gastos_del_mes_oficina: {
         Args: {
           p_periodo: string | null

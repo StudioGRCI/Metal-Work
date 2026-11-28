@@ -254,3 +254,16 @@ test('los trámites: el Tramitador los lleva, Gerencia aprueba su anulación, Ad
     assert.ok(!menu(puesto, ['reporte_diario.ver']).includes('/tramites'), puesto)
   }
 })
+
+test('el gasto operativo: Gerencia y Administración ven todas las áreas, el supervisor y Mantenimiento la suya; los demás no', () => {
+  const menu = (rol, permisos) => rutas(menuDe(permisos, false, rol))
+  assert.ok(menu('GERENTE', [...GERENCIA, 'gasto_operativo.ver']).includes('/gasto-operativo'), 'Gerencia, en Finanzas')
+  assert.ok(menu('ADMINISTRACION', ['cotizaciones.ver_aprobadas', 'costos.ver', 'gasto_operativo.ver']).includes('/gasto-operativo'), 'Administración')
+  const supervisor = menu('SUPERVISOR', ['reporte_diario.registrar', 'requerimientos.ver', 'requerimientos.area', 'gasto_operativo.area'])
+  assert.equal(supervisor[supervisor.indexOf('/requerimientos') + 1], '/gasto-operativo', 'el supervisor, después de sus RQ')
+  assert.ok(menu('MANTENIMIENTO', ['equipos.gestionar', 'gasto_operativo.area']).includes('/gasto-operativo'), 'Mantenimiento')
+  // Sin su permiso no sale.
+  for (const puesto of ['SUPERVISOR', 'ALMACENERO', 'TESORERIA', 'CONTABILIDAD', 'REQUERIMIENTOS']) {
+    assert.ok(!menu(puesto, ['reporte_diario.registrar', 'requerimientos.ver', 'almacen.ver']).includes('/gasto-operativo'), puesto)
+  }
+})

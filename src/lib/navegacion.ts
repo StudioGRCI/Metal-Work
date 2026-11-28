@@ -21,6 +21,7 @@ import {
   CreditCard,
   DraftingCompass,
   Drill,
+  Factory,
   FileArchive,
   FileCheck2,
   FilePenLine,
@@ -642,6 +643,18 @@ export const NAVEGACION = [
         disponible: true,
       },
       { titulo: 'Gastos del mes', ruta: '/costos/gastos-generales', icono: Wallet, permiso: ['costos.gastos_generales', 'costos.ver'], descripcion: 'Servicios del local y gastos de operación', disponible: true },
+      // Lo que cada área gasta para trabajar y no carga a ninguna unidad (plan del
+      // gasto operativo, entrega 2, migración 20261127190000): Gerencia y
+      // Administración todas las áreas; el supervisor y Mantenimiento, la suya.
+      {
+        titulo: 'Gasto operativo',
+        ruta: '/gasto-operativo',
+        // No `Wallet`: es el de «Gastos del mes», que va justo arriba.
+        icono: Factory,
+        permiso: ['gasto_operativo.ver', 'gasto_operativo.area'],
+        descripcion: 'Lo que cada área gastó para trabajar, mes por mes, sin cargarlo a ninguna carrocería',
+        disponible: true,
+      },
       { titulo: 'Tipo de cambio', ruta: '/tesoreria/tipo-de-cambio', icono: ArrowLeftRight, permiso: 'tesoreria.tipo_cambio', lectura: 'tesoreria.ver_tipo_cambio', descripcion: 'El cambio del dólar de cada día, para el costo en soles', disponible: true },
     ],
   },
@@ -1005,6 +1018,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
           '/tesoreria/caja-diaria',
           '/tesoreria/tipo-de-cambio',
           '/costos/gastos-generales',
+          '/gasto-operativo',
         ],
       },
       {
@@ -1138,7 +1152,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       {
         titulo: 'Administración',
         // Los reclamos de garantía, después de las OT: abre la de cada uno (A.2).
-        rutas: ['/cotizaciones/pdf', '/ordenes', '/garantias', '/avance/trabajos', '/subcontratos', '/costos/gastos-generales', '/tesoreria/tipo-de-cambio'],
+        rutas: ['/cotizaciones/pdf', '/ordenes', '/garantias', '/avance/trabajos', '/subcontratos', '/costos/gastos-generales', '/gasto-operativo', '/tesoreria/tipo-de-cambio'],
       },
       // El stock de Almacén, para ver qué hay antes de pedir (2026-10-20).
       // Nace plegado desde el 2026-11-26: con los reclamos de garantía (A.2) el
@@ -1188,7 +1202,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   MANTENIMIENTO: {
     grupos: [
       { titulo: 'Unidades de clientes', rutas: ['/mantenimiento', '/reportes-diarios', '/requerimientos'] },
-      { titulo: 'Mantenimiento', rutas: ['/averias', '/equipos'] },
+      // Al final, lo que su área gastó para trabajar (gasto operativo, entrega 2).
+      { titulo: 'Mantenimiento', rutas: ['/averias', '/equipos', '/gasto-operativo'] },
     ],
     // Con cuatro pestañas el Dashboard queda en «Más».
     telefono: ['/mantenimiento', '/reportes-diarios', '/averias', '/equipos'],
@@ -1206,7 +1221,8 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
       // Lo que Calidad le observa a su área va al final: llega también por la campana.
       {
         titulo: 'Supervisión',
-        rutas: ['/reportes-diarios', '/planos', '/subcontratos/area', '/requerimientos/unidades', '/requerimientos', '/almacen/stock', '/calidad'],
+        // Después de sus RQ, lo que su área gastó para trabajar (gasto operativo, entrega 2).
+        rutas: ['/reportes-diarios', '/planos', '/subcontratos/area', '/requerimientos/unidades', '/requerimientos', '/gasto-operativo', '/almacen/stock', '/calidad'],
       },
     ],
     // En el teléfono, RQ abre la lista, que lleva la cifra de lo listo para
