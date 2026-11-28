@@ -1,0 +1,115 @@
+{
+  "id": "como-registrar-un-tramite",
+  "tarea": "Cómo registrar un trámite",
+  "puesto": "Tramitador",
+  "voz": { "nombre": "es-PE-CamilaNeural", "velocidad": "-5%" },
+  "pronunciacion": {},
+  "pista_whisper": "Metal Work. Trámite, Tramitador, SUNARP, tarjeta de propiedad, expediente, TR, Gerencia.",
+  "escenas": [
+    {
+      "tipo": "gancho",
+      "titular": "Ningún trámite se te pasa de **su fecha límite**",
+      "frases": ["Que ningún trámite se te pase de su fecha límite."]
+    },
+    { "tipo": "portada" },
+    {
+      "tipo": "antes-despues",
+      "antes": ["Los trámites, en un cuaderno", "Lo vencido se sabía tarde"],
+      "ahora": { "captura": "08-registrado", "resalte": "aviso", "puntos": ["Cada trámite con su número", "El sistema avisa lo que vence"] },
+      "frases": [
+        { "texto": "Antes, los trámites se anotaban en un cuaderno, y lo vencido se sabía tarde.", "vertical": "" },
+        { "texto": "Ahora cada trámite queda con su número, y el sistema te avisa lo que está por vencer.", "vertical": "" }
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Entra a Trámites y toca «Registrar trámite»",
+      "tomas": [
+        { "captura": "01-entrada", "resalte": "menu" },
+        { "captura": "02-vistas", "resalte": "vistas", "desdeFrase": 1 },
+        { "captura": "01-entrada", "resalte": "registrar", "desdeFrase": 2 }
+      ],
+      "frases": [
+        "Entra a Trámites.",
+        "Arriba están las vistas: en curso, por vencer, vencidos y concluidos.",
+        "Toca Registrar trámite."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Elige el tipo y la unidad",
+      "tomas": [
+        { "captura": "03-tipo", "resalte": "tipo" },
+        { "captura": "03-tipo", "resalte": "entidad", "desdeFrase": 1 },
+        { "captura": "04-unidad", "resalte": "cliente", "desdeFrase": 2 }
+      ],
+      "frases": [
+        "Elige el tipo de trámite.",
+        "La entidad sale sola; puedes cambiarla.",
+        "Si es de una unidad, elígela por su placa, y su cliente aparece solo."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Escribe qué se tramita y las fechas",
+      "tomas": [
+        { "captura": "05-asunto", "resalte": "asunto" },
+        { "captura": "05-asunto", "resalte": "expediente", "desdeFrase": 1 },
+        { "captura": "06-fechas", "resalte": "limite", "desdeFrase": 2 }
+      ],
+      "frases": [
+        "Escribe en una línea qué se tramita.",
+        "Anota el número de expediente, si ya lo tienes.",
+        "Pon el día en que se presentó y la fecha límite: con ella el sistema sabe cuándo avisarte."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Toca «Registrar el trámite»",
+      "tomas": [
+        { "captura": "07-registrar", "resalte": "enviar" },
+        { "captura": "08-registrado", "resalte": "aviso", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Toca Registrar el trámite.",
+        "Sale con su número, y ya cuenta su plazo."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Lleva su expediente hasta el documento final",
+      "tomas": [
+        { "captura": "09-expediente", "resalte": "subir" },
+        { "captura": "09-expediente", "resalte": "gestion", "desdeFrase": 1 },
+        { "captura": "10-cerrar", "resalte": "cerrarCon", "desdeFrase": 2 }
+      ],
+      "frases": [
+        "En su ficha, sube el cargo y cada recibo.",
+        "Anota cada gestión con su fecha.",
+        "Cuando la entidad te entregue el documento, ciérralo con el documento final."
+      ]
+    },
+    {
+      "tipo": "porque",
+      "titulo": "Por qué importa",
+      "puntos": ["Nada vence sin aviso", "Gerencia y Ventas saben cómo va sin llamarte"],
+      "lema": "El sistema te guía. Tú decides.",
+      "frases": [
+        "¿Por qué importa? Porque nada vence sin que te enteres,",
+        "y Gerencia y Ventas ven cómo va sin tener que llamarte.",
+        "El sistema te guía; tú llevas el trámite."
+      ]
+    },
+    {
+      "tipo": "cierre",
+      "titulo": "En resumen",
+      "puntos": ["Registra cada trámite", "Pon su fecha límite", "Ciérralo con su documento"],
+      "frases": [
+        "En resumen.",
+        "Uno: registra cada trámite.",
+        "Dos: pon su fecha límite.",
+        "Tres: ciérralo con su documento final."
+      ]
+    }
+  ]
+}

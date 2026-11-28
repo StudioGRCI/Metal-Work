@@ -1,0 +1,97 @@
+{
+  "id": "como-corregir-una-observacion-de-calidad",
+  "tarea": "Cómo corregir una observación de Calidad",
+  "puesto": "Ingeniería",
+  "voz": { "nombre": "es-PE-CamilaNeural", "velocidad": "-5%" },
+  "pronunciacion": {},
+  "pista_whisper": "Metal Work. Calidad, Ingeniería, Diseño, observación, no conforme, marcar corregido, plano, Maestranza.",
+  "escenas": [
+    {
+      "tipo": "gancho",
+      "titular": "Corrige lo que Calidad observó, **sin papeles de por medio**",
+      "frases": ["Corrige lo que Calidad observó, sin papeles de por medio."]
+    },
+    { "tipo": "portada" },
+    {
+      "tipo": "antes-despues",
+      "antes": ["Calidad avisaba de palabra", "No quedaba qué se corrigió"],
+      "ahora": { "captura": "05-corregida", "resalte": "estado", "puntos": ["El aviso te llega solo", "Queda anotado qué corregiste"] },
+      "frases": [
+        { "texto": "Antes, Calidad avisaba de palabra, y no quedaba anotado qué se corrigió.", "vertical": "" },
+        { "texto": "Ahora el aviso te llega solo, y queda escrito qué corregiste y cuándo.", "vertical": "" }
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Mira el aviso en la campana",
+      "tomas": [
+        { "captura": "01-campana", "resalte": "campana" },
+        { "captura": "01-campana", "resalte": "aviso", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Cuando Calidad observa un trabajo de Ingeniería, te llega a la campana.",
+        "El aviso dice el código y qué está no conforme."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Entra a «Observaciones de calidad»",
+      "tomas": [
+        { "captura": "02-lista", "resalte": "menu" },
+        { "captura": "02-lista", "resalte": "fila", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Entra a Observaciones de calidad.",
+        "En Por corregir está lo que espera a tu área."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Lee qué está no conforme",
+      "tomas": [
+        { "captura": "03-observacion", "resalte": "que" },
+        { "captura": "03-observacion", "resalte": "marcar", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Abre la observación y lee qué está no conforme.",
+        "Corrige el trabajo, y luego toca Marcar corregido."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Cuenta qué corregiste y envíalo",
+      "tomas": [
+        { "captura": "04-nota", "resalte": "nota" },
+        { "captura": "04-nota", "resalte": "enviar", "desdeFrase": 1 },
+        { "captura": "05-corregida", "resalte": "estado", "desdeFrase": 2 }
+      ],
+      "frases": [
+        "Escribe qué se corrigió, o pon una foto de cómo quedó.",
+        "Toca Marcar corregido.",
+        "Pasa a Calidad, que la revisa y la levanta, o te la devuelve."
+      ]
+    },
+    {
+      "tipo": "porque",
+      "titulo": "Por qué importa",
+      "puntos": ["Nada queda a medias", "Calidad sabe cuándo revisar"],
+      "lema": "El sistema te guía. Tú decides.",
+      "frases": [
+        "¿Por qué importa? Porque ninguna observación queda a medias,",
+        "y Calidad sabe cuándo le toca revisar.",
+        "El sistema te guía; tú corriges."
+      ]
+    },
+    {
+      "tipo": "cierre",
+      "titulo": "En resumen",
+      "puntos": ["Mira el aviso", "Corrige el trabajo", "Márcalo corregido con tu nota"],
+      "frases": [
+        "En resumen.",
+        "Uno: mira el aviso.",
+        "Dos: corrige el trabajo.",
+        "Tres: márcalo corregido, con tu nota."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,109 @@
+{
+  "id": "como-registrar-una-inspeccion-de-calidad",
+  "tarea": "Cómo registrar una inspección de calidad",
+  "puesto": "Control de calidad",
+  "voz": { "nombre": "es-PE-CamilaNeural", "velocidad": "-5%" },
+  "pronunciacion": {},
+  "pista_whisper": "Metal Work. Calidad, inspección, no conforme, Maestranza, Producción, etapa, código interno, levantar, observación.",
+  "escenas": [
+    {
+      "tipo": "gancho",
+      "titular": "Lo que observas le llega **al área que lo corrige**",
+      "frases": ["Lo que observas le llega solo al área que lo tiene que corregir."]
+    },
+    { "tipo": "portada" },
+    {
+      "tipo": "antes-despues",
+      "antes": ["La observación se decía de palabra", "Nadie sabía si ya se corrigió"],
+      "ahora": { "captura": "06-registrada", "resalte": "verde", "puntos": ["Le llega al área de la etapa", "Queda abierta hasta que la levantas"] },
+      "frases": [
+        { "texto": "Antes, la observación se decía de palabra, y nadie sabía si ya se había corregido.", "vertical": "" },
+        { "texto": "Ahora le llega al área de la etapa, y queda abierta hasta que tú la levantas.", "vertical": "" }
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Entra a Inspecciones y toca «Registrar inspección»",
+      "tomas": [
+        { "captura": "01-entrada", "resalte": "menu" },
+        { "captura": "01-entrada", "resalte": "registrar", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Entra a Inspecciones de calidad.",
+        "Toca Registrar inspección."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Elige el código y la etapa que revisaste",
+      "tomas": [
+        { "captura": "02-codigo", "resalte": "codigo" },
+        { "captura": "03-etapa", "resalte": "etapa", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Elige el código interno de la unidad.",
+        "Elige la etapa que revisaste: la observación le llega al área de esa etapa."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Marca «No conforme» y escribe qué está mal",
+      "tomas": [
+        { "captura": "04-resultado", "resalte": "resultado" },
+        { "captura": "05-observacion", "resalte": "observacion", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Si hay algo que corregir, marca No conforme.",
+        "Escribe dónde está y qué hay que corregir, y pon una foto si puedes."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Toca «Registrar»",
+      "tomas": [
+        { "captura": "05-observacion", "resalte": "enviar" },
+        { "captura": "06-registrada", "resalte": "verde", "desdeFrase": 1 },
+        { "captura": "07-lista", "resalte": "fila", "desdeFrase": 2 }
+      ],
+      "frases": [
+        "Toca Registrar.",
+        "El sistema te dice a quién le llegó.",
+        "Y en tu lista queda Por corregir."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Cuando el área la corrige, revísala",
+      "tomas": [
+        { "captura": "08-corregida", "resalte": "levantar" },
+        { "captura": "08-corregida", "resalte": "deNuevo", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Cuando el área la marca corregida, revísala y toca Levantar.",
+        "Si sigue mal, vuelve a observarla y regresa al área."
+      ]
+    },
+    {
+      "tipo": "porque",
+      "titulo": "Por qué importa",
+      "puntos": ["Ninguna observación se pierde", "Cada área sabe qué le toca corregir"],
+      "lema": "El sistema te guía. Tú decides.",
+      "frases": [
+        "¿Por qué importa? Porque ninguna observación se pierde,",
+        "y cada área sabe qué le toca corregir.",
+        "El sistema te guía; tú decides si quedó bien."
+      ]
+    },
+    {
+      "tipo": "cierre",
+      "titulo": "En resumen",
+      "puntos": ["Elige el código y la etapa", "Escribe qué está mal", "Levántala cuando quede bien"],
+      "frases": [
+        "En resumen.",
+        "Uno: elige el código y la etapa.",
+        "Dos: escribe qué está mal.",
+        "Tres: levántala cuando quede bien."
+      ]
+    }
+  ]
+}

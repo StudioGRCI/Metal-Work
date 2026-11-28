@@ -1,0 +1,109 @@
+{
+  "id": "como-pedir-herramientas-para-el-area",
+  "tarea": "Cómo pedir herramientas para el área",
+  "puesto": "Mantenimiento de unidades",
+  "voz": { "nombre": "es-PE-CamilaNeural", "velocidad": "-5%" },
+  "pronunciacion": {},
+  "pista_whisper": "Metal Work. Mantenimiento, requerimiento, RQ, gasto operativo, Almacén, PLANTA, brocas, taladro, insumo, catálogo.",
+  "escenas": [
+    {
+      "tipo": "gancho",
+      "titular": "Pide lo que tu área necesita para trabajar, **sin cargarlo a una OT**",
+      "frases": ["Pide lo que tu área necesita para trabajar, sin cargarlo a ninguna OT."]
+    },
+    { "tipo": "portada" },
+    {
+      "tipo": "antes-despues",
+      "antes": ["Se cargaba a una OT cualquiera", "El costo de la unidad salía inflado"],
+      "ahora": { "captura": "07-tarjeta", "resalte": "insignia", "puntos": ["Va como gasto operativo del área", "Cada unidad lleva solo lo suyo"] },
+      "frases": [
+        { "texto": "Antes, la herramienta del área se cargaba a una OT cualquiera, y el costo de esa unidad salía inflado.", "vertical": "" },
+        { "texto": "Ahora va como gasto operativo del área, y cada unidad lleva solo lo suyo.", "vertical": "" }
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Entra a Requerimientos y toca «Nuevo requerimiento»",
+      "tomas": [
+        { "captura": "01-entrada", "resalte": "menu" },
+        { "captura": "01-entrada", "resalte": "nuevo", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Entra a Requerimientos.",
+        "Toca Nuevo requerimiento."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Marca que es para Mantenimiento",
+      "tomas": [
+        { "captura": "02-para-el-area", "resalte": "area" },
+        { "captura": "03-justificacion", "resalte": "justificacion", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Marca Para Mantenimiento, gasto operativo: no se carga a ninguna OT.",
+        "Escribe para qué lo necesita el área."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Elige el insumo y la cantidad",
+      "tomas": [
+        { "captura": "04-insumo", "resalte": "insumo" },
+        { "captura": "04-insumo", "resalte": "cantidad", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Elige cada insumo del catálogo de Almacén.",
+        "Pon la cantidad: la unidad de medida sale sola."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Toca «Registrar y mandar a Almacén»",
+      "tomas": [
+        { "captura": "05-registrar", "resalte": "registrar" },
+        { "captura": "06-registrado", "resalte": "verde", "desdeFrase": 1 }
+      ],
+      "frases": [
+        "Toca Registrar y mandar a Almacén.",
+        "Sale con su número, y Almacén ya lo tiene para revisar el stock."
+      ]
+    },
+    {
+      "tipo": "paso",
+      "rotulo": "Síguelo hasta que te lo entreguen",
+      "tomas": [
+        { "captura": "07-tarjeta", "resalte": "insignia" },
+        { "captura": "07-tarjeta", "resalte": "avance", "desdeFrase": 1 },
+        { "captura": "07-tarjeta", "resalte": "gasto", "desdeFrase": 2 }
+      ],
+      "frases": [
+        "Su tarjeta dice Gasto operativo.",
+        "Ahí ves en qué va: Almacén revisa, Logística compra, para recoger y entregado.",
+        "Lo entregado lo ves después en Gasto operativo."
+      ]
+    },
+    {
+      "tipo": "porque",
+      "titulo": "Por qué importa",
+      "puntos": ["El costo de cada unidad sale limpio", "Gerencia ve cuánto gasta cada área"],
+      "lema": "El sistema te guía. Tú decides.",
+      "frases": [
+        "¿Por qué importa? Porque el costo de cada unidad sale limpio,",
+        "y Gerencia ve cuánto gasta cada área para trabajar.",
+        "El sistema te guía; tú pides lo que hace falta."
+      ]
+    },
+    {
+      "tipo": "cierre",
+      "titulo": "En resumen",
+      "puntos": ["Marca que es para tu área", "Elige el insumo del catálogo", "Síguelo en su tarjeta"],
+      "frases": [
+        "En resumen.",
+        "Uno: marca que es para tu área.",
+        "Dos: elige el insumo del catálogo.",
+        "Tres: síguelo en su tarjeta hasta que te lo entreguen."
+      ]
+    }
+  ]
+}
