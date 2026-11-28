@@ -17527,6 +17527,16 @@ export type Database = {
         }
         Returns: number
       }
+      enganchar_ot_a_su_cotizacion: {
+        Args: {
+          p_orden: string | null
+          p_cotizacion: string | null
+          p_unidad: number | null
+          p_version: string | null
+          p_motivo: string | null
+        }
+        Returns: string
+      }
       entregado_de_requerimientos: {
         Args: {
           p_ids: string[] | null
@@ -19073,6 +19083,15 @@ export type Database = {
         }
         Returns: string
       }
+      ot_llego_a_su_venta: {
+        Args: {
+          p_orden: string | null
+        }
+        Returns: {
+          creado_por: string | null
+          creado_en: string | null
+        }[]
+      }
       ot_recalcular_avance: {
         Args: {
           p_orden_id: string | null
@@ -19114,6 +19133,22 @@ export type Database = {
           p_destino: Database["public"]["Enums"]["estado_ot"] | null
         }
         Returns: boolean
+      }
+      ots_para_enganchar: {
+        Args: {
+          p_cotizaciones: string[] | null
+        }
+        Returns: {
+          cotizacion_id: string | null
+          orden_id: string | null
+          numero: string | null
+          estado: string | null
+          tipo_trabajo: string | null
+          codigo_interno: string | null
+          placa: string | null
+          descripcion: string | null
+          version: string | null
+        }[]
       }
       ots_para_logistica: {
         Args: Record<PropertyKey, never>

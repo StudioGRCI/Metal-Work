@@ -291,3 +291,46 @@ export async function unidadesLibresYaFacturadas(ids: string[]): Promise<Map<str
   }
   return mapa
 }
+
+/** Una OT ya registrada sin cotización que Administración puede enganchar a una. */
+export type OtParaEnganchar = {
+  id: string
+  numero: string
+  estado: string
+  tipoTrabajo: string
+  codigo: string | null
+  placa: string | null
+  descripcion: string | null
+  version: string
+}
+
+/**
+ * A quien carga las OT: de cada cotización aprobada, las OT de su mismo cliente
+ * que se registraron sin cotización y se le pueden enganchar como una de sus
+ * unidades (migración 20261127210000). A los demás puestos la base no les da ninguna.
+ */
+export async function otsParaEnganchar(ids: string[]): Promise<Map<string, OtParaEnganchar[]>> {
+  const mapa = new Map<string, OtParaEnganchar[]>()
+  const unicos = [...new Set(ids)].slice(0, 200)
+  if (unicos.length === 0) return mapa
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('ots_para_enganchar', { p_cotizaciones: unicos })
+  if (error) throw new Error(`No se pudo leer qué OT ya registradas se pueden enganchar: ${error.message}`)
+  for (const f of data ?? []) {
+    if (!f.cotizacion_id || !f.orden_id || !f.numero || !f.version) continue
+    mapa.set(f.cotizacion_id, [
+      ...(mapa.get(f.cotizacion_id) ?? []),
+      {
+        id: f.orden_id,
+        numero: f.numero,
+        estado: f.estado ?? '',
+        tipoTrabajo: f.tipo_trabajo ?? '',
+        codigo: f.codigo_interno,
+        placa: f.placa,
+        descripcion: f.descripcion,
+        version: f.version,
+      },
+    ])
+  }
+  return mapa
+}

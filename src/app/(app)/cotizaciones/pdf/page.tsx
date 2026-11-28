@@ -11,7 +11,7 @@ import { Insignia } from '@/components/ui/etiqueta-estado'
 import { Recorrido } from '@/components/ui/recorrido'
 import { Tarjeta, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { etiquetaDeMime } from '@/lib/archivo-cotizacion'
-import { catalogosDeCotizacion, listarCotizacionesPdf, unidadesLibresYaFacturadas } from '@/lib/datos/cotizaciones-pdf'
+import { catalogosDeCotizacion, listarCotizacionesPdf, otsParaEnganchar, unidadesLibresYaFacturadas } from '@/lib/datos/cotizaciones-pdf'
 import { recorridoDeCotizaciones } from '@/lib/datos/recorrido'
 import { coincide, palabrasDeBusqueda } from '@/lib/dominio/busqueda'
 import { ESTADO_OT, definir } from '@/lib/dominio/estados'
@@ -21,6 +21,7 @@ import { diaLima, fecha as fmtFecha, hora, hoyLima, moneda as formatoMoneda } fr
 import { exigirPermiso, puede, puedeCorregirCotizacion, puedeQuitarCotizacion } from '@/lib/sesion'
 
 import { CancelarVenta, CargarCodigoYOt, CorregirCotizacion, EstadoDeLaOt, QuitarCotizacion, RevisarCotizacion } from './acciones-cotizacion'
+import { AvisoDeOtRegistrada, EngancharOtRegistrada, EngancheEnLaTarjeta, EstadoDelEnganche } from './enganchar-ot'
 import { IrALaTarjetaDelAviso } from './ir-a-la-tarjeta-del-aviso'
 import { EstadoDeSubirCotizacion, SubirCotizacion } from './subir-cotizacion'
 
@@ -243,23 +244,36 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
     // Primero la venta que se reabrió y espera a quien la registró: «decide si sigue» (Inicio lleva aquí).
     .sort((a, b) => Number(esperaSuDecision(b)) - Number(esperaSuDecision(a)) || Number(arriba(b)) - Number(arriba(a)))
 
-  // El recorrido de las que se muestran. Sin él, la tarjeta sigue con todo lo demás y lo dice en su lugar.
-  const recorridos = await recorridoDeCotizaciones(visibles.flatMap((c) => (c.id ? [c.id] : []))).catch((e: unknown) => {
-    console.error('Cotización: no se pudo leer el recorrido.', e)
-    return null
-  })
-
-  // A quien carga la OT: las unidades libres que ya tienen factura, para avisarle antes de que
-  // otro vehículo se quede con ella. Solo puede pasar si falta más de una OT. Es un aviso de
-  // más: si no se lee, la ventana sigue como siempre.
-  const yaFacturadas = cargaOt
-    ? await unidadesLibresYaFacturadas(
-        visibles.flatMap((c) => (c.id && sinCodigo(c) && (c.cantidad_unidades ?? 1) > 1 && (c.ordenes_faltantes ?? 0) > 1 ? [c.id] : [])),
-      ).catch((e: unknown) => {
-        console.error('Cotización: no se pudo leer qué unidades sin OT ya tienen factura.', e)
-        return null
-      })
-    : null
+  // Tres lecturas que no dependen una de otra: van juntas.
+  const conId = visibles.flatMap((c) => (c.id ? [c.id] : []))
+  const [recorridos, yaFacturadas, registradas] = await Promise.all([
+    // El recorrido de las que se muestran. Sin él, la tarjeta sigue con todo lo demás y lo dice en su lugar.
+    recorridoDeCotizaciones(conId).catch((e: unknown) => {
+      console.error('Cotización: no se pudo leer el recorrido.', e)
+      return null
+    }),
+    // A quien carga la OT: las unidades libres que ya tienen factura, para avisarle antes de que
+    // otro vehículo se quede con ella. Solo puede pasar si falta más de una OT. Es un aviso de
+    // más: si no se lee, la ventana sigue como siempre.
+    cargaOt
+      ? unidadesLibresYaFacturadas(
+          visibles.flatMap((c) => (c.id && sinCodigo(c) && (c.cantidad_unidades ?? 1) > 1 && (c.ordenes_faltantes ?? 0) > 1 ? [c.id] : [])),
+        ).catch((e: unknown) => {
+          console.error('Cotización: no se pudo leer qué unidades sin OT ya tienen factura.', e)
+          return null
+        })
+      : null,
+    // A quien carga la OT: las OT del mismo cliente que se registraron antes que su
+    // cotización y se le pueden enganchar como una de sus unidades (migración
+    // 20261127210000). Si no se leen, la tarjeta lo dice: sin aviso, se volvía
+    // a cargar otra OT para el mismo vehículo.
+    cargaOt
+      ? otsParaEnganchar(visibles.flatMap((c) => (c.id && sinCodigo(c) ? [c.id] : []))).catch((e: unknown) => {
+          console.error('Cotización: no se pudo leer qué OT ya registradas se pueden enganchar.', e)
+          return null
+        })
+      : null,
+  ])
 
   const opciones = [
     { valor: null, etiqueta: `Vigentes (${cotizaciones.length - anuladas})` },
@@ -282,6 +296,7 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
             <>
               {puedeSubir && <EstadoDeSubirCotizacion />}
               {cargaOt && <EstadoDeLaOt />}
+              {cargaOt && <EstadoDelEnganche />}
             </>
           )
         }
@@ -644,6 +659,15 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                       femenino
                     />
 
+                    {cargaOt && c.id && <EngancheEnLaTarjeta cotizacionId={c.id} />}
+                    {cargaOt && sinCodigo(c) && c.id && (registradas
+                      ? <AvisoDeOtRegistrada ots={registradas.get(c.id) ?? []} />
+                      : (
+                        <p className="text-xs text-texto-suave" data-registradas-sin-leer>
+                          No se pudo ver si el cliente ya tiene una OT registrada sin cotización: mira sus OT antes de cargar otra para el mismo vehículo.
+                        </p>
+                      ))}
+
                     {(revisa && c.estado === 'POR_REVISAR' || cargaOt && sinCodigo(c) || (editaOt && otsSinCodigo.some((o) => o.id)) || corrige || quitable || cancela) && (
                       <div className="flex flex-wrap items-center gap-2">
                         {revisa && c.estado === 'POR_REVISAR' && c.id && (
@@ -661,6 +685,16 @@ export default async function PaginaCotizacionesPdf({ searchParams }: PageProps<
                               otras: c.ordenes.flatMap((o, i) => (o.codigo_interno ? [{ unidad: o.unidad ?? i + 1, codigo: o.codigo_interno }] : [])),
                               facturadas: yaFacturadas?.get(c.id),
                             }}
+                          />
+                        )}
+                        {cargaOt && sinCodigo(c) && c.id && (registradas?.get(c.id) ?? []).some((o) => o.estado !== 'BORRADOR') && (
+                          <EngancharOtRegistrada
+                            cotizacionId={c.id}
+                            numero={c.numero ?? 'cotización'}
+                            ots={(registradas?.get(c.id) ?? []).filter((o) => o.estado !== 'BORRADOR')}
+                            unidades={unidades}
+                            libres={libres}
+                            facturadas={yaFacturadas?.get(c.id)}
                           />
                         )}
                         {editaOt &&
