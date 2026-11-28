@@ -135,16 +135,19 @@ verdad** (OT, RQ, OC, OS) y, como todo documento numerado, no se borran: por eso
 la marca de base de prueba.
 
 Y la plata y el personal: Contabilidad registra cinco facturas de compra (una
-pagada, una en parte, una por pagar y dos vencidas), emite cuatro guías de
-remisión, dos notas de crédito y tres facturas de venta (una cobrada, una a
-cuenta y una vencida); Tesorería lleva tres cajas, abiertas hace un mes, con diez
-días de movimientos y días cerrados (uno con diferencia), paga compras con factura y con boleta,
-servicios con su detracción, un recibo por honorarios y dos planillas diarias;
-RR. HH. tiene un mes de asistencia con tardanzas y una falta, reportes diarios
-validados, horas extras, permisos, observaciones, pagos de oficina y dos
-planillas, una cerrada y repartida entre las OT y otra en borrador; y
-Administración, los gastos generales de este mes y del anterior. Los
-puestos nuevos (Contabilidad, Tesorería, RR. HH.) tienen su ficha de
+pagada, dos en parte, una por pagar y dos vencidas, una de ellas en parte),
+emite cinco guías de remisión (una anulada), dos notas de crédito y cinco
+facturas de venta (dos cobradas, dos a cuenta, una de ellas vencida, y una
+anulada);
+Tesorería lleva tres cajas, abiertas hace un mes, con los movimientos de las
+dos últimas semanas y días cerrados (uno con diferencia), paga compras con
+factura y con boleta, servicios con su detracción, dos recibos por honorarios
+(otros dos esperan) y dos planillas diarias, y deja anulados un cobro, un pago
+y un movimiento; RR. HH. tiene un mes de asistencia con tardanzas y una falta,
+reportes diarios validados, horas extras, permisos, observaciones, pagos de
+oficina y dos planillas, una cerrada y repartida entre las OT y otra en
+borrador; y Administración, los gastos generales de este mes y del anterior.
+Los puestos nuevos (Contabilidad, Tesorería, RR. HH.) tienen su ficha de
 demostración.
 
 ### Desarrollo
