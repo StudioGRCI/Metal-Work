@@ -122,7 +122,15 @@ npx tsc --noEmit && npx eslint && npx next build
   (`enganchar_ot_a_su_cotizacion`), y sin cotización aprobada no se factura.
   La factura de venta de la demostración va sobre OT que siguen en taller; la
   de la entregada queda para cuando la sección del taller nazca con su
-  cotización (entrega 3).
+  cotización (entrega 3). Cuando eso pase, el enganche de las OT 1 a 3 en la
+  sección de plata (`enganchar_ot_a_su_cotizacion`) caerá con «ya es de otra
+  cotización»: se quita ahí y la factura toma la cotización con que nació la OT.
+- **Una sección que depende de lo que otra agrega en una versión nueva se
+  detiene en una base vieja.** La sección de compras no vuelve a correr (su
+  centinela ya está), así que lo que se le sumó después no existe. El primer
+  bloque del archivo mira si la base tiene la demostración sin los recibos por
+  honorarios y, si es así, pide rehacerla antes de cargar nada (auditoría de la
+  entrega 2: caía a media carga con un mensaje que no decía qué hacer).
 
 ## Numeración y datos reales
 

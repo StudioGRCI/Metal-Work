@@ -137,13 +137,13 @@ la marca de base de prueba.
 Y la plata y el personal: Contabilidad registra cinco facturas de compra (una
 pagada, una en parte, una por pagar y dos vencidas), emite cuatro guías de
 remisión, dos notas de crédito y tres facturas de venta (una cobrada, una a
-cuenta y una vencida); Tesorería lleva tres cajas con un mes de movimientos y
-días cerrados (uno con diferencia), paga compras con factura y con boleta,
+cuenta y una vencida); Tesorería lleva tres cajas, abiertas hace un mes, con diez
+días de movimientos y días cerrados (uno con diferencia), paga compras con factura y con boleta,
 servicios con su detracción, un recibo por honorarios y dos planillas diarias;
 RR. HH. tiene un mes de asistencia con tardanzas y una falta, reportes diarios
 validados, horas extras, permisos, observaciones, pagos de oficina y dos
 planillas, una cerrada y repartida entre las OT y otra en borrador; y
-Administración, los gastos generales del mes y el costo de una OT cerrado. Los
+Administración, los gastos generales de este mes y del anterior. Los
 puestos nuevos (Contabilidad, Tesorería, RR. HH.) tienen su ficha de
 demostración.
 

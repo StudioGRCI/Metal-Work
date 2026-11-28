@@ -143,7 +143,9 @@ valorizada y cinco órdenes en distintos estados, y un circuito de compras y
 almacén: requerimientos, órdenes de compra y de servicio y subcontratos en cada
 estado. Trae también la plata y el personal: facturas de compra y de venta,
 cajas con sus días cerrados, pagos y cobros, asistencia, reportes diarios,
-planillas diarias y mensuales y el costo de una OT cerrado. No toca nada de lo que ya exista y se puede ejecutar varias veces.
+planillas diarias y mensuales y los gastos generales. No toca nada de lo que
+ya exista y se puede ejecutar varias veces; si la base tiene la
+demostración de una versión anterior, se detiene y pide rehacerla.
 
 Sus documentos toman números de las series reales, y un documento numerado no
 se borra nunca: por eso el archivo se detiene si no lleva la marca

@@ -22,6 +22,15 @@ begin
   if coalesce(current_setting('demo.base_de_prueba', true), '') <> 'si' then
     raise exception 'Los datos de demostración van solo en una base de prueba: toman números de las series reales y no se borran. Si esta es una base de prueba, cárgalos con PGOPTIONS=''-c demo.base_de_prueba=si''.';
   end if;
+  -- La sección de plata y personal cuenta con lo que la de compras deja desde
+  -- la entrega 2 (los recibos por honorarios, la fecha de cada factura). Sobre
+  -- una base con la demostración de antes, la de compras no vuelve a correr (su
+  -- centinela ya está): mejor detenerse aquí diciendo qué hacer que caer a medio
+  -- camino. Los proveedores 2099… son los de la demostración.
+  if exists (select 1 from public.proveedores where numero_documento like '2099%')
+     and not exists (select 1 from public.recibos_honorarios) then
+    raise exception 'Esta base tiene los datos de demostración de una versión anterior: rehazla (en el banco, herramientas/banco/preparar.sh) antes de cargar esta.';
+  end if;
 end $$;
 
 -- Desde la migración 20260928130000 Diseño define las etapas de cada OT, con su
@@ -1426,7 +1435,7 @@ begin
     v_ruta := v_id || '/' || gen_random_uuid() || '.pdf';
     perform pg_temp.demo_archivo('subcontratos', v_ruta, v_adm, 'application/pdf');
     perform public.registrar_recibo_honorarios(gen_random_uuid(), v_id,
-      case when v_id = v_sc[1] then 'E001-27' else 'E001-14' end, current_date - 7,
+      case when v_id = v_sc[1] then 'E001-27' else 'E001-14' end, (now() at time zone 'America/Lima')::date - 7,
       (select descripcion from public.subcontratos where id = v_id),
       (select monto from public.subcontratos where id = v_id), v_id = v_sc[1], v_ruta);
   end loop;
@@ -1489,7 +1498,7 @@ begin
   -- hoy, cuando llega la mercadería: así el vencimiento de cada factura corre
   -- desde su fecha, como en las cuentas por pagar de la empresa.
   update public.documentos_compra_material d
-     set fecha_emision = least((c.creado_en at time zone 'America/Lima')::date + 1, current_date)
+     set fecha_emision = least((c.creado_en at time zone 'America/Lima')::date + 1, (now() at time zone 'America/Lima')::date)
     from public.ordenes_compra_materiales c
    where c.id = d.orden_compra_id and d.tipo = 'FACTURA';
   update public.ordenes_servicio s
@@ -1521,11 +1530,14 @@ begin
   update public.proveedores set creado_en = now() - interval '20 days' where creado_en = now();
   update public.proveedor_cuentas set creado_en = now() - interval '20 days' where creado_en = now();
   update public.programacion_recojo set programado_en = now() - interval '100 minutes' where programado_en = now();
-  -- La factura la anexa Logística el día en que el proveedor la manda, antes
-  -- de que el conductor salga a recoger.
-  update public.documentos_compra_material
-     set creado_en = least((fecha_emision + time '10:00') at time zone 'America/Lima', now() - interval '100 minutes')
-   where creado_en = now();
+  -- La factura la anexa Logística el día en que el proveedor la manda, después
+  -- de que Gerencia aprueba la compra y antes de que el conductor salga.
+  update public.documentos_compra_material d
+     set creado_en = least(greatest((d.fecha_emision + time '10:00') at time zone 'America/Lima',
+                                    coalesce(c.aprobado_en, now()) + interval '20 minutes'),
+                           now() - interval '100 minutes')
+    from public.ordenes_compra_materiales c
+   where c.id = d.orden_compra_id and d.creado_en = now();
   update public.ordenes_compra_materiales
      set recojo_pedido_en = case when recojo_pedido_en = now() then coalesce(aprobado_en, now() - interval '100 minutes')
                                  else recojo_pedido_en end,
@@ -1779,6 +1791,11 @@ declare
   v_id      uuid;
   v_ruta    text;
   v_act     jsonb;
+  v_n       int;
+  v_fva     uuid := gen_random_uuid();
+  v_cob     uuid := gen_random_uuid();
+  v_pag     uuid := gen_random_uuid();
+  v_mov     uuid := gen_random_uuid();
 begin
   if exists (select 1 from public.cajas) then
     return;
@@ -1819,8 +1836,8 @@ begin
   -- las compras que siguen por recoger (al conductor le llega el aviso) y dos de
   -- las que ya dejó en almacén.
   for v_t in
-    select * from (values (v_plan, 'T001-00000412'), (v_esm, 'T001-00000413'),
-                          (v_pint, 'T001-00000410'), (v_pl4, 'T001-00000411')) as g(oc, numero)
+    select * from (values (v_plan, 'T001-00009412'), (v_esm, 'T001-00009413'),
+                          (v_pint, 'T001-00009410'), (v_pl4, 'T001-00009411')) as g(oc, numero)
   loop
     v_id := gen_random_uuid();
     perform pg_temp.demo_archivo('guias-remision', 'compra/' || v_t.oc || '/' || v_id || '.pdf', v_con, 'application/pdf');
@@ -1857,6 +1874,9 @@ begin
             v_t.fecha_emision + case when v_t.condicion_pago = 'CREDITO' then v_t.dias_credito else 0 end,
             v_t.moneda, v_t.total, v_t.condicion_pago, v_t.oc, v_t.documento, '');
     update public.adquisiciones set estado = 'REGISTRADA' where id = v_id;
+    if not found then
+      raise exception 'Plata y personal: la política de adquisiciones ya no deja a Contabilidad registrar la factura %.', v_t.numero_documento;
+    end if;
     reset role;
     v_adq := v_adq || jsonb_build_object(v_t.oc::text, v_id);
   end loop;
@@ -1885,8 +1905,8 @@ begin
     set local role authenticated;
     insert into public.cotizaciones_pdf (id, numero, cantidad_unidades, cliente_id, tipo_carroceria_id, monto_venta, moneda,
                                          nombre_archivo, ruta_storage, mime_type, tamano_bytes, registrado_por)
-    values (v_cot[v_i], (array['3571-2026', '3574-2026', '3578-2026'])[v_i], 1, v_t.cliente_id, v_t.tipo_carroceria_id,
-            (array[80240, 23600, 59000])[v_i], 'PEN', (array['3571-2026', '3574-2026', '3578-2026'])[v_i] || '.pdf',
+    values (v_cot[v_i], (array['9571-2026', '9574-2026', '9578-2026'])[v_i], 1, v_t.cliente_id, v_t.tipo_carroceria_id,
+            (array[80240, 23600, 59000])[v_i], 'PEN', (array['9571-2026', '9574-2026', '9578-2026'])[v_i] || '.pdf',
             v_ruta, 'application/pdf', 4096, v_ven);
     reset role;
     perform public.confirmar_igv_cotizacion(v_cot[v_i], true);
@@ -1894,6 +1914,10 @@ begin
   perform pg_temp.demo_como(v_ger);
   set local role authenticated;
   update public.cotizaciones_pdf set estado = 'APROBADA' where id = any (v_cot);
+  get diagnostics v_n = row_count;
+  if v_n <> 3 then
+    raise exception 'Plata y personal: la política de cotizaciones ya no deja a Gerencia aprobarlas (aprobó % de 3).', v_n;
+  end if;
   reset role;
   perform pg_temp.demo_como(v_adm);
   for v_i in 1..3 loop
@@ -1901,15 +1925,21 @@ begin
       (select actualizado_en from public.ordenes_trabajo where id = (array[v_ot1, v_ot2, v_ot3])[v_i]),
       'La OT se abrió con la cotización firmada en papel; Ventas la subió después');
   end loop;
+  -- La primera factura de la repotenciación salió por el total y Contabilidad
+  -- la anuló: la que vale es la del adelanto.
+  v_ruta := pg_temp.demo_subir('facturas-venta', v_fva::text, v_con);
+  perform public.registrar_factura_venta_de_unidad(v_fva, v_cot[2], 'E001-9404', v_hoy - 16, v_hoy - 9,
+    'PEN', 23600, 'Repotenciación de la tolva', v_ruta, 'E001-9404.pdf', 1);
+  perform public.anular_factura_venta(v_fva, 'Salió por el total y el cliente paga primero el 50 %: la reemplaza la E001-9405.');
   -- Contabilidad factura el adelanto de cada una: el de la tolva al contado, el
   -- de la repotenciación a siete días (ya vencido) y el del furgón a quince.
   for v_i in 1..3 loop
     v_ruta := pg_temp.demo_subir('facturas-venta', v_fv[v_i]::text, v_con);
     perform public.registrar_factura_venta_de_unidad(v_fv[v_i], v_cot[v_i],
-      (array['E001-412', 'E001-405', 'E001-419'])[v_i],
+      (array['E001-9412', 'E001-9405', 'E001-9419'])[v_i],
       v_hoy - (array[12, 15, 6])[v_i], v_hoy - (array[12, 15, 6])[v_i] + (array[0, 7, 15])[v_i],
       'PEN', (array[40120, 11800, 29500])[v_i], 'Adelanto 50 %', v_ruta,
-      (array['E001-412', 'E001-405', 'E001-419'])[v_i] || '.pdf', 1);
+      (array['E001-9412', 'E001-9405', 'E001-9419'])[v_i] || '.pdf', 1);
   end loop;
 
   -- ---------------------------------------------- OC con boleta, de hoy
@@ -1973,6 +2003,12 @@ begin
   -- función: a nombre de la portería, con la tardanza contada contra la hora de
   -- entrada de cada persona y la tolerancia de la regla de Recursos Humanos.
   -- Carlos llega tarde cuatro veces, Julio faltó un día y Elsa marca hasta su baja.
+  -- Va como `postgres`: `authenticated` no inserta en `asistencias`, solo la
+  -- función.
+  -- Los días de los reportes diarios van antes, para que la portería cuadre con
+  -- ellos: Marco entra dos horas tarde el día de su permiso y Jorge y Luis
+  -- salen dos horas después los dos días de horas extras.
+  v_dias := array(select pg_temp.demo_habil(n) from generate_series(6, 1, -1) n);
   insert into public.asistencias (trabajador_id, fecha, tipo, marcado_en, hora, tardanza_minutos, es_tardanza,
                                   registrado_por, creado_en)
   select m.trabajador_id, m.fecha, m.tipo, (m.fecha + m.hora) at time zone 'America/Lima', m.hora,
@@ -1980,22 +2016,27 @@ begin
          v_por, (m.fecha + m.hora) at time zone 'America/Lima'
     from (
       select t.id as trabajador_id, d::date as fecha, k.tipo,
-             case when k.tipo = 'INGRESO' then t.hora_entrada + make_interval(mins => e.llega)
+             case when k.tipo = 'INGRESO' and t.apellidos = 'HUAMÁN ROJAS' and d::date = v_dias[2]
+                    then t.hora_entrada + interval '2 hours' - interval '8 minutes'
+                  when k.tipo = 'INGRESO' then t.hora_entrada + make_interval(mins => e.llega)
+                  when t.apellidos in ('QUISPE MAMANI', 'TORRES CHÁVEZ') and d::date in (v_dias[1], v_dias[3])
+                    then t.hora_salida + interval '2 hours' + make_interval(mins => length(t.nombres))
                   else t.hora_salida + make_interval(mins => (extract(day from d)::int * 7 + length(t.apellidos)) % 12) end as hora,
-             case when k.tipo = 'INGRESO' then greatest(e.llega, 0) else 0 end as tarde
+             case when k.tipo = 'INGRESO' and not (t.apellidos = 'HUAMÁN ROJAS' and d::date = v_dias[2])
+                  then greatest(e.llega, 0) else 0 end as tarde
         from public.trabajadores t
         cross join generate_series(v_hoy - 30, v_hoy, interval '1 day') d
         cross join (values ('INGRESO'), ('SALIDA')) as k(tipo)
         cross join lateral (
           select case
-                   when t.apellidos = 'VARGAS LEÓN' and d::date in (v_hoy - 26, v_hoy - 17, v_hoy - 9, v_hoy - 4)
+                   when t.apellidos = 'VARGAS LEÓN' and d::date in (pg_temp.demo_habil(20), pg_temp.demo_habil(13), pg_temp.demo_habil(7), pg_temp.demo_habil(3))
                      then 9 + (extract(day from d)::int % 4) * 7
                    else -15 + (extract(day from d)::int * 3 + length(t.nombres)) % 17
                  end as llega) e
        where extract(isodow from d) < 7
          and (t.fecha_ingreso is null or d::date >= t.fecha_ingreso)
          and (t.fecha_baja is null or d::date <= t.fecha_baja)
-         and not (t.apellidos = 'PARI CONDORI' and d::date = v_hoy - 13)
+         and not (t.apellidos = 'PARI CONDORI' and d::date = pg_temp.demo_habil(11))
     ) m
    -- Hoy, solo lo que ya pasó: el ingreso de la mañana y, si la carga corre de
    -- noche, también la salida.
@@ -2005,7 +2046,6 @@ begin
   -- días después): Producción en la tolva y Maestranza en el furgón, con las
   -- horas de cada persona. Jorge y Luis se quedan dos horas más dos días. Marco
   -- pidió dos horas de permiso el segundo día.
-  v_dias := array(select pg_temp.demo_habil(n) from generate_series(6, 1, -1) n);
   for v_i in 1..6 loop
     v_d := v_dias[v_i];
     perform pg_temp.demo_como(v_sup_prd);
@@ -2068,11 +2108,13 @@ begin
       perform public.rrhh_decidir_horas_extras(gen_random_uuid(), t.id, v_dias[1],
                                                case when t.apellidos = 'QUISPE MAMANI' then 'PAGAR' else 'RESERVAR' end)
          from public.trabajadores t where t.apellidos in ('QUISPE MAMANI', 'TORRES CHÁVEZ');
+      if not found then raise exception 'Plata y personal: faltan Jorge y Luis en el personal de la demostración.'; end if;
       perform public.enviar_planilla_diaria(v_pd1);
     elsif v_i = 4 then
       perform pg_temp.demo_como(v_rrhh);
       perform public.rrhh_decidir_horas_extras(gen_random_uuid(), t.id, v_dias[3], 'PAGAR')
          from public.trabajadores t where t.apellidos = 'QUISPE MAMANI';
+      if not found then raise exception 'Plata y personal: falta Jorge en el personal de la demostración.'; end if;
       perform public.enviar_planilla_diaria(v_pd2);
     end if;
   end loop;
@@ -2080,10 +2122,11 @@ begin
   -- Un permiso de Óscar para pasado mañana, que espera.
   perform pg_temp.demo_como(v_rrhh);
   perform public.rrhh_registrar_permiso(gen_random_uuid(), (select id from public.trabajadores where apellidos = 'NÚÑEZ PAREDES'),
-    v_hoy + 2, 3, 'Trámite de su brevete en el MTC');
+    (select d::date from generate_series(v_hoy + 2, v_hoy + 3, interval '1 day') d where extract(isodow from d) < 7 limit 1),
+    3, 'Trámite de su brevete en el MTC');
   -- Observaciones del mes.
   perform public.rrhh_registrar_observacion(gen_random_uuid(), (select id from public.trabajadores where apellidos = 'VARGAS LEÓN'),
-    v_hoy - 4, 'AMONESTACION_VERBAL', 'TARDANZAS', 'Cuarta tardanza del mes: se le recordó la hora de entrada y el descuento.', null, null);
+    pg_temp.demo_habil(3), 'AMONESTACION_VERBAL', 'TARDANZAS', 'Cuarta tardanza del mes: se le recordó la hora de entrada y el descuento.', null, null);
   perform public.rrhh_registrar_observacion(gen_random_uuid(), (select id from public.trabajadores where apellidos = 'PARI CONDORI'),
     v_dias[3], 'OBSERVACION', 'EPP', 'Trabajaba en la tolva sin sus lentes de seguridad; se le dieron unos de la caseta.', v_cod1, null);
 
@@ -2093,16 +2136,20 @@ begin
   perform public.rrhh_registrar_pago_oficina(gen_random_uuid(), v_ofi2, (date_trunc('month', v_hoy) - interval '1 month')::date,
     (date_trunc('month', v_hoy) - interval '1 day')::date, 2300, 207, null);
 
-  -- La planilla del taller del mes pasado, repartida entre las dos OT en
-  -- marcha y cerrada; la de la oficina de este mes, en borrador. La pantalla
+  -- La planilla del taller del mes pasado, repartida entre las tres OT que
+  -- estaban en el taller (la tolva, la repotenciación hoy en pausa y la que ya
+  -- se entregó; el furgón todavía no empezaba) y cerrada, con quien
+  -- trabajó ese mes aunque ya no esté (Elsa salió en noviembre); la de la oficina de este mes, en borrador. La pantalla
   -- inserta la planilla y sus personas en la tabla, por sus políticas: va igual.
   -- El DNI de cada persona lo trae la pantalla, que lo lee por su función: aquí
   -- se lee antes de tomar el rol de la sesión.
   select jsonb_agg(jsonb_build_object(
            'planilla_id', case when t.planilla = 'TALLER' then v_pla_taller else v_pla_ofi end,
-           'nombre', t.nombres || ' ' || t.apellidos, 'documento', t.dni, 'monto', r.remuneracion_mensual))
+           'nombre', t.nombres || ' ' || t.apellidos, 'documento', t.dni, 'monto', coalesce(r.remuneracion_mensual, 2100)))
     into v_act
-    from public.trabajadores t join public.trabajador_remuneraciones r on r.trabajador_id = t.id;
+    from public.trabajadores t left join public.trabajador_remuneraciones r on r.trabajador_id = t.id
+   where r.trabajador_id is not null
+      or (t.planilla = 'TALLER' and t.fecha_baja >= (date_trunc('month', v_hoy) - interval '1 month')::date);
   set local role authenticated;
   insert into public.planillas (id, tipo, periodo, moneda, observacion, registrado_por)
   values (v_pla_taller, 'TALLER', (date_trunc('month', v_hoy) - interval '1 month')::date, 'PEN',
@@ -2113,7 +2160,7 @@ begin
     from jsonb_to_recordset(v_act) as x(planilla_id uuid, nombre text, documento text, monto numeric);
   reset role;
   perform public.repartir_planilla_en_partes_iguales(v_pla_taller,
-    array(select id from public.planilla_personas where planilla_id = v_pla_taller), array[v_ot1, v_ot3]);
+    array(select id from public.planilla_personas where planilla_id = v_pla_taller), array[v_ot1, v_ot2, v_ot4]);
   perform public.cerrar_planilla(v_pla_taller);
 
   -- ---------------------------------------------------------- costeo
@@ -2127,69 +2174,90 @@ begin
        ((date_trunc('month', v_hoy) - interval '1 month')::date, 'ELECTRICIDAD', 'Recibo de Luz del Sur del mes', 1924.10),
        ((date_trunc('month', v_hoy) - interval '1 month')::date, 'SEGURIDAD', 'Monitoreo de las cámaras y la alarma', 450.00))
        as g(periodo, concepto, descripcion, monto);
-  -- Administración cierra el costo de la OT ya entregada (lo cierra quien edita
-  -- la OT y ve su costo).
-  perform pg_temp.demo_como(v_adm);
-  perform public.cerrar_costo_ot(v_ot4, 'Costo cerrado al entregar la unidad');
+  -- El costeo de la unidad entregada no se cierra aquí: su código no tiene
+  -- consumos ni horas (la sección del taller los cargará en la entrega 3), y
+  -- cerrarlo en cero congelaría una evidencia falsa.
 
   -- -------------------------------------------------- la caja, día por día
-  -- Cada pago y cobro mueve su cuenta en su fecha; los días ya revisados se
-  -- cierran después, en orden.
+  -- Cada pago y cobro mueve su cuenta en su fecha, de lunes a sábado; los días
+  -- ya revisados se cierran después, en orden.
   perform pg_temp.demo_como(v_tes);
   -- Hace diez días: el mantenimiento de la cuenta.
-  perform public.registrar_movimiento_caja(gen_random_uuid(), v_bcp, v_hoy - 10, 'EGRESO', 42.60,
+  perform public.registrar_movimiento_caja(gen_random_uuid(), v_bcp, pg_temp.demo_habil(9), 'EGRESO', 42.60,
     'Mantenimiento de cuenta e ITF', null, null, null);
   -- Hace nueve: entra el adelanto de la tolva, al contado.
   v_ruta := pg_temp.demo_subir('cobros-venta', v_fv[1]::text, v_tes);
-  perform public.registrar_cobro_factura(gen_random_uuid(), v_fv[1], v_hoy - 9, 40120, true, '004127788', v_ruta, v_bcp, null);
+  perform public.registrar_cobro_factura(gen_random_uuid(), v_fv[1], pg_temp.demo_habil(8), 40120, true, '004127788', v_ruta, v_bcp, null);
   -- Hace ocho: se repone la caja chica.
-  perform public.registrar_transferencia_caja(gen_random_uuid(), v_bcp, v_chica, v_hoy - 8, 800, null,
+  perform public.registrar_transferencia_caja(gen_random_uuid(), v_bcp, v_chica, pg_temp.demo_habil(7), 800, null,
     'Reposición de la caja chica', '004129015');
   -- Hace siete: gastos menores en efectivo.
-  perform public.registrar_movimiento_caja(gen_random_uuid(), v_chica, v_hoy - 7, 'EGRESO', 45,
+  perform public.registrar_movimiento_caja(gen_random_uuid(), v_chica, pg_temp.demo_habil(6), 'EGRESO', 45,
     'Movilidad del conductor para los recojos', 'PLANTA', null, null);
-  perform public.registrar_movimiento_caja(gen_random_uuid(), v_chica, v_hoy - 7, 'EGRESO', 68.50,
+  perform public.registrar_movimiento_caja(gen_random_uuid(), v_chica, pg_temp.demo_habil(6), 'EGRESO', 68.50,
     'Útiles de oficina', null, null, null);
   -- Hace cinco: la factura de los electrodos, al contado.
   v_ruta := pg_temp.demo_subir('pagos-facturas', (v_adq->>v_ele::text), v_tes);
-  perform public.registrar_pago_factura(gen_random_uuid(), (v_adq->>v_ele::text)::uuid, v_hoy - 5, 859.04, '004131562', v_ruta, v_bcp, null);
+  perform public.registrar_pago_factura(gen_random_uuid(), (v_adq->>v_ele::text)::uuid, pg_temp.demo_habil(4), 859.04, '004131562', v_ruta, v_bcp, null);
   -- Hace tres: dólares a soles para los pagos de la semana, y Contabilidad
   -- registra la nota de crédito de los electrodos.
-  perform public.registrar_transferencia_caja(gen_random_uuid(), v_bbva, v_bcp, v_hoy - 3, 1000, 3752,
+  perform public.registrar_transferencia_caja(gen_random_uuid(), v_bbva, v_bcp, pg_temp.demo_habil(3), 1000, 3752,
     'Cambio de dólares para los pagos de la semana', '0011-7724');
   v_ruta := pg_temp.demo_subir('notas-credito', (v_adq->>v_ele::text), v_con);
-  perform public.registrar_nota_credito(v_nc_ele, (v_adq->>v_ele::text)::uuid, 'FC01-000318', v_hoy - 3, 59.04, 'DESCUENTO', null,
+  perform public.registrar_nota_credito(v_nc_ele, (v_adq->>v_ele::text)::uuid, 'FC01-000318', pg_temp.demo_habil(3), 59.04, 'DESCUENTO', null,
     'Diferencia con el precio de lista de los electrodos', v_ruta);
-  -- Hace dos: a cuenta de la pintura, la detracción del corte de cartelas y el
+  -- Hace dos: la comisión del cambio que el banco cobró (la diferencia del
+  -- cierre de ayer), a cuenta de la pintura, la detracción del corte de cartelas y el
   -- recibo de la soldadura de cartelas.
+  perform pg_temp.demo_como(v_tes);
+  perform public.registrar_movimiento_caja(gen_random_uuid(), v_bcp, pg_temp.demo_habil(2), 'EGRESO', 12.50,
+    'Comisión del cambio de dólares del día anterior', null, null, null);
   v_ruta := pg_temp.demo_subir('pagos-facturas', (v_adq->>v_pint::text), v_tes);
-  perform public.registrar_pago_factura(gen_random_uuid(), (v_adq->>v_pint::text)::uuid, v_hoy - 2, 500, '004133870', v_ruta, v_bcp, null);
+  perform public.registrar_pago_factura(gen_random_uuid(), (v_adq->>v_pint::text)::uuid, pg_temp.demo_habil(2), 500, '004133870', v_ruta, v_bcp, null);
   select * into v_saldo from public.saldos_de_servicios(array[v_os1]);
   v_ruta := pg_temp.demo_subir('pagos-servicio', v_os1::text, v_tes);
-  perform public.registrar_pago_servicio(gen_random_uuid(), v_os1, v_hoy - 2, v_saldo.saldo_detraccion, false, '00093418',
+  perform public.registrar_pago_servicio(gen_random_uuid(), v_os1, pg_temp.demo_habil(2), v_saldo.saldo_detraccion, false, '00093418',
     null, v_ruta, v_bcp, null, 'DETRACCION');
   select id into v_rec from public.recibos_honorarios where subcontrato_id = v_sc1 and anulado_en is null;
   v_ruta := pg_temp.demo_subir('subcontratos', v_sc1::text, v_tes);
-  perform public.registrar_pago_recibo_honorarios(gen_random_uuid(), v_rec, v_hoy - 2, '004133902', v_ruta, v_bcp, null);
+  perform public.registrar_pago_recibo_honorarios(gen_random_uuid(), v_rec, pg_temp.demo_habil(2), '004133902', v_ruta, v_bcp, null);
   -- Ayer: el saldo del corte de cartelas, la detracción de las bocinas, la
   -- devolución de la ferretería y parte del adelanto del furgón; y Pinturas
   -- descuenta el galón abollado.
   select * into v_saldo from public.saldos_de_servicios(array[v_os1]);
   v_ruta := pg_temp.demo_subir('pagos-servicio', v_os1::text, v_tes);
-  perform public.registrar_pago_servicio(gen_random_uuid(), v_os1, v_hoy - 1, v_saldo.saldo_proveedor, true, '004135011',
+  perform public.registrar_pago_servicio(gen_random_uuid(), v_os1, pg_temp.demo_habil(1), v_saldo.saldo_proveedor, true, '004135011',
     'F001-000731', v_ruta, v_bcp, null, 'PROVEEDOR');
   select * into v_saldo from public.saldos_de_servicios(array[v_os2]);
   v_ruta := pg_temp.demo_subir('pagos-servicio', v_os2::text, v_tes);
-  perform public.registrar_pago_servicio(gen_random_uuid(), v_os2, v_hoy - 1, v_saldo.saldo_detraccion, false, '00093502',
+  perform public.registrar_pago_servicio(gen_random_uuid(), v_os2, pg_temp.demo_habil(1), v_saldo.saldo_detraccion, false, '00093502',
     null, v_ruta, v_bcp, null, 'DETRACCION');
   v_ruta := pg_temp.demo_subir('notas-credito', v_nc_ele::text, v_tes);
-  perform public.registrar_reembolso_nota_credito(gen_random_uuid(), v_nc_ele, v_hoy - 1, 59.04, '004135240', v_ruta, v_bcp, null);
+  perform public.registrar_reembolso_nota_credito(gen_random_uuid(), v_nc_ele, pg_temp.demo_habil(1), 59.04, '004135240', v_ruta, v_bcp, null);
   v_ruta := pg_temp.demo_subir('cobros-venta', v_fv[3]::text, v_tes);
-  perform public.registrar_cobro_factura(gen_random_uuid(), v_fv[3], v_hoy - 1, 15000, false, '004135377', v_ruta, v_bcp, null);
+  perform public.registrar_cobro_factura(gen_random_uuid(), v_fv[3], pg_temp.demo_habil(1), 15000, false, '004135377', v_ruta, v_bcp, null);
   v_ruta := pg_temp.demo_subir('notas-credito', (v_adq->>v_pint::text), v_con);
-  perform public.registrar_nota_credito(gen_random_uuid(), (v_adq->>v_pint::text)::uuid, 'FC02-000104', v_hoy - 1, 100, 'DESCUENTO', null,
+  perform public.registrar_nota_credito(gen_random_uuid(), (v_adq->>v_pint::text)::uuid, 'FC02-000104', pg_temp.demo_habil(1), 100, 'DESCUENTO', null,
     'Descuento por un galón de base que llegó con la lata abollada', v_ruta);
-  -- Hoy: la OC con boleta de la ferretería, en efectivo, y las dos planillas diarias.
+  -- También ayer: a cuenta de los discos (vencida, queda en parte), el recibo
+  -- de la tolva y lo que se anuló: un cobro de la repotenciación que era de otro
+  -- cliente y un pago anotado en la factura de la pintura que era de otra.
+  perform pg_temp.demo_como(v_tes);
+  v_ruta := pg_temp.demo_subir('pagos-facturas', (v_adq->>v_disc::text), v_tes);
+  perform public.registrar_pago_factura(gen_random_uuid(), (v_adq->>v_disc::text)::uuid, pg_temp.demo_habil(1), 300, '004135418', v_ruta, v_bcp, null);
+  select id into v_rec from public.recibos_honorarios where numero = 'E001-14' and anulado_en is null;
+  v_ruta := pg_temp.demo_subir('subcontratos', (select subcontrato_id from public.recibos_honorarios where id = v_rec)::text, v_tes);
+  perform public.registrar_pago_recibo_honorarios(gen_random_uuid(), v_rec, pg_temp.demo_habil(1), '004135431', v_ruta, v_bcp, null);
+  v_ruta := pg_temp.demo_subir('cobros-venta', v_fv[2]::text, v_tes);
+  perform public.registrar_cobro_factura(v_cob, v_fv[2], pg_temp.demo_habil(1), 11800, true, '004135402', v_ruta, v_bcp, null);
+  perform public.anular_cobro_factura(v_cob, 'El depósito era de otro cliente con el mismo monto: lo aclaró el banco.');
+  v_ruta := pg_temp.demo_subir('pagos-facturas', (v_adq->>v_pint::text), v_tes);
+  perform public.registrar_pago_factura(v_pag, (v_adq->>v_pint::text)::uuid, pg_temp.demo_habil(1), 200, '004135455', v_ruta, v_bcp, null);
+  perform public.anular_pago_factura(v_pag, 'El voucher era del pago a otro proveedor: se anotó en la factura equivocada.');
+  -- Hoy: la OC con boleta de la ferretería, en efectivo, y las dos planillas
+  -- diarias; y un taxi que se anotó en la caja chica y se pagó con la tarjeta.
+  perform public.registrar_movimiento_caja(v_mov, v_chica, v_hoy, 'EGRESO', 25, 'Taxi al banco', null, null, null);
+  perform public.anular_movimiento_caja(v_mov, 'Se pagó con la tarjeta de la empresa, no con la caja chica.');
   v_ruta := pg_temp.demo_subir('pagos-compras', v_bol1::text, v_tes);
   perform public.registrar_pago_compra(gen_random_uuid(), v_bol1, v_hoy, public.total_orden_compra(v_bol1), true, null,
     'B001-004512', v_ruta, v_chica, null);
@@ -2202,13 +2270,14 @@ begin
 
   -- Los cierres: el BCP hasta hace tres días (ese no cuadró por la comisión del
   -- cambio, que el banco cobró al día siguiente), la caja chica hasta hace siete
-  -- y la cuenta en dólares hasta hace tres. Ayer y hoy quedan abiertos.
+  -- y la cuenta en dólares hasta hace tres. Del BCP quedan abiertos los tres
+  -- últimos días, y de la caja chica, hoy.
   perform pg_temp.demo_cerrar(v_bcp, d, v_tes)
-     from unnest(array[v_hoy - 10, v_hoy - 9, v_hoy - 8, v_hoy - 5]) d;
-  perform pg_temp.demo_cerrar(v_bcp, v_hoy - 3, v_tes, -12.50,
+     from unnest(array[pg_temp.demo_habil(9), pg_temp.demo_habil(8), pg_temp.demo_habil(7), pg_temp.demo_habil(4)]) d;
+  perform pg_temp.demo_cerrar(v_bcp, pg_temp.demo_habil(3), v_tes, -12.50,
     'El banco cobró S/ 12,50 de comisión por el cambio; sale en el estado de cuenta de mañana.');
-  perform pg_temp.demo_cerrar(v_chica, d, v_tes) from unnest(array[v_hoy - 8, v_hoy - 7]) d;
-  perform pg_temp.demo_cerrar(v_bbva, v_hoy - 3, v_tes);
+  perform pg_temp.demo_cerrar(v_chica, d, v_tes) from unnest(array[pg_temp.demo_habil(7), pg_temp.demo_habil(6)]) d;
+  perform pg_temp.demo_cerrar(v_bbva, pg_temp.demo_habil(3), v_tes);
 
   -- Solo en la demostración: lo que tiene fecha no nació todo hoy. Cada pago,
   -- cobro y movimiento se anotó la tarde de su día y cada cierre a la mañana
@@ -2253,7 +2322,9 @@ begin
          archivo_subido_en = (f.fecha_emision - 2 + time '10:00') at time zone 'America/Lima',
          revisado_en = (f.fecha_emision - 1 + time '09:30') at time zone 'America/Lima'
     from public.facturas_venta f
-   where f.cotizacion_pdf_id = c.id and c.creado_en = now();
+   where f.cotizacion_pdf_id = c.id and f.anulada_en is null and c.creado_en = now();
+  update public.facturas_venta set anulada_en = (fecha_emision + 1 + time '10:00') at time zone 'America/Lima'
+   where anulada_en >= now();
   update public.observaciones_personal set creado_en = (fecha + time '12:00') at time zone 'America/Lima'
    where creado_en = now();
   update public.permisos_personal set creado_en = least((fecha + time '07:50') at time zone 'America/Lima', now())
@@ -2307,6 +2378,9 @@ begin
   update public.planilla_diaria_pagos set creado_en = now() - interval '60 minutes' where creado_en = now();
   update public.movimientos_caja set creado_en = now() - interval '60 minutes' where creado_en = now();
   update public.pagos_orden_compra set creado_en = now() - interval '45 minutes' where creado_en >= now();
+  update public.pagos_adquisicion set anulado_en = creado_en + interval '40 minutes' where anulado_en >= now();
+  update public.cobros_factura_venta set anulado_en = creado_en + interval '40 minutes' where anulado_en >= now();
+  update public.movimientos_caja set anulado_en = creado_en + interval '40 minutes' where anulado_en >= now();
 
   -- Cada aviso con la hora del paso que anuncia. Lo ya atendido, o de días
   -- atrás, va leído; el reporte diario queda por leer para el lado que todavía
