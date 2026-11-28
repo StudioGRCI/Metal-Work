@@ -125,7 +125,7 @@ que ya exista.
 
 Trae además un circuito de compras y almacén, con dos o tres documentos en cada
 estado: seis proveedores; quince requerimientos, de «por revisar» a «entregado»
-(uno con faltante) y anulados; dieciocho órdenes de compra en cada paso, de la
+(uno con faltante) y anulados; veinte órdenes de compra en cada paso, de la
 aprobación de Gerencia (aprobadas, rechazadas, anuladas) al recojo del conductor
 y la validación en el kardex; doce órdenes de servicio, de por aprobar a
 conformes; seis subcontratos vigentes, terminados y anulados; y el kardex con
@@ -133,6 +133,19 @@ su saldo inicial, stock mínimo y un conteo. Se cargan con las funciones reales
 y la sesión de cada puesto, así que **sus números salen de las series de
 verdad** (OT, RQ, OC, OS) y, como todo documento numerado, no se borran: por eso
 la marca de base de prueba.
+
+Y la plata y el personal: Contabilidad registra cinco facturas de compra (una
+pagada, una en parte, una por pagar y dos vencidas), emite cuatro guías de
+remisión, dos notas de crédito y tres facturas de venta (una cobrada, una a
+cuenta y una vencida); Tesorería lleva tres cajas con un mes de movimientos y
+días cerrados (uno con diferencia), paga compras con factura y con boleta,
+servicios con su detracción, un recibo por honorarios y dos planillas diarias;
+RR. HH. tiene un mes de asistencia con tardanzas y una falta, reportes diarios
+validados, horas extras, permisos, observaciones, pagos de oficina y dos
+planillas, una cerrada y repartida entre las OT y otra en borrador; y
+Administración, los gastos generales del mes y el costo de una OT cerrado. Los
+puestos nuevos (Contabilidad, Tesorería, RR. HH.) tienen su ficha de
+demostración.
 
 ### Desarrollo
 

@@ -111,7 +111,11 @@ begin
         ('almacen@metalworkperusac.com',      'Rosa',     'Yupanqui', 'ALMACENERO',  'ALM', false, 12.0, 'Almacenera'),
         ('compras@metalworkperusac.com',      'Nelson',   'Ibáñez',   'COMPRADOR',   'LOG', false,  0.0, 'Comprador'),
         ('calidad@metalworkperusac.com',      'Lucía',    'Ferrer',   'CALIDAD',     'CAL', false,  0.0, 'Inspectora de calidad'),
-        ('costos@metalworkperusac.com',       'Gabriel',  'Ponce',    'COSTOS',      'CON', false,  0.0, 'Analista de costos')
+        ('costos@metalworkperusac.com',       'Gabriel',  'Ponce',    'COSTOS',      'CON', false,  0.0, 'Analista de costos'),
+        -- Los puestos de la plata y el personal, sin área en el organigrama.
+        ('contabilidad@metalworkperusac.com', 'Patricia', 'Lozano',   'CONTABILIDAD', null, false, 0.0, 'Contadora'),
+        ('tesoreria@metalworkperusac.com',    'Hernán',   'Quiroz',   'TESORERIA',   null,  false, 0.0, 'Tesorero'),
+        ('rrhh@metalworkperusac.com',         'Silvia',   'Montoya',  'RECURSOS_HUMANOS', null, false, 0.0, 'Jefa de recursos humanos')
       ) as p(correo, nombres, apellidos, rol, area, operario, costo, cargo)
     loop
       -- La supervisión es una por área: el banco local le cambia el correo a la
@@ -978,6 +982,7 @@ declare
   v_os      uuid[] := array(select gen_random_uuid() from generate_series(1, 12));
   v_sc      uuid[] := array(select gen_random_uuid() from generate_series(1, 6));
   v_id      uuid;
+  v_ruta    text;
 begin
   if exists (select 1 from public.requerimientos) then
     return;
@@ -1413,6 +1418,18 @@ begin
     perform public.adjuntar_contrato_subcontrato(gen_random_uuid(), v_id, v_id || '/' || v_id || '.pdf',
       'Contrato firmado.pdf');
   end loop;
+  -- Los dos que terminan dejan antes su recibo por honorarios, del día en que
+  -- acabaron: un subcontrato terminado ya no recibe recibos. Tesorería paga el
+  -- primero en la sección de plata y personal; el segundo queda por pagar. La
+  -- alarma no llega al mínimo de la retención del 8 %.
+  foreach v_id in array array[v_sc[1], v_sc[2]] loop
+    v_ruta := v_id || '/' || gen_random_uuid() || '.pdf';
+    perform pg_temp.demo_archivo('subcontratos', v_ruta, v_adm, 'application/pdf');
+    perform public.registrar_recibo_honorarios(gen_random_uuid(), v_id,
+      case when v_id = v_sc[1] then 'E001-27' else 'E001-14' end, current_date - 7,
+      (select descripcion from public.subcontratos where id = v_id),
+      (select monto from public.subcontratos where id = v_id), v_id = v_sc[1], v_ruta);
+  end loop;
   perform public.cambiar_estado_subcontrato(v_sc[1], 'TERMINADO');
   perform public.cambiar_estado_subcontrato(v_sc[2], 'TERMINADO');
   perform public.anular_subcontrato(v_sc[3], 'El cliente pidió los logos en vinil: ya no se pintan');
@@ -1468,6 +1485,13 @@ begin
          anulada_en   = case when c.anulada_en is not null then f.creado + interval '2 days' end
     from f
    where c.id = f.id;
+  -- El proveedor factura al día siguiente de la OC, aunque Logística la anexe
+  -- hoy, cuando llega la mercadería: así el vencimiento de cada factura corre
+  -- desde su fecha, como en las cuentas por pagar de la empresa.
+  update public.documentos_compra_material d
+     set fecha_emision = least((c.creado_en at time zone 'America/Lima')::date + 1, current_date)
+    from public.ordenes_compra_materiales c
+   where c.id = d.orden_compra_id and d.tipo = 'FACTURA';
   update public.ordenes_servicio s
      set creado_en       = now() - make_interval(days => v.dias) - interval '200 minutes',
          aprobado_en     = case when s.aprobado_en is not null then now() - make_interval(days => v.dias - 1) end,
@@ -1497,7 +1521,11 @@ begin
   update public.proveedores set creado_en = now() - interval '20 days' where creado_en = now();
   update public.proveedor_cuentas set creado_en = now() - interval '20 days' where creado_en = now();
   update public.programacion_recojo set programado_en = now() - interval '100 minutes' where programado_en = now();
-  update public.documentos_compra_material set creado_en = now() - interval '100 minutes' where creado_en = now();
+  -- La factura la anexa Logística el día en que el proveedor la manda, antes
+  -- de que el conductor salga a recoger.
+  update public.documentos_compra_material
+     set creado_en = least((fecha_emision + time '10:00') at time zone 'America/Lima', now() - interval '100 minutes')
+   where creado_en = now();
   update public.ordenes_compra_materiales
      set recojo_pedido_en = case when recojo_pedido_en = now() then coalesce(aprobado_en, now() - interval '100 minutes')
                                  else recojo_pedido_en end,
@@ -1537,6 +1565,11 @@ begin
      set creado_en = s.creado_en + interval '1 hour'
     from public.subcontratos s
    where s.id = c.subcontrato_id and c.creado_en = now();
+  -- El recibo, una hora antes de que Administración diera el encargo por terminado.
+  update public.recibos_honorarios r
+     set creado_en = s.terminado_en - interval '1 hour'
+    from public.subcontratos s
+   where s.id = r.subcontrato_id and r.creado_en = now();
 
   v_avisos := array(select id from public.notificaciones where creado_en = now());
   -- Cada aviso lleva la hora del paso que anuncia, y lo que ya se atendió o es
@@ -1548,8 +1581,8 @@ begin
            when n.titulo like 'Compra aprobada%'    then c.aprobado_en
            when n.titulo like 'Compra rechazada%'   then c.rechazado_en
            when n.titulo like 'Compra anulada%'     then c.anulada_en
-           when n.titulo like 'Recojo programado%'  then (select max(p.programado_en) from public.programacion_recojo p
-                                                           where p.orden_compra_id = c.id)
+           when n.titulo like 'Recojo programado%' or n.titulo like 'Guía de remisión por emitir%'
+             then (select max(p.programado_en) from public.programacion_recojo p where p.orden_compra_id = c.id)
            when n.titulo like 'Ingreso por validar%' then c.dejado_en
            when n.titulo like 'Almacén observó%'    then c.entregado_almacen_en
          end, n.creado_en)
@@ -1583,6 +1616,10 @@ begin
     from public.documentos_orden_servicio d
    where n.origen_tabla = 'documentos_orden_servicio' and n.origen_id = d.id and n.creado_en = now();
   update public.notificaciones n
+     set creado_en = r.creado_en
+    from public.recibos_honorarios r
+   where n.origen_tabla = 'recibos_honorarios' and n.origen_id = r.id and n.creado_en = now();
+  update public.notificaciones n
      set leida_en = n.creado_en + interval '1 hour'
    where n.leida_en is null and n.id = any (v_avisos)
      and n.origen_tabla in ('ordenes_compra_materiales', 'ordenes_servicio', 'requerimientos', 'subcontratos')
@@ -1593,7 +1630,8 @@ begin
                 where s.id = n.origen_id and s.aprobacion <> 'POR_APROBAR'))
           or (n.titulo like 'Requerimiento por revisar%' and exists (select 1 from public.requerimientos q
                 where q.id = n.origen_id and q.estado <> 'POR_ATENDER'))
-          or (n.titulo like 'Recojo programado%' and exists (select 1 from public.ordenes_compra_materiales c
+          or ((n.titulo like 'Recojo programado%' or n.titulo like 'Guía de remisión por emitir%')
+              and exists (select 1 from public.ordenes_compra_materiales c
                 where c.id = n.origen_id and c.recojo in ('EN_RECOJO', 'RECOGIDO', 'DEJADO')))
           or (n.titulo like 'Listo en almacén%' and exists (select 1 from public.requerimientos q
                 where q.id = n.origen_id and q.estado = 'ENTREGADO'))
@@ -1606,7 +1644,7 @@ begin
   if exists (select 1 from public.notificaciones n
               where n.id = any (v_avisos) and n.creado_en = now()
                 and n.origen_tabla in ('ordenes_compra_materiales', 'ordenes_servicio', 'requerimientos',
-                                       'subcontratos', 'documentos_orden_servicio')
+                                       'subcontratos', 'documentos_orden_servicio', 'recibos_honorarios')
                 and n.origen_id is distinct from v_rq[11]) then
     raise exception 'La demostración deja avisos con la hora de la carga: revisa los títulos que reconoce el bloque de fechas.';
   end if;
@@ -1614,6 +1652,739 @@ begin
     raise exception 'La demostración deja un saldo negativo en el kardex: revisa el orden de los movimientos.';
   end if;
 
+  perform set_config('request.jwt.claim.sub', '', true);
+  perform set_config('request.jwt.claims', '', true);
+end $$;
+
+-- ------------------------------------------------------ plata y personal
+-- Lo que sigue a las compras: Contabilidad registra las facturas que anexó
+-- Logística y carga las guías de remisión, Tesorería abre sus cuentas, paga
+-- (facturas, servicios, una OC con boleta, recibos por honorarios y la planilla
+-- diaria), cobra y cierra los días; Ventas sube la cotización de tres OT,
+-- Gerencia la aprueba y Contabilidad factura su adelanto; Recursos Humanos pone
+-- el costo y la remuneración del personal, la portería marca un mes de
+-- asistencia, la supervisión sube sus reportes diarios y de ahí salen las horas
+-- extras, la planilla diaria y el costeo; y una planilla del mes cerrada y otra
+-- en borrador. Todo con las funciones reales y la sesión del puesto que da cada
+-- paso, en el orden en que pasó: un día cerrado en la caja ya no acepta
+-- movimientos, así que cada pago va antes del cierre de su día.
+-- Lo que se escribe a mano lo dice en su sitio, con el porqué.
+-- Centinela: las cuentas de Tesorería, que solo llena esta sección.
+
+-- El día de trabajo (de lunes a sábado) que va `p_atras` días hábiles antes de hoy.
+create or replace function pg_temp.demo_habil(p_atras int) returns date language sql as $f$
+  select d::date
+    from generate_series((now() at time zone 'America/Lima')::date - 1,
+                         (now() at time zone 'America/Lima')::date - 90, interval '-1 day') d
+   where extract(isodow from d) < 7
+   offset p_atras - 1 limit 1;
+$f$;
+
+-- Un archivo de muestra en la carpeta que pide la función que lo recibe
+-- (`<carpeta>/<uuid>.pdf`), a nombre de quien lo sube. Devuelve la ruta.
+create or replace function pg_temp.demo_subir(p_cubeta text, p_carpeta text, p_dueno uuid, p_ext text default 'pdf')
+returns text language plpgsql as $f$
+declare v_ruta text := p_carpeta || '/' || gen_random_uuid() || '.' || p_ext;
+begin
+  perform pg_temp.demo_archivo(p_cubeta, v_ruta, p_dueno,
+                               case p_ext when 'pdf' then 'application/pdf' else 'image/jpeg' end);
+  return v_ruta;
+end;
+$f$;
+
+-- El cierre del día de una cuenta, como Tesorería: con el saldo que da la caja
+-- (o el del banco, si no cuadra, con su porqué) y la captura del aplicativo.
+create or replace function pg_temp.demo_cerrar(p_caja uuid, p_fecha date, p_tes uuid,
+                                               p_diferencia numeric default 0, p_obs text default null)
+returns void language plpgsql as $f$
+declare
+  v_ruta  text;
+  v_final numeric;
+begin
+  if (select tipo from public.cajas where id = p_caja) = 'BANCO' then
+    v_ruta := pg_temp.demo_subir('cierre-caja', p_caja::text, p_tes, 'jpg');
+  end if;
+  v_final := public.caja_saldo_al_empezar(p_caja, p_fecha)
+           + coalesce((select sum(case when m.tipo = 'INGRESO' then m.monto else -m.monto end)
+                         from public.movimientos_caja m
+                        where m.caja_id = p_caja and m.fecha = p_fecha and m.anulado_en is null), 0);
+  perform pg_temp.demo_como(p_tes);
+  perform public.cerrar_dia_caja(gen_random_uuid(), p_caja, p_fecha, v_final + p_diferencia, p_obs, v_ruta);
+end;
+$f$;
+
+do $$
+declare
+  v_hoy     date := (now() at time zone 'America/Lima')::date;
+  v_con     uuid;
+  v_tes     uuid;
+  v_rrhh    uuid;
+  v_adm     uuid;
+  v_ger     uuid;
+  v_alm     uuid;
+  v_ven     uuid;
+  v_por     uuid;
+  v_sup_prd uuid;
+  v_sup_mtz uuid;
+  v_prd     uuid := (select id from public.areas where codigo = 'PRD');
+  v_mtz     uuid := (select id from public.areas where codigo = 'MTZ');
+  v_area_adm uuid := (select id from public.areas where codigo = 'ADM');
+  -- Las compras de la sección anterior, por su cotización.
+  v_pint    uuid := (select id from public.ordenes_compra_materiales where referencia = 'PROF-2207');
+  v_pl4     uuid := (select id from public.ordenes_compra_materiales where referencia = 'COT-AP-2281');
+  v_ele     uuid := (select id from public.ordenes_compra_materiales where referencia = 'COT-SJ-109');
+  v_disc    uuid := (select id from public.ordenes_compra_materiales where referencia = 'COT-SJ-118');
+  v_mig     uuid := (select id from public.ordenes_compra_materiales where referencia = 'COT-SJ-131');
+  v_plan    uuid := (select id from public.ordenes_compra_materiales where referencia = 'COT-AP-2290');
+  v_esm     uuid := (select id from public.ordenes_compra_materiales where referencia = 'PROF-2231');
+  v_os1     uuid := (select id from public.ordenes_servicio where referencia = 'COT-TSR-311');
+  v_os2     uuid := (select id from public.ordenes_servicio where referencia = 'COT-TSR-318');
+  v_ferre   uuid := (select id from public.proveedores where razon_social = 'FERRETERÍA INDUSTRIAL SAN JORGE E.I.R.L.');
+  v_pintu   uuid := (select id from public.proveedores where razon_social = 'PINTURAS Y RECUBRIMIENTOS DEL NORTE S.A.');
+  v_sc1     uuid := (select id from public.subcontratos where descripcion = 'Soldadura de las cartelas de refuerzo de la tolva');
+  v_sc5     uuid := (select id from public.subcontratos where descripcion = 'Instalación del sistema eléctrico y luces del furgón');
+  v_ot1     uuid := (select id from public.ordenes_trabajo where numero = '0001-2026');
+  v_ot2     uuid := (select id from public.ordenes_trabajo where numero = '0002-2026');
+  v_ot3     uuid := (select id from public.ordenes_trabajo where numero = '0003-2026');
+  v_ot4     uuid := (select id from public.ordenes_trabajo where numero = '0004-2026');
+  v_cod1    text;
+  v_cod3    text;
+  -- Las tres cuentas de Tesorería.
+  v_bcp     uuid := gen_random_uuid();
+  v_bbva    uuid := gen_random_uuid();
+  v_chica   uuid := gen_random_uuid();
+  -- Las facturas que registra Contabilidad, por la OC de cada una.
+  v_adq     jsonb := '{}';
+  v_nc_ele  uuid := gen_random_uuid();
+  v_bol1    uuid;
+  v_bol2    uuid;
+  v_cot     uuid[] := array[gen_random_uuid(), gen_random_uuid(), gen_random_uuid()];
+  v_fv      uuid[] := array[gen_random_uuid(), gen_random_uuid(), gen_random_uuid()];
+  v_rec     uuid;
+  v_rec_sc5 uuid := gen_random_uuid();
+  v_pd1     uuid := gen_random_uuid();
+  v_pd2     uuid := gen_random_uuid();
+  v_pla_taller uuid := gen_random_uuid();
+  v_pla_ofi uuid := gen_random_uuid();
+  v_ofi1    uuid := gen_random_uuid();
+  v_ofi2    uuid := gen_random_uuid();
+  v_perm    uuid := gen_random_uuid();
+  -- Los días de los reportes diarios, del más antiguo al de ayer.
+  v_dias    date[];
+  v_avisos  uuid[];
+  v_saldo   record;
+  v_t       record;
+  v_d       date;
+  v_i       int;
+  v_id      uuid;
+  v_ruta    text;
+  v_act     jsonb;
+begin
+  if exists (select 1 from public.cajas) then
+    return;
+  end if;
+  v_con     := pg_temp.demo_puesto('CONTABILIDAD', null);
+  v_tes     := pg_temp.demo_puesto('TESORERIA', null);
+  v_rrhh    := pg_temp.demo_puesto('RECURSOS_HUMANOS', null);
+  v_adm     := pg_temp.demo_puesto('ADMINISTRACION', 'ADM');
+  v_ger     := pg_temp.demo_puesto('GERENTE', 'GGE');
+  v_alm     := pg_temp.demo_puesto('ALMACENERO', 'ALM');
+  v_ven     := pg_temp.demo_puesto('VENDEDOR', 'GCO');
+  v_por     := pg_temp.demo_puesto('PORTERO', 'RRH');
+  v_sup_prd := pg_temp.demo_puesto('SUPERVISOR', 'PRD');
+  v_sup_mtz := pg_temp.demo_puesto('SUPERVISOR', 'MTZ');
+  if num_nulls(v_con, v_tes, v_rrhh, v_adm, v_ger, v_alm, v_ven, v_por, v_sup_prd, v_sup_mtz) > 0 then
+    raise exception 'Plata y personal: faltan las fichas del personal de la demostración (Contabilidad, Tesorería, Recursos Humanos, Administración, Gerencia, Almacén, Ventas, la portería y las supervisiones de Producción y Maestranza).';
+  end if;
+  if num_nulls(v_pint, v_pl4, v_ele, v_disc, v_mig, v_plan, v_esm, v_os1, v_os2, v_sc1, v_sc5, v_ot1, v_ot2, v_ot3, v_ot4) > 0 then
+    raise exception 'Plata y personal: faltan las compras, los servicios o las OT de las secciones anteriores.';
+  end if;
+  select u.codigo_interno into v_cod1 from public.ordenes_trabajo o join public.unidades u on u.id = o.unidad_id where o.id = v_ot1;
+  select u.codigo_interno into v_cod3 from public.ordenes_trabajo o join public.unidades u on u.id = o.unidad_id where o.id = v_ot3;
+  set constraints all immediate;
+
+  -- ----------------------------------------------------- tipo de cambio
+  -- Contabilidad anota el de SUNAT de cada día de las últimas tres semanas. La
+  -- pantalla lo inserta directo en la tabla, por su política: va igual.
+  perform pg_temp.demo_como(v_con);
+  set local role authenticated;
+  insert into public.tipos_de_cambio (fecha, compra, venta, fuente, registrado_por)
+  select d::date, 3.738 + (extract(doy from d)::int % 7) * 0.002, 3.744 + (extract(doy from d)::int % 7) * 0.002, 'SUNAT', v_con
+    from generate_series(v_hoy - 21, v_hoy, interval '1 day') d
+   where extract(isodow from d) < 7;
+  reset role;
+
+  -- -------------------------------------------------- guías de remisión
+  -- Contabilidad emite la guía con que el conductor lleva lo que recoge: dos de
+  -- las compras que siguen por recoger (al conductor le llega el aviso) y dos de
+  -- las que ya dejó en almacén.
+  for v_t in
+    select * from (values (v_plan, 'T001-00000412'), (v_esm, 'T001-00000413'),
+                          (v_pint, 'T001-00000410'), (v_pl4, 'T001-00000411')) as g(oc, numero)
+  loop
+    v_id := gen_random_uuid();
+    perform pg_temp.demo_archivo('guias-remision', 'compra/' || v_t.oc || '/' || v_id || '.pdf', v_con, 'application/pdf');
+    perform public.cargar_guia_remision(v_id, v_t.oc, v_t.numero, v_hoy, v_t.numero || '.pdf');
+  end loop;
+
+  -- Almacén anota la factura y la guía del proveedor que llegaron con dos compras.
+  perform pg_temp.demo_como(v_alm);
+  perform public.anotar_documentos_recibidos(v_ele, null, 'F001-011254', 'EG01-000869', null, null);
+  perform public.anotar_documentos_recibidos(v_disc, null, 'F001-011273', 'EG01-000877',
+    'La factura llegó por los cien discos; la guía, por los sesenta que entraron', null);
+
+  -- ------------------------------------------- facturas de compra registradas
+  -- Contabilidad registra las facturas que anexó Logística, con los datos de
+  -- cada una; la de base queda por registrar («esperan a Contabilidad»). Va como
+  -- la pantalla: el borrador con el rol de la sesión y su paso a registrada, por
+  -- las políticas de Contabilidad; el PDF es el que anexó Logística.
+  perform pg_temp.demo_como(v_con);
+  for v_t in
+    select c.id as oc, c.proveedor, p.numero_documento as ruc, c.condicion_pago, c.dias_credito, c.moneda,
+           public.total_orden_compra(c.id) as total, d.id as documento, d.numero_documento, d.fecha_emision
+      from public.ordenes_compra_materiales c
+      join public.proveedores p on p.id = c.proveedor_id
+      join public.documentos_compra_material d on d.orden_compra_id = c.id and d.tipo = 'FACTURA' and d.anulado_en is null
+     where c.id in (v_pint, v_pl4, v_ele, v_disc, v_mig)
+     order by d.fecha_emision
+  loop
+    v_id := gen_random_uuid();
+    set local role authenticated;
+    insert into public.adquisiciones
+      (id, tipo, proveedor, ruc_proveedor, numero_documento, fecha_emision, fecha_vencimiento, moneda, total,
+       condicion_pago, orden_compra_id, documento_compra_id, observacion)
+    values (v_id, 'FACTURA_COMPRA', v_t.proveedor, v_t.ruc, v_t.numero_documento, v_t.fecha_emision,
+            v_t.fecha_emision + case when v_t.condicion_pago = 'CREDITO' then v_t.dias_credito else 0 end,
+            v_t.moneda, v_t.total, v_t.condicion_pago, v_t.oc, v_t.documento, '');
+    update public.adquisiciones set estado = 'REGISTRADA' where id = v_id;
+    reset role;
+    v_adq := v_adq || jsonb_build_object(v_t.oc::text, v_id);
+  end loop;
+
+  -- ---------------------------------------------------- cuentas y su apertura
+  -- Tesorería abre sus tres cuentas hace un mes, con la captura del saldo de ese
+  -- día (la cuenta en efectivo no la lleva).
+  v_ruta := pg_temp.demo_subir('apertura-caja', v_bcp::text, v_tes, 'jpg');
+  perform pg_temp.demo_como(v_tes);
+  perform public.guardar_caja(v_bcp, 'BCP soles', 'BANCO', 'BCP', 'PEN', 85000, v_hoy - 30, true, v_ruta, true);
+  v_ruta := pg_temp.demo_subir('apertura-caja', v_bbva::text, v_tes, 'jpg');
+  perform pg_temp.demo_como(v_tes);
+  perform public.guardar_caja(v_bbva, 'BBVA dólares', 'BANCO', 'BBVA', 'USD', 6500, v_hoy - 30, true, v_ruta, true);
+  perform public.guardar_caja(v_chica, 'Caja chica', 'EFECTIVO', null, 'PEN', 1500, v_hoy - 30, true, null, true);
+
+  -- ------------------------------------------------------------ venta
+  -- Ventas sube la cotización firmada de tres OT que se abrieron con ella en
+  -- papel, Gerencia la aprueba y Administración engancha cada OT a la suya. La
+  -- OT ya entregada no se engancha después de su entrega (la base lo impide):
+  -- su venta va con la sección del taller.
+  for v_i in 1..3 loop
+    select o.id, o.cliente_id, o.tipo_carroceria_id, o.actualizado_en into v_t
+      from public.ordenes_trabajo o where o.id = (array[v_ot1, v_ot2, v_ot3])[v_i];
+    v_ruta := 'cot/' || v_cot[v_i] || '/' || v_cot[v_i] || '.pdf';
+    perform pg_temp.demo_archivo('cotizaciones-pdf', v_ruta, v_ven, 'application/pdf');
+    set local role authenticated;
+    insert into public.cotizaciones_pdf (id, numero, cantidad_unidades, cliente_id, tipo_carroceria_id, monto_venta, moneda,
+                                         nombre_archivo, ruta_storage, mime_type, tamano_bytes, registrado_por)
+    values (v_cot[v_i], (array['3571-2026', '3574-2026', '3578-2026'])[v_i], 1, v_t.cliente_id, v_t.tipo_carroceria_id,
+            (array[80240, 23600, 59000])[v_i], 'PEN', (array['3571-2026', '3574-2026', '3578-2026'])[v_i] || '.pdf',
+            v_ruta, 'application/pdf', 4096, v_ven);
+    reset role;
+    perform public.confirmar_igv_cotizacion(v_cot[v_i], true);
+  end loop;
+  perform pg_temp.demo_como(v_ger);
+  set local role authenticated;
+  update public.cotizaciones_pdf set estado = 'APROBADA' where id = any (v_cot);
+  reset role;
+  perform pg_temp.demo_como(v_adm);
+  for v_i in 1..3 loop
+    perform public.enganchar_ot_a_su_cotizacion((array[v_ot1, v_ot2, v_ot3])[v_i], v_cot[v_i], 1,
+      (select actualizado_en from public.ordenes_trabajo where id = (array[v_ot1, v_ot2, v_ot3])[v_i]),
+      'La OT se abrió con la cotización firmada en papel; Ventas la subió después');
+  end loop;
+  -- Contabilidad factura el adelanto de cada una: el de la tolva al contado, el
+  -- de la repotenciación a siete días (ya vencido) y el del furgón a quince.
+  for v_i in 1..3 loop
+    v_ruta := pg_temp.demo_subir('facturas-venta', v_fv[v_i]::text, v_con);
+    perform public.registrar_factura_venta_de_unidad(v_fv[v_i], v_cot[v_i],
+      (array['E001-412', 'E001-405', 'E001-419'])[v_i],
+      v_hoy - (array[12, 15, 6])[v_i], v_hoy - (array[12, 15, 6])[v_i] + (array[0, 7, 15])[v_i],
+      'PEN', (array[40120, 11800, 29500])[v_i], 'Adelanto 50 %', v_ruta,
+      (array['E001-412', 'E001-405', 'E001-419'])[v_i] || '.pdf', 1);
+  end loop;
+
+  -- ---------------------------------------------- OC con boleta, de hoy
+  -- Dos compras chicas a la ferretería y a la de pinturas que van con boleta:
+  -- Tesorería las paga por su OC, sin factura de por medio.
+  perform pg_temp.demo_como(pg_temp.demo_puesto('COMPRADOR', 'LOG'));
+  v_bol1 := public.emitir_compra_directa(gen_random_uuid(), v_ferre, 'COT-SJ-149',
+    'Discos de corte para el taller', jsonb_build_array(
+      jsonb_build_object('material_id', pg_temp.demo_mat('DIS-CORTE'), 'cantidad', 10, 'precio', 9.50)),
+    v_hoy + 1, 'CONTADO', 0, 'PEN', false, 'PLANTA');
+  v_bol2 := public.emitir_compra_directa(gen_random_uuid(), v_pintu, 'PROF-2246',
+    'Thinner acrílico para la limpieza de las pistolas', jsonb_build_array(
+      jsonb_build_object('material_id', pg_temp.demo_mat('THI-ACR'), 'cantidad', 6, 'precio', 32)),
+    v_hoy + 2, 'CONTADO', 0, 'PEN', false, 'PLANTA');
+  perform pg_temp.demo_como(v_ger);
+  perform public.aprobar_compra(v_bol1);
+  perform public.aprobar_compra(v_bol2);
+
+  -- ------------------------------------------------- recibos por honorarios
+  -- Administración registra el adelanto del encargo eléctrico del furgón, que sigue vigente.
+  v_ruta := pg_temp.demo_subir('subcontratos', v_sc5::text, v_adm);
+  perform public.registrar_recibo_honorarios(v_rec_sc5, v_sc5, 'E001-31', v_hoy - 1,
+    'Adelanto del 50 % de la instalación eléctrica del furgón', 1200, false, v_ruta);
+
+  -- --------------------------------------------------- Recursos Humanos
+  -- La cuenta de sueldo, el costo para la empresa y la remuneración de cada
+  -- persona del taller, y su fecha de ingreso. Dos personas de la oficina, de
+  -- planilla administrativa. Los DNI de la oficina son de la serie 9999997x,
+  -- que el RENIEC no ha asignado.
+  perform pg_temp.demo_como(v_rrhh);
+  perform public.rrhh_guardar_trabajador(v_ofi1, 'MILAGROS', 'SALAZAR RÍOS', '99999970', 'Asistente contable', v_area_adm,
+    '08:30', '17:30', 'BCP', 'SUELDO', '0000000000000', '00000000000000000000');
+  perform public.rrhh_guardar_trabajador(v_ofi2, 'RENZO', 'CÁRDENAS LUNA', '99999971', 'Asistente administrativo', v_area_adm,
+    '08:30', '17:30', 'BBVA', 'SUELDO', '0000000000000000', '00000000000000000000');
+  perform public.rrhh_guardar_planilla_trabajador(v_ofi1, 'ADMINISTRATIVA');
+  perform public.rrhh_guardar_planilla_trabajador(v_ofi2, 'ADMINISTRATIVA');
+  for v_t in
+    select t.id, t.nombres, t.apellidos, t.cargo, t.area_id, t.hora_entrada, t.hora_salida, x.dni,
+           row_number() over (order by x.dni) as n
+      from public.trabajadores t
+      join (select id, dni from public.trabajadores) x on x.id = t.id
+     where t.activo
+  loop
+    if v_t.id not in (v_ofi1, v_ofi2) then
+      perform public.rrhh_guardar_trabajador(v_t.id, v_t.nombres, v_t.apellidos, v_t.dni, v_t.cargo, v_t.area_id,
+        v_t.hora_entrada, v_t.hora_salida, case when v_t.n % 3 = 0 then 'BBVA' else 'BCP' end, 'SUELDO',
+        '0000000000000', null);
+    end if;
+    perform public.rrhh_guardar_ingreso_trabajador(v_t.id, v_hoy - 200 - 37 * v_t.n::int);
+    perform public.rrhh_guardar_remuneracion_trabajador(v_t.id,
+      case when v_t.cargo ilike 'soldador%' or v_t.cargo ilike 'electricista%' then 2600
+           when v_t.cargo ilike 'asistente%' then 2300 when v_t.cargo ilike 'ayudante%' then 1600 else 2100 end);
+    perform public.rrhh_guardar_costo_trabajador(v_t.id,
+      case when v_t.cargo ilike 'soldador%' or v_t.cargo ilike 'electricista%' then 3380
+           when v_t.cargo ilike 'asistente%' then 2990 when v_t.cargo ilike 'ayudante%' then 2080 else 2730 end);
+  end loop;
+
+  -- Un mes de asistencia, de lunes a sábado. `marcar_asistencia` toma la hora
+  -- del reloj y solo marca hoy, así que las marcas de los días anteriores (y las
+  -- de hoy que ya pasaron) se anotan como las deja esa
+  -- función: a nombre de la portería, con la tardanza contada contra la hora de
+  -- entrada de cada persona y la tolerancia de la regla de Recursos Humanos.
+  -- Carlos llega tarde cuatro veces, Julio faltó un día y Elsa marca hasta su baja.
+  insert into public.asistencias (trabajador_id, fecha, tipo, marcado_en, hora, tardanza_minutos, es_tardanza,
+                                  registrado_por, creado_en)
+  select m.trabajador_id, m.fecha, m.tipo, (m.fecha + m.hora) at time zone 'America/Lima', m.hora,
+         m.tarde, m.tarde > (select coalesce(tolerancia_minutos, 0) from public.rrhh_regla_tardanza where id),
+         v_por, (m.fecha + m.hora) at time zone 'America/Lima'
+    from (
+      select t.id as trabajador_id, d::date as fecha, k.tipo,
+             case when k.tipo = 'INGRESO' then t.hora_entrada + make_interval(mins => e.llega)
+                  else t.hora_salida + make_interval(mins => (extract(day from d)::int * 7 + length(t.apellidos)) % 12) end as hora,
+             case when k.tipo = 'INGRESO' then greatest(e.llega, 0) else 0 end as tarde
+        from public.trabajadores t
+        cross join generate_series(v_hoy - 30, v_hoy, interval '1 day') d
+        cross join (values ('INGRESO'), ('SALIDA')) as k(tipo)
+        cross join lateral (
+          select case
+                   when t.apellidos = 'VARGAS LEÓN' and d::date in (v_hoy - 26, v_hoy - 17, v_hoy - 9, v_hoy - 4)
+                     then 9 + (extract(day from d)::int % 4) * 7
+                   else -15 + (extract(day from d)::int * 3 + length(t.nombres)) % 17
+                 end as llega) e
+       where extract(isodow from d) < 7
+         and (t.fecha_ingreso is null or d::date >= t.fecha_ingreso)
+         and (t.fecha_baja is null or d::date <= t.fecha_baja)
+         and not (t.apellidos = 'PARI CONDORI' and d::date = v_hoy - 13)
+    ) m
+   -- Hoy, solo lo que ya pasó: el ingreso de la mañana y, si la carga corre de
+   -- noche, también la salida.
+   where m.fecha < v_hoy or m.fecha + m.hora <= (now() at time zone 'America/Lima') - interval '10 minutes';
+
+  -- Los reportes diarios de la última semana de trabajo (se suben hasta siete
+  -- días después): Producción en la tolva y Maestranza en el furgón, con las
+  -- horas de cada persona. Jorge y Luis se quedan dos horas más dos días. Marco
+  -- pidió dos horas de permiso el segundo día.
+  v_dias := array(select pg_temp.demo_habil(n) from generate_series(6, 1, -1) n);
+  for v_i in 1..6 loop
+    v_d := v_dias[v_i];
+    perform pg_temp.demo_como(v_sup_prd);
+    select coalesce(jsonb_agg(jsonb_build_object('actividad_id', a.id)), '[]') into v_act
+      from public.codigo_actividades a
+     where a.codigo_interno = public.normalizar_codigo_interno(v_cod1) and a.descripcion = 'Armado y soldadura de la estructura de la tolva';
+    perform public.registrar_reporte_diario(gen_random_uuid(), v_d, v_cod1, 'Avance de la tolva',
+      'Armado de la estructura y montaje de cartelas.',
+      jsonb_build_array(
+        (case when jsonb_array_length(v_act) = 0
+              then jsonb_build_object('descripcion', 'Armado y soldadura de la estructura de la tolva')
+              else v_act->0 end)
+        || jsonb_build_object('avance', 12 * v_i, 'personal', (
+             select jsonb_agg(jsonb_build_object('trabajador_id', t.id, 'horas',
+                      case when t.apellidos in ('QUISPE MAMANI', 'TORRES CHÁVEZ') and v_i in (1, 3) then 10
+                           when t.apellidos = 'HUAMÁN ROJAS' and v_i = 2 then 6 else 8 end))
+               from public.trabajadores t
+              where t.activo and t.apellidos in ('QUISPE MAMANI', 'TORRES CHÁVEZ', 'HUAMÁN ROJAS', 'PARI CONDORI')))),
+      null, null);
+    perform pg_temp.demo_como(v_sup_mtz);
+    select coalesce(jsonb_agg(jsonb_build_object('actividad_id', a.id)), '[]') into v_act
+      from public.codigo_actividades a
+     where a.codigo_interno = public.normalizar_codigo_interno(v_cod3) and a.descripcion = 'Corte y plegado de las planchas del furgón';
+    perform public.registrar_reporte_diario(gen_random_uuid(), v_d, v_cod3, 'Avance del furgón',
+      'Corte y plegado de las planchas del techo y los laterales.',
+      jsonb_build_array(
+        (case when jsonb_array_length(v_act) = 0
+              then jsonb_build_object('descripcion', 'Corte y plegado de las planchas del furgón')
+              else v_act->0 end)
+        || jsonb_build_object('avance', 10 * v_i, 'personal', (
+             select jsonb_agg(jsonb_build_object('trabajador_id', t.id, 'horas', 8))
+               from public.trabajadores t
+              where t.activo and t.apellidos in ('NÚÑEZ PAREDES', 'VARGAS LEÓN')))),
+      null, null);
+  end loop;
+
+  -- El permiso de Marco, que Recursos Humanos descuenta.
+  perform pg_temp.demo_como(v_rrhh);
+  perform public.rrhh_registrar_permiso(v_perm, (select id from public.trabajadores where apellidos = 'HUAMÁN ROJAS'),
+    v_dias[2], 2, 'Cita médica en EsSalud a primera hora');
+  perform public.rrhh_descontar_permiso(gen_random_uuid(), v_perm);
+
+  -- Gerencia y Recursos Humanos dan su visto a los reportes de los dos primeros
+  -- días; Recursos Humanos decide las horas extras del primero (las de Jorge se
+  -- pagan, las de Luis se reservan) y arma la planilla diaria, que Tesorería paga
+  -- entera. Después, el visto de los dos días siguientes, otra decisión y la
+  -- segunda planilla, que Tesorería paga en parte. El quinto día lleva solo el
+  -- visto de Gerencia y el sexto espera los dos.
+  for v_i in 1..5 loop
+    for v_id in select r.id from public.reportes_diarios r where r.fecha = v_dias[v_i] and r.anulado_en is null loop
+      perform pg_temp.demo_como(v_ger);
+      perform public.validar_reporte_diario(v_id, 'GERENCIA');
+      if v_i <= 4 then
+        perform pg_temp.demo_como(v_rrhh);
+        perform public.validar_reporte_diario(v_id, 'RRHH');
+      end if;
+    end loop;
+    if v_i = 2 then
+      perform pg_temp.demo_como(v_rrhh);
+      perform public.rrhh_decidir_horas_extras(gen_random_uuid(), t.id, v_dias[1],
+                                               case when t.apellidos = 'QUISPE MAMANI' then 'PAGAR' else 'RESERVAR' end)
+         from public.trabajadores t where t.apellidos in ('QUISPE MAMANI', 'TORRES CHÁVEZ');
+      perform public.enviar_planilla_diaria(v_pd1);
+    elsif v_i = 4 then
+      perform pg_temp.demo_como(v_rrhh);
+      perform public.rrhh_decidir_horas_extras(gen_random_uuid(), t.id, v_dias[3], 'PAGAR')
+         from public.trabajadores t where t.apellidos = 'QUISPE MAMANI';
+      perform public.enviar_planilla_diaria(v_pd2);
+    end if;
+  end loop;
+
+  -- Un permiso de Óscar para pasado mañana, que espera.
+  perform pg_temp.demo_como(v_rrhh);
+  perform public.rrhh_registrar_permiso(gen_random_uuid(), (select id from public.trabajadores where apellidos = 'NÚÑEZ PAREDES'),
+    v_hoy + 2, 3, 'Trámite de su brevete en el MTC');
+  -- Observaciones del mes.
+  perform public.rrhh_registrar_observacion(gen_random_uuid(), (select id from public.trabajadores where apellidos = 'VARGAS LEÓN'),
+    v_hoy - 4, 'AMONESTACION_VERBAL', 'TARDANZAS', 'Cuarta tardanza del mes: se le recordó la hora de entrada y el descuento.', null, null);
+  perform public.rrhh_registrar_observacion(gen_random_uuid(), (select id from public.trabajadores where apellidos = 'PARI CONDORI'),
+    v_dias[3], 'OBSERVACION', 'EPP', 'Trabajaba en la tolva sin sus lentes de seguridad; se le dieron unos de la caseta.', v_cod1, null);
+
+  -- El sueldo del mes pasado de las dos personas de la oficina.
+  perform public.rrhh_registrar_pago_oficina(gen_random_uuid(), v_ofi1, (date_trunc('month', v_hoy) - interval '1 month')::date,
+    (date_trunc('month', v_hoy) - interval '1 day')::date, 2300, 207, null);
+  perform public.rrhh_registrar_pago_oficina(gen_random_uuid(), v_ofi2, (date_trunc('month', v_hoy) - interval '1 month')::date,
+    (date_trunc('month', v_hoy) - interval '1 day')::date, 2300, 207, null);
+
+  -- La planilla del taller del mes pasado, repartida entre las dos OT en
+  -- marcha y cerrada; la de la oficina de este mes, en borrador. La pantalla
+  -- inserta la planilla y sus personas en la tabla, por sus políticas: va igual.
+  -- El DNI de cada persona lo trae la pantalla, que lo lee por su función: aquí
+  -- se lee antes de tomar el rol de la sesión.
+  select jsonb_agg(jsonb_build_object(
+           'planilla_id', case when t.planilla = 'TALLER' then v_pla_taller else v_pla_ofi end,
+           'nombre', t.nombres || ' ' || t.apellidos, 'documento', t.dni, 'monto', r.remuneracion_mensual))
+    into v_act
+    from public.trabajadores t join public.trabajador_remuneraciones r on r.trabajador_id = t.id;
+  set local role authenticated;
+  insert into public.planillas (id, tipo, periodo, moneda, observacion, registrado_por)
+  values (v_pla_taller, 'TALLER', (date_trunc('month', v_hoy) - interval '1 month')::date, 'PEN',
+          'Planilla del taller del mes', v_rrhh),
+         (v_pla_ofi, 'ADMINISTRATIVA', date_trunc('month', v_hoy)::date, 'PEN', '', v_rrhh);
+  insert into public.planilla_personas (planilla_id, nombre, documento, monto, registrado_por)
+  select x.planilla_id, x.nombre, x.documento, x.monto, v_rrhh
+    from jsonb_to_recordset(v_act) as x(planilla_id uuid, nombre text, documento text, monto numeric);
+  reset role;
+  perform public.repartir_planilla_en_partes_iguales(v_pla_taller,
+    array(select id from public.planilla_personas where planilla_id = v_pla_taller), array[v_ot1, v_ot3]);
+  perform public.cerrar_planilla(v_pla_taller);
+
+  -- ---------------------------------------------------------- costeo
+  -- Administración carga los gastos del local de este mes y del anterior.
+  perform pg_temp.demo_como(v_adm);
+  perform public.registrar_gasto_general(gen_random_uuid(), g.periodo, g.concepto, g.descripcion, g.monto, 'PEN', 'HORAS', null)
+     from (values
+       (date_trunc('month', v_hoy)::date, 'ELECTRICIDAD', 'Recibo de Luz del Sur del mes', 1850.40),
+       (date_trunc('month', v_hoy)::date, 'AGUA', 'Recibo de Sedapal del mes', 318.70),
+       (date_trunc('month', v_hoy)::date, 'INTERNET', 'Fibra óptica de la oficina y del taller', 289.00),
+       ((date_trunc('month', v_hoy) - interval '1 month')::date, 'ELECTRICIDAD', 'Recibo de Luz del Sur del mes', 1924.10),
+       ((date_trunc('month', v_hoy) - interval '1 month')::date, 'SEGURIDAD', 'Monitoreo de las cámaras y la alarma', 450.00))
+       as g(periodo, concepto, descripcion, monto);
+  -- Administración cierra el costo de la OT ya entregada (lo cierra quien edita
+  -- la OT y ve su costo).
+  perform pg_temp.demo_como(v_adm);
+  perform public.cerrar_costo_ot(v_ot4, 'Costo cerrado al entregar la unidad');
+
+  -- -------------------------------------------------- la caja, día por día
+  -- Cada pago y cobro mueve su cuenta en su fecha; los días ya revisados se
+  -- cierran después, en orden.
+  perform pg_temp.demo_como(v_tes);
+  -- Hace diez días: el mantenimiento de la cuenta.
+  perform public.registrar_movimiento_caja(gen_random_uuid(), v_bcp, v_hoy - 10, 'EGRESO', 42.60,
+    'Mantenimiento de cuenta e ITF', null, null, null);
+  -- Hace nueve: entra el adelanto de la tolva, al contado.
+  v_ruta := pg_temp.demo_subir('cobros-venta', v_fv[1]::text, v_tes);
+  perform public.registrar_cobro_factura(gen_random_uuid(), v_fv[1], v_hoy - 9, 40120, true, '004127788', v_ruta, v_bcp, null);
+  -- Hace ocho: se repone la caja chica.
+  perform public.registrar_transferencia_caja(gen_random_uuid(), v_bcp, v_chica, v_hoy - 8, 800, null,
+    'Reposición de la caja chica', '004129015');
+  -- Hace siete: gastos menores en efectivo.
+  perform public.registrar_movimiento_caja(gen_random_uuid(), v_chica, v_hoy - 7, 'EGRESO', 45,
+    'Movilidad del conductor para los recojos', 'PLANTA', null, null);
+  perform public.registrar_movimiento_caja(gen_random_uuid(), v_chica, v_hoy - 7, 'EGRESO', 68.50,
+    'Útiles de oficina', null, null, null);
+  -- Hace cinco: la factura de los electrodos, al contado.
+  v_ruta := pg_temp.demo_subir('pagos-facturas', (v_adq->>v_ele::text), v_tes);
+  perform public.registrar_pago_factura(gen_random_uuid(), (v_adq->>v_ele::text)::uuid, v_hoy - 5, 859.04, '004131562', v_ruta, v_bcp, null);
+  -- Hace tres: dólares a soles para los pagos de la semana, y Contabilidad
+  -- registra la nota de crédito de los electrodos.
+  perform public.registrar_transferencia_caja(gen_random_uuid(), v_bbva, v_bcp, v_hoy - 3, 1000, 3752,
+    'Cambio de dólares para los pagos de la semana', '0011-7724');
+  v_ruta := pg_temp.demo_subir('notas-credito', (v_adq->>v_ele::text), v_con);
+  perform public.registrar_nota_credito(v_nc_ele, (v_adq->>v_ele::text)::uuid, 'FC01-000318', v_hoy - 3, 59.04, 'DESCUENTO', null,
+    'Diferencia con el precio de lista de los electrodos', v_ruta);
+  -- Hace dos: a cuenta de la pintura, la detracción del corte de cartelas y el
+  -- recibo de la soldadura de cartelas.
+  v_ruta := pg_temp.demo_subir('pagos-facturas', (v_adq->>v_pint::text), v_tes);
+  perform public.registrar_pago_factura(gen_random_uuid(), (v_adq->>v_pint::text)::uuid, v_hoy - 2, 500, '004133870', v_ruta, v_bcp, null);
+  select * into v_saldo from public.saldos_de_servicios(array[v_os1]);
+  v_ruta := pg_temp.demo_subir('pagos-servicio', v_os1::text, v_tes);
+  perform public.registrar_pago_servicio(gen_random_uuid(), v_os1, v_hoy - 2, v_saldo.saldo_detraccion, false, '00093418',
+    null, v_ruta, v_bcp, null, 'DETRACCION');
+  select id into v_rec from public.recibos_honorarios where subcontrato_id = v_sc1 and anulado_en is null;
+  v_ruta := pg_temp.demo_subir('subcontratos', v_sc1::text, v_tes);
+  perform public.registrar_pago_recibo_honorarios(gen_random_uuid(), v_rec, v_hoy - 2, '004133902', v_ruta, v_bcp, null);
+  -- Ayer: el saldo del corte de cartelas, la detracción de las bocinas, la
+  -- devolución de la ferretería y parte del adelanto del furgón; y Pinturas
+  -- descuenta el galón abollado.
+  select * into v_saldo from public.saldos_de_servicios(array[v_os1]);
+  v_ruta := pg_temp.demo_subir('pagos-servicio', v_os1::text, v_tes);
+  perform public.registrar_pago_servicio(gen_random_uuid(), v_os1, v_hoy - 1, v_saldo.saldo_proveedor, true, '004135011',
+    'F001-000731', v_ruta, v_bcp, null, 'PROVEEDOR');
+  select * into v_saldo from public.saldos_de_servicios(array[v_os2]);
+  v_ruta := pg_temp.demo_subir('pagos-servicio', v_os2::text, v_tes);
+  perform public.registrar_pago_servicio(gen_random_uuid(), v_os2, v_hoy - 1, v_saldo.saldo_detraccion, false, '00093502',
+    null, v_ruta, v_bcp, null, 'DETRACCION');
+  v_ruta := pg_temp.demo_subir('notas-credito', v_nc_ele::text, v_tes);
+  perform public.registrar_reembolso_nota_credito(gen_random_uuid(), v_nc_ele, v_hoy - 1, 59.04, '004135240', v_ruta, v_bcp, null);
+  v_ruta := pg_temp.demo_subir('cobros-venta', v_fv[3]::text, v_tes);
+  perform public.registrar_cobro_factura(gen_random_uuid(), v_fv[3], v_hoy - 1, 15000, false, '004135377', v_ruta, v_bcp, null);
+  v_ruta := pg_temp.demo_subir('notas-credito', (v_adq->>v_pint::text), v_con);
+  perform public.registrar_nota_credito(gen_random_uuid(), (v_adq->>v_pint::text)::uuid, 'FC02-000104', v_hoy - 1, 100, 'DESCUENTO', null,
+    'Descuento por un galón de base que llegó con la lata abollada', v_ruta);
+  -- Hoy: la OC con boleta de la ferretería, en efectivo, y las dos planillas diarias.
+  v_ruta := pg_temp.demo_subir('pagos-compras', v_bol1::text, v_tes);
+  perform public.registrar_pago_compra(gen_random_uuid(), v_bol1, v_hoy, public.total_orden_compra(v_bol1), true, null,
+    'B001-004512', v_ruta, v_chica, null);
+  v_ruta := pg_temp.demo_subir('planilla-diaria', v_pd1::text, v_tes);
+  perform public.registrar_pago_planilla_diaria(gen_random_uuid(), v_pd1,
+    array(select id from public.planilla_diaria_personas where planilla_id = v_pd1), v_hoy, '004136120', v_ruta, v_bcp, null);
+  v_ruta := pg_temp.demo_subir('planilla-diaria', v_pd2::text, v_tes);
+  perform public.registrar_pago_planilla_diaria(gen_random_uuid(), v_pd2,
+    array(select id from public.planilla_diaria_personas where planilla_id = v_pd2 order by nombre limit 2), v_hoy, '004136188', v_ruta, v_bcp, null);
+
+  -- Los cierres: el BCP hasta hace tres días (ese no cuadró por la comisión del
+  -- cambio, que el banco cobró al día siguiente), la caja chica hasta hace siete
+  -- y la cuenta en dólares hasta hace tres. Ayer y hoy quedan abiertos.
+  perform pg_temp.demo_cerrar(v_bcp, d, v_tes)
+     from unnest(array[v_hoy - 10, v_hoy - 9, v_hoy - 8, v_hoy - 5]) d;
+  perform pg_temp.demo_cerrar(v_bcp, v_hoy - 3, v_tes, -12.50,
+    'El banco cobró S/ 12,50 de comisión por el cambio; sale en el estado de cuenta de mañana.');
+  perform pg_temp.demo_cerrar(v_chica, d, v_tes) from unnest(array[v_hoy - 8, v_hoy - 7]) d;
+  perform pg_temp.demo_cerrar(v_bbva, v_hoy - 3, v_tes);
+
+  -- Solo en la demostración: lo que tiene fecha no nació todo hoy. Cada pago,
+  -- cobro y movimiento se anotó la tarde de su día y cada cierre a la mañana
+  -- siguiente; la factura de compra, al día siguiente de su fecha; la
+  -- cotización, dos días antes de su factura de venta, y Gerencia la aprobó al
+  -- día siguiente; el reporte diario, la tarde de su día. Lo de hoy va en
+  -- minutos, en el orden en que pasó: los vistos de los reportes, las horas
+  -- extras, las dos planillas diarias y su pago. Con `session_replication_role
+  -- = replica` no corren los disparadores (los que congelan lo registrado): por
+  -- eso va al final y solo toca fechas.
+  -- `>=`: el pago de la compra sella su hora con `clock_timestamp()`.
+  v_avisos := array(select id from public.notificaciones where creado_en >= now());
+  perform set_config('session_replication_role', 'replica', true);
+  update public.tipos_de_cambio set creado_en = (fecha + time '09:00') at time zone 'America/Lima'
+   where creado_en = now() and fecha < v_hoy;
+  update public.cajas set creado_en = (fecha_inicio + time '09:00') at time zone 'America/Lima' where creado_en = now();
+  update public.adquisiciones
+     set creado_en = least((fecha_emision + 1 + time '11:00') at time zone 'America/Lima', now() - interval '6 hours')
+   where creado_en = now();
+  update public.pagos_adquisicion set creado_en = (fecha + time '16:30') at time zone 'America/Lima'
+   where creado_en = now() and fecha < v_hoy;
+  update public.notas_credito_compra set creado_en = (fecha_emision + time '12:00') at time zone 'America/Lima'
+   where creado_en = now() and fecha_emision < v_hoy;
+  update public.reembolsos_nota_credito set creado_en = (fecha + time '16:40') at time zone 'America/Lima'
+   where creado_en = now() and fecha < v_hoy;
+  update public.pagos_orden_servicio set creado_en = (fecha_pago + time '16:00') at time zone 'America/Lima'
+   where creado_en = now() and fecha_pago < v_hoy;
+  update public.pagos_recibo_honorarios set creado_en = (fecha_pago + time '16:10') at time zone 'America/Lima'
+   where creado_en = now() and fecha_pago < v_hoy;
+  update public.recibos_honorarios set creado_en = (fecha_emision + time '15:00') at time zone 'America/Lima'
+   where creado_en = now() and fecha_emision < v_hoy;
+  update public.cobros_factura_venta set creado_en = (fecha + time '15:30') at time zone 'America/Lima'
+   where creado_en = now() and fecha < v_hoy;
+  update public.movimientos_caja set creado_en = (fecha + time '17:00') at time zone 'America/Lima'
+   where creado_en = now() and fecha < v_hoy;
+  update public.cierres_caja set creado_en = (fecha + 1 + time '08:30') at time zone 'America/Lima'
+   where creado_en = now();
+  update public.facturas_venta set creado_en = (fecha_emision + time '12:00') at time zone 'America/Lima'
+   where creado_en = now();
+  update public.cotizaciones_pdf c
+     set creado_en = (f.fecha_emision - 2 + time '10:00') at time zone 'America/Lima',
+         archivo_subido_en = (f.fecha_emision - 2 + time '10:00') at time zone 'America/Lima',
+         revisado_en = (f.fecha_emision - 1 + time '09:30') at time zone 'America/Lima'
+    from public.facturas_venta f
+   where f.cotizacion_pdf_id = c.id and c.creado_en = now();
+  update public.observaciones_personal set creado_en = (fecha + time '12:00') at time zone 'America/Lima'
+   where creado_en = now();
+  update public.permisos_personal set creado_en = least((fecha + time '07:50') at time zone 'America/Lima', now())
+   where creado_en = now() and fecha < v_hoy;
+  update public.oficina_pagos set creado_en = (hasta + 3 + time '11:00') at time zone 'America/Lima'
+   where creado_en = now();
+  update public.planillas
+     set creado_en = case when periodo < date_trunc('month', v_hoy) then ((periodo + interval '1 month')::date + time '10:00') at time zone 'America/Lima'
+                          else now() - interval '7 hours' end,
+         cerrado_en = case when cerrado_en = now() then ((periodo + interval '1 month')::date + 2 + time '16:00') at time zone 'America/Lima' else cerrado_en end
+   where creado_en = now();
+  update public.planilla_personas p set creado_en = l.creado_en
+    from public.planillas l where l.id = p.planilla_id and p.creado_en = now();
+  update public.planilla_distribuciones d set creado_en = l.creado_en + interval '1 hour'
+    from public.planilla_personas p join public.planillas l on l.id = p.planilla_id
+   where p.id = d.persona_id and d.creado_en = now();
+  update public.gastos_generales_mes
+     set creado_en = case when periodo < date_trunc('month', v_hoy) then (periodo + 24 + time '10:00') at time zone 'America/Lima'
+                          else now() - interval '8 hours' end
+   where creado_en = now();
+  update public.reportes_diarios
+     set creado_en = (fecha + time '18:30') at time zone 'America/Lima',
+         visto_gerencia_en = case when visto_gerencia_en = now() then now() - interval '300 minutes' end,
+         visto_rrhh_en = case when visto_rrhh_en = now() then now() - interval '240 minutes' end
+   where creado_en = now();
+  update public.reporte_diario_personal l set creado_en = r.creado_en
+    from public.reportes_diarios r where r.id = l.reporte_id and l.creado_en = now();
+  update public.reporte_diario_trabajos t set creado_en = r.creado_en
+    from public.reportes_diarios r where r.id = t.reporte_id and t.creado_en = now();
+  update public.codigo_actividades a set creado_en = r.creado_en
+    from public.reporte_diario_trabajos t join public.reportes_diarios r on r.id = t.reporte_id
+   where t.actividad_id = a.id and a.creado_en = now();
+  update public.tareos set creado_en = (fecha + time '18:30') at time zone 'America/Lima' where creado_en = now();
+  -- La guía la emite Contabilidad apenas Logística programa el recojo, antes
+  -- de que el conductor salga.
+  update public.guias_remision_compra g
+     set creado_en = coalesce((select max(p.programado_en) from public.programacion_recojo p
+                                where p.orden_compra_id = g.orden_compra_id), now() - interval '100 minutes')
+                     + interval '5 minutes',
+         cargada_en = coalesce((select max(p.programado_en) from public.programacion_recojo p
+                                 where p.orden_compra_id = g.orden_compra_id), now() - interval '100 minutes')
+                      + interval '5 minutes'
+   where g.creado_en = now();
+  update public.horas_extras_decisiones set creado_en = now() - interval '200 minutes' where creado_en = now();
+  update public.permisos_descontados set creado_en = now() - interval '200 minutes' where creado_en = now();
+  update public.planillas_diarias
+     set creado_en = case when id = v_pd1 then now() - interval '190 minutes' else now() - interval '150 minutes' end
+   where creado_en = now();
+  update public.planilla_diaria_personas p set creado_en = d.creado_en
+    from public.planillas_diarias d where d.id = p.planilla_id and p.creado_en = now();
+  update public.planilla_diaria_pagos set creado_en = now() - interval '60 minutes' where creado_en = now();
+  update public.movimientos_caja set creado_en = now() - interval '60 minutes' where creado_en = now();
+  update public.pagos_orden_compra set creado_en = now() - interval '45 minutes' where creado_en >= now();
+
+  -- Cada aviso con la hora del paso que anuncia. Lo ya atendido, o de días
+  -- atrás, va leído; el reporte diario queda por leer para el lado que todavía
+  -- no le da su visto.
+  update public.notificaciones n set creado_en = x.creado_en
+    from (select 'adquisiciones' as t, id, creado_en from public.adquisiciones
+          union all select 'pagos_adquisicion', id, creado_en from public.pagos_adquisicion
+          union all select 'notas_credito_compra', id, creado_en from public.notas_credito_compra
+          union all select 'pagos_orden_servicio', id, creado_en from public.pagos_orden_servicio
+          union all select 'pagos_orden_compra', id, creado_en from public.pagos_orden_compra
+          union all select 'cobros_factura_venta', id, creado_en from public.cobros_factura_venta
+          union all select 'facturas_venta', id, creado_en from public.facturas_venta
+          union all select 'reportes_diarios', id, creado_en from public.reportes_diarios
+          union all select 'planillas_diarias', id, creado_en from public.planillas_diarias
+          union all select 'guias_remision_compra', id, creado_en from public.guias_remision_compra) x
+   where n.id = any (v_avisos) and n.origen_tabla = x.t and n.origen_id = x.id;
+  update public.notificaciones n
+     set creado_en = case when n.titulo like 'Recibo por honorarios pagado%'
+                          then (select max(p.creado_en) from public.pagos_recibo_honorarios p where p.recibo_id = r.id)
+                          else r.creado_en end
+    from public.recibos_honorarios r
+   where n.id = any (v_avisos) and n.origen_tabla = 'recibos_honorarios' and n.origen_id = r.id;
+  update public.notificaciones n
+     set creado_en = case when n.titulo like 'Gerencia aprobó%' or n.titulo like 'Cotización aprobada%' then c.revisado_en
+                          when n.titulo like 'Tu cotización ya tiene su OT%' then now() - interval '7 hours'
+                          else c.creado_en end
+    from public.cotizaciones_pdf c
+   where n.id = any (v_avisos) and n.origen_tabla = 'cotizaciones_pdf' and n.origen_id = c.id;
+  update public.notificaciones n
+     set creado_en = coalesce(case when n.titulo like 'Guía de remisión lista%'
+                                   then (select max(g.creado_en) from public.guias_remision_compra g where g.orden_compra_id = c.id)
+                                   when n.titulo like 'Compra%' then now() - interval '6 hours' end, n.creado_en)
+    from public.ordenes_compra_materiales c
+   where n.id = any (v_avisos) and n.origen_tabla = 'ordenes_compra_materiales' and n.origen_id = c.id;
+  update public.notificaciones n
+     set leida_en = least(n.creado_en + interval '1 hour', now() - interval '5 minutes')
+   where n.leida_en is null
+     and ((n.id = any (v_avisos) and n.creado_en < now() - interval '2 hours'
+           -- Lo que sigue esperando a quien lo recibe queda por leer.
+           and not (n.titulo like 'Reporte diario por validar%'
+                    and exists (select 1 from public.reportes_diarios r
+                                 where r.id = n.origen_id
+                                   and ((r.visto_gerencia_en is null
+                                         and exists (select 1 from public.usuarios u join public.roles_permisos rp on rp.rol_id = u.rol_id
+                                                      where u.id = n.usuario_id and rp.permiso_codigo = 'reporte_diario.validar_gerencia'))
+                                     or (r.visto_rrhh_en is null
+                                         and exists (select 1 from public.usuarios u join public.roles_permisos rp on rp.rol_id = u.rol_id
+                                                      where u.id = n.usuario_id and rp.permiso_codigo = 'reporte_diario.validar_rrhh')))))
+           and not (n.titulo like 'Factura por cobrar%'
+                    and not exists (select 1 from public.cobros_factura_venta c
+                                     where c.factura_id = n.origen_id and c.cancela and c.anulado_en is null))
+           and not (n.titulo like 'Recibo por honorarios por pagar%'
+                    and not exists (select 1 from public.pagos_recibo_honorarios p
+                                     where p.recibo_id = n.origen_id and p.anulado_en is null))
+           and not (n.titulo like 'Saldo a favor%'
+                    and exists (select 1 from public.notas_credito_compra c
+                                 where c.id = n.origen_id and public.saldo_de_la_nota_credito(c.id) > 0)))
+          -- Lo ya atendido, aunque sea de hoy o lo haya dejado la sección de compras.
+          or (n.titulo like 'Guía de remisión por emitir%'
+              and exists (select 1 from public.guias_remision_compra g
+                           where g.orden_compra_id = n.origen_id and g.anulada_en is null))
+          or (n.titulo like 'Recibo por honorarios por pagar%'
+              and exists (select 1 from public.pagos_recibo_honorarios p
+                           where p.recibo_id = n.origen_id and p.anulado_en is null))
+          or (n.titulo like 'Comprobante de servicio por pagar%'
+              and exists (select 1 from public.documentos_orden_servicio d
+                            join public.pagos_orden_servicio p on p.orden_servicio_id = d.orden_servicio_id
+                           where d.id = n.origen_id and p.cancela and p.anulado_en is null))
+          or (n.id = any (v_avisos) and n.titulo like 'Guía de remisión lista%'
+              and exists (select 1 from public.ordenes_compra_materiales c
+                           where c.id = n.origen_id and c.recojo in ('RECOGIDO', 'DEJADO'))));
+  perform set_config('session_replication_role', 'origin', true);
+
+  if exists (select 1 from public.notificaciones n where n.id = any (v_avisos) and n.creado_en >= now()) then
+    raise exception 'Plata y personal deja avisos con la hora de la carga: %',
+      (select string_agg(distinct n.origen_tabla || ' · ' || n.titulo, ' | ')
+         from public.notificaciones n where n.id = any (v_avisos) and n.creado_en >= now());
+  end if;
   perform set_config('request.jwt.claim.sub', '', true);
   perform set_config('request.jwt.claims', '', true);
 end $$;

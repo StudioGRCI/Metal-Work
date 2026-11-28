@@ -84,7 +84,9 @@ auditores. La supervisión es una por área: la de la demostración pasa a llama
 
 Los datos de demostración anotan en Storage la foto de cada salida del kardex,
 el PDF de cada factura de compra, los documentos de las órdenes de servicio y
-los contratos de los subcontratos. `preparar.sh` les pone un archivo de muestra
+los contratos de los subcontratos, y de la plata y el personal, las guías de
+remisión, las notas de crédito, los recibos por honorarios, las capturas de las
+cajas y los comprobantes de cada pago y cobro. `preparar.sh` les pone un archivo de muestra
 («Foto de muestra», «Documento de muestra», con ImageMagick) en
 `BANCO_ARCHIVOS`, para que «Ver la foto» y «Ver el PDF» abran algo.
 
