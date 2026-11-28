@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { mensajeDeError, type ResultadoAccion } from '@/lib/acciones'
-import { exigirSesion, puede } from '@/lib/sesion'
+import { cierraElCostoDeLaOt, exigirSesion, puede } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 const uuid = z.guid()
@@ -49,7 +49,7 @@ export async function confirmarIgv(_previo: unknown, datos: FormData): Promise<R
  */
 export async function cerrarCosto(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, ['costos.controlar_ot', 'ordenes.editar']) || !puede(perfil, 'costos.ver')) {
+  if (!cierraElCostoDeLaOt(perfil)) {
     return { ok: false, error: 'No tienes permiso para cerrar el costo de la OT.' }
   }
   const entrada = z

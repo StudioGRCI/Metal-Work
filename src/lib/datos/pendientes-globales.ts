@@ -3,6 +3,7 @@ import 'server-only'
 import { cache } from 'react'
 
 import type { Tono } from '@/components/ui/etiqueta-estado'
+import { ordenesConCostoPorCerrar } from '@/lib/datos/costos-ot'
 import { codigosDeDiseno, planosDeCodigo } from '@/lib/datos/diseno-codigos'
 import { unidadesDeCotizaciones } from '@/lib/datos/facturacion'
 import { otsDeMantenimiento } from '@/lib/datos/mantenimiento'
@@ -11,6 +12,7 @@ import { cargarRequerimientos } from '@/lib/datos/requerimientos'
 import { planillaAjusteDesde } from '@/lib/datos/rrhh'
 import { todasLasFilas } from '@/lib/datos/todas-las-filas'
 import { ESTADOS_ACTIVOS_OT } from '@/lib/dominio/estados'
+import { FILTRO_COSTO_POR_CERRAR } from '@/lib/dominio/expediente'
 import { esperaFactura, totalConIgv } from '@/lib/dominio/finanzas'
 import { PERMISO_OTS_DE_MANTENIMIENTO, tieneTrabajoHoy } from '@/lib/dominio/mantenimiento'
 import { devueltaEntera } from '@/lib/dominio/pago-de-boleta'
@@ -18,7 +20,7 @@ import { estadoDePlanilla } from '@/lib/dominio/planilla-diaria'
 import { ESTADOS_RQ_ABIERTOS, leTocaAtender, loTieneQuienAtiende, quienAtiende, tieneParaRecoger, tipoDeRequerimiento } from '@/lib/dominio/requerimientos'
 import { hoyLima } from '@/lib/format'
 import { rutasDeTrabajo } from '@/lib/navegacion'
-import { apruebaSinOrden, puede, type PerfilSesion } from '@/lib/sesion'
+import { apruebaSinOrden, cierraElCostoDeLaOt, puede, type PerfilSesion } from '@/lib/sesion'
 import { createClient } from '@/lib/supabase/server'
 
 /**
@@ -423,29 +425,20 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
   }
 
   // Una OT terminada con el costo abierto sigue cambiando con cada factura que
-  // llega: Costos lo cierra para que quede la cifra con la que se entregó. Lo
-  // cierra quien además ve el costo, como pide `cerrar_costo_ot` (migración
-  // 20261128100000): a Requerimientos no se le cuenta lo que no puede cerrar.
-  if (puede(perfil, 'costos.controlar_ot') && puede(perfil, 'costos.ver')) {
+  // llega: quien lo cierra lo firma para que quede la cifra con la que se
+  // entregó. Le llega a quien lo puede cerrar, con las mismas llaves que
+  // `cerrar_costo_ot` (migración 20261128100000): Administración y Costos y
+  // Materiales. Antes pedía `costos.controlar_ot`, que Administración no tiene
+  // (cierra por `ordenes.editar`): sin ninguna cuenta activa de Costos, no le
+  // llegaba a nadie. Cuenta solo las que se cierran en el expediente y lleva a
+  // esas mismas, también las entregadas y facturadas (`ordenesConCostoPorCerrar`).
+  if (cierraElCostoDeLaOt(perfil)) {
     tareas.push({
       clave: 'costo_por_cerrar',
-      ruta: '/ordenes?estado=TERMINADA',
+      ruta: `/ordenes?costo=${FILTRO_COSTO_POR_CERRAR}`,
       tono: 'aviso',
       texto: (n) => plural(n, 'orden terminada con el costo sin cerrar', 'órdenes terminadas con el costo sin cerrar'),
-      contar: async () => {
-        const { data: ordenes, error } = await supabase
-          .from('ordenes_trabajo')
-          .select('id')
-          .in('estado', ['TERMINADA', 'ENTREGADA', 'FACTURADA'])
-          .limit(500)
-        if (error) throw new Error('No se pudieron leer las órdenes.')
-        const ids = (ordenes ?? []).map((o) => o.id)
-        if (ids.length === 0) return 0
-        const { data: cerradas, error: errorCierres } = await supabase.from('ot_cierres_costo').select('orden_id').in('orden_id', ids)
-        if (errorCierres) throw new Error('No se pudieron leer los cierres de costo.')
-        const conCierre = new Set((cerradas ?? []).map((c) => c.orden_id))
-        return ids.filter((id) => !conCierre.has(id)).length
-      },
+      contar: async () => (await ordenesConCostoPorCerrar()).length,
     })
   }
 

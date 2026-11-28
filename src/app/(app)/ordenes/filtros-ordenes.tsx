@@ -7,11 +7,13 @@ import { Loader2, Search, X } from 'lucide-react'
 import { Boton } from '@/components/ui/boton'
 import { Entrada, Seleccion } from '@/components/ui/campos'
 import { ESTADO_OT, ORDEN_ESTADO_OT, PRIORIDAD, opciones } from '@/lib/dominio/estados'
+import { FILTRO_COSTO_POR_CERRAR } from '@/lib/dominio/expediente'
 
 const ESTADOS = opciones(ESTADO_OT, ORDEN_ESTADO_OT)
 const PRIORIDADES = opciones(PRIORIDAD)
 
-export function FiltrosOrdenes() {
+/** `costoPorCerrar`: ofrece el filtro de las terminadas con el costo por cerrar, solo a quien lo cierra. */
+export function FiltrosOrdenes({ costoPorCerrar = false }: { costoPorCerrar?: boolean }) {
   const router = useRouter()
   const params = useSearchParams()
   const [pendiente, iniciarTransicion] = useTransition()
@@ -114,7 +116,7 @@ export function FiltrosOrdenes() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busqueda])
 
-  const hayFiltros = ['q', 'estado', 'prioridad', 'atrasadas'].some((k) => params.get(k))
+  const hayFiltros = ['q', 'estado', 'prioridad', 'atrasadas', ...(costoPorCerrar ? ['costo'] : [])].some((k) => params.get(k))
 
   // Lo escrito todavía no está en la URL, o la tabla se está rehaciendo: en
   // ambos casos lo que se ve abajo ya no responde a lo que se acaba de pedir.
@@ -192,6 +194,19 @@ export function FiltrosOrdenes() {
         />
         Solo atrasadas
       </label>
+
+      {/* Adonde lleva el pendiente «órdenes terminadas con el costo sin cerrar». */}
+      {costoPorCerrar && (
+        <label className="flex h-11 cursor-pointer items-center gap-2 rounded-[var(--radius-base)] border border-borde-fuerte bg-superficie px-3 text-sm text-texto-suave sm:h-9">
+          <input
+            type="checkbox"
+            className="size-5 accent-[var(--acento)] sm:size-3.5"
+            checked={params.get('costo') === FILTRO_COSTO_POR_CERRAR}
+            onChange={(e) => navegar({ costo: e.target.checked ? FILTRO_COSTO_POR_CERRAR : null })}
+          />
+          Costo por cerrar
+        </label>
+      )}
 
       {hayFiltros && (
         <Boton

@@ -180,3 +180,10 @@ export function rangoDelGrafico(etapas: EtapaEnGrafico[], hoy: string, viva: boo
   const marca = (dia: string) => ((diasEntre(desde, dia) + 0.5) / total) * 100
   return { desde, hasta, total, posicion, tramo, marca }
 }
+
+/**
+ * El filtro de la lista de órdenes con las terminadas cuyo costo se cierra en el
+ * expediente y sigue abierto (`/ordenes?costo=por-cerrar`, `ordenesConCostoPorCerrar`):
+ * adonde lleva el pendiente «órdenes terminadas con el costo sin cerrar».
+ */
+export const FILTRO_COSTO_POR_CERRAR = 'por-cerrar'
