@@ -60,6 +60,7 @@ import {
   Stamp,
   Tag,
   Timer,
+  TrendingUp,
   Truck,
   UserCog,
   Users,
@@ -656,6 +657,17 @@ export const NAVEGACION = [
         disponible: true,
       },
       { titulo: 'Tipo de cambio', ruta: '/tesoreria/tipo-de-cambio', icono: ArrowLeftRight, permiso: 'tesoreria.tipo_cambio', lectura: 'tesoreria.ver_tipo_cambio', descripcion: 'El cambio del dólar de cada día, para el costo en soles', disponible: true },
+      // Cada carrocería con su ingreso y su ganancia, y el total de Metal Work
+      // menos el gasto operativo y el de oficina (plan del gasto operativo,
+      // entrega 3, migración 20261128100000). Gerencia y Contabilidad, en lectura.
+      {
+        titulo: 'Resultados',
+        ruta: '/resultados',
+        icono: TrendingUp,
+        permiso: 'resultados.ver',
+        descripcion: 'El ingreso y la ganancia de cada carrocería, y el total de Metal Work, por día, mes o año',
+        disponible: true,
+      },
     ],
   },
   // Recursos Humanos lleva la ficha del personal y su horario; la portería, con
@@ -961,7 +973,9 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
   // (los planos, materiales y etapas de Diseño, Planos y etapas, Subcontratos
   // del área, RQ por unidad y Recojos).
   GERENTE: {
-    principal: ['/codigos-internos'],
+    // Los resultados, junto a los códigos internos: cada carrocería con su ganancia
+    // y el total de la empresa (DKS, 2026-11-27).
+    principal: ['/codigos-internos', '/resultados'],
     grupos: [
       {
         titulo: 'Por aprobar',
@@ -1092,7 +1106,7 @@ const MENU_POR_PUESTO: Record<string, MenuDePuesto> = {
         titulo: 'Consultas',
         // Abierto: el tipo de cambio lo registra cada día, aunque viva aquí.
         pliegue: 'abierto',
-        rutas: ['/almacen/kardex', '/almacen/compras', '/tesoreria/recibos-por-honorarios', '/proveedores', '/tesoreria/tipo-de-cambio'],
+        rutas: ['/resultados', '/almacen/kardex', '/almacen/compras', '/tesoreria/recibos-por-honorarios', '/proveedores', '/tesoreria/tipo-de-cambio'],
       },
     ],
     telefono: ['/adquisiciones', '/contabilidad/facturacion', '/compras/servicios', '/almacen/kardex'],
