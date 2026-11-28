@@ -91,7 +91,8 @@ export default async function PaginaExpediente({ params }: PageProps<'/ordenes/[
   // el documento comercial (la misma llave que exige `margen_ot`).
   const verMargen = verCosteo && puede(perfil, 'cotizaciones.ver_pdf_comercial')
   const puedeConfirmarIgv = puede(perfil, ['cotizaciones.crear', 'cotizaciones.revisar', 'cotizaciones.liberar_tesoreria'])
-  const puedeCerrarCosto = puede(perfil, ['costos.controlar_ot', 'ordenes.editar'])
+  // Las llaves de `cerrar_costo_ot`: decidir y, además, ver el costo que se firma.
+  const puedeCerrarCosto = verCosteo && puede(perfil, ['costos.controlar_ot', 'ordenes.editar'])
   // Las llaves de `fijar_presupuesto_ot`: decidir y, además, ver costo y precio.
   const puedeFijarPresupuesto = verMargen && puede(perfil, ['cotizaciones.revisar', 'ordenes.editar'])
   // La misma regla que el resumen de la OT: el documento comercial solo lo

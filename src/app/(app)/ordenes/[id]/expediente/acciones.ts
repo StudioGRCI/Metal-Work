@@ -43,11 +43,13 @@ export async function confirmarIgv(_previo: unknown, datos: FormData): Promise<R
 /**
  * Congela el costo de una OT terminada. Las reglas —que el trabajo terminó, que
  * no haya despachos sin precio ni dólares sin cambio— las pone la base; aquí
- * solo se pide el permiso para dar un mensaje claro antes de intentarlo.
+ * solo se pide el permiso para dar un mensaje claro antes de intentarlo. Es el
+ * mismo de `cerrar_costo_ot`: decidir y, además, ver el costo que se firma
+ * (migración 20261128100000).
  */
 export async function cerrarCosto(_previo: unknown, datos: FormData): Promise<ResultadoAccion> {
   const perfil = await exigirSesion()
-  if (!puede(perfil, ['costos.controlar_ot', 'ordenes.editar'])) {
+  if (!puede(perfil, ['costos.controlar_ot', 'ordenes.editar']) || !puede(perfil, 'costos.ver')) {
     return { ok: false, error: 'No tienes permiso para cerrar el costo de la OT.' }
   }
   const entrada = z
