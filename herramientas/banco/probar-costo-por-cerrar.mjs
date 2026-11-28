@@ -10,7 +10,8 @@
  *   2. Su fila lleva a `/ordenes?costo=por-cerrar`, que lista la 0005 (ENTREGADA,
  *      que la ruta de antes, `?estado=TERMINADA`, no mostraba) y no la 0004, con
  *      «Costo por cerrar» marcado. A 1440 y a 390, sin salirse de costado.
- *   3. En el expediente de la 0005, «Cerrar el costo» con clic real: la base
+ *   3. La fila de la 0005 lleva a la tarjeta del costo de su expediente, y ahí,
+ *      «Cerrar el costo» con clic real: la base
  *      guarda el cierre a nombre de Administración, «Te toca» ya no lo cuenta y
  *      la lista dice que no queda ninguna.
  *   4. Gerencia (consulta) y Requerimientos (no ve el costo) no lo reciben, y a
@@ -142,8 +143,21 @@ try {
   comprobar(!(await seSaleDeCostado(tel.pagina)), 'a 390 nada se sale de costado')
   await tel.pagina.screenshot({ path: join(CAPTURAS, 'costo-por-cerrar-administracion-390.png'), fullPage: true })
 
-  // 3. Cerrar el costo con clic real en el expediente.
-  await adm.pagina.goto(`${BASE}/ordenes/${id0005}/expediente`, { waitUntil: 'networkidle' })
+  // 3. Desde la lista, la orden lleva a la tarjeta del costo de su expediente, y ahí se cierra con clic real.
+  await adm.pagina.goto(`${BASE}/ordenes?costo=por-cerrar`, { waitUntil: 'networkidle' })
+  const enlace = adm.pagina.locator(`main a[href="/ordenes/${id0005}/expediente#costo"]:visible`).first()
+  comprobar((await enlace.count()) === 1, 'la fila de la 0005 lleva a /ordenes/<id>/expediente#costo')
+  if ((await enlace.count()) === 1) {
+    await Promise.all([adm.pagina.waitForURL(/\/expediente/), enlace.click()])
+    await adm.pagina.waitForLoadState('networkidle')
+  } else {
+    await adm.pagina.goto(`${BASE}/ordenes/${id0005}/expediente#costo`, { waitUntil: 'networkidle' })
+  }
+  const aLaVista = await adm.pagina.evaluate(() => {
+    const t = document.getElementById('costo')?.getBoundingClientRect()
+    return t ? t.top < window.innerHeight && t.bottom > 0 : false
+  })
+  comprobar(aLaVista, 'llega con la tarjeta del costo a la vista')
   const pliegue = adm.pagina.getByText('Cerrar el costo de esta OT')
   comprobar((await pliegue.count()) > 0, 'el expediente de la 0005 ofrece «Cerrar el costo de esta OT»')
   if ((await pliegue.count()) > 0) {
@@ -160,7 +174,7 @@ try {
   comprobar(despues === null, `cerrado, «Te toca» ya no lo cuenta${despues ? `: ${despues.texto}` : ''}`)
   await adm.pagina.goto(`${BASE}/ordenes?costo=por-cerrar`, { waitUntil: 'networkidle' })
   const vacio = await adm.pagina.getByText('Ninguna orden terminada con el costo por cerrar').count()
-  comprobar(vacio === 1, 'la lista dice que no queda ninguna por cerrar')
+  comprobar(vacio >= 1 && (await adm.pagina.getByText('No queda ninguna por cerrar').count()) === 1, 'la lista dice que no queda ninguna por cerrar')
   await adm.pagina.screenshot({ path: join(CAPTURAS, 'costo-por-cerrar-vacio-1440.png'), fullPage: true })
 
   // 4. Gerencia y Requerimientos.

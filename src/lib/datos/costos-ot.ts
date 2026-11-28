@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { cache } from 'react'
+
 import { todasLasFilas } from '@/lib/datos/todas-las-filas'
 import { CODIGO_SIN_AVANCE, codigoDeCosteoDeLaOt, normalizarCodigo } from '@/lib/dominio/codigos-internos'
 import { createClient } from '@/lib/supabase/server'
@@ -21,17 +23,20 @@ export const ESTADOS_DE_COSTO_CERRABLE = ['TERMINADA', 'ENTREGADA', 'FACTURADA']
  * Todas, de mil en mil: con el tope de 500 de antes, las terminadas de más
  * quedaban fuera sin aviso. Lee con el RLS de quien mira (`puede_ver_orden` y
  * `costos.ver` en `ot_cierres_costo`): quien la llama tiene que ver el costo,
- * o todas le saldrían sin cierre.
+ * o todas le saldrían sin cierre. Una vez por pedido (`cache`): la piden el
+ * menú y la lista de la misma pantalla.
  */
-export async function ordenesConCostoPorCerrar(): Promise<string[]> {
+export const ordenesConCostoPorCerrar = cache(async (): Promise<string[]> => {
+  // Devuelve los id de la más reciente a la más antigua, como la lista de órdenes.
   const supabase = await createClient()
   const { data: ordenes, error } = await todasLasFilas(
     () =>
       supabase
         .from('ordenes_trabajo')
-        .select('id, numero, tipo_trabajo, unidad:unidades(codigo_interno)')
+        .select('id, numero, tipo_trabajo, fecha_registro, unidad:unidades(codigo_interno)')
         .in('estado', [...ESTADOS_DE_COSTO_CERRABLE]),
-    ['id'],
+    // En el orden de la lista de órdenes: la más reciente primero.
+    ['fecha_registro.desc', 'numero.desc', 'id'],
   )
   if (error) throw new Error('No se pudieron leer las órdenes terminadas.')
   const candidatas = ordenes
@@ -41,18 +46,17 @@ export async function ordenesConCostoPorCerrar(): Promise<string[]> {
     })
     .map((o) => o.id)
   if (candidatas.length === 0) return []
+  // De a 200, a la vez: los id van en la dirección de la consulta.
+  const tandas = []
+  for (let i = 0; i < candidatas.length; i += 200) tandas.push(candidatas.slice(i, i + 200))
+  const respuestas = await Promise.all(tandas.map((tanda) => supabase.from('ot_cierres_costo').select('orden_id').in('orden_id', tanda)))
   const conCierre = new Set<string>()
-  // De a 200: los id van en la dirección de la consulta.
-  for (let i = 0; i < candidatas.length; i += 200) {
-    const { data: cierres, error: errorCierres } = await supabase
-      .from('ot_cierres_costo')
-      .select('orden_id')
-      .in('orden_id', candidatas.slice(i, i + 200))
+  for (const { data: cierres, error: errorCierres } of respuestas) {
     if (errorCierres) throw new Error('No se pudieron leer los cierres de costo.')
     for (const c of cierres ?? []) conCierre.add(c.orden_id)
   }
   return candidatas.filter((id) => !conCierre.has(id))
-}
+})
 
 export async function controlesYSolicitudesDeOrden(ordenId: string, verCosteo: boolean) {
   const supabase = await createClient()

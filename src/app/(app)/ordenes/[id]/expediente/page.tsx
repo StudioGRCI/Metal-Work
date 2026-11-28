@@ -13,7 +13,7 @@ import { SeccionDesplegable } from '@/components/ui/seccion-desplegable'
 import { SinDatos, Tabla, TablaCabecera, TD, TH, TR } from '@/components/ui/tabla'
 import { Tarjeta, TarjetaCabecera, TarjetaCuerpo } from '@/components/ui/tarjeta'
 import { cotizacionPdfDeOrden } from '@/lib/datos/cotizaciones-pdf'
-import { costoDeOrdenes, type CostoDeOrden } from '@/lib/datos/costos-ot'
+import { ESTADOS_DE_COSTO_CERRABLE, costoDeOrdenes, type CostoDeOrden } from '@/lib/datos/costos-ot'
 import { avanceDelCodigo } from '@/lib/datos/codigos-internos'
 import { etapasDeCodigo } from '@/lib/datos/diseno-codigos'
 import { expedienteDeOrden, type Expediente, type LineaCosto, type PresupuestoExpediente } from '@/lib/datos/expediente'
@@ -1337,7 +1337,7 @@ function CierreDelCosto({
       </section>
     )
   }
-  const termino = ['TERMINADA', 'ENTREGADA', 'FACTURADA'].includes(estado)
+  const termino = (ESTADOS_DE_COSTO_CERRABLE as readonly string[]).includes(estado)
   if (!termino || !puedeCerrar) return null
   if (pendientes > 0) {
     return (

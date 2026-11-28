@@ -34,6 +34,9 @@ import { paginaPedida } from '@/lib/dominio/paginas'
 
 export const metadata = { title: 'Órdenes de trabajo' }
 
+/** Cuántas de las órdenes con el costo por cerrar se listan a la vez: sus id van en la dirección de la consulta. */
+const TOPE_COSTO_POR_CERRAR = 200
+
 function texto(valor: unknown) {
   return typeof valor === 'string' && valor.trim() ? valor.trim() : undefined
 }
@@ -55,12 +58,15 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
   // cierre (`ot_cierres_costo` pide `costos.ver`), así que el filtro no se aplica.
   const cierraCosto = cierraElCostoDeLaOt(perfil)
   const costoPorCerrar = cierraCosto && params.costo === FILTRO_COSTO_POR_CERRAR
+  // Los id van en la dirección de la consulta: con cientos, la lista fallaría.
+  // Se listan las más recientes y el encabezado dice cuántas quedan fuera.
+  const porCerrar = costoPorCerrar ? await ordenesConCostoPorCerrar() : undefined
   const filtros = {
     busqueda: texto(params.q),
     estado: comoEstado(params.estado),
     prioridad: comoPrioridad(params.prioridad),
     atrasadas: params.atrasadas === '1',
-    ids: costoPorCerrar ? await ordenesConCostoPorCerrar() : undefined,
+    ids: porCerrar?.slice(0, TOPE_COSTO_POR_CERRAR),
     pagina: paginaPedida(params.pagina),
   }
 
@@ -94,11 +100,16 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
 
   // Cero con filtros puestos y cero de verdad no son lo mismo: al que busca le
   // importa saber si el vacío lo produjo su propio filtro.
-  const vacio = hayFiltros
-    ? 'Ninguna orden coincide con los filtros aplicados'
-    : 'Ninguna orden registrada todavía'
   // Con solo el filtro del costo, el vacío es la buena noticia: no queda ninguno por cerrar.
   const soloCosto = costoPorCerrar && !(palabrasDeBusqueda(filtros.busqueda).length > 0 || filtros.estado || filtros.prioridad || filtros.atrasadas)
+  const vacio = soloCosto
+    ? 'Ninguna orden terminada con el costo por cerrar'
+    : hayFiltros
+      ? 'Ninguna orden coincide con los filtros aplicados'
+      : 'Ninguna orden registrada todavía'
+  // Con el filtro del costo, cada orden lleva adonde se cierra: la tarjeta del
+  // costo de su expediente. El Resumen no lo dice y el cierre queda en otra pestaña.
+  const enlaceDeOrden = (id: string | null) => (costoPorCerrar ? `/ordenes/${id}/expediente#costo` : `/ordenes/${id}`)
 
   // Lo que cada orden muestra se calcula una vez: la misma fila sale como
   // tarjeta en el teléfono y como renglón de tabla en el monitor, y si cada una
@@ -147,9 +158,12 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
       <EncabezadoPagina
         titulo="Órdenes de trabajo"
         descripcion={
-          total === 0
+          (total === 0
             ? vacio
-            : `${total.toLocaleString('es-PE')} ${total === 1 ? 'orden' : 'órdenes'}${hayFiltros ? ' con los filtros aplicados' : ''}`
+            : `${total.toLocaleString('es-PE')} ${total === 1 ? 'orden' : 'órdenes'}${hayFiltros ? ' con los filtros aplicados' : ''}`) +
+          (porCerrar && porCerrar.length > TOPE_COSTO_POR_CERRAR
+            ? `. Se buscan solo las ${TOPE_COSTO_POR_CERRAR} más recientes de las ${porCerrar.length.toLocaleString('es-PE')} con el costo por cerrar.`
+            : '')
         }
         acciones={
           (puedeCrear || puedeAbrirEnTaller) && (
@@ -196,7 +210,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
           {filas.map(({ orden, estado, prioridad, unidad, plazo }) => (
             <li key={orden.id}>
               <Link
-                href={`/ordenes/${orden.id}`}
+                href={enlaceDeOrden(orden.id)}
                 className="block rounded-[var(--radius-base)] border border-borde bg-superficie p-4 shadow-[var(--sombra)] active:bg-superficie-2"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -252,7 +266,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
         {ordenes.length === 0 ? (
           <SinDatos
             enTabla={false}
-            titulo={soloCosto ? 'Ninguna orden terminada con el costo por cerrar' : hayFiltros ? 'Ninguna orden con estos filtros' : 'Aún no hay órdenes de trabajo'}
+            titulo={soloCosto ? 'No queda ninguna por cerrar' : hayFiltros ? 'Ninguna orden con estos filtros' : 'Aún no hay órdenes de trabajo'}
             descripcion={
               soloCosto
                 ? 'Las terminadas que se costean por su código interno se cierran en Códigos internos, no aquí.'
@@ -293,7 +307,7 @@ export default async function PaginaOrdenes({ searchParams }: PageProps<'/ordene
                       {/* Blanco de dedo —y de guante— en el teléfono; en el
                           monitor vuelve a ser una línea de texto y nada más. */}
                       <Link
-                        href={`/ordenes/${orden.id}`}
+                        href={enlaceDeOrden(orden.id)}
                         className="inline-flex min-h-11 items-center font-medium text-acento hover:underline sm:min-h-0"
                       >
                         {orden.numero}
