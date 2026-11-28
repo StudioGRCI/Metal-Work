@@ -423,8 +423,10 @@ export const pendientesGlobales = cache(async function pendientesGlobales(perfil
   }
 
   // Una OT terminada con el costo abierto sigue cambiando con cada factura que
-  // llega: Costos lo cierra para que quede la cifra con la que se entregó.
-  if (puede(perfil, 'costos.controlar_ot')) {
+  // llega: Costos lo cierra para que quede la cifra con la que se entregó. Lo
+  // cierra quien además ve el costo, como pide `cerrar_costo_ot` (migración
+  // 20261128100000): a Requerimientos no se le cuenta lo que no puede cerrar.
+  if (puede(perfil, 'costos.controlar_ot') && puede(perfil, 'costos.ver')) {
     tareas.push({
       clave: 'costo_por_cerrar',
       ruta: '/ordenes?estado=TERMINADA',
